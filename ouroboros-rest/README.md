@@ -802,9 +802,11 @@ consumer: it hands back the model, its parameters, and enough about the connecti
 provider management and mockup 21 (*Model registry*) owns alias management. Routing is
 unbuildable without the rows underneath both, so the schema and these accessors land first and
 every create, update and delete stays with those roadmaps. `RegistryModule` declared **no
-controller at all** until mockup 21 arrived, and what it declares now is a *read*; CH.1
-([#584](https://github.com/NobuData/ouroboros/issues/584)) is the alias CRUD, and
-`registry.module.spec.ts` asserts the controller list so a second entry has to be stated out
+controller at all** until mockup 21 arrived; CH.2
+([#585](https://github.com/NobuData/ouroboros/issues/585)) added a *read*, CH.1
+([#584](https://github.com/NobuData/ouroboros/issues/584)) is the alias CRUD, CH.4
+([#587](https://github.com/NobuData/ouroboros/issues/587)) is the import wizard, and
+`registry.module.spec.ts` asserts the controller list so a fourth entry has to be stated out
 loud rather than noticed in review.
 
 ### The param & capability service
@@ -913,6 +915,63 @@ table for the registry — who, when, an action from a closed vocabulary (`creat
 transaction; a `PATCH` whose every field already held that value answers `revisionId: null`
 and writes nothing. CJ.2 ([#599](https://github.com/NobuData/ouroboros/issues/599)) promotes
 these into `audit_events`, and the columns are that table's nouns so the promotion is a copy.
+
+### Import from provider
+
+**Forty models, curated names, one transaction** (CH.4,
+[#587](https://github.com/NobuData/ouroboros/issues/587)). Mockup 21's head has two buttons and
+this is the other one: bulk alias creation from what discovery found, where humans still choose
+the names.
+
+```
+GET  /api/v1/registry/import/{connectionId}/candidates
+  ─▶ [✓ aliased: coder-max] claude-fable-5
+     [ ] claude-opus-5   → "opus-5"   $10 · $50   thinking · 1M ctx
+     [✓ aliased: sizer]   claude-haiku-4-5
+POST /api/v1/registry/import {connectionId, items: [{modelId, alias, params?}]}
+  ─▶ tx: validate all ─▶ create all, enabled          │ 422 itemized · create none
+  ─▶ re-run ─▶ skips what is already aliased, and reports what it skipped
+```
+
+**Import never invents a model** — decision **R7**, and the one rule that makes a bulk path
+safe. The candidate rows are `provider_models` and nothing else, and an item naming a model
+discovery has not reported is refused per item. This is deliberately *stricter* than
+`POST /registry/aliases`, which warns and saves: one alias typed by somebody who knows what
+they are doing may well be valid during a discovery gap, and forty pasted ones are the typo
+class the registry exists to remove.
+
+**There is no import-all.** Auto-creating an alias per discovered model floods the registry
+with names nothing routes to and makes the page's own caption false, so `selected` is a
+*suggestion* — false for a model that already has an alias, and false when no name could be
+offered — and the service creates what the request names.
+
+**Names are suggested, not decided.** The template drops the leading segment every model of a
+connection shares — derived from the catalog rather than from a table of vendor names, so
+`claude-opus-5` becomes `opus-5` while an Ollama box's `qwen3-coder:32b`, `llama4:scout` and
+`phi4:14b` keep theirs — folds the rest into V015's shape, and suffixes `-2`, `-3` … past
+every name the workspace has *and* every suggestion above it in the same list. A name that
+cannot be made to fit is `null` and an empty cell, never a truncation nobody chose.
+
+**Nothing partial is ever committed.** Every item is checked before the transaction opens, and
+a batch with anything wrong in it is a `422 model_import_invalid` whose `details.items` is
+keyed by request position — the same contract `PUT /routing/routes` publishes, deliberately, so
+a client learns one batch shape rather than two. Seven aliases created and a refusal on the
+eighth leaves somebody reconciling by hand.
+
+**Re-running is safe and says what it meant.** A model that already has an alias on the
+connection is skipped *before* it is validated — so the name the last run created is never
+checked against itself — and the answer's `skipped` names the alias that was already there.
+Imported aliases arrive **switched on**, which is the deliberate opposite of duplicate's
+off-default: every row is bound to a connection the operator just chose and was ticked by hand,
+and forty aliases that then have to be enabled one at a time would make the wizard a way of
+generating work.
+
+**The preview is CH.2's and CH.3's, consumed rather than re-derived.** Each row carries the
+price `GET /registry/prices` would resolve, rendered by the same function — so a local model
+reads `$0` and an uncovered one reads `—`, never the other way round — and a capability
+headline projected from the same merged schema the inspector's form is drawn from. Asking
+about a whole connection costs a fixed handful of statements rather than two per model:
+`ParamSchemaService.forModels` resolves the adapter once and batches both metadata reads.
 
 ## Provider health
 

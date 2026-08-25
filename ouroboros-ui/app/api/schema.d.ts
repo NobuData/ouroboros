@@ -1134,6 +1134,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/registry/import/{connectionId}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a connection has to import, annotated
+         * @description The table behind mockup 21's **Import from provider ▾**
+         *     ([#587](https://github.com/NobuData/ouroboros/issues/587)): every model discovery
+         *     (AC.6) has reported on one connection, with the four things an operator needs before
+         *     they can choose.
+         *
+         *     | Annotation | Where it comes from |
+         *     |---|---|
+         *     | `alias` — already aliased, and by which | `model_aliases` on this connection |
+         *     | `suggestedName` — what to call it | the naming template, collision-suffixed |
+         *     | `price` — the preview | CH.3's resolution ([#586](https://github.com/NobuData/ouroboros/issues/586)), rendered by CH.3 |
+         *     | `capabilities` — the headline | CH.2's merged schema ([#585](https://github.com/NobuData/ouroboros/issues/585)) |
+         *
+         *     **The rows are discovery's, and only discovery's** (decision **R7**). There is no way
+         *     to import a model this connection has not reported, here or on the `POST` — a bulk
+         *     path that accepted typed model ids would reintroduce exactly the typo class the
+         *     registry exists to remove.
+         *
+         *     **A row that already has an alias arrives marked and unticked.** `selected` is the
+         *     server's answer to *should the wizard start with this row chosen*, and it is false for
+         *     an already-aliased model and for one no name could be suggested for. Re-importing what
+         *     is already named is the one thing an operator did not ask for — and an alias per
+         *     discovered model would fill the registry with names nothing routes to, which is what
+         *     the page's own caption promises it will not be.
+         *
+         *     **`suggestedName` may be null**, which is honest rather than empty: the name could not
+         *     be made to fit, and the row arrives with a cell for somebody to fill in.
+         *
+         *     **`empty` is non-null exactly when `candidates` is empty** — *no models discovered;
+         *     test the connection in Providers* — because a wizard that opens on nothing and
+         *     explains nothing is indistinguishable from one that failed to load.
+         *
+         *     **Owners and administrators only.** Unlike the alias list, which any member may read,
+         *     this is the first half of a write: a form pre-filled with the names that write would
+         *     use.
+         */
+        get: operations["listImportCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registry/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create aliases in bulk from discovered models
+         * @description The rows an operator ticked in mockup 21's import wizard
+         *     ([#587](https://github.com/NobuData/ouroboros/issues/587)), created **as one
+         *     transaction**.
+         *
+         *     **All of them, or none of them.** Every item is checked before anything is written —
+         *     the model is one discovery reported, the name is free in this workspace and unrepeated
+         *     in the batch, and the params suit the model (CH.2) — and a batch with anything wrong in
+         *     it is a `422` describing **every** offending item with nothing created. Partial
+         *     creation is worse than none: seven aliases and a refusal on the eighth leaves somebody
+         *     reconciling by hand. This mirrors `PUT /api/v1/routing/routes`, deliberately, so a
+         *     client learns one batch contract rather than two.
+         *
+         *     **A model that already has an alias on this connection is skipped, not refused.** That
+         *     is what makes re-running an import after a discovery refresh safe: the answer's
+         *     `skipped` lists what was passed over and which alias already named it, and `created`
+         *     lists what was new. A re-run of an unchanged import creates nothing and still succeeds.
+         *
+         *     **Imported aliases arrive switched on**, which is the deliberate opposite of
+         *     `POST /registry/aliases/{id}/duplicate`. A duplicate exists to be edited into something
+         *     else, so it starts off; an import is bound to a connection the operator just chose,
+         *     names a model that connection reported, and was ticked by hand — creating forty aliases
+         *     that then have to be switched on one at a time would make the wizard a way of
+         *     generating work. There is no `enabled` field to ask for the other thing.
+         *
+         *     **`200`, not `201`.** A `201` means *a resource was created and here it is*; this
+         *     creates a list, and on a re-run creates none while still succeeding. The answer is the
+         *     report of what happened to each item.
+         *
+         *     **Each created alias leaves exactly one `created` revision**, the same record
+         *     `POST /registry/aliases` leaves, attributed to the session.
+         *
+         *     **Owners and administrators only.**
+         */
+        post: operations["importModelAliases"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/routing": {
         parameters: {
             query?: never;
@@ -4857,6 +4961,302 @@ export interface components {
             connection: components["schemas"]["ModelAliasConnection"];
             /** @description The connection's models, ordered by id. Empty when discovery has not run. */
             models: components["schemas"]["ModelOption"][];
+        };
+        /**
+         * ModelPriceProvenance
+         * @description Where a price came from ([#586](https://github.com/NobuData/ouroboros/issues/586)).
+         *
+         *     Never absent from a price that exists: a number about money that cannot say where it
+         *     came from is the bug this surface was written to prevent.
+         */
+        ModelPriceProvenance: {
+            /**
+             * @description The vendored snapshot said so, or this workspace did.
+             * @enum {string}
+             */
+            source: "bundled" | "override";
+            /**
+             * @description Which snapshot a bundled price came from; **null exactly on an override**, which is
+             *     not a version of anything.
+             * @example 2026-08-15+litellm.70d51a1
+             */
+            catalogVersion: string | null;
+            /**
+             * Format: date-time
+             * @description When this price took effect as far as its source knows.
+             */
+            effectiveAt: string;
+        };
+        /**
+         * ResolvedModelPrice
+         * @description A price that exists, in whichever of V012's four shapes it takes.
+         *
+         *     The amounts are present only where the mode has them: `token` carries both, `seat` and
+         *     `usage` carry neither, and `free` may carry zeros or nothing.
+         */
+        ResolvedModelPrice: {
+            /**
+             * @description How the money works for this model.
+             * @enum {string}
+             */
+            billingMode: "token" | "seat" | "usage" | "free";
+            /** @description Input rate in cents per 1M tokens; null for every mode but `token`, and possibly for `free`. */
+            inputCentsPer1m: number | null;
+            /** @description Output rate in cents per 1M tokens; same rule. */
+            outputCentsPer1m: number | null;
+            provenance: components["schemas"]["ModelPriceProvenance"];
+        };
+        /**
+         * ModelPrice
+         * @description What one model costs this workspace — CH.3's
+         *     ([#586](https://github.com/NobuData/ouroboros/issues/586)) resolution, pair included.
+         *
+         *     **`price: null` and `display: "—"` are the same fact said twice**: the catalog covers
+         *     nothing for this pair. That is *not* `free`, which is a `free` row and renders `$0`. On
+         *     a page somebody sizes a budget from, "unknown" quietly becoming "free" is the one
+         *     failure this shape exists to make impossible — there is nowhere on an unpriced model for
+         *     a rate to be.
+         */
+        ModelPrice: {
+            /**
+             * @description The provider kind the price was looked up for, or null for an unbound alias.
+             * @example anthropic
+             */
+            connectionKind: string | null;
+            /** @description The model the price was looked up for. */
+            modelId: string;
+            /** @description The price, or **null** when the catalog covers nothing for the pair. */
+            price: components["schemas"]["ResolvedModelPrice"] | null;
+            /**
+             * @description The cell, already rendered — `"$10 · $50"`, `"seat-based"`, `"usage-based"`, `"$0"`
+             *     or `"—"`. Served rather than left to the client so the render rules live in one
+             *     place; a client may render from `price` instead, but the fallback for *no price* is
+             *     the one thing it must not invent.
+             * @example $10 · $50
+             */
+            display: string;
+        };
+        /**
+         * ModelCapabilitySummary
+         * @description What a model can be tuned with and how much it holds, in the facts a list row has space
+         *     for — CH.2's merged schema ([#585](https://github.com/NobuData/ouroboros/issues/585)),
+         *     projected.
+         *
+         *     Deliberately not a schema with fewer fields: a client handed a schema will render a
+         *     form from it, and a candidate row is not a form. `GET /api/v1/registry/param-schema` is
+         *     where the form comes from.
+         */
+        ModelCapabilitySummary: {
+            /**
+             * @description The params this model offers, in the adapter's own order. Empty when `reason` says why.
+             * @example [
+             *       "thinking",
+             *       "token_budget"
+             *     ]
+             */
+            params: string[];
+            /** @description Whether `thinking` is one of them — the fact a row prints as a word rather than a count. */
+            thinking: boolean;
+            /**
+             * @description The context window in tokens, or null when no source published one.
+             *
+             *     Taken from what discovery reported rather than from the form's clamped bound: a
+             *     model whose window is above what `model_aliases.params` will store has a bound
+             *     smaller than its window, and a headline must say what the model has.
+             * @example 1000000
+             */
+            contextTokens: number | null;
+            /** @description The largest single answer in tokens, or null when no source published one. */
+            maxOutputTokens: number | null;
+            /**
+             * @description Why there are no params, or null when there are some. The same three codes
+             *     `ModelParamSchemaResponse.reason` carries, and none of them is an error.
+             * @enum {string|null}
+             */
+            reason: "alias_unbound" | "provider_unsupported" | "provider_has_no_parameters" | null;
+        };
+        /**
+         * ImportCandidateAlias
+         * @description An alias that already names a discovered model — what marks a candidate row.
+         */
+        ImportCandidateAlias: {
+            /**
+             * Format: uuid
+             * @description `model_aliases.id`, so the row can link to the alias rather than only name it.
+             */
+            id: string;
+            /**
+             * @description What it is called.
+             * @example coder-max
+             */
+            alias: string;
+        };
+        /**
+         * ImportCandidate
+         * @description One discovered model, annotated with everything the import wizard's row draws
+         *     ([#587](https://github.com/NobuData/ouroboros/issues/587)).
+         *
+         *     The first four fields are `ModelOption`'s, unchanged and from the same mapper, so this
+         *     list and the inspector's model select cannot disagree about what a connection has.
+         */
+        ImportCandidate: {
+            /** @description The provider's own identifier — what an imported alias's `modelId` is set to. */
+            modelId: string;
+            /** @description What the row prints. */
+            display: string;
+            /**
+             * Format: date-time
+             * @description When discovery last reported it.
+             */
+            discoveredAt: string;
+            /** @description What else discovery reported — `context_tokens`, `tier`. */
+            meta: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description The alias that already resolves to this model on this connection, or null for one
+             *     nothing names yet. When more than one does — which is legal; uniqueness is on the
+             *     *name* — this is the alphabetically first, so the row is stable between reads.
+             */
+            alias: components["schemas"]["ImportCandidateAlias"] | null;
+            /**
+             * @description The name to pre-fill, collision-suffixed against the workspace's aliases and against
+             *     the suggestions above this row — so ticking every row is a request that can be
+             *     submitted.
+             *
+             *     **Null when none could be offered**, which is honest rather than empty: the row
+             *     arrives with a cell for somebody to fill in.
+             * @example opus-5
+             */
+            suggestedName: string | null;
+            /**
+             * @description Whether the wizard should arrive with this row ticked. False for a model that
+             *     already has an alias, and false when there is no name to suggest.
+             */
+            selected: boolean;
+            price: components["schemas"]["ModelPrice"];
+            capabilities: components["schemas"]["ModelCapabilitySummary"];
+        };
+        /**
+         * ImportEmpty
+         * @description Why the wizard has nothing to show, when it has nothing to show.
+         */
+        ImportEmpty: {
+            /**
+             * @description Stable; what a client branches on.
+             * @enum {string}
+             */
+            code: "no_models_discovered";
+            /** @description For a person, naming the connection. */
+            message: string;
+            /**
+             * @description Where to go — Providers & keys, where a connection is tested and discovery is run.
+             * @example /models/providers
+             */
+            fix: string;
+        };
+        /**
+         * ImportCandidateList
+         * @description The import wizard's whole state for one connection.
+         */
+        ImportCandidateList: {
+            connection: components["schemas"]["ModelAliasConnection"];
+            /** @description The connection's discovered models, ordered by model id. */
+            candidates: components["schemas"]["ImportCandidate"][];
+            /** @description Non-null **exactly** when `candidates` is empty. */
+            empty: components["schemas"]["ImportEmpty"] | null;
+        };
+        /**
+         * ImportModelAliasItem
+         * @description One row the operator left ticked.
+         *
+         *     A `CreateModelAlias` with the connection hoisted out of it and `enabled` removed — the
+         *     two shape rules on `alias` and `modelId` are the same ones the create dialog applies, so
+         *     a name this accepts is one `POST /registry/aliases` would have accepted too.
+         */
+        ImportModelAliasItem: {
+            /**
+             * @description The provider's model id, **as discovery reported it**. A model this connection has
+             *     not reported is refused per item — import never invents a model (decision **R7**).
+             * @example claude-opus-5
+             */
+            modelId: string;
+            /**
+             * @description What to call it — the suggestion, or whatever was typed over it.
+             * @example opus-5
+             */
+            alias: string;
+            /**
+             * @description Per-alias invocation defaults, validated against the model's capability schema
+             *     (CH.2). Absent means `{}`, which is what an untouched row sends.
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ImportModelAliases
+         * @description `POST /registry/import` — the ticked rows of one connection's wizard.
+         */
+        ImportModelAliases: {
+            /**
+             * Format: uuid
+             * @description The connection every item binds to. One per request; two connections are two imports.
+             */
+            connectionId: string;
+            /**
+             * @description The rows to create, in the order the wizard drew them. At least one — an import of
+             *     nothing is a request nobody meant to send. The ceiling bounds the transaction: the
+             *     whole batch commits together, and a transaction whose size a client chooses is a
+             *     lock somebody else waits behind.
+             */
+            items: components["schemas"]["ImportModelAliasItem"][];
+        };
+        /**
+         * ImportedAlias
+         * @description One alias the import created.
+         */
+        ImportedAlias: {
+            alias: components["schemas"]["ModelAlias"];
+            /**
+             * Format: uuid
+             * @description The `alias_revisions` row this creation left. Never null — a create moves every
+             *     column, so there is always a revision to name.
+             */
+            revisionId: string;
+        };
+        /**
+         * SkippedImport
+         * @description One item the import passed over because its model already had an alias on the
+         *     connection — the idempotency, reported rather than silent.
+         */
+        SkippedImport: {
+            /** @description The model the item named. */
+            modelId: string;
+            /** @description The name the item asked for, which was not used. */
+            requestedAlias: string;
+            alias: components["schemas"]["ImportCandidateAlias"];
+        };
+        /**
+         * ImportResult
+         * @description What a batch did — what it created, and what it deliberately did not.
+         *
+         *     There is no partial state to report a failure from: a batch either created everything
+         *     it was asked for that was not skipped, or created nothing and answered
+         *     `model_import_invalid`.
+         */
+        ImportResult: {
+            connection: components["schemas"]["ModelAliasConnection"];
+            /**
+             * @description The aliases created, in the order the items arrived. Empty for a re-run that skipped
+             *     everything, which is a success and not a failure.
+             */
+            created: components["schemas"]["ImportedAlias"][];
+            /**
+             * @description The items passed over for already having an alias. An operator who re-ran an import
+             *     is owed the list of what that meant.
+             */
+            skipped: components["schemas"]["SkippedImport"][];
         };
         /**
          * RoutingSimulationContext
@@ -9658,6 +10058,416 @@ export interface operations {
              * @description `model_alias_copy_name_too_long` — the suffixed name would exceed the 64
              *     characters an alias may have. Rename the alias to something shorter first;
              *     `details.proposed` is the name that did not fit.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listImportCandidates: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The connection to import from — `provider_connections.id`, in this workspace. */
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection, and its candidates ordered by model id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "connection": {
+                     *         "id": "5eed000c-0000-4000-8000-000000000001",
+                     *         "kind": "anthropic",
+                     *         "displayName": "Anthropic Claude"
+                     *       },
+                     *       "candidates": [
+                     *         {
+                     *           "modelId": "claude-fable-5",
+                     *           "display": "claude-fable-5",
+                     *           "discoveredAt": "2026-08-25T09:56:00.000Z",
+                     *           "meta": {
+                     *             "context_tokens": 1000000,
+                     *             "tier": "priority"
+                     *           },
+                     *           "alias": {
+                     *             "id": "5eed000f-0000-4000-8000-000000000001",
+                     *             "alias": "coder-max"
+                     *           },
+                     *           "suggestedName": "fable-5",
+                     *           "selected": false,
+                     *           "price": {
+                     *             "connectionKind": "anthropic",
+                     *             "modelId": "claude-fable-5",
+                     *             "price": {
+                     *               "billingMode": "token",
+                     *               "inputCentsPer1m": 1500,
+                     *               "outputCentsPer1m": 7500,
+                     *               "provenance": {
+                     *                 "source": "bundled",
+                     *                 "catalogVersion": "2026-08-15+litellm.70d51a1",
+                     *                 "effectiveAt": "2026-08-15T00:00:00.000Z"
+                     *               }
+                     *             },
+                     *             "display": "$15 · $75"
+                     *           },
+                     *           "capabilities": {
+                     *             "params": [
+                     *               "thinking",
+                     *               "token_budget"
+                     *             ],
+                     *             "thinking": true,
+                     *             "contextTokens": 1000000,
+                     *             "maxOutputTokens": 64000,
+                     *             "reason": null
+                     *           }
+                     *         },
+                     *         {
+                     *           "modelId": "claude-opus-5",
+                     *           "display": "claude-opus-5",
+                     *           "discoveredAt": "2026-08-25T09:56:00.000Z",
+                     *           "meta": {
+                     *             "context_tokens": 1000000,
+                     *             "tier": "priority"
+                     *           },
+                     *           "alias": null,
+                     *           "suggestedName": "opus-5",
+                     *           "selected": true,
+                     *           "price": {
+                     *             "connectionKind": "anthropic",
+                     *             "modelId": "claude-opus-5",
+                     *             "price": {
+                     *               "billingMode": "token",
+                     *               "inputCentsPer1m": 1000,
+                     *               "outputCentsPer1m": 5000,
+                     *               "provenance": {
+                     *                 "source": "bundled",
+                     *                 "catalogVersion": "2026-08-15+litellm.70d51a1",
+                     *                 "effectiveAt": "2026-08-15T00:00:00.000Z"
+                     *               }
+                     *             },
+                     *             "display": "$10 · $50"
+                     *           },
+                     *           "capabilities": {
+                     *             "params": [
+                     *               "thinking",
+                     *               "token_budget"
+                     *             ],
+                     *             "thinking": true,
+                     *             "contextTokens": 1000000,
+                     *             "maxOutputTokens": 64000,
+                     *             "reason": null
+                     *           }
+                     *         }
+                     *       ],
+                     *       "empty": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ImportCandidateList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — importing is an owner's or an administrator's, and so is the list it
+             *     starts from.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             *
+             *     `provider_connection_not_found` — `connectionId` names no connection in this
+             *     workspace, or another workspace's.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `connectionId` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    importModelAliases: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "connectionId": "5eed000c-0000-4000-8000-000000000001",
+                 *       "items": [
+                 *         {
+                 *           "modelId": "claude-opus-5",
+                 *           "alias": "opus-5",
+                 *           "params": {
+                 *             "thinking": "max"
+                 *           }
+                 *         },
+                 *         {
+                 *           "modelId": "claude-haiku-4-5",
+                 *           "alias": "haiku-tiny"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ImportModelAliases"];
+            };
+        };
+        responses: {
+            /**
+             * @description What was created, and what was skipped for already having an alias. Both lists are
+             *     in the order the items arrived; either may be empty.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "connection": {
+                     *         "id": "5eed000c-0000-4000-8000-000000000001",
+                     *         "kind": "anthropic",
+                     *         "displayName": "Anthropic Claude"
+                     *       },
+                     *       "created": [
+                     *         {
+                     *           "alias": {
+                     *             "id": "7c1e0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                     *             "alias": "opus-5",
+                     *             "enabled": true,
+                     *             "connection": {
+                     *               "id": "5eed000c-0000-4000-8000-000000000001",
+                     *               "kind": "anthropic",
+                     *               "displayName": "Anthropic Claude"
+                     *             },
+                     *             "modelId": "claude-opus-5",
+                     *             "params": {
+                     *               "thinking": "max"
+                     *             },
+                     *             "restrictions": {},
+                     *             "notes": null,
+                     *             "references": [],
+                     *             "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                     *             "createdAt": "2026-08-25T10:14:02.117Z",
+                     *             "updatedAt": "2026-08-25T10:14:02.117Z"
+                     *           },
+                     *           "revisionId": "b1000000-0000-0000-0000-000000000001"
+                     *         }
+                     *       ],
+                     *       "skipped": [
+                     *         {
+                     *           "modelId": "claude-haiku-4-5",
+                     *           "requestedAlias": "haiku-tiny",
+                     *           "alias": {
+                     *             "id": "5eed000f-0000-4000-8000-000000000003",
+                     *             "alias": "sizer"
+                     *           }
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — creating aliases is an owner's or an administrator's, in bulk as
+             *     singly.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             *
+             *     `provider_connection_not_found` — `connectionId` names no connection in this
+             *     workspace, or another workspace's.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `model_import_invalid` — one or more items cannot be created, and **nothing was**.
+             *     `details.items` is keyed by the item's position in the request — `{"1": {"alias":
+             *     ["…"]}}` — and each entry is that item's field messages: `modelId` for a model
+             *     discovery has not reported, `alias` for a name this workspace already has or the
+             *     batch asks for twice, and CH.2's `params.<name>` paths for a parameter the model
+             *     does not accept.
+             *
+             *     The same code answers the race a pre-check cannot close — a concurrent write taking
+             *     one of the names between the check and the insert. The batch rolls back and **every**
+             *     item is filed against, with a message that says so: the unique key names the
+             *     constraint and not which insert met it, so there is no honest way to blame one row.
+             *
+             *     `validation_failed` — the body is malformed: `items` is empty or past 200 entries,
+             *     a name is not lower-case kebab, a `connectionId` is not a uuid.
              */
             422: {
                 headers: {

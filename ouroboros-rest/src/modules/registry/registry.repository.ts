@@ -1,11 +1,14 @@
 /**
- * Every statement this module issues — six of them, all reads, all scoped to one workspace.
+ * Every statement this module issues — eight of them, all reads, all scoped to one workspace.
  *
  * Three are V015's routing foundation. The three CH.2
  * ([#585](https://github.com/NobuData/ouroboros/issues/585)) added are what a param schema is
  * built from: a connection's kind, so the right adapter is asked; V017's `provider_models`
  * for what the provider reported about the model; and V012's `model_price()` for what the
- * bundled catalog knows about it.
+ * bundled catalog knows about it. The last two are CH.4's
+ * ([#587](https://github.com/NobuData/ouroboros/issues/587)) batched twins of those last two —
+ * the same joins and the same function, asked once about a whole connection's worth of models
+ * rather than once per model, because the import wizard's list is where an N+1 would show.
  *
  * ## Resolution is one query, and the indexes it uses exist for other reasons
  *
@@ -276,5 +279,79 @@ export class RegistryRepository {
       .execute();
 
     return rows.map((row) => row.alias);
+  }
+
+  /**
+   * What discovery reported about **many** models on one connection — one statement.
+   *
+   * The batched twin of {@link RegistryRepository.discoveredModelMeta}, added for CH.4
+   * ([#587](https://github.com/NobuData/ouroboros/issues/587)): the import wizard asks the same
+   * question about every model a connection has, and forty round trips to render one list is a
+   * shape worth refusing at the repository rather than apologising for at the service. Same
+   * join, same workspace predicate, same index — `provider_models_connection_model_key` serves
+   * an `in` list as readily as an equality.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param connectionId - The connection the models were discovered on.
+   * @param modelIds - The provider's own identifiers, unfolded. Empty answers empty without a
+   *   round trip.
+   * @returns The `meta` of each model that was found, keyed by model id. A model discovery has
+   *   not listed is **absent from the map** rather than present with an empty document — the
+   *   same distinction {@link RegistryRepository.discoveredModelMeta}'s `undefined` makes.
+   */
+  async discoveredModelMetaMany(
+    organizationId: string,
+    connectionId: string,
+    modelIds: readonly string[],
+  ): Promise<Map<string, Record<string, unknown>>> {
+    if (modelIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.database.db
+      .selectFrom("provider_models as m")
+      .innerJoin("provider_connections as c", "c.id", "m.provider_connection_id")
+      .select(["m.model_id", "m.meta"])
+      .where("c.organization_id", "=", organizationId)
+      .where("m.provider_connection_id", "=", connectionId)
+      .where("m.model_id", "in", [...modelIds])
+      .execute();
+
+    return new Map(rows.map((row) => [row.model_id, row.meta]));
+  }
+
+  /**
+   * What the bundled price catalog knows about **many** models — one statement, one function.
+   *
+   * The batched twin of {@link RegistryRepository.catalogModelMeta}, and it reaches the catalog
+   * exactly the same way: `ouroboros.model_price()` once per model, called through a lateral
+   * join over the ids rather than once per round trip. The precedence stays where it is; only
+   * the number of trips changes.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param connectionKind - The provider kind, folded, or null. A null matches nothing, so a
+   *   caller with no binding gets an empty map without a branch here.
+   * @param modelIds - The model identifiers, unfolded. Empty answers empty without a round trip.
+   * @returns The winning row's `meta` per model, keyed by model id. A model the catalog covers
+   *   nothing for is absent from the map.
+   */
+  async catalogModelMetaMany(
+    organizationId: string,
+    connectionKind: string | null,
+    modelIds: readonly string[],
+  ): Promise<Map<string, Record<string, unknown>>> {
+    if (modelIds.length === 0) {
+      return new Map();
+    }
+
+    const { rows } = await sql<{ model_id: string; meta: Record<string, unknown> }>`
+      select ids.model_id, p.meta
+        from unnest(${[...modelIds]}::text[]) as ids(model_id)
+        cross join lateral ${sql.id(SCHEMA_NAME)}.model_price(
+          ${organizationId}, ${connectionKind}, ids.model_id
+        ) p
+    `.execute(this.database.db);
+
+    return new Map(rows.map((row) => [row.model_id, row.meta]));
   }
 }

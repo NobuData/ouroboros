@@ -2,6 +2,7 @@ import type { AliasReferenceRow, AliasRow, ModelOptionRow } from "./aliases.rows
 import {
   ALIAS_WARNINGS,
   connectionOf,
+  referencesByAlias,
   toAliasResource,
   toModelOptionResource,
   toReferenceResource,
@@ -127,5 +128,36 @@ describe("the warning codes", () => {
       unbound: "alias_unbound",
       modelNotDiscovered: "model_not_discovered",
     });
+  });
+});
+
+describe("referencesByAlias", () => {
+  // One read of the view covers a whole list; this is what turns that answer back into
+  // per-alias arrays, and it is shared so a `Used by` column cannot disagree with itself.
+  const OTHER: AliasReferenceRow = {
+    alias_id: "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+    kind: "escalation",
+    ref_id: "5eed0013-0000-4000-8000-000000000001",
+    ref_label: "escalation:effort≥L",
+    blocking: true,
+  };
+
+  it("keys each row by the alias it belongs to", () => {
+    const grouped = referencesByAlias([REFERENCE, OTHER]);
+
+    expect(grouped.get(ROW.id)).toEqual([REFERENCE]);
+    expect(grouped.get(OTHER.alias_id)).toEqual([OTHER]);
+  });
+
+  it("keeps the repository's order within an alias", () => {
+    // Routes before rules, each by label — the order mockup 21 draws the chips in.
+    const second: AliasReferenceRow = { ...REFERENCE, ref_label: "review-primary" };
+
+    expect(referencesByAlias([REFERENCE, second]).get(ROW.id)).toEqual([REFERENCE, second]);
+  });
+
+  it("leaves an alias with no references absent rather than empty", () => {
+    // So a caller supplies the empty array itself instead of relying on a map to invent one.
+    expect(referencesByAlias([]).has(ROW.id)).toBe(false);
   });
 });

@@ -733,7 +733,7 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 | CH.1 | #584 | 🟢 Done | ouroboros-rest: [CH.1] Alias lifecycle API | CRUD, rebind, duplicate, enable/disable, guarded rename/delete; supersedes Z.2's alias list | mvp, registry, rest | N (after CG.1, CG.3, BA-C.3) | Y | L | ouroboros-rest |
 | CH.2 | #585 | 🟢 Done | ouroboros-rest: [CH.2] Param & capability service | Adapter `paramSchema` SPI extension + metadata merge → inspector form schema, chip derivation | mvp, registry, rest, providers | N (after AC.1, AC.6) | Y | M | ouroboros-rest |
 | CH.3 | #586 | 🟢 Done | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
-| CH.4 | #587 | 🟡 Open | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
+| CH.4 | #587 | 🟢 Done | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
 | CH.5 | #588 | 🟡 Open | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
 | CH.6 | #589 | 🟡 Open | ouroboros-rest: [CH.6] Governance & resolution-snapshot contract | Raw-model rejection at publish (P.2 amendment), Z.1 disabled/unbound semantics, persisted snapshots | mvp, registry, rest, routing, engine | N (after Z.1, WF P.2) | Y | M | ouroboros-rest, ouroboros-engine |
 | CH.7 | #590 | 🟡 Open | ouroboros-rest: [CH.7] Registry integration tests | Lifecycle+guards, params, pricing, import, governance, isolation | mvp, registry, rest, ci | N (after CH.1–CH.6) | Y | M | ouroboros-rest |
@@ -987,7 +987,87 @@ override PUT {anthropic, claude-fable-5, 1200¢/6000¢} ─▶ wins over bundled
 
 ### Issue CH.4 — ouroboros-rest: [CH.4] Import from provider
 
-> **GitHub issue:** #587 · **Status:** 🟡 Open · **Parent epic:** #576
+> **GitHub issue:** #587 · **Status:** 🟢 Done · **Parent epic:** #576
+
+> **Shipped 2026-08-25.**
+> [`ouroboros-rest/src/modules/registry/import.*.ts`](../ouroboros-rest/src/modules/registry)
+> — `GET /api/v1/registry/import/{connectionId}/candidates` and
+> `POST /api/v1/registry/import`, owner/admin only on both halves, org-scoped throughout, both
+> routes and every designed error documented in `openapi.yaml` (0.30.14) and mirrored into the
+> UI's generated types. Proven by unit specs per file and by
+> [`import.integration-spec.ts`](../ouroboros-rest/src/modules/registry/import.integration-spec.ts)
+> — all eight acceptance criteria over a socket against a migrated PostgreSQL 17, each one
+> asserted against the **table** rather than against the response where the claim is that
+> nothing was written.
+>
+> **The candidates read is annotated, and every annotation is somebody else's answer.** The
+> rows are `AliasesRepository.modelOptions` — the same `provider_models` read the inspector's
+> select is drawn from, so a wizard listing models the inspector does not is not a state that
+> exists. On each: the alias that already names the model (alphabetically first where two do,
+> so the row is stable between reads), a suggested name, CH.3's price resolved by
+> `PricingService.resolveMany` and rendered by `renderPrice`, and CH.2's capability headline.
+> `selected` is the server's answer to *should this row arrive ticked* — false for an
+> already-aliased model, false where no name could be suggested — because a client deriving it
+> would be a second place for the wizard's default to live. A connection with nothing
+> discovered answers `empty: {code, message, fix}`, non-null exactly when `candidates` is
+> empty: *never an empty wizard with no explanation*.
+>
+> **The naming template asks the catalog, not a table of vendor names.** `import.naming.ts`
+> drops the leading segment **every** model of a connection shares — `claude` for the seeded
+> Anthropic four, nothing for an Ollama box's `qwen3-coder`, `llama4` and `phi4` — which is
+> what makes `claude-opus-5 → opus-5` a rule rather than a special case, and it needs two or
+> more models to fire so a lone `gpt-5-codex` is not shortened to `5-codex`. The rest is
+> folding into V015's shape (`qwen3-coder:32b → qwen3-coder-32b`,
+> `local/llama-4-maverick → llama-4-maverick`) and suffixing `-2`, `-3` … past every name the
+> workspace has *and* every suggestion above it, so ticking every row produces a request that
+> can be submitted. A name that will not fit the 64-character ceiling is `null` and an empty
+> cell — a suggestion is editable, and a truncation is a name nobody chose.
+>
+> **Import never invents a model, and that is where this is stricter than CH.1.** Decision
+> **R7**: an item whose `modelId` is not in `provider_models` for the connection is refused,
+> where `POST /registry/aliases` warns and saves. One alias typed by somebody who knows what
+> they are doing may be valid during a discovery gap; forty pasted ones are the typo class the
+> registry exists to remove. There is no import-all either — `selected` is a suggestion and the
+> service creates what the request names.
+>
+> **Nothing partial is ever committed.** Every item is checked before the transaction opens —
+> discovered, name free in the workspace, name unrepeated in the batch, params valid against
+> CH.2 — and anything wrong makes the whole request a `422 model_import_invalid` whose
+> `details.items` is keyed by request position, mirroring `route_save_invalid` so a client
+> learns one batch contract. Keyed by **position** and not by model id, because a batch may
+> legally name one model twice and that is itself one of the things complained about. The race
+> the pre-check cannot close — a concurrent import taking a name — rolls the batch back and
+> answers the same code rather than leaking a unique violation.
+>
+> **Re-runs skip, and the skip happens before validation.** That ordering is the whole of the
+> idempotency: the second run carries the names the first run created, and checking them would
+> refuse a batch whose only fault is having been run before. `skipped` names the alias that was
+> already there. Imported aliases arrive **enabled**, the deliberate opposite of duplicate's
+> off-default and documented as such in `import.service.ts` — every row is bound to a
+> connection the operator just chose and was ticked by hand.
+>
+> **What it added elsewhere, and why there.** `ParamSchemaService.forModels` answers a schema
+> *and* a headline per model with the connection resolved once and both metadata reads batched,
+> against `RegistryRepository`'s two new statements — a loop over `schemaFor` would have been
+> eighty round trips to draw one forty-model wizard. `summariseCapabilities` lives in
+> `params.merge.ts` beside the precedence rule it projects, and it reads the two token counts
+> from the **metadata** rather than from the merged bounds: `context_clamp.maximum` has been
+> clamped to what V019 will store, so for `llama4:scout` it is a smaller number than the
+> window. `requiredDiff` moved from `aliases.service.ts` into `aliases.changes.ts`, so an
+> imported alias's `created` revision is shaped by the same function a typed one's is.
+> `RegistryModule` now imports `PricingModule` — CH.3 is emphatic that there is one resolution
+> of what a model costs, and the wizard consumes it.
+>
+> **Two things the issue said that landed differently.** The batch answers **200**, not 201: it
+> creates a list, and a re-run creates nothing while still succeeding, so the answer is the
+> report of what happened to each item. And the candidates read is **owner/admin**, not member —
+> the ticket says *role-gated, owner/admin only* and this reads it as covering both halves,
+> because the list is a form pre-filled with the names a write would use rather than a view of
+> the registry.
+>
+> **Deferred, and to whom.** The wizard itself (#594); the composed read model the candidate
+> rows will sit beside (#588); the deprecation watch and migration assistant that build on this
+> read (#601).
 
 - **Problem Statement:** The head's **Import from provider ▾** must bulk-create
   curated aliases from discovery truth — never from typed model strings

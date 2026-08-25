@@ -35,13 +35,14 @@ import { Injectable } from "@nestjs/common";
 import type { Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import type { AliasRevisionDiff, Database } from "../db/schema";
+import type { Database } from "../db/schema";
 import {
   aliasDiff,
   bindingChanged,
   copyName,
   COPY_SUFFIX,
   DUPLICATE_OF_KEY,
+  requiredDiff,
   revisionAction,
   stateOf,
   type AliasState,
@@ -62,6 +63,7 @@ import { AliasesRepository } from "./aliases.repository";
 import type { AliasConnectionRow, AliasReferenceRow, AliasRow } from "./aliases.rows";
 import {
   ALIAS_WARNINGS,
+  referencesByAlias,
   toAliasResource,
   toModelOptionResource,
   toReferenceResource,
@@ -99,18 +101,12 @@ export class AliasesService {
    */
   async list(organizationId: string): Promise<ModelAliasListResource> {
     const rows = await this.aliases.list(organizationId);
-    const references = await this.aliases.references(
-      organizationId,
-      rows.map((row) => row.id),
+    const byAlias = referencesByAlias(
+      await this.aliases.references(
+        organizationId,
+        rows.map((row) => row.id),
+      ),
     );
-    const byAlias = new Map<string, AliasReferenceRow[]>();
-
-    for (const reference of references) {
-      const held = byAlias.get(reference.alias_id) ?? [];
-
-      held.push(reference);
-      byAlias.set(reference.alias_id, held);
-    }
 
     return {
       aliases: rows.map((row) => toAliasResource(row, byAlias.get(row.id) ?? [])),
@@ -627,22 +623,4 @@ function unboundWarning(alias: string): AliasWarningResource {
       "it. Connect a provider under Providers & keys, then bind the alias to it.",
     fix: PROVIDERS_FIX_PATH,
   };
-}
-
-/**
- * A diff that cannot be empty — a create's or a delete's, where one side is the whole row.
- *
- * @param before - The state before, or null for a create.
- * @param after - The state after, or null for a delete.
- * @returns The diff.
- * @throws {Error} When {@link aliasDiff} answered null, which for a one-sided diff it cannot.
- */
-function requiredDiff(before: AliasState | null, after: AliasState | null): AliasRevisionDiff {
-  const diff = aliasDiff(before, after);
-
-  if (diff === null) {
-    throw new Error("a create or a delete always moves every column");
-  }
-
-  return diff;
 }

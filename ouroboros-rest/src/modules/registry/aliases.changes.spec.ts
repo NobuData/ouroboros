@@ -4,6 +4,7 @@ import {
   bindingChanged,
   copyName,
   COPY_SUFFIX,
+  requiredDiff,
   revisionAction,
   sameDocument,
   stateOf,
@@ -14,9 +15,9 @@ import type { AliasRow } from "./aliases.rows";
 /**
  * The pure half of the lifecycle, branch by branch.
  *
- * Every assertion here is a literal in and a literal out, which is the reason these three
- * questions were pulled out of the service: the service's own suite can then be about *when*
- * they are asked rather than about what they answer.
+ * Every assertion here is a literal in and a literal out, which is the reason these questions
+ * were pulled out of the service: the service's own suite can then be about *when* they are
+ * asked rather than about what they answer.
  */
 const CONNECTION = "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c";
 const OTHER_CONNECTION = "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70";
@@ -117,6 +118,30 @@ describe("aliasDiff", () => {
 
   it("refuses two nulls — there is no such write", () => {
     expect(() => aliasDiff(null, null)).toThrow(RangeError);
+  });
+});
+
+describe("requiredDiff", () => {
+  // Shared by every path that writes a `created` revision — CH.1's create and duplicate, and
+  // CH.4's import (#587) — so an imported alias's revision is shaped by the same function a
+  // typed one's is.
+  it("moves every column on a create", () => {
+    const diff = requiredDiff(null, stateOf(ROW));
+
+    expect(Object.keys(diff).sort()).toEqual(Object.values(ALIAS_COLUMNS).sort());
+    expect(diff.alias).toEqual({ from: null, to: "coder-max" });
+  });
+
+  it("moves every column on a delete", () => {
+    expect(requiredDiff(stateOf(ROW), null).enabled).toEqual({ from: true, to: null });
+  });
+
+  it("raises rather than answering a null V025 would refuse", () => {
+    // Unreachable for a one-sided diff, which is why it is an Error and not a designed
+    // refusal: reaching it means a caller passed two identical states to a create's diff.
+    expect(() => requiredDiff(stateOf(ROW), stateOf(ROW))).toThrow(
+      "a create or a delete always moves every column",
+    );
   });
 });
 

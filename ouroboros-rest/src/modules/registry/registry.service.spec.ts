@@ -36,12 +36,15 @@ describe("the registry service", () => {
       resolveAlias: jest.fn(),
       listAliases: jest.fn(),
       aliasesForConnection: jest.fn(),
-      // CH.2's (#585) three reads. Stubbed but never answered here: this service does not
-      // call them — `ParamSchemaService` does — and a mock that satisfies the whole repository
-      // is what keeps *this suite* honest about which methods it is exercising.
+      // CH.2's (#585) three reads and CH.4's (#587) two batched twins of them. Stubbed but
+      // never answered here: this service does not call them — `ParamSchemaService` does — and
+      // a mock that satisfies the whole repository is what keeps *this suite* honest about
+      // which methods it is exercising.
       findConnection: jest.fn(),
       discoveredModelMeta: jest.fn(),
       catalogModelMeta: jest.fn(),
+      discoveredModelMetaMany: jest.fn(),
+      catalogModelMetaMany: jest.fn(),
     };
     registry = new RegistryService(repository as unknown as RegistryRepository);
   });

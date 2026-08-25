@@ -69,6 +69,10 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `task_kinds.name` is constrained to — so the pipe would let it through and whatever this
   // suite sees is the guard's answer.
   taskKind: "implement",
+  // `GET /api/v1/registry/import/:connectionId/candidates` (#587). A well-formed uuid, for the
+  // reason above: the pipe refuses anything else, and a `422` would let the signed-in half
+  // pass without the guard having admitted anything.
+  connectionId: "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70",
 };
 
 /**

@@ -17,6 +17,7 @@ import {
   mergeParamSchema,
   offeredParams,
   readModelMetadata,
+  summariseCapabilities,
 } from "./params.merge";
 
 /**
@@ -491,5 +492,100 @@ describe("the merge's own bounds", () => {
 
     expect(merged.params.properties.temperature.maximum).toBe(MODEL_ALIAS_TEMPERATURE_MAX);
     expect(merged.params.properties.context_clamp.minimum).toBe(MODEL_ALIAS_TOKENS_MIN);
+  });
+});
+
+describe("summariseCapabilities", () => {
+  /**
+   * The headline CH.4's ([#587](https://github.com/NobuData/ouroboros/issues/587)) candidate
+   * rows print. It adds no knowledge — it is a projection of the merge above — so what is
+   * asserted here is that it projects the *right* fields, and in particular that the two token
+   * counts come from the metadata rather than from the merged bounds.
+   */
+  it("names what the model offers, and says whether thinking is among it", () => {
+    const summary = summariseCapabilities(
+      mergeParamSchema(
+        adapterSchema({
+          thinking: { type: "string", title: "Thinking", enum: ["off", "std", "max"] },
+          temperature: { type: "number", title: "Temperature" },
+        }),
+        NO_METADATA,
+        NO_METADATA,
+      ),
+      NO_METADATA,
+      NO_METADATA,
+    );
+
+    expect(summary.params).toEqual(["thinking", "temperature"]);
+    expect(summary.thinking).toBe(true);
+    expect(summary.reason).toBeNull();
+  });
+
+  it("says thinking is absent when the adapter does not offer it", () => {
+    const summary = summariseCapabilities(
+      mergeParamSchema(
+        adapterSchema({ temperature: { type: "number", title: "Temperature" } }),
+        NO_METADATA,
+        NO_METADATA,
+      ),
+      NO_METADATA,
+      NO_METADATA,
+    );
+
+    expect(summary.thinking).toBe(false);
+  });
+
+  it("carries the reason an unbound or unsupported model has no params", () => {
+    const summary = summariseCapabilities(
+      mergeParamSchema(null, NO_METADATA, NO_METADATA, "custom"),
+      NO_METADATA,
+      NO_METADATA,
+    );
+
+    expect(summary.params).toEqual([]);
+    expect(summary.reason).toBe("provider_unsupported");
+  });
+
+  it("takes the context window from discovery, not from the clamped form bound", () => {
+    // The one place a summary could quietly lie. `context_clamp.maximum` has been through the
+    // clamp to V019's domain, so for a model whose window is above `MODEL_ALIAS_TOKENS_MAX` it
+    // is *what this product will store* rather than what the model holds. The seeded
+    // `llama4:scout` is exactly that model.
+    const window = MODEL_ALIAS_TOKENS_MAX + 485_760;
+    const merged = mergeParamSchema(
+      unbounded(),
+      { contextTokens: window, maxOutputTokens: null },
+      NO_METADATA,
+    );
+
+    expect(merged.params.properties.context_clamp.maximum).toBe(MODEL_ALIAS_TOKENS_MAX);
+    expect(
+      summariseCapabilities(merged, { contextTokens: window, maxOutputTokens: null }, NO_METADATA)
+        .contextTokens,
+    ).toBe(window);
+  });
+
+  it("falls back to the catalog only where discovery said nothing", () => {
+    // The same asymmetry the field merge keeps, stated for a scalar: the catalog fills an
+    // absence and never overrides a live answer.
+    const summary = summariseCapabilities(
+      mergeParamSchema(unbounded(), NO_METADATA, NO_METADATA),
+      { contextTokens: 200_000, maxOutputTokens: null },
+      { contextTokens: 1_000_000, maxOutputTokens: 64_000 },
+    );
+
+    expect(summary.contextTokens).toBe(200_000);
+    expect(summary.maxOutputTokens).toBe(64_000);
+  });
+
+  it("says null rather than zero when no source published a size", () => {
+    const summary = summariseCapabilities(
+      mergeParamSchema(unbounded(), NO_METADATA, NO_METADATA),
+      NO_METADATA,
+      NO_METADATA,
+    );
+
+    expect(summary.contextTokens).toBeNull();
+    expect(summary.maxOutputTokens).toBeNull();
   });
 });

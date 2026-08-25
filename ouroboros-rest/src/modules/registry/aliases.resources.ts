@@ -183,6 +183,35 @@ export function toAliasResource(
 }
 
 /**
+ * Reference rows, keyed by the alias they belong to.
+ *
+ * The one read of `alias_references` a list makes covers every alias in it — the view is read
+ * once with an `in` list, never once per row — and this is what turns that answer back into
+ * per-alias arrays. Shared by CH.1's list and CH.4's import
+ * ([#587](https://github.com/NobuData/ouroboros/issues/587)) rather than written twice, because
+ * two groupings of one query are two chances for a `Used by` column to disagree with itself.
+ *
+ * @param references - The rows, in the order the repository answered them — routes before
+ *   rules, each by label, which is the order the chips are drawn in and which this preserves.
+ * @returns Alias id to its references. An alias with none is **absent**, so a caller supplies
+ *   the empty array itself rather than relying on a map to invent one.
+ */
+export function referencesByAlias(
+  references: readonly AliasReferenceRow[],
+): Map<string, AliasReferenceRow[]> {
+  const byAlias = new Map<string, AliasReferenceRow[]>();
+
+  for (const reference of references) {
+    const held = byAlias.get(reference.alias_id) ?? [];
+
+    held.push(reference);
+    byAlias.set(reference.alias_id, held);
+  }
+
+  return byAlias;
+}
+
+/**
  * One reference as the contract publishes it.
  *
  * @param row - A row of `alias_references`.
