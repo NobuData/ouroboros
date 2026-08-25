@@ -1208,6 +1208,50 @@ V020 gave a `task_kind` and a `latency_ms` for. Publishing the field as null now
 run, it has spent nothing anybody can average — so AA.2 renders the em-dash today and the real
 figure later, with no contract change.
 
+### The routing regression suite
+
+**Insurance against the bug that does not throw**
+([#199](https://github.com/NobuData/ouroboros/issues/199)). A routing defect does not raise —
+it returns a *different valid-looking chain*, and every run afterwards goes somewhere slightly
+wrong until a bill or a latency graph gives it away. Four suites in `src/modules/routing/`
+exist for that failure mode specifically, over the shared bench in `workspace.fixture.ts`:
+
+| Suite                              | What it holds                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `matrix.integration-spec.ts`       | 480 cells of rules × health × floor × local × cost, twice each, asserted as invariants |
+| `persistence.integration-spec.ts`  | `route_hops_alias_fk`, the deferred chain rewrite, revision diffs, the derived sentence |
+| `isolation.integration-spec.ts`    | every routing endpoint the router serves, against a second workspace's rows            |
+| `honesty.integration-spec.ts`      | priced, priced-at-nothing and never-priced, still three states in one payload           |
+
+**The matrix asserts promises, not expected chains.** An expected-value table is written by
+somebody who already knows which cells are interesting, which is exactly what a silent routing
+bug is not. So the cross product is resolved once and the assertions are mockup 06's headline
+claims restated as properties every cell must satisfy — the floor is never crossed by a kept
+hop, a breach refuses rather than degrades, a route with local off never runs local, an
+unusable provider is never kept and an **unchecked** one is never dropped, identical inputs
+produce identical bytes. A failure names its cell (`rules=none health=cloud-down floor=2
+local=on cost=250`), so a regression reports the one combination that broke.
+
+**The isolation census is read out of the running application.** *Covers every routing
+endpoint* is a claim that decays the moment somebody adds an endpoint, so the list is not
+written down: `SwaggerModule.createDocument` is asked what this Nest routes under
+`/api/v1/routing`, and the probe table is held to that set in both directions. Adding an
+endpoint with no probe fails the census by name — checked by doing it. `routing/providers` is
+in the census although `provider-health` serves it, because it is a routing endpoint from
+every angle a client can see.
+
+**And a resolution contacts nothing.** The bench's two local connections point at loopback
+stubs that answer `200` to anything and record what they were asked; after 960 resolutions
+across every health state they have received nothing at all. `provider-health.integration-spec.ts`
+proves the *sweep* issues only listings — this is the same passive-first promise from routing's
+side, and both suites now share one `provider.stub.fixture.ts`.
+
+**Four mutations were run to check the suites are load-bearing**, rather than trusting that a
+test mentioning a floor tests one: neutering the floor comparison in `resolve.ts`; re-declaring
+`route_hops_alias_fk` `on delete cascade`; re-declaring it without its `organization_id` half;
+and setting both em-dash paths in `stats.ts` to `0`. Each turns the relevant suite red, and the
+first three name the cell or the constraint.
+
 ## Provider adapters
 
 **Adding a model provider is one directory and one line**
@@ -2532,6 +2576,8 @@ ouroboros-rest/
 │       ├── routing/        # resolve() — pure, versioned, health-aware      · #194
 │       │                   #   management.* — GET /routing, Save routes, the rules · #195
 │       │                   #   simulate.*  — POST /routing/simulate, one dependency · #197
+│       │                   #   stats.*     — $/run avg, p50, the 30d spend card · #198
+│       │                   #   {matrix,persistence,isolation,honesty}.integration-spec · #199
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
 │       │                   #   adapters/anthropic.adapter.ts — the first real one · #217
 │       │                   #   adapters/openai-compatible.adapter.ts + the SSRF policy · #218
@@ -2666,6 +2712,7 @@ the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) �
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·
 integration harness [#37](https://github.com/NobuData/ouroboros/issues/37) ·
 auth integration suite [#715](https://github.com/NobuData/ouroboros/issues/715) ·
+the routing regression suite [#199](https://github.com/NobuData/ouroboros/issues/199) ·
 the Flyway project it migrates with [#19](https://github.com/NobuData/ouroboros/issues/19) ·
 the compose stack that runs it [#55](https://github.com/NobuData/ouroboros/issues/55) ·
 full epic [#4](https://github.com/NobuData/ouroboros/issues/4).
