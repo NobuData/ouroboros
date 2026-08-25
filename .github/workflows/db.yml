@@ -224,23 +224,29 @@ jobs:
           done
 
       # And the half that step cannot answer about itself (#69, #221's own probe criterion,
-      # and #193's). A green constraints.sql proves the schema satisfies its assertions; it
+      # #193's and #583's). A green constraints.sql proves the schema satisfies its assertions; it
       # does not prove the assertions are load-bearing, because a file asserting nothing
       # would be exactly as green. This drops one rule at a time — of the dashboard
       # read-model, the status and effort vocabularies, the terminal-run rule, the queue's
       # two keys and the settings key; of the provider cards, the monthly cap's floor,
       # the discovered catalog's uniqueness, the enable switch's two states, the health
-      # vocabulary and the added-by reference; and of **routing**, the hop position key, the
+      # vocabulary and the added-by reference; of **routing**, the hop position key, the
       # one-route-per-kind key, the two `restrict` foreign keys an alias and a provider are
-      # held by, the rule `then` grammar and the provider `kind` vocabulary — and rewrites
-      # the two expressions `token_usage_daily` computes its sums from and the two tests
-      # inside `route_chain_intact()` that hold a chain dense and its floor inside it, then
+      # held by, the rule `then` grammar and the provider `kind` vocabulary; and of the
+      # **registry**, the unbound-alias switch, the params and restrictions vocabularies,
+      # alias uniqueness per workspace, the three price-coherence rules, price provenance and
+      # the reference-kind vocabulary — and rewrites
+      # the two expressions `token_usage_daily` computes its sums from, the two tests
+      # inside `route_chain_intact()` that hold a chain dense and its floor inside it, and the
+      # `nulls not distinct` the price key's bundled half is a key by, then
       # requires the suite to go red *naming the assertion that caught it*. A probe that went
       # red for some other reason would otherwise read as a probe doing its job.
       #
       # The routing rows are #193's whole acceptance criterion — *"dropping any single
-      # routing invariant turns it red"* — and they are here rather than in a step of their
-      # own because they are the same question about the same file, asked eight more times.
+      # routing invariant turns it red"* — and the registry rows are #583's, in its own
+      # words: *"removing any one of the registry constraints turns it red"*. They are here
+      # rather than in steps of their own because they are the same question about the same
+      # file, asked eighteen more times.
       # They add a few seconds: each mutation is one more copy of the template database and
       # one more run of a suite that takes under half a second.
       #
@@ -338,6 +344,39 @@ jobs:
       # publishes, or this fails naming the row that moved.
       - name: Assert what the seed put there
         run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/seed.sql
+
+      # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
+      # from #582 without mutating it"*. The registry rules are asserted twice, and this is
+      # the second time — the first is inside constraints.sql two steps up, which includes
+      # the same file as its CG.5 section.
+      #
+      # It is a step of its own rather than another `-f` above because constraints.sql cannot
+      # be pointed at this database: that file carries plan assertions, and a plan is chosen
+      # from the catalogue's statistics rather than from the schema, so a database with the
+      # demo workspace in it plans differently from the empty one those assertions were
+      # written against. tests/registry-invariants.sql has no such dependency — it creates
+      # the rows it needs under two workspaces nothing else names and counts no table — which
+      # is exactly what makes it runnable here.
+      #
+      # And `seed.sql` runs a **second** time afterwards, against the same database, which is
+      # the "without mutating it" half stated rather than assumed: the probes write aliases,
+      # connections, chains and price rows inside a transaction they roll back, and the way to
+      # show a rollback really took them back is to re-ask the assertions that were green
+      # before. Both runs are under a second; the pair is what the criterion asks for.
+      - name: Assert the registry rules against the seeded database, and that it survives
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/registry-invariants.sql
           docker run --rm --network=host \
             --env PGPASSWORD \
             --volume "$PWD/ouroboros-db/tests:/tests:ro" \

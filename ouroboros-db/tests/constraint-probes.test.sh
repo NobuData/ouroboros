@@ -4,9 +4,10 @@
 #
 # The script itself needs a migrated PostgreSQL, so what it does to a schema is asserted
 # where a database exists: the `ci/db` step that runs it. Its scope is #69's dashboard
-# read-model, #221's provider tables and #193's routing invariants, and every constraint
-# any of the three names is checked below against the migrations that create it. What is
-# asserted here is everything it decides *before* it connects — the arguments it accepts,
+# read-model, #221's provider tables, #193's routing invariants and #583's registry rules,
+# and every constraint any of the four names is checked below against the migrations that
+# create it. What is asserted here is everything it decides *before* it connects — the
+# arguments it accepts,
 # the ones it refuses, and its refusal to reach for a database with no password in the
 # environment — so the module's suite keeps covering it without a daemon or a network.
 #
@@ -96,7 +97,17 @@ for probe_constraint in \
   route_hops_alias_fk \
   model_aliases_provider_fk \
   escalation_rule_then_shape \
-  provider_connections_kind
+  provider_connections_kind \
+  model_aliases_unbound_disabled \
+  model_aliases_params_known \
+  model_aliases_restrictions_known \
+  model_aliases_organization_alias_key \
+  model_prices_token_requires_amounts \
+  model_prices_free_amounts_zero \
+  model_prices_metered_amounts_absent \
+  model_prices_source_matches_owner \
+  model_prices_match_key \
+  alias_reference_kind_known
 do
   check_contains "$PROBES" "drop constraint $probe_constraint" \
     "the suite mutates $probe_constraint"
@@ -174,6 +185,40 @@ do
   fi
 done
 
+# `alias_reference_kind_known` is a domain constraint rather than a table one, so the loop
+# above found it by name but not by the statement that has to drop it. `alter table` on a
+# domain is a syntax error, and a mutation that cannot be applied reports as a probe that
+# caught nothing.
+if grep -q 'alter domain ouroboros.alias_reference_kind drop constraint alias_reference_kind_known' \
+     "$PROBES"; then
+  pass 'the reference-kind vocabulary is dropped with alter domain, which is what it lives on'
+else
+  fail 'the reference-kind vocabulary is dropped with alter domain, which is what it lives on (it is not)'
+fi
+check_contains "$MODULE_DIR/migrations/V023__alias_reference_index.sql" \
+  'create domain ouroboros.alias_reference_kind' \
+  'and V023 is where that domain is created'
+
+# The price key is relaxed rather than dropped, for the reason the two routing foreign keys
+# are: `nulls not distinct` is the whole of the rule for bundled rows, dropping the modifier
+# is the edit that really happens, and it leaves the constraint's name exactly where it was.
+# So the mutation has to *re-add* the key, and what makes that a mutation at all is that the
+# migration declares the modifier the re-add leaves off.
+if grep -A2 -- 'add constraint model_prices_match_key' "$PROBES" |
+     grep -q 'unique (organization_id, match_provider_kind, match_model, source)'; then
+  pass 'the suite re-adds model_prices_match_key with nulls distinct rather than leaving it dropped'
+else
+  fail 'the suite re-adds model_prices_match_key with nulls distinct rather than leaving it dropped (it does not)'
+fi
+if grep -A2 -- 'add constraint model_prices_match_key' "$PROBES" | grep -q 'nulls not distinct'; then
+  fail 'and the re-added key really is the relaxed one (it still says nulls not distinct)'
+else
+  pass 'and the re-added key really is the relaxed one'
+fi
+check_contains "$MODULE_DIR/migrations/V012__model_prices.sql" \
+  'unique nulls not distinct \(organization_id, match_provider_kind, match_model, source\)' \
+  'and V012 declares it with nulls not distinct'
+
 # And the half of #193 that lives in constraints.sql: the invariants named there have to be
 # the invariants the mutations above drop, or the two halves are watching different rules.
 CONSTRAINTS="$TEST_DIR/constraints.sql"
@@ -192,8 +237,54 @@ do
     "constraints.sql names $named_invariant among the routing invariants"
 done
 
+# The same half of #583, which lives one file further out. CG.5's assertions are
+# lib/registry-invariants.sql rather than a section of constraints.sql, because they run in
+# two places — see that file's header — so this is where the two halves are checked to be
+# about the same rules.
+REGISTRY="$TEST_DIR/lib/registry-invariants.sql"
+
+check_exists "$REGISTRY" 'the registry invariants have a file of their own'
+
+for registry_invariant in \
+  model_aliases_unbound_disabled \
+  model_aliases_params_known \
+  model_aliases_restrictions_known \
+  model_aliases_organization_alias_key \
+  model_prices_token_requires_amounts \
+  model_prices_free_amounts_zero \
+  model_prices_metered_amounts_absent \
+  model_prices_source_matches_owner \
+  model_prices_match_key \
+  alias_reference_kind_known \
+  model_aliases_provider_fk \
+  route_hops_alias_fk
+do
+  check_contains "$REGISTRY" "$registry_invariant" \
+    "the registry probes name $registry_invariant"
+done
+
+# Both ways in. Included, it is CG.5's section of constraints.sql and every runner that file
+# already has reaches it; through its own suite it is what `ci/db` points at the seeded
+# database. A fragment wired into neither is a file nothing runs.
+check_contains "$CONSTRAINTS" 'ir lib/registry-invariants\.sql' \
+  'constraints.sql includes the registry probes as its CG.5 section'
+check_contains "$TEST_DIR/registry-invariants.sql" 'ir lib/registry-invariants\.sql' \
+  'and the standalone suite includes the same file rather than a second copy'
+check_contains "$TEST_DIR/registry-invariants.sql" 'ir lib/assert\.sql' \
+  'and brings the assertion helpers with it, since it owns the session'
+
+# The fragment must carry neither, or including it into a transaction that is already open
+# would end that transaction early and redefine helpers that are already there.
+if grep -qE '^(begin|commit|rollback);' "$REGISTRY"; then
+  fail 'the registry probes leave transaction control to whichever suite includes them'
+else
+  pass 'the registry probes leave transaction control to whichever suite includes them'
+fi
+
 # A probe suite that CI does not run is a probe suite nobody runs.
 check_contains "$WORKFLOW" 'verify-constraint-probes.sh' \
   'ci/db runs the probe verification'
+check_contains "$WORKFLOW" 'registry-invariants.sql' \
+  'and runs the registry probes against the seeded database'
 
 check_summary
