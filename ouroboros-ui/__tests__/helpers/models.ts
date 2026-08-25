@@ -161,7 +161,6 @@ export function readings(overrides: Partial<ModelsReadings> = {}): ModelsReading
   return {
     providers: { ok: true, value: seededProviders() },
     matrix: { ok: true, value: seededMatrix() },
-    pending: 0,
     ...overrides,
   };
 }

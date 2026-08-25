@@ -1297,7 +1297,7 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AA.1 | #200 | 🟢 Done | ouroboros-ui: [AA.1] Models route, subnav & provider health strip | `/models` head, violet subnav, honest health chips | mvp, routing, ui, design | N (after #41, Z.3, BA-D.5) | Y | M | ouroboros-ui |
 | AA.2 | #201 | 🟢 Done | ouroboros-ui: [AA.2] Routing matrix table | 8-kind matrix: alias cells, escalation summaries, stats, selection | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | L | ouroboros-ui |
-| AA.3 | #202 | 🟡 Open | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
+| AA.3 | #202 | 🟢 Done | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
 | AA.4 | #203 | 🟡 Open | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
 | AA.5 | #204 | 🟢 Done | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
 | AA.6 | #205 | 🟡 Open | ouroboros-ui: [AA.6] Routing states & guards | Empty foundations guidance, member read-only, load/error states | mvp, routing, ui, design | N (after AA.2–AA.5) | Y | S | ouroboros-ui |
@@ -1502,7 +1502,74 @@ Routing | Model registry·soon | Providers & keys·soon | Spend·soon
 
 ### Issue AA.3 — ouroboros-ui: [AA.3] Chain editing & drag-reorder
 
-> **GitHub issue:** #202 · **Status:** 🟡 Open · **Parent epic:** #187
+> **GitHub issue:** #202 · **Status:** 🟢 Done · **Parent epic:** #187
+
+> **Shipped 2026-08-25.** Chain editing over the matrix: the route card's numbered rail in
+> [`app/models/chain-editor.tsx`](../ouroboros-ui/app/models/chain-editor.tsx) — each hop with
+> its ⠿, move-up and move-down, a swap menu on its pill, remove, and **+ Add hop** under the
+> chain — the registry list behind every menu in
+> [`app/models/alias-menu.tsx`](../ouroboros-ui/app/models/alias-menu.tsx) (every row
+> `alias → resolves: model · provider`), the dirty-state bar in
+> [`app/models/dirty-bar.tsx`](../ouroboros-ui/app/models/dirty-bar.tsx) as the CP.4 `StickyBar`
+> in its *asking* manner, and the head's **Save routes** in
+> [`app/models/save-routes-button.tsx`](../ouroboros-ui/app/models/save-routes-button.tsx). All
+> four read one editor, [`app/models/route-editor.tsx`](../ouroboros-ui/app/models/route-editor.tsx),
+> over the decisions in [`app/models/chain.ts`](../ouroboros-ui/app/models/chain.ts), and commit
+> through [`app/models/route-actions.ts`](../ouroboros-ui/app/models/route-actions.ts) onto Z.2's
+> `PUT /api/v1/routing/routes` (`routing.saveRoutes`, [`app/api/routing.ts`](../ouroboros-ui/app/api/routing.ts)).
+>
+> **The drag is hand-rolled, and the delta is recorded on the issue.** Native HTML drag and drop
+> on each hop's ⠿ — `draggable`, `dragover`, `drop` — in about thirty lines. `@dnd-kit` was not
+> adopted: the surface is a list of a handful of hops reordered in one axis, and the keyboard
+> floor the ticket sets (move buttons, focus kept, position announced) had to exist regardless,
+> which is the case a drag library is *not* for. Measured on `next build`'s client chunks for
+> `/models`: 156 356 → 172 605 B raw (+16 249, +10.4 %), 51 591 → 56 971 B gzip (+5 380); no
+> dependency added, `yarn.lock` unchanged.
+>
+> **Where the handles are, and why the matrix's ⠿ is a press rather than a drag.** The mockup
+> draws ⠿ on every matrix row under *drag ⠿ to reorder fallback chains*, and what is reordered
+> is a chain's **hops** — a row is a route. So the row's ⠿ is a shortcut into the route card for
+> that row (select it, focus its chain; out of the tab order so the table keeps its one stop),
+> and the ⠿ that is dragged is on each hop in the card. The seat AA.2 left for the inspector
+> holds the chain now; the health dots and the policy switches beside it stay AA.4's (#203), and
+> the card's foot says so.
+>
+> **Edits are a diff over a baseline the browser never modifies.** The editor holds a draft per
+> *changed* route and nothing for the rest, so *2 routes changed* is a count of routes that
+> would actually be written (`sameChain` — a hop dragged away and back is not a change),
+> **Discard** is the empty set and restores the last saved state *exactly*, and the batch is the
+> drafts and only the drafts. A save that lands empties the edits and `router.refresh()`es, so
+> the resolution lines redraw from what the server holds rather than from what this browser
+> sent. AA.4's policy edits join the same batch by editing the draft's policy triple, which is
+> carried unchanged today because `PUT` has no leave-this-alone case.
+>
+> **Every drag has a keyboard path, and it is the same edit.** Dragging onto a hop and pressing
+> its move button both call the editor's `move` with the same two indexes. The buttons at either
+> end are `aria-disabled` with their reason rather than missing, so focus can stay on them; after
+> a move the control is found again by the hop's id and refocused, because React moves the hop's
+> element in the DOM and a browser blurs a moved element. Every move, swap, add and remove is
+> said in a live region with the position and the count. The `Table` primitive gained the one
+> rule the second axis needed: a key pressed on a control inside a cell is that control's.
+>
+> **Refusals are decided before the press, and read back per row after it.** `removalReason`
+> refuses an empty chain and a breached floor from the draft alone — the control is inert with
+> the sentence as its title *and* printed beside it. The server's `422 route_save_invalid` is
+> read back by `batchProblems` keyed by task kind exactly as `details.routes` is, and printed on
+> the matrix row and under the chain it names, with the bar saying nothing was saved.
+>
+> **Read-only is a rendering mode.** A member's editor serves the same chains and refuses every
+> edit; their matrix has no handle column and no hint, their chain no controls, their page no bar
+> and — a correction to AA.1's frame, where it was drawn inert — no **Save routes** in the head,
+> because a disabled save button is an editing affordance. `readings.pending`, AA.1's placeholder
+> for the count, is retired: the number is client state, and `saveRoutesReason` is unchanged.
+>
+> **Deliberately not here:** the policy switches, cost cap and health dots (AA.4, #203); the
+> states-and-guards pass (AA.6, #205); the e2e leg (AA.7, #206), whose *reorder → save*
+> assertion is what proves the round trip against the live stack.
+>
+> **148 tests added** across the pure decisions, the editor, the chain, the menu, the bar, the
+> head button, the action, the API client, the table primitive and the stylesheet; 3,162 pass
+> in `ouroboros-ui`.
 
 
 - **Problem Statement:** "drag ⠿ to reorder fallback chains" plus alias swaps

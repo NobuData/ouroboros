@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { MATRIX_FAILED_TITLE, NO_KINDS_NOTE, NO_KINDS_TITLE } from "@/app/models/matrix";
@@ -18,6 +18,8 @@ vi.mock("@/app/models/rule-actions", () => ({
   removeRule: vi.fn(),
   readRuleTargets: vi.fn(),
 }));
+// The chain editor's save is the same kind of seam (`route-actions.test.ts`).
+vi.mock("@/app/models/route-actions", () => ({ saveRoutes: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const { ModelsScreen } = await import("@/app/models/models-screen");
@@ -53,10 +55,9 @@ describe("the page head", () => {
 
 describe("Save routes", () => {
   it("is inert while nothing has been staged, and says so", () => {
-    // The ticket's fourth acceptance criterion. `aria-disabled` rather than `disabled`,
-    // deliberately: a disabled button leaves the tab order and takes its own explanation
-    // with it, so the keyboard reader who most needs the tooltip could never reach it.
-    render(<ModelsScreen readings={readings()} />);
+    // AA.1's fourth acceptance criterion, still true: `aria-disabled` rather than `disabled`,
+    // because a disabled button leaves the tab order and takes its own explanation with it.
+    render(<ModelsScreen mayAdminister readings={readings()} />);
 
     const save = screen.getByRole("button", { name: "Save routes" });
 
@@ -65,14 +66,28 @@ describe("Save routes", () => {
   });
 
   it("becomes pressable the moment a route has been changed", () => {
-    // Driven through the screen rather than only through the rule, so that what the page
-    // renders and what `saveRoutesReason` decides cannot come apart when AA.3 (#202) lands.
-    render(<ModelsScreen readings={readings({ pending: 3 })} />);
+    // Driven through the screen rather than only through the rule: an edit in the route card
+    // is what the head's control answers to, and the two cannot come apart.
+    render(<ModelsScreen mayAdminister readings={readings()} route="implement" />);
 
-    const save = screen.getByRole("button", { name: "Save routes" });
+    fireEvent.click(screen.getByRole("button", { name: "Move coder-fallback up" }));
+
+    // The head's, by its place: the dirty-state bar carries a second `Save routes` the
+    // moment there is something to save, and the two are one editor's.
+    const head = document.querySelector(".models__actions") as HTMLElement;
+    const save = within(head).getByRole("button", { name: "Save routes" });
 
     expect(save).not.toHaveAttribute("aria-disabled");
     expect(save).not.toHaveAttribute("title");
+    expect(screen.getByText("1 route changed")).toBeInTheDocument();
+  });
+
+  it("is not drawn for a role that may not change routes", () => {
+    // A member sees no editing affordance at all — and a disabled save button is one. The
+    // default, so that a caller which forgot the prop renders what a member sees.
+    render(<ModelsScreen readings={readings()} />);
+
+    expect(screen.queryByRole("button", { name: "Save routes" })).not.toBeInTheDocument();
   });
 });
 

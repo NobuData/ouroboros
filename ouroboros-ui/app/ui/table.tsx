@@ -46,10 +46,13 @@ import "./ui.css";
  *   comes first in the routing matrix.
  *
  * **Rows are the focusable unit, not cells.** The WAI-ARIA grid pattern allows either; rows
- * are right here because no cell holds an independent control, and cell-level navigation over
- * cells that cannot be acted on is a second axis of movement that arrives nowhere. The moment
- * a cell does hold one — AA.3's drag handles and swap menus
- * ([#202](https://github.com/NobuData/ouroboros/issues/202)) — that is the ticket that adds it.
+ * are right here because cell-level navigation over cells that cannot be acted on is a second
+ * axis of movement that arrives nowhere. A cell *may* hold a control — AA.3's edit shortcut in
+ * the routing matrix's handle column ([#202](https://github.com/NobuData/ouroboros/issues/202))
+ * is one — and the rule for it is the narrow one: a key pressed on that control is the
+ * control's, and the row's handler leaves it alone. The control stays out of the tab order
+ * (`tabIndex={-1}`), so the page still has one stop per table and the keyboard's path to what
+ * the control does is the row plus whatever the selection drives.
  *
  * ### The sticky-header recipe ([#646](https://github.com/NobuData/ouroboros/issues/646))
  *
@@ -266,7 +269,14 @@ function selectableRow(
     // navigation names its destination without this component keeping a ref per row.
     "data-row-key": key,
     onClick: () => selection.onSelect(key),
-    onKeyDown: (event) => moveSelection(event, selection.onSelect),
+    // A key pressed on a control *inside* a cell is that control's, not the row's: the second
+    // axis AA.3 (#202) added — an edit shortcut in the handle column — must be able to take a
+    // key without the row moving the selection underneath it. The row itself is the target
+    // when the reader arrowed onto it, which is the only case this handler is for.
+    onKeyDown: (event) => {
+      if (event.target !== event.currentTarget) return;
+      moveSelection(event, selection.onSelect);
+    },
     // Exactly one row is in the tab order: the selected one, or the first when nothing is
     // selected yet. A table with no rows renders none of these at all, so there is no case
     // here where the fallback stop has nowhere to sit.

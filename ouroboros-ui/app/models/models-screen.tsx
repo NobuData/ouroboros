@@ -1,5 +1,7 @@
 import { Button, Card, EmptyState } from "@/app/ui";
 
+import { savedRoutes } from "./chain";
+import { DirtyBar } from "./dirty-bar";
 import {
   MATRIX_FAILED_TITLE,
   NO_KINDS_NOTE,
@@ -10,10 +12,12 @@ import {
 import { ModelsFrame } from "./models-frame";
 import { ModelsGrid } from "./models-grid";
 import { ProviderStrip } from "./provider-strip";
+import { RouteEditorProvider } from "./route-editor";
 import { RoutingMatrix } from "./routing-matrix";
 import { RulesCard } from "./rules-card";
+import { SaveRoutesButton } from "./save-routes-button";
 import { SpendCard } from "./spend-card";
-import { type ModelsReadings, SIMULATE_REASON, saveRoutesReason } from "./view";
+import { type ModelsReadings, SIMULATE_REASON } from "./view";
 
 import "./models.css";
 
@@ -42,10 +46,10 @@ import "./models.css";
  * ### What this page does not pretend
  *
  * The frame is honest about being a frame. The one unbuilt sibling tab is labelled *soon*
- * rather than linked to a `404`, both head actions are inert and say why, and the seat the
- * route inspector will take names the issue that fills it rather than drawing an invented
- * chain of hops. That is § 3.5 applied to a page that is now mostly built: a surface that is
- * not ready is **labelled**, never dead, and never a mock-up of itself.
+ * rather than linked to a `404`, **Simulate routing** is inert and says why, and the route
+ * card's foot names the issue that brings the policy switches rather than drawing switches
+ * that persist nothing. That is § 3.5 applied to a page that is now mostly built: a surface
+ * that is not ready is **labelled**, never dead, and never a mock-up of itself.
  *
  * Since AA.2 ([#201](https://github.com/NobuData/ouroboros/issues/201)) and AA.5
  * ([#204](https://github.com/NobuData/ouroboros/issues/204)) four of its regions draw real
@@ -54,6 +58,18 @@ import "./models.css";
  * the strip takes, `matrix.ts` for every cell the table draws, `rules.ts` for every sentence
  * and switch the rules card holds and `spend.ts` for every figure the spend card prints;
  * between them, nothing on this page is a figure this component decided.
+ *
+ * ### The editor is above the frame, and the role decides what it draws
+ *
+ * Since AA.3 ([#202](https://github.com/NobuData/ouroboros/issues/202)) the page can change a
+ * route, and the four surfaces that take part — the head's **Save routes**, the dirty-state
+ * bar under the tab set, the matrix's marks and the route card's chain — read one editor
+ * (`app/models/route-editor.tsx`), which is why the provider wraps the frame rather than
+ * sitting inside the matrix. Its baseline is formed here on the server (`savedRoutes`), so
+ * the provider is handed exactly what it holds and the contract's shapes stay out of the
+ * bundle. `mayAdminister` is what makes it editable: a member's editor serves the same
+ * chains and refuses every edit, and the head draws no **Save routes** for them at all —
+ * read-only as a rendering mode, not as a disabled control.
  *
  * ### Two reads, two independent failures
  *
@@ -107,36 +123,42 @@ export interface ModelsScreenProps {
  * @returns The screen.
  */
 export function ModelsScreen({ readings, route = null, mayAdminister = false }: ModelsScreenProps) {
-  return (
-    <ModelsFrame
-      active="routing"
-      // Mockup 06's violet `--model` underline, preserved as a tone rather than normalised
-      // to the accent — the divergence from 07/21 is deliberate and `page-subnav.tsx` says
-      // why.
-      tone="model"
-      title="Route every kind of work to the model that earns it."
-      subline={SUBLINE}
-      actions={
-        <>
-          <Button reason={SIMULATE_REASON} tone="ghost">
-            Simulate routing
-          </Button>
-          {/*
-            Disabled while clean, which is the acceptance criterion and also the only honest
-            state this button has today: `reason` is what makes it inert, so it cannot be
-            switched off without saying what is missing. `saveRoutesReason` is the rule —
-            AA.3 (#202) supplies a `pending` above zero and the control enables itself.
-          */}
-          <Button reason={saveRoutesReason(readings.pending)} tone="primary">
-            Save routes
-          </Button>
-        </>
-      }
-    >
-      <ProviderStrip providers={readings.providers} />
+  // The editor's baseline: every route the read produced, and nothing for a read that failed
+  // — there is no chain to edit on a page whose matrix could not be read.
+  const routes = readings.matrix.ok ? savedRoutes(readings.matrix.value.taskKinds) : [];
 
-      <MatrixRegion matrix={readings.matrix} mayAdminister={mayAdminister} route={route} />
-    </ModelsFrame>
+  return (
+    <RouteEditorProvider editable={mayAdminister} routes={routes}>
+      <ModelsFrame
+        active="routing"
+        // Mockup 06's violet `--model` underline, preserved as a tone rather than normalised
+        // to the accent — the divergence from 07/21 is deliberate and `page-subnav.tsx` says
+        // why.
+        tone="model"
+        title="Route every kind of work to the model that earns it."
+        subline={SUBLINE}
+        actions={
+          <>
+            <Button reason={SIMULATE_REASON} tone="ghost">
+              Simulate routing
+            </Button>
+            {/*
+              Inert while clean, which is AA.1's acceptance criterion: `saveRoutesReason` is
+              still the rule, and the editor's count is what it now decides from. Drawn for a
+              role that may change routes and for nobody else — a member sees no editing
+              affordance, and a disabled save button is one.
+            */}
+            {mayAdminister && <SaveRoutesButton />}
+          </>
+        }
+      >
+        <DirtyBar />
+
+        <ProviderStrip providers={readings.providers} />
+
+        <MatrixRegion matrix={readings.matrix} mayAdminister={mayAdminister} route={route} />
+      </ModelsFrame>
+    </RouteEditorProvider>
   );
 }
 

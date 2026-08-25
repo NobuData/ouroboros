@@ -71,13 +71,15 @@ describe("routing.providers", () => {
     await routing.providers(client);
 
     expect(requests.map((request) => request.method)).toEqual(["GET"]);
-    // Every operation this module publishes. The three writes are the rules card's (#204)
-    // and address `/routing/rules`; none of them, and no read, touches the providers path
+    // Every operation this module publishes. The three rule writes are the rules card's
+    // (#204) and address `/routing/rules`; the batch save is chain editing's (#202) and
+    // addresses `/routing/routes`; none of them, and no read, touches the providers path
     // with anything but GET.
     expect(Object.keys(routing)).toEqual([
       "providers",
       "matrix",
       "aliases",
+      "saveRoutes",
       "addRule",
       "changeRule",
       "removeRule",
@@ -360,6 +362,100 @@ describe("routing.removeRule", () => {
       .catch((e: unknown) => e);
 
     expect(caught).toBeInstanceOf(ApiError);
+    expect((caught as ApiError).code).toBe("forbidden");
+  });
+});
+
+/* ------------------------------------------------------------------ Save routes (#202) */
+
+/** The seeded `implement` route as a batch entry: the chain reversed, the policy unchanged. */
+const IMPLEMENT_ENTRY = {
+  taskKind: "implement",
+  hops: [
+    { alias: "coder-fallback", note: "Fallback on 5xx / timeouts" },
+    { alias: "coder-max", note: null },
+    { alias: "local-docs", note: "Offline mode — keeps the loop turning without a network" },
+  ],
+  allowLocalFallback: true,
+  floorHopIndex: null,
+  maxCostCentsPerRun: 250,
+};
+
+/** What the contract answers a save with: the revision, and the route as re-read. */
+const SAVED = {
+  revisionId: "a1000000-0000-4000-8000-000000000001",
+  routes: [seededMatrix().taskKinds[3].route],
+};
+
+/** The contract's refusal, keyed by task kind — `details.routes`. */
+const REFUSED = {
+  code: "route_save_invalid",
+  message: "These routes could not be saved. See `details.routes` for each one. Nothing was saved.",
+  details: {
+    routes: { implement: { "hops.1.alias": ['This workspace has no model alias named "coder-max".'] } },
+  },
+};
+
+describe("routing.saveRoutes", () => {
+  it("PUTs the batch to the routes collection, as one object with one array", async () => {
+    const { client, requests } = clientAnswering(SAVED);
+
+    await routing.saveRoutes([IMPLEMENT_ENTRY], client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/routing/routes");
+    expect(requests[0]?.method).toBe("PUT");
+    expect(await requests[0]!.json()).toEqual({ routes: [IMPLEMENT_ENTRY] });
+  });
+
+  it("sends the chain as an array with no positions, and never a raw model id", async () => {
+    // The contract numbers hops densely from 1 in the order sent; a position in the body
+    // would be a second opinion about order, and a model id a route may not name (M1).
+    const { client, requests } = clientAnswering(SAVED);
+
+    await routing.saveRoutes([IMPLEMENT_ENTRY], client);
+
+    const body = (await requests[0]!.json()) as { routes: { hops: Record<string, unknown>[] }[] };
+
+    for (const hop of body.routes[0].hops) {
+      expect(Object.keys(hop).sort()).toEqual(["alias", "note"]);
+    }
+  });
+
+  it("returns the revision and the routes as the server re-read them", async () => {
+    const { client } = clientAnswering(SAVED);
+
+    const result = await routing.saveRoutes([IMPLEMENT_ENTRY], client);
+
+    expect(result.revisionId).toBe(SAVED.revisionId);
+    expect(result.routes[0]?.taskKind).toBe("implement");
+  });
+
+  it("names no workspace, because the session's active organization is the scope", async () => {
+    const { client, requests } = clientAnswering(SAVED);
+
+    await routing.saveRoutes([IMPLEMENT_ENTRY], client);
+
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+  });
+
+  it("rejects with the envelope, keeping `details.routes` for the matrix to mark rows from", async () => {
+    // The whole point of the contract keying its refusal by task kind: the client does not
+    // have to work out which of eight routes was refused.
+    const { client } = clientAnswering(REFUSED, 422);
+
+    const caught = (await routing.saveRoutes([IMPLEMENT_ENTRY], client).catch((e: unknown) => e)) as ApiError;
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect(caught.status).toBe(422);
+    expect(caught.code).toBe("route_save_invalid");
+    expect(caught.details).toEqual(REFUSED.details);
+  });
+
+  it("rejects with the service's envelope for a role that may not write", async () => {
+    const { client } = clientAnswering(FORBIDDEN, 403);
+
+    const caught: unknown = await routing.saveRoutes([IMPLEMENT_ENTRY], client).catch((e: unknown) => e);
+
     expect((caught as ApiError).code).toBe("forbidden");
   });
 });

@@ -198,10 +198,24 @@ describe("the routing matrix", () => {
     expect(CODE).not.toMatch(/\.models-matrix__cost\s*\{/);
   });
 
-  it("does not draw the inert handle as though it could be dragged", () => {
-    // A handle that shows `cursor: grab` and does nothing is a mock-up of itself. The cursor
-    // arrives with the handler, in AA.3 (#202).
-    expect(rule("\\.models-matrix__drag")).not.toMatch(/cursor/);
+  it("draws the matrix's ⠿ as the press it is, and the hop's ⠿ as the drag it is (#202)", () => {
+    // The row's handle opens the editor; the hop's handle is dragged. Each says so with its
+    // cursor, and neither borrows the other's.
+    expect(rule("\\.models-matrix__edit")).toMatch(/cursor:\s*pointer/);
+    expect(rule("\\.models-matrix__edit")).not.toMatch(/grab/);
+    expect(rule("\\.models-chain__handle")).toMatch(/cursor:\s*grab/);
+    expect(rule("\\.models-chain__handle:active")).toMatch(/cursor:\s*grabbing/);
+  });
+
+  it("resets the shortcut button to its glyph, so the gutter stays the mockup's", () => {
+    expect(rule("\\.models-matrix__edit")).toMatch(/border:\s*0/);
+    expect(rule("\\.models-matrix__edit")).toMatch(/background:\s*transparent/);
+    expect(rule("\\.models-matrix__edit")).toMatch(/font:\s*inherit/);
+  });
+
+  it("prints what the server refused about a row in the error hue", () => {
+    expect(rule("\\.models-matrix__problems")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.models-matrix__problems")).toMatch(/list-style:\s*none/);
   });
 
   it("keeps the empty cell's em-dash on the page's faint ink rather than hiding it", () => {
@@ -339,5 +353,68 @@ describe("the spend card", () => {
     const section = CODE.slice(CODE.indexOf(".models-aside"));
 
     expect(section).not.toMatch(/(?:font-size|padding|margin|gap|height|width|inset|top|left):\s*[^;]*\d+px\b/);
+  });
+});
+
+describe("the chain (#202)", () => {
+  it("undoes the list defaults the rail is built on", () => {
+    expect(rule("\\.models-chain")).toMatch(/margin:\s*0/);
+    expect(rule("\\.models-chain")).toMatch(/padding:\s*0/);
+    expect(rule("\\.models-chain")).toMatch(/list-style:\s*none/);
+  });
+
+  it("draws the ring in the model hue's own pair, so it agrees with the primary's pill", () => {
+    expect(rule("\\.models-chain__idx")).toMatch(/border:\s*1px solid var\(--model-line\)/);
+    expect(rule("\\.models-chain__idx")).toMatch(/background:\s*var\(--model-tint\)/);
+    expect(rule("\\.models-chain__idx")).toMatch(/color:\s*var\(--model\)/);
+    expect(rule("\\.models-chain__idx")).toMatch(/border-radius:\s*var\(--r-round\)/);
+  });
+
+  it("draws the line between rings as a hairline border, not a px-wide box", () => {
+    expect(rule("\\.models-chain__line")).toMatch(/border-inline-start:\s*1px solid/);
+    expect(rule("\\.models-chain__line")).toMatch(/width:\s*0/);
+  });
+
+  it("marks a drop target by shape rather than by hue alone, and never by opacity", () => {
+    expect(rule("\\.models-chain__hop--over")).toMatch(/outline:\s*1px dashed/);
+    expect(CODE).not.toMatch(/models-chain[^{]*\{[^}]*opacity/);
+  });
+
+  it("resets the swap trigger to its content, so the pill inside it is the matrix's pill", () => {
+    expect(rule("\\.models-chain__swap")).toMatch(/border:\s*0/);
+    expect(rule("\\.models-chain__swap")).toMatch(/background:\s*transparent/);
+    expect(rule("\\.models-chain__swap")).toMatch(/font:\s*inherit/);
+  });
+
+  it("keeps the menu above the page and below the shell's chrome", () => {
+    // app/ui/chrome.ts owns the shell's ladder (menus at 60, overlays at 80); a page menu
+    // that covered the sticky subnav would be a page menu covering the shell.
+    expect(rule("\\.models-chain__menu")).toMatch(/z-index:\s*20/);
+    expect(rule("\\.models-chain__menu")).toMatch(/overflow-y:\s*auto/);
+  });
+
+  it("marks the current alias in the menu the way the selected row is marked", () => {
+    expect(rule('\\.models-chain__option\\[aria-checked="true"\\]')).toMatch(/box-shadow:\s*inset[^;]*var\(--model\)/);
+  });
+
+  it("prints a blocked removal's reason as a rule, not as a failure", () => {
+    expect(rule("\\.models-chain__blocked")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.models-chain__problems")).toMatch(/color:\s*var\(--err\)/);
+  });
+});
+
+describe("the dirty-state bar (#202)", () => {
+  it("spans the pane the way the tab set does, so the two stick as one stack", () => {
+    expect(rule("\\.models \\.models-dirty")).toMatch(/margin:[^;]*calc\(var\(--sp-10\) \* -1\)/);
+    expect(rule("\\.models \\.models-dirty")).toMatch(/padding-left:\s*var\(--sp-10\)/);
+  });
+
+  it("styles no primitive of the design system — the bar's ground and rim are the primitive's", () => {
+    expect(rule("\\.models \\.models-dirty")).not.toMatch(/background|border-color|box-shadow/);
+  });
+
+  it("draws a failed save in the error hue, on its own line", () => {
+    expect(rule("\\.models-dirty__failure")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.models-dirty__failure")).toMatch(/flex-basis:\s*100%/);
   });
 });
