@@ -1149,7 +1149,9 @@ is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page 
 
 `/models` ([#200](https://github.com/NobuData/ouroboros/issues/200)) is
 [`docs/mockups/06-model-routing.html`](../docs/mockups/06-model-routing.html)'s **frame**: the
-page head, the Models tab set, and the provider health strip. It renders **inside** the
+page head, the Models tab set, and the provider health strip — and, since
+[#205](https://github.com/NobuData/ouroboros/issues/205), a designed answer for every state
+the mockup does not draw (see [Empty, loading, failed and read-only](#empty-loading-failed-and-read-only)). It renders **inside** the
 [app shell](#app-shell) and is reached from the sidebar's **Models** entry, which stopped being
 a *soon* row on the commit that built this — retiring the `/models` placeholder
 [#49](https://github.com/NobuData/ouroboros/issues/49) held for it.
@@ -1342,6 +1344,66 @@ any ledger that also satisfies mockup 07's (see the Z.5 note in
 [`docs/ROADMAP_MOCKUP_06_MODEL_ROUTING.md`](../docs/ROADMAP_MOCKUP_06_MODEL_ROUTING.md)). The local
 row is named from the kinds the ledger records — *Local (Ollama + OpenAI-compatible)* — rather
 than the mockup's *vLLM*, because the ledger knows the adapter, not the product behind it.
+
+### Empty, loading, failed and read-only
+
+Mockup 06 draws the busy state and nothing else. The other four
+([#205](https://github.com/NobuData/ouroboros/issues/205)) are the ones a real workspace
+spends its first week in, and [`app/models/states.ts`](app/models/states.ts) decides which the
+page is in from its two reads — `failed`, `no-providers`, `no-routes` or `populated` — so each
+is a unit test on a small object and one thing the screen draws.
+
+```
+Viewing routing as a member. Routes, policies and escalation rules are changed by…   ← read-only
+No providers are connected. … connect one on Providers & keys.                       ← the strip
+┌ SET UP ROUTING ──────────────────────────────────┐  ┌ ESCALATION RULES   0 active ┐
+│ Routing needs a provider connection               │  │ No escalation rules         │
+│ ① Connect a provider (next)   [Providers & keys →]│  └─────────────────────────────┘
+│ ② Seed the default routes (then)                  │  ┌ SPEND BY PROVIDER · 30D ────┐
+│ ─ Exploring locally? … acme-robotics …            │  │ No spend recorded           │
+└───────────────────────────────────────────────────┘  └─────────────────────────────┘
+```
+
+**The guidance is one card with two steps, and the strip decides which is next.** The
+personal workspace's seed — no providers, no kinds, no routes — lands on step one, and
+**Providers & keys →** is a link into the surface AE.1 built (the ticket asked for an honest
+pointer to a page that did not exist then; the honest pointer now is the link). A provider
+connected ticks step one off with the count and makes step two next; a strip that could not
+be read marks step one *unknown* with a dashed ring rather than guessing either way, the
+strip's own M8 rule carried onto the path. The right column keeps its zero-states beside the
+card, so the populated page is approached rather than jumped to.
+
+**Seed default routes is drawn inert, with its reason printed under it.** A task kind is a row
+nothing in the routing contract writes — `PUT /api/v1/routing/routes` refuses a kind the
+workspace does not have — and the eight defaults come from `R__dev_seed_routing.sql` and
+nowhere else. Until the service can write them, the control says so (§ 3.5) rather than
+opening a flow that ends in a `422`; the day it can, the handler is the one edit this page
+needs.
+
+**A refused matrix is the dashboard's banner, once.** The DASH-I.7 shape is a primitive now —
+[`app/ui/retry-banner.tsx`](app/ui/retry-banner.tsx), which the dashboard's stale-data banner
+draws through too — and [`app/models/routing-banner.tsx`](app/models/routing-banner.tsx) puts
+it above the strip with the page's one retry (`router.refresh()`, so a selected row survives).
+The matrix's seat says what is missing and points up; the reason is said once. *Could not be
+read* wears the banner and *empty* wears the guidance card, and the two cannot be mistaken.
+
+**The skeleton is the page's own shape, behind a route group.**
+[`app/models/models-skeleton.tsx`](app/models/models-skeleton.tsx) draws the head and the tab
+set **as themselves** — their copy does not depend on the reads — and reserves the strip's
+five chips, the matrix's eight rows at the table's own cell padding, the inspector's empty
+seat, three ruled rule rows and four metered spend rows, in tokens and rem so the reservation
+holds at 125%. It is returned by
+[`loading.tsx`](<app/(app)/models/(routing)/loading.tsx>) inside a `(routing)` group, because
+a `loading.tsx` wraps every child segment too and one at `models/` would have stood in for
+the providers page at the wrong geometry. The group changes no URL.
+
+**Read-only is a rendering mode, and the role is explained.** A member's page has no handle
+column, no **Save routes**, no dirty bar, no move/remove/swap/add on the chain and no switch,
+builder or delete on the rules — absence, not disabled controls — with the policy switches the
+one place the disabled-with-reason rule applies, because a position has no other carrier. The
+page names the role once, under the tab set: *Viewing routing as a member.* and what that
+means here. `mayAdminister` is still the only decision; the name is printed, never decided
+from.
 
 ## Providers & keys
 

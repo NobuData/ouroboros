@@ -244,6 +244,133 @@ describe("the routing matrix", () => {
   });
 });
 
+describe("the states and guards (#205)", () => {
+  it("draws the strip's link in the accent, from the token, and underlines it on hover", () => {
+    expect(rule("\\.models-health__link")).toMatch(/color:\s*var\(--accent\)/);
+    expect(CODE).toMatch(/\.models-health__link:hover[^{]*\{[^}]*text-decoration:\s*underline/);
+  });
+
+  it("puts the read-only note and the failed banner in the strip's own rhythm, so the strip does not move", () => {
+    // Both stand above the strip; both take its bottom margin, so a member's page and an
+    // owner's page — and a failed read's page — put the chips on the same line.
+    expect(rule("\\.models-readonly")).toMatch(/margin:\s*0 0 var\(--sp-9\)/);
+    expect(rule("\\.models-failed")).toMatch(/margin:\s*0 0 var\(--sp-9\)/);
+  });
+
+  it("styles the banner's box nowhere here — it is the primitive's", () => {
+    expect(rule("\\.models-failed")).not.toMatch(/border|background|color/);
+  });
+
+  it("keeps the read-only note's head on a named ink token, and its body on the muted one", () => {
+    expect(rule("\\.models-readonly__head")).toMatch(/color:\s*var\(--ink-dim\)/);
+    expect(rule("\\.models-readonly")).toMatch(/color:\s*var\(--ink-mut\)/);
+  });
+});
+
+describe("the guidance card (#205)", () => {
+  it("undoes the three defaults a browser gives the list it is built on", () => {
+    const list = rule("\\.models-foundations");
+
+    expect(list).toMatch(/list-style:\s*none/);
+    expect(list).toMatch(/padding:\s*0/);
+    expect(list).toMatch(/margin:/);
+  });
+
+  it("gives the done and next steps their hue from the published triples, and the unknown step a dashed ring", () => {
+    // Done is the ok triple, next is the page's own model triple, and unknown is a shape (M8)
+    // rather than a fifth hue — the same convention the strip keeps for an unmeasured state.
+    expect(CODE).toMatch(/\.models-foundations__step--done \.models-foundations__mark\s*\{[^}]*border-color:\s*var\(--ok-line\)/);
+    expect(CODE).toMatch(/\.models-foundations__step--done \.models-foundations__mark\s*\{[^}]*color:\s*var\(--ok\)/);
+    expect(CODE).toMatch(/\.models-foundations__step--current \.models-foundations__mark\s*\{[^}]*border-color:\s*var\(--model-line\)/);
+    expect(CODE).toMatch(/\.models-foundations__step--current \.models-foundations__mark\s*\{[^}]*color:\s*var\(--model\)/);
+    expect(CODE).toMatch(/\.models-foundations__step--unknown \.models-foundations__mark\s*\{[^}]*border-style:\s*dashed/);
+  });
+
+  it("lets a step's note wrap inside the step rather than widening the card", () => {
+    expect(rule("\\.models-foundations__body")).toMatch(/min-width:\s*0/);
+    expect(rule("\\.models-foundations__note")).toMatch(/max-width:\s*\d+ch/);
+  });
+
+  it("lets the title and the state's word wrap at the narrow end", () => {
+    expect(rule("\\.models-foundations__title")).toMatch(/flex-wrap:\s*wrap/);
+  });
+
+  it("rules the development note off from the path with a hairline", () => {
+    expect(rule("\\.models-foundations__dev")).toMatch(/border-block-start:\s*1px solid var\(--line\)/);
+    expect(rule("\\.models-foundations__dev")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+});
+
+describe("the loading skeleton (#205)", () => {
+  it("mirrors the strip's margin, so the grid starts on the same line before and after the data", () => {
+    expect(rule("\\.models-skeleton__strip")).toMatch(/margin:\s*0 0 var\(--sp-9\)/);
+    expect(rule("\\.models-skeleton__strip")).toMatch(/gap:\s*var\(--sp-5\)/);
+  });
+
+  it("mirrors the card head's height and its bottom margin", () => {
+    // `.ou-card__head` has `margin-bottom: var(--sp-7)`, so a card's body starts in the same
+    // place whether it is drawn as a skeleton or as itself.
+    expect(rule("\\.models-skeleton__head")).toMatch(/margin-bottom:\s*var\(--sp-7\)/);
+  });
+
+  it("rules the matrix's rows off at the table's own cell padding", () => {
+    expect(rule("\\.models-skeleton__row")).toMatch(/padding:\s*var\(--sp-6\) 0/);
+    expect(rule("\\.models-skeleton__row")).toMatch(/border-block-end:\s*1px solid var\(--line\)/);
+    expect(rule("\\.models-skeleton__row:last-child")).toMatch(/border-block-end:\s*none/);
+  });
+
+  it("gives the numeric cells the matrix's own column width", () => {
+    // `.models-matrix__num` is 6rem; a skeleton row that reserved a different width would
+    // move the whole table's columns when the data lands.
+    expect(rule("\\.models-skeleton__row")).toMatch(/6rem 6rem/);
+    expect(rule("\\.models-matrix__num")).toMatch(/width:\s*6rem/);
+  });
+
+  it("reserves the inspector's seat at the empty state's own floor and well", () => {
+    // `.ou-empty--fill` is `min-height: 8rem` on the `--inset` well behind a dashed line.
+    expect(rule("\\.models-skeleton__panel")).toMatch(/min-height:\s*8rem/);
+    expect(rule("\\.models-skeleton__panel")).toMatch(/border:\s*1px dashed var\(--line-strong\)/);
+    expect(rule("\\.models-skeleton__panel")).toMatch(/background:\s*var\(--inset\)/);
+  });
+
+  it("rules the rules card's rows at the card's own padding, and meters the spend card at the meter's own height", () => {
+    expect(rule("\\.models-skeleton__rule")).toMatch(/padding:\s*var\(--sp-5\) 0/);
+    expect(rule("\\.models-skeleton__meter")).toMatch(/height:\s*var\(--sp-3\)/);
+  });
+
+  it("names every length in rem, a token or a ratio, so it scales with the type", () => {
+    // A skeleton pinned in px would reserve the right height at one font size and the wrong
+    // one at every other — which is the whole failure it exists to prevent.
+    const block = CODE.slice(CODE.indexOf(".models-skeleton"));
+
+    for (const [, value] of block.matchAll(/(?:height|width):\s*([^;]+);/g)) {
+      expect(value.trim()).toMatch(/^(var\(--|[\d.]+rem|100%|\d+%|auto|1px)/);
+    }
+  });
+
+  it("moves only for a reader who has not asked for less motion, and pulses opacity only", () => {
+    const guard = CODE.indexOf("@media (prefers-reduced-motion: no-preference)");
+    const animated = CODE.indexOf("animation:");
+
+    expect(guard).toBeGreaterThanOrEqual(0);
+    expect(animated).toBeGreaterThan(guard);
+
+    const frames = /@keyframes models-skeleton-pulse\s*\{([\s\S]*?)\n\}/.exec(CODE);
+
+    expect(frames).not.toBeNull();
+    expect(frames?.[1]).toMatch(/opacity/);
+    expect(frames?.[1]).not.toMatch(/transform|width|height|margin/);
+  });
+
+  it("animates every shape the skeleton draws, not only the plain bar", () => {
+    const guarded = /@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?)\n\}/.exec(CODE);
+
+    for (const shape of ["__action", "__chip", "__head", "__bar", "__pill", "__panel", "__switch", "__meter"]) {
+      expect(guarded?.[1], `${shape} does not pulse`).toContain(`.models-skeleton${shape}`);
+    }
+  });
+});
+
 describe("the type scale", () => {
   it("names no font size in px, so the reader's preference scales every surface", () => {
     // Design system § 3.2: all type is rem-based, from one root change. A px font size is

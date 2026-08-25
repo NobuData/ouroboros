@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
-import { Button } from "@/app/ui";
+import { RetryBanner } from "@/app/ui";
 
 import { clockTime } from "./view";
 
@@ -17,6 +17,13 @@ import { clockTime } from "./view";
  * the screen. The rule this component establishes is the other way round — **a card says
  * what could not be read, and this says why, once, with the way out.**
  *
+ * The shape is the design system's since AA.6
+ * ([#205](https://github.com/NobuData/ouroboros/issues/205)) gave the routing page the same
+ * banner: `app/ui/retry-banner.tsx` draws the box, the headline, the reason and the
+ * never-inert retry, and carries the two rules — said once, announced as a status — that this
+ * file used to hold. What stays here is what is the dashboard's: the two headlines, the
+ * placement, and the retry itself.
+ *
  * ### Two states, and the difference between them is the whole point
  *
  * - **Stale.** The reader has data on screen from a moment ago and the latest read failed. The
@@ -25,13 +32,6 @@ import { clockTime } from "./view";
  *   because a background refresh failed is the failure mode this exists to prevent.
  * - **Unread.** Nothing has ever been read in this session — the first paint failed. There is
  *   no data to keep, so the cards say what they could not read and this says why.
- *
- * ### Announced as a status, not as an alert
- *
- * `role="status"` puts it in the polite queue: it is a fact about the freshness of a page the
- * reader is already looking at, not an interruption. An `alert` would cut across whatever a
- * screen reader was saying to report that a *refresh* failed while the data underneath is
- * still there — which is precisely the wrong emphasis.
  */
 
 /** What the banner takes. */
@@ -61,36 +61,22 @@ export function StaleBanner({ reason, readAt }: StaleBannerProps) {
   const [retrying, startRetry] = useTransition();
 
   return (
-    <div className="dash-stale" role="status">
-      <p className="dash-stale__text">
-        <span className="dash-stale__headline">
-          {readAt === null ? UNREAD_HEADLINE : staleHeadline(readAt)}
-        </span>{" "}
-        <span className="dash-stale__reason">{reason}</span>
-      </p>
-
-      {/*
-        Neither disabled nor `aria-disabled` while the retry is in flight. The only control
-        that can fix this page should never be the one thing on it that cannot be pressed —
-        a reader whose retry is taking too long will press again, and that is a reasonable
-        thing to want. The label reports the state instead, and the guard below keeps a second
-        press from stacking a second transition on the first.
-      */}
-      <Button
-        size="sm"
-        tone="ghost"
-        onClick={() => {
-          if (retrying) return;
-          // `router.refresh()` re-runs the route's Server Components and merges the result
-          // *without discarding client state*, which is what lets the boundary above go on
-          // holding the last good render across a retry that fails again. It is the same
-          // property the auto-merge switch is built on.
-          startRetry(() => router.refresh());
-        }}
-      >
-        {retrying ? RETRYING_LABEL : RETRY_LABEL}
-      </Button>
-    </div>
+    <RetryBanner
+      className="dash-stale"
+      headline={readAt === null ? UNREAD_HEADLINE : staleHeadline(readAt)}
+      reason={reason}
+      retrying={retrying}
+      onRetry={() => {
+        // The primitive never makes the control inert; this is the guard that keeps a second
+        // press from stacking a second transition on the first.
+        if (retrying) return;
+        // `router.refresh()` re-runs the route's Server Components and merges the result
+        // *without discarding client state*, which is what lets the boundary above go on
+        // holding the last good render across a retry that fails again. It is the same
+        // property the auto-merge switch is built on.
+        startRetry(() => router.refresh());
+      }}
+    />
   );
 }
 
@@ -101,16 +87,3 @@ function staleHeadline(readAt: number): string {
 
 /** What it says when nothing has been read at all, so there is nothing to be stale. */
 const UNREAD_HEADLINE = "The dashboard could not be read.";
-
-/** What the control says. */
-const RETRY_LABEL = "Retry";
-
-/**
- * What it says while a retry is in flight.
- *
- * The label changes rather than a spinner appearing beside it, so the control reports its own
- * state to a screen reader without a second element to announce — and the banner's `status`
- * role reads the change out politely, which is exactly the level of interruption a retry
- * deserves.
- */
-const RETRYING_LABEL = "Retrying…";

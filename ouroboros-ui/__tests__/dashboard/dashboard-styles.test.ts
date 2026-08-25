@@ -134,20 +134,12 @@ describe("the stale-data banner", () => {
     expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*margin-inline:\s*var\(--sp-6\)|@media[\s\S]*\.dash-stale\s*\{[^}]*margin-inline/);
   });
 
-  it("takes its hue from the palette's own warn tokens", () => {
-    // Both palettes publish this token's contrast against `--surface`; a hand-picked amber
-    // would be legible in one theme and not the other.
-    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*border:\s*1px solid var\(--warn-line\)/);
-    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*background:\s*var\(--warn-tint\)/);
-    expect(CODE).toMatch(/\.dash-stale__headline\s*\{[^}]*color:\s*var\(--warn\)/);
-  });
-
-  it("lets the sentence wrap above the retry rather than crushing it", () => {
-    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*flex-wrap:\s*wrap/);
-  });
-
-  it("zeroes the block margin a browser gives its paragraph", () => {
-    expect(CODE).toMatch(/\.dash-stale__text\s*\{[^}]*margin:\s*0/);
+  it("owns the banner's placement and nothing else — the box is the primitive's (#205)", () => {
+    // The warn tint, the hairline and the headline's hue are `.ou-retry`'s in `app/ui/ui.css`,
+    // where `__tests__/ui/ui-styles.test.ts` holds them to the palette's tokens. A second copy
+    // here would be a second banner that could drift from the routing page's.
+    expect(CODE).not.toMatch(/\.dash-stale\s*\{[^}]*(?:border|background|color):/);
+    expect(CODE).not.toMatch(/\.dash-stale__(?:text|headline|reason)/);
   });
 });
 

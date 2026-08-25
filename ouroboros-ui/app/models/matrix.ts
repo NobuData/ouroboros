@@ -373,16 +373,18 @@ export const MATRIX_CAPTION = "Task kinds and the routes they resolve through";
 export const REORDER_HINT =
   "Select a row, then drag ⠿ in the route card — or use its move buttons — to reorder the chain.";
 
-/** What the matrix says to a workspace whose routing foundations have not been seeded. */
-export const NO_KINDS_TITLE = "No task kinds are configured";
+/*
+ * What the matrix says to a workspace whose routing foundations have not been seeded is
+ * `app/models/states.ts`'s since AA.6 (#205): the guidance card stands in the matrix's seat,
+ * with the path out of the state rather than a sentence naming the ticket that would draw it.
+ */
 
-/** …and what to do about it, without pretending this page is where it is done. */
-export const NO_KINDS_NOTE =
-  "Routing resolves a task kind to a chain of aliases, so a workspace with no kinds has " +
-  "nothing to route. Seeding the foundations and guiding a fresh workspace through them " +
-  "arrives with #205.";
-
-/** What the matrix says when the read behind it was refused. */
+/**
+ * What the matrix's seat says when the read behind it was refused.
+ *
+ * The title only: the reason and the retry are the banner's (`app/models/routing-banner.tsx`),
+ * said once above the strip, and `states.ts`'s `MATRIX_FAILED_NOTE` is the seat's pointer up.
+ */
 export const MATRIX_FAILED_TITLE = "The routing matrix could not be read";
 
 /* ------------------------------------------------------------------ the inspector's seat */

@@ -30,7 +30,10 @@ import "./models.css";
  * the mockups vary it — see `app/models/models-subnav.tsx` and the primitive's note on tones.
  *
  * A Server Component, like both of the screens built from it. Nothing here reads or decides;
- * it places what it is handed.
+ * it places what it is handed — and, since AA.6
+ * ([#205](https://github.com/NobuData/ouroboros/issues/205)), the routing page's skeleton
+ * (`app/models/models-skeleton.tsx`) is built from it too, which is what makes the head and
+ * the tab set identical before and after the data lands: one component draws both.
  */
 
 /** What a page supplies to the frame. */
@@ -51,6 +54,12 @@ export interface ModelsFrameProps {
   readonly actions: ReactNode;
   /** The page's own content, below the tab set. */
   readonly children: ReactNode;
+  /**
+   * What the page is doing while it has nothing to show yet — the skeleton's label. When
+   * set, the `<main>` is `aria-busy` and named with it, so a screen reader is told the page
+   * is loading once rather than read a column of empty bars.
+   */
+  readonly busy?: string;
 }
 
 /**
@@ -59,9 +68,17 @@ export interface ModelsFrameProps {
  * @param props See {@link ModelsFrameProps}.
  * @returns The `<main>` with the head, the tab set, and the page's content in that order.
  */
-export function ModelsFrame({ active, tone, title, subline, actions, children }: ModelsFrameProps) {
+export function ModelsFrame({
+  active,
+  tone,
+  title,
+  subline,
+  actions,
+  children,
+  busy,
+}: ModelsFrameProps) {
   return (
-    <main className="models">
+    <main aria-busy={busy === undefined ? undefined : true} aria-label={busy} className="models">
       <div className="models__head">
         <div className="models__headings">
           <Eyebrow>Models</Eyebrow>

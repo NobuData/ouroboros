@@ -1,25 +1,23 @@
+import type { Role } from "@/app/api/membership";
 import { Card, EmptyState } from "@/app/ui";
 
 import { savedRoutes } from "./chain";
-import { DirtyBar } from "./dirty-bar";
+import { FoundationsCard } from "./foundations-card";
 import { type HopHealthIndex, hopHealthIndex } from "./inspector";
-import {
-  MATRIX_FAILED_TITLE,
-  NO_KINDS_NOTE,
-  NO_KINDS_TITLE,
-  matrixRows,
-  selectedKind,
-} from "./matrix";
+import { MATRIX_FAILED_TITLE, matrixRows, selectedKind } from "./matrix";
 import { ModelsFrame } from "./models-frame";
 import { ModelsGrid } from "./models-grid";
 import { ProviderStrip } from "./provider-strip";
+import { DirtyBar } from "./dirty-bar";
 import { RouteEditorProvider } from "./route-editor";
+import { RoutingFailedBanner } from "./routing-banner";
 import { RoutingMatrix } from "./routing-matrix";
 import { RulesCard } from "./rules-card";
 import { SaveRoutesButton } from "./save-routes-button";
 import { SimulateButton } from "./simulate-sheet";
 import { SpendCard } from "./spend-card";
-import type { ModelsReadings } from "./view";
+import { MATRIX_FAILED_NOTE, type RoutingState, readOnlyNote, routingState } from "./states";
+import { type ModelsReadings, ROUTING_SUBLINE, ROUTING_TITLE } from "./view";
 
 import "./models.css";
 
@@ -38,12 +36,12 @@ import "./models.css";
  * ([#227](https://github.com/NobuData/ouroboros/issues/227)) gave the section a second page:
  * `app/models/models-frame.tsx` draws both, and this page supplies its title, its promise,
  * its two actions and the tab it is. What it keeps for itself is what is only true here — the
- * violet underline, the health strip, and the space the routing matrix will fill.
+ * violet underline, the health strip, and the space the routing matrix fills.
  *
  * It is a component rather than markup written in the route, for the reason the dashboard
  * and login screens are: everything it draws can then be rendered and asserted on without
  * Next.js's routing around it. The route reads (`app/models/data.ts`), a pure module decides
- * (`app/models/view.ts`), and this draws.
+ * (`app/models/view.ts`, `app/models/states.ts`), and this draws.
  *
  * ### What this page does not pretend
  *
@@ -62,6 +60,24 @@ import "./models.css";
  * every dot and line the route card holds, `rules.ts` for every sentence and switch the rules
  * card holds and `spend.ts` for every figure the spend card prints; between them, nothing on
  * this page is a figure this component decided.
+ *
+ * ### The states, since AA.6
+ *
+ * Mockup 06 draws the busy state and nothing else; a real workspace spends its first week in
+ * the others, and AA.6 ([#205](https://github.com/NobuData/ouroboros/issues/205)) is where
+ * each is designed. `app/models/states.ts`'s `routingState` decides which the page is in from
+ * its two reads, and the screen draws one thing for each:
+ *
+ * - **failed** — the matrix read was refused. The DASH-I.7 banner says why, once, with the
+ *   page's one retry (`app/models/routing-banner.tsx`); the matrix's seat says what is
+ *   missing and points up. *Could not be read* and *empty* wear different clothes.
+ * - **no-providers** / **no-routes** — nothing to draw. The guidance card
+ *   (`app/models/foundations-card.tsx`) stands in the matrix's seat with the two-step path
+ *   out and the reader's place on it; the right column keeps its rules and spend cards in
+ *   their zero-states, so the populated page is approached rather than jumped to.
+ * - **populated** — the matrix and everything beside it.
+ * - **loading** is not a state of the reads but of the route, and is
+ *   `app/models/models-skeleton.tsx`'s, drawn by `app/(app)/models/(routing)/loading.tsx`.
  *
  * ### The inspector's dots are the strip's read, indexed
  *
@@ -83,6 +99,12 @@ import "./models.css";
  * chains and refuses every edit, and the head draws no **Save routes** for them at all —
  * read-only as a rendering mode, not as a disabled control.
  *
+ * **The role is explained, not silently applied.** A member's page has no handles, no
+ * switches, no builder and no bar, and a page that quietly draws less reads as broken rather
+ * than as scoped — so a reader who may not edit is told so once, near the top, as what they
+ * are (`readOnlyNote`). The page decides nothing from the role's name; `mayAdminister` is
+ * still the one decision, made at the gate.
+ *
  * ### Two reads, two independent failures
  *
  * The strip and the matrix are separate reads and degrade separately: a workspace whose
@@ -92,20 +114,6 @@ import "./models.css";
  * read — `app/api/routing.ts` says why the three are one payload — so a refused matrix is
  * one failed region holding all three, and says so once rather than three times.
  */
-
-/**
- * The subline, from the mockup verbatim.
- *
- * Held as a constant rather than typed into the JSX because it is *copy* — the promise the
- * product makes about routing — and copy that lives in one named place is copy a designer
- * can be pointed at. Its three sentences are the three things a route is: an ordered chain,
- * an indirection through the registry, and a floor.
- */
-const SUBLINE =
-  "Each task kind resolves to a primary model with ordered fallbacks and escalation " +
-  "rules. Routes point at named registry aliases, never raw model ids — see the Model " +
-  "registry tab. The loop degrades gracefully when a provider stumbles — and never " +
-  "silently below the floor you set.";
 
 /** What the screen takes. */
 export interface ModelsScreenProps {
@@ -117,7 +125,7 @@ export interface ModelsScreenProps {
    */
   readonly route?: string | string[] | null;
   /**
-   * Whether this reader's role may change escalation rules — `app/api/membership.ts`'s
+   * Whether this reader's role may change routes and rules — `app/api/membership.ts`'s
    * `mayAdminister`, decided at the gate.
    *
    * A boolean rather than the role itself, because the page asks one question of it and a
@@ -126,6 +134,13 @@ export interface ModelsScreenProps {
    * with nothing to press — rather than controls the service would refuse.
    */
   readonly mayAdminister?: boolean;
+  /**
+   * The reader's strongest role, **for one sentence**: the read-only note names it. Nothing
+   * is decided from it — {@link ModelsScreenProps.mayAdminister} is the decision — and it
+   * defaults to `viewer`, the least the API grants, so a caller which forgot it names the
+   * role the page is already drawn for.
+   */
+  readonly role?: Role;
 }
 
 /**
@@ -134,7 +149,13 @@ export interface ModelsScreenProps {
  * @param props See {@link ModelsScreenProps}.
  * @returns The screen.
  */
-export function ModelsScreen({ readings, route = null, mayAdminister = false }: ModelsScreenProps) {
+export function ModelsScreen({
+  readings,
+  route = null,
+  mayAdminister = false,
+  role = "viewer",
+}: ModelsScreenProps) {
+  const state = routingState(readings);
   // The editor's baseline: every route the read produced, and nothing for a read that failed
   // — there is no chain to edit on a page whose matrix could not be read.
   const routes = readings.matrix.ok ? savedRoutes(readings.matrix.value.taskKinds) : [];
@@ -151,8 +172,8 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
         // to the accent — the divergence from 07/21 is deliberate and `page-subnav.tsx` says
         // why.
         tone="model"
-        title="Route every kind of work to the model that earns it."
-        subline={SUBLINE}
+        title={ROUTING_TITLE}
+        subline={ROUTING_SUBLINE}
         actions={
           <>
             {/*
@@ -172,6 +193,15 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
       >
         <DirtyBar />
 
+        {/*
+          The role, explained, in the slot the dirty bar takes for a role that may edit: a
+          member's editor holds no edits by construction, so the two never share the page.
+        */}
+        {!mayAdminister && <ReadOnlyNote role={role} />}
+
+        {/* The one place a refused matrix is explained, above everything it took with it. */}
+        {state.kind === "failed" && <RoutingFailedBanner reason={state.reason} />}
+
         <ProviderStrip providers={readings.providers} />
 
         <MatrixRegion
@@ -179,6 +209,7 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
           matrix={readings.matrix}
           mayAdminister={mayAdminister}
           route={route}
+          state={state}
         />
       </ModelsFrame>
     </RouteEditorProvider>
@@ -186,17 +217,39 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
 }
 
 /**
- * The matrix, the inspector's seat and the two cards beside them — or the one line that says
- * why there are none.
+ * The sentence a reader who may look and not change is given.
  *
- * Three states, and the two that draw no rows are deliberately different sentences. A
- * workspace whose routing foundations have not been seeded **has** an answer — an empty
- * one — and is a state the product guides out of (AA.6,
- * [#205](https://github.com/NobuData/ouroboros/issues/205)); a workspace whose matrix was
- * refused has no answer at all, and carries the service's own reason. Neither is a blank
- * region (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.3), and neither looks like the other.
+ * A `note` rather than a `status`: it is a fact about the reader that does not change while
+ * the page is open, and announcing it as a live region would read it out again on every
+ * render for no reason. The head names the role and the body says what it means here — two
+ * spans on one line, so the role is the first thing read.
  *
- * The unseeded workspace still gets its right column. Its rules card is the empty state that
+ * @param props.role The reader's strongest role.
+ * @returns The paragraph.
+ */
+function ReadOnlyNote({ role }: Readonly<{ role: Role }>) {
+  const note = readOnlyNote(role);
+
+  return (
+    <p className="models-readonly" role="note">
+      <span className="models-readonly__head">{note.head}</span> {note.body}
+    </p>
+  );
+}
+
+/**
+ * The matrix, the inspector's seat and the two cards beside them — or what stands where they
+ * would, in the states that have none.
+ *
+ * Four states and four different things, because they are four different facts. A refused
+ * matrix has no answer at all and carries the service's own reason — said once, in the banner
+ * above, with the seat here pointing up rather than repeating it. A workspace with nothing to
+ * draw **has** an answer, an empty one, and is a state the product guides out of: the guidance
+ * card stands in the matrix's seat, and which step is next is the strip's to decide. Neither
+ * is a blank region (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.3), and neither looks like the
+ * other.
+ *
+ * The guided workspace still gets its right column. Its rules card is the empty state that
  * says what a rule is, and its spend card is the zero-state — which is the state the ticket
  * asks for by name, and one that only exists on a card that is drawn. The refused matrix
  * does not: the rules and the spend are the same read, and a refusal is one region, said once.
@@ -206,6 +259,7 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
  * leaves the client with the one thing it is a client for: which row is selected. The two
  * cards are formed here for the same reason and handed across as the matrix's `aside`.
  *
+ * @param props.state Which state the page is in, decided once by the screen.
  * @param props.matrix The read: the payload, or why it could not be made.
  * @param props.mayAdminister Whether the rules card draws its controls.
  * @param props.route What `?route=` carried, unchecked.
@@ -213,26 +267,27 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
  * @returns The region.
  */
 function MatrixRegion({
+  state,
   matrix,
   mayAdminister,
   route,
   health,
 }: Readonly<{
+  state: RoutingState;
   matrix: ModelsReadings["matrix"];
   mayAdminister: boolean;
   route: string | string[] | null;
   health: HopHealthIndex;
 }>) {
-  if (!matrix.ok) {
+  if (state.kind === "failed" || !matrix.ok) {
     return (
       <Card className="models__next" fill>
-        <EmptyState fill note={matrix.reason} title={MATRIX_FAILED_TITLE} />
+        <EmptyState fill note={MATRIX_FAILED_NOTE} title={MATRIX_FAILED_TITLE} />
       </Card>
     );
   }
 
   const { taskKinds, rules, spend } = matrix.value;
-  const rows = matrixRows(taskKinds, rules);
 
   const aside = (
     <>
@@ -245,18 +300,11 @@ function MatrixRegion({
     </>
   );
 
-  if (rows.length === 0) {
-    return (
-      <ModelsGrid
-        aside={aside}
-        main={
-          <Card className="models-col--8 models__next" fill>
-            <EmptyState fill note={NO_KINDS_NOTE} title={NO_KINDS_TITLE} />
-          </Card>
-        }
-      />
-    );
+  if (state.kind !== "populated") {
+    return <ModelsGrid aside={aside} main={<FoundationsCard state={state} />} />;
   }
+
+  const rows = matrixRows(taskKinds, rules);
 
   return (
     <RoutingMatrix aside={aside} health={health} rows={rows} selected={selectedKind(rows, route)} />

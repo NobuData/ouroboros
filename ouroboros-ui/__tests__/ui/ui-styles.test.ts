@@ -429,6 +429,35 @@ describe("the switch", () => {
   });
 });
 
+describe("the retry banner (#86, #205)", () => {
+  it("takes its hue from the palette's own warn tokens", () => {
+    // Both palettes publish this token's contrast against `--surface`; a hand-picked amber
+    // would be legible in one theme and not the other. Warn rather than error, because the
+    // page underneath is still there.
+    expect(CODE).toMatch(/\.ou-retry\s*\{[^}]*border:\s*1px solid var\(--warn-line\)/);
+    expect(CODE).toMatch(/\.ou-retry\s*\{[^}]*background:\s*var\(--warn-tint\)/);
+    expect(CODE).toMatch(/\.ou-retry__headline\s*\{[^}]*color:\s*var\(--warn\)/);
+  });
+
+  it("carries the state in weight as well as hue, so the headline is the first thing read", () => {
+    expect(CODE).toMatch(/\.ou-retry__headline\s*\{[^}]*font-weight:\s*600/);
+  });
+
+  it("lets the sentence wrap above the retry rather than crushing it", () => {
+    expect(CODE).toMatch(/\.ou-retry\s*\{[^}]*flex-wrap:\s*wrap/);
+  });
+
+  it("zeroes the block margin a browser gives its paragraph", () => {
+    expect(CODE).toMatch(/\.ou-retry__text\s*\{[^}]*margin:\s*0/);
+  });
+
+  it("carries no placement of its own, which is each page's to decide", () => {
+    // The dashboard sits it above the page head at the grid's own gutter; the routing page
+    // sits it where the strip's rhythm puts it. A margin here would be right for at most one.
+    expect(CODE).not.toMatch(/\.ou-retry\s*\{[^}]*margin/);
+  });
+});
+
 describe("the focus ring", () => {
   it("adds to the product's ring rather than replacing it", () => {
     // The mockups set `outline: none` on a focused input and draw their own halo;

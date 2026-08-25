@@ -115,7 +115,7 @@ describe("the seeded entries", () => {
   it("has exactly two built destinations today: the dashboard and Models", () => {
     // A live entry is a promise that a page is behind it, so this list may only grow on the
     // commit that builds one — a live entry without a page would ship a 404 in the product's
-    // primary navigation. Models joined it with #200 (`app/(app)/models/page.tsx`); the other
+    // primary navigation. Models joined it with #200 (`app/(app)/models/(routing)/page.tsx`); the other
     // eight wait for #49 or for their own roadmap issue. Asserted against the constants rather
     // than the strings, so an entry and every redirect to it stay the same fact (#45 moved the
     // dashboard off `/`).

@@ -1523,3 +1523,390 @@
 .models-simulate__figure {
   font-family: var(--f-mono);
 }
+
+/* ---------- the states and guards (#205) ---------- */
+
+/*
+ * What the strip's empty note links: the way to a provider. The accent, from the token, on
+ * the same rule the inspector's registry link keeps — an underline on hover and focus, so
+ * the link is found by the pointer and not only by its hue.
+ */
+.models-health__link {
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.models-health__link:hover,
+.models-health__link:focus-visible {
+  text-decoration: underline;
+}
+
+/*
+ * The read-only note — one line under the tab set naming the reader's role, in the slot the
+ * dirty-state bar takes for a role that may edit. The strip's own measure and margin, so a
+ * member's page and an owner's page put the strip on the same line.
+ */
+.models-readonly {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-9);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.models-readonly__head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/*
+ * The failed-read banner's placement: above the strip, with the strip's own bottom rhythm,
+ * so the chips — which are a different read and usually still there — keep their line. The
+ * box itself is the design system's `.ou-retry`.
+ */
+.models-failed {
+  margin: 0 0 var(--sp-9);
+}
+
+/* ---------- the guidance card (#205) — the path from nothing to a matrix ---------- */
+
+/*
+ * An `ol`, undone: the browser's list defaults are what this has to remove, and the number
+ * is drawn as the mark rather than as a list marker so it can take the step's own hue.
+ */
+.models-foundations {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.models-foundations__step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6);
+}
+
+/*
+ * The mark: the step's number in a ring, in the neutral treatment by default and in the
+ * step's own hue when it is done or next. The word beside the title carries the state as
+ * well, so the hue is never the only signal (§ 3.4); the ring is dashed for the step nobody
+ * could report on, the strip's own convention for an unmeasured state (M8).
+ */
+.models-foundations__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--sp-10);
+  height: var(--sp-10);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+}
+
+.models-foundations__step--done .models-foundations__mark {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.models-foundations__step--current .models-foundations__mark {
+  border-color: var(--model-line);
+  background: var(--model-tint);
+  color: var(--model);
+}
+
+.models-foundations__step--unknown .models-foundations__mark {
+  border-style: dashed;
+  background: transparent;
+}
+
+/* `min-width: 0` so a long note wraps inside the step rather than widening the card. */
+.models-foundations__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* The title and the state's word on one line, wrapping when the column is narrow. */
+.models-foundations__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.models-foundations__note {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.models-foundations__action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  margin-block-start: var(--sp-3);
+}
+
+/*
+ * The inert control's reason, printed under it. Small print in the faint ink: it is the
+ * explanation for a control that cannot act, not a failure.
+ */
+.models-foundations__reason {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* The development note, ruled off from the path: it is for a developer, not a tenant. */
+.models-foundations__dev {
+  margin: var(--sp-8) 0 0;
+  padding-block-start: var(--sp-6);
+  border-block-start: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the loading skeleton (#205) ---------- */
+
+/*
+ * What `app/(app)/models/(routing)/loading.tsx` draws while the two reads are in flight.
+ *
+ * **Every shape below is a region's own geometry, not a generic bar** (#86). The strip is
+ * chips at a chip's height and the strip's margin; the matrix is a ruled table at the table
+ * primitive's cell padding; the right column's three cards are the inspector's empty seat,
+ * the rules card's ruled rows and the spend card's metered rows — each rule mirroring the
+ * rule it stands in for, so nothing moves when the data lands. The head and the tab set are
+ * not here at all: the skeleton draws them as themselves.
+ *
+ * It pulses only for a reader who has not asked for less motion, and it is hidden from the
+ * accessibility tree by the `aria-hidden` on its container — a screen reader is told the
+ * page is busy once, by the frame's own label, rather than read forty empty bars.
+ */
+.models-skeleton {
+  display: block;
+}
+
+/* The two head actions, at a default button's box. */
+.models-skeleton__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+.models-skeleton__action {
+  display: inline-block;
+  width: 9rem;
+  height: 2.375rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* The strip: `.models-health`'s wrap, gap and margin. */
+.models-skeleton__strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+  margin: 0 0 var(--sp-9);
+}
+
+/* One chip, at `.models-health__chip`'s height. */
+.models-skeleton__chip {
+  display: inline-block;
+  width: 9rem;
+  height: 2rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.models-skeleton__chip--short {
+  width: 6rem;
+}
+
+.models-skeleton__chip--long {
+  width: 14rem;
+}
+
+/* A card head, at `.ou-card__head`'s own height and bottom margin. */
+.models-skeleton__head {
+  display: block;
+  width: 40%;
+  height: var(--sp-7);
+  margin-bottom: var(--sp-7);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The plain bar, at a line of `--t-xs`. */
+.models-skeleton__bar {
+  display: block;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.models-skeleton__bar--half {
+  width: 55%;
+}
+
+.models-skeleton__bar--grow {
+  flex: 1;
+}
+
+/* The task cell's two lines: the kind's name, and the description under it. */
+.models-skeleton__bar--kind {
+  width: 45%;
+}
+
+.models-skeleton__bar--desc {
+  width: 85%;
+  height: var(--sp-5);
+}
+
+/* A figure, right-aligned in `.models-matrix__num`'s width. */
+.models-skeleton__bar--num {
+  width: 3rem;
+  justify-self: end;
+}
+
+/* The table: the head row's height and rule, then the rows. */
+.models-skeleton__table {
+  display: flex;
+  flex-direction: column;
+}
+
+.models-skeleton__thead {
+  display: block;
+  height: var(--sp-9);
+  border-block-end: 1px solid var(--line);
+}
+
+/*
+ * One row: six cells on the matrix's own proportions — the task column widest, two pills,
+ * the escalation sentence, and the two numeric columns at `.models-matrix__num`'s width —
+ * at `.ou-table td`'s padding, ruled off like the primitive's rows.
+ */
+.models-skeleton__row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) 6rem 6rem;
+  gap: var(--sp-6);
+  align-items: center;
+  padding: var(--sp-6) 0;
+  border-block-end: 1px solid var(--line);
+}
+
+.models-skeleton__row:last-child {
+  border-block-end: none;
+}
+
+.models-skeleton__task {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* An alias pill, at `.ou-chip`'s box. */
+.models-skeleton__pill {
+  display: block;
+  width: 6rem;
+  height: var(--sp-8);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+/* The inspector's empty seat: `.ou-empty--fill`'s well, at its floor. */
+.models-skeleton__panel {
+  display: block;
+  flex: 1;
+  min-height: 8rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+/* The rules card's rows: `.models-rules__row`'s padding and rule, a sentence and a switch. */
+.models-skeleton__rules {
+  display: flex;
+  flex-direction: column;
+}
+
+.models-skeleton__rule {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-5) 0;
+  border-block-end: 1px solid var(--line);
+}
+
+.models-skeleton__rule:last-child {
+  border-block-end: none;
+}
+
+.models-skeleton__switch {
+  display: block;
+  flex: none;
+  width: 2.25rem;
+  height: 1.25rem;
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+/* The spend card's rows: `.models-spend`'s gap, a line and a meter under it. */
+.models-skeleton__spend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+.models-skeleton__spend-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* A meter, at `.ou-meter`'s height. */
+.models-skeleton__meter {
+  display: block;
+  height: var(--sp-3);
+  border-radius: var(--r-xs);
+  background: var(--raised);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .models-skeleton__action,
+  .models-skeleton__chip,
+  .models-skeleton__head,
+  .models-skeleton__bar,
+  .models-skeleton__pill,
+  .models-skeleton__panel,
+  .models-skeleton__switch,
+  .models-skeleton__meter {
+    animation: models-skeleton-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes models-skeleton-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}

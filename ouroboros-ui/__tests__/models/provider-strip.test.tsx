@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ProviderStrip } from "@/app/models/provider-strip";
+import { PROVIDERS_PATH } from "@/app/paths";
 
 import { CHECKED_STAMP, provider, seededProviders, unknownProvider } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
@@ -189,7 +190,9 @@ describe("a strip with no chips on it", () => {
 
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.getByText(/No providers are connected/)).toBeInTheDocument();
-    expect(screen.getByText(/Providers & keys/)).toBeInTheDocument();
+    // A link, since AE.1 (#227) built the surface the note used to call *soon* (#205).
+    expect(screen.getByRole("link", { name: "Providers & keys" })).toHaveAttribute("href", PROVIDERS_PATH);
+    expect(screen.queryByText(/mockup 07/)).toBeNull();
   });
 
   it("says something different when the read failed, and carries the service's reason", () => {

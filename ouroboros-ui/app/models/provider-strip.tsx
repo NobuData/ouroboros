@@ -1,3 +1,6 @@
+import Link from "next/link";
+
+import { PROVIDERS_PATH } from "@/app/paths";
 import { cx } from "@/app/ui";
 
 import { type ModelsReadings, type ProviderChip, providerChip } from "./view";
@@ -37,9 +40,13 @@ import "./models.css";
  *
  * A workspace with no providers reads successfully and answers an empty strip; a workspace
  * whose strip could not be read has answered nothing. The first is a state the product
- * guides out of (AA.6, [#205](https://github.com/NobuData/ouroboros/issues/205), owns the
- * guidance path), the second is a failure carrying the service's own sentence. Neither is a
- * blank region — `docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.3.
+ * guides out of — the note links Providers & keys, and the matrix's seat draws the whole path
+ * (AA.6, [#205](https://github.com/NobuData/ouroboros/issues/205)) — the second is a failure
+ * carrying the service's own sentence. Neither is a blank region —
+ * `docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.3.
+ *
+ * The link is a link, not a *soon*: AA.1 wrote this note when mockup 07's surface did not
+ * exist, and AE.1 ([#227](https://github.com/NobuData/ouroboros/issues/227)) built it since.
  */
 
 /** The strip's accessible name, and what its two absent states are about. */
@@ -68,8 +75,11 @@ export function ProviderStrip({
     return (
       <p className="models-health__note">
         <span className="models-health__note-head">No providers are connected.</span> Routes
-        resolve to aliases, and an alias needs a provider behind it — connecting one arrives
-        with Providers &amp; keys (mockup 07).
+        resolve to aliases, and an alias needs a provider behind it — connect one on{" "}
+        <Link className="models-health__link" href={PROVIDERS_PATH}>
+          Providers &amp; keys
+        </Link>
+        .
       </p>
     );
   }

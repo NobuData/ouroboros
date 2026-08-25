@@ -61,7 +61,7 @@ import "./models.css";
  * rather than *the page I came from*.
  *
  * The initial selection comes from the server, which read it out of `?route=` — see
- * `app/(app)/models/page.tsx`. That is what makes a selected route survive a reload without
+ * `app/(app)/models/(routing)/page.tsx`. That is what makes a selected route survive a reload without
  * this component reading the URL at all, and it is why nothing here needs `useSearchParams`
  * or the Suspense boundary that hook requires.
  *

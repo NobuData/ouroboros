@@ -94,45 +94,13 @@
  * fact about the whole page rather than about any card on it — and above rather than below,
  * because a reader who has been handed old data should be told before they read it.
  *
- * The inline padding is `.dash`'s, at both of its widths, so the banner lines up with the
- * page head under it rather than floating in the pane's own gutter.
+ * The box — the warn tint, the hairline, the headline's weight and hue — is the design
+ * system's `.ou-retry` since #205 gave the routing page the same banner; what is this page's
+ * is its **placement**. The inline padding is `.dash`'s, at both of its widths, so the banner
+ * lines up with the page head under it rather than floating in the pane's own gutter.
  */
 .dash-stale {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--sp-6);
   margin: var(--sp-8) var(--sp-10) 0;
-  padding: var(--sp-5) var(--sp-6);
-  border: 1px solid var(--warn-line);
-  border-radius: var(--r-md);
-  background: var(--warn-tint);
-}
-
-/*
- * The sentence and the reason share a paragraph, so they wrap as one block beside the
- * control rather than as two lines that can separate.
- */
-.dash-stale__text {
-  margin: 0;
-  font-size: var(--t-xs);
-  line-height: var(--lh-body);
-}
-
-/*
- * The headline carries the state — the warn hue, and the weight that makes it the first
- * thing read. It is never the only signal: the sentence says *the latest refresh failed* in
- * words, which is what a reader who cannot separate two hues has (design system § 3.4).
- */
-.dash-stale__headline {
-  color: var(--warn);
-  font-weight: 600;
-}
-
-/* The service's own sentence, quieter than the headline it follows. */
-.dash-stale__reason {
-  color: var(--ink-mut);
 }
 
 /* ---------- the grid ---------- */

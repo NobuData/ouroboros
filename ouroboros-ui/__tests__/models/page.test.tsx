@@ -38,7 +38,7 @@ vi.mock("@/app/models/route-actions", () => ({ saveRoutes: vi.fn() }));
 vi.mock("@/app/models/simulate-actions", () => ({ simulateRoute: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-const Page = (await import("@/app/(app)/models/page")).default;
+const Page = (await import("@/app/(app)/models/(routing)/page")).default;
 
 /**
  * The route, with a query.
@@ -184,5 +184,25 @@ describe("the role the route decides (#204)", () => {
     render(await open());
 
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("names the role the gate resolved in the read-only note, and names none for an owner (#205)", async () => {
+    // The strongest role held, the way the account menu names it: a member who is also a
+    // viewer is told they are a member.
+    requireWorkspace.mockResolvedValue({
+      ...ACCESS,
+      membership: membership({ roles: ["viewer", "member"] }),
+    });
+
+    const asMember = render(await open());
+
+    expect(screen.getByRole("note")).toHaveTextContent("Viewing routing as a member.");
+    asMember.unmount();
+
+    requireWorkspace.mockResolvedValue(ACCESS);
+
+    render(await open());
+
+    expect(screen.queryByRole("note")).toBeNull();
   });
 });

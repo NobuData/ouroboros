@@ -1,13 +1,23 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { MATRIX_FAILED_TITLE, NO_KINDS_NOTE, NO_KINDS_TITLE } from "@/app/models/matrix";
+import { MATRIX_FAILED_TITLE } from "@/app/models/matrix";
 import { ADD_RULE, NO_RULES_TITLE, RULES_TITLE } from "@/app/models/rules";
 import { FULL_REPORT, NO_SPEND_TITLE, UNPRICED } from "@/app/models/spend";
+import {
+  FOUNDATIONS_TITLE,
+  MATRIX_FAILED_NOTE,
+  NO_PROVIDERS_TITLE,
+  NO_ROUTES_TITLE,
+  PROVIDERS_LINK,
+  READ_ONLY_BODY,
+  ROUTING_FAILED_HEADLINE,
+  SEED_ROUTES,
+} from "@/app/models/states";
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 
-import { emptyMatrix, readings, seededMatrix, unmeasuredMatrix } from "../helpers/models";
-import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
+import { emptyMatrix, readings, seededMatrix, seededProviders, unmeasuredMatrix } from "../helpers/models";
+import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 
 // The rules card's actions sit on the server-only client, and its rows want the App Router
 // mounted for `router.refresh()`. Both are subjects of their own suites (`rule-actions.test.ts`,
@@ -241,14 +251,201 @@ describe("the matrix, in its place on the page", () => {
     expect(screen.queryByRole("grid")).not.toBeInTheDocument();
   });
 
-  it("tells a workspace with no kinds apart from one whose matrix could not be read", () => {
+  it("tells a workspace with nothing to route apart from one whose matrix could not be read (#205)", () => {
     // *Nobody has configured this* and *nobody could read this* are different facts, and the
     // page says something different for each. Neither is a blank region (§ 3.3).
     render(<ModelsScreen readings={readings({ matrix: { ok: true, value: emptyMatrix() } })} />);
 
-    expect(screen.getByText(NO_KINDS_TITLE)).toBeInTheDocument();
-    expect(screen.getByText(NO_KINDS_NOTE)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: FOUNDATIONS_TITLE })).toBeInTheDocument();
     expect(screen.queryByText(MATRIX_FAILED_TITLE)).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "" })).not.toHaveTextContent(ROUTING_FAILED_HEADLINE);
+  });
+});
+
+describe("the failed read (#205)", () => {
+  it("draws the DASH-I.7 banner above the strip: the headline, the reason, and the page's one retry", () => {
+    render(
+      <ModelsScreen readings={readings({ matrix: { ok: false, reason: "Routing is down." } })} />,
+    );
+
+    const banner = screen.getByText(ROUTING_FAILED_HEADLINE).closest(".ou-retry") as HTMLElement;
+
+    expect(banner).toHaveAttribute("role", "status");
+    expect(within(banner).getByText("Routing is down.")).toBeInTheDocument();
+    expect(within(banner).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    // Above the strip, in the strip's rhythm.
+    expect(banner).toHaveClass("models-failed");
+    expect(banner.compareDocumentPosition(screen.getByRole("list", { name: "Provider health" }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("says the reason once, in the banner, and has the seat point up rather than repeat it", () => {
+    render(
+      <ModelsScreen readings={readings({ matrix: { ok: false, reason: "Routing is down." } })} />,
+    );
+
+    expect(screen.getAllByText("Routing is down.")).toHaveLength(1);
+    expect(screen.getByText(MATRIX_FAILED_NOTE)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+  });
+
+  it("draws no banner and no retry for a workspace that is merely empty", () => {
+    render(
+      <ModelsScreen
+        readings={readings({ providers: { ok: true, value: [] }, matrix: { ok: true, value: emptyMatrix() } })}
+      />,
+    );
+
+    expect(screen.queryByText(ROUTING_FAILED_HEADLINE)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+});
+
+describe("the guidance path (#205), which the personal-organization seed walks", () => {
+  /** The personal workspace's seed: no providers, no kinds, no routes, no usage. */
+  const fresh = () =>
+    readings({ providers: { ok: true, value: [] }, matrix: { ok: true, value: emptyMatrix() } });
+
+  it("starts at no providers: routing needs a connection, and Providers & keys is one link away", () => {
+    render(<ModelsScreen mayAdminister readings={fresh()} />);
+
+    expect(screen.getByText(NO_PROVIDERS_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: PROVIDERS_LINK })).toHaveAttribute("href", PROVIDERS_PATH);
+    // The strip's own note links the same page, so the pointer is one destination twice.
+    const note = document.querySelector(".models-health__note") as HTMLElement;
+    expect(within(note).getByRole("link", { name: "Providers & keys" })).toHaveAttribute(
+      "href",
+      PROVIDERS_PATH,
+    );
+    expect(screen.queryByRole("grid")).toBeNull();
+  });
+
+  it("moves to no routes once a provider is connected: the bootstrap is the next step", () => {
+    render(
+      <ModelsScreen
+        mayAdminister
+        readings={readings({
+          providers: { ok: true, value: seededProviders().slice(0, 1) },
+          matrix: { ok: true, value: emptyMatrix() },
+        })}
+      />,
+    );
+
+    expect(screen.getByText(NO_ROUTES_TITLE)).toBeInTheDocument();
+    expect(screen.getByText("1 provider connected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: SEED_ROUTES })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("list", { name: "Provider health" })).toBeInTheDocument();
+  });
+
+  it("keeps the right column's zero-states beside the guidance, so the populated page is approached", () => {
+    render(<ModelsScreen readings={fresh()} />);
+
+    const aside = document.querySelector(".models-aside") as HTMLElement;
+
+    expect(within(aside).getByText(NO_RULES_TITLE)).toBeInTheDocument();
+    expect(within(aside).getByText(NO_SPEND_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.00/)).toBeNull();
+  });
+
+  it("ends populated with em-dashes: kinds and routes, nothing measured yet (M7)", () => {
+    // The bootstrap's result, as the seed's shape gives it: eight kinds, no usage. The matrix
+    // draws, every figure is an em-dash, and the spend card is the zero-state.
+    const { container } = render(
+      <ModelsScreen readings={readings({ matrix: { ok: true, value: unmeasuredMatrix() } })} />,
+    );
+
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: FOUNDATIONS_TITLE })).toBeNull();
+    expect(container.textContent).not.toMatch(/\$\d/);
+    expect(screen.getByText(NO_SPEND_TITLE)).toBeInTheDocument();
+  });
+
+  it("marks the provider step unknown rather than undone when the strip could not be read", () => {
+    render(
+      <ModelsScreen
+        readings={readings({
+          providers: { ok: false, reason: "Down." },
+          matrix: { ok: true, value: emptyMatrix() },
+        })}
+      />,
+    );
+
+    expect(screen.getByText(NO_ROUTES_TITLE)).toBeInTheDocument();
+    expect(screen.getByText("Down.")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("unknown");
+  });
+});
+
+describe("read-only, as a rendering mode (#205)", () => {
+  it("explains the role once, near the top, for a reader who may not edit", () => {
+    render(<ModelsScreen readings={readings()} role="member" />);
+
+    const note = screen.getByRole("note");
+
+    expect(note).toHaveTextContent("Viewing routing as a member.");
+    expect(note).toHaveTextContent(READ_ONLY_BODY);
+    // Before the strip: the reader is told before they read.
+    expect(note.compareDocumentPosition(screen.getByRole("list", { name: "Provider health" }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("names a viewer as a viewer, and defaults to the least the API grants", () => {
+    const viewer = render(<ModelsScreen readings={readings()} role="viewer" />);
+
+    expect(screen.getByRole("note")).toHaveTextContent("as a viewer");
+    viewer.unmount();
+
+    render(<ModelsScreen readings={readings()} />);
+
+    expect(screen.getByRole("note")).toHaveTextContent("as a viewer");
+  });
+
+  it("draws no note for a role that may edit", () => {
+    render(<ModelsScreen mayAdminister readings={readings()} role="owner" />);
+
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it("is verifiably read-only across the matrix, the inspector and the rules — absence, not disabled controls", () => {
+    render(<ModelsScreen readings={readings()} role="member" route="implement" />);
+
+    // The head: no Save routes. The bar: never drawn, because the editor holds no edits.
+    expect(screen.queryByRole("button", { name: "Save routes" })).toBeNull();
+    expect(screen.queryByText(/routes? changed/)).toBeNull();
+    // The matrix: no handle column, no reorder hint.
+    expect(screen.queryByRole("button", { name: /^Edit the .* chain/ })).toBeNull();
+    expect(screen.queryByText(/drag ⠿/)).toBeNull();
+    // The inspector: the chain drawn, no move, remove, swap or add.
+    const card = screen.getByRole("region", { name: "Route — implement-primary" });
+    expect(within(card).getAllByRole("img")).toHaveLength(3);
+    expect(within(card).queryByRole("button", { name: /^Move / })).toBeNull();
+    expect(within(card).queryByRole("button", { name: /^Remove / })).toBeNull();
+    expect(within(card).queryByRole("button", { name: /^Swap / })).toBeNull();
+    expect(within(card).queryByRole("button", { name: /^Add / })).toBeNull();
+    // …and the policy in its real positions, inert with the one reason — the position has no
+    // other carrier, so the disabled-with-reason rule applies here and nowhere else.
+    for (const control of within(card).getAllByRole("switch")) {
+      expect(control).toHaveAttribute("aria-disabled", "true");
+      expect(control.getAttribute("title")).toMatch(/owner or an admin/);
+    }
+    // The rules: sentences and the count, no switch, builder or delete.
+    const rules = screen.getByRole("region", { name: RULES_TITLE });
+    expect(within(rules).queryByRole("switch")).toBeNull();
+    expect(within(rules).queryByRole("button", { name: ADD_RULE })).toBeNull();
+    expect(within(rules).queryByRole("button", { name: /^Delete rule/ })).toBeNull();
+    expect(screen.getByText("3 active")).toBeInTheDocument();
+    // …and Simulate routing stays open to a member: it reads, and writes nothing.
+    expect(screen.getByRole("button", { name: "Simulate routing" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("renders the same markup in both palettes for a member too", () => {
+    // Masked, because the selected route's policy controls carry React's own ids, which
+    // differ between two renders and say nothing about the palette.
+    const [light, dark] = renderInBothPalettes(<ModelsScreen readings={readings()} role="member" route="implement" />);
+
+    expect(maskIds(light)).toBe(maskIds(dark));
   });
 });
 
@@ -366,7 +563,7 @@ describe("the right column (#204)", () => {
     // card that is drawn.
     render(<ModelsScreen readings={readings({ matrix: { ok: true, value: emptyMatrix() } })} />);
 
-    expect(screen.getByText(NO_KINDS_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: FOUNDATIONS_TITLE })).toBeInTheDocument();
     expect(screen.getByText(NO_RULES_TITLE)).toBeInTheDocument();
     expect(screen.getByText(NO_SPEND_TITLE)).toBeInTheDocument();
     expect(screen.queryByText(/\$0\.00/)).not.toBeInTheDocument();
