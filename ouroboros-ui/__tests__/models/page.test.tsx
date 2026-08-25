@@ -34,6 +34,7 @@ vi.mock("@/app/models/rule-actions", () => ({
   removeRule: vi.fn(),
   readRuleTargets: vi.fn(),
 }));
+vi.mock("@/app/models/route-actions", () => ({ saveRoutes: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const Page = (await import("@/app/(app)/models/page")).default;

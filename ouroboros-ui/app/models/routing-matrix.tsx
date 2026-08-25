@@ -1,9 +1,11 @@
 "use client";
 
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import { Card, CardHead, Chip, EmptyState, Table, Tag, type Column } from "@/app/ui";
 
+import { CHANGED, type EditedRow, NO_ROUTE_NOTE, editChainHint, editedRow } from "./chain";
+import { ChainEditor } from "./chain-editor";
 import {
   EM_DASH,
   INSPECTOR_EMPTY_NOTE,
@@ -14,18 +16,20 @@ import {
   ROUTE_PARAM,
   type AliasCell,
   type MatrixRow,
-  inspectorNote,
   inspectorTitle,
   selectionAnnouncement,
   taskKindCount,
 } from "./matrix";
 import { ModelsGrid } from "./models-grid";
+import { useRouteEditor } from "./route-editor";
 
 import "./models.css";
 
 /**
- * Mockup 06's **ROUTING MATRIX** — the eight-kind table, and the seat the route inspector
- * takes beside it ([#201](https://github.com/NobuData/ouroboros/issues/201)).
+ * Mockup 06's **ROUTING MATRIX** — the eight-kind table, and the route card beside it
+ * ([#201](https://github.com/NobuData/ouroboros/issues/201)); since AA.3
+ * ([#202](https://github.com/NobuData/ouroboros/issues/202)), the card holds the selected
+ * route's chain and edits it.
  *
  * This table is the page: everything else on `/models` explains or edits what it shows. Which
  * makes its two hard properties the ticket's two hard properties — **density** (two levels of
@@ -34,8 +38,9 @@ import "./models.css";
  * be empty, and the row has to stay readable when they are).
  *
  * Neither is decided here. Every cell arrives already decided from `app/models/matrix.ts`, so
- * this file is a description of a table plus the one thing a pure module cannot hold: which
- * row is selected.
+ * this file is a description of a table plus the two things a pure module cannot hold: which
+ * row is selected, and — through `app/models/route-editor.tsx` — which routes have an unsaved
+ * edit, whose first two hops the model columns then draw instead of the server's.
  *
  * ### The one Client Component on this page, and why
  *
@@ -55,44 +60,31 @@ import "./models.css";
  * this component reading the URL at all, and it is why nothing here needs `useSearchParams`
  * or the Suspense boundary that hook requires.
  *
- * ### What drives the inspector today
+ * ### The handle column is a shortcut, and the handles that reorder are the hops' own
  *
- * AA.4 ([#203](https://github.com/NobuData/ouroboros/issues/203)) builds the panel. Until it
- * does, the seat beside the matrix is held by a card that names the selected route and says
- * plainly what is not built — § 3.5's rule, and the only honest way to have a selection that
- * demonstrably *drives* something. An invented chain of hops there would be indistinguishable,
- * in a screenshot, from the real one AA.4 ships.
+ * The mockup draws ⠿ on every row under *drag ⠿ to reorder fallback chains*. What is
+ * reordered is a chain's **hops**, and a row is a route — so the row's ⠿ is the pointer's way
+ * into the editor for that row (select it, focus its chain), and the ⠿ that is dragged is on
+ * each hop in the route card. The column is drawn for a role that may edit and not at all for
+ * one that may not: read-only is a rendering mode, and a member's matrix has no editing
+ * affordance to explain. The shortcut stays out of the tab order so the table keeps its one
+ * stop; the keyboard's path is the row, then Tab into the card the selection drives.
  */
 
 /**
- * The columns, in the order mockup 06 draws them.
+ * The columns every reader sees, in the order mockup 06 draws them.
  *
- * Declared outside the component because they close over nothing: a `Column<MatrixRow>[]`
+ * Declared outside the component because they close over nothing: a `Column<EditedRow>[]`
  * rebuilt on every render would be a new array identity for `Table` to diff on every arrow
- * key.
+ * key. The handle column is the one exception and is built where it is used, because it
+ * closes over the shortcut.
  *
  * The **task column comes first for a reason beyond the mockup**: the row is the focused
  * element while the selection moves, so what a screen reader reads out is the row's own cells
  * in order — and the first thing a reader arrowing down this table needs to hear is which task
  * kind they have landed on.
  */
-const COLUMNS: readonly Column<MatrixRow>[] = [
-  {
-    key: "handle",
-    // Visually the mockup's empty 26px column; named in the accessibility tree, because a
-    // column header that is genuinely empty leaves its cells belonging to nothing.
-    header: <span className="sr-only">Reorder</span>,
-    className: "models-matrix__handle",
-    cell: () => (
-      // Inert, and it says so. AA.3 (#202) wires it; drawn now because the column is part of
-      // the row's rhythm and a table that grew a column later would re-flow every width on
-      // the page. `aria-hidden` because a handle that cannot be dragged is not a control —
-      // the hint in the card head is where a reader is told about reordering at all.
-      <span aria-hidden className="models-matrix__drag" title={REORDER_HINT}>
-        ⠿
-      </span>
-    ),
-  },
+const COLUMNS: readonly Column<EditedRow>[] = [
   {
     key: "task",
     header: "Task",
@@ -104,9 +96,27 @@ const COLUMNS: readonly Column<MatrixRow>[] = [
         {/*
           The route's own tag, never one composed from the kind: `test-gen` tags
           `testgen-primary`. A kind with no route has no tag, and nothing is drawn — the two
-          lines above already say which row this is.
+          lines above already say which row this is. Beside it, the mark a route with an
+          unsaved edit wears, so a reader scanning the matrix sees which rows the bar counts.
         */}
-        {row.tag !== null && <Tag className="models-matrix__tag">{row.tag}</Tag>}
+        {(row.tag !== null || row.changed) && (
+          <span className="models-matrix__marks">
+            {row.tag !== null && <Tag>{row.tag}</Tag>}
+            {row.changed && <Chip tone="accent">{CHANGED}</Chip>}
+          </span>
+        )}
+        {/*
+          What the server refused about this route on the last save. On the row it names,
+          because that is the ticket's whole point about a partial failure: it names *which*
+          route, and the reader finds it where the route is.
+        */}
+        {row.problems.length > 0 && (
+          <ul className="models-matrix__problems" role="alert">
+            {row.problems.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
       </>
     ),
   },
@@ -147,6 +157,40 @@ const COLUMNS: readonly Column<MatrixRow>[] = [
     cell: (row) => row.latency,
   },
 ];
+
+/**
+ * The handle column — the mockup's 26px gutter, holding the shortcut into the editor.
+ *
+ * @param onEdit What the shortcut does: select the row and put focus in its chain.
+ * @returns The column.
+ */
+function handleColumn(onEdit: (kind: string) => void): Column<EditedRow> {
+  return {
+    key: "handle",
+    // Named in the accessibility tree, because a column header that is genuinely empty
+    // leaves its cells belonging to nothing.
+    header: <span className="sr-only">Edit</span>,
+    className: "models-matrix__handle",
+    cell: (row) =>
+      row.tag === null ? null : (
+        // Out of the tab order (`tabIndex={-1}`), in the accessibility tree: a pointer's
+        // shortcut, and a control a screen reader browsing by button can still find and
+        // press. The row's own key handler ignores keys from inside it (`app/ui/table.tsx`).
+        <button
+          aria-label={editChainHint(row.kind)}
+          className="models-matrix__edit"
+          onClick={() => {
+            onEdit(row.kind);
+          }}
+          tabIndex={-1}
+          title={editChainHint(row.kind)}
+          type="button"
+        >
+          ⠿
+        </button>
+      ),
+  };
+}
 
 /**
  * One of the two model columns: the alias pill, and the resolution line beneath it.
@@ -230,20 +274,44 @@ export interface RoutingMatrixProps {
 }
 
 /**
- * The matrix, and the seat the inspector takes beside it.
+ * The matrix, and the route card beside it.
  *
  * @param props See {@link RoutingMatrixProps}.
  * @returns The two cards.
  */
 export function RoutingMatrix({ rows, selected: initial, aside }: RoutingMatrixProps) {
+  const editor = useRouteEditor();
   const [selected, setSelected] = useState<string | null>(initial);
+  const [focusToken, setFocusToken] = useState(0);
 
   const select = useCallback((kind: string) => {
     setSelected(kind);
     reflect(kind);
   }, []);
 
-  const row = rows.find((candidate) => candidate.kind === selected) ?? null;
+  // The shortcut: select the row, then ask the chain to take focus.
+  const edit = useCallback(
+    (kind: string) => {
+      select(kind);
+      setFocusToken((token) => token + 1);
+    },
+    [select],
+  );
+
+  const columns = useMemo(
+    () => (editor.editable ? [handleColumn(edit), ...COLUMNS] : COLUMNS),
+    [editor.editable, edit],
+  );
+
+  // The rows with their edits laid over them. Recomputed whenever the editor changes, which
+  // is every edit — eight small objects, and the alternative is a matrix that lags its own
+  // editor by a render.
+  const view = useMemo(
+    () => rows.map((row) => editedRow(row, editor.edit(row.kind), editor.problems[row.kind])),
+    [rows, editor],
+  );
+
+  const row = view.find((candidate) => candidate.kind === selected) ?? null;
 
   return (
     <ModelsGrid
@@ -254,15 +322,17 @@ export function RoutingMatrix({ rows, selected: initial, aside }: RoutingMatrixP
             className="models-matrix__head"
             title={MATRIX_TITLE}
             titleId={MATRIX_TITLE_ID}
-            trailing={<span className="models-matrix__hint">{REORDER_HINT}</span>}
+            trailing={
+              editor.editable ? <span className="models-matrix__hint">{REORDER_HINT}</span> : undefined
+            }
           />
 
           <Table
             caption={MATRIX_CAPTION}
             captionHidden
-            columns={COLUMNS}
+            columns={columns}
             rowKey={(candidate) => candidate.kind}
-            rows={rows}
+            rows={view}
             selection={{ selected, onSelect: select }}
           />
 
@@ -279,7 +349,7 @@ export function RoutingMatrix({ rows, selected: initial, aside }: RoutingMatrixP
       }
       aside={
         <>
-          <RouteInspectorSeat row={row} />
+          <RouteInspectorSeat focusToken={focusToken} row={row} />
           {aside}
         </>
       }
@@ -288,29 +358,44 @@ export function RoutingMatrix({ rows, selected: initial, aside }: RoutingMatrixP
 }
 
 /**
- * The seat mockup 06's **ROUTE — implement-primary** card takes, holding the selection until
- * AA.4 ([#203](https://github.com/NobuData/ouroboros/issues/203)) fills it.
+ * Mockup 06's **ROUTE — implement-primary** card: the selected route's chain, or the two
+ * states in which there is no chain to draw.
  *
- * It draws two states and neither of them pretends: with no row chosen it says how to choose
- * one, and with a row chosen it names the route, marks it *selected* in the mockup's own
- * violet pill, and says which issue brings the chain and the policy switches.
+ * With no row chosen it says how to choose one; with a kind chosen that has no route it says
+ * so rather than drawing an empty rail; and with a route it draws the chain — read-only for a
+ * member, editable for a role that may. The policy switches and the cost cap the mockup draws
+ * under the chain are AA.4's ([#203](https://github.com/NobuData/ouroboros/issues/203)), and
+ * the chain's foot names it.
  *
  * @param props.row The selected row, or `null` when none is.
+ * @param props.focusToken The matrix's shortcut, passed through to the chain.
  * @returns The card.
  */
-function RouteInspectorSeat({ row }: Readonly<{ row: MatrixRow | null }>) {
+function RouteInspectorSeat({
+  row,
+  focusToken,
+}: Readonly<{ row: EditedRow | null; focusToken: number }>) {
   return (
     <Card aria-labelledby={INSPECTOR_TITLE_ID} as="section" fill>
       <CardHead
         title={inspectorTitle(row?.tag ?? null)}
         titleId={INSPECTOR_TITLE_ID}
-        trailing={row === null ? undefined : <Chip tone="model">selected</Chip>}
+        trailing={
+          row === null ? undefined : (
+            <span className="models-inspector__marks">
+              <Chip tone="model">selected</Chip>
+              {row.changed && <Chip tone="accent">{CHANGED}</Chip>}
+            </span>
+          )
+        }
       />
 
       {row === null ? (
         <EmptyState fill note={INSPECTOR_EMPTY_NOTE} title={INSPECTOR_EMPTY_TITLE} />
+      ) : row.tag === null ? (
+        <EmptyState fill note={NO_ROUTE_NOTE} title={row.kind} />
       ) : (
-        <EmptyState fill note={inspectorNote(row.kind)} title={row.kind} />
+        <ChainEditor focusToken={focusToken} kind={row.kind} />
       )}
     </Card>
   );

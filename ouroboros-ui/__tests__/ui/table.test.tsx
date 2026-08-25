@@ -340,6 +340,29 @@ describe("selectable rows (#201)", () => {
     expect(fireEvent.keyDown(row("run-1"), { key: " " })).toBe(false);
   });
 
+  it("leaves a key pressed on a control inside a cell to that control", () => {
+    // The second axis AA.3 (#202) added: the routing matrix's handle column holds a button,
+    // and an arrow pressed on it must not move the selection underneath it.
+    const onSelect = vi.fn();
+    render(
+      <Table
+        caption="Recent runs"
+        columns={[
+          ...COLUMNS,
+          { key: "act", header: "Act", cell: (run) => <button type="button">edit {run.id}</button> },
+        ]}
+        rowKey={(run) => run.id}
+        rows={RUNS}
+        selection={{ selected: "run-1", onSelect }}
+      />,
+    );
+
+    const handled = fireEvent.keyDown(screen.getByRole("button", { name: "edit run-1" }), { key: "ArrowDown" });
+
+    expect(handled).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("leaves a key it does not own entirely alone", () => {
     const { onSelect } = selectable("run-1");
 

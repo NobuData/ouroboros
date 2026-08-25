@@ -1,6 +1,7 @@
 /*
- * The routing page — mockup 06's page frame and provider health strip (#200), and the routing
- * matrix and the seat its inspector takes (#201).
+ * The routing page — mockup 06's page frame and provider health strip (#200), the routing
+ * matrix and the seat its inspector takes (#201), and the chain that seat holds and edits,
+ * with the dirty-state bar the edits are committed from (#202).
  *
  * The mockup is docs/mockups/06-model-routing.html over docs/mockups/assets/ouroboros.css.
  * What is taken from it is the *anatomy* the design system requires of every module page
@@ -384,16 +385,28 @@
 }
 
 /*
- * ---------- the drag handle ----------
+ * ---------- the handle column's shortcut (#202) ----------
  *
- * It is drawn and it is inert, so it must not claim to be draggable. No `cursor: grab`, and
- * the hint in the card head says what it will do — the mockup's `cursor: grab` arrives with
- * the handler in AA.3 (#202), and the two belong on the same commit.
+ * The mockup's ⠿ on every row, as what it is in the product: a button into the route card's
+ * chain for that row. Reset to the glyph — a browser's button chrome is nothing like a
+ * 26px gutter — and a pointer rather than the mockup's `grab`, because this one is pressed,
+ * not dragged; the handles that are dragged are the hops' own, below. Rows the pointer is
+ * over brighten it, the mockup's `tr:hover .drag`.
  */
-.models-matrix__drag {
+.models-matrix__edit {
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--ink-faint);
+  font: inherit;
   font-size: var(--t-sm);
+  cursor: pointer;
   user-select: none;
+}
+
+.models-matrix__edit:hover,
+.models-matrix__edit:focus-visible {
+  color: var(--ink-mut);
 }
 
 /* ---------- the task cell ---------- */
@@ -418,8 +431,29 @@
   line-height: var(--lh-body);
 }
 
-.models-matrix__tag {
+/*
+ * The route's tag and, for a route with an unsaved edit, the *changed* chip beside it. A
+ * wrapping row rather than two stacked lines, so the mark reads as a note on the tag and a
+ * row with one mark and a row with two stay the same height.
+ */
+.models-matrix__marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
   margin-top: var(--sp-3);
+}
+
+/*
+ * What the server refused about this route, under the tag. A `ul`, undone; in the error hue
+ * because it is a failure the reader can act on, and small because the row is the subject.
+ */
+.models-matrix__problems {
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--err);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
 }
 
 /* ---------- the two alias cells ---------- */
@@ -765,6 +799,363 @@
 /* The mockup's `small faint` footnote — *Local models served 31% of all tokens.* */
 .models-spend__note {
   margin: var(--sp-7) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the dirty-state bar (#202) ---------- */
+
+/*
+ * The CP.4 sticky bar in its place on this page: flush under the tab set, spanning the pane
+ * the way the tab set does — the page's own gutter undone as margin and re-applied as
+ * padding, for the reason `.models__subnav` gives — so the two stick as one stack rather
+ * than as a bar inset from the row above it. The primitive owns the sticking, the ground and
+ * the rim; this owns where it sits. The page class is qualified by `.models` so the gutter
+ * wins over the primitive's own padding whichever sheet the bundle orders first.
+ */
+.models .models-dirty {
+  flex-wrap: wrap;
+  margin: calc(var(--sp-9) * -1) calc(var(--sp-10) * -1) var(--sp-9);
+  padding-right: var(--sp-10);
+  padding-left: var(--sp-10);
+}
+
+/* The count — `2 routes changed` — in the full ink, because it is the bar's subject. */
+.models-dirty__label {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* The mockup's `·`, between the count and the actions. Decoration, aria-hidden. */
+.models-dirty__sep {
+  color: var(--ink-faint);
+}
+
+.models-dirty__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/*
+ * A save that did not land, on its own line under the actions. `flex-basis: 100%` is what
+ * puts it there rather than beside the buttons at the wide end.
+ */
+.models-dirty__failure {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the chain (#202) — mockup 06's .chain ---------- */
+
+/* The selected and changed chips beside the route card's title, as one phrase. */
+.models-inspector__marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/*
+ * The rail. An `ol`, because the hops are an order and a reader moving by list hears *1 of
+ * 3*; the browser's list defaults are undone, and the numbers are drawn in the rings.
+ */
+.models-chain {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One hop: the rail beside the body — the mockup's `.hop` with its 12px gap. */
+.models-chain__hop {
+  display: flex;
+  gap: var(--sp-6);
+}
+
+/*
+ * The hop a drag is over, as the drop's target. A dashed outline rather than a change of
+ * ground, so the target reads as a place rather than as a selection — and an outline is one
+ * of the three hairline properties this sheet may write in px.
+ */
+.models-chain__hop--over {
+  outline: 1px dashed var(--accent-line);
+  outline-offset: var(--sp-2);
+  border-radius: var(--r-sm);
+}
+
+/* The hop being dragged recedes onto the well, so its old place reads as vacated. */
+.models-chain__hop--dragging .models-chain__body {
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+/* The mockup's `.rail`: the ring and the line under it, in a 22px column. */
+.models-chain__rail {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  width: 1.375rem;
+}
+
+/*
+ * The mockup's `.idx`: the position in a violet ring on the model tint — the same pair the
+ * chip primitive draws its model tone from, so the ring and the primary's pill agree.
+ */
+.models-chain__idx {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-round);
+  background: var(--model-tint);
+  color: var(--model);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * The mockup's `.line`: a hairline from one ring to the next. Drawn as a border on a
+ * zero-width box rather than a 1px-wide box, because a hairline is a border and the sheet's
+ * px allowance is for exactly that.
+ */
+.models-chain__line {
+  flex: 1;
+  width: 0;
+  min-height: var(--sp-7);
+  border-inline-start: 1px solid var(--line-strong);
+}
+
+/* The mockup's `.hop-body`, with its 14px foot on every hop but the last. */
+.models-chain__body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: var(--sp-7);
+}
+
+.models-chain__hop:last-child .models-chain__body {
+  padding-bottom: 0;
+}
+
+/* The pill, the arrow line and — for a role that may edit — the handle before them. */
+.models-chain__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/*
+ * The handle that is dragged — the mockup's `.drag`, `cursor: grab` and all, on the one
+ * element in the product that is actually draggable.
+ */
+.models-chain__handle {
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+  cursor: grab;
+  user-select: none;
+}
+
+.models-chain__handle:hover {
+  color: var(--ink-mut);
+}
+
+.models-chain__handle:active {
+  cursor: grabbing;
+}
+
+/*
+ * The mockup's `.alias-res` after its arrow. Mono because every part of it is a value, and
+ * wrapping rather than clipped for the reason the matrix's line is.
+ */
+.models-chain__resolution {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The mockup's `.hop-meta`: the operator's note, small and faint, under the row. */
+.models-chain__meta {
+  margin-top: var(--sp-2);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* A hop's three buttons, wrapping under the row rather than crushing the resolution beside it. */
+.models-chain__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+/*
+ * Why a hop cannot be removed, printed beside the control that carries it as a title. In the
+ * muted ink rather than the error hue: nothing has failed, and the sentence is a rule.
+ */
+.models-chain__blocked {
+  flex-basis: 100%;
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The swap menu's trigger: the pill and a caret, as one press. Reset to nothing but its
+ * content, so the pill inside it is the pill the matrix draws and the button adds no chrome
+ * of its own — a control that looked different from the cell it edits would be a second
+ * vocabulary for one alias.
+ */
+.models-chain__swap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* The caret — decoration, aria-hidden — quieter than the pill it follows. */
+.models-chain__caret {
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+/* ---------- the alias menu (#202) ---------- */
+
+/* The trigger and its panel share an origin, so the panel opens from the trigger's edge. */
+.models-chain__menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/*
+ * The panel: the registry's import menu's own box (app/registry/registry.css), anchored to
+ * the trigger's start edge. The z-index is above the page and below the shell's own chrome,
+ * which owns the values in app/ui/chrome.ts. Wider than the import menu's because every row
+ * carries a resolution line, and floored so a workspace with short aliases still gets a menu
+ * a reader can land a pointer on.
+ */
+.models-chain__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--sp-4));
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 18rem;
+  max-width: 24rem;
+  max-height: 20rem;
+  padding: var(--sp-4);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/*
+ * One alias: the name, and what it resolves to on the line under it — the ticket's
+ * `→ resolves: claude-sonnet-5 · Anthropic`. A `button` reset to the row it should be.
+ */
+.models-chain__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.models-chain__option:hover,
+.models-chain__option:focus-visible {
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+
+/*
+ * The alias the hop names now — `aria-checked` — wears the rail the selected matrix row
+ * wears, so *this is where you already are* is said the same way twice on one page.
+ */
+.models-chain__option[aria-checked="true"] {
+  box-shadow: inset 3px 0 0 var(--model);
+}
+
+.models-chain__option-alias {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 500;
+}
+
+.models-chain__option-res {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* The panel's one sentence when it has no rows: on its way, could not be read, or empty. */
+.models-chain__menu-note {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.models-chain__menu-note--failed {
+  color: var(--err);
+}
+
+/* ---------- the chain's foot ---------- */
+
+/* Under the rail: **+ Add hop**, what the server refused, and the note about #203. */
+.models-chain__foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-7);
+  border-block-start: 1px solid var(--line);
+}
+
+/* The same list the matrix row prints, under the chain it is about. */
+.models-chain__problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's `small faint` footnote, for what the card does not hold yet. */
+.models-chain__note {
+  margin: 0;
   color: var(--ink-faint);
   font-size: var(--t-xs);
   line-height: var(--lh-body);

@@ -81,18 +81,6 @@ export interface ModelsReadings {
    * whose health strip is unreadable still gets its matrix, and the other way round.
    */
   readonly matrix: Reading<RoutingMatrix>;
-  /**
-   * How many routes have been changed and not yet saved — what **Save routes** is enabled
-   * by.
-   *
-   * Zero on every render today, and *structurally* so rather than by omission: nothing on
-   * this page can change a route until the matrix (AA.2,
-   * [#201](https://github.com/NobuData/ouroboros/issues/201)) and chain editing (AA.3,
-   * [#202](https://github.com/NobuData/ouroboros/issues/202)) land. Carrying it as a figure
-   * now is what lets the rule be the rule — see {@link saveRoutesReason} — instead of a
-   * disabled attribute somebody has to remember to remove.
-   */
-  readonly pending: number;
 }
 
 /* ------------------------------------------------------------------ the health strip */
@@ -281,8 +269,9 @@ export function utcStamp(iso: string | null): string | null {
  * changes**, and it is a rule rather than a constant for a reason worth stating: a save
  * button that is always enabled teaches its reader nothing about whether there is anything
  * to save, and one that is always *disabled* teaches them the page is broken. So the number
- * of staged changes decides, and AA.3 ([#202](https://github.com/NobuData/ouroboros/issues/202))
- * — which is what will produce a number above zero — changes nothing here.
+ * of staged changes decides. AA.1 wrote the rule with nothing to count; the number is the
+ * route editor's `pending` since AA.3 ([#202](https://github.com/NobuData/ouroboros/issues/202))
+ * — client state, read by `app/models/save-routes-button.tsx` — and the rule did not change.
  *
  * The string is the *explanation*, because that is how a control is switched off in this
  * product: `Button`'s `reason` sets `aria-disabled` and becomes the tooltip, so an inert

@@ -249,10 +249,11 @@ export interface MatrixRow {
 /**
  * The matrix, decided row by row.
  *
- * **The server's order is kept.** `taskKinds` arrives in the order the matrix draws them and
- * `sortOrder` is carried on each row for AA.3 ([#202](https://github.com/NobuData/ouroboros/issues/202))
- * to reorder by; sorting again here would be a second opinion about row order, and the two
- * would differ the first time two kinds shared a `sortOrder`.
+ * **The server's order is kept.** `taskKinds` arrives in the order the matrix draws them;
+ * sorting again here by `sortOrder` would be a second opinion about row order, and the two
+ * would differ the first time two kinds shared one. (AA.3, [#202](https://github.com/NobuData/ouroboros/issues/202),
+ * reorders *hops within a chain* and leaves the rows where the server put them — the save
+ * contract carries no row order.)
  *
  * @param taskKinds Every task kind, in the order to draw them.
  * @param rules Every escalation rule in the workspace.
@@ -358,17 +359,19 @@ export const MATRIX_CAPTION = "Task kinds and the routes they resolve through";
 
 /**
  * The hint the mockup prints in the card head — *"drag ⠿ to reorder fallback chains"* — as
- * an honest one.
+ * the product does it.
  *
- * The handle column is drawn (AA.3 wires it), so the hint has to say what the handle does
- * *today*, which is nothing. Naming the issue is what makes it a usable answer to *when?*
- * rather than the word *soon* — the same treatment the sidebar gives an unbuilt module
- * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.5).
+ * The mockup's sentence, with the one fact it leaves out: *where*. The matrix's own ⠿ is a
+ * shortcut into the editor for the row it is on; the handles that reorder are the hops' own,
+ * in the route card beside the table (AA.3, [#202](https://github.com/NobuData/ouroboros/issues/202)),
+ * and the keyboard's path — the move buttons — is named in the same breath so the hint is not
+ * a pointer-only instruction.
  *
- * It is the handle's `title` as well as the card head's line — one sentence, so a reader who
- * hovers a handle and a reader who reads the head are told the same thing.
+ * Drawn for a role that may edit and for nobody else: a member's matrix has no handle column
+ * to explain.
  */
-export const REORDER_HINT = "Reordering fallback chains arrives with #202.";
+export const REORDER_HINT =
+  "Select a row, then drag ⠿ in the route card — or use its move buttons — to reorder the chain.";
 
 /** What the matrix says to a workspace whose routing foundations have not been seeded. */
 export const NO_KINDS_TITLE = "No task kinds are configured";
@@ -383,6 +386,13 @@ export const NO_KINDS_NOTE =
 export const MATRIX_FAILED_TITLE = "The routing matrix could not be read";
 
 /* ------------------------------------------------------------------ the inspector's seat */
+
+/*
+ * The seat holds the selected route's chain since AA.3 (#202) — `app/models/chain-editor.tsx`
+ * over `app/models/chain.ts` — and what it still does not hold, the policy switches and the
+ * cost cap, is said there (`POLICY_NOTE`) rather than here. What is left below is the card's
+ * title and its two empty states.
+ */
 
 /**
  * The inspector card's title while nothing is selected.
@@ -412,21 +422,3 @@ export const INSPECTOR_EMPTY_NOTE =
   "Choose a row in the routing matrix — click it, or move through the rows with the arrow " +
   "keys — and its route appears here.";
 
-/**
- * What the seat says once a row *is* chosen: which route it is holding, and that the panel
- * itself is not built.
- *
- * The selection is real, is reflected in the URL and survives a reload; the chain, the policy
- * switches and the cost cap it will be read against are AA.4's
- * ([#203](https://github.com/NobuData/ouroboros/issues/203)). Drawing an invented chain here
- * would be indistinguishable, in a screenshot, from the real one AA.4 ships.
- *
- * @param kind The selected task kind.
- * @returns The sentence.
- */
-export function inspectorNote(kind: string): string {
-  return (
-    `The chain, policy switches and cost cap for ${kind} arrive with the route inspector ` +
-    "(#203). The selection is live: it is in this page's address, so a reload keeps it."
-  );
-}

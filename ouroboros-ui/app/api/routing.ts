@@ -1,7 +1,7 @@
 /**
  * Model routing — what mockup 06's `/models` surface reads from `ouroboros-rest`.
  *
- * Two reads and three writes. The provider health strip
+ * Three reads and four writes. The provider health strip
  * ([#196](https://github.com/NobuData/ouroboros/issues/196)) is what AA.1
  * ([#200](https://github.com/NobuData/ouroboros/issues/200)) draws above the matrix; the
  * matrix itself ([#195](https://github.com/NobuData/ouroboros/issues/195), with its numerics
@@ -9,8 +9,10 @@
  * ([#201](https://github.com/NobuData/ouroboros/issues/201)) draws below it, and the rules
  * card AA.5 ([#204](https://github.com/NobuData/ouroboros/issues/204)) draws beside it is
  * where the three writes come from — a rule's switch, a new rule, and a rule removed — with
- * the registry list its builder chooses aliases from. They are one page's calls to one tag,
- * which is why they are one module; the inspector's simulate call is AA.4's
+ * the registry list its builder chooses aliases from — and the fourth write is **Save routes**
+ * itself, the batch AA.3 ([#202](https://github.com/NobuData/ouroboros/issues/202)) commits
+ * after the chain editor has staged its edits. They are one page's calls to one tag, which is
+ * why they are one module; the inspector's simulate call is AA.4's
  * ([#203](https://github.com/NobuData/ouroboros/issues/203)) and belongs here beside them
  * when it arrives.
  *
@@ -196,6 +198,29 @@ export type UpdateEscalationRule = components["schemas"]["UpdateEscalationRule"]
  */
 export type RoutingAlias = components["schemas"]["RoutingAlias"];
 
+/* ------------------------------------------------------------------ Save routes */
+
+/**
+ * One entry of a **Save routes** batch: a task kind, the chain as an array, and the policy
+ * triple.
+ *
+ * **The chain is the array.** There are no positions in the request — hop order is array
+ * order, and the server numbers them densely from 1 — and a hop names an alias, never a raw
+ * model id (decision M1). **All three policy fields are required**: a `PUT` has no
+ * leave-this-alone case, so a chain edit sends the floor and the cap it did not touch, and
+ * `null` is how *off* and *no cap* are said.
+ */
+export type SaveRouteInput = components["schemas"]["SaveRouteInput"];
+
+/** One hop of a batch entry: its alias, and the inspector's note or `null`. */
+export type RouteHopInput = components["schemas"]["RouteHopInput"];
+
+/**
+ * What a save answers with: the revision it wrote — **`null`** when the batch changed nothing —
+ * and the routes as they now stand, re-read after the commit rather than echoed back.
+ */
+export type SaveRoutesResult = components["schemas"]["SaveRoutesResult"];
+
 /* ------------------------------------------------------------------ the spend card */
 
 /**
@@ -269,6 +294,29 @@ export const routing = {
    */
   async aliases(client: ApiClient = api()): Promise<readonly RoutingAlias[]> {
     return unwrap(await client.GET("/api/v1/routing/aliases", {})).aliases;
+  },
+
+  /**
+   * Commit one press of **Save routes** — the whole staged batch, atomically.
+   *
+   * Every route in the body is written or none is: the contract decides every refusal before
+   * the transaction opens, so a `422` here means *nothing was saved*, and a corrected batch is
+   * re-sent rather than reconciled. Its `details.routes` is keyed by **task kind**, which is
+   * what lets the matrix mark exactly the row that was refused.
+   *
+   * @param routes The changed routes, and only those — a route nobody edited is a route the
+   *   server is not asked to rewrite.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The revision written, or `null` for a batch that changed nothing, and the routes
+   *   as re-read.
+   * @throws {ApiError} What the service answered — `403 forbidden` for a role that may read
+   *   the matrix and not write it, `422 route_save_invalid` naming the routes it refused.
+   */
+  async saveRoutes(
+    routes: readonly SaveRouteInput[],
+    client: ApiClient = api(),
+  ): Promise<SaveRoutesResult> {
+    return unwrap(await client.PUT("/api/v1/routing/routes", { body: { routes: [...routes] } }));
   },
 
   /**

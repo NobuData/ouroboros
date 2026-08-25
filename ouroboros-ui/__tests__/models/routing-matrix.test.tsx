@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CHANGED, NO_ROUTE_NOTE, POLICY_NOTE, editChainHint, savedRoutes } from "@/app/models/chain";
 import {
   EM_DASH,
   INSPECTOR_EMPTY_TITLE,
@@ -12,24 +13,20 @@ import {
   selectionAnnouncement,
   type MatrixRow,
 } from "@/app/models/matrix";
-import { RoutingMatrix } from "@/app/models/routing-matrix";
 
-import {
-  seededRules,
-  seededTaskKinds,
-  unmeasuredMatrix,
-} from "../helpers/models";
+import { seededRules, seededTaskKinds, unmeasuredMatrix } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 
 /**
  * The routing matrix as it is drawn (#201) — mockup 06's densest region, and the selection
- * that drives the inspector.
+ * that drives the route card beside it; and, since #202, the marks an edit leaves on a row and
+ * the shortcut in the handle column.
  *
  * What every cell *says* is `matrix.test.ts`'s, decided as functions over the dev seed's own
  * rows. What is here is what only a render can show: that the eight rows come out as the
  * mockup draws them, that selection is a real state with a real address, that the keyboard
- * reaches every row, and that a workspace which has run nothing gets em-dashes without the
- * table falling apart.
+ * reaches every row, that a workspace which has run nothing gets em-dashes without the table
+ * falling apart, and that an edit made in the route card shows in the row it is about.
  *
  * ### What a render test in this module can and cannot prove about the palettes
  *
@@ -40,8 +37,25 @@ import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/pale
  * JavaScript from the theme.
  */
 
+// The editor's save and the menus' registry read sit on the server-only client; both are
+// other suites' subjects (`route-actions.test.ts`, `alias-menu.test.tsx`).
+vi.mock("@/app/models/route-actions", () => ({ saveRoutes: vi.fn() }));
+vi.mock("@/app/models/rule-actions", () => ({
+  readRuleTargets: vi.fn().mockResolvedValue({ ok: true, aliases: [] }),
+  setRuleEnabled: vi.fn(),
+  addRule: vi.fn(),
+  removeRule: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
+const { RoutingMatrix } = await import("@/app/models/routing-matrix");
+const { RouteEditorProvider } = await import("@/app/models/route-editor");
+
 /** The seeded matrix's rows, decided. */
 const ROWS: readonly MatrixRow[] = matrixRows(seededTaskKinds(), seededRules());
+
+/** The seeded routes, as the screen hands them to the editor. */
+const ROUTES = savedRoutes(seededTaskKinds());
 
 /**
  * Where these tests pretend to be, so an assertion about the address bar is about `/models`.
@@ -60,17 +74,31 @@ afterEach(() => {
 });
 
 /**
- * The matrix, rendered.
+ * The matrix, rendered under an editor.
  *
  * @param props.rows Which rows. Defaults to the seeded eight.
  * @param props.selected Which row the URL asked for. Defaults to none.
+ * @param props.editable Whether the reader may edit. Defaults to yes — the mockup is drawn
+ *   for an owner.
+ * @param props.aside What stands under the route card.
  * @returns The Testing Library render result.
  */
 function matrix({
   rows = ROWS,
   selected = null,
-}: { rows?: readonly MatrixRow[]; selected?: string | null } = {}) {
-  return render(<RoutingMatrix rows={rows} selected={selected} />);
+  editable = true,
+  aside,
+}: {
+  rows?: readonly MatrixRow[];
+  selected?: string | null;
+  editable?: boolean;
+  aside?: React.ReactNode;
+} = {}) {
+  return render(
+    <RouteEditorProvider editable={editable} routes={ROUTES}>
+      <RoutingMatrix aside={aside} rows={rows} selected={selected} />
+    </RouteEditorProvider>,
+  );
 }
 
 /** Every body row, in order. */
@@ -89,6 +117,11 @@ function rowFor(kind: string): HTMLElement {
 /** What the address bar's `?route=` currently says. */
 function reflected(): string | null {
   return new URL(window.location.href).searchParams.get(ROUTE_PARAM);
+}
+
+/** Every live region's text. */
+function announced(): string[] {
+  return screen.getAllByRole("status").map((region) => region.textContent ?? "");
 }
 
 describe("the matrix, row for row", () => {
@@ -143,11 +176,11 @@ describe("the matrix, row for row", () => {
     expect(within(rowFor("plan")).getByText(EM_DASH)).toBeInTheDocument();
   });
 
-  it("heads the seven columns the mockup does", () => {
+  it("heads the seven columns the mockup does, for a role that may edit", () => {
     matrix();
 
     expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
-      "Reorder",
+      "Edit",
       "Task",
       "Primary model",
       "Fallback",
@@ -270,10 +303,11 @@ describe("the address bar, which is what makes a selection survive a reload", ()
 describe("the keyboard", () => {
   it("puts exactly one row in the tab order", () => {
     // A `tabIndex` on every row would put eight stops in the tab sequence of a page that
-    // should have one.
+    // should have one — and the handle column's shortcut adds none (see below).
     matrix({ selected: "implement" });
 
     expect(bodyRows().filter((row) => row.tabIndex === 0)).toEqual([rowFor("implement")]);
+    expect(within(screen.getByRole("grid")).queryAllByRole("button").filter((b) => b.tabIndex === 0)).toEqual([]);
   });
 
   it("holds that one tab stop on the first row while nothing is selected", () => {
@@ -363,7 +397,7 @@ describe("what is announced", () => {
 
     fireEvent.click(rowFor("review"));
 
-    expect(screen.getByRole("status")).toHaveTextContent(selectionAnnouncement("review"));
+    expect(announced()).toContain(selectionAnnouncement("review"));
   });
 
   it("keeps the region in the document while nothing is selected, so the first move is heard", () => {
@@ -375,7 +409,7 @@ describe("what is announced", () => {
   });
 });
 
-describe("the inspector's seat", () => {
+describe("the route card", () => {
   it("says how to choose a route while none is chosen", () => {
     matrix();
 
@@ -401,27 +435,137 @@ describe("the inspector's seat", () => {
     ).toBeInTheDocument();
   });
 
-  it("names the issue that builds it rather than drawing a chain nobody resolved", () => {
+  it("draws the selected route's chain — the mockup's three numbered hops (#202)", () => {
     matrix({ selected: "implement" });
 
+    const chain = screen.getByRole("list", { name: "Chain" });
+    const hops = within(chain).getAllByRole("listitem");
+
+    expect(hops).toHaveLength(3);
+    expect(hops[0]).toHaveTextContent("coder-max");
+    expect(hops[1]).toHaveTextContent("coder-fallback");
+    expect(hops[2]).toHaveTextContent("local-docs");
+    expect(within(chain).getByText("→ claude-fable-5 · Anthropic Claude")).toBeInTheDocument();
+  });
+
+  it("names the issue that brings the policy switches rather than drawing a mock-up of them", () => {
+    matrix({ selected: "implement" });
+
+    expect(screen.getByText(POLICY_NOTE)).toBeInTheDocument();
     expect(screen.getByText(/#203/)).toBeInTheDocument();
+  });
+
+  it("says so for a selected kind that has no route", () => {
+    const rows = matrixRows(
+      seededTaskKinds().map((kind) => (kind.name === "docs" ? { ...kind, route: null } : kind)),
+      seededRules(),
+    );
+    matrix({ rows, selected: "docs" });
+
+    expect(screen.getByRole("heading", { level: 2, name: "Route" })).toBeInTheDocument();
+    expect(screen.getByText(NO_ROUTE_NOTE)).toBeInTheDocument();
   });
 });
 
-describe("the drag handle, which is drawn and inert", () => {
-  it("is kept out of the accessibility tree, because it is not a control yet", () => {
-    matrix();
+describe("the marks an edit leaves (#202)", () => {
+  it("redraws the row's model columns from the draft, and marks the row changed", () => {
+    matrix({ selected: "implement" });
 
-    const handle = within(rowFor("analyze")).getByTitle(REORDER_HINT);
+    fireEvent.click(screen.getByRole("button", { name: "Move coder-max down" }));
 
-    expect(handle).toHaveAttribute("aria-hidden", "true");
+    const row = within(rowFor("implement"));
+    const cells = row.getAllByRole("cell");
+
+    expect(cells[2]).toHaveTextContent("coder-fallback");
+    expect(cells[2]).toHaveTextContent("gpt-5-codex · GitHub Copilot");
+    expect(cells[3]).toHaveTextContent("coder-max");
+    expect(row.getByText(CHANGED)).toBeInTheDocument();
+    expect(within(rowFor("plan")).queryByText(CHANGED)).not.toBeInTheDocument();
   });
 
-  it("says which issue wires it, rather than the word soon", () => {
+  it("marks the route card too, beside its title", () => {
+    matrix({ selected: "implement" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Move coder-max down" }));
+
+    const head = screen.getByRole("heading", { level: 2, name: "Route — implement-primary" }).parentElement;
+
+    expect(within(head as HTMLElement).getByText(CHANGED)).toBeInTheDocument();
+  });
+
+  it("leaves the figures and the summaries as the server sent them — an edit changes no cost", () => {
+    matrix({ selected: "implement" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Move coder-max down" }));
+
+    const row = within(rowFor("implement"));
+
+    expect(row.getByText("$0.87")).toBeInTheDocument();
+    expect(row.getByText("effort ≥ L → implement uses coder-max (max thinking)")).toBeInTheDocument();
+  });
+});
+
+describe("the handle column's shortcut (#202)", () => {
+  it("is a named button on every routed row, out of the tab order", () => {
     matrix();
 
-    expect(REORDER_HINT).toMatch(/#202/);
+    for (const kind of ["analyze", "implement", "commit-msg"]) {
+      const shortcut = within(rowFor(kind)).getByRole("button", { name: editChainHint(kind) });
+
+      expect(shortcut).toHaveAttribute("tabindex", "-1");
+      expect(shortcut).toHaveTextContent("⠿");
+    }
+  });
+
+  it("selects the row and puts focus in its chain", () => {
+    matrix();
+
+    fireEvent.click(within(rowFor("plan")).getByRole("button", { name: editChainHint("plan") }));
+
+    expect(screen.getByRole("row", { selected: true })).toBe(rowFor("plan"));
+    expect(reflected()).toBe("plan");
+    expect(screen.getByRole("list", { name: "Chain" })).toContainElement(document.activeElement as HTMLElement);
+  });
+
+  it("draws no shortcut on a row with no route to edit", () => {
+    const rows = matrixRows(
+      seededTaskKinds().map((kind) => (kind.name === "docs" ? { ...kind, route: null } : kind)),
+      seededRules(),
+    );
+    matrix({ rows });
+
+    expect(within(rowFor("docs")).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("prints the mockup's hint in the card head, naming the keyboard's path as well", () => {
+    matrix();
+
     expect(screen.getByText(REORDER_HINT)).toBeInTheDocument();
+    expect(REORDER_HINT).toMatch(/⠿/);
+    expect(REORDER_HINT).toMatch(/move buttons/);
+  });
+});
+
+describe("a role that may not edit — read-only as a rendering mode (#202)", () => {
+  it("draws six columns: no handle column, and no hint to explain one", () => {
+    matrix({ editable: false });
+
+    expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "Task",
+      "Primary model",
+      "Fallback",
+      "Escalation",
+      "$/run avg",
+      "p50 latency",
+    ]);
+    expect(screen.queryByText(REORDER_HINT)).not.toBeInTheDocument();
+  });
+
+  it("draws the selected route's chain with nothing that looks like a control", () => {
+    matrix({ editable: false, selected: "implement" });
+
+    expect(within(screen.getByRole("list", { name: "Chain" })).getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
 
@@ -438,15 +582,22 @@ describe("the shell's scroll rule", () => {
 
 describe("both palettes", () => {
   it.each(PALETTES)("renders the matrix in the %s palette", (palette) => {
-    renderInPalette(palette, <RoutingMatrix rows={ROWS} selected="implement" />);
+    renderInPalette(
+      palette,
+      <RouteEditorProvider editable routes={ROUTES}>
+        <RoutingMatrix rows={ROWS} selected="implement" />
+      </RouteEditorProvider>,
+    );
 
     expect(document.documentElement).toHaveAttribute("data-theme", palette);
     expect(screen.getByRole("row", { selected: true })).toHaveClass("ou-table__row--selected");
   });
 
-  it("draws the same markup in both, selection included", () => {
+  it("draws the same markup in both, selection and chain included", () => {
     const [light, dark] = renderInBothPalettes(
-      <RoutingMatrix rows={ROWS} selected="implement" />,
+      <RouteEditorProvider editable routes={ROUTES}>
+        <RoutingMatrix rows={ROWS} selected="implement" />
+      </RouteEditorProvider>,
     );
 
     expect(light).toBe(dark);
@@ -454,8 +605,8 @@ describe("both palettes", () => {
 });
 
 describe("the right column's aside (#204)", () => {
-  it("draws what it is handed under the inspector's seat, in the same column", () => {
-    render(<RoutingMatrix aside={<p data-testid="aside">cards</p>} rows={ROWS} selected={null} />);
+  it("draws what it is handed under the route card, in the same column", () => {
+    matrix({ aside: <p data-testid="aside">cards</p> });
 
     const column = document.querySelector(".models-aside") as HTMLElement;
 
@@ -477,7 +628,7 @@ describe("the right column's aside (#204)", () => {
     }
     const aside = <Counter />;
 
-    render(<RoutingMatrix aside={aside} rows={ROWS} selected={null} />);
+    matrix({ aside });
     const before = renders;
 
     fireEvent.click(screen.getAllByRole("row")[1]);

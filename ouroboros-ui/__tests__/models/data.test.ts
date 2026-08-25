@@ -173,23 +173,13 @@ describe("one failed read is one degraded region", () => {
 });
 
 describe("what Save routes is enabled by", () => {
-  it("reports nothing pending, because nothing on this page can change a route yet", async () => {
-    // Structurally zero rather than absent: the figure is carried so that
-    // `saveRoutesReason` stays the one rule deciding the control's state, and AA.3 (#202)
-    // supplies a real number without anything here needing to change.
+  it("is not read here, because it is the browser's own count of unsaved edits", async () => {
+    // AA.1 carried `pending: 0` as a placeholder for the rule; AA.3 (#202) made the number
+    // client state the route editor holds, and a read that reported it would be a second
+    // answer to a question only the browser can answer. The reader hands over the two
+    // readings and nothing else.
     const readings = await readModels(ACCESS);
 
-    expect(readings.pending).toBe(0);
-  });
-
-  it("still reports it when the strip could not be read", async () => {
-    // The two are independent: a failed health read says nothing about whether there is a
-    // draft to save, and a page that disabled the save button *because* of it would be
-    // explaining the wrong thing.
-    providers.mockRejectedValue(new ApiError(503, "unavailable", "Down."));
-
-    const readings = await readModels(ACCESS);
-
-    expect(readings.pending).toBe(0);
+    expect(Object.keys(readings).sort()).toEqual(["matrix", "providers"]);
   });
 });

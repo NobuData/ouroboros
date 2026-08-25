@@ -63,13 +63,9 @@ export async function readModels(access: Workspace): Promise<ModelsReadings> {
     attempt(async () => routing.matrix()),
   ]);
 
-  return {
-    providers,
-    matrix,
-    // Zero until there is something on this page that can *change* a route. The matrix
-    // (AA.2, #201) draws routes and selects one; editing them is chain editing's (AA.3,
-    // #202), and a figure above zero arrives with it. The figure is carried rather than
-    // assumed so that `saveRoutesReason` stays the one rule deciding the control's state.
-    pending: 0,
-  };
+  // What **Save routes** is enabled by is not read here: it is the number of routes the
+  // reader has changed in the browser (AA.3, #202), which is client state the route editor
+  // holds, and a read that reported it would be a second answer to a question only the
+  // browser can answer.
+  return { providers, matrix };
 }
