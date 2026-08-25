@@ -59,6 +59,7 @@ import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryModule } from "../registry/registry.module";
+import { RoutingStatsRepository } from "../routing/stats.repository";
 import { VaultModule } from "../vault/vault.module";
 import { ProviderAudit } from "./connection.audit";
 import { ProviderConnectionsController } from "./provider-connections.controller";
@@ -77,6 +78,11 @@ import { StepUpRegistry, StepUpService } from "./step-up";
     RevealLimiter,
     StepUpRegistry,
     StepUpService,
+    // Z.5's aggregation, registered here as well as in `RoutingModule` so the cards' monthly
+    // meters (#228) are computed by the one statement that computes the routing card's — see
+    // `spend.ts`. A second class here would be a second `sum(cost_cents)` about one invoice;
+    // a second *instance* of the same class holds no state and can disagree with nothing.
+    RoutingStatsRepository,
   ],
 })
 export class ProviderConnectionsModule {}

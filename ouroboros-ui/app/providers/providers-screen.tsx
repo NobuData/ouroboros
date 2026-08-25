@@ -3,20 +3,25 @@ import { Card, EmptyState } from "@/app/ui";
 
 import { AddProviderButton, AddProviderFlow, BrowseCatalogButton } from "./add-provider";
 import { AuditTrail } from "./audit-trail";
-import { ADD_CARD_NOTE } from "./catalog";
 import {
-  PROVIDERS_NEXT_NOTE,
-  PROVIDERS_NEXT_TITLE,
-  PROVIDERS_TITLE,
-  providersSubline,
-} from "./view";
+  GRID_LABEL,
+  NO_PROVIDERS_NOTE,
+  NO_PROVIDERS_TITLE,
+  PROVIDERS_UNAVAILABLE,
+  cardModel,
+} from "./cards";
+import { ADD_CARD_NOTE } from "./catalog";
+import type { ProvidersReadings } from "./data";
+import { ProviderCard } from "./provider-card";
+import { PROVIDERS_TITLE, providersSubline } from "./view";
 
 import "./providers.css";
 
 /**
- * The `/models/providers` frame ([#227](https://github.com/NobuData/ouroboros/issues/227)) —
- * `docs/mockups/07-providers.html`'s page head and tab set as a working page, with the
- * add-provider flow ([#231](https://github.com/NobuData/ouroboros/issues/231)) mounted on it.
+ * The `/models/providers` screen ([#227](https://github.com/NobuData/ouroboros/issues/227)):
+ * `docs/mockups/07-providers.html`'s page head and tab set, the add-provider flow
+ * ([#231](https://github.com/NobuData/ouroboros/issues/231)) mounted on it, and — since AE.2
+ * ([#228](https://github.com/NobuData/ouroboros/issues/228)) — the card grid below.
  *
  * It renders **inside the app shell** and inside the Models section's own frame
  * (`app/models/models-frame.tsx`), so it starts at its page head, contributes no chrome of its
@@ -27,44 +32,31 @@ import "./providers.css";
  *
  * It is a component rather than markup written in the route, for the reason every screen in
  * this module is: everything it draws can be rendered and asserted on without Next.js's
- * routing around it. The route gates (`app/(app)/models/providers/page.tsx`), two pure modules
- * hold the decisions (`app/providers/view.ts` for the page and the trail,
- * `app/providers/catalog.ts` for the add flow), and this draws.
+ * routing around it. The route gates and reads (`app/(app)/models/providers/page.tsx`,
+ * `app/providers/data.ts`), three pure modules hold the decisions (`view.ts` for the page and
+ * the trail, `catalog.ts` for the add flow, `cards.ts` for the cards), and this draws.
  *
- * ### Two small things and one that matters
+ * ### The head, and the sentence that is not this page's
  *
- * The small things are the route and the head. The head's subline is the exception: it is the
- * sentence that makes the security claim, and its wording is **not this page's to choose** —
- * `providersSubline` renders `docs/SECURITY_MODEL.md` § 7.2 with the workspace's name in it,
- * and nothing here paraphrases it. The mockup's own line, about workers seeing short-lived
- * tokens, describes a system this is not.
+ * The head's subline is the exception to everything being the page's: it is the sentence that
+ * makes the security claim, and its wording is **not this page's to choose** —
+ * `providersSubline` renders `docs/SECURITY_MODEL.md` § 7.2 with the workspace's name in it.
  *
- * The thing that matters is the tab set, and it is not this file's at all: the frame draws
- * it from the one list both pages share, so *Providers & keys* being live here is the same
- * fact as it being live on `/models` — the amendment AA.1 (#200) was filed expecting.
+ * ### The grid is one component, drawn per connection
  *
- * ### The two actions, and the dashed card
+ * `ProviderCard` is composed by `cards.ts`'s `cardModel` from five readings joined here: the
+ * connection, its catalog entry (by kind), its row on the health strip (by id), its month's
+ * spend (by kind), and its models (by id). Each join is a lookup that answers `null` when the
+ * reading failed or has no row, and the card draws every null as a state — which is how one
+ * failed read degrades one region of every card rather than the page. The listing failing is
+ * the one read the grid cannot survive, and it says so where the grid would be.
  *
- * **Audit log** is AD.4's (`app/providers/audit-trail.tsx`): the ghost action and its sheet
- * as one element, reading the workspace's credential trail when pressed. **+ Add provider**
- * is AE.5's, and so is the dashed card's **Browse catalog** below the tab set: two openers of
- * *one* dialog, which is why the whole frame sits inside `AddProviderFlow` — the dialog and
- * its state live there once, and each opener reaches it through the flow's context from
- * wherever the mockup draws it. For a reader who may not connect a provider, both openers
- * are inert with the reason (`Button`'s `reason`), and the flow never opens; the gate that
- * *enforces* is the service's.
+ * The dashed add card is the grid's last item, as the mockup draws it, and it is real
+ * because what it opens is. A workspace that has connected nothing draws the empty state
+ * beside it rather than a grid of nothing.
  *
- * ### What this page does not pretend
- *
- * Below the tab set is where the five provider cards go, and they are AE.2's (#228). The
- * space carries an empty state naming the issues that fill it rather than a grid of invented
- * cards — § 3.5 applied to a frame: a surface that is not ready is **labelled**, never dead,
- * and never a mock-up of itself. The dashed card beside it is real, because what it opens is.
- *
- * A Server Component. It reads nothing: the two reads on this page — the trail, and the
- * catalog — are each behind a button and happen when somebody presses it
- * (`audit-actions.ts` and `add-actions.ts` say why then rather than on page load), and the
- * workspace's name and the reader's role arrive from the gate.
+ * A Server Component. The reads are the route's (`readProviders`); the two behind buttons —
+ * the trail, the catalog — happen when somebody presses them.
  */
 
 /** What the screen takes. */
@@ -72,11 +64,14 @@ export interface ProvidersScreenProps {
   /** The active workspace's display name, for the subline's slot. */
   readonly workspaceName: string;
   /**
-   * Whether this reader may connect a provider — `app/api/membership.ts`'s `mayAdminister`,
-   * decided once by the route from the membership the gate resolved. A boolean rather than a
-   * role, so there is one place deciding what a role may do.
+   * Whether this reader may connect a provider or press a card's switch —
+   * `app/api/membership.ts`'s `mayAdminister`, decided once by the route from the membership
+   * the gate resolved. A boolean rather than a role, so there is one place deciding what a
+   * role may do.
    */
   readonly mayAdminister: boolean;
+  /** Everything the cards are drawn from — see `app/providers/data.ts`. */
+  readonly readings: ProvidersReadings;
 }
 
 /**
@@ -85,7 +80,7 @@ export interface ProvidersScreenProps {
  * @param props See {@link ProvidersScreenProps}.
  * @returns The screen.
  */
-export function ProvidersScreen({ workspaceName, mayAdminister }: ProvidersScreenProps) {
+export function ProvidersScreen({ workspaceName, mayAdminister, readings }: ProvidersScreenProps) {
   return (
     <AddProviderFlow mayAdminister={mayAdminister}>
       <ModelsFrame
@@ -104,23 +99,89 @@ export function ProvidersScreen({ workspaceName, mayAdminister }: ProvidersScree
           </>
         }
       >
-        <Card className="models__next" fill>
-          <EmptyState fill note={PROVIDERS_NEXT_NOTE} title={PROVIDERS_NEXT_TITLE} />
-        </Card>
-
-        {/*
-          Mockup 07's dashed add-provider card. A `div` rather than a region: it is one
-          action with a line of prose over it, and a landmark for that would be a landmark
-          for a button.
-        */}
-        <Card className="providers-add-card">
-          <span aria-hidden="true" className="providers-add-card__plus">
-            +
-          </span>
-          <p className="providers-add-card__note">{ADD_CARD_NOTE}</p>
-          <BrowseCatalogButton />
-        </Card>
+        <ProviderGrid mayAdminister={mayAdminister} readings={readings} />
       </ModelsFrame>
     </AddProviderFlow>
+  );
+}
+
+/**
+ * The grid: one card per connection, then the dashed add card — or what stands where the
+ * cards would be.
+ *
+ * @param props.readings The readings.
+ * @param props.mayAdminister Whether this reader may press a switch.
+ * @returns The grid.
+ */
+function ProviderGrid({
+  readings,
+  mayAdminister,
+}: Readonly<{ readings: ProvidersReadings; mayAdminister: boolean }>) {
+  const { connections } = readings;
+
+  if (!connections.ok) {
+    return (
+      <div aria-label={GRID_LABEL} className="providers-grid" role="region">
+        <p className="providers-grid__state providers-grid__state--failed" role="status">
+          <span className="providers-grid__state-head">{PROVIDERS_UNAVAILABLE}</span>{" "}
+          {connections.reason}
+        </p>
+        <AddCard />
+      </div>
+    );
+  }
+
+  const now = new Date(readings.now);
+  const entries = new Map(
+    readings.catalog.ok ? readings.catalog.value.map((entry) => [entry.kind, entry]) : [],
+  );
+  const health = new Map(
+    readings.health.ok ? readings.health.value.map((row) => [row.id, row]) : [],
+  );
+  const spend = new Map(
+    readings.spend.ok ? readings.spend.value.providers.map((row) => [row.kind, row]) : [],
+  );
+
+  return (
+    <div aria-label={GRID_LABEL} className="providers-grid" role="region">
+      {connections.value.length === 0 && (
+        <Card className="providers-grid__empty" fill>
+          <EmptyState fill note={NO_PROVIDERS_NOTE} title={NO_PROVIDERS_TITLE} />
+        </Card>
+      )}
+      {connections.value.map((connection) => (
+        <ProviderCard
+          key={connection.id}
+          mayAdminister={mayAdminister}
+          model={cardModel({
+            connection,
+            entry: entries.get(connection.kind) ?? null,
+            health: health.get(connection.id) ?? null,
+            spend: spend.get(connection.kind) ?? null,
+            models: readings.models.get(connection.id) ?? null,
+            now,
+          })}
+        />
+      ))}
+      <AddCard />
+    </div>
+  );
+}
+
+/**
+ * Mockup 07's dashed add-provider card. A `div` rather than a region: it is one action with a
+ * line of prose over it, and a landmark for that would be a landmark for a button.
+ *
+ * @returns The card.
+ */
+function AddCard() {
+  return (
+    <Card className="providers-add-card">
+      <span aria-hidden="true" className="providers-add-card__plus">
+        +
+      </span>
+      <p className="providers-add-card__note">{ADD_CARD_NOTE}</p>
+      <BrowseCatalogButton />
+    </Card>
   );
 }

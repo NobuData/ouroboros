@@ -71,8 +71,18 @@ export interface ProviderConnectionResource {
    * computed from bytes rather than from a string.
    */
   readonly mask: string | null;
-  /** `"user".id` of whoever connected it — the card's *Added by Ken* — or null. */
+  /** `"user".id` of whoever connected it, or null. */
   readonly addedBy: string | null;
+  /**
+   * Their display name — the card's *Added by Ken* — or null.
+   *
+   * Resolved by the service from `"user"` at read time rather than stored on the row, so a
+   * person who renames themselves is named correctly on every card. Null when {@link addedBy}
+   * is null, and also when the id names nobody this installation still has: the card then
+   * draws an em-dash rather than an id, which is the same rule the audit trail's `actorName`
+   * keeps. Added by AE.2 ([#228](https://github.com/NobuData/ouroboros/issues/228)).
+   */
+  readonly addedByName: string | null;
   /** When the last health check finished, ISO 8601, or null until one has. */
   readonly lastCheckedAt: string | null;
   /** When something last invoked through it, ISO 8601, or null for *never used*. */
@@ -119,11 +129,15 @@ export interface RevealResource {
  * @param mask - The masked credential from `masking.ts`, or null when the connection stores
  *   none. Passed in rather than derived, because deriving it needs the vault and this file
  *   holds nothing.
+ * @param addedByName - The display name of whoever `added_by` names, or null. Passed in for
+ *   the reason the mask is: resolving it is a read of another table, and this file reads
+ *   nothing.
  * @returns The resource.
  */
 export function connectionResource(
   row: ConnectionRow,
   mask: string | null,
+  addedByName: string | null,
 ): ProviderConnectionResource {
   return {
     id: row.id,
@@ -136,6 +150,7 @@ export function connectionResource(
     monthlyCapCents: row.monthly_cap_cents,
     mask,
     addedBy: row.added_by,
+    addedByName,
     lastCheckedAt: row.last_checked_at?.toISOString() ?? null,
     lastUsedAt: row.last_used_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),

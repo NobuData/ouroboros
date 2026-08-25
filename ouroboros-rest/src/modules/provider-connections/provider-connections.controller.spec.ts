@@ -16,6 +16,7 @@ import { ProviderConnectionsController } from "./provider-connections.controller
 import type { ProviderConnectionsService } from "./provider-connections.service";
 import type { ProviderCatalogResource } from "./catalog";
 import type { ProviderConnectionResource } from "./resources";
+import type { ProviderMonthlySpendResource } from "./spend";
 
 /**
  * What a controller spec in this service is about — the routes' declarations — and the three
@@ -41,6 +42,7 @@ const CONNECTION: ProviderConnectionResource = {
   monthlyCapCents: 60_000,
   mask: FIXTURE_MASK,
   addedBy: FIXTURE_USER.id,
+  addedByName: FIXTURE_USER.name,
   lastCheckedAt: "2026-08-23T09:59:41.882Z",
   lastUsedAt: null,
   createdAt: "2026-06-12T16:20:00.000Z",
@@ -68,6 +70,22 @@ const CATALOG: ProviderCatalogResource = {
           pattern: null,
         },
       ],
+      capabilities: { discovery: true, pull: false, entitlements: false, invocation: false },
+    },
+  ],
+};
+
+/** The cards' meters, as the service composes them — one row is enough to prove the hand-off. */
+const SPEND: ProviderMonthlySpendResource = {
+  month: { since: "2026-08-01T00:00:00.000Z", until: "2026-08-23T09:59:41.882Z" },
+  providers: [
+    {
+      kind: "anthropic",
+      local: false,
+      spendCents: 41_280,
+      tokens: 24_000_000,
+      pricedCalls: 15,
+      unpricedCalls: 0,
     },
   ],
 };
@@ -80,6 +98,7 @@ describe("the provider connections controller", () => {
     service = {
       list: jest.fn().mockResolvedValue({ items: [CONNECTION], total: 1, limit: 25, offset: 0 }),
       catalog: jest.fn().mockReturnValue(CATALOG),
+      spend: jest.fn().mockResolvedValue(SPEND),
       read: jest.fn().mockResolvedValue(CONNECTION),
       add: jest.fn().mockResolvedValue(CONNECTION),
       reveal: jest.fn().mockResolvedValue({
@@ -106,6 +125,14 @@ describe("the provider connections controller", () => {
       await expect(controller.read(WORKSPACE, PARAMS)).resolves.toEqual(CONNECTION);
 
       expect(service.read).toHaveBeenCalledWith(WORKSPACE.id, FIXTURE_CONNECTION);
+    });
+
+    it("scopes the monthly spend to what the guard established", async () => {
+      // The meters are money, and money is the one number a workspace must never see another
+      // workspace's — the organization reaches the ledger's `where` from the guard alone.
+      await expect(controller.spend(WORKSPACE)).resolves.toEqual(SPEND);
+
+      expect(service.spend).toHaveBeenCalledWith(WORKSPACE.id);
     });
 
     it("answers the catalog from the service, which scopes it to nothing", () => {
@@ -228,11 +255,11 @@ describe("the provider connections controller", () => {
     });
   });
 
-  it("declares the seven operations the ticket names plus AE.5's catalog, and no ninth", () => {
+  it("declares the seven operations the ticket names plus the two reads AE.5 and AE.2 added, and no tenth", () => {
     // Worth an assertion because the obvious next endpoints — *test this connection*,
     // *discover its models* — are AE.4's (#230), and a slice of them written here is one that
-    // ticket would have to negotiate with rather than write. `catalog` is the one addition
-    // since: AE.5 (#231) reads the registry through it, and it writes nothing.
+    // ticket would have to negotiate with rather than write. `catalog` is AE.5's (#231) read
+    // of the registry and `spend` is AE.2's (#228) read of the ledger; neither writes.
     const handlers = Object.getOwnPropertyNames(ProviderConnectionsController.prototype).filter(
       (name) => name !== "constructor",
     );
@@ -245,6 +272,7 @@ describe("the provider connections controller", () => {
       "remove",
       "reveal",
       "rotate",
+      "spend",
       "update",
     ]);
   });
@@ -264,6 +292,25 @@ describe("the provider connections controller", () => {
     it("is a plain GET at /providers/catalog", () => {
       expect(Reflect.getMetadata(PATH_METADATA, controller.catalog)).toBe("catalog");
       expect(Reflect.getMetadata(METHOD_METADATA, controller.catalog)).toBe(RequestMethod.GET);
+    });
+  });
+
+  describe("the monthly spend's place in the route table", () => {
+    it("is declared before the `:id` read, for the catalog's reason", () => {
+      const handlers = Object.getOwnPropertyNames(ProviderConnectionsController.prototype);
+
+      expect(handlers.indexOf("spend")).toBeGreaterThan(-1);
+      expect(handlers.indexOf("spend")).toBeLessThan(handlers.indexOf("read"));
+    });
+
+    it("is a plain GET at /providers/spend, open to every member", () => {
+      // What a workspace spends on models is something everybody in it may look at — the rule
+      // `GET /api/v1/routing/spend` already keeps, kept here for the same figures.
+      const reflector = new Reflector();
+
+      expect(Reflect.getMetadata(PATH_METADATA, controller.spend)).toBe("spend");
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.spend)).toBe(RequestMethod.GET);
+      expect(reflector.get<string[]>(REQUIRED_ROLES, controller.spend)).toBeUndefined();
     });
   });
 });

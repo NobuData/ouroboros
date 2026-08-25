@@ -1,30 +1,29 @@
 import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister } from "@/app/api/membership";
+import { readProviders } from "@/app/providers/data";
 import { ProvidersScreen } from "@/app/providers/providers-screen";
 
 /**
  * Providers & keys ([#227](https://github.com/NobuData/ouroboros/issues/227)) — mockup 07's
- * `/models/providers`.
+ * `/models/providers`, with its cards ([#228](https://github.com/NobuData/ouroboros/issues/228)).
  *
  * The route is thin on purpose, and it is the shape every screen in `(app)` takes: the gate
- * returns the workspace this request may render, and a component draws it. There is no reader
- * between them, unlike `/models`, because nothing on this page is read at render time — the
- * provider cards are AE.2's (#228) and the one read that exists, the credential trail, is
- * behind the **Audit log** button and happens when it is pressed
- * (`app/providers/audit-actions.ts` says why then rather than on page load). The decisions are
- * in [`app/providers/view.ts`](../../../providers/view.ts), covered directly.
+ * returns the workspace this request may render, a reader composes what the screen draws,
+ * and a component draws it. The reader is `app/providers/data.ts`'s and follows
+ * `app/models/data.ts`'s rule — one failed read is one degraded region, never a blank page;
+ * the two reads behind buttons, the credential trail and the catalog, happen when they are
+ * pressed. The decisions are in `app/providers/cards.ts`, `catalog.ts` and `view.ts`, covered
+ * directly.
  *
  * `requireWorkspace()` is called here rather than in the group's layout for the reason
  * `app/(app)/layout.tsx` sets out at length: a layout does not re-render on a client-side
  * navigation and does not control whether the segment beneath it renders anyway. Here the
- * gate is also the page's two **inputs**: the subline the security model approved names the
- * workspace, and the workspace's display name is what the gate returns — the session/role
- * context the ticket lists as its BA-D.5 dependency, arriving through the same call every
- * other signed-in screen makes — and whether this reader may connect a provider (AE.5,
- * [#231](https://github.com/NobuData/ouroboros/issues/231)) is answered once, here, from the
- * same membership, the way `app/(app)/models/page.tsx` answers it for the rules card. The
- * screen is handed a boolean rather than a role, so there is one place deciding what a role
- * may do and it is `app/api/membership.ts`; the gate that **enforces** is the service's.
+ * gate is also two of the page's **inputs**: the subline the security model approved names
+ * the workspace, and whether this reader may connect a provider or press a card's switch is
+ * answered once, here, from the same membership, the way `app/(app)/models/page.tsx` answers
+ * it for the rules card. The screen is handed a boolean rather than a role, so there is one
+ * place deciding what a role may do and it is `app/api/membership.ts`; the gate that
+ * **enforces** is the service's.
  *
  * **Under `/models`, not beside it.** The sidebar highlights the entry whose route the URL
  * is under (`app/shell/nav.ts`), so this segment's placement is what keeps **Models** lit on
@@ -33,12 +32,14 @@ import { ProvidersScreen } from "@/app/providers/providers-screen";
  * @returns The providers page, for the workspace this request is operating in.
  */
 export default async function Page() {
-  const { membership } = await requireWorkspace();
+  const access = await requireWorkspace();
+  const readings = await readProviders(access);
 
   return (
     <ProvidersScreen
-      mayAdminister={mayAdminister(membership.roles)}
-      workspaceName={membership.name}
+      mayAdminister={mayAdminister(access.membership.roles)}
+      readings={readings}
+      workspaceName={access.membership.name}
     />
   );
 }

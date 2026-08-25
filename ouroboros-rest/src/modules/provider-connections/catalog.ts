@@ -39,9 +39,21 @@
  * announcement the moment the kind turns up here — which is how AF.3's
  * ([#236](https://github.com/NobuData/ouroboros/issues/236)) tiles flip from *soon* to live
  * without a UI change.
+ *
+ * ---------------------------------------------------------------------------
+ * **The capabilities cross the wire beside the fields, since AE.2.**
+ *
+ * The provider card ([#228](https://github.com/NobuData/ouroboros/issues/228)) is composed
+ * from the same two answers the SPI gives core code — `configSchema()` decides the key row,
+ * `capabilities()` decides whether the models region is a set of chips or Ollama's pull-list
+ * — and the card lives in a module that can reach neither adapter nor registry. So the four
+ * flags are copied onto each entry exactly as the adapter answers them. They are the
+ * adapter's own `ProviderCapabilities` and not a summary of them: a card that received
+ * *"pullable: yes"* would be reading a second vocabulary for one fact.
  */
 
 import type { ProviderConnectionKind } from "../db/schema";
+import type { ProviderCapabilities } from "../providers/provider.adapter";
 import { toFormFields, type ProviderFormField } from "../providers/provider.forms";
 import type { ModelProviderRegistry } from "../providers/provider.registry";
 
@@ -63,6 +75,15 @@ export interface ProviderCatalogEntryResource {
    * field goes to the vault is a second thing that can disagree with the first.
    */
   readonly fields: readonly ProviderFormField[];
+  /**
+   * What the adapter can do — its own `capabilities()`, unchanged.
+   *
+   * The card reads `pull` to choose between model chips and the pull-list slot, `discovery`
+   * to decide whether a refresh affordance means anything, and `entitlements` to know whether
+   * a seat count can ever arrive. `invocation` is carried because the shape is total: a flag
+   * left out here would be a flag every client had to decide a meaning for.
+   */
+  readonly capabilities: ProviderCapabilities;
 }
 
 /**
@@ -90,9 +111,15 @@ export interface ProviderCatalogResource {
 export function providerCatalog(registry: ModelProviderRegistry): ProviderCatalogResource {
   return {
     kinds: registry.kinds().map((kind) => {
-      const schema = registry.get(kind).configSchema();
+      const adapter = registry.get(kind);
+      const schema = adapter.configSchema();
 
-      return { kind, title: schema.title, fields: toFormFields(schema) };
+      return {
+        kind,
+        title: schema.title,
+        fields: toFormFields(schema),
+        capabilities: adapter.capabilities(),
+      };
     }),
   };
 }

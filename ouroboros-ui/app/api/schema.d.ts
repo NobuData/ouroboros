@@ -1760,6 +1760,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/providers/spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This workspace's calendar-month spend, per provider kind
+         * @description The provider cards' monthly meters
+         *     ([#228](https://github.com/NobuData/ouroboros/issues/228)) — *This month $412.80 of
+         *     $600 cap* — as one row per provider kind with any usage in the current month, and the
+         *     month itself.
+         *
+         *     **A calendar month, not the routing page's rolling thirty days.** Roadmap decision
+         *     **P7**: a cap is a figure agreed with a vendor for a billing period, so a meter that
+         *     reads *of $600 cap* is only true if its numerator is measured from the first of the
+         *     month. The month is the **UTC** one — the zone `R__dev_seed_providers.sql` places its
+         *     rows in and `tests/seed.sql` asserts the meters against — and `month` is served with
+         *     the figures so a client can say which month it is drawing.
+         *
+         *     **The statement is `GET /api/v1/routing/spend`'s, with one instant changed.** Both
+         *     surfaces sum the token-spend ledger per provider since an instant; publishing a second
+         *     aggregation for this page would be a second opinion about one invoice. What differs is
+         *     the shape: no local-row merge, no meter fractions — a cap belongs to a connection, so
+         *     the fraction is the card's to compute from its own cap — and `local` served per row.
+         *
+         *     **A row is a provider kind, because that is what the ledger records** (decision
+         *     **F8**). A workspace with two Ollama daemons has one Ollama figure, and a card is
+         *     honest about that by saying so rather than by splitting a number it cannot split.
+         *
+         *     **Nothing is coalesced** (decision **M7**, and **P8** for this page). A kind whose
+         *     calls nobody has priced answers `spendCents: null` — a local card's *no metered spend*
+         *     — and a kind priced at nothing answers `0`. A kind with no usage at all is absent, not
+         *     a row of zeros.
+         *
+         *     **Any member may read it**, viewers included: what a workspace spends on models is
+         *     something everybody in it may look at, which is the rule the routing card keeps.
+         *
+         *     **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+         *     checked before the operation runs. No other workspace's usage can reach a total here.
+         */
+        get: operations["readProviderMonthlySpend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/providers/{id}": {
         parameters: {
             query?: never;
@@ -5540,12 +5592,21 @@ export interface components {
              */
             mask: string | null;
             /**
-             * @description The person who connected this provider — the card's *Added by Ken* — or `null`.
-             *     Null is both *nobody in this table added it* and *the person who did has since
-             *     gone*: deleting a person must not delete their workspace's provider.
+             * @description The person who connected this provider, or `null`. Null is both *nobody in this
+             *     table added it* and *the person who did has since gone*: deleting a person must
+             *     not delete their workspace's provider.
              * @example 5eed0003-0000-4000-8000-000000000001
              */
             addedBy: string | null;
+            /**
+             * @description Their display name — the card's *Added by Ken*
+             *     ([#228](https://github.com/NobuData/ouroboros/issues/228)) — or `null` when
+             *     `addedBy` is null or names nobody this installation still has. Resolved at read
+             *     time from `"user"`, so a person who renames themselves is named correctly on every
+             *     card; a client draws an em-dash for null and never the id.
+             * @example Ken Suenobu
+             */
+            addedByName: string | null;
             /**
              * Format: date-time
              * @description When the last health check finished, or `null` until one has.
@@ -5705,6 +5766,44 @@ export interface components {
              *     mockup 07 draws the vLLM card).
              */
             fields: components["schemas"]["ProviderFormField"][];
+            capabilities: components["schemas"]["ProviderCapabilities"];
+        };
+        /**
+         * ProviderCapabilities
+         * @description What an adapter can do — its own `capabilities()`, copied onto the catalog entry
+         *     unchanged ([#228](https://github.com/NobuData/ouroboros/issues/228)). Four flags and
+         *     all four always present: a total shape, so no client has to decide what an absent
+         *     flag means.
+         *
+         *     The provider card is composed from these beside the fields: `pull` decides whether
+         *     the models region is a set of chips or Ollama's pull-list, `discovery` whether a
+         *     refresh affordance means anything (a spinner over a fixed catalog would be a lie
+         *     about where data comes from), and `entitlements` whether a seat count can ever
+         *     arrive in a check's detail. `invocation` is reserved for AF.2
+         *     ([#235](https://github.com/NobuData/ouroboros/issues/235)) and is `false` on every
+         *     adapter this build ships.
+         */
+        ProviderCapabilities: {
+            /**
+             * @description Whether discovering models asks the provider, or answers a fixed catalog.
+             * @example true
+             */
+            discovery: boolean;
+            /**
+             * @description Whether the adapter can pull a model onto the machine serving it.
+             * @example false
+             */
+            pull: boolean;
+            /**
+             * @description Whether a live check also reports what the credential is entitled to.
+             * @example false
+             */
+            entitlements: boolean;
+            /**
+             * @description Reserved for AF.2. `false` on every adapter this build ships.
+             * @example false
+             */
+            invocation: boolean;
         };
         /**
          * ProviderCatalog
@@ -5713,6 +5812,82 @@ export interface components {
          */
         ProviderCatalog: {
             kinds: components["schemas"]["ProviderCatalogEntry"][];
+        };
+        /**
+         * MonthWindow
+         * @description The calendar month the provider cards' meters are measured over
+         *     ([#228](https://github.com/NobuData/ouroboros/issues/228)): from the first instant
+         *     of the request's **UTC** month to the request itself. Served with the figures so a
+         *     client draws *This month* for the month the service meant.
+         */
+        MonthWindow: {
+            /**
+             * Format: date-time
+             * @description The first instant of the month. Inclusive.
+             * @example 2026-08-01T00:00:00.000Z
+             */
+            since: string;
+            /**
+             * Format: date-time
+             * @description When the figures were measured.
+             * @example 2026-08-23T09:59:41.882Z
+             */
+            until: string;
+        };
+        /**
+         * ProviderMonthlySpendRow
+         * @description One provider kind's calendar month — what one card's meter is computed from.
+         *
+         *     **`spendCents: 0` and `spendCents: null` are different facts**, exactly as on the
+         *     routing card: zero is calls priced at nothing, null is calls nobody priced. A local
+         *     card renders the null as *no metered spend* beside its on-box tokens and never as a
+         *     dollar figure (decision **P8**).
+         */
+        ProviderMonthlySpendRow: {
+            /**
+             * @description The `token_usage.provider` value — a provider *kind*, which is how the ledger
+             *     attributes spend. A card matches its own connection's `kind` against it.
+             * @example anthropic
+             */
+            kind: string;
+            /**
+             * @description Whether the kind is served without a credential — the same list the worker lease
+             *     policy draws, published so a client keeps no list of its own.
+             * @example false
+             */
+            local: boolean;
+            /**
+             * @description The month's priced spend in cents, or null when none of the kind's calls are
+             *     priced. `41280` is `$412.80`.
+             * @example 41280
+             */
+            spendCents: number | null;
+            /**
+             * @description `tokens_in + tokens_out` over the month — the local cards' *2.1M tokens on-box*.
+             * @example 24000000
+             */
+            tokens: number;
+            /**
+             * @description How many of the kind's calls carried a price.
+             * @example 15
+             */
+            pricedCalls: number;
+            /**
+             * @description How many did not. Non-zero makes `spendCents` a lower bound.
+             * @example 0
+             */
+            unpricedCalls: number;
+        };
+        /**
+         * ProviderMonthlySpend
+         * @description The provider cards' monthly meters: the month, and one row per kind with usage in it.
+         *     A kind with no usage is **absent** rather than a row of zeros — the card draws an
+         *     absence, never `$0.00` for money nobody spent.
+         */
+        ProviderMonthlySpend: {
+            month: components["schemas"]["MonthWindow"];
+            /** @description One row per kind with usage this month, ordered by kind. */
+            providers: components["schemas"]["ProviderMonthlySpendRow"][];
         };
         /**
          * ProviderConnectionCreate
@@ -11291,6 +11466,7 @@ export interface operations {
                      *           "monthlyCapCents": 60000,
                      *           "mask": "••••Xq4A",
                      *           "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *           "addedByName": "Ken Suenobu",
                      *           "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                      *           "lastUsedAt": "2026-08-23T09:57:12.004Z",
                      *           "createdAt": "2026-06-12T16:20:00.000Z",
@@ -11307,6 +11483,7 @@ export interface operations {
                      *           "monthlyCapCents": null,
                      *           "mask": null,
                      *           "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *           "addedByName": "Ken Suenobu",
                      *           "lastCheckedAt": "2026-08-23T09:59:40.101Z",
                      *           "lastUsedAt": null,
                      *           "createdAt": "2026-05-14T08:55:00.000Z",
@@ -11461,6 +11638,7 @@ export interface operations {
                      *       "monthlyCapCents": 60000,
                      *       "mask": "••••Xq4A",
                      *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *       "addedByName": "Ken Suenobu",
                      *       "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                      *       "lastUsedAt": null,
                      *       "createdAt": "2026-08-23T09:59:41.882Z",
@@ -11801,6 +11979,12 @@ export interface operations {
                      *         {
                      *           "kind": "anthropic",
                      *           "title": "Connect Anthropic",
+                     *           "capabilities": {
+                     *             "discovery": true,
+                     *             "pull": false,
+                     *             "entitlements": false,
+                     *             "invocation": false
+                     *           },
                      *           "fields": [
                      *             {
                      *               "name": "apiKey",
@@ -11820,6 +12004,12 @@ export interface operations {
                      *         {
                      *           "kind": "openai_compatible",
                      *           "title": "Connect an OpenAI-compatible endpoint",
+                     *           "capabilities": {
+                     *             "discovery": true,
+                     *             "pull": false,
+                     *             "entitlements": false,
+                     *             "invocation": false
+                     *           },
                      *           "fields": [
                      *             {
                      *               "name": "baseUrl",
@@ -11852,6 +12042,12 @@ export interface operations {
                      *         {
                      *           "kind": "ollama",
                      *           "title": "Connect an Ollama host",
+                     *           "capabilities": {
+                     *             "discovery": true,
+                     *             "pull": true,
+                     *             "entitlements": false,
+                     *             "invocation": false
+                     *           },
                      *           "fields": [
                      *             {
                      *               "name": "baseUrl",
@@ -11916,6 +12112,136 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readProviderMonthlySpend: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The month, and its rows ordered by kind. `providers` is empty for a workspace that
+             *     has spent nothing this month — the cards' absence, never `$0.00` five times.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "month": {
+                     *         "since": "2026-08-01T00:00:00.000Z",
+                     *         "until": "2026-08-23T09:59:41.882Z"
+                     *       },
+                     *       "providers": [
+                     *         {
+                     *           "kind": "anthropic",
+                     *           "local": false,
+                     *           "spendCents": 41280,
+                     *           "tokens": 24000000,
+                     *           "pricedCalls": 15,
+                     *           "unpricedCalls": 0
+                     *         },
+                     *         {
+                     *           "kind": "copilot",
+                     *           "local": false,
+                     *           "spendCents": 7600,
+                     *           "tokens": 5000000,
+                     *           "pricedCalls": 6,
+                     *           "unpricedCalls": 0
+                     *         },
+                     *         {
+                     *           "kind": "ollama",
+                     *           "local": true,
+                     *           "spendCents": null,
+                     *           "tokens": 2100000,
+                     *           "pricedCalls": 0,
+                     *           "unpricedCalls": 2
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProviderMonthlySpend"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11996,6 +12322,7 @@ export interface operations {
                      *       "monthlyCapCents": null,
                      *       "mask": null,
                      *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *       "addedByName": "Ken Suenobu",
                      *       "lastCheckedAt": "2026-08-23T09:59:38.221Z",
                      *       "lastUsedAt": "2026-08-23T09:50:12.000Z",
                      *       "createdAt": "2026-05-30T14:12:00.000Z",
@@ -12282,6 +12609,7 @@ export interface operations {
                      *       "monthlyCapCents": 75000,
                      *       "mask": "••••Xq4A",
                      *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *       "addedByName": "Ken Suenobu",
                      *       "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                      *       "lastUsedAt": "2026-08-23T09:57:12.004Z",
                      *       "createdAt": "2026-06-12T16:20:00.000Z",
@@ -12627,6 +12955,7 @@ export interface operations {
                      *       "monthlyCapCents": 60000,
                      *       "mask": "••••7Kd2",
                      *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *       "addedByName": "Ken Suenobu",
                      *       "lastCheckedAt": "2026-08-23T10:04:02.510Z",
                      *       "lastUsedAt": "2026-08-23T09:57:12.004Z",
                      *       "createdAt": "2026-06-12T16:20:00.000Z",

@@ -18,7 +18,9 @@
 > ([#46](https://github.com/NobuData/ouroboros/issues/46)) and, beside it,
 > [model routing](#model-routing) ([#200](https://github.com/NobuData/ouroboros/issues/200)),
 > [providers & keys](#providers--keys) ([#227](https://github.com/NobuData/ouroboros/issues/227))
-> with its [add-provider flow](#the-add-provider-flow)
+> with its [provider cards](#the-provider-cards)
+> ([#228](https://github.com/NobuData/ouroboros/issues/228)) and
+> [add-provider flow](#the-add-provider-flow)
 > ([#231](https://github.com/NobuData/ouroboros/issues/231))
 > and the [credential audit trail](#the-credential-audit-trail)
 > ([#225](https://github.com/NobuData/ouroboros/issues/225)) —
@@ -1300,9 +1302,14 @@ plane — workers never receive them at all.
 ────────────────────────────────────────────────────────────────────────────────────────────
  Routing → /models   Model registry → /models/registry   Providers & keys   Spend soon
                                                             ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ (the accent)
-┌ The provider cards arrive next — #228 … #232 ┐   ┌ + Connect Anthropic, Ollama, …  ┐
-                                                   │         [ Browse catalog ]        │
-                                                   └ (dashed — the same dialog) ───────┘
+┌ [AN] Anthropic Claude      (connected) [on] ┐   ┌ [CU] Cursor              (connected) [on] ┐
+│ [••••Xq4A] [Reveal] [Rotate]                │   │ …                                         │
+│ Added by Ken · 2026-06-12 · last used 3m ago│   └───────────────────────────────────────────┘
+│ MODELS AVAILABLE (claude-fable-5)… (priority tier)  ┌ [GH] GitHub Copilot   (error) [on] ┐
+│ This month $412.80 of $600 cap ▓▓▓▓▓▓▓░░░   │   │ This month $76.00 of $95 cap ▓▓▓▓▓▓▓▓░ │
+│ [Test connection]          Monthly cap [$600]│   └ (warn meter, at 80%) ─────────────────┘
+└─────────────────────────────────────────────┘   ┌ + Connect Anthropic, Ollama, …          ┐
+  … vLLM (Base URL + optional key), Ollama (Host, pull-list) …   │  [ Browse catalog ]  │
 ```
 
 ### The subline is not this module's to write
@@ -1337,11 +1344,82 @@ special case.
 The registry tab went live with CI.1 ([#591](https://github.com/NobuData/ouroboros/issues/591))
 and this file did not change for it — one list, so all three pages learned it at once. The
 spend report ([#210](https://github.com/NobuData/ouroboros/issues/210)) is the last honest
-`soon` tab; the space below the tab set names the cards
-([#228](https://github.com/NobuData/ouroboros/issues/228)) rather than mocking them up. Two
-things on the page act: **Audit log** is [the trail](#the-credential-audit-trail), mounted
-where it was built to be, and **+ Add provider** — with the dashed card's **Browse catalog**
-beside it — is [the add-provider flow](#the-add-provider-flow).
+`soon` tab. Below the tab set are [the provider cards](#the-provider-cards)
+([#228](https://github.com/NobuData/ouroboros/issues/228)); in the head, **Audit log** is
+[the trail](#the-credential-audit-trail), mounted where it was built to be, and
+**+ Add provider** — with the dashed card's **Browse catalog** beside it — is
+[the add-provider flow](#the-add-provider-flow).
+
+### The provider cards
+
+One component, `ProviderCard` ([`app/providers/provider-card.tsx`](app/providers/provider-card.tsx)),
+drawn once per connection ([#228](https://github.com/NobuData/ouroboros/issues/228)). Five
+cards look like five components, and written that way they drift apart by the second sprint —
+so the card is **composed from the adapter's own answers**, which cross the wire on the
+catalog entry, and there is no provider kind in the component and no branch on one. Every
+decision is a pure function in [`app/providers/cards.ts`](app/providers/cards.ts), and the
+proof the ticket asks for is a test rather than a promise: `__tests__/providers/provider-card.test.tsx`
+feeds the card a **sixth connection of the conformance kit's fake adapter** — a kind no file
+under `app/providers/` names — and reads a correct card off it with zero changes to card code.
+The same suite reads the two components' source with their comments stripped and fails if any
+of V015's six spellings appears.
+
+**What decides each region.** The catalog entry's `fields` decide the key row: a `url` field is
+an address row under whatever label the adapter titled it — *Base URL* on the vLLM card, *Host*
+on Ollama's — and the `secret` field is the masked key row, with the mockup's **Reveal** and
+**Rotate** (or **Save**, for an optional key left empty) inert until AE.3
+([#229](https://github.com/NobuData/ouroboros/issues/229)). The entry's `capabilities.pull`
+decides whether the models region is chips or Ollama's pull-list slot, which AE.4
+([#230](https://github.com/NobuData/ouroboros/issues/230)) fills. Whether a cap exists decides
+between a meter and an em-dash. The monogram's two letters and tint are the one thing written
+per kind, and they are *copy*: a token map with a fallback that derives an unknown kind's
+letters from its own name in the neutral tint.
+
+**What the cards read.** [`app/providers/data.ts`](app/providers/data.ts) composes five
+readings — the listing, the catalog, the health strip, the month's spend, and each
+connection's models — under the rule every reader here keeps: one failed read is one degraded
+region. A catalog that could not be read leaves every key row under a fallback label; a month
+that could not be read leaves every meter at *no spend recorded*; one card's models failing
+says so on that card. The listing failing is the one read the grid cannot survive, and it says
+so where the grid would be. Three of those readings are new to the contract with this issue
+and were added to `ouroboros-rest` on #231's precedent: each catalog entry carries the
+adapter's four **capability flags**; each connection carries **`addedByName`**, so the meta row
+prints *Added by Ken* and never an id; and `GET /api/v1/providers/spend` answers the **UTC
+calendar month's** spend per provider kind — decision **P7**'s window, computed by the same
+statement as the routing page's thirty-day card with one instant changed, and the window
+`tests/seed.sql` asserts the seeded meters against.
+
+**The honesty rules, per region** (decision **P8**). The meter prints priced spend only: the
+seeded cards read `$412.80 of $600 cap` at 69%, `$64.10 of $120 cap`, and `$76.00 of $95 cap`
+on the warn meter at exactly 80%. A cloud kind nobody priced reads *unpriced*, never `$0.00`.
+A local kind reads *no metered spend* beside its on-box tokens — `2.1M tokens on-box` for the
+seeded Ollama card — because `$0.00` and *we do not meter this* are different facts and only
+the second is true of a machine the workspace already owns; real money on a local kind is
+still printed, because money is never hidden. A null cap is an em-dash in the foot's read-only
+**Monthly cap** field, not `$0`. The `priority tier` pill exists only where discovery reported
+a `tier` on a model — the four seeded Anthropic rows carry the real signal, nothing else does
+— and the `· 4 seats` suffix only where a check's detail carries a count, read by the same
+spelling the service writes it in (`provider.entitlements.ts`). A connection never used shows
+an em-dash for last-used, and every relative time is measured from the one instant the reader
+took, so a server render and its hydration agree. The status pill is `connected` for an active
+connection (the taxonomy's own word) and the health strip's words for the other three, with
+the last check's detail on hover; the taxonomy's finer pills need an error class the stored
+status does not carry, and arrive with AE.4's live test.
+
+**The switch persists.** [`app/providers/provider-switch.tsx`](app/providers/provider-switch.tsx)
+is the dashboard's auto-merge switch to the line — optimistic, reconciled by `router.refresh()`,
+a refused press going back with the reason under it — over a Server Action
+([`app/providers/card-actions.ts`](app/providers/card-actions.ts)) that `PATCH`es `{ enabled }`
+and nothing else. A switched-off card dims and says under its switch that routing skips it,
+which is the service's own rule (resolution reads `where enabled`, V018) made visible. A member's
+switch renders in its real position, read-only, with the reason.
+
+**Responsive and rem.** The grid is two cards abreast collapsing to one at a rem breakpoint,
+so at the 125% font-scale step it gives up its second column sooner, which is the point. Every
+size on the card is a token or a rem; the monogram tints are the token sheet's published
+`-line` / `-tint` triples rather than the mockup's `color-mix()`, so both palettes carry
+measured contrast. Both palettes render byte-identical markup, and `providers-styles.test.ts`
+holds the sheet to each of those agreements.
 
 ### The add-provider flow
 
@@ -1379,7 +1457,8 @@ and puts the adapter's designed error where it belongs: *key rejected (401)* und
 row, a schema violation under the field it names. Before the provider is asked, a submission
 of the same kind at the same endpoint as an existing connection is stopped once with a
 warning and **Connect anyway**; it is legal, and usually a mistake. Success is a step rather
-than a closed dialog, because the card grid is AE.2's and is not on the page yet.
+than a closed dialog, because somebody has just handed over a key and deserves a sentence
+saying it took; **Done** refreshes the route, and the new card is in the grid behind it.
 
 For a `member` or a `viewer` both openers are inert with the reason, and the dialog never
 opens; the gate that enforces is the service's `403`, which
@@ -2162,6 +2241,8 @@ sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
 model routing [#200](https://github.com/NobuData/ouroboros/issues/200) ·
 providers & keys [#227](https://github.com/NobuData/ouroboros/issues/227) ·
+provider cards [#228](https://github.com/NobuData/ouroboros/issues/228) ·
+the add-provider flow [#231](https://github.com/NobuData/ouroboros/issues/231) ·
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 

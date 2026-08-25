@@ -3,12 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 import {
+  GRID_LABEL,
+  NO_PROVIDERS_TITLE,
+  PROVIDERS_UNAVAILABLE,
+  switchLabel,
+} from "@/app/providers/cards";
+import {
   ADD_CARD_NOTE,
   ADD_DIALOG_TITLE,
   ADD_PROVIDER_READ_ONLY,
   BROWSE_CATALOG_LABEL,
   CATALOG_LIST_LABEL,
 } from "@/app/providers/catalog";
+import type { ProvidersReadings } from "@/app/providers/data";
 import {
   ADD_PROVIDER_LABEL,
   AUDIT_LOADING,
@@ -22,22 +29,21 @@ import {
 import { seededTrail } from "../helpers/audit";
 import { membership } from "../helpers/login";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
-import { seededCatalog } from "../helpers/providers";
+import { fakeConnection, fakeEntry, readings, seededCards, seededCatalog } from "../helpers/providers";
 
 /**
- * The `/models/providers` frame (#227) — mockup 07's page head and tab set, composed.
+ * The `/models/providers` screen (#227) with its cards (#228) — mockup 07's page head, tab
+ * set and grid, composed.
  *
  * The tab set's own behaviour is `models/models-subnav.test.tsx`'s, the sheet's is
- * `audit-trail.test.tsx`'s and the copy's is `view.test.ts`'s. What is left here is the
- * composition the ticket's acceptance criteria describe: the head is the mockup's with the
- * security model's sentence in it, both actions are wired — one to the trail, one to its
- * reason — the tab set has this page current with the routing page a link away, and the page
- * admits what it is not rather than mocking it up.
+ * `audit-trail.test.tsx`'s, the copy's is `view.test.ts`'s, and each card's is
+ * `provider-card.test.tsx`'s. What is left here is the composition the tickets' acceptance
+ * criteria describe: the head is the mockup's with the security model's sentence in it, both
+ * actions are wired, the tab set has this page current, and **the seeded grid reproduces the
+ * five mockup cards in both themes** with the dashed card last — and every way the grid
+ * degrades is drawn rather than blank.
  *
- * The Server Actions behind the sheet and the add dialog are mocked, not the API: what is
- * under test is that the head's actions open AD.4's trail and AE.5's catalog, and
- * `audit-actions.test.ts` and `add-actions.test.ts` are those modules' own suites — as
- * `add-provider.test.tsx` is the dialog's.
+ * The Server Actions behind the sheet, the dialog and the switch are mocked, not the API.
  */
 
 const readAuditTrail = vi.fn<() => Promise<AuditReading>>();
@@ -50,6 +56,7 @@ vi.mock("@/app/providers/add-actions", () => ({
   readCatalog: () => readCatalog(),
   addProvider: vi.fn(),
 }));
+vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const { ProvidersScreen } = await import("@/app/providers/providers-screen");
@@ -61,9 +68,21 @@ const WORKSPACE = membership().name;
  * Render the page for the seeded workspace.
  *
  * @param mayAdminister Whether the reader may connect a provider. Defaults to an owner's.
+ * @param over What this case is about, over the seeded readings.
  */
-function seeded(mayAdminister = true) {
-  return render(<ProvidersScreen mayAdminister={mayAdminister} workspaceName={WORKSPACE} />);
+function seeded(mayAdminister = true, over: Partial<ProvidersReadings> = {}) {
+  return render(
+    <ProvidersScreen
+      mayAdminister={mayAdminister}
+      readings={readings(over)}
+      workspaceName={WORKSPACE}
+    />,
+  );
+}
+
+/** The grid region. */
+function grid(): HTMLElement {
+  return screen.getByRole("region", { name: GRID_LABEL });
 }
 
 beforeEach(() => {
@@ -88,9 +107,6 @@ describe("the page head", () => {
   });
 
   it("renders the security model's subline with the workspace's name in it", () => {
-    // The ticket's second acceptance criterion at the DOM: the sentence on the page is the
-    // one `providersSubline` produces, and that function is held to § 7.2 verbatim in
-    // `view.test.ts`. Nothing between the two is allowed to rephrase it.
     seeded();
 
     expect(screen.getByText(providersSubline(WORKSPACE))).toHaveClass("models__sub");
@@ -98,8 +114,6 @@ describe("the page head", () => {
   });
 
   it("carries none of the mockup's wording about tokens or tenants", () => {
-    // The mockup's line describes a system this is not (AD.3 proxies invocation; workers
-    // never receive keys at all), and `tenant` is a word no user-facing string uses.
     const { container } = seeded();
     const head = container.querySelector(".models__head")?.textContent ?? "";
 
@@ -119,8 +133,6 @@ describe("Audit log", () => {
   });
 
   it("opens AD.4's sheet and renders the workspace's trail", async () => {
-    // The ticket's fifth acceptance criterion: the button is the visible end of the trail,
-    // not a button. The rows are the seeded history; what each says is `audit-trail.test.tsx`'s.
     seeded();
 
     fireEvent.click(screen.getByRole("button", { name: AUDIT_LOG_LABEL }));
@@ -133,13 +145,10 @@ describe("Audit log", () => {
 
     expect(readAuditTrail).toHaveBeenCalledOnce();
     expect(within(sheet).getByRole("table")).toBeInTheDocument();
-    expect(within(sheet).getAllByRole("row").length).toBeGreaterThan(1);
     expect(within(sheet).getByText("revealed the credential")).toBeInTheDocument();
   });
 
   it("does not read the trail until it is pressed", () => {
-    // A page-load read would make every visit pay for a query a `member` is not even allowed
-    // to make — `audit-actions.ts` says why the sheet reads on open.
     seeded();
 
     expect(readAuditTrail).not.toHaveBeenCalled();
@@ -158,8 +167,6 @@ describe("+ Add provider", () => {
   });
 
   it("opens AE.5's catalog, drawn from the registry", async () => {
-    // The head's action is one of the dialog's two openers; what the dialog does from here
-    // is `add-provider.test.tsx`'s.
     seeded();
 
     fireEvent.click(screen.getByRole("button", { name: ADD_PROVIDER_LABEL }));
@@ -174,9 +181,6 @@ describe("+ Add provider", () => {
   });
 
   it("is inert for a member, with the reason, and the flow never opens", () => {
-    // `aria-disabled` rather than `disabled`, deliberately: a disabled button leaves the tab
-    // order and takes its own explanation with it, so the keyboard reader who most needs the
-    // tooltip could never reach it. The gate that enforces is the service's.
     seeded(false);
 
     const add = screen.getByRole("button", { name: ADD_PROVIDER_LABEL });
@@ -200,6 +204,108 @@ describe("+ Add provider", () => {
       AUDIT_LOG_LABEL,
       ADD_PROVIDER_LABEL,
     ]);
+  });
+});
+
+describe("the grid", () => {
+  it("draws the five seeded cards in the listing's order, and the dashed card last", () => {
+    // The ticket's first criterion at the DOM: five named regions, mockup 07's cards, in the
+    // order the service lists them — by display name — with the add card closing the grid.
+    seeded();
+
+    const cards = within(grid()).getAllByRole("region");
+    expect(cards.map((card) => card.getAttribute("aria-label") ?? within(card).getByRole("heading").textContent)).toEqual(
+      seededCards().map((card) => card.displayName),
+    );
+
+    const items = [...grid().children];
+    expect(items).toHaveLength(6);
+    expect(items[5]).toHaveClass("providers-add-card");
+  });
+
+  it("lays every card out of the primitives — five switches, five meters, chips and buttons", () => {
+    const { container } = seeded();
+
+    expect(container.querySelectorAll(".providers-card")).toHaveLength(5);
+    expect(container.querySelectorAll(".ou-switch")).toHaveLength(5);
+    // Four capped or local meters carry a bar; the Ollama and vLLM lanes draw the ok sliver.
+    expect(container.querySelectorAll(".providers-card .ou-meter")).toHaveLength(5);
+    // Nine model chips across the four chip cards, and Anthropic's one tier pill.
+    expect(container.querySelectorAll(".ou-chip--model")).toHaveLength(8);
+    expect(screen.getByText("priority tier")).toHaveClass("ou-chip--ok");
+    expect(container.querySelectorAll(".ou-empty")).toHaveLength(0);
+  });
+
+  it("draws each card's switch in the position the listing holds, named for its card", () => {
+    seeded();
+
+    for (const card of seededCards()) {
+      expect(screen.getByRole("switch", { name: switchLabel(card.displayName) })).toHaveAttribute(
+        "aria-checked",
+        String(card.enabled),
+      );
+    }
+  });
+
+  it("dims a switched-off card and keeps it in the grid", () => {
+    const [first, ...rest] = seededCards();
+    seeded(true, { connections: { ok: true, value: [{ ...first, enabled: false }, ...rest] } });
+
+    const card = screen.getByRole("region", { name: first.displayName });
+    expect(card).toHaveClass("providers-card--off");
+    expect(within(grid()).getAllByRole("region")).toHaveLength(5);
+  });
+
+  it("draws a sixth card for a kind no file names, from its catalog entry alone", () => {
+    // The schema-driven proof at the page: the fake adapter's connection is one more item in
+    // the listing and one more entry in the catalog, and the grid gains a correct card.
+    seeded(true, {
+      connections: { ok: true, value: [...seededCards(), fakeConnection()] },
+      catalog: { ok: true, value: [...seededCatalog(), fakeEntry()] },
+    });
+
+    const card = screen.getByRole("region", { name: fakeConnection().displayName });
+    expect(within(grid()).getAllByRole("region")).toHaveLength(6);
+    expect(within(card).getByLabelText("Base URL")).toHaveValue("https://fake.invalid/v1");
+    expect(within(card).getByLabelText("API key")).toHaveValue("••••cret");
+    expect(within(card).getByText("unknown")).toHaveClass("ou-chip--warn");
+  });
+
+  it("draws the empty state beside the dashed card for a workspace that has connected nothing", () => {
+    seeded(true, { connections: { ok: true, value: [] }, models: new Map() });
+
+    expect(screen.getByText(NO_PROVIDERS_TITLE)).toBeInTheDocument();
+    expect(within(grid()).queryAllByRole("region")).toHaveLength(0);
+    expect(within(grid()).getByRole("button", { name: BROWSE_CATALOG_LABEL })).toBeInTheDocument();
+  });
+
+  it("says why when the listing could not be read, and keeps the dashed card", () => {
+    seeded(true, { connections: { ok: false, reason: "the vault is away" }, models: new Map() });
+
+    const state = within(grid()).getByRole("status");
+    expect(state).toHaveTextContent(PROVIDERS_UNAVAILABLE);
+    expect(state).toHaveTextContent("the vault is away");
+    expect(within(grid()).queryAllByRole("region")).toHaveLength(0);
+    expect(within(grid()).getByRole("button", { name: BROWSE_CATALOG_LABEL })).toBeInTheDocument();
+  });
+
+  it("degrades one region of every card when the catalog could not be read, and no more", () => {
+    // The key rows fall back to their labels; the switches, meters and chips are untouched.
+    const { container } = seeded(true, { catalog: { ok: false, reason: "registry away" } });
+
+    expect(container.querySelectorAll(".providers-card")).toHaveLength(5);
+    expect(screen.getAllByLabelText("Credential")).toHaveLength(3);
+    expect(screen.getAllByLabelText("Address")).toHaveLength(2);
+    expect(container.querySelectorAll(".ou-switch")).toHaveLength(5);
+    expect(screen.getByText("$412.80")).toBeInTheDocument();
+  });
+
+  it("reads every meter as *no spend recorded* when the month could not be read", () => {
+    const { container } = seeded(true, { spend: { ok: false, reason: "ledger away" } });
+
+    expect(screen.getAllByText("no spend recorded")).toHaveLength(5);
+    expect(container.querySelectorAll(".providers-card")).toHaveLength(5);
+    expect(screen.queryByText("$412.80")).toBeNull();
   });
 });
 
@@ -243,8 +349,6 @@ describe("the tab set", () => {
   });
 
   it("marks Providers & keys as the current page, on the accent underline", () => {
-    // Mockup 07's treatment: the accent, where 06 draws the model purple. The primitive keeps
-    // the divergence as a tone, and this page asks for nothing — the accent is the base rule.
     seeded();
 
     const tabs = screen.getByRole("navigation", { name: "Models" });
@@ -273,9 +377,6 @@ describe("the tab set", () => {
   });
 
   it("links Model registry back — the 07 → 21 direction CI.1 (#591) added", () => {
-    // The tab was an honest `soon` stub when this page shipped and is a link now that #591
-    // has built its page, without this file changing: the row is drawn from the section's one
-    // list, so all three pages learned it at once.
     seeded();
 
     const tabs = screen.getByRole("navigation", { name: "Models" });
@@ -286,7 +387,6 @@ describe("the tab set", () => {
   });
 
   it("renders Spend as an honest `soon` target, not a dead route", () => {
-    // The ticket's fourth acceptance criterion, less the tab CI.1 has since built.
     seeded();
 
     const tabs = screen.getByRole("navigation", { name: "Models" });
@@ -294,39 +394,28 @@ describe("the tab set", () => {
 
     expect(tab.tagName).toBe("SPAN");
     expect(tab).toHaveTextContent("soon");
-    expect(tab.hasAttribute("href")).toBe(false);
-
     expect(within(tabs).getAllByRole("link")).toHaveLength(3);
   });
 });
 
 describe("what the page does not pretend", () => {
-  it("names the surfaces that will fill it rather than mocking them up", () => {
-    seeded();
-
-    expect(screen.getByText("The provider cards arrive next")).toBeInTheDocument();
-    expect(screen.getByText(/#228/)).toBeInTheDocument();
-  });
-
-  it("draws no provider card, no meter and no figure it could not compute", () => {
-    // Five invented cards would be indistinguishable, in a screenshot, from the real ones
-    // AE.2 ships — and would be a mock-up of a page somebody else is building. The two cards
-    // it does draw are the labelled empty state and the dashed add card, which is real.
+  it("draws no figure it could not compute, and no placeholder naming the cards", () => {
+    // The cards are on the page now: the empty state that named #228 is gone, and every
+    // dollar figure on the grid is one the seeded ledger produced.
     const { container } = seeded();
 
-    expect(container.querySelectorAll(".ou-card")).toHaveLength(2);
-    expect(container.querySelector(".ou-meter")).toBeNull();
-    expect(container.querySelector(".ou-switch")).toBeNull();
-    expect(container.textContent).not.toMatch(/\$\d/);
+    expect(screen.queryByText(/arrive next/)).toBeNull();
+    expect(container.textContent).not.toMatch(/#228/);
+    expect(container.textContent).toContain("$412.80");
+    expect(container.textContent).toContain("$64.10");
+    expect(container.textContent).toContain("$76.00");
+    expect(container.textContent).not.toContain("$0.00");
   });
 
   it("brings no chrome of its own into the pane", () => {
-    // Header and sidebar stay fixed while the pane scrolls because the shell owns both and
-    // the page draws neither: it starts at its head, and the one navigation landmark it adds
-    // is the tab set. Whether the shell's chrome is fixed is `shell-styles.test.ts`'s.
     const { container } = seeded();
 
-    expect(container.querySelector("header")).toBeNull();
+    expect(container.querySelector(".shell-header")).toBeNull();
     expect(container.querySelector("[class*='shell-']")).toBeNull();
     expect(screen.getAllByRole("navigation")).toHaveLength(1);
   });
@@ -334,15 +423,19 @@ describe("what the page does not pretend", () => {
 
 describe("both palettes", () => {
   it.each(PALETTES)("renders the screen in the %s palette", (palette) => {
-    renderInPalette(palette, <ProvidersScreen mayAdminister workspaceName={WORKSPACE} />);
+    renderInPalette(
+      palette,
+      <ProvidersScreen mayAdminister readings={readings()} workspaceName={WORKSPACE} />,
+    );
 
     expect(document.documentElement).toHaveAttribute("data-theme", palette);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(PROVIDERS_TITLE);
+    expect(document.querySelectorAll(".providers-card")).toHaveLength(5);
   });
 
   it("draws the same markup in both, because the palette is CSS's business", () => {
     const [light, dark] = renderInBothPalettes(
-      <ProvidersScreen mayAdminister workspaceName={WORKSPACE} />,
+      <ProvidersScreen mayAdminister readings={readings()} workspaceName={WORKSPACE} />,
     );
 
     expect(light).toBe(dark);

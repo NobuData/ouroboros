@@ -62,6 +62,7 @@ import {
 import { ProviderConnectionsService } from "./provider-connections.service";
 import type { ProviderCatalogResource } from "./catalog";
 import type { ProviderConnectionResource, RevealResource } from "./resources";
+import type { ProviderMonthlySpendResource } from "./spend";
 
 @Controller("providers")
 export class ProviderConnectionsController {
@@ -101,6 +102,21 @@ export class ProviderConnectionsController {
   @Get("catalog")
   catalog(): ProviderCatalogResource {
     return this.connections.catalog();
+  }
+
+  /**
+   * `GET /api/v1/providers/spend` — this workspace's calendar-month spend, per provider kind.
+   *
+   * Declared before `:id` for `catalog`'s reason, and held to the same place by the spec. No
+   * `@Roles()`: any member — what a workspace spends on models is something everybody in it
+   * may look at, which is the rule `GET /api/v1/routing/spend` already keeps.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @returns The month and its rows — see `spend.ts`.
+   */
+  @Get("spend")
+  spend(@CurrentTenant() tenant: Organization): Promise<ProviderMonthlySpendResource> {
+    return this.connections.spend(tenant.id);
   }
 
   /**

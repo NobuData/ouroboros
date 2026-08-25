@@ -8,6 +8,7 @@ import { FakeModelProviderAdapter } from "../providers/adapters/fake.adapter.fix
 import { BASE_URL_FIELD } from "../providers/provider.config";
 import { ModelProviderRegistry } from "../providers/provider.registry";
 import type { RegistryService } from "../registry/registry.service";
+import type { RoutingStatsRepository } from "../routing/stats.repository";
 import { inMemoryVault } from "../vault/vault.fixture";
 import { ProviderAudit } from "./connection.audit";
 import {
@@ -99,6 +100,7 @@ async function subject() {
     update: jest.fn().mockResolvedValue(connectionRow()),
     swapCredential: jest.fn().mockResolvedValue(connectionRow()),
     remove: jest.fn().mockResolvedValue(true),
+    adderNames: jest.fn().mockResolvedValue(new Map([[FIXTURE_ACTOR, "Ken Suenobu"]])),
   } as unknown as jest.Mocked<ProviderConnectionsRepository>;
 
   jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
@@ -111,6 +113,7 @@ async function subject() {
     { satisfied: jest.fn().mockResolvedValue("password") } as unknown as StepUpService,
     new RevealLimiter(),
     new ProviderAudit(recordingAudit().service),
+    { byProvider: jest.fn().mockResolvedValue([]) } as unknown as RoutingStatsRepository,
   );
 
   return { service, connections };

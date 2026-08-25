@@ -1,14 +1,24 @@
 import "server-only";
 
 /**
- * The provider connections — mockup 07's cards, and the catalog that adds one
+ * The provider connections — mockup 07's cards
+ * ([#228](https://github.com/NobuData/ouroboros/issues/228)), and the catalog that adds one
  * ([#231](https://github.com/NobuData/ouroboros/issues/231)).
  *
- * Three operations over the `providers` tag, and they are the add-provider flow's whole
- * surface on this side of the wire: the **catalog** the dialog draws its tiles from, the
- * **listing** the duplicate warning compares against, and the **add** itself. The rest of the
- * tag — reveal, rotate, edit, disconnect — is AE.3's ([#229](https://github.com/NobuData/ouroboros/issues/229))
+ * Six operations, and they are the page's whole surface on this side of the wire: the
+ * **catalog** the dialog draws its tiles from and the cards read their schemas from, the
+ * **listing** the grid is drawn from, the **add** itself, the cards' **monthly spend**, the
+ * **models** each card lists, and the one **edit** a card makes today — its switch. The rest
+ * of the tag — reveal, rotate, disconnect — is AE.3's ([#229](https://github.com/NobuData/ouroboros/issues/229))
  * and belongs beside these when it arrives, because they are one page's calls to one tag.
+ *
+ * ### The card is composed from two answers the wire now carries
+ *
+ * A card is drawn from the adapter's own `configSchema()` and `capabilities()` (AC.1), and
+ * this module reaches neither: it reaches the catalog, whose entries carry the fields the
+ * schema derives to *and* the four capability flags as the adapter answers them. Nothing here
+ * — and nothing in `app/providers/cards.ts` — decides which field is the credential or
+ * whether a kind can pull; both are read.
  *
  * What this adds over a raw call is what every resource file in this directory adds: a name,
  * the path written down once so a rename in the contract is a failed typecheck rather than a
@@ -57,6 +67,21 @@ export type ProviderConnectionKind = components["schemas"]["ProviderConnectionKi
 
 /** One connection, credential masked — the card mockup 07 draws. */
 export type ProviderConnection = components["schemas"]["ProviderConnection"];
+
+/** What an adapter can do — its own four flags, copied onto its catalog entry unchanged. */
+export type ProviderCapabilities = components["schemas"]["ProviderCapabilities"];
+
+/** What a card may change about a connection — the switch, the cap, the note, the address. */
+export type ProviderConnectionPatch = components["schemas"]["ProviderConnectionPatch"];
+
+/** The cards' meters: the UTC calendar month, and one row per kind with usage in it. */
+export type ProviderMonthlySpend = components["schemas"]["ProviderMonthlySpend"];
+
+/** One kind's month — what one card's meter is computed from. */
+export type ProviderMonthlySpendRow = components["schemas"]["ProviderMonthlySpendRow"];
+
+/** One model discovery reported on a connection — a chip, or a pull-list line. */
+export type ModelOption = components["schemas"]["ModelOption"];
 
 /** One page of them. */
 export type ProviderConnectionPage = components["schemas"]["ProviderConnectionPage"];
@@ -121,5 +146,71 @@ export const providers = {
    */
   async add(body: ProviderConnectionCreate, client: ApiClient = api()): Promise<ProviderConnection> {
     return unwrap(await client.POST("/api/v1/providers", { body }));
+  },
+
+  /**
+   * This workspace's calendar-month spend, per provider kind — the cards' meters.
+   *
+   * Per *kind* rather than per connection, because that is what the ledger records
+   * (`token_usage.provider`, decision **F8**): a card matches its own `kind` against the rows
+   * and says so if two connections share one. The month is the UTC one, served with the
+   * figures, and nothing in it is coalesced — an unpriced kind answers `spendCents: null`,
+   * which the card renders as *no metered spend* and never as `$0.00`.
+   *
+   * @param client The client to call through.
+   * @returns The month and its rows. Empty `providers` for a workspace that has spent nothing
+   *   this month — every card's absence, not a failure.
+   * @throws {ApiError} What the service answered.
+   */
+  async spend(client: ApiClient = api()): Promise<ProviderMonthlySpend> {
+    return unwrap(await client.GET("/api/v1/providers/spend"));
+  },
+
+  /**
+   * Change a connection's settings — the card's switch, in practice.
+   *
+   * A `PATCH` carrying only what changes, so a switch never resends an address. The service
+   * writes the audit event; a body that changes nothing is answered with the connection
+   * unchanged and writes none.
+   *
+   * @param id The connection.
+   * @param patch What changes. `{ enabled }` is the whole of what the card sends today; the
+   *   cap and the note are AE.6's ([#232](https://github.com/NobuData/ouroboros/issues/232)).
+   * @param client The client to call through.
+   * @returns The connection as stored, masked.
+   * @throws {ApiError} What the service answered — `403 forbidden` for a role that may read
+   *   the card and not write to it, `404 provider_connection_not_found` for a connection this
+   *   workspace does not have.
+   */
+  async update(
+    id: string,
+    patch: ProviderConnectionPatch,
+    client: ApiClient = api(),
+  ): Promise<ProviderConnection> {
+    return unwrap(
+      await client.PATCH("/api/v1/providers/{id}", { params: { path: { id } }, body: patch }),
+    );
+  },
+
+  /**
+   * The models discovery has reported on one connection — the card's chips, or its pull-list.
+   *
+   * Read from the registry tag's `model-options`, which is where `provider_models` crosses
+   * the wire for mockup 21's inspector as well: one read, so a chip on this page and an
+   * option in that select cannot disagree about what a provider offers.
+   *
+   * @param connectionId The connection.
+   * @param client The client to call through.
+   * @returns The models, ordered by id. Empty when discovery has not run — an honest empty
+   *   region, not a failure.
+   * @throws {ApiError} What the service answered — `404 provider_connection_not_found` for a
+   *   connection this workspace does not have.
+   */
+  async models(connectionId: string, client: ApiClient = api()): Promise<readonly ModelOption[]> {
+    return unwrap(
+      await client.GET("/api/v1/registry/aliases/model-options", {
+        params: { query: { connection: connectionId } },
+      }),
+    ).models;
   },
 };

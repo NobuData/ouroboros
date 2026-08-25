@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import {
+  FIXTURE_ACTOR,
   FIXTURE_CONNECTION,
   FIXTURE_ENVELOPE,
   FIXTURE_WORKSPACE,
@@ -51,6 +52,7 @@ describe("the provider connections repository", () => {
   ][] = [
     ["list", (repository) => repository.list(FIXTURE_WORKSPACE, WINDOW)],
     ["find", (repository) => repository.find(FIXTURE_WORKSPACE, FIXTURE_CONNECTION)],
+    ["adderNames", (repository) => repository.adderNames(FIXTURE_WORKSPACE)],
     ["envelopeOf", (repository) => repository.envelopeOf(FIXTURE_WORKSPACE, FIXTURE_CONNECTION)],
     [
       "envelopesFor",
@@ -204,6 +206,29 @@ describe("the provider connections repository", () => {
         "created_at",
         "updated_at",
       ]);
+    });
+  });
+
+  describe("naming the adders", () => {
+    it("reads names through this workspace's connections, never by a list of ids", async () => {
+      // The card's *Added by Ken* (#228). The join is what keeps the statement under this
+      // file's rule — the workspace is in the `where` — and what makes it unable to name
+      // anybody who did not connect one of *this* workspace's providers.
+      database.answers({ rows: [{ id: FIXTURE_ACTOR, name: "Ken Suenobu" }] });
+
+      const names = await connections.adderNames(FIXTURE_WORKSPACE);
+
+      const [statement] = database.sql();
+      expect(statement).toContain(
+        'inner join "ouroboros"."user" on "ouroboros"."user"."id" = "ouroboros"."provider_connections"."added_by"',
+      );
+      expect(statement).toContain("select distinct");
+      expect(statement).not.toContain("credentials_encrypted");
+      expect(names).toEqual(new Map([[FIXTURE_ACTOR, "Ken Suenobu"]]));
+    });
+
+    it("answers an empty map for a workspace whose providers were added by nobody still here", async () => {
+      await expect(connections.adderNames(FIXTURE_WORKSPACE)).resolves.toEqual(new Map());
     });
   });
 

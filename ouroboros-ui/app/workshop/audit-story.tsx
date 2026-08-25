@@ -25,8 +25,8 @@ import "./workshop.css";
  * is the thing worth demonstrating: the ghost action must not compete with the primary one,
  * and the sheet must open over the pane rather than inside it. So the head below is the
  * mockup's, and everything under it is deliberately absent — the provider cards are AE.2's
- * (#228) and drawing invented ones here would be a mock-up of a page somebody else is
- * building.
+ * (#228) and live on `/models/providers`; drawing them a second time here would be a second
+ * mount of a grid that reads five things, on a story about one sheet.
  *
  * `+ Add provider` carries a `reason` rather than being omitted, per the design system's
  * honesty rule (§ 3.5): a control that cannot act explains itself, and a head with one button
@@ -44,7 +44,7 @@ import "./workshop.css";
 
 /** Why the mockup's primary action is inert here. */
 const ADD_PROVIDER_REASON =
-  "Connecting a provider is AE.2 (#228). This story is the head's other action.";
+  "The provider cards are on /models/providers (AE.2, #228). This story is the head's other action.";
 
 /**
  * The story.

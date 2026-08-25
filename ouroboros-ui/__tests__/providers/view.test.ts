@@ -7,7 +7,6 @@ import type { AuditAction } from "@/app/api/audit";
 import {
   ADD_PROVIDER_LABEL,
   NOBODY,
-  PROVIDERS_NEXT_NOTE,
   PROVIDERS_SUBLINE_TEMPLATE,
   PROVIDERS_TITLE,
   SENTENCES,
@@ -258,16 +257,5 @@ describe("the rest of the head", () => {
 
   it("labels the primary action as the mockup does", () => {
     expect(ADD_PROVIDER_LABEL).toBe("+ Add provider");
-  });
-
-  it("names the issues that fill the space below the tab set, and says what is live", () => {
-    // AE.5 (#231) is no longer in the list, because the catalog it names is on the page —
-    // `catalog.test.ts` is that flow's own suite.
-    for (const issue of ["#228", "#229", "#230", "#232"]) {
-      expect(PROVIDERS_NEXT_NOTE).toContain(issue);
-    }
-
-    expect(PROVIDERS_NEXT_NOTE).not.toContain("#231");
-    expect(PROVIDERS_NEXT_NOTE).toMatch(/Audit log and \+ Add provider .* live/);
   });
 });
