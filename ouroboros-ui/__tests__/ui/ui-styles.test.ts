@@ -256,6 +256,18 @@ describe("the selected row (#201)", () => {
     );
   });
 
+  it("offers mockup 21's accent as a second tone, in the same shape (#592)", () => {
+    // The registry table selects in the brand hue where the routing matrix selects in the
+    // model violet; the difference is the mockups' own, declared on the table rather than
+    // written over this rule from a page's sheet.
+    expect(CODE).toMatch(
+      /\.ou-table--accent \.ou-table__row--selected td\s*\{[^}]*background:\s*var\(--accent-tint\)/,
+    );
+    expect(CODE).toMatch(
+      /\.ou-table--accent \.ou-table__row--selected td:first-child\s*\{[^}]*box-shadow:\s*inset 3px 0 0 var\(--accent\)/,
+    );
+  });
+
   it("pulls the focus ring inside the row rather than offsetting it outward", () => {
     // The product's one ring, at an offset that does not overlap the rows above and below or
     // get clipped by the scrolling wrapper at the table's edges.

@@ -1,10 +1,16 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Reading } from "@/app/api/reading";
+import type { RegistryAlias } from "@/app/api/registry";
 import type { ProviderHealth } from "@/app/api/routing";
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
-import { RegistryScreen } from "@/app/registry/registry-screen";
+import {
+  INSPECTOR_NEXT_TITLE,
+  TABLE_EMPTY_TITLE,
+  TABLE_FAILED_TITLE,
+  TABLE_TITLE,
+} from "@/app/registry/table";
 import {
   CONNECT_PROVIDER_LABEL,
   IMPORT_LABEL,
@@ -13,43 +19,68 @@ import {
   NEW_ALIAS_REASON,
   NO_PROVIDERS_REASON,
   PROVIDERS_UNREADABLE_REASON,
-  REGISTRY_NEXT_TITLE,
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
   type RegistryReadings,
 } from "@/app/registry/view";
 
 import { seededProviders } from "../helpers/models";
-import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
+import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
+import { seededRegistry } from "../helpers/registry";
+
+// The table's switches write through a Server Action on the server-only client; the action is
+// `switch-actions.test.ts`'s subject and the switch `alias-switch.test.tsx`'s.
+vi.mock("@/app/registry/switch-actions", () => ({ setAliasEnabled: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
+const { RegistryScreen } = await import("@/app/registry/registry-screen");
 
 /**
- * The `/models/registry` frame (#591) — mockup 21's page head and tab set, composed.
+ * The `/models/registry` page (#591) — mockup 21's page head and tab set, composed — and,
+ * since #592, the allowed-models table in the seat below them.
  *
  * The tab set's own behaviour is `models/models-subnav.test.tsx`'s, the dropdown's is
- * `import-menu.test.tsx`'s and the copy's is `view.test.ts`'s. What is left here is the
- * composition the ticket's acceptance criteria describe: the head is the mockup's verbatim,
- * both actions are wired — one to the workspace's providers, one to its reason — the tab set
- * has this page current with its two siblings a link away, and the page admits what it is not
- * rather than mocking it up.
+ * `import-menu.test.tsx`'s, the table's is `registry-table.test.tsx`'s and the copy's is
+ * `view.test.ts`'s. What is left here is the composition the tickets' acceptance criteria
+ * describe: the head is the mockup's verbatim, both actions are wired — one to the workspace's
+ * providers, one to its reason — the tab set has this page current with its two siblings a
+ * link away, the table stands below them with the URL's alias selected, and the two states in
+ * which there is no table are told apart.
  */
 
-/** The readings for a workspace whose provider read came back clean. */
-function readings(providers: readonly ProviderHealth[] = seededProviders()): RegistryReadings {
-  return { providers: { ok: true, value: providers } };
+/**
+ * The readings for a workspace whose two reads came back clean.
+ *
+ * @param providers The connections. Defaults to the seeded five.
+ * @param aliases The registry. Defaults to the seeded eight.
+ * @returns The readings.
+ */
+function readings(
+  providers: readonly ProviderHealth[] = seededProviders(),
+  aliases: readonly RegistryAlias[] = seededRegistry(),
+): RegistryReadings {
+  return { providers: { ok: true, value: providers }, aliases: { ok: true, value: aliases } };
 }
 
-/** …and for one whose did not. */
+/** …and a provider read that did not. */
 const UNREADABLE: Reading<readonly ProviderHealth[]> = { ok: false, reason: "upstream refused" };
+
+/** …and a registry read that did not. */
+const TABLE_UNREADABLE: Reading<readonly RegistryAlias[]> = { ok: false, reason: "registry away" };
 
 /**
  * Render the page.
  *
- * @param over What this case is about — the readings, and whether the reader may administer.
+ * @param over What this case is about — the readings, whether the reader may administer, and
+ *   the alias the URL asked for.
  * @returns The render result.
  */
-function page(over: Partial<{ readings: RegistryReadings; mayAdminister: boolean }> = {}) {
+function page(
+  over: Partial<{ readings: RegistryReadings; mayAdminister: boolean; alias: string | string[] | null }> = {},
+) {
   return render(
     <RegistryScreen
+      alias={over.alias ?? null}
       mayAdminister={over.mayAdminister ?? true}
       readings={over.readings ?? readings()}
     />,
@@ -209,7 +240,7 @@ describe("a workspace with no provider connected", () => {
     for (const over of [
       { readings: readings() },
       { readings: readings([]), mayAdminister: false },
-      { readings: { providers: UNREADABLE } },
+      { readings: { ...readings(), providers: UNREADABLE } },
     ]) {
       const view = page(over);
 
@@ -224,7 +255,7 @@ describe("a workspace whose providers could not be read", () => {
   it("blocks the import action with the reason that is true, and keeps the page", () => {
     // One failed read is one degraded region, never a blank page: the head, the tab set and
     // everything below them still render.
-    page({ readings: { providers: UNREADABLE } });
+    page({ readings: { ...readings(), providers: UNREADABLE } });
 
     expect(screen.getByRole("button", { name: IMPORT_LABEL })).toHaveAttribute(
       "title",
@@ -232,6 +263,8 @@ describe("a workspace whose providers could not be read", () => {
     );
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(REGISTRY_TITLE);
     expect(screen.getByRole("navigation", { name: "Models" })).toBeInTheDocument();
+    // …and the table, which is a different read, is still drawn.
+    expect(screen.getByRole("grid")).toBeInTheDocument();
   });
 });
 
@@ -267,34 +300,92 @@ describe("a reader whose role may not create aliases", () => {
   });
 });
 
-describe("what the page does not pretend", () => {
-  it("names the issues that fill the table's space rather than mocking a table", () => {
+describe("the allowed-models table (#592)", () => {
+  it("stands below the tab set, with the seeded eight rows and a true count", () => {
     page();
 
-    expect(screen.getByText(REGISTRY_NEXT_TITLE)).toBeInTheDocument();
-    expect(screen.getByText(/#592/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: TABLE_TITLE })).toBeInTheDocument();
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(9);
+    expect(screen.getByText("8 aliases")).toBeInTheDocument();
   });
 
-  it("draws no table at all, so nothing on the page can be mistaken for data", () => {
+  it("selects the row the URL asked for, so a selected alias survives a reload", () => {
+    page({ alias: "coder-max" });
+
+    expect(screen.getByRole("row", { selected: true })).toHaveAttribute("data-row-key", "coder-max");
+    expect(screen.getByRole("heading", { level: 2, name: "Edit — coder-max" })).toBeInTheDocument();
+  });
+
+  it("selects nothing for an alias the workspace does not have, or a repeated parameter", () => {
+    for (const alias of ["nope", ["coder-max", "sizer"]]) {
+      const view = page({ alias });
+
+      expect(screen.queryByRole("row", { selected: true })).toBeNull();
+      expect(screen.getByRole("heading", { level: 2, name: "Edit" })).toBeInTheDocument();
+
+      view.unmount();
+    }
+  });
+
+  it("hands the reader's role to the switches", () => {
+    page({ mayAdminister: false });
+
+    for (const control of screen.getAllByRole("switch")) {
+      expect(control).toHaveAttribute("aria-disabled", "true");
+    }
+  });
+
+  it("names the issues that fill the rest of the page in the inspector's seat, not in a mock-up", () => {
     page();
 
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByText(INSPECTOR_NEXT_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(/#593/)).toBeInTheDocument();
+    expect(screen.queryByText(/#592/)).toBeNull();
+  });
+});
+
+describe("a workspace whose registry could not be read", () => {
+  it("says so where the table would be, with the service's sentence, and keeps the page", () => {
+    // One failed read is one degraded region: the head, the tab set, the import menu and the
+    // inspector's seat all still render, and *could not be read* is not drawn as *no aliases*.
+    page({ readings: { ...readings(), aliases: TABLE_UNREADABLE } });
+
+    expect(screen.getByText(TABLE_FAILED_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(/registry away/)).toBeInTheDocument();
+    expect(screen.queryByText(TABLE_EMPTY_TITLE)).toBeNull();
+    expect(screen.queryByRole("grid")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(REGISTRY_TITLE);
+    expect(screen.getByRole("button", { name: IMPORT_LABEL })).toHaveAttribute("aria-haspopup", "menu");
+    expect(screen.getByRole("heading", { level: 2, name: "Edit" })).toBeInTheDocument();
+  });
+});
+
+describe("a workspace with no aliases yet", () => {
+  it("says so rather than drawing an empty grid, and keeps the two states apart", () => {
+    page({ readings: readings(seededProviders(), []) });
+
+    expect(screen.getByText(TABLE_EMPTY_TITLE)).toBeInTheDocument();
+    expect(screen.getByText("0 aliases")).toBeInTheDocument();
+    expect(screen.queryByText(TABLE_FAILED_TITLE)).toBeNull();
+    expect(screen.queryByRole("grid")).toBeNull();
   });
 });
 
 describe("both palettes", () => {
   it.each(PALETTES)("renders the page in the %s palette", (palette) => {
-    renderInPalette(palette, <RegistryScreen mayAdminister readings={readings()} />);
+    renderInPalette(palette, <RegistryScreen alias="coder-max" mayAdminister readings={readings()} />);
 
     expect(document.documentElement).toHaveAttribute("data-theme", palette);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(REGISTRY_TITLE);
+    expect(screen.getByRole("row", { selected: true })).toBeInTheDocument();
   });
 
   it("draws the same markup in both, because the palette is CSS's business", () => {
     const [light, dark] = renderInBothPalettes(
-      <RegistryScreen mayAdminister readings={readings()} />,
+      <RegistryScreen alias="coder-max" mayAdminister readings={readings()} />,
     );
 
-    expect(light).toBe(dark);
+    expect(maskIds(light)).toBe(maskIds(dark));
   });
 });

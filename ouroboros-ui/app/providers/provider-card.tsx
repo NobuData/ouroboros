@@ -3,14 +3,10 @@ import { Card, Chip, cx } from "@/app/ui";
 import { AddressRow } from "./address-row";
 import { CapField, CapMeter, CapScope } from "./cap-field";
 import { CardMenu } from "./card-menu";
-import {
-  type CardModel,
-  MODELS_LABEL,
-  type ModelsRegion as Region,
-  type MonogramTint,
-} from "./cards";
+import { type CardModel, MODELS_LABEL, type ModelsRegion as Region } from "./cards";
 import { KeyRow } from "./key-row";
 import { ModelsRegion } from "./models-region";
+import { ProviderMonogram } from "./provider-monogram";
 import { ProviderSwitch } from "./provider-switch";
 import { TestConnection } from "./test-connection";
 
@@ -43,6 +39,10 @@ import "./providers.css";
  * and labelled so until AF.4 ([#237](https://github.com/NobuData/ouroboros/issues/237)).
  * Nothing on the card is drawn inert with an issue named any more.
  *
+ * The monogram at the head is `provider-monogram.tsx`'s — since CI.2
+ * ([#592](https://github.com/NobuData/ouroboros/issues/592)) the same component draws the
+ * registry table's provider cell at its smaller size, so the two surfaces cannot drift.
+ *
  * A Server Component. The controls that write are its Client Component islands, each handed
  * the decided model and a `mayAdminister` boolean; a member is handed the same card with
  * those islands drawn read-only or absent, never a different card. Every figure arrives
@@ -56,18 +56,6 @@ import "./providers.css";
  * solid frame and carries the warn or error pill: it is in play and struggling, which is
  * the opposite fact.
  */
-
-/**
- * The modifier each tint adds. Every tint has one — a monogram never falls back to another's
- * — and the names are written out so the sheet's own suite can find each of them rendered.
- */
-const TINT_CLASS: Record<MonogramTint, string> = {
-  model: "providers-card__monogram--model",
-  accent: "providers-card__monogram--accent",
-  warn: "providers-card__monogram--warn",
-  ok: "providers-card__monogram--ok",
-  neutral: "providers-card__monogram--neutral",
-};
 
 /** What the card takes. */
 export interface ProviderCardProps {
@@ -95,12 +83,7 @@ export function ProviderCard({ model, mayAdminister }: ProviderCardProps) {
       fill
     >
       <header className="providers-card__head">
-        <span
-          aria-hidden="true"
-          className={cx("providers-card__monogram", TINT_CLASS[model.monogram.tint])}
-        >
-          {model.monogram.letters}
-        </span>
+        <ProviderMonogram monogram={model.monogram} />
         <div className="providers-card__identity">
           <h2 className="providers-card__name" id={headingId}>
             {model.name}

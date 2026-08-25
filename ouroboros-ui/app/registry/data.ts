@@ -1,15 +1,25 @@
 import "server-only";
 
 /**
- * Everything the `/models/registry` frame reads.
+ * Everything the `/models/registry` page reads.
  *
- * One call today — the workspace's provider connections, which is the list **Import from
- * provider** offers — and the module exists anyway, for the reason `app/models/data.ts` and
- * `app/dashboard/data.ts` exist: the route stays three lines, the composition is a function
- * that can be tested against a stub, and the screen is handed one object rather than issuing
- * calls of its own. CI.2–CI.5 add the alias table, the price catalog and the chain card here
- * beside it, and the property that has to survive them is the one those files establish —
+ * Two calls — the workspace's provider connections, which is the list **Import from
+ * provider** offers, and CH.5's composed registry payload
+ * ([#588](https://github.com/NobuData/ouroboros/issues/588)), which is every cell of the
+ * allowed-models table (CI.2, [#592](https://github.com/NobuData/ouroboros/issues/592)) —
+ * issued together and each allowed to fail on its own, for the reason `app/models/data.ts`
+ * and `app/dashboard/data.ts` exist: the route stays three lines, the composition is a
+ * function that can be tested against a stub, and the screen is handed one object rather
+ * than issuing calls of its own. CI.3–CI.5 add the inspector's reads and the chain card here
+ * beside them, and the property that has to survive them is the one those files establish —
  * **one failed read is one degraded region, never a blank page**.
+ *
+ * ### The table is one request, and that is a correctness property
+ *
+ * `GET /api/v1/registry` joins five subsystems in one payload rather than having this reader
+ * assemble them; the contract says why, and the half that would break is the table: a page
+ * that read aliases, then health, then prices would render a row nobody's database was ever
+ * in. Nothing here composes a cell from two reads.
  *
  * ### Why the health endpoint, for a list that is not about health
  *
@@ -32,6 +42,7 @@ import "server-only";
 
 import type { Workspace } from "@/app/api/access";
 import { attempt } from "@/app/api/reading";
+import { registry } from "@/app/api/registry";
 import { routing } from "@/app/api/routing";
 
 import type { RegistryReadings } from "./view";
@@ -54,7 +65,12 @@ export async function readRegistry(access: Workspace): Promise<RegistryReadings>
   // nobody deletes an argument that is carrying a proof.
   void access;
 
-  const providers = await attempt(async () => (await routing.providers()).providers);
+  // Both at once: neither read depends on the other, and a page that waited for the strip
+  // before asking for the table would be paying two round trips for one screen.
+  const [providers, aliases] = await Promise.all([
+    attempt(async () => (await routing.providers()).providers),
+    attempt(async () => (await registry.read()).aliases),
+  ]);
 
-  return { providers };
+  return { providers, aliases };
 }

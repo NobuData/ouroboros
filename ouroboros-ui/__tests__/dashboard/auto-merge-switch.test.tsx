@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { settle } from "../helpers/settle";
+
 /**
  * The auto-merge switch ([#83](https://github.com/NobuData/ouroboros/issues/83), over
  * [#74](https://github.com/NobuData/ouroboros/issues/74)) — the dashboard's one control that
@@ -179,6 +181,9 @@ describe("a write that did not land", () => {
 
     fireEvent.click(control());
     await screen.findByRole("alert");
+    // The alert is the failed press's output; its transition may still be pending for a turn,
+    // and a press while it is would be dropped (`../helpers/settle.ts`).
+    await settle();
 
     fireEvent.click(control());
 

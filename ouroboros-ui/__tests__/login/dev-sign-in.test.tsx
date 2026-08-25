@@ -6,6 +6,7 @@ import { DevSignInForm } from "@/app/login/dev-sign-in";
 import { LOGIN_PATH } from "@/app/paths";
 
 import { requestedUrl } from "../helpers/auth";
+import { settle } from "../helpers/settle";
 
 /**
  * The development email/password form
@@ -254,6 +255,9 @@ describe("outside production", () => {
 
     signIn(EMAIL, "wrong-password-entirely");
     await screen.findByRole("alert");
+    // The alert is the failed press's output; its transition may still be pending for a turn,
+    // and a press while it is would be dropped (`../helpers/settle.ts`).
+    await settle();
 
     serviceAnswering(SIGNED_IN);
     signIn();

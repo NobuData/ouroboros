@@ -10,17 +10,17 @@ import {
 } from "@/app/registry/view";
 
 import { membership, sessionUser } from "../helpers/login";
-import { seededProviders } from "../helpers/models";
+import { registryReadings } from "../helpers/registry";
 
 /**
  * The registry page's route (#591) — the `#49` placeholder this segment was, replaced.
  *
- * It is four lines, and this suite is about all four: the gate is asked first, the reader is
- * given what it returned, and the two things the page draws from — the connections and the
- * reader's role — are both the gate's rather than a screen's assumption. Everything else the
- * page could be judged on is covered where it is decided
- * (`registry-screen.test.tsx`, `view.test.ts`, `data.test.ts`), which is why this file is
- * short rather than a third copy of any of them.
+ * It is a few lines, and this suite is about all of them: the gate is asked first, the reader
+ * is given what it returned, the three things the page draws from — the readings, the
+ * reader's role and the URL's alias — are the gate's, the reader's and the request's rather
+ * than a screen's assumption. Everything else the page could be judged on is covered where it
+ * is decided (`registry-screen.test.tsx`, `registry-table.test.tsx`, `view.test.ts`,
+ * `data.test.ts`), which is why this file is short rather than a copy of any of them.
  *
  * The gate is replaced: it has its own suite (`__tests__/api/access.test.ts`), and driving it
  * through this route would test it a second time while testing the wiring not at all. So is
@@ -35,8 +35,12 @@ const readRegistry = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/registry/data", () => ({ readRegistry: (access: unknown) => readRegistry(access) }));
+// The table's switches write through a Server Action on the server-only client
+// (`switch-actions.test.ts`).
+vi.mock("@/app/registry/switch-actions", () => ({ setAliasEnabled: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-const Page = (await import("@/app/(app)/models/registry/page")).default;
+const Route = (await import("@/app/(app)/models/registry/page")).default;
 
 /** What the gate hands back, in the seeded world — an owner of the seeded workspace. */
 const ACCESS = {
@@ -44,9 +48,19 @@ const ACCESS = {
   membership: membership(),
 };
 
+/**
+ * The route, with the URL's query.
+ *
+ * @param query What `?alias=` and anything else carried. Defaults to nothing.
+ * @returns The rendered page.
+ */
+function Page(query: Record<string, string | string[] | undefined> = {}) {
+  return Route({ searchParams: Promise.resolve(query) });
+}
+
 beforeEach(() => {
   requireWorkspace.mockReset().mockResolvedValue(ACCESS);
-  readRegistry.mockReset().mockResolvedValue({ providers: { ok: true, value: seededProviders() } });
+  readRegistry.mockReset().mockResolvedValue(registryReadings());
 });
 
 describe("the registry route", () => {
@@ -118,6 +132,20 @@ describe("the registry route", () => {
       "title",
       MEMBER_REASON,
     );
+  });
+
+  it("reads the selected alias out of the URL, so the first paint has the right row", async () => {
+    // The other half of *a selected alias survives a reload*: read on the server, the same
+    // arrangement the routing page makes for `?route=`.
+    render(await Page({ alias: "coder-max" }));
+
+    expect(screen.getByRole("row", { selected: true })).toHaveAttribute("data-row-key", "coder-max");
+  });
+
+  it("selects nothing when the URL carries no alias", async () => {
+    render(await Page());
+
+    expect(screen.queryByRole("row", { selected: true })).toBeNull();
   });
 
   it("draws nothing at all when the gate redirects instead of returning", async () => {

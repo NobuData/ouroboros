@@ -1,5 +1,6 @@
 import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister } from "@/app/api/membership";
+import { ALIAS_PARAM } from "@/app/paths";
 import { readRegistry } from "@/app/registry/data";
 import { RegistryScreen } from "@/app/registry/registry-screen";
 
@@ -25,15 +26,34 @@ import { RegistryScreen } from "@/app/registry/registry-screen";
  * three pages of the section — the ticket's *all three directions* criterion (06 ⇄ 21 ⇄ 07),
  * met by the URL rather than by a special case in the sidebar.
  *
+ * ### Why the selected alias is read here rather than in the browser
+ *
+ * The allowed-models table (CI.2, [#592](https://github.com/NobuData/ouroboros/issues/592))
+ * reflects its selection into `?alias=` — `app/paths.ts`'s `ALIAS_PARAM`, the same parameter
+ * the provider card's *not listed upstream* flag links with — and this is the other half of
+ * *a selected alias survives a reload*: the parameter is read on the **server**, so the very
+ * first paint already has the right row selected and the right name in the inspector's seat.
+ * A client component reading it with `useSearchParams` would render an unselected table
+ * first, would need a `Suspense` boundary to be prerendered at all, and would answer *which
+ * row?* one frame later than the page could have. It is the same arrangement
+ * `app/(app)/models/(routing)/page.tsx` makes for `?route=`, and it costs nothing this route
+ * was not already paying: `requireWorkspace()` reads the session cookie, so the page is
+ * dynamic either way.
+ *
+ * @param props.searchParams The URL's query, which may carry the selected alias.
  * @returns The registry page, for the workspace this request is operating in.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: Readonly<{ searchParams: Promise<Record<string, string | string[] | undefined>> }>) {
   const access = await requireWorkspace();
+  const [readings, query] = await Promise.all([readRegistry(access), searchParams]);
 
   return (
     <RegistryScreen
+      alias={query[ALIAS_PARAM] ?? null}
       mayAdminister={mayAdminister(access.membership.roles)}
-      readings={await readRegistry(access)}
+      readings={readings}
     />
   );
 }

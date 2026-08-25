@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { settle } from "../helpers/settle";
+
 import {
   OLD_KEY_ACTIVE,
   SECRET_REQUIRED,
@@ -98,6 +100,9 @@ describe("the rotate dialog", () => {
     fireEvent.change(screen.getByLabelText("New key"), { target: { value: "bad" } });
     fireEvent.click(screen.getByRole("button", { name: "Check and swap" }));
     await screen.findByRole("alert");
+    // The alert is the failed press's output; its transition may still be pending for a turn,
+    // and a press while it is would be dropped (`../helpers/settle.ts`).
+    await settle();
 
     fireEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
 
