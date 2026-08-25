@@ -36,10 +36,20 @@
 import { Injectable, Logger } from "@nestjs/common";
 
 import { AppConfigService } from "../config/config.service";
+import type { ProviderConnectionKind } from "../db/schema";
 import { describeForLog } from "../errors/failure";
+import type { ProviderValidation } from "../providers/provider.adapter";
+import { PROVIDER_ERROR_STATUS } from "../providers/provider.errors";
 import { VaultService } from "../vault/vault.service";
 import { MAX_CHECKS_PER_SWEEP, PROBE_CONCURRENCY, chunked } from "./cadence";
-import { checkFor, checkUrl, kindsOnCadence, type ProviderCheck } from "./checks";
+import {
+  checkFor,
+  checkKindFor,
+  checkUrl,
+  kindsOnCadence,
+  reportsLatencyFor,
+  type ProviderCheck,
+} from "./checks";
 import { ProviderProbe, type ProbeOutcome } from "./probe.client";
 import {
   ProviderHealthRepository,
@@ -184,6 +194,53 @@ export class ProviderHealthService {
   }
 
   /**
+   * Record what a live `validate` through an adapter found — the one check this service did
+   * not schedule.
+   *
+   * Mockup 07's **Test connection** (AE.4, [#230](https://github.com/NobuData/ouroboros/issues/230))
+   * is user-initiated, goes through the adapter's own `validate`, and is admitted by the
+   * lifecycle's role gate rather than by this module; what it owes this module is the write,
+   * so the routing page's strip and the providers page's pill are one measurement rather than
+   * two opinions. It comes through here rather than through a second writer for the reasons
+   * the column has one: {@link mergeHealth} is what keeps AB.2's reserved key intact, and
+   * `record` is what stamps the check's clock.
+   *
+   * The controller's *no check on demand* rule stands: nothing here issues a request. The
+   * request was the adapter's, under an administrator's session, and decision **P9** bounds
+   * it to a models-list or a ping — the same class of call the sweep makes, never a completion.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection that was tested.
+   * @param kind - Its kind, for the check name and the latency judgement.
+   * @param hasSecret - Whether the adapter's schema declares a credential, for
+   *   {@link checkKindFor}.
+   * @param validation - What the adapter found.
+   * @param at - When the check finished.
+   * @returns When it is stored. A connection this workspace does not have is left alone — the
+   *   caller has already answered `404` for it, and a write here would be to nothing.
+   */
+  async recordValidation(
+    organizationId: string,
+    connectionId: string,
+    kind: ProviderConnectionKind,
+    hasSecret: boolean,
+    validation: ProviderValidation,
+    at: Date,
+  ): Promise<void> {
+    const existing = await this.connections.healthOf(organizationId, connectionId);
+
+    if (existing === undefined) {
+      return;
+    }
+
+    await this.connections.record(organizationId, connectionId, {
+      status: validation.status === "ok" ? "active" : PROVIDER_ERROR_STATUS[validation.errorClass],
+      health: mergeHealth(existing, validated(kind, hasSecret, validation)),
+      checkedAt: at,
+    });
+  }
+
+  /**
    * Check one connection, and write back only if a check was actually performed.
    *
    * @param row - The due connection, as the sweep's read returned it.
@@ -289,5 +346,37 @@ export function measured(check: ProviderCheck, outcome: ProbeOutcome): ProbeHeal
     check: check.check,
     ...(check.reportsLatency ? { latency_ms: outcome.latencyMs } : {}),
     ...(outcome.models === null ? {} : { models: outcome.models }),
+  };
+}
+
+/**
+ * An adapter's validation as the `health` keys the column owns.
+ *
+ * The same rules as {@link measured}, applied to the SPI's answer: a failure carries its phrase
+ * and its class and **no** latency, because `ProviderValidationFailure` has none to carry; a
+ * success carries a latency only where {@link reportsLatencyFor} says the round trip means
+ * something. A test enumerates nothing, so it carries no `models` — and the merge clears the
+ * count the last sweep wrote, because a count with a fresh stamp beside it would be vouching
+ * for a measurement this check did not make. The next sweep restores it.
+ *
+ * @param kind - The connection's kind.
+ * @param hasSecret - Whether the adapter's schema declares a credential.
+ * @param validation - What the adapter found.
+ * @returns The probe-owned keys.
+ */
+export function validated(
+  kind: ProviderConnectionKind,
+  hasSecret: boolean,
+  validation: ProviderValidation,
+): ProbeHealth {
+  const check = checkKindFor(kind, hasSecret);
+
+  if (validation.status === "failed") {
+    return { check, detail: validation.detail, error_class: validation.errorClass };
+  }
+
+  return {
+    check,
+    ...(reportsLatencyFor(kind) ? { latency_ms: validation.latencyMs } : {}),
   };
 }

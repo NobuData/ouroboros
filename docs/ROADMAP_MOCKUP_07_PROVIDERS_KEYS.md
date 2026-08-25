@@ -1327,7 +1327,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | AE.1 | #227 | 🟢 Done | ouroboros-ui: [AE.1] Providers route, subnav & page frame | `/models/providers`, head + Audit log sheet, subnav live | mvp, providers, ui, design | N (after AA.1, AD.4, BA-D.5) | Y | S | ouroboros-ui |
 | AE.2 | #228 | 🟢 Done | ouroboros-ui: [AE.2] Provider cards | Card grid: monograms, pills, switches, meta, chips, meters, feet | mvp, providers, ui, design | N (after AE.1, AC.6) | Y | L | ouroboros-ui, ouroboros-rest |
 | AE.3 | #229 | 🟢 Done | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
-| AE.4 | #230 | 🟡 Open | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui |
+| AE.4 | #230 | 🟢 Done | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui, ouroboros-rest |
 | AE.5 | #231 | 🟢 Done | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui, ouroboros-rest |
 | AE.6 | #232 | 🟡 Open | ouroboros-ui: [AE.6] Caps, security strip & states | Cap fields + warn meters, truthful strip, empty/read-only/error states | mvp, providers, ui, design | N (after AE.2–AE.5, AD.5) | Y | M | ouroboros-ui |
 | AE.7 | #233 | 🟡 Open | ouroboros-ui: [AE.7] Providers e2e leg | Parity, add→test→rotate→audit flow, pull progress, themes | mvp, providers, ui, ci | N (after AE.1–AE.6) | Y | S | ouroboros-ui, .github |
@@ -1600,7 +1600,88 @@ This month $412.80 of $600 ▓▓▓▓▓▓▓░░░   [Test connection] �
 
 ### Issue AE.4 — ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX
 
-> **GitHub issue:** #230 · **Status:** 🟡 Open · **Parent epic:** #214
+> **GitHub issue:** #230 · **Status:** 🟢 Done · **Parent epic:** #214
+
+> **Shipped 2026-08-25.**
+> Three client islands on AE.2's card —
+> [`test-connection.tsx`](../ouroboros-ui/app/providers/test-connection.tsx),
+> [`models-region.tsx`](../ouroboros-ui/app/providers/models-region.tsx) with
+> [`unlisted-flag.tsx`](../ouroboros-ui/app/providers/unlisted-flag.tsx), and
+> [`pull-list.tsx`](../ouroboros-ui/app/providers/pull-list.tsx) — over one `"use server"`
+> module ([`live-actions.ts`](../ouroboros-ui/app/providers/live-actions.ts)), one pure
+> decision module ([`live.ts`](../ouroboros-ui/app/providers/live.ts)) and one route handler
+> for the poll ([`app/api/providers/[id]/pulls/route.ts`](../ouroboros-ui/app/api/providers/[id]/pulls/route.ts)),
+> 0.46.0 → 0.47.0. **This is the ticket that owns the test-and-discovery routes**, as AC.1
+> through AC.5 each said in turn, so `ouroboros-rest` gained five (0.30.15 → 0.30.16):
+> `POST /api/v1/providers/{id}/test`, `GET …/models`, `POST …/discover`, and `POST` +
+> `GET …/pulls`, in
+> [`provider-connections.service.ts`](../ouroboros-rest/src/modules/provider-connections/provider-connections.service.ts)
+> over a new [`provider-models.repository.ts`](../ouroboros-rest/src/modules/provider-connections/provider-models.repository.ts).
+>
+> **A provider that is down is a `200`.** The test route runs the adapter's own `validate` —
+> a models-list or a version ping, never a completion (decision **P9**) — and answers whatever
+> it found as a value: the status the column was set to, the pill and the note composed
+> through the taxonomy's `validationPill`/`validationNote`, the latency **only on a pass**
+> (a failure has none, by AC.1's design), the class, and whether it is retryable. The card
+> draws the glyph and the `· 38ms`; the service had already written the answer to
+> `provider_connections.status` and to Z.3's snapshot **through Z.3's own writer**
+> (`ProviderHealthService.recordValidation`, the first check that arrives from outside the
+> sweep and is merged with the same `mergeHealth`), so the routing strip and the card's pill
+> are one measurement. The snapshot gained one probe key for it, `error_class`, which is what
+> lets the card draw `degraded upstream` after a reload and what the next sweep clears; the
+> strip resource carries it as `errorClass`. Audited as `provider.tested` with what was found
+> — AD.4's method, spelled once, gains its caller and a `failure` outcome carrying the class.
+> **`· retrying` is the taxonomy's word and the card gives it exactly one bounded retry**: an
+> `upstream` failure earns one automatic re-test after five seconds, drawn busy meanwhile; a
+> `429`, a closed socket and a refused key earn none.
+>
+> **Discovery replaces the catalog, and the alias is what is flagged.** The `insert … on
+> conflict (provider_connection_id, model_id)` V017 wrote out is now written, inside a
+> transaction that locks the connection row for the workspace first, together with the half
+> V017 left to the writer: every row the report did not name is **deleted**, because
+> `provider_models` is discovery's report of what exists and the registry, alias validation
+> and the import wizard all read it as exactly that. What that deletion would otherwise hide
+> comes back as `unlisted` — every alias on the connection whose model the catalog no longer
+> holds, read through `RegistryService.aliasesOn` — and the card draws each as
+> `local/deepseek-v3.2 ⚠ not listed upstream — alias local-ds still points here`, with a link
+> to the alias on the registry page (`aliasPath`, a query parameter CI.2's alias table will
+> honour). Nothing is flagged on a connection nothing has discovered on: V017's gap is not a
+> mismatch. A failed discovery is `502 provider_discovery_failed` and changes nothing, so
+> *could not read the list* and *the list is empty* stay different facts. Chips re-fetch after
+> a pass and on **Refresh models**, hidden where the adapter's `discovery` flag is false; a chip
+> that appeared enters and a vanished one is kept drawn, leaving, for 240 ms, with motion only
+> where the reader allows it.
+>
+> **Progress lives on the server, and the page polls it.** `POST …/pulls` is the handler over
+> AC.4's `ModelPullTracker.request` — `202` with the record as it stands, `running` or `queued`
+> behind the connection's one active pull, the existing record for a double click — and the
+> stream is opened **when the pull starts**, so a queued pull reads its connection and opens
+> its credential when its turn comes. `GET …/pulls` is what the list polls every 1.5 s while
+> anything moves, through a route handler on the UI's origin for the reason the dashboard's
+> summary poll is one; the reader hands a pulling card its records *with the page*, so **a
+> reload mid-pull lands on the bar at the transfer's real percentage** rather than on an idle
+> button. The bar is a `progressbar` announcing `llama4:scout · 61%`, indeterminate while the
+> daemon has not sized the transfer; a finished pull is `succeeded`, not `100%`, because the
+> daemon's last line carries no counts and the service reports what it said. When a pull
+> lands the service re-runs discovery itself, once per pull, whether or not a page is still
+> watching — *completion refreshes the list* is a promise a page cannot keep after a reload —
+> and the list re-reads the card a second later. Sizes are `19 GB` / `63 GB` / `9.1 GB` from
+> bytes, decimal as `ollama list` prints them. Queue management proper stays AF.5's (#238).
+>
+> **What was verified where.** 105 new REST cases across nine suites, and 14 cases of a new
+> integration suite ([`live-surfaces.integration-spec.ts`](../ouroboros-rest/src/modules/provider-connections/live-surfaces.integration-spec.ts))
+> against a migrated database and two loopback providers — an OpenAI-compatible listing whose
+> contents a case changes or breaks, and an Ollama daemon that streams a pull as the recorded
+> NDJSON with a delay between lines: the upsert doubles nothing, the delete leaves the alias
+> flagged, the snapshot the strip reads is the one the test wrote, a `503` flips the pill and
+> the strip within one test, a pull is read at 61% by a later request and lands with its size
+> in the catalog, a second pull queues and is asked of the daemon only afterwards. 110 new UI
+> cases across seven suites: the decisions, the actions, each island's states in both
+> palettes, the reader's pulls, the facade's five calls and the poll route. **No compose stack
+> was run for this ticket**: the *stop the compose Ollama* criterion is exercised by the
+> integration suite's loopback daemon answering a `503` — the same adapter, the same route,
+> the same snapshot write — and the Playwright leg that stops the real container and pulls a
+> real model is AE.7's (#233), as AE.3's note said of its own e2e.
 
 
 - **Problem Statement:** Test connection, model-chip refresh, and the Ollama

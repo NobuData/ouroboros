@@ -834,12 +834,26 @@ Tests are exempt from the second rule, because the in-memory fake exists to powe
 `providers/boundary.spec.ts` builds a tree containing each violation and asserts the build
 really fails.
 
+## The routes over the SPI
+
+The three questions a card asks reach an adapter through `provider-connections/`, which is the
+module that can resolve a connection for a workspace and open its credential for one call
+(AE.4, [#230](https://github.com/NobuData/ouroboros/issues/230)):
+
+| Question | Route | Adapter member |
+|---|---|---|
+| Does this connection work? | `POST /api/v1/providers/{id}/test` | `validate(config, secret)` — the answer is returned as a value, written to the health snapshot, audited as `provider.tested` |
+| What does it serve? | `POST /api/v1/providers/{id}/discover` · `GET …/models` | `discoverModels(connection)` — V017's upsert, the delete of what vanished, and a flag on every alias left naming a removed model |
+| Pull this model | `POST /api/v1/providers/{id}/pulls` · `GET …/pulls` | `pullModel(connection, id)` through `ModelPullTracker`, whose record a page polls |
+
+A `ProviderAdapterError` thrown by `discoverModels` is `502 provider_discovery_failed`, carrying
+the class and your `detail` — which is the second reason the detail must never echo a body.
+
 ## What is not here yet
 
 | | |
 |---|---|
 | Credential add / reveal / rotate | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)) |
-| The HTTP surface a page polls for pull progress — `ModelPullTracker` is the service behind it | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)), AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)) |
 | Invocation through an adapter | AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)), AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) |
 | Cloud adapters — OpenAI, Google, Bedrock | AF.3 ([#236](https://github.com/NobuData/ouroboros/issues/236)) |
 

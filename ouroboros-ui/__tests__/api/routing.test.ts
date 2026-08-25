@@ -235,14 +235,16 @@ describe("the typing, which is the reason the client is generated", () => {
     expect(payload.rules[0]?.display).toContain("coder-max");
   });
 
-  it("holds a chip to the eleven fields the strip draws from", () => {
-    // A twelfth would be a fact nobody rendered; a missing one is a compile error in
-    // `app/models/view.ts` rather than an `undefined` printed on a chip.
+  it("holds a chip to the twelve fields the strip draws from", () => {
+    // A thirteenth would be a fact nobody rendered; a missing one is a compile error in
+    // `app/models/view.ts` rather than an `undefined` printed on a chip. `errorClass` joined
+    // with AE.4 (#230): the class a test wrote, which the provider card's pill reads.
     expect(Object.keys(seededProviders()[0]!).sort()).toEqual([
       "check",
       "checkedAt",
       "detail",
       "displayName",
+      "errorClass",
       "host",
       "id",
       "kind",

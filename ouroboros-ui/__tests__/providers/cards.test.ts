@@ -42,7 +42,10 @@ import {
   fakeConnection,
   fakeEntry,
   modelAlias,
-  modelOption,
+  SEEDED_ANTHROPIC_ID,
+  providerModel,
+  providerModels,
+  pullRecord,
   ollamaEntry,
   openaiCompatibleEntry,
   seededCards,
@@ -96,6 +99,17 @@ describe("the status pill", () => {
   it("uses the health strip's words for the other two, so 06 and 07 agree", () => {
     expect(statusPill("error")).toMatchObject({ label: "error", tone: "err" });
     expect(statusPill("paused")).toMatchObject({ label: "paused", tone: "neutral" });
+  });
+
+  it("draws the taxonomy's finer pill from the class a test wrote, beside an error only", () => {
+    // `provider.errors.ts`'s five, verbatim — the mockup's Copilot card is `degraded upstream`.
+    expect(statusPill("error", "upstream")).toEqual({ label: "degraded upstream", tone: "warn", dot: "filled" });
+    expect(statusPill("error", "auth")).toMatchObject({ label: "key rejected", tone: "err" });
+    expect(statusPill("error", "network")).toMatchObject({ label: "unreachable", tone: "err" });
+    expect(statusPill("error", "rate_limit")).toMatchObject({ label: "rate limited", tone: "warn" });
+    expect(statusPill("error", "config")).toMatchObject({ label: "needs configuration", tone: "err" });
+    // A class beside a status that is not an error is a leftover, and the status wins.
+    expect(statusPill("active", "upstream")).toMatchObject({ label: "connected" });
   });
 
   it("hovers the last check's own phrase, and nothing when the strip has none", () => {
@@ -200,38 +214,58 @@ describe("the meta row", () => {
 
 describe("the models region", () => {
   it("is chips for a kind that does not pull, with a tier pill only where discovery reported one", () => {
-    const region = modelsRegion(anthropicEntry(), { ok: true, value: anthropicModels() });
+    const region = modelsRegion(anthropicEntry(), {
+      ok: true,
+      value: providerModels(SEEDED_ANTHROPIC_ID, anthropicModels()),
+    });
 
-    expect(region).toMatchObject({ kind: "chips", tiers: ["priority"] });
+    expect(region).toMatchObject({ kind: "chips", tiers: ["priority"], refreshable: true, unlisted: [] });
     expect(region.kind === "chips" && region.models).toHaveLength(4);
   });
 
-  it("is the pull-list slot for a kind that pulls — decided by the capability, not the kind", () => {
-    const models = [modelOption({ modelId: "qwen3-coder:32b", display: "qwen3-coder:32b" })];
+  it("is the pull-list for a kind that pulls — decided by the capability, not the kind", () => {
+    const models = [providerModel({ modelId: "qwen3-coder:32b", display: "qwen3-coder:32b" })];
+    const pulls = [pullRecord()];
 
-    expect(modelsRegion(ollamaEntry(), { ok: true, value: models })).toEqual({
+    expect(modelsRegion(ollamaEntry(), { ok: true, value: providerModels("c", models) }, pulls)).toEqual({
       kind: "pull-list",
       models,
+      unlisted: [],
+      refreshable: true,
+      pulls,
     });
     // The same kind with the flag off is chips: nothing here knows what `ollama` is.
     const chips = modelsRegion(
       { ...ollamaEntry(), capabilities: { ...ollamaEntry().capabilities, pull: false } },
-      { ok: true, value: models },
+      { ok: true, value: providerModels("c", models) },
     );
     expect(chips.kind).toBe("chips");
   });
 
+  it("carries the aliases the catalog stranded, and hides the refresh where discovery is a constant", () => {
+    const unlisted = [{ modelId: "gpt-5-codex-old", aliases: [{ id: "a", alias: "coder-fallback" }] }];
+    const region = modelsRegion(copilotEntry(), {
+      ok: true,
+      value: providerModels("c", [providerModel({ modelId: "gpt-5-codex" })], unlisted),
+    });
+
+    // Copilot's catalog is fixed — `capabilities.discovery` is false — so *refresh* means
+    // nothing and the region says so; the flag is drawn regardless, because it is about a
+    // route rather than about discovery.
+    expect(region).toMatchObject({ kind: "chips", refreshable: false, unlisted });
+  });
+
   it("earns no tier pill from a model that reported none — decision P8", () => {
-    expect(tiersOf([modelOption(), modelOption({ meta: { tier: "" } })])).toEqual([]);
-    expect(tiersOf([modelOption({ meta: { tier: 42 } })])).toEqual([]);
+    expect(tiersOf([providerModel(), providerModel({ meta: { tier: "" } })])).toEqual([]);
+    expect(tiersOf([providerModel({ meta: { tier: 42 } })])).toEqual([]);
   });
 
   it("lists each reported tier once, in the provider's own word", () => {
     expect(
       tiersOf([
-        modelOption({ meta: { tier: "priority" } }),
-        modelOption({ modelId: "b", meta: { tier: "priority" } }),
-        modelOption({ modelId: "c", meta: { tier: "batch" } }),
+        providerModel({ meta: { tier: "priority" } }),
+        providerModel({ modelId: "b", meta: { tier: "priority" } }),
+        providerModel({ modelId: "c", meta: { tier: "batch" } }),
       ]),
     ).toEqual(["priority", "batch"]);
     expect(tierLabel("priority")).toBe("priority tier");
@@ -249,10 +283,12 @@ describe("the models region", () => {
   });
 
   it("falls back to chips when the entry could not be read", () => {
-    expect(modelsRegion(null, { ok: true, value: [] })).toEqual({
+    expect(modelsRegion(null, { ok: true, value: providerModels("c", []) })).toEqual({
       kind: "chips",
       models: [],
       tiers: [],
+      unlisted: [],
+      refreshable: false,
     });
   });
 });
@@ -433,7 +469,7 @@ describe("the whole card", () => {
       entry: anthropicEntry(),
       health,
       spend: seededSpend().providers[0],
-      models: { ok: true, value: anthropicModels() },
+      models: { ok: true, value: providerModels(SEEDED_ANTHROPIC_ID, anthropicModels()) },
       aliases: { ok: true, value: [] },
       now: NOW,
     });
@@ -449,7 +485,13 @@ describe("the whole card", () => {
       address: null,
       secret: { label: "API key", mask: "••••Xq4A", placeholder: "sk-ant-api03-…" },
       meta: { addedBy: ADDER, addedOn: "2026-06-12", lastUsed: "3m ago" },
-      models: { kind: "chips", models: anthropicModels(), tiers: ["priority"] },
+      models: {
+        kind: "chips",
+        models: anthropicModels(),
+        tiers: ["priority"],
+        unlisted: [],
+        refreshable: true,
+      },
       meter: { figure: "$412.80", note: "of $600 cap", fraction: 41_280 / 60_000, tone: "accent" },
       cap: "$600",
       dependents: { ok: true, value: [] },
@@ -464,7 +506,10 @@ describe("the whole card", () => {
       entry: fakeEntry(),
       health: null,
       spend: null,
-      models: { ok: true, value: [modelOption({ modelId: "fake/small", display: "Fake Small" })] },
+      models: {
+        ok: true,
+        value: providerModels("c", [providerModel({ modelId: "fake/small", display: "Fake Small" })]),
+      },
       aliases: { ok: true, value: [] },
       now: NOW,
     });
@@ -507,7 +552,7 @@ describe("the whole card", () => {
       entry: copilotEntry(),
       health: provider({ detail: "200 · 4 seats" }),
       spend: spendRow({ kind: "copilot", spendCents: 7_600 }),
-      models: { ok: true, value: [] },
+      models: { ok: true, value: providerModels("c", []) },
       aliases: { ok: true, value: [] },
       now: NOW,
     });

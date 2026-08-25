@@ -43,7 +43,11 @@
 
 import type {
   ModelAlias,
-  ModelOption,
+  ModelPull,
+  ProviderErrorClass,
+  ProviderModel,
+  ProviderModels,
+  UnlistedModel,
   ProviderCatalogEntry,
   ProviderConnection,
   ProviderMonthlySpendRow,
@@ -123,10 +127,8 @@ export interface StatusPill {
  * `connected` is the taxonomy's own word for a check that passed (`provider.errors.ts`'s
  * `CONNECTED_PILL`), verbatim. The other three are the health strip's words for the same
  * statuses (`app/models/view.ts`), so a person looking at mockups 06 and 07 does not have to
- * learn that two words mean one thing. The taxonomy's finer pills — *degraded upstream*, *key
- * rejected* — are drawn from an error class, which the stored status does not carry; they
- * arrive with AE.4's ([#230](https://github.com/NobuData/ouroboros/issues/230)) live test,
- * whose answer does. `unknown` is a ring in the warn hue and never drawn as healthy.
+ * learn that two words mean one thing. `unknown` is a ring in the warn hue and never drawn
+ * as healthy.
  */
 const PILLS: Readonly<Record<ProviderConnection["status"], StatusPill>> = {
   active: { label: "connected", tone: "ok", dot: "filled" },
@@ -136,12 +138,36 @@ const PILLS: Readonly<Record<ProviderConnection["status"], StatusPill>> = {
 };
 
 /**
+ * The taxonomy's finer pills — `provider.errors.ts`'s `PROVIDER_ERROR_PILLS`, verbatim.
+ *
+ * Five classes, five distinct pills, the mapping 1:1 in both directions as the service
+ * asserts of its own table. They are drawn from the error class the health snapshot carries
+ * since AE.4's ([#230](https://github.com/NobuData/ouroboros/issues/230)) live test wrote
+ * one, and only beside an `error` status: a class the sweep has since cleared draws the
+ * coarse pill again, which is the honest reading of a measurement nobody has repeated.
+ */
+const ERROR_PILLS: Readonly<Record<ProviderErrorClass, StatusPill>> = {
+  auth: { label: "key rejected", tone: "err", dot: "filled" },
+  network: { label: "unreachable", tone: "err", dot: "filled" },
+  upstream: { label: "degraded upstream", tone: "warn", dot: "filled" },
+  rate_limit: { label: "rate limited", tone: "warn", dot: "filled" },
+  config: { label: "needs configuration", tone: "err", dot: "filled" },
+};
+
+/**
  * The pill for a connection.
  *
  * @param status The stored status.
- * @returns The pill.
+ * @param errorClass The class behind an `error`, from the health snapshot, or null.
+ * @returns The pill — the taxonomy's finer word where a class is known, the status's own
+ *   otherwise.
  */
-export function statusPill(status: ProviderConnection["status"]): StatusPill {
+export function statusPill(
+  status: ProviderConnection["status"],
+  errorClass: ProviderErrorClass | null = null,
+): StatusPill {
+  if (status === "error" && errorClass !== null) return ERROR_PILLS[errorClass];
+
   return PILLS[status];
 }
 
@@ -373,15 +399,26 @@ export const NO_MODELS = "No models discovered yet.";
 /** What the region says when the models could not be read. */
 export const MODELS_UNAVAILABLE = "The models could not be read just now.";
 
-/** What the pull-list's controls say until AE.4 wires them. */
-export const PULL_SOON = "Pull latest arrives with #230.";
-
 /** The models region, decided. */
 export type ModelsRegion =
-  /** Chips, and the tier pills discovery earned. */
-  | { readonly kind: "chips"; readonly models: readonly ModelOption[]; readonly tiers: readonly string[] }
-  /** The pull-list slot — one line per detected model, with room for AE.4's controls. */
-  | { readonly kind: "pull-list"; readonly models: readonly ModelOption[] }
+  /** Chips, the tier pills discovery earned, and the flags on aliases the catalog stranded. */
+  | {
+      readonly kind: "chips";
+      readonly models: readonly ProviderModel[];
+      readonly tiers: readonly string[];
+      readonly unlisted: readonly UnlistedModel[];
+      /** Whether a refresh means anything — the adapter's own `discovery` flag. */
+      readonly refreshable: boolean;
+    }
+  /** The pull-list — one row per detected model, the pulls in flight, and the same flags. */
+  | {
+      readonly kind: "pull-list";
+      readonly models: readonly ProviderModel[];
+      readonly unlisted: readonly UnlistedModel[];
+      readonly refreshable: boolean;
+      /** The service's records for this connection, as read with the page. */
+      readonly pulls: readonly ModelPull[];
+    }
   /** The read failed; the region says so rather than drawing no chips as if there were none. */
   | { readonly kind: "unavailable"; readonly reason: string };
 
@@ -395,7 +432,7 @@ export type ModelsRegion =
  * @returns The distinct tiers. Empty for a provider that publishes no such signal, which is
  *   every seeded card but Anthropic's.
  */
-export function tiersOf(models: readonly ModelOption[]): readonly string[] {
+export function tiersOf(models: readonly ProviderModel[]): readonly string[] {
   const tiers: string[] = [];
 
   for (const model of models) {
@@ -425,19 +462,39 @@ export function tierLabel(tier: string): string {
  *   pulling one takes, and the one that claims nothing about what the provider can do.
  * @param models What the models read produced, or null when it was never attempted because
  *   the listing itself could not be read.
+ * @param pulls The service's pull records for the connection, or none. Read only for a
+ *   pulling kind; a failed read is an empty list, because the rows are the catalog's and the
+ *   list's own poll re-reads progress the moment a pull is started.
  * @returns The region.
  */
 export function modelsRegion(
   entry: ProviderCatalogEntry | null,
-  models: Reading<readonly ModelOption[]> | null,
+  models: Reading<ProviderModels> | null,
+  pulls: readonly ModelPull[] = [],
 ): ModelsRegion {
   if (models === null || !models.ok) {
     return { kind: "unavailable", reason: models?.reason ?? MODELS_UNAVAILABLE };
   }
 
-  if (entry?.capabilities.pull === true) return { kind: "pull-list", models: models.value };
+  const refreshable = entry?.capabilities.discovery === true;
 
-  return { kind: "chips", models: models.value, tiers: tiersOf(models.value) };
+  if (entry?.capabilities.pull === true) {
+    return {
+      kind: "pull-list",
+      models: models.value.models,
+      unlisted: models.value.unlisted,
+      refreshable,
+      pulls,
+    };
+  }
+
+  return {
+    kind: "chips",
+    models: models.value.models,
+    tiers: tiersOf(models.value.models),
+    unlisted: models.value.unlisted,
+    refreshable,
+  };
 }
 
 /* ---------------------------------------------------------------------------- the meter */
@@ -585,9 +642,6 @@ export function seatsIn(detail: string | null): number | null {
 /** The foot's first action. */
 export const TEST_CONNECTION = "Test connection";
 
-/** Why it does not act yet. */
-export const TEST_SOON = "Testing a connection arrives with #230.";
-
 /** The cap field's label. */
 export const CAP_LABEL = "Monthly cap";
 
@@ -656,7 +710,13 @@ export interface CardInputs {
   /** The month's row for the connection's kind, or null. */
   readonly spend: ProviderMonthlySpendRow | null;
   /** What the models read produced, or null when it was not attempted. */
-  readonly models: Reading<readonly ModelOption[]> | null;
+  readonly models: Reading<ProviderModels> | null;
+  /**
+   * The service's pull records for the connection — a pulling kind's, read with the page.
+   * Optional because only a pulling kind has any; the screen passes what it read, and none
+   * is what every other card has.
+   */
+  readonly pulls?: readonly ModelPull[];
   /** What the registry's aliases read produced — one read for the whole grid. */
   readonly aliases: Reading<readonly ModelAlias[]>;
   /** The instant the page was read. */
@@ -678,6 +738,7 @@ export function cardModel({
   health,
   spend,
   models,
+  pulls = [],
   aliases,
   now,
 }: CardInputs): CardModel {
@@ -686,13 +747,13 @@ export function cardModel({
     name: connection.displayName,
     capabilityNote: connection.capabilityNote,
     monogram: monogramFor(connection.kind, connection.displayName),
-    pill: statusPill(connection.status),
+    pill: statusPill(connection.status, health?.errorClass ?? null),
     pillDetail: pillDetail(health),
     enabled: connection.enabled,
     address: addressRow(entry, connection),
     secret: secretRow(entry, connection),
     meta: metaRow(connection, now),
-    models: modelsRegion(entry, models),
+    models: modelsRegion(entry, models, pulls),
     meter: meterLine(connection, spend, seatsIn(pillDetail(health))),
     cap: capValue(connection.monthlyCapCents),
     dependents: dependentsOf(aliases, connection.id),

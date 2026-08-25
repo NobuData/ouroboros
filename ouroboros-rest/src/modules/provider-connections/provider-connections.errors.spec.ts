@@ -32,13 +32,14 @@ const specification = (): string =>
   readFileSync(join(__dirname, "..", "..", "..", "openapi.yaml"), "utf8");
 
 describe("the codes", () => {
-  it("are the eight this module can answer with", () => {
+  it("are the nine this module can answer with", () => {
     expect(Object.values(PROVIDER_CONNECTION_ERRORS).sort()).toEqual([
       "provider_config_invalid",
       "provider_config_not_storable",
       "provider_connection_changed",
       "provider_connection_not_found",
       "provider_credential_absent",
+      "provider_discovery_failed",
       "provider_reveal_rate_limited",
       "provider_validation_failed",
       "step_up_required",

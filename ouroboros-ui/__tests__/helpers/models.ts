@@ -76,6 +76,7 @@ export function provider(overrides: Partial<ProviderHealth> = {}): ProviderHealt
     latencyMs: null,
     models: null,
     detail: null,
+    errorClass: null,
     meta: null,
     ...overrides,
   };

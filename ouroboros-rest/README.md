@@ -1053,6 +1053,17 @@ now* button would let anybody holding a session make this service issue outbound
 whatever rate they can click — a small denial of service against a vendor's rate limit, signed
 with the workspace's own credential.
 
+**The one check that arrives from outside the sweep is written through this module all the
+same** ([#230](https://github.com/NobuData/ouroboros/issues/230)). Mockup 07's **Test
+connection** is an administrator's press of a button, goes through the adapter's own
+`validate` — a models-list or a version ping, the same class of call the sweep makes and never
+a completion (decision **P9**) — and is admitted by the lifecycle's role gate rather than by
+anything here. What it owes this module is the write: `ProviderHealthService.recordValidation`
+merges the answer into the same column with the same `mergeHealth`, under the same check name
+the table gives the kind, so the strip and the card's pill are one measurement. It adds one
+probe key the sweep never writes — `error_class`, the taxonomy's word for *why* — which is what
+lets a card draw `degraded upstream` after a reload and what the next sweep clears again.
+
 **It is also the first periodic work in this service**, which is what brought
 `@nestjs/schedule` in. The sweep is a self-rescheduling timeout registered with
 `SchedulerRegistry` rather than an `@Interval`, because a decorator fixes its period when the
@@ -1534,8 +1545,10 @@ design. It takes a thunk — `() => registry.pullCapable(kind).pullModel(connect
 rather than an adapter and a connection, so **no credential reaches a component that lives for
 minutes**. Records are in memory and last fifteen minutes after they finish; a process
 restart loses them, and the daemon carries on pulling regardless, which the next discovery
-finds. The HTTP route AE.4 polls is AD.2's to add on top: this module still declares no
-controller.
+finds. The routes over it are the lifecycle's — `POST` and `GET /api/v1/providers/{id}/pulls`
+([#230](https://github.com/NobuData/ouroboros/issues/230)), which resolve the connection for
+the session's workspace and hand the tracker a thunk that opens the stream *when the pull
+starts*; this module still declares no controller.
 
 ### The Copilot adapter — entitlements, and the degraded state
 
@@ -1630,6 +1643,11 @@ POST   /api/v1/providers/{id}/reveal   rate limit ─▶ step-up ─▶ open ─
 POST   /api/v1/providers/{id}/rotate   validate NEW ─▶ one conditional UPDATE ─▶ old retired
 PATCH  /api/v1/providers/{id}       switch · cap · note · address (validated like an add)
 DELETE /api/v1/providers/{id}       409 while aliases resolve on it, naming them
+POST   /api/v1/providers/{id}/test      adapter.validate ─▶ 200 whatever it said ─▶ Z.3 snapshot · audit
+GET    /api/v1/providers/{id}/models    the discovered catalog + the aliases it stranded · every member
+POST   /api/v1/providers/{id}/discover  adapter.discoverModels ─▶ V017 upsert + delete ─▶ added/removed
+POST   /api/v1/providers/{id}/pulls     202 · running or queued · one active pull per connection
+GET    /api/v1/providers/{id}/pulls     the tracker's records · no-store · every member
 ```
 
 **The catalog is the registry crossing the wire** ([#231](https://github.com/NobuData/ouroboros/issues/231)).
@@ -1654,6 +1672,26 @@ month's boundary and the row mapping; nothing there coalesces, so an unpriced ki
 listed connection also carries `addedByName`, resolved at read time through the workspace's
 own connections (`ProviderConnectionsRepository.adderNames`) so a card prints *Added by Ken*
 and never an id.
+
+**The card's live surfaces are the adapter's three questions, over the wire** ([#230](https://github.com/NobuData/ouroboros/issues/230),
+decisions **P6** and **P9**). `POST …/test` runs `validate` and answers **`200` whatever the
+provider said** — a `503` is the state the card foot exists to render, `△ 503 upstream ·
+retrying`, so `connection-test.ts` composes it through `validationPill` and `validationNote`
+rather than turning it into a refusal of our own; the answer is written to the strip's
+snapshot through `ProviderHealthService.recordValidation` and audited as `provider.tested`
+with what was found. `POST …/discover` runs `discoverModels` and **replaces** the catalog —
+`provider-models.repository.ts` is V017's `insert … on conflict`, inside a transaction that
+locks the connection row for the workspace first, plus the delete of every row the report did
+not name. What that deletion would hide comes back as `unlisted`: `models.ts` joins the
+registry's aliases on the connection and flags every one whose model the catalog no longer
+lists, so a route that is now broken stays visible on the card instead of being tidied away —
+and flags nothing on a connection nothing has discovered on, which V017 calls a gap rather
+than a mismatch. A failed discovery is `502 provider_discovery_failed` and changes nothing.
+`POST …/pulls` is the handler over `ModelPullTracker.request`: `202` with the record as it
+stands, the stream opened lazily so a queued pull reads its connection when its turn comes,
+and a successful pull re-runs discovery from this process whether or not a page is still
+watching. `GET …/pulls` is what a page polls, and the `404` for another workspace's
+connection is the whole of its tenancy.
 
 **Every acceptance criterion is a claim about *order*, so the order is the design.** `add`
 asks the adapter before it seals and before it inserts — so *a bad key is never stored

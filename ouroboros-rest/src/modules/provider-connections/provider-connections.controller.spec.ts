@@ -255,11 +255,11 @@ describe("the provider connections controller", () => {
     });
   });
 
-  it("declares the seven operations the ticket names plus the two reads AE.5 and AE.2 added, and no tenth", () => {
-    // Worth an assertion because the obvious next endpoints — *test this connection*,
-    // *discover its models* — are AE.4's (#230), and a slice of them written here is one that
-    // ticket would have to negotiate with rather than write. `catalog` is AE.5's (#231) read
-    // of the registry and `spend` is AE.2's (#228) read of the ledger; neither writes.
+  it("declares the seven lifecycle operations, the two reads AE.5 and AE.2 added, and AE.4's five live surfaces — and no fifteenth", () => {
+    // `catalog` is AE.5's (#231) read of the registry and `spend` is AE.2's (#228) read of the
+    // ledger; neither writes. `test`, `discover`, `models`, `pull` and `pulls` are AE.4's
+    // (#230): the card's live surfaces, over the adapter and the pull tracker. A sixteenth
+    // handler is a roadmap being pre-empted, and should fail here on the day it is written.
     const handlers = Object.getOwnPropertyNames(ProviderConnectionsController.prototype).filter(
       (name) => name !== "constructor",
     );
@@ -267,12 +267,17 @@ describe("the provider connections controller", () => {
     expect(handlers.sort()).toEqual([
       "add",
       "catalog",
+      "discover",
       "list",
+      "models",
+      "pull",
+      "pulls",
       "read",
       "remove",
       "reveal",
       "rotate",
       "spend",
+      "test",
       "update",
     ]);
   });
@@ -292,6 +297,86 @@ describe("the provider connections controller", () => {
     it("is a plain GET at /providers/catalog", () => {
       expect(Reflect.getMetadata(PATH_METADATA, controller.catalog)).toBe("catalog");
       expect(Reflect.getMetadata(METHOD_METADATA, controller.catalog)).toBe(RequestMethod.GET);
+    });
+  });
+
+  describe("the live surfaces AE.4 (#230) added", () => {
+    const reflector = new Reflector();
+
+    it("tests a connection as a POST at /providers/:id/test, answering 200 whatever the provider said", () => {
+      // `200` for a provider that is down: a `503` upstream is the answer the card foot renders,
+      // not a refusal of the request.
+      expect(Reflect.getMetadata(PATH_METADATA, controller.test)).toBe(":id/test");
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.test)).toBe(RequestMethod.POST);
+      expect(Reflect.getMetadata(HTTP_CODE_METADATA, controller.test)).toBe(HttpStatus.OK);
+    });
+
+    it("discovers as a POST at /providers/:id/discover, answering 200 with the catalog", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, controller.discover)).toBe(":id/discover");
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.discover)).toBe(RequestMethod.POST);
+      expect(Reflect.getMetadata(HTTP_CODE_METADATA, controller.discover)).toBe(HttpStatus.OK);
+    });
+
+    it("starts a pull as a POST at /providers/:id/pulls, answering 202 — the transfer outlives the request", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, controller.pull)).toBe(":id/pulls");
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.pull)).toBe(RequestMethod.POST);
+      expect(Reflect.getMetadata(HTTP_CODE_METADATA, controller.pull)).toBe(HttpStatus.ACCEPTED);
+    });
+
+    it("serves the catalog and the pulls as plain GETs on the same connection path", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, controller.models)).toBe(":id/models");
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.models)).toBe(RequestMethod.GET);
+      expect(Reflect.getMetadata(PATH_METADATA, controller.pulls)).toBe(":id/pulls");
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.pulls)).toBe(RequestMethod.GET);
+    });
+
+    it("gates the three that reach a provider to administrators, and leaves the two reads to every member", () => {
+      for (const handler of [controller.test, controller.discover, controller.pull]) {
+        expect(reflector.get<string[]>(REQUIRED_ROLES, handler)).toEqual([...ADMINISTRATORS]);
+      }
+      for (const handler of [controller.models, controller.pulls]) {
+        expect(reflector.get<string[]>(REQUIRED_ROLES, handler)).toBeUndefined();
+      }
+    });
+
+    it("answers the pulls read with no-store, because a cached progress report has stopped moving", () => {
+      expect(Reflect.getMetadata(HEADERS_METADATA, controller.pulls)).toEqual([
+        { name: "Cache-Control", value: "no-store" },
+      ]);
+      for (const handler of [
+        controller.test,
+        controller.discover,
+        controller.models,
+        controller.pull,
+      ]) {
+        expect(Reflect.getMetadata(HEADERS_METADATA, handler)).toBeUndefined();
+      }
+    });
+
+    it("hands each to the service with the session's workspace, and the actor where the trail needs one", async () => {
+      service.test = jest.fn().mockResolvedValue({ connectionId: FIXTURE_CONNECTION });
+      service.discover = jest.fn().mockResolvedValue({ connectionId: FIXTURE_CONNECTION });
+      service.models = jest.fn().mockResolvedValue({ connectionId: FIXTURE_CONNECTION });
+      service.pull = jest.fn().mockResolvedValue({ modelId: "phi4:14b" });
+      service.pulls = jest.fn().mockResolvedValue({ pulls: [] });
+
+      await controller.test(WORKSPACE, PRINCIPAL, PARAMS);
+      await controller.discover(WORKSPACE, PARAMS);
+      await controller.models(WORKSPACE, PARAMS);
+      await controller.pull(WORKSPACE, PARAMS, { modelId: "phi4:14b" });
+      await controller.pulls(WORKSPACE, PARAMS);
+
+      expect(service.test).toHaveBeenCalledWith(
+        FIXTURE_WORKSPACE,
+        PRINCIPAL.user.id,
+        FIXTURE_CONNECTION,
+      );
+      expect(service.discover).toHaveBeenCalledWith(FIXTURE_WORKSPACE, FIXTURE_CONNECTION);
+      expect(service.models).toHaveBeenCalledWith(FIXTURE_WORKSPACE, FIXTURE_CONNECTION);
+      expect(service.pull).toHaveBeenCalledWith(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, {
+        modelId: "phi4:14b",
+      });
+      expect(service.pulls).toHaveBeenCalledWith(FIXTURE_WORKSPACE, FIXTURE_CONNECTION);
     });
   });
 

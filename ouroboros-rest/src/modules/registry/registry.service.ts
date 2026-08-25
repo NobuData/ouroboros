@@ -34,7 +34,7 @@
 
 import { Injectable } from "@nestjs/common";
 
-import { RegistryRepository } from "./registry.repository";
+import { RegistryRepository, type AliasOnConnectionRow } from "./registry.repository";
 import { aliasNotFound } from "./registry.errors";
 import { toResolvedAlias, type ResolvedAlias } from "./resolution";
 
@@ -107,5 +107,20 @@ export class RegistryService {
    */
   async dependentAliases(organizationId: string, connectionId: string): Promise<string[]> {
     return this.registry.aliasesForConnection(organizationId, connectionId);
+  }
+
+  /**
+   * Which aliases resolve on one connection, and which model each names.
+   *
+   * The read behind mockup 07's *removed upstream* flag ([#230](https://github.com/NobuData/ouroboros/issues/230)):
+   * after a discovery, an alias whose model the provider no longer lists is a route that is
+   * now broken, and the card flags it rather than dropping the chip.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param connectionId - The connection.
+   * @returns The rows, ordered by alias. Empty when nothing resolves on it.
+   */
+  async aliasesOn(organizationId: string, connectionId: string): Promise<AliasOnConnectionRow[]> {
+    return this.registry.aliasRowsOn(organizationId, connectionId);
   }
 }

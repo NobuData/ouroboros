@@ -215,6 +215,40 @@ export function checkFor(kind: ProviderConnectionKind): ProviderCheck | null {
 }
 
 /**
+ * Which question a live `validate` through the adapter answers for one kind.
+ *
+ * The sweep's table where it has an entry, so a test and a sweep of the same provider write
+ * the same `check` and the strip cannot say *reachability* one minute and *key validation*
+ * the next. For a kind the table does not cover — Copilot and Cursor, which have nothing cheap
+ * for a sweep to ask — the answer is derived from what the adapter's `validate` actually does:
+ * a schema with a credential field is validating that credential.
+ *
+ * Added by AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)), whose test route
+ * is the first writer of a check this table never scheduled.
+ *
+ * @param kind - The connection's kind.
+ * @param hasSecret - Whether the adapter's config schema declares a credential field.
+ * @returns The check kind.
+ */
+export function checkKindFor(kind: ProviderConnectionKind, hasSecret: boolean): ProviderCheckKind {
+  return checkFor(kind)?.check ?? (hasSecret ? "key_validation" : "reachability");
+}
+
+/**
+ * Whether a latency measured against this kind is worth storing on the strip.
+ *
+ * The table's own judgement where it has one — the local daemon's loopback round trip is the
+ * measurement `ProviderCheck.reportsLatency` deliberately discards — and `true` for a kind the
+ * table does not cover, which is a cloud endpoint whose round trip means something.
+ *
+ * @param kind - The connection's kind.
+ * @returns Whether to store `latency_ms`.
+ */
+export function reportsLatencyFor(kind: ProviderConnectionKind): boolean {
+  return checkFor(kind)?.reportsLatency ?? true;
+}
+
+/**
  * Where to send this kind's check, given whatever address the row carries.
  *
  * @param check - The kind's check.

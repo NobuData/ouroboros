@@ -503,6 +503,18 @@
   gap: var(--sp-4);
 }
 
+/* The label and, for a kind whose adapter discovers, the refresh beside it (#230). */
+.providers-card__models-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.providers-card__refresh {
+  flex: none;
+}
+
 /* The mockup's `.models-label`: an eyebrow in the faint ink, but not the page's accent one. */
 .providers-card__models-label {
   margin: 0;
@@ -531,6 +543,72 @@
   line-height: var(--lh-body);
 }
 
+.providers-card__models-state--err {
+  color: var(--err);
+}
+
+/*
+ * A chip on its way in or out (#230). Drawn in place either way; the motion is only for a
+ * reader who welcomes it, the house rule — without it a removed chip simply stays its
+ * `CHIP_LEAVE_MS` and goes.
+ */
+.providers-card__chip {
+  display: inline-flex;
+}
+
+.providers-card__chip--leave {
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .providers-card__chip--enter {
+    animation: providers-chip-enter 0.24s ease-out;
+  }
+
+  .providers-card__chip--leave {
+    animation: providers-chip-leave 0.24s ease-in forwards;
+  }
+
+  @keyframes providers-chip-enter {
+    from {
+      opacity: 0;
+      transform: translateY(0.25rem);
+    }
+  }
+
+  @keyframes providers-chip-leave {
+    to {
+      opacity: 0;
+      transform: translateY(-0.25rem);
+    }
+  }
+}
+
+/* The flag on a model a routing alias still names (#230): the chip in the warn tone, then the sentence. */
+.providers-card__unlisted {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.providers-card__unlisted-flag {
+  color: var(--warn);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.providers-card__alias-link {
+  color: var(--warn);
+  font-family: var(--f-mono);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.providers-card__alias-link:hover {
+  color: var(--ink);
+}
+
 /*
  * The pull-list slot: one hairline-separated row per detected model, the mockup's
  * `.pull-list`. AE.4 fills the row's trailing edge with the size tag and a live control.
@@ -556,10 +634,87 @@
   border-bottom: none;
 }
 
+.providers-card__pull-lead {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
 .providers-card__pull-model {
   color: var(--ink-dim);
   font-family: var(--f-mono);
   font-size: var(--t-xs);
+}
+
+/* The mockup's `.tag`: the size, in bytes turned into `19 GB` by `live.ts`. */
+.providers-card__pull-size {
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The trailing edge: the action, or where the transfer has got to (#230). */
+.providers-card__pull-trail {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.providers-card__pull-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* The bar, the mockup's ten blocks in rem; a track only while the daemon has not sized the transfer. */
+.providers-card__pull-bar {
+  width: 6rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .providers-card__pull-bar--indeterminate .ou-meter__fill {
+    animation: providers-pull-indeterminate 1.2s ease-in-out infinite alternate;
+  }
+
+  @keyframes providers-pull-indeterminate {
+    from {
+      width: 15%;
+    }
+
+    to {
+      width: 45%;
+    }
+  }
+}
+
+.providers-card__pull-percent {
+  min-width: 2.5rem;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The row's word — `queued…`, `✓ pulled`, or why it stopped — in the mono the row speaks. */
+.providers-card__pull-state {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.providers-card__pull-state--ok {
+  color: var(--ok);
+}
+
+.providers-card__pull-state--err {
+  color: var(--err);
 }
 
 /* ---------- the meter ---------- */
@@ -610,12 +765,43 @@
   border-top: 1px solid var(--line);
 }
 
-/* The slot AE.4's result lands in — mono, in the ok hue the mockup gives `✓ 200 · 38ms`. */
+/*
+ * The test note (#230) — mono, in the ok hue the mockup gives `✓ 200 · 38ms`; the warn and err
+ * hues for `△ 503 upstream · retrying` and `✗ key rejected (401)`. Pending and the one
+ * automatic retry dim it rather than replace it, so the last answer stays legible.
+ */
 .providers-card__test-note {
   flex: 1;
   color: var(--ok);
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.providers-card__test-note--ok {
+  color: var(--ok);
+}
+
+.providers-card__test-note--warn {
+  color: var(--warn);
+}
+
+.providers-card__test-note--err {
+  color: var(--err);
+}
+
+.providers-card__test-note--pending {
+  color: var(--ink-mut);
+}
+
+.providers-card__test-glyph {
+  font-family: var(--f-body);
+}
+
+/* The line under a pass whose chips could not be refreshed — the fact stays, the aside explains. */
+.providers-card__test-aside {
+  display: block;
+  color: var(--ink-mut);
 }
 
 /* The cap field, at the trailing edge, the mockup's 92px input in rem. */

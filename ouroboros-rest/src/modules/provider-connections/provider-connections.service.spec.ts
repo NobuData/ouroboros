@@ -3,16 +3,23 @@ import { recordingAudit } from "../audit/audit.fixture";
 import { COOKIE } from "../auth/http";
 import { FIXTURE_USER, principalFor } from "../auth/principal.fixture";
 import {
+  FAKE_BASE_URL,
   FAKE_CONFIG_SCHEMA,
+  FAKE_MODELS,
+  FAKE_PULL_EVENTS,
   FakeModelProviderAdapter,
+  FakePullingProviderAdapter,
 } from "../providers/adapters/fake.adapter.fixture";
-import type { ProviderValidation } from "../providers/provider.adapter";
+import type { ModelPullProgress, ProviderValidation } from "../providers/provider.adapter";
+import { ProviderAdapterError } from "../providers/provider.errors";
 import {
   BASE_URL_FIELD,
   CAPABILITY_NOTE_FIELD,
   type ProviderConnectionConfig,
 } from "../providers/provider.config";
 import { ModelProviderRegistry } from "../providers/provider.registry";
+import { ModelPullTracker } from "../providers/provider.pulls";
+import type { ProviderHealthService } from "../provider-health/provider-health.service";
 import type { RegistryService } from "../registry/registry.service";
 import { FOREIGN_KEY_VIOLATION, PROVIDER_DEPENDENCY_CONSTRAINT } from "../registry/registry.errors";
 import type { ProviderSpendRow, RoutingStatsRepository } from "../routing/stats.repository";
@@ -28,6 +35,7 @@ import {
   connectionRow,
 } from "./connection.fixture";
 import type { ProviderConnectionsRepository } from "./provider-connections.repository";
+import type { ProviderModelsRepository } from "./provider-models.repository";
 import { ProviderConnectionsService, REVEAL_TTL_SECONDS } from "./provider-connections.service";
 import { RevealLimiter, REVEAL_ATTEMPTS_PER_CONNECTION } from "./reveal.limiter";
 import type { StepUpService } from "./step-up";
@@ -62,9 +70,15 @@ interface Harness {
   connections: jest.Mocked<ProviderConnectionsRepository>;
   /** Z.5's aggregation, answering whatever a case queues for the month. */
   stats: { byProvider: jest.Mock };
+  /** V017's catalog, answering whatever a case queues and recording what was written. */
+  discovered: { forConnection: jest.Mock; replace: jest.Mock };
+  /** Z.3's writer, recording what a test asked it to store. */
+  health: { recordValidation: jest.Mock };
+  /** AC.4's tracker, real: it is in-memory and the whole point is what it remembers. */
+  tracker: ModelPullTracker;
   adapter: FakeModelProviderAdapter;
   vault: VaultService;
-  aliases: { dependentAliases: jest.Mock };
+  aliases: { dependentAliases: jest.Mock; aliasesOn: jest.Mock };
   stepUp: { satisfied: jest.Mock };
   limiter: RevealLimiter;
   audited: AuditRecord[];
@@ -101,10 +115,19 @@ function harness(): Harness {
     adderNames: jest.fn().mockResolvedValue(new Map([[FIXTURE_ACTOR, ADDER]])),
   } as unknown as jest.Mocked<ProviderConnectionsRepository>;
 
-  const aliases = { dependentAliases: jest.fn().mockResolvedValue([]) };
+  const aliases = {
+    dependentAliases: jest.fn().mockResolvedValue([]),
+    aliasesOn: jest.fn().mockResolvedValue([]),
+  };
   const stepUp = { satisfied: jest.fn().mockResolvedValue("password") };
   const limiter = new RevealLimiter();
   const stats = { byProvider: jest.fn().mockResolvedValue([]) };
+  const discovered = {
+    forConnection: jest.fn().mockResolvedValue([]),
+    replace: jest.fn().mockResolvedValue([]),
+  };
+  const health = { recordValidation: jest.fn().mockResolvedValue(undefined) };
+  const tracker = new ModelPullTracker();
 
   // The trail, as records rather than log lines: AD.4 (#225) turned the interim sink into
   // `audit_events`, so what a suite asserts about is now the row that was written.
@@ -120,6 +143,9 @@ function harness(): Harness {
     limiter,
     new ProviderAudit(trail.service),
     stats as unknown as RoutingStatsRepository,
+    discovered as unknown as ProviderModelsRepository,
+    health as unknown as ProviderHealthService,
+    tracker,
   );
 
   return {
@@ -133,6 +159,9 @@ function harness(): Harness {
     audited,
     validate,
     stats,
+    discovered,
+    health,
+    tracker,
   };
 }
 
@@ -202,6 +231,9 @@ describe("adding a provider", () => {
       subject.limiter,
       new ProviderAudit(recordingAudit().service),
       subject.stats as unknown as RoutingStatsRepository,
+      subject.discovered as unknown as ProviderModelsRepository,
+      subject.health as unknown as ProviderHealthService,
+      subject.tracker,
     );
 
     await expect(
@@ -266,6 +298,9 @@ describe("adding a provider", () => {
       subject.limiter,
       new ProviderAudit(recordingAudit().service),
       subject.stats as unknown as RoutingStatsRepository,
+      subject.discovered as unknown as ProviderModelsRepository,
+      subject.health as unknown as ProviderHealthService,
+      subject.tracker,
     );
 
     await service.add(FIXTURE_WORKSPACE, FIXTURE_ACTOR, {
@@ -735,6 +770,9 @@ describe("rotating a credential", () => {
       subject.limiter,
       new ProviderAudit(recordingAudit().service),
       subject.stats as unknown as RoutingStatsRepository,
+      subject.discovered as unknown as ProviderModelsRepository,
+      subject.health as unknown as ProviderHealthService,
+      subject.tracker,
     );
 
     await expect(
@@ -987,6 +1025,467 @@ describe("removing a connection", () => {
 
     await expect(remove()).rejects.toMatchObject({
       response: { code: "provider_connection_not_found" },
+    });
+  });
+});
+
+/** Let the tracker's detached pump run to its next await. */
+function flush(): Promise<void> {
+  return new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+/**
+ * A pull-capable fake whose stream waits to be released, so a case can hold a pull `running`
+ * for as long as it needs to observe the second one `queued`.
+ */
+class GatedPullingAdapter extends FakePullingProviderAdapter {
+  /** Streams parked after their first event, oldest first. */
+  private readonly waiting: (() => void)[] = [];
+
+  /** Releases granted before a stream asked for one, so `finish()` can be called early. */
+  private passes = 0;
+
+  /** Let the oldest parked stream finish — or the next one to park, if none is parked yet. */
+  finish(): void {
+    const next = this.waiting.shift();
+
+    if (next === undefined) {
+      this.passes += 1;
+    } else {
+      next();
+    }
+  }
+
+  override async *pullModel(): AsyncIterable<ModelPullProgress> {
+    this.calls.pullModel += 1;
+
+    yield FAKE_PULL_EVENTS[0];
+
+    if (this.passes > 0) {
+      this.passes -= 1;
+    } else {
+      await new Promise<void>((resolve) => {
+        this.waiting.push(resolve);
+      });
+    }
+
+    yield FAKE_PULL_EVENTS[FAKE_PULL_EVENTS.length - 1];
+  }
+}
+
+describe("testing a connection — AE.4's card foot (#230)", () => {
+  let subject: Harness;
+
+  beforeEach(async () => {
+    subject = harness();
+    // The fake's schema requires an address; the stored projection of a row without one is a
+    // `config` failure, which is the fake being honest rather than the case under test.
+    subject.connections.find.mockResolvedValue(connectionRow({ base_url: FAKE_BASE_URL }));
+    subject.connections.envelopeOf.mockResolvedValue(
+      await subject.vault.encryptText(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, FIXTURE_SECRET),
+    );
+  });
+
+  it("asks the adapter with the stored settings and the opened credential", async () => {
+    await subject.service.test(FIXTURE_WORKSPACE, FIXTURE_ACTOR, FIXTURE_CONNECTION, NOW);
+
+    expect(subject.validate).toHaveBeenCalledTimes(1);
+    expect(subject.validate.mock.calls[0][1]).toBe(FIXTURE_SECRET);
+  });
+
+  it("answers a pass as the card foot's `✓ 200 · 38ms`, with the latency the adapter measured", async () => {
+    const result = await subject.service.test(
+      FIXTURE_WORKSPACE,
+      FIXTURE_ACTOR,
+      FIXTURE_CONNECTION,
+      NOW,
+    );
+
+    expect(result).toMatchObject({
+      connectionId: FIXTURE_CONNECTION,
+      checkedAt: NOW.toISOString(),
+      status: "active",
+      pill: { tone: "ok", label: "connected" },
+      note: "200",
+      errorClass: null,
+      retryable: false,
+    });
+    expect(result.latencyMs).toEqual(expect.any(Number));
+  });
+
+  it("answers a refusal as a value, not a 422 — the foot exists to render `△ 503 upstream · retrying`", async () => {
+    subject.adapter.willFail("upstream");
+
+    const result = await subject.service.test(
+      FIXTURE_WORKSPACE,
+      FIXTURE_ACTOR,
+      FIXTURE_CONNECTION,
+      NOW,
+    );
+
+    expect(result).toMatchObject({
+      status: "error",
+      pill: { tone: "warn", label: "degraded upstream" },
+      errorClass: "upstream",
+      retryable: true,
+      latencyMs: null,
+    });
+    expect(result.note).toMatch(/· retrying$/);
+  });
+
+  it("writes what it found through Z.3's own writer, so the strip and the pill agree", async () => {
+    subject.adapter.willFail("auth");
+
+    await subject.service.test(FIXTURE_WORKSPACE, FIXTURE_ACTOR, FIXTURE_CONNECTION, NOW);
+
+    expect(subject.health.recordValidation).toHaveBeenCalledWith(
+      FIXTURE_WORKSPACE,
+      FIXTURE_CONNECTION,
+      "anthropic",
+      true,
+      expect.objectContaining({ status: "failed", errorClass: "auth" }),
+      NOW,
+    );
+    // Never through the lifecycle's own row writer: one column, one writer.
+    expect(subject.connections.update).not.toHaveBeenCalled();
+  });
+
+  it("records `provider.tested` with what was found — a success with its latency", async () => {
+    await subject.service.test(FIXTURE_WORKSPACE, FIXTURE_ACTOR, FIXTURE_CONNECTION, NOW);
+
+    expect(subject.audited).toHaveLength(1);
+    expect(subject.audited[0]).toMatchObject({
+      action: "provider.tested",
+      actorId: FIXTURE_ACTOR,
+      subjectId: FIXTURE_CONNECTION,
+      detail: expect.objectContaining({ outcome: "success", kind: "anthropic" }) as object,
+    });
+  });
+
+  it("records a provider's refusal as a failure outcome, with the taxonomy's class", async () => {
+    subject.adapter.willFail("rate_limit");
+
+    await subject.service.test(FIXTURE_WORKSPACE, FIXTURE_ACTOR, FIXTURE_CONNECTION, NOW);
+
+    expect(subject.audited[0].detail).toMatchObject({
+      outcome: "failure",
+      reason: "provider_validation_failed",
+      error_class: "rate_limit",
+    });
+  });
+
+  it("records a refusal of the operation itself under the same name — a connection that is not there", async () => {
+    subject.connections.find.mockResolvedValue(undefined);
+
+    await expect(
+      subject.service.test(FIXTURE_WORKSPACE, FIXTURE_ACTOR, FIXTURE_CONNECTION, NOW),
+    ).rejects.toMatchObject({ code: "provider_connection_not_found" });
+
+    expect(subject.audited[0]).toMatchObject({
+      action: "provider.tested",
+      detail: expect.objectContaining({
+        outcome: "failure",
+        reason: "provider_connection_not_found",
+      }) as object,
+    });
+    expect(subject.validate).not.toHaveBeenCalled();
+    expect(subject.health.recordValidation).not.toHaveBeenCalled();
+  });
+
+  it("opens no credential for a connection that stores none", async () => {
+    subject.connections.envelopeOf.mockResolvedValue(null);
+
+    await subject.service.test(FIXTURE_WORKSPACE, FIXTURE_ACTOR, FIXTURE_CONNECTION, NOW);
+
+    expect(subject.validate.mock.calls[0][1]).toBeNull();
+  });
+});
+
+describe("the discovered catalog — the chips and the flag (#230)", () => {
+  let subject: Harness;
+
+  beforeEach(() => {
+    subject = harness();
+    subject.connections.find.mockResolvedValue(connectionRow());
+    subject.connections.envelopeOf.mockResolvedValue(null);
+  });
+
+  it("reads what discovery stored, with the aliases the catalog has stranded", async () => {
+    subject.discovered.forConnection.mockResolvedValue([
+      {
+        model_id: "fake/small",
+        display: "Fake Small",
+        size_bytes: null,
+        meta: {},
+        discovered_at: NOW,
+      },
+    ]);
+    subject.aliases.aliasesOn.mockResolvedValue([
+      { id: "a1", alias: "local-ds", model_id: "fake/gone" },
+    ]);
+
+    const catalog = await subject.service.models(FIXTURE_WORKSPACE, FIXTURE_CONNECTION);
+
+    expect(catalog.models.map((model) => model.modelId)).toEqual(["fake/small"]);
+    expect(catalog.unlisted).toEqual([
+      { modelId: "fake/gone", aliases: [{ id: "a1", alias: "local-ds" }] },
+    ]);
+    expect(subject.discovered.forConnection).toHaveBeenCalledWith(
+      FIXTURE_WORKSPACE,
+      FIXTURE_CONNECTION,
+    );
+    expect(subject.aliases.aliasesOn).toHaveBeenCalledWith(FIXTURE_WORKSPACE, FIXTURE_CONNECTION);
+  });
+
+  it("refuses to read a connection this workspace does not have", async () => {
+    subject.connections.find.mockResolvedValue(undefined);
+
+    await expect(
+      subject.service.models(FIXTURE_WORKSPACE, FIXTURE_CONNECTION),
+    ).rejects.toMatchObject({
+      code: "provider_connection_not_found",
+    });
+    expect(subject.discovered.forConnection).not.toHaveBeenCalled();
+  });
+
+  it("asks the adapter, replaces the catalog with its answer, and says what changed", async () => {
+    subject.discovered.replace.mockResolvedValue(["fake/small", "fake/gone"]);
+    subject.discovered.forConnection.mockResolvedValue(
+      FAKE_MODELS.map((model) => ({
+        model_id: model.id,
+        display: model.display,
+        size_bytes: model.sizeBytes === null ? null : model.sizeBytes.toString(),
+        meta: {},
+        discovered_at: NOW,
+      })),
+    );
+
+    const discovery = await subject.service.discover(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, NOW);
+
+    expect(subject.adapter.calls.discoverModels).toBe(1);
+    expect(subject.discovered.replace).toHaveBeenCalledWith(
+      FIXTURE_WORKSPACE,
+      FIXTURE_CONNECTION,
+      [...FAKE_MODELS],
+      NOW,
+    );
+    expect(discovery.added).toEqual(["fake/large"]);
+    expect(discovery.removed).toEqual(["fake/gone"]);
+    expect(discovery.models.map((model) => model.modelId)).toEqual(["fake/small", "fake/large"]);
+  });
+
+  it("leaves the catalog unchanged and answers 502 when the provider did not answer", async () => {
+    subject.adapter.willFailDiscovery("network");
+
+    await expect(
+      subject.service.discover(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, NOW),
+    ).rejects.toMatchObject({
+      code: "provider_discovery_failed",
+      details: { errorClass: "network", detail: expect.any(String) as string },
+    });
+    expect(subject.discovered.replace).not.toHaveBeenCalled();
+  });
+
+  it("leaves an error that is not the provider's alone", async () => {
+    jest.spyOn(subject.adapter, "discoverModels").mockRejectedValue(new TypeError("a bug"));
+
+    await expect(
+      subject.service.discover(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, NOW),
+    ).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it("writes no health and no audit event: a refresh is not a check", async () => {
+    await subject.service.discover(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, NOW);
+
+    expect(subject.health.recordValidation).not.toHaveBeenCalled();
+    expect(subject.audited).toHaveLength(0);
+  });
+
+  it("answers 404 when the connection vanished between the read and the write", async () => {
+    subject.discovered.replace.mockResolvedValue(undefined);
+
+    await expect(
+      subject.service.discover(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, NOW),
+    ).rejects.toMatchObject({ code: "provider_connection_not_found" });
+  });
+});
+
+describe("pulling a model — the route over the tracker (#230)", () => {
+  const OLLAMA = connectionRow({
+    id: FIXTURE_CONNECTION,
+    kind: "ollama",
+    base_url: "http://workstation:11434",
+  });
+
+  function pulling(adapter: FakePullingProviderAdapter): Harness {
+    const subject = harness();
+    const registry = new ModelProviderRegistry([adapter]);
+    const service = new ProviderConnectionsService(
+      subject.connections,
+      registry,
+      subject.vault,
+      subject.aliases as unknown as RegistryService,
+      subject.stepUp as unknown as StepUpService,
+      subject.limiter,
+      new ProviderAudit(recordingAudit().service),
+      subject.stats as unknown as RoutingStatsRepository,
+      subject.discovered as unknown as ProviderModelsRepository,
+      subject.health as unknown as ProviderHealthService,
+      subject.tracker,
+    );
+
+    subject.connections.find.mockResolvedValue(OLLAMA);
+    subject.connections.envelopeOf.mockResolvedValue(null);
+
+    return { ...subject, service };
+  }
+
+  it("answers at once with a running record for an idle connection", async () => {
+    const subject = pulling(new FakePullingProviderAdapter());
+
+    const record = await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, {
+      modelId: "phi4:14b",
+    });
+
+    expect(record).toMatchObject({
+      connectionId: FIXTURE_CONNECTION,
+      modelId: "phi4:14b",
+      state: "running",
+      finishedAt: null,
+    });
+  });
+
+  it("reports the stream's progress to a later read — the 61% a reload lands on", async () => {
+    const subject = pulling(new FakePullingProviderAdapter());
+
+    await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, { modelId: "phi4:14b" });
+    await subject.tracker.whenSettled(FIXTURE_CONNECTION, "phi4:14b");
+
+    const { pulls } = await subject.service.pulls(FIXTURE_WORKSPACE, FIXTURE_CONNECTION);
+
+    expect(pulls).toHaveLength(1);
+    expect(pulls[0]).toMatchObject({ state: "succeeded", percent: 100, status: "success" });
+  });
+
+  it("queues a second model while the first is running, and asks the daemon for nothing yet", async () => {
+    const adapter = new GatedPullingAdapter();
+    const subject = pulling(adapter);
+
+    const first = await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, {
+      modelId: "llama4:scout",
+    });
+    await flush();
+    const second = await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, {
+      modelId: "phi4:14b",
+    });
+
+    expect(first.state).toBe("running");
+    expect(second).toMatchObject({ state: "queued", status: "queued", startedAt: null });
+    expect(adapter.calls.pullModel).toBe(1);
+
+    adapter.finish();
+    await subject.tracker.whenSettled(FIXTURE_CONNECTION, "llama4:scout");
+    await flush();
+    adapter.finish();
+    await subject.tracker.whenSettled(FIXTURE_CONNECTION, "phi4:14b");
+
+    expect(adapter.calls.pullModel).toBe(2);
+  });
+
+  it("answers the existing record for a model already in flight — a double click is one pull", async () => {
+    const adapter = new GatedPullingAdapter();
+    const subject = pulling(adapter);
+
+    const first = await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, {
+      modelId: "llama4:scout",
+    });
+    const again = await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, {
+      modelId: "llama4:scout",
+    });
+    await flush();
+
+    expect(again.queuedAt).toBe(first.queuedAt);
+    expect(adapter.calls.pullModel).toBe(1);
+
+    adapter.finish();
+    await subject.tracker.whenSettled(FIXTURE_CONNECTION, "llama4:scout");
+  });
+
+  it("refreshes the catalog once when the pull lands, whether or not anybody is watching", async () => {
+    const adapter = new GatedPullingAdapter();
+    const subject = pulling(adapter);
+
+    await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, { modelId: "llama4:scout" });
+    await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, { modelId: "llama4:scout" });
+    expect(subject.discovered.replace).not.toHaveBeenCalled();
+
+    adapter.finish();
+    await subject.tracker.whenSettled(FIXTURE_CONNECTION, "llama4:scout");
+    await flush();
+    await flush();
+
+    expect(adapter.calls.discoverModels).toBe(1);
+    expect(subject.discovered.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh after a pull that failed — there is nothing new on the host", async () => {
+    const failing = new FakePullingProviderAdapter(undefined, []);
+    // eslint-disable-next-line @typescript-eslint/require-await
+    jest.spyOn(failing, "pullModel").mockImplementation(async function* () {
+      yield FAKE_PULL_EVENTS[0];
+      throw new ProviderAdapterError("upstream", "the host closed the stream");
+    });
+    const subject = pulling(failing);
+
+    await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, { modelId: "phi4:14b" });
+    const settled = await subject.tracker.whenSettled(FIXTURE_CONNECTION, "phi4:14b");
+    await flush();
+
+    expect(settled).toMatchObject({ state: "failed", errorClass: "upstream" });
+    expect(subject.discovered.replace).not.toHaveBeenCalled();
+  });
+
+  it("opens the stream against the row as it stands when the pull starts, not when it was asked for", async () => {
+    const subject = pulling(new FakePullingProviderAdapter());
+    subject.connections.find.mockResolvedValueOnce(OLLAMA);
+
+    await subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, { modelId: "phi4:14b" });
+    await subject.tracker.whenSettled(FIXTURE_CONNECTION, "phi4:14b");
+
+    // Once for the request, once when the stream opened.
+    expect(subject.connections.find.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("refuses a kind that cannot pull as 422, before anything is queued", async () => {
+    const subject = harness();
+    subject.connections.find.mockResolvedValue(connectionRow());
+
+    await expect(
+      subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, { modelId: "phi4:14b" }),
+    ).rejects.toMatchObject({ code: "provider_kind_cannot_pull" });
+    expect(subject.tracker.list(FIXTURE_CONNECTION)).toEqual([]);
+  });
+
+  it("refuses to start or read pulls for a connection this workspace does not have", async () => {
+    const subject = pulling(new FakePullingProviderAdapter());
+    subject.connections.find.mockResolvedValue(undefined);
+
+    await expect(
+      subject.service.pull(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, { modelId: "phi4:14b" }),
+    ).rejects.toMatchObject({ code: "provider_connection_not_found" });
+    await expect(
+      subject.service.pulls(FIXTURE_WORKSPACE, FIXTURE_CONNECTION),
+    ).rejects.toMatchObject({
+      code: "provider_connection_not_found",
+    });
+  });
+
+  it("answers an empty list for a connection nothing has pulled on", async () => {
+    const subject = pulling(new FakePullingProviderAdapter());
+
+    await expect(subject.service.pulls(FIXTURE_WORKSPACE, FIXTURE_CONNECTION)).resolves.toEqual({
+      connectionId: FIXTURE_CONNECTION,
+      pulls: [],
     });
   });
 });

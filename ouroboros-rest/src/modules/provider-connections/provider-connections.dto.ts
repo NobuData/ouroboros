@@ -91,6 +91,12 @@ export const MAX_CONFIG_VALUE_LENGTH = 2048;
 /** The longest credential this API will accept. */
 export const MAX_SECRET_LENGTH = 4096;
 
+/**
+ * The longest model id V017 stores — `provider_models_model_id_present`'s bound, and the one
+ * `model_aliases.model_id` shares.
+ */
+export const MODEL_ID_MAX_LENGTH = 200;
+
 /** The longest password this API will pass to BetterAuth — its own `PASSWORD_MAX_LENGTH`. */
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -347,4 +353,20 @@ export class RotateConnectionDto {
   @IsString()
   @Length(1, MAX_SECRET_LENGTH)
   secret!: string;
+}
+
+/**
+ * The body of `POST /api/v1/providers/{id}/pulls`.
+ *
+ * One field: which model to pull, in the daemon's own spelling — `qwen3-coder:32b`. Not
+ * required to be in the catalog already: *Pull latest* on a detected model is the ordinary
+ * case, and pulling a model the host does not have yet is the same request to the daemon,
+ * which is what AF.5 ([#238](https://github.com/NobuData/ouroboros/issues/238)) builds on.
+ */
+export class PullModelDto {
+  /** The model's id. Trimmed and bounded exactly as V017 bounds what discovery stores. */
+  @IsString()
+  @Length(1, MODEL_ID_MAX_LENGTH)
+  @Validate(IsTrimmed)
+  modelId!: string;
 }

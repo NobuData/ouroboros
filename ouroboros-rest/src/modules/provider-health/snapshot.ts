@@ -41,6 +41,7 @@
  */
 
 import type { ProviderConnectionKind, ProviderConnectionStatus } from "../db/schema";
+import { PROVIDER_ERROR_CLASSES, type ProviderErrorClass } from "../providers/provider.errors";
 import type { ProviderCheckKind } from "./checks";
 
 /**
@@ -50,7 +51,7 @@ import type { ProviderCheckKind } from "./checks";
  * A list rather than a `delete` of known-foreign keys, because the set this service owns is
  * knowable and the set it does not is, by construction, not.
  */
-export const PROBE_KEYS = ["check", "latency_ms", "models", "detail"] as const;
+export const PROBE_KEYS = ["check", "latency_ms", "models", "detail", "error_class"] as const;
 
 /**
  * The sub-object AB.2's traffic-derived fields land in.
@@ -76,6 +77,17 @@ export interface ProbeHealth {
   readonly models?: number;
   /** Why a check failed, in a phrase — `unreachable (ECONNREFUSED)`, `key rejected (401)`. */
   readonly detail?: string;
+  /**
+   * Which of the taxonomy's five classes a failure was, when the check could say.
+   *
+   * Written by mockup 07's **Test connection** (AE.4,
+   * [#230](https://github.com/NobuData/ouroboros/issues/230)), whose answer comes through an
+   * adapter and therefore carries a class; the sweep's probes speak in phrases and write none.
+   * It is what lets a card draw `degraded upstream` rather than `error` after a reload, and it
+   * is a probe key so the next sweep clears it rather than leaving a class beside a state it
+   * did not observe.
+   */
+  readonly error_class?: ProviderErrorClass;
 }
 
 /**
@@ -94,6 +106,8 @@ export interface MeasuredHealth {
   readonly models: number | null;
   /** The phrase explaining a state, or null. */
   readonly detail: string | null;
+  /** The taxonomy's class behind a failure, or null when nothing classified it. */
+  readonly errorClass: ProviderErrorClass | null;
 }
 
 /**
@@ -183,7 +197,21 @@ export function readHealth(health: Record<string, unknown>): MeasuredHealth {
     latencyMs: numberOrNull(health.latency_ms),
     models: numberOrNull(health.models),
     detail: textOrNull(health.detail),
+    errorClass: errorClassOrNull(health.error_class),
   };
+}
+
+/**
+ * A value as one of the taxonomy's classes, or null.
+ *
+ * @param value - Whatever the column holds under `error_class`.
+ * @returns The class, or null for anything that is not one of the five — a word this build
+ *   does not know is not a class it can draw a pill for.
+ */
+function errorClassOrNull(value: unknown): ProviderErrorClass | null {
+  return typeof value === "string" && (PROVIDER_ERROR_CLASSES as readonly string[]).includes(value)
+    ? (value as ProviderErrorClass)
+    : null;
 }
 
 /**

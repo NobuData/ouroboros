@@ -10,7 +10,7 @@ import type {
   HealthWrite,
   ProviderHealthRepository,
 } from "./provider-health.repository";
-import { ProviderHealthService, measured } from "./provider-health.service";
+import { ProviderHealthService, measured, validated } from "./provider-health.service";
 import { TRAFFIC_KEY, type ProviderHealthRow } from "./snapshot";
 
 /**
@@ -64,6 +64,9 @@ function repository(rows: DueConnection[] = []) {
     sealedCredential: jest.fn<Promise<string | null>, unknown[]>().mockResolvedValue(null),
     record: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
     forOrganization: jest.fn<Promise<ProviderHealthRow[]>, unknown[]>().mockResolvedValue([]),
+    healthOf: jest
+      .fn<Promise<Record<string, unknown> | undefined>, unknown[]>()
+      .mockResolvedValue({}),
   };
 }
 
@@ -398,7 +401,13 @@ describe("what the page and the resolver read", () => {
       expect.objectContaining({
         connectionId: CONNECTION,
         status: "active",
-        measured: { check: "reachability", latencyMs: null, models: 3, detail: null },
+        measured: {
+          check: "reachability",
+          latencyMs: null,
+          models: 3,
+          detail: null,
+          errorClass: null,
+        },
       }),
     ]);
   });
@@ -432,5 +441,139 @@ describe("a probe outcome as the keys the column owns", () => {
       check: "key_validation",
       detail: "key rejected (401)",
     });
+  });
+});
+
+describe("what a test through the adapter writes — AE.4's on-demand check (#230)", () => {
+  const passed = { status: "ok", latencyMs: 38, detail: "200" } as const;
+  const refused = { status: "failed", errorClass: "upstream", detail: "503 upstream" } as const;
+
+  it("records a pass as active, under the sweep's own check name, with the latency the strip prints", async () => {
+    const connections = repository();
+    connections.healthOf.mockResolvedValue({ [TRAFFIC_KEY]: { p95_latency_ms: 900 } });
+    const at = new Date("2026-08-25T10:00:12.004Z");
+
+    await service({ connections }).recordValidation(
+      WORKSPACE,
+      CONNECTION,
+      "anthropic",
+      true,
+      passed,
+      at,
+    );
+
+    expect(connections.record).toHaveBeenCalledWith(WORKSPACE, CONNECTION, {
+      status: "active",
+      health: { [TRAFFIC_KEY]: { p95_latency_ms: 900 }, check: "key_validation", latency_ms: 38 },
+      checkedAt: at,
+    });
+  });
+
+  it("records a refusal as an error, with the phrase and the class the card's finer pill needs", async () => {
+    const connections = repository();
+
+    await service({ connections }).recordValidation(
+      WORKSPACE,
+      CONNECTION,
+      "copilot",
+      true,
+      refused,
+      NOW,
+    );
+
+    expect(connections.record).toHaveBeenCalledWith(WORKSPACE, CONNECTION, {
+      status: "error",
+      health: { check: "key_validation", detail: "503 upstream", error_class: "upstream" },
+      checkedAt: NOW,
+    });
+  });
+
+  it("clears a count the last sweep wrote, because a test enumerates nothing", async () => {
+    const connections = repository();
+    connections.healthOf.mockResolvedValue({ check: "reachability", models: 3 });
+
+    await service({ connections }).recordValidation(
+      WORKSPACE,
+      CONNECTION,
+      "ollama",
+      false,
+      passed,
+      NOW,
+    );
+
+    expect(connections.record.mock.calls[0][2]).toMatchObject({
+      health: { check: "reachability" },
+    });
+    expect(
+      (connections.record.mock.calls[0][2] as { health: Record<string, unknown> }).health,
+    ).not.toHaveProperty("models");
+  });
+
+  it("writes nothing for a connection this workspace does not have", async () => {
+    const connections = repository();
+    connections.healthOf.mockResolvedValue(undefined);
+
+    await service({ connections }).recordValidation(
+      WORKSPACE,
+      CONNECTION,
+      "anthropic",
+      true,
+      passed,
+      NOW,
+    );
+
+    expect(connections.record).not.toHaveBeenCalled();
+  });
+
+  it("issues no request of its own — the request was the adapter's", async () => {
+    const connections = repository();
+    const probe = probing({ ok: true, latencyMs: 4, models: 3 });
+
+    await service({ connections, probe }).recordValidation(
+      WORKSPACE,
+      CONNECTION,
+      "ollama",
+      false,
+      passed,
+      NOW,
+    );
+
+    expect(probe.run).not.toHaveBeenCalled();
+  });
+});
+
+describe("a validation as the keys the column owns", () => {
+  it("discards the local daemon's latency, exactly as the sweep does", () => {
+    expect(validated("ollama", false, { status: "ok", latencyMs: 4, detail: "200" })).toEqual({
+      check: "reachability",
+    });
+  });
+
+  it("keeps a cloud provider's latency, and names the check the table names", () => {
+    expect(validated("anthropic", true, { status: "ok", latencyMs: 42, detail: "200" })).toEqual({
+      check: "key_validation",
+      latency_ms: 42,
+    });
+  });
+
+  it("derives the check from the schema for a kind the sweep has no entry for", () => {
+    expect(validated("cursor", true, { status: "ok", latencyMs: 12, detail: "200" })).toEqual({
+      check: "key_validation",
+      latency_ms: 12,
+    });
+    expect(validated("custom", false, { status: "ok", latencyMs: 12, detail: "200" })).toEqual({
+      check: "reachability",
+      latency_ms: 12,
+    });
+  });
+
+  it("carries a failure's phrase and class, and never a latency", () => {
+    expect(
+      validated("anthropic", true, {
+        status: "failed",
+        errorClass: "auth",
+        detail: "key rejected (401)",
+      }),
+    ).toEqual({ check: "key_validation", detail: "key rejected (401)", error_class: "auth" });
   });
 });

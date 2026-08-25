@@ -55,12 +55,16 @@ import {
   ConnectionParams,
   CreateConnectionDto,
   ListConnectionsQuery,
+  PullModelDto,
   RevealConnectionDto,
   RotateConnectionDto,
   UpdateConnectionDto,
 } from "./provider-connections.dto";
 import { ProviderConnectionsService } from "./provider-connections.service";
 import type { ProviderCatalogResource } from "./catalog";
+import type { ProviderTestResource } from "./connection-test";
+import type { ProviderDiscoveryResource, ProviderModelsResource } from "./models";
+import type { ModelPullResource, ModelPullsResource } from "./pulls";
 import type { ProviderConnectionResource, RevealResource } from "./resources";
 import type { ProviderMonthlySpendResource } from "./spend";
 
@@ -264,5 +268,113 @@ export class ProviderConnectionsController {
     @Param() params: ConnectionParams,
   ): Promise<void> {
     return this.connections.remove(tenant.id, principal.user.id, params.id);
+  }
+
+  /**
+   * `POST /api/v1/providers/{id}/test` — ask the provider whether this connection works.
+   *
+   * A `POST` with no body, because it has a side effect the card depends on: the answer is
+   * written to `provider_connections.status` and Z.3's snapshot, so the routing strip agrees
+   * with the pill. `200` whatever the provider said — a `503` upstream is an *answer* this
+   * route exists to carry, and turning it into a `4xx` of our own would be a card that could
+   * not draw the state mockup 07 draws.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param principal - The session, for the audit event.
+   * @param params - The connection's id.
+   * @returns What the provider said, composed for the card foot.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Post(":id/test")
+  @HttpCode(HttpStatus.OK)
+  test(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+    @Param() params: ConnectionParams,
+  ): Promise<ProviderTestResource> {
+    return this.connections.test(tenant.id, principal.user.id, params.id);
+  }
+
+  /**
+   * `GET /api/v1/providers/{id}/models` — the discovered catalog, and the aliases it stranded.
+   *
+   * A read of what the last discovery wrote. Any member: the chips are on a card every member
+   * may look at, and nothing in a model id is a secret.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The connection's id.
+   * @returns The catalog.
+   */
+  @Get(":id/models")
+  models(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: ConnectionParams,
+  ): Promise<ProviderModelsResource> {
+    return this.connections.models(tenant.id, params.id);
+  }
+
+  /**
+   * `POST /api/v1/providers/{id}/discover` — ask the provider what it serves, and store it.
+   *
+   * The write V017 left to this ticket. `200` with the catalog as it now stands and what
+   * changed, rather than `202`: discovery is one listing call and the row writes are done
+   * before the answer, so there is nothing to poll for.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The connection's id.
+   * @returns The catalog, with `added` and `removed`.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Post(":id/discover")
+  @HttpCode(HttpStatus.OK)
+  discover(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: ConnectionParams,
+  ): Promise<ProviderDiscoveryResource> {
+    return this.connections.discover(tenant.id, params.id);
+  }
+
+  /**
+   * `POST /api/v1/providers/{id}/pulls` — ask the host to pull a model.
+   *
+   * `202`: the transfer is the tracker's and takes minutes; what comes back is the record as it
+   * stands, which is `running` or `queued`. The same answer for a model already in flight — a
+   * second click is not a second pull — so a client that lost the first response can send the
+   * request again and get the record it was looking for.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The connection's id.
+   * @param body - Which model.
+   * @returns The record.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Post(":id/pulls")
+  @HttpCode(HttpStatus.ACCEPTED)
+  pull(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: ConnectionParams,
+    @Body() body: PullModelDto,
+  ): Promise<ModelPullResource> {
+    return this.connections.pull(tenant.id, params.id, body);
+  }
+
+  /**
+   * `GET /api/v1/providers/{id}/pulls` — every pull this process knows about on a connection.
+   *
+   * What a card polls while a bar is moving, and reads on first render so a reload lands at
+   * the current percentage rather than at an idle button. `no-store` for the reason reveal's
+   * answer carries it: a cached copy of a progress report is a report that stopped moving.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The connection's id.
+   * @returns The pulls, oldest request first.
+   */
+  @Get(":id/pulls")
+  @Header("Cache-Control", "no-store")
+  pulls(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: ConnectionParams,
+  ): Promise<ModelPullsResource> {
+    return this.connections.pulls(tenant.id, params.id);
   }
 }

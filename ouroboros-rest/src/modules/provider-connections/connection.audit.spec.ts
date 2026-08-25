@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 
 import { recordingAudit } from "../audit/audit.fixture";
+import type { ProviderValidation } from "../providers/provider.adapter";
 import {
   AUDIT_ACTIONS,
   PROVIDER_CAP_CHANGED_EVENT,
@@ -45,6 +46,9 @@ const CONTEXT: ProviderAuditContext = {
   at: new Date("2026-08-23T10:00:00.000Z"),
 };
 
+/** A test that passed, as the adapter reports one. */
+const PASSED: ProviderValidation = { status: "ok", latencyMs: 38, detail: "200" };
+
 const ATTEMPT: ProviderAuditAttempt = {
   organizationId: CONTEXT.organizationId,
   connectionId: null,
@@ -83,7 +87,7 @@ describe("what a completed operation records", () => {
     ["rotated", (subject) => subject.rotated(CONTEXT)],
     ["updated", (subject) => subject.updated(CONTEXT, ["enabled"], undefined, true)],
     ["deleted", (subject) => subject.deleted(CONTEXT)],
-    ["tested", (subject) => subject.tested(CONTEXT, 38)],
+    ["tested", (subject) => subject.tested(CONTEXT, PASSED)],
   ];
 
   it.each(everyMethod)("writes exactly one record for %s", async (_name, record) => {
@@ -314,7 +318,7 @@ describe("what a record never contains", () => {
     await audit.rotated(CONTEXT);
     await audit.updated(CONTEXT, ["config"]);
     await audit.deleted(CONTEXT);
-    await audit.tested(CONTEXT, 38);
+    await audit.tested(CONTEXT, PASSED);
     await audit.failed(ATTEMPT, PROVIDER_ADDED_EVENT, new Error("no"));
 
     for (const record of trail.records) {
@@ -343,5 +347,40 @@ describe("what a record never contains", () => {
       "kind",
       "organizationId",
     ]);
+  });
+});
+
+describe("what a test records about what it found (#230)", () => {
+  it("records a pass as a success with its latency", async () => {
+    const trail = recordingAudit();
+
+    await new ProviderAudit(trail.service).tested(CONTEXT, PASSED);
+
+    expect(trail.records[0]).toMatchObject({
+      action: "provider.tested",
+      detail: { outcome: "success", latency_ms: 38, kind: CONTEXT.kind },
+    });
+  });
+
+  it("records a refusal as a failure, under the validation code, with the taxonomy's class", async () => {
+    const trail = recordingAudit();
+
+    await new ProviderAudit(trail.service).tested(CONTEXT, {
+      status: "failed",
+      errorClass: "auth",
+      detail: "key rejected (401)",
+    });
+
+    expect(trail.records[0]).toMatchObject({
+      action: "provider.tested",
+      detail: {
+        outcome: "failure",
+        reason: "provider_validation_failed",
+        error_class: "auth",
+        kind: CONTEXT.kind,
+      },
+    });
+    // The phrase stays out of the trail: it is written for a person, and an upstream chose it.
+    expect(JSON.stringify(trail.records[0].detail)).not.toContain("key rejected");
   });
 });

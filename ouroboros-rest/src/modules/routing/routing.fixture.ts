@@ -220,6 +220,7 @@ export function snapshot(
       latencyMs: measured.latencyMs ?? null,
       models: null,
       detail: measured.detail ?? null,
+      errorClass: null,
     },
   };
 }

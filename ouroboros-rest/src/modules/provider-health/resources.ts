@@ -29,6 +29,7 @@
  */
 
 import type { ProviderConnectionKind, ProviderConnectionStatus } from "../db/schema";
+import type { ProviderErrorClass } from "../providers/provider.errors";
 import type { ProviderCheckKind } from "./checks";
 import type { ProviderHealthSnapshot } from "./snapshot";
 
@@ -80,6 +81,15 @@ export interface ProviderHealthResource {
   readonly models: number | null;
   /** Why the provider is in this state, when there is something to say. */
   readonly detail: string | null;
+  /**
+   * The taxonomy's class behind an `error`, or null.
+   *
+   * Present only where a check that speaks the taxonomy wrote one — mockup 07's **Test
+   * connection** ([#230](https://github.com/NobuData/ouroboros/issues/230)). It is what the
+   * provider card reads to draw `degraded upstream` or `key rejected` rather than a bare
+   * `error`, and what keeps that card and this strip describing one measurement.
+   */
+  readonly errorClass: ProviderErrorClass | null;
   /**
    * The chip's meta line, already composed — or null when there is nothing measured to say,
    * which is what the mockup's bare `Cursor ●` chip is.
@@ -158,6 +168,7 @@ export function providerHealthResource(snapshot: ProviderHealthSnapshot): Provid
     latencyMs: snapshot.measured.latencyMs,
     models: snapshot.measured.models,
     detail: snapshot.measured.detail,
+    errorClass: snapshot.measured.errorClass,
     meta: chipMeta(snapshot),
   };
 }

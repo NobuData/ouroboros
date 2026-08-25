@@ -9,12 +9,10 @@ import {
   DETECTED_LABEL,
   MODELS_LABEL,
   NO_MODELS,
-  PULL_SOON,
   REVEAL,
   ROTATE,
   SAVE_KEY,
   TEST_CONNECTION,
-  TEST_SOON,
   cardModel,
   switchLabel,
 } from "@/app/providers/cards";
@@ -25,6 +23,7 @@ import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/pale
 import {
   ADDER,
   READ_AT,
+  SEEDED_ANTHROPIC_ID,
   anthropicEntry,
   anthropicModels,
   connection,
@@ -32,7 +31,8 @@ import {
   cursorEntry,
   fakeConnection,
   fakeEntry,
-  modelOption,
+  providerModel,
+  providerModels,
   ollamaEntry,
   readings,
   seededCards,
@@ -64,6 +64,11 @@ vi.mock("@/app/providers/key-actions", () => ({
   removeProvider: vi.fn(),
   saveProviderAddress: vi.fn(),
   reauthenticate: vi.fn(),
+}));
+vi.mock("@/app/providers/live-actions", () => ({
+  testConnection: vi.fn(),
+  refreshModels: vi.fn(),
+  startPull: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -179,13 +184,12 @@ describe("the seeded Anthropic card", () => {
     expect(meter.querySelector(".ou-meter__fill")?.getAttribute("style")).toContain("68.8%");
   });
 
-  it("draws the foot: an inert Test connection, the note slot, and the cap read-only", () => {
+  it("draws the foot: a live Test connection, the empty note slot, and the cap read-only", () => {
     const card = seeded("anthropic");
     const test = within(card).getByRole("button", { name: TEST_CONNECTION });
 
     expect(test).toHaveClass("ou-btn--ghost");
-    expect(test).toHaveAttribute("aria-disabled", "true");
-    expect(test).toHaveAttribute("title", TEST_SOON);
+    expect(test).not.toHaveAttribute("aria-disabled");
     expect(card.querySelector(".providers-card__test-note")).toBeEmptyDOMElement();
 
     const cap = within(card).getByLabelText(CAP_LABEL);
@@ -238,22 +242,22 @@ describe("the other four seeded cards", () => {
     expect(within(card).getByLabelText(CAP_LABEL)).toHaveValue("—");
   });
 
-  it("draws Ollama with a Host field, no key row, the pull-list slot, and the on-box tokens", () => {
+  it("draws Ollama with a Host field, no key row, the pull-list with its sizes, and the on-box tokens", () => {
     const card = seeded("ollama");
 
     expect(within(card).getByLabelText("Host")).toHaveValue("http://ken-station.local:11434");
     expect(within(card).queryByLabelText("API key")).toBeNull();
     expect(card.querySelector(".providers-card__key-row")).toBeNull();
 
+    // The mockup's rows, element for element: the mono name, the `19 GB` tag, the action.
     const list = within(card).getByRole("list", { name: DETECTED_LABEL });
     expect(within(list).getAllByRole("listitem").map((row) => row.textContent)).toEqual([
-      "qwen3-coder:32bPull latest",
-      "llama4:scoutPull latest",
-      "phi4:14bPull latest",
+      "qwen3-coder:32b19 GBPull latest",
+      "llama4:scout63 GBPull latest",
+      "phi4:14b9.1 GBPull latest",
     ]);
     for (const pull of within(list).getAllByRole("button", { name: "Pull latest" })) {
-      expect(pull).toHaveAttribute("aria-disabled", "true");
-      expect(pull).toHaveAttribute("title", PULL_SOON);
+      expect(pull).not.toHaveAttribute("aria-disabled");
     }
     expect(card.querySelectorAll(".ou-chip--model")).toHaveLength(0);
     expect(meterReads(card)).toBe("no metered spend 2.1M tokens on-box");
@@ -271,10 +275,10 @@ describe("the sixth card — the schema-driven proof", () => {
       spend: null,
       models: {
         ok: true,
-        value: [
-          modelOption({ modelId: "fake/small", display: "Fake Small", meta: {} }),
-          modelOption({ modelId: "fake/large", display: "Fake Large", meta: {} }),
-        ],
+        value: providerModels(fakeConnection().id, [
+          providerModel({ modelId: "fake/small", display: "Fake Small", meta: {} }),
+          providerModel({ modelId: "fake/large", display: "Fake Large", meta: {} }),
+        ]),
       },
       aliases: { ok: true, value: [] },
       now: NOW,
@@ -341,7 +345,7 @@ describe("a switched-off card", () => {
       entry: anthropicEntry(),
       health: null,
       spend: spendRow(),
-      models: { ok: true, value: anthropicModels() },
+      models: { ok: true, value: providerModels(SEEDED_ANTHROPIC_ID, anthropicModels()) },
       aliases: { ok: true, value: [] },
       now: NOW,
     });
@@ -362,7 +366,7 @@ describe("what a region says when it has nothing to draw", () => {
       entry: cursorEntry(),
       health: null,
       spend: null,
-      models: { ok: true, value: [] },
+      models: { ok: true, value: providerModels("c", []) },
       aliases: { ok: true, value: [] },
       now: NOW,
     });
@@ -395,7 +399,7 @@ describe("what a region says when it has nothing to draw", () => {
       entry: copilotEntry(),
       health: provider({ detail: "200 · 4 seats" }),
       spend: spendRow({ kind: "copilot", spendCents: 7_600 }),
-      models: { ok: true, value: [] },
+      models: { ok: true, value: providerModels("c", []) },
       aliases: { ok: true, value: [] },
       now: NOW,
     });
@@ -445,7 +449,7 @@ describe("both palettes", () => {
       entry: anthropicEntry(),
       health: seededProviders()[0],
       spend: seededSpend().providers[0],
-      models: { ok: true, value: anthropicModels() },
+      models: { ok: true, value: providerModels(SEEDED_ANTHROPIC_ID, anthropicModels()) },
       aliases: { ok: true, value: [] },
       now: NOW,
     });
@@ -472,9 +476,9 @@ describe("what the card is built from", () => {
     expect(card.querySelectorAll(".ou-meter")).toHaveLength(1);
     expect(card.querySelectorAll(".ou-switch")).toHaveLength(1);
     expect(card.querySelectorAll(".ou-input")).toHaveLength(2);
-    // The overflow menu, Reveal, Rotate and Test connection — every acting control is the
-    // primitive, and the card draws none of its own.
-    expect(card.querySelectorAll(".ou-btn")).toHaveLength(4);
+    // The overflow menu, Reveal, Rotate, Refresh models and Test connection — every acting
+    // control is the primitive, and the card draws none of its own.
+    expect(card.querySelectorAll(".ou-btn")).toHaveLength(5);
     // The one figure the card computes is passed as the meter's datum, never as a width.
     expect(card.innerHTML).not.toMatch(/style="width/);
   });
@@ -486,7 +490,7 @@ describe("what the card is built from", () => {
       entry: ollamaEntry(),
       health: null,
       spend: null,
-      models: { ok: true, value: [] },
+      models: { ok: true, value: providerModels("c", []) },
       aliases: { ok: true, value: [] },
       now: NOW,
     });

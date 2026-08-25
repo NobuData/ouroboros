@@ -9,13 +9,16 @@ import {
 } from "../provider-connections/connection.fixture";
 import { ProviderAudit } from "../provider-connections/connection.audit";
 import type { ProviderConnectionsRepository } from "../provider-connections/provider-connections.repository";
+import type { ProviderModelsRepository } from "../provider-connections/provider-models.repository";
 import { ProviderConnectionsService } from "../provider-connections/provider-connections.service";
 import { RevealLimiter } from "../provider-connections/reveal.limiter";
 import type { StepUpService } from "../provider-connections/step-up";
 import { FakeModelProviderAdapter } from "../providers/adapters/fake.adapter.fixture";
 import { BASE_URL_FIELD } from "../providers/provider.config";
 import { ModelProviderRegistry } from "../providers/provider.registry";
+import { ModelPullTracker } from "../providers/provider.pulls";
 import type { RegistryService } from "../registry/registry.service";
+import type { ProviderHealthService } from "../provider-health/provider-health.service";
 import type { RoutingStatsRepository } from "../routing/stats.repository";
 import { DENIED_WORDS } from "../vault/no-secret-logging";
 import { inMemoryVault } from "../vault/vault.fixture";
@@ -100,6 +103,14 @@ async function everythingThatCanBeRecorded() {
     new RevealLimiter(),
     new ProviderAudit(trail.service),
     { byProvider: jest.fn().mockResolvedValue([]) } as unknown as RoutingStatsRepository,
+    {
+      forConnection: jest.fn().mockResolvedValue([]),
+      replace: jest.fn().mockResolvedValue([]),
+    } as unknown as ProviderModelsRepository,
+    {
+      recordValidation: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ProviderHealthService,
+    new ModelPullTracker(),
   );
 
   // The envelope a reveal and a rotation open is a *real* one: the in-memory vault seals the

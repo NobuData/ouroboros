@@ -33,6 +33,7 @@ const STRIP: ProviderHealthStripResource = {
       latencyMs: null,
       models: 3,
       detail: null,
+      errorClass: null,
       meta: "workstation · 3 models",
     },
   ],
