@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 
 import { Card, CardHead, Chip, EmptyState, Table, Tag, type Column } from "@/app/ui";
 
@@ -19,6 +19,7 @@ import {
   selectionAnnouncement,
   taskKindCount,
 } from "./matrix";
+import { ModelsGrid } from "./models-grid";
 
 import "./models.css";
 
@@ -215,6 +216,17 @@ export interface RoutingMatrixProps {
    * writes the address bar rather than reading it.
    */
   readonly selected: string | null;
+  /**
+   * What stands under the inspector's seat in the right column — AA.5's
+   * ([#204](https://github.com/NobuData/ouroboros/issues/204)) rules and spend cards.
+   *
+   * Handed in rather than rendered here, because neither card has anything to do with the
+   * selection this component exists to hold: the rules card has its own client state and the
+   * spend card has none, and both would re-render on every arrow key if they were this
+   * component's children by import. Server Components handed to a Client Component as a
+   * prop are rendered where they are placed and no further.
+   */
+  readonly aside?: ReactNode;
 }
 
 /**
@@ -223,7 +235,7 @@ export interface RoutingMatrixProps {
  * @param props See {@link RoutingMatrixProps}.
  * @returns The two cards.
  */
-export function RoutingMatrix({ rows, selected: initial }: RoutingMatrixProps) {
+export function RoutingMatrix({ rows, selected: initial, aside }: RoutingMatrixProps) {
   const [selected, setSelected] = useState<string | null>(initial);
 
   const select = useCallback((kind: string) => {
@@ -234,38 +246,44 @@ export function RoutingMatrix({ rows, selected: initial }: RoutingMatrixProps) {
   const row = rows.find((candidate) => candidate.kind === selected) ?? null;
 
   return (
-    <div className="models-grid">
-      <Card aria-labelledby={MATRIX_TITLE_ID} as="section" className="models-col--8" fill>
-        <CardHead
-          beside={<Tag>{taskKindCount(rows.length)}</Tag>}
-          className="models-matrix__head"
-          title={MATRIX_TITLE}
-          titleId={MATRIX_TITLE_ID}
-          trailing={<span className="models-matrix__hint">{REORDER_HINT}</span>}
-        />
+    <ModelsGrid
+      main={
+        <Card aria-labelledby={MATRIX_TITLE_ID} as="section" className="models-col--8" fill>
+          <CardHead
+            beside={<Tag>{taskKindCount(rows.length)}</Tag>}
+            className="models-matrix__head"
+            title={MATRIX_TITLE}
+            titleId={MATRIX_TITLE_ID}
+            trailing={<span className="models-matrix__hint">{REORDER_HINT}</span>}
+          />
 
-        <Table
-          caption={MATRIX_CAPTION}
-          captionHidden
-          columns={COLUMNS}
-          rowKey={(candidate) => candidate.kind}
-          rows={rows}
-          selection={{ selected, onSelect: select }}
-        />
+          <Table
+            caption={MATRIX_CAPTION}
+            captionHidden
+            columns={COLUMNS}
+            rowKey={(candidate) => candidate.kind}
+            rows={rows}
+            selection={{ selected, onSelect: select }}
+          />
 
-        {/*
-          Where the selection is said out loud. `role="status"` rather than an alert: moving
-          between rows is what the reader asked for, not an interruption — and it is the half
-          of "announced to assistive technology" that focus alone does not cover, since a
-          pointer selection moves no focus at all.
-        */}
-        <p className="sr-only" role="status">
-          {selected === null ? "" : selectionAnnouncement(selected)}
-        </p>
-      </Card>
-
-      <RouteInspectorSeat row={row} />
-    </div>
+          {/*
+            Where the selection is said out loud. `role="status"` rather than an alert: moving
+            between rows is what the reader asked for, not an interruption — and it is the half
+            of "announced to assistive technology" that focus alone does not cover, since a
+            pointer selection moves no focus at all.
+          */}
+          <p className="sr-only" role="status">
+            {selected === null ? "" : selectionAnnouncement(selected)}
+          </p>
+        </Card>
+      }
+      aside={
+        <>
+          <RouteInspectorSeat row={row} />
+          {aside}
+        </>
+      }
+    />
   );
 }
 
@@ -282,7 +300,7 @@ export function RoutingMatrix({ rows, selected: initial }: RoutingMatrixProps) {
  */
 function RouteInspectorSeat({ row }: Readonly<{ row: MatrixRow | null }>) {
   return (
-    <Card aria-labelledby={INSPECTOR_TITLE_ID} as="section" className="models-col--4" fill>
+    <Card aria-labelledby={INSPECTOR_TITLE_ID} as="section" fill>
       <CardHead
         title={inspectorTitle(row?.tag ?? null)}
         titleId={INSPECTOR_TITLE_ID}

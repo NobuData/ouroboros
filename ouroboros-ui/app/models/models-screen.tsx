@@ -8,8 +8,11 @@ import {
   selectedKind,
 } from "./matrix";
 import { ModelsFrame } from "./models-frame";
+import { ModelsGrid } from "./models-grid";
 import { ProviderStrip } from "./provider-strip";
 import { RoutingMatrix } from "./routing-matrix";
+import { RulesCard } from "./rules-card";
+import { SpendCard } from "./spend-card";
 import { type ModelsReadings, SIMULATE_REASON, saveRoutesReason } from "./view";
 
 import "./models.css";
@@ -44,18 +47,22 @@ import "./models.css";
  * chain of hops. That is § 3.5 applied to a page that is now mostly built: a surface that is
  * not ready is **labelled**, never dead, and never a mock-up of itself.
  *
- * Since AA.2 ([#201](https://github.com/NobuData/ouroboros/issues/201)) two of its regions
- * draw real data — the health strip and the matrix — and they are the two regions where being
- * wrong would matter. `view.ts` carries the argument for every treatment the strip takes and
- * `matrix.ts` for every cell the table draws; between them, nothing on this page is a figure
- * this component decided.
+ * Since AA.2 ([#201](https://github.com/NobuData/ouroboros/issues/201)) and AA.5
+ * ([#204](https://github.com/NobuData/ouroboros/issues/204)) four of its regions draw real
+ * data — the health strip, the matrix, the rules card and the spend card — and they are the
+ * regions where being wrong would matter. `view.ts` carries the argument for every treatment
+ * the strip takes, `matrix.ts` for every cell the table draws, `rules.ts` for every sentence
+ * and switch the rules card holds and `spend.ts` for every figure the spend card prints;
+ * between them, nothing on this page is a figure this component decided.
  *
- * ### Three regions, three independent failures
+ * ### Two reads, two independent failures
  *
  * The strip and the matrix are separate reads and degrade separately: a workspace whose
  * health check is unreadable still gets its eight rows, and a workspace whose matrix is
  * refused still gets its chips. Neither takes the page's frame with it, which is the rule
- * `app/api/reading.ts` exists to keep.
+ * `app/api/reading.ts` exists to keep. The rules and the spend card ride on the **matrix's**
+ * read — `app/api/routing.ts` says why the three are one payload — so a refused matrix is
+ * one failed region holding all three, and says so once rather than three times.
  */
 
 /**
@@ -72,18 +79,34 @@ const SUBLINE =
   "registry tab. The loop degrades gracefully when a provider stumbles — and never " +
   "silently below the floor you set.";
 
+/** What the screen takes. */
+export interface ModelsScreenProps {
+  /** Everything the reader was able to read, and why not for the rest. */
+  readonly readings: ModelsReadings;
+  /**
+   * Which row the URL asks for, as it arrived — unchecked, because checking it needs the rows
+   * and the rows are decided below. `null` when the URL named none.
+   */
+  readonly route?: string | string[] | null;
+  /**
+   * Whether this reader's role may change escalation rules — `app/api/membership.ts`'s
+   * `mayAdminister`, decided at the gate.
+   *
+   * A boolean rather than the role itself, because the page asks one question of it and a
+   * screen holding a role would be a second place deciding what a role may do. It defaults
+   * to `false` so that a caller which forgot it renders the page a member sees — the one
+   * with nothing to press — rather than controls the service would refuse.
+   */
+  readonly mayAdminister?: boolean;
+}
+
 /**
  * The routing screen.
  *
- * @param props.readings Everything the reader was able to read, and why not for the rest.
- * @param props.route Which row the URL asks for, as it arrived — unchecked, because checking
- *   it needs the rows and the rows are decided below. `null` when the URL named none.
+ * @param props See {@link ModelsScreenProps}.
  * @returns The screen.
  */
-export function ModelsScreen({
-  readings,
-  route = null,
-}: Readonly<{ readings: ModelsReadings; route?: string | string[] | null }>) {
+export function ModelsScreen({ readings, route = null, mayAdminister = false }: ModelsScreenProps) {
   return (
     <ModelsFrame
       active="routing"
@@ -112,13 +135,14 @@ export function ModelsScreen({
     >
       <ProviderStrip providers={readings.providers} />
 
-      <MatrixRegion matrix={readings.matrix} route={route} />
+      <MatrixRegion matrix={readings.matrix} mayAdminister={mayAdminister} route={route} />
     </ModelsFrame>
   );
 }
 
 /**
- * The matrix and the inspector's seat, or the one line that says why there are none.
+ * The matrix, the inspector's seat and the two cards beside them — or the one line that says
+ * why there are none.
  *
  * Three states, and the two that draw no rows are deliberately different sentences. A
  * workspace whose routing foundations have not been seeded **has** an answer — an empty
@@ -127,18 +151,30 @@ export function ModelsScreen({
  * refused has no answer at all, and carries the service's own reason. Neither is a blank
  * region (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.3), and neither looks like the other.
  *
+ * The unseeded workspace still gets its right column. Its rules card is the empty state that
+ * says what a rule is, and its spend card is the zero-state — which is the state the ticket
+ * asks for by name, and one that only exists on a card that is drawn. The refused matrix
+ * does not: the rules and the spend are the same read, and a refusal is one region, said once.
+ *
  * The rows are decided **here, on the server**, and handed to the Client Component already
  * formed. That keeps `app/format.ts` and the contract's shapes out of the browser bundle, and
- * leaves the client with the one thing it is a client for: which row is selected.
+ * leaves the client with the one thing it is a client for: which row is selected. The two
+ * cards are formed here for the same reason and handed across as the matrix's `aside`.
  *
  * @param props.matrix The read: the payload, or why it could not be made.
+ * @param props.mayAdminister Whether the rules card draws its controls.
  * @param props.route What `?route=` carried, unchecked.
  * @returns The region.
  */
 function MatrixRegion({
   matrix,
+  mayAdminister,
   route,
-}: Readonly<{ matrix: ModelsReadings["matrix"]; route: string | string[] | null }>) {
+}: Readonly<{
+  matrix: ModelsReadings["matrix"];
+  mayAdminister: boolean;
+  route: string | string[] | null;
+}>) {
   if (!matrix.ok) {
     return (
       <Card className="models__next" fill>
@@ -147,15 +183,32 @@ function MatrixRegion({
     );
   }
 
-  const rows = matrixRows(matrix.value.taskKinds, matrix.value.rules);
+  const { taskKinds, rules, spend } = matrix.value;
+  const rows = matrixRows(taskKinds, rules);
+
+  const aside = (
+    <>
+      <RulesCard
+        mayAdminister={mayAdminister}
+        rules={rules}
+        taskKinds={taskKinds.map((kind) => kind.name)}
+      />
+      <SpendCard spend={spend} />
+    </>
+  );
 
   if (rows.length === 0) {
     return (
-      <Card className="models__next" fill>
-        <EmptyState fill note={NO_KINDS_NOTE} title={NO_KINDS_TITLE} />
-      </Card>
+      <ModelsGrid
+        aside={aside}
+        main={
+          <Card className="models-col--8 models__next" fill>
+            <EmptyState fill note={NO_KINDS_NOTE} title={NO_KINDS_TITLE} />
+          </Card>
+        }
+      />
     );
   }
 
-  return <RoutingMatrix rows={rows} selected={selectedKind(rows, route)} />;
+  return <RoutingMatrix aside={aside} rows={rows} selected={selectedKind(rows, route)} />;
 }

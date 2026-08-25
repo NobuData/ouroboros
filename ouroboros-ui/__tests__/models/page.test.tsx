@@ -26,6 +26,15 @@ const readModels = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/models/data", () => ({ readModels: (access: unknown) => readModels(access) }));
+// The rules card's actions sit on the server-only client and its rows want the App Router;
+// both are other suites' subjects.
+vi.mock("@/app/models/rule-actions", () => ({
+  setRuleEnabled: vi.fn(),
+  addRule: vi.fn(),
+  removeRule: vi.fn(),
+  readRuleTargets: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const Page = (await import("@/app/(app)/models/page")).default;
 
@@ -138,5 +147,40 @@ describe("the selected route, which the URL carries", () => {
     render(await open({ route: ["implement", "review"] }));
 
     expect(screen.queryByRole("row", { selected: true })).not.toBeInTheDocument();
+  });
+});
+
+describe("the role the route decides (#204)", () => {
+  it("hands the screen the controls when the gate resolved an owner", async () => {
+    // Not a constant that happens to match the seed: change the roles the gate resolves and
+    // the page changes with them.
+    render(await open());
+
+    expect(screen.getAllByRole("switch")).toHaveLength(3);
+  });
+
+  it("hands a member the page with nothing to press", async () => {
+    requireWorkspace.mockResolvedValue({
+      ...ACCESS,
+      membership: membership({ roles: ["member"] }),
+    });
+
+    render(await open());
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+ Add rule" })).not.toBeInTheDocument();
+    // …and still the rules themselves, which any member may read.
+    expect(screen.getByText("3 active")).toBeInTheDocument();
+  });
+
+  it("treats a viewer as a member for this purpose", async () => {
+    requireWorkspace.mockResolvedValue({
+      ...ACCESS,
+      membership: membership({ roles: ["viewer"] }),
+    });
+
+    render(await open());
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 });

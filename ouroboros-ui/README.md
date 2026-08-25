@@ -1161,10 +1161,13 @@ Each task kind resolves to a primary model with…        ↑ #203 not built    
 (● OpenAI-compatible · local vLLM  10.0.4.20 · vLLM local) (◌ Fresh connection unknown)
 ```
 
-The matrix, the inspector, the rules card and the spend card are #201–#205; the space they will
-fill carries an empty state naming them. A placeholder table of invented rows would be the one
-dishonest thing on a page built to be honest — and indistinguishable, in a screenshot, from the
-real one.
+Below the strip, the routing matrix ([#201](https://github.com/NobuData/ouroboros/issues/201))
+takes eight of twelve columns and a right column stacks the inspector's seat, the
+[escalation rules card and the spend card](#the-rules-card-and-the-spend-card)
+([#204](https://github.com/NobuData/ouroboros/issues/204)). The inspector itself is
+[#203](https://github.com/NobuData/ouroboros/issues/203)'s; its seat names the selected route and
+says so. A placeholder chain of invented hops would be the one dishonest thing on a page built to
+be honest — and indistinguishable, in a screenshot, from the real one.
 
 ### The strip is the page's one claim about the outside world
 
@@ -1214,6 +1217,67 @@ Both head actions are inert through `Button`'s `reason`, so each says what is mi
 sitting dead; the two unbuilt sibling tabs are `SubnavSoon`, which does the same for a
 destination. The head and the tab set themselves are the **section's** since
 [#227](https://github.com/NobuData/ouroboros/issues/227) — see the next section.
+
+### The rules card and the spend card
+
+Two cards, two different ways to lie, and [`app/models/rules.ts`](app/models/rules.ts) and
+[`app/models/spend.ts`](app/models/spend.ts) are where each is stopped
+([#204](https://github.com/NobuData/ouroboros/issues/204)).
+
+```
+ESCALATION RULES                                  3 active
+effort ≥ L → implement uses coder-max (max thinking)   [on]
+security label → review adds second-opinion vote       [on]
+docs-only diff → everything routes local               [on]
+[+ Add rule]              ← when ▾ · then ▾ · target ▾ — selects, no text box
+
+SPEND BY PROVIDER · 30D                     [Full report →]  ← inert, names #210
+Anthropic                        ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  $412.80
+GitHub Copilot                   ▓▓▓                $76.00
+Cursor                           ▓▓                 $64.10
+Local (Ollama + OpenAI-compatible) ▓ (ok)   $0.00 · 5 unpriced calls
+Local models served 31% of all tokens.
+```
+
+**The rules card renders sentences, and never composes one.** Every line is the database's
+generated `display` (V018), which the contract refuses in a request body; the only thing the
+card decides about a sentence is which run of it is the alias, and that is derived from the
+rule's *structure* (`then.use_alias.alias`) rather than from the text. The **+ Add rule** dialog
+composes structure from selects — a predicate and its operand, an action, and the target the
+action names — and `composeRule` is total over every value those selects can hold, so an
+invalid combination is unreachable rather than refused after the press. The one typed value is a
+GitHub label name, which is an operand the grammar takes from outside the product's vocabulary,
+not a sentence. There is no preview: the server writes the sentence when the rule is saved, and
+the card prints what comes back.
+
+The switches are optimistic on the [auto-merge switch's](#dashboard) pattern — a flip that did
+not persist goes back and says why — and every write goes through a Server Action in
+[`app/models/rule-actions.ts`](app/models/rule-actions.ts), because the browser cannot reach
+REST. The role gate is the service's; what the page does with the role is **absence**: a
+`member` sees the rules and the count, the word *off* beside a suspended one, and no switch,
+builder or delete — not a disabled control, because a rule's position is already in the
+sentence's treatment and the count, and a control somebody cannot use is not a way to show it.
+Deleting asks first, and the confirmation says what the switch is for.
+
+**The spend card renders money, and keeps two zeros apart.** `spendCents: 0` is calls priced
+at nothing and prints `$0.00`; `spendCents: null` is calls nobody priced and prints the word
+*unpriced* in its own treatment — a dashed underline, and a dashed track where the meter would
+be — so a reader scanning the column cannot take it for a figure. A row can carry both facts,
+and the seeded local row does: `$0.00` from 260 calls priced at nothing, beside *5 unpriced
+calls*. A workspace that has spent nothing gets a sentence, not four rows of `$0.00`. The meters
+are the service's widths relative to the largest row, floored at a visible sliver so the local
+row's ok-meter can be seen; the footnote is computed from the served share, `<1%` rather than
+`0%` for a share too small to round. **Full report →** is a `Button` with a `reason` naming
+[#210](https://github.com/NobuData/ouroboros/issues/210), because an inert link has no honest
+rendering.
+
+Two of the seeded figures are not mockup 06's — Copilot reads `$76.00` and Cursor `$64.10`
+rather than `$96.40` and `$54.10` — and the reason is upstream: a thirty-day window contains the
+calendar month it is asked to be smaller than, so the mockup's two figures are unreachable from
+any ledger that also satisfies mockup 07's (see the Z.5 note in
+[`docs/ROADMAP_MOCKUP_06_MODEL_ROUTING.md`](../docs/ROADMAP_MOCKUP_06_MODEL_ROUTING.md)). The local
+row is named from the kinds the ledger records — *Local (Ollama + OpenAI-compatible)* — rather
+than the mockup's *vLLM*, because the ledger knows the adapter, not the product behind it.
 
 ## Providers & keys
 

@@ -4,11 +4,13 @@ import { ApiError } from "@/app/api/errors";
 // Types only, so this import is erased and nothing loads before the mocks below.
 import type { ProviderHealthStrip, RoutingMatrix } from "@/app/api/routing";
 
-import { clientAnswering } from "../helpers/api";
+import { clientAnswering, stubClient } from "../helpers/api";
 import {
   emptyMatrix,
+  seededAliases,
   seededMatrix,
   seededProviders,
+  seededRules,
   stripPayload,
   unmeasuredMatrix,
 } from "../helpers/models";
@@ -69,8 +71,17 @@ describe("routing.providers", () => {
     await routing.providers(client);
 
     expect(requests.map((request) => request.method)).toEqual(["GET"]);
-    // Every operation this module publishes, and both of them are reads.
-    expect(Object.keys(routing)).toEqual(["providers", "matrix"]);
+    // Every operation this module publishes. The three writes are the rules card's (#204)
+    // and address `/routing/rules`; none of them, and no read, touches the providers path
+    // with anything but GET.
+    expect(Object.keys(routing)).toEqual([
+      "providers",
+      "matrix",
+      "aliases",
+      "addRule",
+      "changeRule",
+      "removeRule",
+    ]);
   });
 
   it("names no workspace, because the session's active organization is the scope", async () => {
@@ -234,5 +245,121 @@ describe("the typing, which is the reason the client is generated", () => {
       "models",
       "status",
     ]);
+  });
+});
+
+/* ------------------------------------------------------------------ the rules card's calls (#204) */
+
+/** The seed's first rule, as a write would send it: structure, and no sentence. */
+const NEW_RULE = { when: seededRules()[0].when, then: seededRules()[0].then };
+
+/** The refusal a member meets on every write. */
+const FORBIDDEN = {
+  code: "forbidden",
+  message: "Your role does not permit changing escalation rules.",
+  details: {},
+};
+
+describe("routing.aliases", () => {
+  it("reads the registry list and returns the aliases themselves, unbound ones included", async () => {
+    const { client, requests } = clientAnswering({ aliases: seededAliases() });
+
+    const aliases = await routing.aliases(client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/routing/aliases");
+    expect(requests[0]?.method).toBe("GET");
+    expect(aliases).toEqual(seededAliases());
+    // The builder offers a name created ahead of its key, and the resolution line is what
+    // says so — dropping it here would hide an alias a rule may legitimately name.
+    expect(aliases.find((alias) => alias.alias === "gpt5-experiments")?.provider).toBeNull();
+  });
+});
+
+describe("routing.addRule", () => {
+  it("POSTs the structure to the rules collection, and sends no sentence", async () => {
+    const { client, requests } = clientAnswering(seededRules()[0], 201);
+
+    await routing.addRule(NEW_RULE, client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/routing/rules");
+    expect(requests[0]?.method).toBe("POST");
+
+    const body: unknown = await requests[0]!.json();
+
+    // `when` and `then` and nothing else: no `display`, which the contract refuses, and no
+    // `sortOrder`, so the rule is appended rather than claiming a position.
+    expect(body).toEqual(NEW_RULE);
+    expect(Object.keys(body as object)).toEqual(["when", "then"]);
+  });
+
+  it("returns the rule the service wrote, carrying the sentence it derived", async () => {
+    const { client } = clientAnswering(seededRules()[0], 201);
+
+    const rule = await routing.addRule(NEW_RULE, client);
+
+    expect(rule.display).toBe("effort ≥ L → implement uses coder-max (max thinking)");
+  });
+
+  it("rejects with the service's envelope for a role that may not write", async () => {
+    const { client } = clientAnswering(FORBIDDEN, 403);
+
+    const caught: unknown = await routing.addRule(NEW_RULE, client).catch((e: unknown) => e);
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect((caught as ApiError).code).toBe("forbidden");
+    expect((caught as ApiError).status).toBe(403);
+  });
+});
+
+describe("routing.changeRule", () => {
+  it("PATCHes the one rule, with only what changes", async () => {
+    const rule = seededRules()[1];
+    const { client, requests } = clientAnswering({ ...rule, enabled: false });
+
+    const answer = await routing.changeRule(rule.id, { enabled: false }, client);
+
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/routing/rules/${rule.id}`);
+    expect(requests[0]?.method).toBe("PATCH");
+    // The switch never resends a predicate it has no intention of changing.
+    expect(await requests[0]!.json()).toEqual({ enabled: false });
+    expect(answer.enabled).toBe(false);
+    expect(answer.display).toBe(rule.display);
+  });
+
+  it("rejects with the service's envelope for a rule that no longer exists", async () => {
+    const { client } = clientAnswering(
+      { code: "escalation_rule_not_found", message: "No such rule.", details: {} },
+      404,
+    );
+
+    const caught: unknown = await routing
+      .changeRule(seededRules()[0].id, { enabled: true }, client)
+      .catch((e: unknown) => e);
+
+    expect((caught as ApiError).code).toBe("escalation_rule_not_found");
+  });
+});
+
+describe("routing.removeRule", () => {
+  it("DELETEs the one rule and resolves to nothing on the contract's 204", async () => {
+    const rule = seededRules()[2];
+    // A `204` has no body; the stub answers with none, which is what the contract does.
+    const { client, requests } = stubClient(() => ({ body: undefined, status: 204 }));
+
+    await expect(routing.removeRule(rule.id, client)).resolves.toBeUndefined();
+
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/routing/rules/${rule.id}`);
+    expect(requests[0]?.method).toBe("DELETE");
+  });
+
+  it("rejects with the service's envelope for a role that may not remove", async () => {
+    const { client } = clientAnswering(FORBIDDEN, 403);
+
+    const caught: unknown = await routing
+      .removeRule(seededRules()[0].id, client)
+      .catch((e: unknown) => e);
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect((caught as ApiError).code).toBe("forbidden");
   });
 });

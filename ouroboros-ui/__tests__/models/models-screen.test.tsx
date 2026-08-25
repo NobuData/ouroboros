@@ -1,13 +1,26 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-
-import { ModelsScreen } from "@/app/models/models-screen";
-import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
+import { describe, expect, it, vi } from "vitest";
 
 import { MATRIX_FAILED_TITLE, NO_KINDS_NOTE, NO_KINDS_TITLE } from "@/app/models/matrix";
+import { ADD_RULE, NO_RULES_TITLE, RULES_TITLE } from "@/app/models/rules";
+import { FULL_REPORT, NO_SPEND_TITLE, UNPRICED } from "@/app/models/spend";
+import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 
-import { emptyMatrix, readings, unmeasuredMatrix } from "../helpers/models";
+import { emptyMatrix, readings, seededMatrix, unmeasuredMatrix } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
+
+// The rules card's actions sit on the server-only client, and its rows want the App Router
+// mounted for `router.refresh()`. Both are subjects of their own suites (`rule-actions.test.ts`,
+// `rules-card.test.tsx`); here they are replaced so the screen can be composed in jsdom.
+vi.mock("@/app/models/rule-actions", () => ({
+  setRuleEnabled: vi.fn(),
+  addRule: vi.fn(),
+  removeRule: vi.fn(),
+  readRuleTargets: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
+const { ModelsScreen } = await import("@/app/models/models-screen");
 
 /**
  * The `/models` frame (#200) — mockup 06's page head, tab set and health strip, composed.
@@ -217,12 +230,20 @@ describe("what the page does not pretend", () => {
     expect(screen.getByText(/#203/)).toBeInTheDocument();
   });
 
-  it("draws no meter and no figure it could not compute", () => {
-    // The matrix's figures *are* computed — from the ledger, by #198 — so they are drawn. The
-    // spend card's meters are #204's and nothing here stands in for them.
-    const { container } = render(<ModelsScreen readings={readings()} />);
+  it("draws a meter only where the ledger computed one", () => {
+    // The matrix's figures and the spend card's meters *are* computed — from the ledger, by
+    // #198 — so they are drawn: one meter per priced row, and none at all for a workspace
+    // that has spent nothing.
+    const seeded = render(<ModelsScreen readings={readings()} />);
 
-    expect(container.querySelector(".ou-meter")).toBeNull();
+    expect(seeded.container.querySelectorAll(".ou-meter")).toHaveLength(4);
+    seeded.unmount();
+
+    const unmeasured = render(
+      <ModelsScreen readings={readings({ matrix: { ok: true, value: unmeasuredMatrix() } })} />,
+    );
+
+    expect(unmeasured.container.querySelector(".ou-meter")).toBeNull();
   });
 
   it("draws an em-dash rather than a zero for a workspace that has run nothing", () => {
@@ -249,5 +270,105 @@ describe("both palettes", () => {
     const [light, dark] = renderInBothPalettes(<ModelsScreen readings={readings()} />);
 
     expect(light).toBe(dark);
+  });
+});
+
+describe("the right column (#204)", () => {
+  it("draws the rules card and the spend card under the inspector's seat, beside the matrix", () => {
+    render(<ModelsScreen readings={readings()} />);
+
+    const aside = document.querySelector(".models-aside");
+
+    expect(aside).not.toBeNull();
+    expect(within(aside as HTMLElement).getByRole("region", { name: RULES_TITLE })).toBeInTheDocument();
+    expect(within(aside as HTMLElement).getByRole("region", { name: /Spend by provider/ })).toBeInTheDocument();
+    // Order is the mockup's: inspector, rules, spend.
+    const titles = [...(aside as HTMLElement).querySelectorAll("h2")].map((h) => h.textContent);
+    expect(titles).toEqual(["Route", RULES_TITLE, "Spend by provider · 30d"]);
+  });
+
+  it("draws the seeded cards with the seeded figures", () => {
+    render(<ModelsScreen readings={readings()} />);
+
+    expect(screen.getByText("3 active")).toBeInTheDocument();
+    expect(screen.getByText("$412.80")).toBeInTheDocument();
+    expect(screen.getByText("Local models served 31% of all tokens.")).toBeInTheDocument();
+  });
+
+  it("draws no switch, no builder and no delete for a role that may not change rules", () => {
+    // The default, so that a caller which forgot the prop renders what a member sees rather
+    // than controls the service would refuse.
+    render(<ModelsScreen readings={readings()} />);
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: ADD_RULE })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Delete rule/ })).not.toBeInTheDocument();
+  });
+
+  it("draws the switches, the builder and the deletes for a role that may", () => {
+    render(<ModelsScreen mayAdminister readings={readings()} />);
+
+    expect(screen.getAllByRole("switch")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: ADD_RULE })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Delete rule/ })).toHaveLength(3);
+  });
+
+  it("gives an unseeded workspace its zero-states rather than no column at all", () => {
+    // The spend zero-state is the state the ticket asks for by name, and it only exists on a
+    // card that is drawn.
+    render(<ModelsScreen readings={readings({ matrix: { ok: true, value: emptyMatrix() } })} />);
+
+    expect(screen.getByText(NO_KINDS_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(NO_RULES_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(NO_SPEND_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.00/)).not.toBeInTheDocument();
+  });
+
+  it("says a refused matrix once, rather than once per card", () => {
+    // The three regions are one read; a refusal is one region.
+    render(
+      <ModelsScreen readings={readings({ matrix: { ok: false, reason: "Routing is down." } })} />,
+    );
+
+    expect(screen.getAllByText("Routing is down.")).toHaveLength(1);
+    expect(screen.queryByRole("region", { name: RULES_TITLE })).not.toBeInTheDocument();
+    expect(screen.queryByText(FULL_REPORT)).not.toBeInTheDocument();
+  });
+
+  it("keeps an unpriced row apart from a genuine $0.00 on the same card", () => {
+    const spend = seededMatrix().spend;
+    const unpricedRow = {
+      ...spend.providers[1],
+      key: "custom",
+      kinds: ["custom"],
+      spendCents: null,
+      meterFraction: null,
+      pricedCalls: 0,
+      unpricedCalls: 9,
+    };
+
+    render(
+      <ModelsScreen
+        readings={readings({
+          matrix: {
+            ok: true,
+            value: seededMatrix({ spend: { ...spend, providers: [...spend.providers, unpricedRow] } }),
+          },
+        })}
+      />,
+    );
+
+    const card = screen.getByRole("region", { name: /Spend by provider/ });
+
+    expect(within(card).getByText(UNPRICED)).toBeInTheDocument();
+    expect(within(card).getByText("$0.00")).toBeInTheDocument();
+    expect(within(card).getByText("5 unpriced calls")).toBeInTheDocument();
+  });
+
+  it("renders the same markup in both palettes", () => {
+    const [light, dark] = renderInBothPalettes(<ModelsScreen mayAdminister readings={readings()} />);
+
+    expect(light).toBe(dark);
+    expect(PALETTES).toHaveLength(2);
   });
 });
