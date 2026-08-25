@@ -2,7 +2,9 @@ import type {
   EscalationRule,
   ProviderHealth,
   ProviderHealthStrip,
+  ProviderSpend,
   RouteHop,
+  RoutingAlias,
   RoutingMatrix,
   RoutingTaskKind,
 } from "@/app/api/routing";
@@ -185,12 +187,9 @@ export function readings(overrides: Partial<ModelsReadings> = {}): ModelsReading
  * | the `effort ≥ L` summary on `plan` | it on `implement` | The rule's `then` names `implement`. Y.3 (#191) settled the mockup's inconsistency in the schema's favour, and `R__dev_seed_routing.sql` records it. |
  * | `$0.12` · `8.4s` on `analyze` (the issue's sketch) | `$0.04` · `3.1s` | The mockup's own HTML is the source, and the seed's sequences are built to reproduce it exactly: `avg(cost_cents)` is each kind's centre, and `percentile_cont(0.5)` lands on the row at it. |
  *
- * `spend` is the **empty** shape here, deliberately. AA.2 renders none of it — the card is
- * AA.5's ([#204](https://github.com/NobuData/ouroboros/issues/204)) — and its figures are
- * aggregates over a ledger this file cannot compute, because `token_usage` is written by three
- * seeds rather than by `R__dev_seed_routing.sql` alone. A plausible total invented here would
- * be the one number in these fixtures nobody measured, on a page whose whole subject is not
- * printing those. AA.5 fills it from the ledger.
+ * `spend` is the seeded card since AA.5 ([#204](https://github.com/NobuData/ouroboros/issues/204))
+ * — see {@link seededSpend} for where its figures come from and which of them are not the
+ * mockup's.
  */
 
 /**
@@ -452,14 +451,24 @@ export function seededRules(): EscalationRule[] {
   ];
 }
 
+/** The window every spend fixture is measured over: thirty days, ending at {@link CHECKED_AT}. */
+export const SPEND_WINDOW: RoutingMatrix["spend"]["window"] = {
+  days: 30,
+  since: "2026-07-25T09:58:12.004Z",
+  until: CHECKED_AT,
+};
+
 /**
- * The spend card's shape, empty — see this section's note on why it is not the seed's.
+ * The spend card's shape, empty — a workspace that has spent nothing in the window.
+ *
+ * The contract's own zero-state: no rows, a **null** total and a **null** share, never
+ * `$0.00`. Decision M7's fixture for the card.
  *
  * @returns A structurally complete `RoutingSpend` carrying no figure anybody measured.
  */
 export function emptySpend(): RoutingMatrix["spend"] {
   return {
-    window: { days: 30, since: "2026-07-25T09:58:12.004Z", until: CHECKED_AT },
+    window: SPEND_WINDOW,
     providers: [],
     totalSpendCents: null,
     tokens: 0,
@@ -467,6 +476,127 @@ export function emptySpend(): RoutingMatrix["spend"] {
     localTokenShare: null,
     unpricedCalls: 0,
   };
+}
+
+/**
+ * One metered row, defaulting to a cloud provider every call of which was priced.
+ *
+ * @param overrides What this case is about.
+ * @returns The row as the contract serves it.
+ */
+export function spendRow(overrides: Partial<ProviderSpend> = {}): ProviderSpend {
+  return {
+    key: "anthropic",
+    kinds: ["anthropic"],
+    local: false,
+    spendCents: 41_280,
+    meterFraction: 1,
+    tokens: 42_300_000,
+    pricedCalls: 95,
+    unpricedCalls: 0,
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded workspace's spend card, as `GET /api/v1/routing` serves it (#198, drawn by #204).
+ *
+ * **The figures are Z.5's own oracle** — `ouroboros-rest/src/modules/routing/stats.fixture.ts`'s
+ * `MOCKUP_06`, which `stats.integration-spec.ts` asserts against the seeded ledger — transcribed
+ * rather than invented: Anthropic `$412.80` at the full meter, the local row `$0.00` from calls
+ * priced at nothing **and** five calls nobody has priced, and the footnote's 31% from
+ * 21 700 000 of 70 000 000 tokens, with no rounding.
+ *
+ * **Two of them are not mockup 06's, and the difference is upstream of this module.** The
+ * mockup draws Copilot at `$96.40` and Cursor at `$54.10`; the seeds produce `$76.00` and
+ * `$64.10`, because a thirty-day window contains the calendar month it is asked to be smaller
+ * than, so mockup 06's two figures are unreachable from any ledger that also satisfies mockup
+ * 07's. Z.5 asked for the design to be amended to the reachable reading, and these fixtures
+ * record what the product shows.
+ *
+ * The per-row token and call counts are **not** the oracle's — it publishes only the totals —
+ * and the card prints none of them but the local row's unpriced count. They are chosen to sum
+ * to the totals the footnote is computed from, so the payload is internally consistent.
+ *
+ * @returns The card, largest spend first, the local row last.
+ */
+export function seededSpend(): RoutingMatrix["spend"] {
+  return {
+    window: SPEND_WINDOW,
+    providers: [
+      spendRow(),
+      spendRow({
+        key: "copilot",
+        kinds: ["copilot"],
+        spendCents: 7_600,
+        meterFraction: 0.18410852713178294,
+        tokens: 3_600_000,
+        pricedCalls: 15,
+      }),
+      spendRow({
+        key: "cursor",
+        kinds: ["cursor"],
+        spendCents: 6_410,
+        meterFraction: 0.15528100775193798,
+        tokens: 2_400_000,
+        pricedCalls: 12,
+      }),
+      spendRow({
+        key: "ollama+openai_compatible",
+        kinds: ["ollama", "openai_compatible"],
+        local: true,
+        // Priced, at nothing — and five earlier calls nobody priced, in the same row.
+        spendCents: 0,
+        meterFraction: 0,
+        tokens: 21_700_000,
+        pricedCalls: 260,
+        unpricedCalls: 5,
+      }),
+    ],
+    totalSpendCents: 55_290,
+    tokens: 70_000_000,
+    localTokens: 21_700_000,
+    localTokenShare: 0.31,
+    unpricedCalls: 5,
+  };
+}
+
+/**
+ * The seeded workspace's registry list, as `GET /api/v1/routing/aliases` answers it — the
+ * eight aliases, ordered by name, the unbound `gpt5-experiments` included.
+ *
+ * The six the chains name resolve as {@link ALIASES} does; `second-opinion` is bound to Cursor
+ * and named by no chain, and `gpt5-experiments` is a name created ahead of its key.
+ *
+ * @returns The list, in the registry's order.
+ */
+export function seededAliases(): RoutingAlias[] {
+  const bound = (alias: keyof typeof ALIASES): RoutingAlias => ({
+    alias,
+    params: {},
+    ...ALIASES[alias],
+  });
+
+  return [
+    bound("coder-fallback"),
+    bound("coder-max"),
+    bound("coder-std"),
+    { alias: "gpt5-experiments", modelId: "gpt-5", params: {}, provider: null },
+    bound("local-docs"),
+    bound("local-free"),
+    {
+      alias: "second-opinion",
+      modelId: "gpt-5",
+      params: {},
+      provider: {
+        id: "5eed000c-0000-4000-8000-000000000002",
+        kind: "cursor",
+        displayName: "Cursor",
+        baseUrl: null,
+      },
+    },
+    bound("sizer"),
+  ];
 }
 
 /**
@@ -479,7 +609,7 @@ export function seededMatrix(overrides: Partial<RoutingMatrix> = {}): RoutingMat
   return {
     taskKinds: seededTaskKinds(),
     rules: seededRules(),
-    spend: emptySpend(),
+    spend: seededSpend(),
     ...overrides,
   };
 }
@@ -490,12 +620,14 @@ export function seededMatrix(overrides: Partial<RoutingMatrix> = {}): RoutingMat
  * Every route survives; only the ledger is empty, which is exactly the state a workspace is in
  * between configuring its routes and running its first loop. Both numerics are `null` and all
  * three counts are zero, because *no call was priced* and *no call was timed* are the facts
- * behind the two em-dashes.
+ * behind the two em-dashes — and the spend card is the zero-state, because the same empty
+ * ledger is what it aggregates.
  *
  * @returns The payload, with nothing measured.
  */
 export function unmeasuredMatrix(): RoutingMatrix {
   return seededMatrix({
+    spend: emptySpend(),
     taskKinds: seededTaskKinds().map((kind) => ({
       ...kind,
       route:

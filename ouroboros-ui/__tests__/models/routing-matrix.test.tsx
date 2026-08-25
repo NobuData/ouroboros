@@ -452,3 +452,37 @@ describe("both palettes", () => {
     expect(light).toBe(dark);
   });
 });
+
+describe("the right column's aside (#204)", () => {
+  it("draws what it is handed under the inspector's seat, in the same column", () => {
+    render(<RoutingMatrix aside={<p data-testid="aside">cards</p>} rows={ROWS} selected={null} />);
+
+    const column = document.querySelector(".models-aside") as HTMLElement;
+
+    expect(column).not.toBeNull();
+    expect(within(column).getByRole("heading", { name: "Route" })).toBeInTheDocument();
+    expect(within(column).getByTestId("aside")).toBeInTheDocument();
+    // Inspector first, then the cards — the mockup's order.
+    expect(column.firstElementChild).toHaveTextContent(INSPECTOR_EMPTY_TITLE);
+    expect(column.lastElementChild).toHaveTextContent("cards");
+  });
+
+  it("does not re-render the aside on a selection, because it has nothing to do with one", () => {
+    // Server Components handed across as a prop are placed where they are placed; a
+    // selection changes the inspector and leaves the cards alone.
+    let renders = 0;
+    function Counter() {
+      renders += 1;
+      return <p>cards</p>;
+    }
+    const aside = <Counter />;
+
+    render(<RoutingMatrix aside={aside} rows={ROWS} selected={null} />);
+    const before = renders;
+
+    fireEvent.click(screen.getAllByRole("row")[1]);
+
+    expect(screen.getByRole("row", { selected: true })).toBeInTheDocument();
+    expect(renders).toBe(before);
+  });
+});

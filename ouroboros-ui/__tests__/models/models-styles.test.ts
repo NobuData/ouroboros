@@ -252,3 +252,92 @@ describe("the type scale", () => {
     }
   });
 });
+
+describe("the right column (#204)", () => {
+  it("is a flex column, so three cards stack under one another beside the matrix", () => {
+    // Three `span 4` grid items would each take the next grid row and land the second one
+    // under the matrix rather than under the inspector.
+    expect(rule("\\.models-aside")).toMatch(/display:\s*flex/);
+    expect(rule("\\.models-aside")).toMatch(/flex-direction:\s*column/);
+    expect(rule("\\.models-aside")).toMatch(/min-width:\s*0/);
+  });
+});
+
+describe("the rules card", () => {
+  it("undoes the three defaults a browser gives the list it is built on", () => {
+    expect(rule("\\.models-rules")).toMatch(/margin:\s*0/);
+    expect(rule("\\.models-rules")).toMatch(/padding:\s*0/);
+    expect(rule("\\.models-rules")).toMatch(/list-style:\s*none/);
+  });
+
+  it("draws the alias in the model hue, from the token and not a literal", () => {
+    expect(rule("\\.models-rules__alias")).toMatch(/color:\s*var\(--model\)/);
+  });
+
+  it("sets the sentence in the data face, and lets it wrap rather than crush the switch", () => {
+    expect(rule("\\.models-rules__sentence")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.models-rules__sentence")).toMatch(/min-width:\s*0/);
+    expect(rule("\\.models-rules__sentence")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule("\\.models-rules__controls")).toMatch(/flex:\s*none/);
+  });
+
+  it("recedes a suspended rule by hue, which is never its only signal", () => {
+    // The position is carried by the switch's aria-checked, or by the word *off* for a
+    // member — the hue is a second signal.
+    expect(rule("\\.models-rules__row--off \\.models-rules__sentence,\\s*\\.models-rules__row--off \\.models-rules__alias")).toMatch(
+      /color:\s*var\(--ink-faint\)/,
+    );
+  });
+
+  it("draws a failed write in the error hue", () => {
+    expect(rule("\\.models-rules__note")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.models-builder__failure")).toMatch(/color:\s*var\(--err\)/);
+  });
+});
+
+describe("the rule builder", () => {
+  it("undoes the fieldset chrome, so the grouping is semantic rather than drawn", () => {
+    expect(rule("\\.models-builder__group")).toMatch(/border:\s*none/);
+    expect(rule("\\.models-builder__group")).toMatch(/padding:\s*0/);
+    expect(rule("\\.models-builder__group")).toMatch(/margin:\s*0/);
+  });
+
+  it("lets the dialog's controls wrap rather than overflow the panel", () => {
+    expect(rule("\\.models-builder__actions")).toMatch(/flex-wrap:\s*wrap/);
+  });
+});
+
+describe("the spend card", () => {
+  it("undoes the three defaults a browser gives the list it is built on", () => {
+    expect(rule("\\.models-spend")).toMatch(/margin:\s*0/);
+    expect(rule("\\.models-spend")).toMatch(/padding:\s*0/);
+    expect(rule("\\.models-spend")).toMatch(/list-style:\s*none/);
+  });
+
+  it("keeps a figure inside the card at 150% font scale, the way the pulse rows do (#650)", () => {
+    expect(rule("\\.models-spend__line")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule("\\.models-spend__name")).toMatch(/min-width:\s*0/);
+  });
+
+  it("sets the amount in the data face and the full ink", () => {
+    expect(rule("\\.models-spend__amount")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.models-spend__amount")).toMatch(/color:\s*var\(--ink\)/);
+  });
+
+  it("tells the unpriced state apart from $0.00 by shape, not only by hue", () => {
+    // A dashed underline on the word and a dashed track where the meter would be: a reader
+    // with no colour vision still sees a different picture.
+    expect(rule("\\.models-spend__unpriced")).toMatch(/text-decoration:\s*underline dashed/);
+    expect(rule("\\.models-spend__unpriced")).not.toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.models-spend__track--unpriced")).toMatch(/border:\s*1px dashed var\(--line-strong\)/);
+    expect(rule("\\.models-spend__track--unpriced")).toMatch(/height:\s*var\(--sp-3\)/);
+  });
+
+  it("sizes every spacing and type length in tokens or rem, so the cards follow the font-size preference", () => {
+    // Hairlines stay `1px` — a border is not a length that should scale — so the check is on
+    // the properties that should.
+    const section = CODE.slice(CODE.indexOf(".models-aside"));
+
+    expect(section).not.toMatch(/(?:font-size|padding|margin|gap|height|width|inset|top|left):\s*[^;]*\d+px\b/);
+  });
+});

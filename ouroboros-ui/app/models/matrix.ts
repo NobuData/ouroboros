@@ -101,14 +101,24 @@ export interface AliasCell {
 }
 
 /**
- * One hop, as a cell.
+ * The three facts an alias cell is made from — what a route hop and a registry alias
+ * (`RoutingAlias`) have in common.
  *
- * @param hop The hop, from the route's chain.
+ * The parameter type is this rather than `RouteHop` so the rule builder
+ * (`app/models/rules.ts`) can label its alias options with the same resolution line the
+ * matrix draws, from the registry list, without composing a second one.
+ */
+export type AliasSource = Pick<RouteHop, "alias" | "modelId" | "provider">;
+
+/**
+ * One hop — or one registry alias — as a cell.
+ *
+ * @param hop The hop, from the route's chain, or the alias from the registry list.
  * @returns The pill and its resolution line. An unbound alias resolves to its model and
  *   {@link NO_PROVIDER} rather than to the model alone — a line that stopped at the model id
  *   would read exactly like a bound one.
  */
-export function aliasCell(hop: RouteHop): AliasCell {
+export function aliasCell(hop: AliasSource): AliasCell {
   return {
     alias: hop.alias,
     resolution: `${hop.modelId}${SEPARATOR}${hop.provider?.displayName ?? NO_PROVIDER}`,

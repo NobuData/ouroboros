@@ -490,3 +490,282 @@
   font-size: var(--t-2xs);
   line-height: var(--lh-body);
 }
+
+/* ---------- the right column (#204) ---------- */
+
+/*
+ * Mockup 06's `.c-4.col`: the inspector's seat, the rules card and the spend card stacked
+ * beside the matrix. A flex column rather than three grid items, because three `span 4`
+ * cards would each take the next grid row and land the second one under the matrix rather
+ * than under the inspector — app/models/models-grid.tsx says so at length. The gap is the
+ * grid's own, so the stack's rhythm and the columns' rhythm are one measurement.
+ */
+.models-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
+/* ---------- the escalation rules card (#204) ---------- */
+
+/*
+ * A `ul`, so the browser's list defaults are what this has to undo. One row per rule; the
+ * hairline between rows is the mockup's `border-bottom: 1px solid var(--border)`, drawn on
+ * every row but the last so the list ends where the card's button begins.
+ */
+.models-rules {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.models-rules__row {
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.models-rules__row:last-child {
+  border-bottom: none;
+}
+
+/*
+ * The sentence and its controls on one line. The controls keep their size and the sentence
+ * wraps: a rule's sentence is as long as its structure makes it, and a switch that shrank to
+ * fit a long one would be a switch nobody could press.
+ */
+.models-rules__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+}
+
+/*
+ * The mockup's `small mono`, in the dim ink: these sentences are generated from structure
+ * and read as configuration — the same treatment the matrix's escalation cell gives the
+ * same strings, at the card's larger size because here they are the subject rather than a
+ * summary.
+ */
+.models-rules__sentence {
+  min-width: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The alias, in the model hue — the mockup's inline `color: var(--model)` on the alias name,
+ * as a class. Hue alone, deliberately: the alias is a name inside a sentence, and a chip
+ * would break the sentence into a phrase and a pill. The hue says *this word is a registry
+ * name* to a reader who can see it; the sentence says the same thing to one who cannot,
+ * because `uses` and `adds` are the grammar's own verbs for naming one.
+ */
+.models-rules__alias {
+  color: var(--model);
+}
+
+/*
+ * A rule whose switch is off keeps its row and its sentence and recedes. Faint ink rather
+ * than a strikethrough or a hidden row: the rule still exists and still holds its place in
+ * the order, and the position is carried by the switch's `aria-checked` — or, for a member
+ * with no switch, by the word *off* beside it — so the hue is a second signal, not the only
+ * one.
+ */
+.models-rules__row--off .models-rules__sentence,
+.models-rules__row--off .models-rules__alias {
+  color: var(--ink-faint);
+}
+
+.models-rules__controls {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* The member's word for a suspended rule. `flex: none` so a long sentence cannot squash it. */
+.models-rules__off {
+  flex: none;
+}
+
+/*
+ * A write that did not take, under the row it was about. In the error hue because it is a
+ * failure the reader caused by pressing, and small because the row above it is the subject.
+ */
+.models-rules__note {
+  margin: var(--sp-3) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's `+ Add rule`, `margin-top: 12px`, kept to its own width under the list. */
+.models-rules__add {
+  align-self: flex-start;
+  margin-top: var(--sp-6);
+}
+
+/* ---------- the rule builder and the delete confirmation (#204) ---------- */
+
+/*
+ * The dialog's form: two groups — the condition and the action — then the controls. The
+ * dialog around it is .shell-overlay's, so nothing here positions or sizes the panel.
+ */
+.models-builder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/*
+ * A `fieldset`, so a reader moving by group hears *When* and *Then* before the fields inside
+ * them — which is the sentence's own shape. The browser's fieldset chrome is undone: the
+ * grouping is semantic, and a box around each half would draw the dialog as two forms.
+ */
+.models-builder__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.models-builder__legend {
+  margin-bottom: var(--sp-4);
+  padding: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/*
+ * The sentence the confirmation is about — the same treatment the card gives it, so a reader
+ * is looking at the rule they pressed delete on and not at a paraphrase of it.
+ */
+.models-builder__sentence {
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* A refusal the server answered with, above the controls it refused. */
+.models-builder__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.models-builder__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+}
+
+/* ---------- the spend card (#204) ---------- */
+
+/* A `ul`, undone. The mockup's `.col` with `gap: 12px` between rows. */
+.models-spend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One row: the line, then the meter under it — the mockup's `margin-top: 5px`. */
+.models-spend__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/*
+ * The name and the figure. The same shape the dashboard's pulse rows take and for the same
+ * reason (#650): `flex-wrap` and `min-width: 0` are what keep a figure inside the card at
+ * 150% font scale, where a nowrap row would leave the grid and start the pane scrolling
+ * sideways — the one thing the shell forbids (§ 1.3).
+ */
+.models-spend__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  font-size: var(--t-xs);
+}
+
+.models-spend__name {
+  min-width: 0;
+  color: var(--ink-mut);
+}
+
+.models-spend__figure {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+
+/* The mockup's `mono`: a figure in the data face, in the full ink. */
+.models-spend__amount {
+  color: var(--ink);
+  font-family: var(--f-mono);
+}
+
+/*
+ * The other state (#92). A word rather than a figure, and distinguishable from `$0.00`
+ * three times over and never by hue alone: it is not in the mono face, it is underlined with
+ * a dashed rule, and the track under it is dashed too. A reader scanning the column for
+ * money finds a place where there is none and is told why.
+ */
+.models-spend__unpriced {
+  color: var(--ink-faint);
+  text-decoration: underline dashed;
+  text-underline-offset: var(--sp-2);
+}
+
+/*
+ * The count of calls a priced figure does not include — `5 unpriced calls` beside `$0.00`.
+ * Small print, so the figure stays the subject, and in the faint ink because it is a caveat
+ * about the figure rather than a figure.
+ */
+.models-spend__partial {
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * Where an unpriced row's meter would be: a dashed track with no fill, the same height as
+ * the primitive's. Not the primitive at zero — an empty meter is what a row that cost
+ * nothing looks like, and the two must not be the same picture.
+ */
+.models-spend__track--unpriced {
+  display: block;
+  height: var(--sp-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-xs);
+}
+
+/* The mockup's `small faint` footnote — *Local models served 31% of all tokens.* */
+.models-spend__note {
+  margin: var(--sp-7) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}

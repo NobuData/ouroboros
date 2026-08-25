@@ -1,4 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
+import { mayAdminister } from "@/app/api/membership";
 import { readModels } from "@/app/models/data";
 import { ROUTE_PARAM } from "@/app/models/matrix";
 import { ModelsScreen } from "@/app/models/models-screen";
@@ -50,6 +51,16 @@ import { ModelsScreen } from "@/app/models/models-screen";
  * Reading it costs nothing this route was not already paying: `requireWorkspace()` reads the
  * session cookie, so this page is dynamic either way.
  *
+ * ### Why the role is decided here
+ *
+ * The rules card (AA.5, [#204](https://github.com/NobuData/ouroboros/issues/204)) draws its
+ * switches, its builder and its deletes for an `owner` or an `admin` and for nobody else, and
+ * *whether this reader is one* is answered once, here, from the membership the gate resolved
+ * — the same shape `app/(app)/models/registry/page.tsx` takes for the registry's controls. The
+ * screen is handed a boolean rather than a role, so there is one place deciding what a role
+ * may do and it is `app/api/membership.ts`. The gate that **enforces** is the service's;
+ * `app/models/rule-actions.ts` says what happens to a member who reaches a write anyway.
+ *
  * @param props.searchParams The URL's query, which carries the selected route.
  * @returns The routing page, for the workspace this request is operating in.
  */
@@ -59,5 +70,11 @@ export default async function Page({
   const access = await requireWorkspace();
   const [readings, query] = await Promise.all([readModels(access), searchParams]);
 
-  return <ModelsScreen readings={readings} route={query[ROUTE_PARAM] ?? null} />;
+  return (
+    <ModelsScreen
+      mayAdminister={mayAdminister(access.membership.roles)}
+      readings={readings}
+      route={query[ROUTE_PARAM] ?? null}
+    />
+  );
 }

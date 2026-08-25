@@ -1299,7 +1299,7 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 | AA.2 | #201 | 🟢 Done | ouroboros-ui: [AA.2] Routing matrix table | 8-kind matrix: alias cells, escalation summaries, stats, selection | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | L | ouroboros-ui |
 | AA.3 | #202 | 🟡 Open | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
 | AA.4 | #203 | 🟡 Open | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
-| AA.5 | #204 | 🟡 Open | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
+| AA.5 | #204 | 🟢 Done | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
 | AA.6 | #205 | 🟡 Open | ouroboros-ui: [AA.6] Routing states & guards | Empty foundations guidance, member read-only, load/error states | mvp, routing, ui, design | N (after AA.2–AA.5) | Y | S | ouroboros-ui |
 | AA.7 | #206 | 🟡 Open | ouroboros-ui: [AA.7] Routing e2e leg | Parity, reorder→save, rule toggle, simulate, honesty states, themes | mvp, routing, ui, ci | N (after AA.1–AA.6) | Y | S | ouroboros-ui, .github |
 
@@ -1560,7 +1560,72 @@ ROUTE — implement-primary
 
 ### Issue AA.5 — ouroboros-ui: [AA.5] Escalation rules & spend cards
 
-> **GitHub issue:** #204 · **Status:** 🟡 Open · **Parent epic:** #187
+> **GitHub issue:** #204 · **Status:** 🟢 Done · **Parent epic:** #187
+
+> **Shipped 2026-08-24.** The right column's two remaining cards, in
+> [`app/models/rules-card.tsx`](../ouroboros-ui/app/models/rules-card.tsx) and
+> [`app/models/rule-builder.tsx`](../ouroboros-ui/app/models/rule-builder.tsx) over the decisions
+> in [`app/models/rules.ts`](../ouroboros-ui/app/models/rules.ts), and
+> [`app/models/spend-card.tsx`](../ouroboros-ui/app/models/spend-card.tsx) over
+> [`app/models/spend.ts`](../ouroboros-ui/app/models/spend.ts) — both read off the matrix payload
+> the page already held, and the three writes through
+> [`app/models/rule-actions.ts`](../ouroboros-ui/app/models/rule-actions.ts) onto Z.2's
+> `POST`/`PATCH`/`DELETE /api/v1/routing/rules`. The grid moved into
+> [`app/models/models-grid.tsx`](../ouroboros-ui/app/models/models-grid.tsx) so the two places
+> that draw it cannot disagree about it, and the right column is a flex column rather than three
+> grid items, because three `span 4` cards would each take the next grid row.
+>
+> **Verified end to end against the live stack, not assumed from the switch.** With the seeded
+> workspace, `POST /api/v1/routing/simulate {taskKind: implement, ctx: {effort: l}}` answered
+> `rules: [effort ≥ L → … · use_alias_params_merged]`; the first rule's switch was pressed on the
+> card, the row read `enabled = false`, and the same request answered `rules: []`. The matrix's
+> `implement` escalation cell became an em-dash on the same refresh, which is the *card and matrix
+> agree* criterion seen from the other side: both print the one payload's `display`. The builder
+> then wrote `{label: security-review} → {add_vote: review, second-opinion}` from its selects and
+> the card printed the server's `security-review label → review adds second-opinion vote`; the
+> delete asked, removed it, and the count followed the read.
+>
+> **The sentence is never composed, and the violet alias is a derivation over it.** Mockup 06 draws
+> the alias name inside each sentence in the model hue, and the sentence is one string this
+> application may not assemble. `ruleSegments` takes the alias the rule's `then` names — a fact of
+> the structure — and finds it after the verb V018 puts in front of it (`uses`, `adds`), so a task
+> kind spelt like the alias cannot be the match; the segments concatenate back to `display`
+> character for character, and a sentence the database has since learned to render differently is
+> drawn in one piece rather than guessed at.
+>
+> **Invalid structures are unreachable rather than refused.** The builder's draft is one value per
+> select, and `composeRule` is total over every cell of predicates × actions × thinking choices —
+> `rules.test.ts` walks the grid and asserts each produces a document with `when` and `then` and
+> nothing else. The two things a draft can be missing — a GitHub label, and a workspace with
+> nothing to name — are a `reason` the submit control carries, never a refusal after the press.
+> There is no preview sentence, deliberately: the only way to produce one honestly would be to
+> reproduce V018's derivation client-side, which is exactly the second rendering the ticket forbids.
+> The registry list is read in the press that opens the dialog, on the audit sheet's argument.
+>
+> **A member sees no switch, no builder and no delete — absent, not disabled.** The opposite of
+> the dashboard's read-only switch, and the difference is what the card is for: a rule's position
+> is already in the sentence's treatment and the count, so a member is shown the word *off* beside a
+> suspended rule and nothing that looks like a control they cannot use. The gate that enforces is
+> the service's; a member who reaches an action anyway gets its `403`, turned into the card's own
+> sentence.
+>
+> **The spend card keeps two zeros apart.** `spendCents: 0` prints `$0.00`; `spendCents: null`
+> prints the word *unpriced* — not in the mono face, dashed-underlined, with a dashed track where
+> the meter would be — so it is distinguishable from a figure without colour vision. The seeded
+> local row carries both facts and prints both: `$0.00 · 5 unpriced calls`. The meters are the
+> service's widths, floored at a 2% sliver so the ok-meter treatment is visible on a row that cost
+> nothing (the contract names the sliver as the card's); the footnote is `<1%` rather than `0%` for
+> a share too small to round, and absent for a window with no tokens. An empty workspace gets a
+> sentence, not four rows of `$0.00`. **Full report →** is a `Button` with a `reason` naming AB.4
+> (#210), in the same words the Spend tab uses.
+>
+> **Three divergences from mockup 06, all upstream.** Copilot reads `$76.00` and Cursor `$64.10`
+> rather than `$96.40` and `$54.10` — Z.5's finding, restated in the fixtures rather than papered
+> over, and the reason AA.7 (#206) must not assert the mockup's two figures. The local row is
+> *Local (Ollama + OpenAI-compatible)* rather than *Local (vLLM + Ollama)*: the ledger records a
+> provider **kind**, not the product behind it, and naming the row after one OpenAI-compatible
+> endpoint would be a claim the data does not make. And the row is named from the kinds in the
+> service's own order.
 
 
 - **Problem Statement:** The rules card (three switchable rules + Add rule)
@@ -2069,3 +2134,25 @@ Next in epic AA are **#202** ([AA.3] chain editing and drag-reorder), which wire
 this ticket drew and supplies the non-zero `pending` that enables **Save routes**, and **#203**
 ([AA.4] the route inspector), which fills the seat beside the matrix — the selection, its URL and
 its announcement are already there for it.
+
+**#204** ([AA.5] the escalation rules and spend cards) has landed, and the right column is
+complete but for the inspector. The two cards are two different ways to lie, and each is stopped in
+a pure module: the rules card prints only the database's `display` and decides only which run of it
+is the alias — from the rule's structure, not the text — and the builder composes structure from
+selects with a composer that is total over every value they can hold, so an invalid rule is
+unreachable rather than refused. The spend card keeps `spendCents: 0` and `spendCents: null` apart
+as `$0.00` and the word *unpriced*, distinguishable by shape and not only hue, and the seeded local
+row prints both facts at once.
+
+**Two decisions are worth carrying into AA.6 and AA.7.** A member is shown **absence**, not a
+disabled control — no switch, builder or delete — because a rule's position is already in the
+sentence's treatment and the count, and a control somebody cannot use is not a way to show it; AA.6's
+read-only pass should hold the matrix and the inspector to the same rule where it fits, and to the
+dashboard's disabled-with-reason rule where a position has no other carrier. And the ticket's
+end-to-end criterion was met literally rather than inferred: the rule was switched off on the card,
+the row read `enabled = false`, and the next `simulate` answered `rules: []` where it had answered
+one applied rule — the sequence AA.7's e2e leg should script, against `$76.00` and `$64.10` rather
+than the mockup's two figures.
+
+Next in epic AA are **#202**, **#203** and **#205** ([AA.6] the states and guards), which now has a
+right column to draw its skeletons and its read-only pass over.
