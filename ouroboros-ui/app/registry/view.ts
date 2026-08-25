@@ -32,6 +32,19 @@
  * already have, or a member to a page that will refuse them. {@link importState} is what keeps
  * them apart, and it settles the order deliberately: **role first**, because a member offered
  * *"connect a provider first →"* is being pointed at a page that would also refuse them.
+ *
+ * ---------------------------------------------------------------------------
+ * ### …and the one place the three reasons collapse on purpose
+ *
+ * CI.4 ([#594](https://github.com/NobuData/ouroboros/issues/594)) added the two flows behind the
+ * head's actions, and the create dialog asks the provider read a *different* question: not
+ * *what can I import from* but *what can I bind to*. For that question there are only two
+ * answers — some connections, or none — because the dialog's second mode works either way. So
+ * {@link aliasSources} deliberately flattens what {@link importState} deliberately keeps apart,
+ * and the distinction is the question rather than the reader: the same failed read is three
+ * different sentences on the import control and one empty select on the dialog, and both are
+ * honest. {@link aliasNames} is the other fact both flows take from this page, off the same
+ * read the table draws, so nothing on the screen can disagree about which names are taken.
  */
 
 import type { Reading } from "@/app/api/reading";
@@ -167,30 +180,6 @@ export const NEW_ALIAS_LABEL = "+ New alias";
 export const MEMBER_REASON =
   "Creating and importing aliases is for workspace owners and admins.";
 
-/**
- * Why **+ New alias** cannot act yet, for somebody who is allowed to.
- *
- * A constant rather than a rule: the create dialog it opens is CI.4's
- * ([#594](https://github.com/NobuData/ouroboros/issues/594)) and does not exist, so there is no
- * state in which this control acts today. Naming the issue is what makes the tooltip a usable
- * answer to *when?* rather than the word *soon* on its own (`docs/DESIGN_SYSTEM_APP_SHELL.md`
- * § 3.5).
- */
-export const NEW_ALIAS_REASON =
-  "The create-alias dialog is not built yet — it arrives with #594.";
-
-/**
- * Why choosing a provider from the import menu cannot act yet.
- *
- * The **menu** is this ticket's and the **wizard** behind it is CI.4's, so the list of
- * connected providers is real and each row is inert with this sentence. That is the honest
- * shape of a frame: the page already answers *which providers could I import from*, and says
- * plainly that the import itself is not built. A menu that silently did nothing when clicked
- * would be the one dishonest thing on a page built to be honest.
- */
-export const IMPORT_ITEM_REASON =
-  "The import wizard is not built yet — it arrives with #594.";
-
 /** Why the import action is inert for a workspace that has connected no provider. */
 export const NO_PROVIDERS_REASON =
   "No provider is connected yet — there is nothing to import from.";
@@ -296,13 +285,51 @@ export function importSources(providers: readonly ProviderHealth[]): readonly Im
 /**
  * Why **+ New alias** cannot act, or `undefined` when it can.
  *
- * A rule rather than a constant, because there are two reasons and they are not the same
- * sentence — and because CI.4 removes only one of them: when the dialog exists,
- * {@link NEW_ALIAS_REASON} goes and the role check stays.
+ * A rule rather than a constant, and since CI.4
+ * ([#594](https://github.com/NobuData/ouroboros/issues/594)) built the dialog it opens there is
+ * exactly one reason left: the reader's role. The *not built yet* sentence this used to carry
+ * is gone, which is the shape a frame's placeholder is supposed to take when the thing it named
+ * arrives — deleted, not amended.
+ *
+ * It stays a function rather than becoming the bare constant so the call sites do not have to
+ * change again, and so the one question a caller asks is still *may this reader press it*.
  *
  * @param mayAdminister Whether this reader's role may create aliases.
- * @returns The reason it is inert, or `undefined` on the day both blockers are gone.
+ * @returns The reason it is inert, or `undefined` when it may be pressed.
  */
-export function newAliasReason(mayAdminister: boolean): string {
-  return mayAdminister ? NEW_ALIAS_REASON : MEMBER_REASON;
+export function newAliasReason(mayAdminister: boolean): string | undefined {
+  return mayAdminister ? undefined : MEMBER_REASON;
+}
+
+/**
+ * The connections a create dialog may bind to, whatever the read did.
+ *
+ * The import control keeps *no provider connected* and *the providers could not be read* apart,
+ * because it has something different to say for each ({@link importState}). The create dialog
+ * does not: either way there is nothing to bind to, and its *bind later* mode still works — so
+ * a failed read answers an empty list rather than a state of its own, and the dialog's provider
+ * select says the one true sentence for both.
+ *
+ * @param providers The provider read, or why it failed.
+ * @returns The connections, or none.
+ */
+export function aliasSources(
+  providers: Reading<readonly ProviderHealth[]>,
+): readonly ImportSource[] {
+  return providers.ok ? importSources(providers.value) : [];
+}
+
+/**
+ * Every alias name this workspace has, for the create dialog's live uniqueness check and the
+ * import wizard's row-level one.
+ *
+ * Taken from the same read the table draws, so the two cannot disagree about what is taken —
+ * and *the read failed* answers an empty list, which is the safe direction: the browser then
+ * proposes nothing, and CH.1's `model_alias_name_taken` is what decides, as it is anyway.
+ *
+ * @param aliases The registry read, or why it failed.
+ * @returns The names, in the payload's order.
+ */
+export function aliasNames(aliases: Reading<readonly RegistryAlias[]>): readonly string[] {
+  return aliases.ok ? aliases.value.map((alias) => alias.alias) : [];
 }

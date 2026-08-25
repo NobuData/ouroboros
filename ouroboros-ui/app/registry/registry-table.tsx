@@ -70,6 +70,11 @@ import "./registry.css";
  * server-side out of it (`app/(app)/models/registry/page.tsx`) so the right row is selected on
  * the first paint.
  *
+ * The one thing that *does* drive the selection from outside is a navigation, and since CI.4
+ * ([#594](https://github.com/NobuData/ouroboros/issues/594)) there is one: creating an alias
+ * lands the page on `?alias=<the new name>`, so the row that was just made is the selected one
+ * and the inspector's seat is already open on it. The state below is what adopts it.
+ *
  * The seat beneath the table is CI.3's ([#593](https://github.com/NobuData/ouroboros/issues/593))
  * to fill. What it already does is follow the selection — its title is the mockup's
  * `EDIT — CODER-MAX` for the selected row — which is the wiring the inspector builds on, and
@@ -81,8 +86,12 @@ export interface RegistryTableProps {
   /** The rows, already decided, in the order the service sends them. */
   readonly rows: readonly TableRow[];
   /**
-   * The row the URL asked for, validated against the rows by `selectedAlias`, or `null`. The
-   * initial selection; this component owns it from there.
+   * The row the URL asked for, validated against the rows by `selectedAlias`, or `null`.
+   *
+   * The selection this component then owns — it reflects its own moves back into the address
+   * bar without navigating, so this prop does not change for them. It **does** change when
+   * something navigates, which since CI.4 is the create dialog landing on the row it made, and
+   * a changed value is adopted (see the state below).
    */
   readonly selected: string | null;
   /** Whether this reader may press the switches. */
@@ -243,10 +252,30 @@ function HealthCellView({ cell }: Readonly<{ cell: HealthCell }>) {
  * @returns The table card, the announcement, and the inspector's seat.
  */
 export function RegistryTable({ rows, selected: initial, mayAdminister }: RegistryTableProps) {
-  const [selected, setSelected] = useState<string | null>(initial);
+  /**
+   * The selection, and the prop it was last adopted from.
+   *
+   * The pair is what makes *reflected into the URL* and *driven by the URL* coexist. Ordinarily
+   * the table owns the selection and only writes it out (`reflect`, below), so a changed prop
+   * would be the selection this component just caused and must not be re-applied. But CI.4's
+   * create dialog ([#594](https://github.com/NobuData/ouroboros/issues/594)) **navigates** to
+   * `?alias=<the new name>` so the row it just made is selected — a selection this table did not
+   * make — and a `useState` initialiser is read once and never again.
+   *
+   * So the requested value is held beside the chosen one and compared during render: React's own
+   * *adjusting state when a prop changes* pattern, which re-renders before anything is painted
+   * rather than after, as an effect would.
+   */
+  const [selection, setSelection] = useState({ requested: initial, alias: initial });
+
+  if (selection.requested !== initial) setSelection({ requested: initial, alias: initial });
+
+  const selected = selection.alias;
 
   const select = useCallback((alias: string) => {
-    setSelected(alias);
+    // The requested value moves with it, so the row the reader just picked is not undone by the
+    // next render comparing it against a prop that has not caught up.
+    setSelection((held) => ({ requested: held.requested, alias }));
     reflect(alias);
   }, []);
 

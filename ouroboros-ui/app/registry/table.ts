@@ -414,8 +414,8 @@ export const INSPECTOR_NEXT_TITLE = "The alias inspector arrives next";
  */
 export const INSPECTOR_NEXT_NOTE =
   "The alias inspector — its fields, rebind selects and used-by chips — arrives with #593; " +
-  "the create and import flows with #594, the why-aliases and resolution-chain cards with " +
-  "#595, and the role gating and page states with #596.";
+  "the why-aliases and resolution-chain cards with #595, and the role gating and page states " +
+  "with #596. Creating and importing aliases works now, from the two actions in the head.";
 
 /* ------------------------------------------------------------------ the switch */
 

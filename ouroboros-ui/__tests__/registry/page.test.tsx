@@ -5,7 +5,6 @@ import {
   IMPORT_LABEL,
   MEMBER_REASON,
   NEW_ALIAS_LABEL,
-  NEW_ALIAS_REASON,
   REGISTRY_TITLE,
 } from "@/app/registry/view";
 
@@ -38,6 +37,17 @@ vi.mock("@/app/registry/data", () => ({ readRegistry: (access: unknown) => readR
 // The table's switches write through a Server Action on the server-only client
 // (`switch-actions.test.ts`).
 vi.mock("@/app/registry/switch-actions", () => ({ setAliasEnabled: vi.fn() }));
+// The two flows behind the head's actions write through Server Actions on the server-only
+// client; the actions have their own suites (`create-actions.test.ts`, `import-actions.test.ts`).
+vi.mock("@/app/registry/create-actions", () => ({
+  createAlias: vi.fn(),
+  readModelOptions: vi.fn(),
+  readParamSchema: vi.fn(),
+}));
+vi.mock("@/app/registry/import-actions", () => ({
+  importAliases: vi.fn(),
+  readCandidates: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const Route = (await import("@/app/(app)/models/registry/page")).default;
@@ -92,14 +102,14 @@ describe("the registry route", () => {
 
   it("takes the reader's role from the membership the gate resolved", async () => {
     // The session/role context the ticket lists as its BA-D.5 dependency, arriving through the
-    // same call every signed-in screen makes. An owner may create aliases, so the only reason
-    // left on the primary action is the one CI.4 removes.
+    // same call every signed-in screen makes. An owner may create aliases, so the primary
+    // action carries no reason at all and can be pressed.
     render(await Page());
 
-    expect(screen.getByRole("button", { name: NEW_ALIAS_LABEL })).toHaveAttribute(
-      "title",
-      NEW_ALIAS_REASON,
-    );
+    const create = screen.getByRole("button", { name: NEW_ALIAS_LABEL });
+
+    expect(create).not.toHaveAttribute("aria-disabled");
+    expect(create).not.toHaveAttribute("title");
   });
 
   it("switches both actions off for a membership that may not administer", async () => {

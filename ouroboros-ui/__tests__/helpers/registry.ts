@@ -1,5 +1,15 @@
 import type {
+  ImportCandidate,
+  ImportCandidateList,
+  ImportResult,
   ModelAliasReference,
+  ModelAliasConnection,
+  ModelCapabilitySummary,
+  ModelOption,
+  ModelOptionList,
+  ModelParamFormField,
+  ModelParamSchemaResponse,
+  ModelParamSection,
   ModelPrice,
   RegistryAlias,
   RegistryBinding,
@@ -317,5 +327,284 @@ export function registryReadings(over: Partial<RegistryReadings> = {}): Registry
     providers: { ok: true, value: seededProviders() },
     aliases: { ok: true, value: seededRegistry() },
     ...over,
+  };
+}
+
+/* ------------------------------------------------------------------ the CI.4 flows (#594) */
+
+/**
+ * The fixtures behind the create dialog and the import wizard — the three reads and the one
+ * annotated table CI.4 ([#594](https://github.com/NobuData/ouroboros/issues/594)) is built on.
+ *
+ * **These are `ouroboros-rest`'s own published examples**, transcribed rather than invented:
+ * `openapi.yaml` publishes a worked response for `GET /registry/aliases/model-options`,
+ * `GET /registry/param-schema` and `GET /registry/import/{connectionId}/candidates`, and each
+ * is the seeded Anthropic connection answering about the models the dev seed gives it. A
+ * fixture made up here would prove the wizard renders *something*, which is not the acceptance
+ * criterion — the criterion is that importing two models from the seeded Anthropic connection
+ * lands both with their suggested names.
+ */
+
+/** The seeded Anthropic connection, as every one of these payloads echoes it. */
+export const ANTHROPIC_CONNECTION: ModelAliasConnection = {
+  id: ANTHROPIC.id,
+  kind: ANTHROPIC.kind,
+  displayName: ANTHROPIC.displayName,
+};
+
+/** When discovery last reported the seeded Anthropic models. Fixed, like every stamp here. */
+export const DISCOVERED_AT = "2026-08-25T09:56:00.000Z";
+
+/**
+ * One model the select offers.
+ *
+ * @param modelId The provider's own identifier.
+ * @param meta What else discovery reported. Defaults to the published example's.
+ * @returns The option as the contract serves it.
+ */
+export function modelOption(
+  modelId: string,
+  meta: Record<string, unknown> = { context_tokens: 1_000_000, tier: "priority" },
+): ModelOption {
+  return { modelId, display: modelId, discoveredAt: DISCOVERED_AT, meta };
+}
+
+/**
+ * The model select's whole answer for the seeded Anthropic connection.
+ *
+ * @param models The models. Defaults to the three the seed's discovery reports.
+ * @returns The payload. An **empty** list is an honest answer, not a failure — the dialog then
+ *   takes the model id as text.
+ */
+export function modelOptionList(
+  models: readonly ModelOption[] = [
+    modelOption("claude-fable-5"),
+    modelOption("claude-haiku-4-5"),
+    modelOption("claude-opus-5"),
+  ],
+): ModelOptionList {
+  return { connection: ANTHROPIC_CONNECTION, models: [...models] };
+}
+
+/**
+ * One parameter field, in the form the service derives from its own schema.
+ *
+ * @param over What this case is about.
+ * @returns The field, defaulting to the Anthropic adapter's `thinking` select.
+ */
+export function paramField(over: Partial<ModelParamFormField> = {}): ModelParamFormField {
+  return {
+    name: "thinking",
+    label: "Thinking",
+    widget: "select",
+    help: "How much the model may deliberate before answering.",
+    defaultValue: null,
+    choices: ["off", "std", "max"],
+    minimum: null,
+    maximum: null,
+    sources: ["adapter"],
+    ...over,
+  };
+}
+
+/** The Anthropic adapter's token budget — the integer field beside the select. */
+export function budgetField(): ModelParamFormField {
+  return paramField({
+    name: "token_budget",
+    label: "Token budget",
+    widget: "integer",
+    help: "How many tokens the model may spend thinking.",
+    choices: null,
+    minimum: 1,
+    maximum: 400_000,
+    sources: ["adapter", "discovery"],
+  });
+}
+
+/**
+ * One section — a schema and the fields it renders as, kept in step with each other.
+ *
+ * @param fields The fields. An empty list is what an empty `properties` renders as.
+ * @param title What the section is headed.
+ * @param description Why it is empty, for a section that is.
+ * @returns The section as the contract serves it.
+ */
+export function paramSection(
+  fields: readonly ModelParamFormField[],
+  title = "Anthropic model parameters",
+  description?: string,
+): ModelParamSection {
+  return {
+    schema: {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      title,
+      ...(description === undefined ? {} : { description }),
+      properties: Object.fromEntries(
+        fields.map((field) => [
+          field.name,
+          {
+            type: field.widget === "select" || field.widget === "text" ? "string" : field.widget === "switch" ? "boolean" : field.widget,
+            title: field.label,
+            ...(field.help === null ? {} : { description: field.help }),
+            ...(field.choices === null ? {} : { enum: field.choices }),
+            ...(field.minimum === null ? {} : { minimum: field.minimum }),
+            ...(field.maximum === null ? {} : { maximum: field.maximum }),
+            "x-ouroboros-sources": field.sources,
+          } as ModelParamSchemaResponse["params"]["schema"]["properties"][string],
+        ]),
+      ),
+      additionalProperties: false,
+    },
+    fields: [...fields],
+  };
+}
+
+/**
+ * What one model can be tuned with.
+ *
+ * @param over What this case is about — the fields, or the reason there are none.
+ * @returns The response as the contract serves it.
+ */
+export function paramSchemaResponse(
+  over: Partial<ModelParamSchemaResponse> = {},
+): ModelParamSchemaResponse {
+  return {
+    modelId: "claude-fable-5",
+    connectionId: ANTHROPIC.id,
+    params: paramSection([paramField(), budgetField()]),
+    restrictions: paramSection(
+      [
+        paramField({
+          name: "batch_ok",
+          label: "Batch ok",
+          widget: "switch",
+          help: "Work routed to this alias may be batched.",
+          choices: null,
+          sources: ["registry"],
+        }),
+      ],
+      "Registry restrictions",
+    ),
+    reason: null,
+    sources: ["adapter", "discovery", "registry"],
+    ...over,
+  };
+}
+
+/**
+ * What CH.2's schema projects onto a candidate row.
+ *
+ * @param over What this case is about.
+ * @returns The summary as the contract serves it.
+ */
+export function capabilities(
+  over: Partial<ModelCapabilitySummary> = {},
+): ModelCapabilitySummary {
+  return {
+    params: ["thinking", "token_budget"],
+    thinking: true,
+    contextTokens: 1_000_000,
+    maxOutputTokens: 64_000,
+    reason: null,
+    ...over,
+  };
+}
+
+/**
+ * One import candidate.
+ *
+ * @param over What this case is about — the model, its suggestion, and whether something
+ *   already names it.
+ * @returns The candidate as the contract serves it.
+ */
+export function importCandidate(over: Partial<ImportCandidate> = {}): ImportCandidate {
+  const modelId = over.modelId ?? "claude-opus-5";
+
+  return {
+    modelId,
+    display: modelId,
+    discoveredAt: DISCOVERED_AT,
+    meta: { context_tokens: 1_000_000, tier: "priority" },
+    alias: null,
+    suggestedName: "opus-5",
+    selected: true,
+    price: tokenPrice("anthropic", modelId, 1000, 5000, "$10 · $50"),
+    capabilities: capabilities(),
+    ...over,
+  };
+}
+
+/**
+ * The wizard's whole state for the seeded Anthropic connection — the published example's two
+ * rows: one already named `coder-max` and unticked, one free and ticked.
+ *
+ * @param candidates The candidates. Defaults to those two.
+ * @returns The payload. `empty` is non-null **exactly** when the list is, which is the
+ *   contract's own invariant and the one the wizard branches on.
+ */
+export function candidateList(
+  candidates: readonly ImportCandidate[] = [
+    importCandidate({
+      modelId: "claude-fable-5",
+      alias: { id: registryAlias().id, alias: "coder-max" },
+      suggestedName: "fable-5",
+      selected: false,
+      price: tokenPrice("anthropic", "claude-fable-5", 1500, 7500, "$15 · $75"),
+    }),
+    importCandidate(),
+  ],
+): ImportCandidateList {
+  return {
+    connection: ANTHROPIC_CONNECTION,
+    candidates: [...candidates],
+    empty:
+      candidates.length > 0
+        ? null
+        : {
+            code: "no_models_discovered",
+            message: "Anthropic Claude has reported no models.",
+            fix: FIX_PATH,
+          },
+  };
+}
+
+/**
+ * What a batch did.
+ *
+ * @param created The aliases created, by name and model.
+ * @param skipped What was passed over, by model and the alias that already named it.
+ * @returns The report as the contract serves it.
+ */
+export function importResult(
+  created: readonly { readonly alias: string; readonly modelId: string }[] = [
+    { alias: "opus-5", modelId: "claude-opus-5" },
+  ],
+  skipped: readonly { readonly modelId: string; readonly alias: string }[] = [],
+): ImportResult {
+  return {
+    connection: ANTHROPIC_CONNECTION,
+    created: created.map((one, index) => ({
+      alias: {
+        id: `7c1e0a5e-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        alias: one.alias,
+        enabled: true,
+        connection: ANTHROPIC_CONNECTION,
+        modelId: one.modelId,
+        params: {},
+        restrictions: {},
+        notes: null,
+        references: [],
+        updatedBy: null,
+        createdAt: "2026-08-25T10:14:02.117Z",
+        updatedAt: "2026-08-25T10:14:02.117Z",
+      },
+      revisionId: `b1000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    })),
+    skipped: skipped.map((one) => ({
+      modelId: one.modelId,
+      requestedAlias: one.alias,
+      alias: { id: registryAlias().id, alias: one.alias },
+    })),
   };
 }

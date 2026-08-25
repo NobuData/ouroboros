@@ -381,6 +381,38 @@ describe("the selection", () => {
   });
 });
 
+describe("a selection the table did not make (#594)", () => {
+  it("adopts a row the URL was navigated to, so a created alias arrives selected", () => {
+    // The create dialog navigates to `?alias=<the new name>`; the row it just made has to be
+    // the selected one, and a `useState` initialiser is read once and never again.
+    const view = table({ selected: "coder-max" });
+
+    view.rerender(<RegistryTable mayAdminister rows={ROWS} selected="sizer" />);
+
+    expect(screen.getByRole("row", { selected: true })).toBe(rowFor("sizer"));
+    expect(screen.getAllByRole("row", { selected: true })).toHaveLength(1);
+  });
+
+  it("does not undo a row the reader picked when nothing navigated", () => {
+    // The ordinary case: the table owns the selection and only writes it out, so a re-render
+    // with the same prop must leave the reader where they are.
+    const view = table({ selected: "coder-max" });
+
+    fireEvent.click(rowFor("sizer"));
+    view.rerender(<RegistryTable mayAdminister rows={ROWS} selected="coder-max" />);
+
+    expect(screen.getByRole("row", { selected: true })).toBe(rowFor("sizer"));
+  });
+
+  it("clears the selection when a navigation asks for none", () => {
+    const view = table({ selected: "coder-max" });
+
+    view.rerender(<RegistryTable mayAdminister rows={ROWS} selected={null} />);
+
+    expect(screen.queryByRole("row", { selected: true })).not.toBeInTheDocument();
+  });
+});
+
 describe("the keyboard", () => {
   it("puts exactly one row in the tab order", () => {
     table({ selected: "coder-max" });

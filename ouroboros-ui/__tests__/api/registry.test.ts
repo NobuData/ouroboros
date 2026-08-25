@@ -3,7 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 
 import { clientAnswering, stubClient } from "../helpers/api";
-import { registryAlias, registryPayload, seededRegistry } from "../helpers/registry";
+import {
+  candidateList,
+  importResult,
+  modelOptionList,
+  paramSchemaResponse,
+  registryAlias,
+  registryPayload,
+  seededRegistry,
+} from "../helpers/registry";
 import { modelAlias } from "../helpers/providers";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these
@@ -17,12 +25,18 @@ vi.mock("next/navigation", () => ({ redirect: () => {} }));
 const { registry } = await import("@/app/api/registry");
 
 /**
- * The registry page's read (#588, consumed by #592) and the table's one write (#584).
+ * The registry page's read (#588, consumed by #592), the table's one write (#584), and the
+ * five calls behind the head's two flows (CI.4, #594).
  *
- * A `GET` with no parameters and a `PATCH` with one field, so most of what is worth holding
- * is about what this module does *not* do — it names no workspace, it makes one request for
- * a table five subsystems compose, it hands back what the service composed rather than
- * recomposing it, and the switch sends the position asked for and nothing else.
+ * Most of what is worth holding is about what this module does *not* do — it names no
+ * workspace, it makes one request for a table five subsystems compose, it hands back what the
+ * service composed rather than recomposing it, and each write sends what was asked for and
+ * nothing else.
+ *
+ * The CI.4 half adds one property of its own: **the two paths a name enters the registry by
+ * are two requests, and the create is one request for both of its modes.** A bound alias and a
+ * name reserved ahead of its key differ only by a field in the body, which is what keeps the
+ * dialog's toggle a decision rather than a fork.
  */
 
 /** The refusal a screen behind the gate can still meet: a session acting in no workspace. */
@@ -148,5 +162,208 @@ describe("registry.update", () => {
     await expect(
       registry.update(registryAlias().id, { enabled: true }, client),
     ).rejects.toMatchObject({ status: 422, code: "model_alias_unbound" });
+  });
+});
+
+
+describe("registry.create", () => {
+  /** What a create answers with — the alias as re-read, and its revision. */
+  const CHANGE = {
+    alias: modelAlias({ alias: "opus-5", modelId: "claude-opus-5" }),
+    revisionId: "b1000000-0000-4000-8000-000000000001",
+    warnings: [],
+    nextResolution: null,
+    droppedHops: [],
+  };
+
+  it("POSTs the alias to the collection, with the body it was given", async () => {
+    const { client, requests } = stubClient(() => ({ body: CHANGE, status: 201 }));
+    const body = { alias: "opus-5", modelId: "claude-opus-5", connectionId: registryAlias().binding?.id };
+
+    await registry.create(body, client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/registry/aliases");
+    expect(requests[0]?.method).toBe("POST");
+    await expect(requests[0]?.json()).resolves.toEqual(body);
+  });
+
+  it("sends one shape for both modes — a body without a connection is the unbound path", async () => {
+    // There is no second endpoint and no `mode` field: the contract takes the connection as
+    // optional, which is what makes mockup 21's orphan row reachable through the product.
+    const { client, requests } = stubClient(() => ({ body: CHANGE, status: 201 }));
+
+    await registry.create({ alias: "gpt5-experiments", modelId: "gpt-5.2-preview" }, client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/registry/aliases");
+    await expect(requests[0]?.json()).resolves.toEqual({
+      alias: "gpt5-experiments",
+      modelId: "gpt-5.2-preview",
+    });
+  });
+
+  it("names no workspace — the write is scoped to the session's own", async () => {
+    const { client, requests } = stubClient(() => ({ body: CHANGE, status: 201 }));
+
+    await registry.create({ alias: "opus-5", modelId: "claude-opus-5" }, client);
+
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+  });
+
+  it("hands the stored alias back with its revision and warnings", async () => {
+    const { client } = stubClient(() => ({ body: CHANGE, status: 201 }));
+
+    await expect(
+      registry.create({ alias: "opus-5", modelId: "claude-opus-5" }, client),
+    ).resolves.toEqual(CHANGE);
+  });
+
+  it("rejects with the designed 422 for a name this workspace already has", async () => {
+    // Never a unique-violation leak: a taken name is a designed refusal the dialog puts back
+    // under the name box.
+    const { client } = clientAnswering(
+      {
+        code: "model_alias_name_taken",
+        message: "This workspace already has an alias called coder-max.",
+        details: { alias: "coder-max" },
+      },
+      422,
+    );
+
+    await expect(
+      registry.create({ alias: "coder-max", modelId: "claude-fable-5" }, client),
+    ).rejects.toMatchObject({ status: 422, code: "model_alias_name_taken" });
+  });
+});
+
+describe("registry.modelOptions", () => {
+  it("asks for one connection's models by query, and reads them live", async () => {
+    const { client, requests } = clientAnswering(modelOptionList());
+
+    await registry.modelOptions("5eed000c-0000-4000-8000-000000000001", client);
+
+    expect(requests[0]?.method).toBe("GET");
+    expect(new URL(requests[0]?.url ?? "").pathname).toBe("/api/v1/registry/aliases/model-options");
+    expect(new URL(requests[0]?.url ?? "").searchParams.get("connection")).toBe(
+      "5eed000c-0000-4000-8000-000000000001",
+    );
+  });
+
+  it("answers a connection discovery has not run on with an empty list, not a failure", async () => {
+    const { client } = clientAnswering(modelOptionList([]));
+
+    await expect(registry.modelOptions("c", client)).resolves.toMatchObject({ models: [] });
+  });
+});
+
+describe("registry.paramSchema", () => {
+  it("asks about a model on a connection", async () => {
+    const { client, requests } = clientAnswering(paramSchemaResponse());
+
+    await registry.paramSchema("qwen3-coder:32b", "5eed000c-0000-4000-8000-000000000005", client);
+
+    const url = new URL(requests[0]?.url ?? "");
+
+    expect(url.pathname).toBe("/api/v1/registry/param-schema");
+    expect(url.searchParams.get("model")).toBe("qwen3-coder:32b");
+    expect(url.searchParams.get("connection")).toBe("5eed000c-0000-4000-8000-000000000005");
+  });
+
+  it("leaves the connection off entirely when the question is about an unbound alias", async () => {
+    // Absent rather than empty: `connection=` with nothing after it is a malformed uuid, not a
+    // question about an alias with no provider.
+    const { client, requests } = clientAnswering(
+      paramSchemaResponse({ connectionId: null, reason: "alias_unbound" }),
+    );
+
+    await registry.paramSchema("gpt-5.2-preview", null, client);
+
+    expect(new URL(requests[0]?.url ?? "").searchParams.has("connection")).toBe(false);
+  });
+
+  it("does not normalise the model id, because vendors disagree about spelling", async () => {
+    const { client, requests } = clientAnswering(paramSchemaResponse());
+
+    await registry.paramSchema("qwen3-coder:32b", "c", client);
+
+    expect(new URL(requests[0]?.url ?? "").searchParams.get("model")).toBe("qwen3-coder:32b");
+  });
+});
+
+describe("registry.candidates", () => {
+  it("asks one connection what it has to import, by path", async () => {
+    const { client, requests } = clientAnswering(candidateList());
+
+    await registry.candidates("5eed000c-0000-4000-8000-000000000001", client);
+
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe(
+      "http://rest.test:4000/api/v1/registry/import/5eed000c-0000-4000-8000-000000000001/candidates",
+    );
+  });
+
+  it("hands the annotations across untouched — the mark, the suggestion and the tick", async () => {
+    // What the wizard must not re-derive: whether a model is already named, what to call it,
+    // and whether the row starts ticked are all CH.4's answers against the workspace's aliases.
+    const { client } = clientAnswering(candidateList());
+
+    const page = await registry.candidates("c", client);
+
+    expect(page.candidates[0]).toMatchObject({
+      modelId: "claude-fable-5",
+      alias: { alias: "coder-max" },
+      suggestedName: "fable-5",
+      selected: false,
+    });
+    expect(page.candidates[1]).toMatchObject({ alias: null, suggestedName: "opus-5", selected: true });
+  });
+
+  it("carries the empty state a connection that reported nothing answers with", async () => {
+    const { client } = clientAnswering(candidateList([]));
+
+    await expect(registry.candidates("c", client)).resolves.toMatchObject({
+      candidates: [],
+      empty: { code: "no_models_discovered", fix: "/models/providers" },
+    });
+  });
+});
+
+describe("registry.importAliases", () => {
+  it("POSTs one connection and the rows under it", async () => {
+    const { client, requests } = clientAnswering(importResult());
+    const body = { connectionId: "c", items: [{ modelId: "claude-opus-5", alias: "opus-5" }] };
+
+    await registry.importAliases(body, client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/registry/import");
+    expect(requests[0]?.method).toBe("POST");
+    await expect(requests[0]?.json()).resolves.toEqual(body);
+  });
+
+  it("answers a re-run that created nothing with a success and a skipped list", async () => {
+    // `200` rather than `201`, deliberately: this creates a list, and on a re-run creates none
+    // while still succeeding.
+    const { client } = clientAnswering(
+      importResult([], [{ modelId: "claude-fable-5", alias: "coder-max" }]),
+    );
+
+    const result = await registry.importAliases(
+      { connectionId: "c", items: [{ modelId: "claude-fable-5", alias: "fable-5" }] },
+      client,
+    );
+
+    expect(result.created).toEqual([]);
+    expect(result.skipped[0]).toMatchObject({ modelId: "claude-fable-5", alias: { alias: "coder-max" } });
+  });
+
+  it("rejects with the itemised 422, positions intact, because that is what maps to rows", async () => {
+    const details = { items: { "1": { alias: ["This workspace already has an alias by that name."] } } };
+    const { client } = clientAnswering(
+      { code: "model_import_invalid", message: "One or more items cannot be created.", details },
+      422,
+    );
+
+    await expect(
+      registry.importAliases({ connectionId: "c", items: [] }, client),
+    ).rejects.toMatchObject({ status: 422, code: "model_import_invalid", details });
   });
 });

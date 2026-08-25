@@ -1864,12 +1864,14 @@ the naming promise in the head, the two actions that create aliases, and the Mod
 with **Model registry** finally live. It is the section's third page, and it retires the `#49`
 placeholder this route was. Since CI.2
 ([#592](https://github.com/NobuData/ouroboros/issues/592)) the frame holds the mockup's centre
-of gravity — the eight-column **ALLOWED MODELS** table — with the inspector's seat beneath it.
+of gravity — the eight-column **ALLOWED MODELS** table — with the inspector's seat beneath it,
+and since CI.4 ([#594](https://github.com/NobuData/ouroboros/issues/594)) both head actions
+work: the create dialog and the import wizard are the two ways a name enters the registry.
 
 ```
 MODELS
 Every model gets a name. Every route points at the name.  [ Import from provider ▾ ] [ + New alias ]
-Registry aliases bind a provider key to a model id.         ↑ the workspace's providers  ↑ #594
+Registry aliases bind a provider key to a model id.         ↑ a wizard per connection  ↑ a dialog
 Workflows and routing only ever see the alias — swap the
 provider behind it and nothing else changes. That's the
 point of bring-your-own-key.
@@ -1883,7 +1885,7 @@ ALLOWED MODELS · 8 aliases                                                    M
  (gpt5-experiments) no provider     gpt-5.2-preview  —                     ● no key — connect a provider
                                                                            [Fix in Providers →]   —    0 routes [off ⓘ]   ← dimmed, health cell exempt
  Aliases are unique per workspace. Deleting one is blocked while any route or workflow references it.
-┌ EDIT — CODER-MAX (coder-max) · the alias inspector arrives next — #593 … #596 ┐
+┌ EDIT — CODER-MAX (coder-max) · the alias inspector arrives next — #593, #595, #596 ┐
 ```
 
 ### The head is the product's argument, and it is verbatim
@@ -1913,18 +1915,18 @@ collapsing them would send an admin looking for a permission they already have, 
 a page that would also refuse them. `importState` is what keeps them apart, and it settles the
 order — **role first**, because the link is only offered to somebody who could use it.
 
-The **menu** is this ticket's; the wizard behind it is CI.4's
-([#594](https://github.com/NobuData/ouroboros/issues/594)). So the list is real and each row is
-inert with a sentence naming the issue that wires it — the page already answers *which
-providers could I import from*, and says plainly that the import itself is not built. Both the
-rows and the blocked trigger use `aria-disabled` rather than `disabled`, so the reader who most
-needs the tooltip is not the one who cannot reach it. The keyboard is
-[`app/shell/menu.ts`](app/shell/menu.ts)'s — the same ARIA menu pattern the shell's two menus
-use, and a third copy of it would be a third copy to keep correct.
+**Choosing a row opens the import wizard scoped to that connection** — the menu row *is* the
+wizard's connection step, which is why the wizard has none of its own. Health is deliberately
+not a filter here: a paused connection is still a connection this workspace has, and whether it
+has anything to import is a question the wizard answers by asking. The blocked trigger uses
+`aria-disabled` rather than `disabled`, so the reader who most needs the tooltip is not the one
+who cannot reach it. The keyboard is [`app/shell/menu.ts`](app/shell/menu.ts)'s — the same ARIA
+menu pattern the shell's two menus use, and a third copy of it would be a third copy to keep
+correct.
 
-**+ New alias** is the primary action and is inert until CI.4 builds its dialog. Both actions
-are also inert for a member or a viewer; the full gating pass is CI.6
-([#596](https://github.com/NobuData/ouroboros/issues/596)).
+Both actions are inert for a member or a viewer, with the role reason; the full gating pass is
+CI.6 ([#596](https://github.com/NobuData/ouroboros/issues/596)), and the writes behind both
+flows are the service's to refuse whatever the page draws.
 
 ### The tab, from the same list as the other two
 
@@ -1990,6 +1992,78 @@ The fixture behind all of it ([`__tests__/helpers/registry.ts`](__tests__/helper
 transcribes the REST integration suite's eight expected rows rather than inventing eight
 plausible ones — which is why it prints `$10 · $50` where the mockup draws `$15 · $75`: the
 shipped catalog says so, and the table renders what the service resolved.
+
+### The two ways a name enters the registry
+
+CI.4 ([#594](https://github.com/NobuData/ouroboros/issues/594)) is the head's two actions made
+real: one curated alias at a time, or a reviewed batch from what a provider actually offers.
+Five calls sit behind them ([`app/api/registry.ts`](app/api/registry.ts)), three of them read as
+the reader moves through a dialog rather than paid for on every visit.
+
+**The create dialog exists to make one state reachable.** The mockup's own table has a
+`gpt5-experiments` row with **no provider**, decision **R2** has always allowed it, and before
+this there was no way to make one through the product — the particular kind of bug nobody
+files, because the feature is there and no one can get to it. So
+[`new-alias.tsx`](app/registry/new-alias.tsx) has a mode:
+
+| Mode | What it asks for | What it creates |
+| --- | --- | --- |
+| **Bind now** | a connection → one of its models, *listed live from the provider* → whatever that model can be tuned with | a bound alias, switched on |
+| **Bind later** | a model id, and a notice saying what the row will look like | the mockup's orphan row: dimmed, off, `✗ no key — connect a provider` |
+
+The mode is **not a fork in the client**. CH.1's `POST /registry/aliases` takes both shapes in
+one body with the connection absent for the second ([`createBody`](app/registry/create.ts)), and
+`enabled` is never sent because the contract's own default — on for a bound alias, forced off
+for an unbound one — is exactly what the two modes promise. Saying what the orphan row will look
+like *before* it is made is what makes that row read as a state somebody chose.
+
+The name is checked as it is typed against the aliases the table already read, so the ordinary
+collision costs no round trip; there is no *is-this-free* endpoint and there should not be, since
+an answer to that question is stale the moment it is given. `model_alias_name_taken` is what
+decides, and `createFailure` puts it under the same box — a reader never learns about a taken
+name from anywhere but the name field. On success the dialog closes and the page navigates to
+`?alias=<the new name>`, so the row is in the table and selected with the inspector's seat open
+on it.
+
+**A form for a model nobody wrote UI for.** [`param-fields.tsx`](app/registry/param-fields.tsx)
+renders CH.2's five widgets ([#585](https://github.com/NobuData/ouroboros/issues/585)) and
+contains no list of parameters — the suite that proves it feeds the component a tunable no
+adapter in this build has. It is the registry's own form rather than an extension of
+[`app/ui/schema-form.tsx`](app/ui/schema-form.tsx), because the two dialects are deliberately
+closed and a primitive names no domain concept; and it is **controlled**, unlike every other form
+in this module, because the field set is replaced whenever the model is and a `Toggle` has no
+value to submit. `defaultValue` is drawn in the hint and never typed into the box, exactly as
+the contract asks: a dialog clicked through without touching the parameters creates an alias with
+`params: {}` — the provider's own defaults.
+
+**The import wizard is review, not automation** (decision **R7**). Forty discovered models must
+not become forty machine-named aliases, and naming forty by hand is not it either, so
+[`import-wizard.tsx`](app/registry/import-wizard.tsx) puts discovery's truth and the operator's
+vocabulary side by side:
+
+```
+Import from Anthropic Claude          [Connection] [Models] [Review]
+ IMPORT  MODEL                ALIAS         $ PER 1M IN·OUT  CAPABILITIES
+ ☐       claude-fable-5       [fable-5]     $15 · $75        thinking · 1.0M ctx · 64.0k out
+         aliased: coder-max
+ ☑       claude-opus-5        [opus-5]      $10 · $50        thinking · 1.0M ctx · 64.0k out
+ ─▶ Review: 1 alias will be created, switched on ─▶ Create aliases ─▶ the row appears
+```
+
+Every cell is the service's — CH.3's price string, CH.2's capability headline, the mark on a
+model something already names — and only the name is the operator's. Already-aliased rows arrive
+marked and unticked, `select all` skips them, and the tick a row starts on is CH.4's `selected`
+rather than a second opinion computed here. Re-entry is idempotent because the **read** is: the
+candidates are re-read on every open, so two models just imported come back marked.
+
+**Nothing is created until every row is acceptable.** The batch is one transaction, so a `422`
+means nothing landed and names every offending item; `importItemErrors` maps those back onto
+rows through the order the body was built in, and `rowProblems` anticipates the ordinary
+collisions — a name edited into one somebody else has, two rows asking for the same thing —
+before a round trip is spent on them. Both end as a line under the row's own name box. A
+connection that has reported nothing gets the honest empty state the contract guarantees
+(`empty` is non-null exactly when `candidates` is), naming the connection and linking to
+Providers & keys.
 
 ## The polling store
 

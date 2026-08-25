@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Reading } from "@/app/api/reading";
@@ -16,13 +16,15 @@ import {
   IMPORT_LABEL,
   MEMBER_REASON,
   NEW_ALIAS_LABEL,
-  NEW_ALIAS_REASON,
   NO_PROVIDERS_REASON,
   PROVIDERS_UNREADABLE_REASON,
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
   type RegistryReadings,
 } from "@/app/registry/view";
+
+import { CREATE_TITLE, NAME_LABEL, NAME_TAKEN, PROVIDER_LABEL } from "@/app/registry/create";
+import { wizardTitle } from "@/app/registry/wizard";
 
 import { seededProviders } from "../helpers/models";
 import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
@@ -31,6 +33,18 @@ import { seededRegistry } from "../helpers/registry";
 // The table's switches write through a Server Action on the server-only client; the action is
 // `switch-actions.test.ts`'s subject and the switch `alias-switch.test.tsx`'s.
 vi.mock("@/app/registry/switch-actions", () => ({ setAliasEnabled: vi.fn() }));
+// The two flows behind the head's actions write through Server Actions on the server-only
+// client; the actions are `create-actions.test.ts`'s and `import-actions.test.ts`'s subjects,
+// and the dialog and the wizard are `new-alias.test.tsx`'s and `import-wizard.test.tsx`'s.
+vi.mock("@/app/registry/create-actions", () => ({
+  createAlias: vi.fn(),
+  readModelOptions: () => new Promise(() => {}),
+  readParamSchema: () => new Promise(() => {}),
+}));
+vi.mock("@/app/registry/import-actions", () => ({
+  importAliases: vi.fn(),
+  readCandidates: () => new Promise(() => {}),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const { RegistryScreen } = await import("@/app/registry/registry-screen");
@@ -203,14 +217,73 @@ describe("the head's two actions", () => {
     );
   });
 
-  it("leaves + New alias inert, naming the issue that builds its dialog", () => {
+  it("draws + New alias as the head's one primary action, and lets an admin press it", () => {
+    // CI.4 (#594) built the dialog behind it, so the *not built yet* reason is gone rather
+    // than reworded and the control acts.
     page();
 
     const create = screen.getByRole("button", { name: NEW_ALIAS_LABEL });
 
     expect(create).toHaveClass("ou-btn--primary");
-    expect(create).toHaveAttribute("aria-disabled", "true");
-    expect(create).toHaveAttribute("title", NEW_ALIAS_REASON);
+    expect(create).not.toHaveAttribute("aria-disabled");
+    expect(create).not.toHaveAttribute("title");
+  });
+});
+
+describe("the two flows the head's actions open (#594)", () => {
+  it("opens the create dialog from + New alias, over the page it was pressed on", () => {
+    // The composition this ticket owes the page: the action is a control on the head, and what
+    // it opens is a dialog outside the pane rather than a second screen.
+    page();
+
+    fireEvent.click(screen.getByRole("button", { name: NEW_ALIAS_LABEL }));
+
+    expect(screen.getByRole("dialog")).toHaveAccessibleName(CREATE_TITLE);
+    expect(screen.getByRole("heading", { name: REGISTRY_TITLE })).toBeInTheDocument();
+  });
+
+  it("hands the dialog the workspace's own names, so a taken one is caught with no round trip", () => {
+    // The same read the table draws — a second read would be a second answer to *what is taken*.
+    page();
+    fireEvent.click(screen.getByRole("button", { name: NEW_ALIAS_LABEL }));
+    fireEvent.change(screen.getByLabelText(NAME_LABEL), { target: { value: "coder-max" } });
+
+    expect(screen.getByText(NAME_TAKEN)).toBeInTheDocument();
+  });
+
+  it("hands the dialog the workspace's connections, so bind-now can offer them", () => {
+    page();
+    fireEvent.click(screen.getByRole("button", { name: NEW_ALIAS_LABEL }));
+
+    const options = [...(screen.getByLabelText(PROVIDER_LABEL) as HTMLSelectElement).options];
+
+    expect(options.slice(1).map((option) => option.textContent)).toEqual(
+      seededProviders().map((health) => health.displayName),
+    );
+  });
+
+  it("opens the import wizard on the connection a menu row names", () => {
+    page();
+    fireEvent.click(screen.getByRole("button", { name: IMPORT_LABEL }));
+    fireEvent.click(screen.getAllByRole("menuitem")[0]!);
+
+    expect(screen.getByRole("dialog")).toHaveAccessibleName(wizardTitle("Anthropic Claude"));
+  });
+
+  it("leaves both flows unreachable for a member, from the head rather than from a 403", () => {
+    // The ticket's last criterion. The gate that enforces is the service's; what the page owes
+    // is that a member is not walked into it.
+    page({ mayAdminister: false });
+
+    for (const label of [IMPORT_LABEL, NEW_ALIAS_LABEL]) {
+      const button = screen.getByRole("button", { name: label });
+
+      expect(button, label).toHaveAttribute("title", MEMBER_REASON);
+      fireEvent.click(button);
+    }
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });
 
