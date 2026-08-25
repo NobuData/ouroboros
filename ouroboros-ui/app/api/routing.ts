@@ -1,13 +1,25 @@
 /**
  * Model routing — what mockup 06's `/models` surface reads from `ouroboros-rest`.
  *
- * One operation today: the provider health strip
- * ([#196](https://github.com/NobuData/ouroboros/issues/196)), which is the only part of the
- * page AA.1 ([#200](https://github.com/NobuData/ouroboros/issues/200)) draws from data. The
- * matrix, the inspector, the rules card and the spend card are AA.2–AA.5's, over the
- * management API ([#195](https://github.com/NobuData/ouroboros/issues/195)) and the stats
- * service ([#198](https://github.com/NobuData/ouroboros/issues/198)); they belong in this
- * module beside this one when they arrive, because they are one page's calls to one tag.
+ * Two operations. The provider health strip
+ * ([#196](https://github.com/NobuData/ouroboros/issues/196)) is what AA.1
+ * ([#200](https://github.com/NobuData/ouroboros/issues/200)) draws above the matrix; the
+ * matrix itself ([#195](https://github.com/NobuData/ouroboros/issues/195), with its numerics
+ * from [#198](https://github.com/NobuData/ouroboros/issues/198)) is what AA.2
+ * ([#201](https://github.com/NobuData/ouroboros/issues/201)) draws below it. They are one
+ * page's calls to one tag, which is why they are one module; the inspector's simulate call is
+ * AA.4's ([#203](https://github.com/NobuData/ouroboros/issues/203)) and belongs here beside
+ * them when it arrives.
+ *
+ * ### The matrix is one request, and that is a correctness property
+ *
+ * `GET /api/v1/routing` carries the eight rows, every escalation rule and the spend card in
+ * one payload. The contract is explicit about why, and the matrix is the half that would
+ * break: its **Escalation** column and the rules card render the same rows, and its `$/run
+ * avg` and the spend card's totals are aggregates over the same ledger over the same window.
+ * Fetched apart they would be aggregates over those rows *at two instants* — a page that can
+ * show a call in one figure and not the other — and two cards that disagree about what a rule
+ * does for as long as one of them is in flight.
  *
  * What this adds over a raw call is what every resource file in this directory adds: a
  * name, the path written down once so a rename in the contract is a failed typecheck rather
@@ -71,6 +83,62 @@ export type ProviderStatus = ProviderHealth["status"];
  */
 export type ProviderCheck = ProviderHealth["check"];
 
+/* ------------------------------------------------------------------ the routing matrix */
+
+/**
+ * The routing page's read below the strip: the matrix, the escalation rules and the spend
+ * card, in one payload because they are one screen.
+ *
+ * `taskKinds` is **empty rather than absent** for a workspace whose routing foundations have
+ * not been seeded — a state AA.6 ([#205](https://github.com/NobuData/ouroboros/issues/205))
+ * owns the guidance for, and one this module distinguishes from a read that failed the same
+ * way the strip does.
+ */
+export type RoutingMatrix = components["schemas"]["RoutingMatrix"];
+
+/**
+ * One row of the matrix: a task kind, its description, where it sorts, and the route it
+ * resolves through — or **`null`** for a kind with no route.
+ *
+ * That null is a legal state the schema publishes on purpose, and the matrix draws the row
+ * anyway: hiding a kind because nothing routes it would hide the very kind somebody came to
+ * this page to configure.
+ */
+export type RoutingTaskKind = components["schemas"]["RoutingTaskKind"];
+
+/** One task kind's route: its tag, its policy triple, its chain and its measured numerics. */
+export type Route = components["schemas"]["Route"];
+
+/**
+ * One numbered hop of a configured chain — the alias, what it resolves to, and where it runs.
+ *
+ * `provider` is **`null`** for an alias with no provider bound yet, and the hop keeps its
+ * place either way: a chain that dropped a hop for that reason would arrive shorter than the
+ * operator configured it, and the matrix would print a fallback the workspace does not have.
+ */
+export type RouteHop = components["schemas"]["RouteHop"];
+
+/**
+ * A row's two numeric columns, or the nulls that mean nobody measured them.
+ *
+ * The type the matrix's honesty rests on (roadmap decision **M7**). `costCentsPerRunAvg` and
+ * `latencyP50Ms` are `null` exactly when the ledger holds nothing to average or take a median
+ * of, and nothing in `app/models/` supplies a default for either: a workspace that has run
+ * nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
+ */
+export type RouteStats = components["schemas"]["RouteStats"];
+
+/**
+ * One escalation rule, with the sentence the **database** derived from its structure.
+ *
+ * `display` is the field this application must never compose for itself. It is a generated
+ * column (V018), so the rules card, the matrix's escalation column and a resolution
+ * explanation all print the same string because there is only one — which is what makes *the
+ * matrix and the rules card cannot disagree* a property of the schema rather than a promise
+ * two components make separately.
+ */
+export type EscalationRule = components["schemas"]["EscalationRule"];
+
 /** Model routing, as `ouroboros-rest` serves it. */
 export const routing = {
   /**
@@ -85,5 +153,24 @@ export const routing = {
    */
   async providers(client: ApiClient = api()): Promise<ProviderHealthStrip> {
     return unwrap(await client.GET("/api/v1/routing/providers", {}));
+  },
+
+  /**
+   * The matrix, the escalation rules and the spend card — everything mockup 06 draws below
+   * the strip.
+   *
+   * One request rather than three, for the reason this module's note gives: the three regions
+   * are aggregates and derivations over the same rows, and reading them apart is what would
+   * let them disagree.
+   *
+   * @param client The client to call through. Defaults to the server-side one; tests pass
+   *   one over a stub `fetch`.
+   * @returns The payload. A workspace whose routing foundations have not been seeded answers
+   *   with empty arrays — the page's empty state, not a failure.
+   * @throws {ApiError} What the service answered. A `401` redirects to login before this
+   *   rejects.
+   */
+  async matrix(client: ApiClient = api()): Promise<RoutingMatrix> {
+    return unwrap(await client.GET("/api/v1/routing", {}));
   },
 };

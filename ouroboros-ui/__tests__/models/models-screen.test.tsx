@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { ModelsScreen } from "@/app/models/models-screen";
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 
-import { readings } from "../helpers/models";
+import { MATRIX_FAILED_TITLE, NO_KINDS_NOTE, NO_KINDS_TITLE } from "@/app/models/matrix";
+
+import { emptyMatrix, readings, unmeasuredMatrix } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 
 /**
@@ -163,32 +165,75 @@ describe("the strip, in its place on the page", () => {
   });
 
   it("degrades to a reason without taking the rest of the page with it", () => {
-    // One failed read is one degraded region, never a blank page: the head, the tab set and
-    // the page's foot are all still there.
+    // One failed read is one degraded region, never a blank page: the head, the tab set, the
+    // matrix and the page's foot are all still there.
     render(<ModelsScreen readings={readings({ providers: { ok: false, reason: "Down." } })} />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Down.");
+    expect(screen.getByText("Down.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Models" })).toBeInTheDocument();
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+  });
+});
+
+describe("the matrix, in its place on the page", () => {
+  it("draws the eight seeded rows below the strip", () => {
+    render(<ModelsScreen readings={readings()} />);
+
+    // Eight rows and a head row.
+    expect(screen.getAllByRole("row")).toHaveLength(9);
+    expect(screen.getByText("8 task kinds")).toBeInTheDocument();
+  });
+
+  it("degrades to the service's reason without taking the strip with it", () => {
+    // The other direction of the same rule. The two are separate reads and the page shows it.
+    render(
+      <ModelsScreen readings={readings({ matrix: { ok: false, reason: "Routing is down." } })} />,
+    );
+
+    expect(screen.getByText(MATRIX_FAILED_TITLE)).toBeInTheDocument();
+    expect(screen.getByText("Routing is down.")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Provider health" })).toBeInTheDocument();
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+  });
+
+  it("tells a workspace with no kinds apart from one whose matrix could not be read", () => {
+    // *Nobody has configured this* and *nobody could read this* are different facts, and the
+    // page says something different for each. Neither is a blank region (§ 3.3).
+    render(<ModelsScreen readings={readings({ matrix: { ok: true, value: emptyMatrix() } })} />);
+
+    expect(screen.getByText(NO_KINDS_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(NO_KINDS_NOTE)).toBeInTheDocument();
+    expect(screen.queryByText(MATRIX_FAILED_TITLE)).not.toBeInTheDocument();
   });
 });
 
 describe("what the page does not pretend", () => {
-  it("names the surfaces that will fill it rather than mocking them up", () => {
-    // A placeholder matrix of invented rows would be the one dishonest thing on a page built
-    // to be honest — and indistinguishable, in a screenshot, from the real one AA.2 ships.
-    render(<ModelsScreen readings={readings()} />);
+  it("names the surface that will fill the inspector's seat rather than mocking it up", () => {
+    // An invented chain of hops there would be the one dishonest thing on a page built to be
+    // honest — and indistinguishable, in a screenshot, from the real one AA.4 ships.
+    render(<ModelsScreen readings={readings()} route="implement" />);
 
-    expect(screen.getByText("The routing matrix arrives next")).toBeInTheDocument();
-    expect(screen.getByText(/#201/)).toBeInTheDocument();
+    expect(screen.getByText(/#203/)).toBeInTheDocument();
   });
 
-  it("draws no table, no meter and no figure it could not compute", () => {
+  it("draws no meter and no figure it could not compute", () => {
+    // The matrix's figures *are* computed — from the ledger, by #198 — so they are drawn. The
+    // spend card's meters are #204's and nothing here stands in for them.
     const { container } = render(<ModelsScreen readings={readings()} />);
 
-    expect(container.querySelector("table")).toBeNull();
     expect(container.querySelector(".ou-meter")).toBeNull();
+  });
+
+  it("draws an em-dash rather than a zero for a workspace that has run nothing", () => {
+    // Decision M7, end to end through the screen: `$0.00` and `0.0s` are figures, and a
+    // workspace with an empty ledger has neither.
+    const { container } = render(
+      <ModelsScreen readings={readings({ matrix: { ok: true, value: unmeasuredMatrix() } })} />,
+    );
+
     expect(container.textContent).not.toMatch(/\$\d/);
+    expect(container.textContent).not.toMatch(/\ds\b/);
   });
 });
 

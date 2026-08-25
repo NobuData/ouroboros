@@ -1296,7 +1296,7 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AA.1 | #200 | 🟢 Done | ouroboros-ui: [AA.1] Models route, subnav & provider health strip | `/models` head, violet subnav, honest health chips | mvp, routing, ui, design | N (after #41, Z.3, BA-D.5) | Y | M | ouroboros-ui |
-| AA.2 | #201 | 🟡 Open | ouroboros-ui: [AA.2] Routing matrix table | 8-kind matrix: alias cells, escalation summaries, stats, selection | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | L | ouroboros-ui |
+| AA.2 | #201 | 🟢 Done | ouroboros-ui: [AA.2] Routing matrix table | 8-kind matrix: alias cells, escalation summaries, stats, selection | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | L | ouroboros-ui |
 | AA.3 | #202 | 🟡 Open | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
 | AA.4 | #203 | 🟡 Open | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
 | AA.5 | #204 | 🟡 Open | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
@@ -1415,7 +1415,67 @@ Routing | Model registry·soon | Providers & keys·soon | Spend·soon
 
 ### Issue AA.2 — ouroboros-ui: [AA.2] Routing matrix table
 
-> **GitHub issue:** #201 · **Status:** 🟡 Open · **Parent epic:** #187
+> **GitHub issue:** #201 · **Status:** 🟢 Done · **Parent epic:** #187
+
+> **Shipped 2026-08-24.** The eight-kind matrix and the seat its inspector takes, in
+> [`app/models/routing-matrix.tsx`](../ouroboros-ui/app/models/routing-matrix.tsx) over the
+> decisions in [`app/models/matrix.ts`](../ouroboros-ui/app/models/matrix.ts), read through
+> `GET /api/v1/routing` ([`app/api/routing.ts`](../ouroboros-ui/app/api/routing.ts)). The
+> `/models` placeholder card AA.1 left for it is gone.
+>
+> **Selectable rows are a #46 primitive, not this page's markup.**
+> [`Table`](../ouroboros-ui/app/ui/table.tsx) gained a `selection` prop, because all three ways
+> a selectable table goes wrong go wrong at the call site: `aria-selected` on a `<tr>` inside a
+> plain `<table>` is not valid ARIA, so declaring the selection declares `role="grid"` and the
+> two cannot be set apart; the rows carry a **roving tabindex** so a page with eight rows has
+> one tab stop rather than eight; and the arrow keys, `Home` and `End` are the primitive's
+> rather than something each screen re-derives. Rows are the focusable unit, not cells — no
+> cell holds an independent control until AA.3's handles and swap menus, and that is the ticket
+> that adds the second axis.
+>
+> **The selection is client state with a URL as its record, not a URL as its source.**
+> `history.replaceState` rather than `router.replace`: the router would re-render the route,
+> and the route re-reads the matrix — so arrowing down eight rows would be eight fetches of a
+> matrix nobody changed. `replaceState` rather than `pushState` so **Back** keeps meaning *the
+> page I came from* rather than *the row above*. The **initial** selection is read server-side
+> out of `searchParams`, which is what makes a selected route survive a reload with the right
+> row already selected on the first paint — and is why nothing here needs `useSearchParams` or
+> the Suspense boundary that hook would require.
+>
+> **A workspace-wide escalation rule is left to the rules card.** `use_alias` and `add_vote`
+> both name a `task_kind` and are drawn on that kind's row; `route_local` names none — the
+> service's own `targetTaskKind()` returns null, meaning *every* kind — and eight copies of one
+> sentence would drown the two summaries that really are per-row and leave the em-dash meaning
+> nothing. Disabled rules are excluded for the same reason the column exists: it describes what
+> routing *does*. Every sentence in it is the database's generated `display`, never composed
+> client-side, which is what makes *the matrix and the rules card cannot disagree* a property
+> of V018 rather than a promise two components make separately.
+>
+> **M7 is the ordinary case here, not an edge one.** Half the matrix's cells can legitimately be
+> empty, so the em-dash is styled as a normal state and the two numeric columns share one width
+> rule — alignment holds whether a cell has `$0.87` or `—`. A *measured* zero stays a figure:
+> `$0.00` on the two local kinds is fifteen calls that were priced, at nothing, and it is a
+> different fact from the null. [`latencyOfMs`](../ouroboros-ui/app/format.ts) is a third
+> duration formatter rather than a reuse of the two beside it — a measurement held still is not
+> a queue estimate and not a running clock — and it rounds in whole milliseconds, because
+> `(3150 / 1000).toFixed(1)` is `3.1`.
+>
+> **Two divergences from mockup 06, both upstream.** The resolution lines read
+> `claude-fable-5 · Anthropic Claude` rather than `· Anthropic`, because they print the
+> connection's `displayName` and #221 seeds the longer names — the same divergence the health
+> strip's `meta` already carries, and for the same reason: shortening it here would be a second
+> opinion about what a provider is called. And the `effort ≥ L` summary lands on `implement`
+> rather than the mockup's `plan`, which Y.3 (#191) settled in the schema's favour and
+> `R__dev_seed_routing.sql` records.
+>
+> **The drag handle is drawn and inert, and says so.** The column is part of the row's rhythm,
+> so growing it later would re-flow every width on the page; but it carries no `cursor: grab`,
+> is out of the accessibility tree, and both it and the card head name #202. The inspector's
+> seat is the same treatment: it holds the real selection and the real route tag, and says
+> plainly that the chain and the policy switches are #203's.
+>
+> **120 tests added** across the pure decisions, the render, the primitive, the formatter, the
+> API client and the two stylesheets; 2,618 pass in `ouroboros-ui`.
 
 
 - **Problem Statement:** The matrix is the page's core: dense rows pairing task
@@ -1987,3 +2047,25 @@ confirmed. `routing/providers` is in that census even though `provider-health` s
 Epic AA is now the only thing between mockup 06 and a page: **#201** ([AA.2] the matrix table) is
 next, and every service claim it renders — the chains, the two stats columns, the health states,
 the spend card — is now covered by a suite that fails when the claim stops being true.
+
+**#201** ([AA.2] the routing matrix) has landed, and `/models` is a page rather than a frame. The
+table is the page — everything else on the surface explains or edits what it shows — and the two
+things it had to get right were the two the ticket named: **density** and **honesty**. Neither is
+decided in the component. Every cell arrives already formed from a pure module, so *which hop is
+the primary*, *what a resolution line says when its alias has no provider*, *which rules touch a
+row* and *what a cell prints when nobody measured the number* are each a unit test on a small
+object rather than an assertion about rendered text.
+
+**Three decisions are worth carrying into AA.3 and AA.4.** Selectable rows went into the #46
+`Table` rather than into this screen, because everything that goes wrong with one goes wrong at the
+call site — invalid `aria-selected`, eight tab stops, no arrow keys — and the same argument put the
+scroll wrapper there in the first place. The selection is client state with the URL as its
+*record*: `history.replaceState`, so a keystroke costs no round trip, with the initial value read
+server-side out of `searchParams` so the first paint is already correct. And a rule that names no
+task kind is the rules card's rather than eight copies of one matrix cell, which is what keeps the
+em-dash in that column meaning exactly *no rule names this kind*.
+
+Next in epic AA are **#202** ([AA.3] chain editing and drag-reorder), which wires the handle column
+this ticket drew and supplies the non-zero `pending` that enables **Save routes**, and **#203**
+([AA.4] the route inspector), which fills the seat beside the matrix — the selection, its URL and
+its announcement are already there for it.

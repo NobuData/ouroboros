@@ -4,6 +4,7 @@ import {
   compactNumber,
   durationOfMinutes,
   elapsedOfSeconds,
+  latencyOfMs,
   moneyOfCents,
 } from "@/app/format";
 
@@ -194,5 +195,51 @@ describe("moneyOfCents", () => {
 
   it("keeps the sign in front of the symbol", () => {
     expect(moneyOfCents(-1860)).toBe("-$18.60");
+  });
+});
+
+describe("latencyOfMs", () => {
+  it("draws mockup 06's p50 column exactly", () => {
+    // The eight seeded medians. `41.0s` rather than `41s` is the point: a column of figures
+    // read down its last digit must not change width as one of them moves.
+    expect(latencyOfMs(3100)).toBe("3.1s");
+    expect(latencyOfMs(1200)).toBe("1.2s");
+    expect(latencyOfMs(9800)).toBe("9.8s");
+    expect(latencyOfMs(41_000)).toBe("41.0s");
+    expect(latencyOfMs(17_400)).toBe("17.4s");
+    expect(latencyOfMs(12_600)).toBe("12.6s");
+    expect(latencyOfMs(6300)).toBe("6.3s");
+    expect(latencyOfMs(800)).toBe("0.8s");
+  });
+
+  it("keeps one unit for the whole column, sub-second figures included", () => {
+    // A cell that switched to `840ms` below a second would make two rows of one table
+    // incomparable at a glance, and break the alignment the column exists for.
+    expect(latencyOfMs(840)).toBe("0.8s");
+    expect(latencyOfMs(120)).toBe("0.1s");
+  });
+
+  it("says so in words rather than claiming a call took no time", () => {
+    // The one case seconds-to-one-decimal cannot state honestly: a real measurement that
+    // rounds to `0.0s`.
+    expect(latencyOfMs(49)).toBe("<0.1s");
+    expect(latencyOfMs(1)).toBe("<0.1s");
+  });
+
+  it("draws a measured zero as a figure, because that is what was measured", () => {
+    // Distinct from the case above *and* from the em-dash: a figure nobody measured is
+    // `null` at the contract's boundary and never reaches this function (decision M7).
+    expect(latencyOfMs(0)).toBe("0.0s");
+  });
+
+  it("rounds to the tenth it prints", () => {
+    expect(latencyOfMs(3149)).toBe("3.1s");
+    expect(latencyOfMs(3150)).toBe("3.2s");
+  });
+
+  it("draws a duration it could not have measured as zero rather than throwing", () => {
+    expect(latencyOfMs(-5)).toBe("0.0s");
+    expect(latencyOfMs(Number.NaN)).toBe("0.0s");
+    expect(latencyOfMs(Number.POSITIVE_INFINITY)).toBe("0.0s");
   });
 });

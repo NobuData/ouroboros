@@ -3,12 +3,21 @@ import "server-only";
 /**
  * Everything the `/models` frame reads.
  *
- * One call today — the provider health strip — and the module exists anyway, for the reason
+ * Two calls — the provider health strip and the matrix — composed here for the reason
  * `app/dashboard/data.ts` exists: the route stays three lines, the composition is a function
  * that can be tested against a stub, and the screen is handed one object rather than issuing
- * calls of its own. AA.2–AA.5 add the matrix, the rules and the spend reads here beside it,
- * and the property that has to survive them is the one this file establishes now — **one
- * failed read is one degraded region, never a blank page**.
+ * calls of its own. The property the second read had to preserve is the one AA.1 established
+ * with the first — **one failed read is one degraded region, never a blank page** — which is
+ * why the two are attempted independently and neither can take the other down.
+ *
+ * ### The two reads are concurrent, and that is not an optimisation
+ *
+ * `Promise.all` over two {@link attempt}s, not two awaits in a row. Sequential reads would
+ * make the page as slow as the sum of them for no gain, and — because the second would not
+ * even start until the first had answered — a slow health check would delay a matrix that had
+ * nothing to do with it. `attempt` has already turned a refusal into a value by the time
+ * `Promise.all` sees it, so the *one region degraded* rule survives the concurrency: there is
+ * no rejection left for `Promise.all` to short-circuit on except the ones that must travel.
  *
  * {@link attempt} is `app/api/reading.ts`'s, shared with the dashboard since
  * [#200](https://github.com/NobuData/ouroboros/issues/200). It catches an `ApiError` and
@@ -49,12 +58,17 @@ export async function readModels(access: Workspace): Promise<ModelsReadings> {
   // nobody deletes an argument that is carrying a proof.
   void access;
 
-  const providers = await attempt(async () => (await routing.providers()).providers);
+  const [providers, matrix] = await Promise.all([
+    attempt(async () => (await routing.providers()).providers),
+    attempt(async () => routing.matrix()),
+  ]);
 
   return {
     providers,
-    // Zero until there is something on this page that can change a route: the matrix
-    // (AA.2, #201) and chain editing (AA.3, #202). The figure is carried rather than
+    matrix,
+    // Zero until there is something on this page that can *change* a route. The matrix
+    // (AA.2, #201) draws routes and selects one; editing them is chain editing's (AA.3,
+    // #202), and a figure above zero arrives with it. The figure is carried rather than
     // assumed so that `saveRoutesReason` stays the one rule deciding the control's state.
     pending: 0,
   };

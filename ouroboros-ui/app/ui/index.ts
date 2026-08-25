@@ -62,6 +62,12 @@ export {
   type ToggleProps,
 } from "./field";
 export { StickyBar, type StickyBarProps, type StickyBarTone } from "./sticky-bar";
-export { Table, type Column, type ColumnAlign, type TableProps } from "./table";
+export {
+  Table,
+  type Column,
+  type ColumnAlign,
+  type TableProps,
+  type TableSelection,
+} from "./table";
 export { cx, type ClassName } from "./class-names";
 export { useChromeExtent } from "./use-chrome-extent";

@@ -165,6 +165,71 @@ describe("what the strip says when it has no chips", () => {
   });
 });
 
+describe("the routing matrix", () => {
+  it("lays the matrix and the inspector out on the mockup's twelve columns", () => {
+    expect(rule("\\.models-grid")).toMatch(/grid-template-columns:\s*repeat\(12,/);
+    expect(rule("\\.models-col--8")).toMatch(/grid-column:\s*span 8/);
+    expect(rule("\\.models-col--4")).toMatch(/grid-column:\s*span 4/);
+  });
+
+  it("floors each column's track at zero, so a wide table never widens the pane", () => {
+    // A grid track's default minimum is `auto` — the widest thing inside it — so a table wide
+    // enough to need its wrapper's scroll would push the column wider instead and start the
+    // whole pane scrolling sideways, which § 1.3 forbids.
+    expect(rule("\\.models-grid")).toMatch(/minmax\(0,/);
+  });
+
+  it("stacks the two cards at the dashboard's own break rather than at a new one", () => {
+    // Two module pages in one product should not break to one column at two different windows.
+    expect(CODE).toMatch(/@media \(max-width: 68\.75rem\)/);
+  });
+
+  it("sets the column widths on the column rather than on the cells", () => {
+    // The primitive's per-column class exists for exactly this: a width written into a `td`
+    // would leave the `th` above it free to disagree.
+    expect(rule("\\.models-matrix__handle")).toMatch(/width:\s*[\d.]+rem/);
+    expect(rule("\\.models-matrix__num")).toMatch(/width:\s*[\d.]+rem/);
+  });
+
+  it("gives both numeric columns one width, so a dash and a figure take the same room", () => {
+    // "Alignment holds whether the cell has a number or a dash" — the two columns share one
+    // rule, so they cannot come to differ.
+    expect(CODE).toMatch(/\.models-matrix__num\s*\{/);
+    expect(CODE).not.toMatch(/\.models-matrix__cost\s*\{/);
+  });
+
+  it("does not draw the inert handle as though it could be dragged", () => {
+    // A handle that shows `cursor: grab` and does nothing is a mock-up of itself. The cursor
+    // arrives with the handler, in AA.3 (#202).
+    expect(rule("\\.models-matrix__drag")).not.toMatch(/cursor/);
+  });
+
+  it("keeps the empty cell's em-dash on the page's faint ink rather than hiding it", () => {
+    // Half this matrix's cells can legitimately be empty, so the em-dash is the ordinary case
+    // and is styled as one — not as an error, and not as something to be squinted at.
+    expect(rule("\\.models-matrix__none")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.models-matrix__none")).not.toMatch(/display:\s*none|opacity/);
+  });
+
+  it("draws both derived lines in mono, because every part of them is a value", () => {
+    expect(rule("\\.models-matrix__resolution")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.models-matrix__rule")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.models-matrix__kind")).toMatch(/font-family:\s*var\(--f-mono\)/);
+  });
+
+  it("undoes the list defaults the escalation cell is built on", () => {
+    expect(rule("\\.models-matrix__rules")).toMatch(/margin:\s*0/);
+    expect(rule("\\.models-matrix__rules")).toMatch(/padding:\s*0/);
+    expect(rule("\\.models-matrix__rules")).toMatch(/list-style:\s*none/);
+  });
+
+  it("lets a long resolution line wrap rather than clipping the tail that identifies it", () => {
+    // `text-overflow` would hide exactly the suffix that distinguishes two versions of one
+    // model.
+    expect(rule("\\.models-matrix__resolution")).not.toMatch(/text-overflow|white-space:\s*nowrap/);
+  });
+});
+
 describe("the type scale", () => {
   it("names no font size in px, so the reader's preference scales every surface", () => {
     // Design system § 3.2: all type is rem-based, from one root change. A px font size is

@@ -1,5 +1,6 @@
 import { requireWorkspace } from "@/app/api/access";
 import { readModels } from "@/app/models/data";
+import { ROUTE_PARAM } from "@/app/models/matrix";
 import { ModelsScreen } from "@/app/models/models-screen";
 
 /**
@@ -36,11 +37,27 @@ import { ModelsScreen } from "@/app/models/models-screen";
  * is where this page's full state and guard treatment is decided, once there are cards for
  * it to be about.
  *
+ * ### Why the selected route is read here rather than in the browser
+ *
+ * The matrix reflects its selection into `?route=` (AA.2,
+ * [#201](https://github.com/NobuData/ouroboros/issues/201)), and this is the other half of
+ * *a selected route survives a reload*: the parameter is read on the **server**, so the very
+ * first paint already has the right row selected and the right route in the inspector's seat.
+ * A client component reading it with `useSearchParams` would render an unselected matrix
+ * first, would need a `Suspense` boundary to be prerendered at all, and would answer the
+ * question *which row?* one frame later than the page could have.
+ *
+ * Reading it costs nothing this route was not already paying: `requireWorkspace()` reads the
+ * session cookie, so this page is dynamic either way.
+ *
+ * @param props.searchParams The URL's query, which carries the selected route.
  * @returns The routing page, for the workspace this request is operating in.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: Readonly<{ searchParams: Promise<Record<string, string | string[] | undefined>> }>) {
   const access = await requireWorkspace();
-  const readings = await readModels(access);
+  const [readings, query] = await Promise.all([readModels(access), searchParams]);
 
-  return <ModelsScreen readings={readings} />;
+  return <ModelsScreen readings={readings} route={query[ROUTE_PARAM] ?? null} />;
 }

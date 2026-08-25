@@ -466,6 +466,42 @@
   background: var(--accent-wash);
 }
 
+/*
+ * ---------- selectable rows (#201) ----------
+ *
+ * A row the reader can pick. The pointer says so, and the keyboard ring is the product's own
+ * — pulled *inside* the row rather than offset outside it, because a ring drawn 2px beyond a
+ * table row overlaps the rows above and below it and is clipped by the scrolling wrapper at
+ * the table's edges.
+ */
+.ou-table__row {
+  cursor: pointer;
+}
+
+.ou-table__row:focus-visible {
+  outline-offset: -2px;
+}
+
+/*
+ * The mockup's `tr.selected`: the model hue as a ground, and a rail down the leading edge.
+ *
+ * The ground is on the cells rather than on the row, which is what makes it survive the hover
+ * rule above — a `td` background paints over its row's — and it is `--model-tint` rather than
+ * the mockup's hand-mixed 7%, because that is the published triple for this hue and both
+ * palettes state contrast against it.
+ *
+ * The rail is a border drawn as an inset shadow so it takes no space: a real border would
+ * shift every cell in the selected row 3px sideways, and the column of task names would jog
+ * as the reader arrowed down it.
+ */
+.ou-table__row--selected td {
+  background: var(--model-tint);
+}
+
+.ou-table__row--selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--model);
+}
+
 /* The caption names the table for a reader moving by landmark; it is not a heading. */
 .ou-table__caption {
   margin-bottom: var(--sp-5);

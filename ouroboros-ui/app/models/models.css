@@ -1,5 +1,6 @@
 /*
- * The routing page (#200) — mockup 06's page frame and provider health strip.
+ * The routing page — mockup 06's page frame and provider health strip (#200), and the routing
+ * matrix and the seat its inspector takes (#201).
  *
  * The mockup is docs/mockups/06-model-routing.html over docs/mockups/assets/ouroboros.css.
  * What is taken from it is the *anatomy* the design system requires of every module page
@@ -10,10 +11,16 @@
  *
  * What is left here is what belongs to the **Models section**: the gutter rhythm, the page
  * head and the tab set's placement — which every page under /models shares through
- * app/models/models-frame.tsx, the providers page (#227) being the second of them — and the
- * `.phealth` strip, which is /models's own and is a composition rather than a primitive
- * because it names a domain concept: a provider connection and its measured health
- * (app/ui/index.ts § What belongs here).
+ * app/models/models-frame.tsx, the providers page (#227) being the second of them — and two
+ * compositions that are /models's own rather than primitives, because both name domain
+ * concepts (app/ui/index.ts § What belongs here): the `.phealth` strip, which is a provider
+ * connection and its measured health, and the routing matrix's cells, which are a task kind,
+ * an alias and what it resolves to.
+ *
+ * The matrix's *table* is the #46 primitive and is styled nowhere but app/ui/ui.css — the
+ * selected row's violet inset included, because a selectable row is a shape the design system
+ * names rather than a thing this page invented. What this sheet contributes is column widths
+ * and the inside of four cells.
  *
  * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated in
  * docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every length that
@@ -280,4 +287,206 @@
  */
 .models__next {
   min-height: 18rem;
+}
+
+/* ---------- the routing matrix and the inspector's seat (#201) ---------- */
+
+/*
+ * Mockup 06's `.grid`: the matrix at eight of twelve columns and the inspector at four. The
+ * dashboard's grid at the dashboard's own widths, because two module pages in one product
+ * should not break to one column at two different windows.
+ *
+ * `minmax(0, 1fr)` rather than `1fr`: a grid track's default minimum is `auto`, which is the
+ * widest thing inside it — so a table wide enough to need its wrapper's scroll would instead
+ * push the whole column wider and start the pane scrolling sideways, which is the one thing
+ * the shell forbids (§ 1.3).
+ */
+.models-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--sp-8);
+  align-items: start;
+}
+
+.models-col--8 {
+  grid-column: span 8;
+}
+
+.models-col--4 {
+  grid-column: span 4;
+}
+
+/*
+ * The mockup's own break. Below it the inspector's seat sits under the matrix rather than
+ * beside it — at four columns of a narrow pane the seat is narrower than the sentence it
+ * holds, and the matrix has seven columns of its own to fit.
+ */
+@media (max-width: 68.75rem) {
+  .models-grid > * {
+    grid-column: span 12;
+  }
+}
+
+/*
+ * The card head wraps: the title, the count chip and the reorder hint are three things and
+ * the hint is the one that gives way first.
+ */
+.models-matrix__head {
+  flex-wrap: wrap;
+}
+
+/*
+ * The mockup's `drag ⠿ to reorder fallback chains`, as an honest hint — what the handle
+ * column will do, and which issue does it. Small print, so it does not compete with the
+ * card's own title.
+ */
+.models-matrix__hint {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+/*
+ * ---------- the columns ----------
+ *
+ * Widths are set on the column rather than on the cells, which is what the primitive's
+ * per-column class exists for: a width written into a `td` would leave the `th` above it free
+ * to disagree.
+ */
+
+/* The mockup's 26px handle gutter. */
+.models-matrix__handle {
+  width: 2rem;
+}
+
+/*
+ * The task column carries three lines and is the widest thing in the row; the floor stops it
+ * collapsing to one word a line when the escalation column has a long sentence in it.
+ */
+.models-matrix__task {
+  min-width: 14rem;
+}
+
+/*
+ * The escalation column holds whole sentences. A measure keeps them from becoming the widest
+ * column on the page, and the wrapper's own scroll handles what is left.
+ */
+.models-matrix__escalation {
+  max-width: 22rem;
+}
+
+/*
+ * Both numeric columns. The table primitive already right-aligns them in tabular figures;
+ * this is the width that stops `$0.87` and `—` from taking different amounts of room, which
+ * is what "alignment holds whether the cell has a number or a dash" means in practice.
+ */
+.models-matrix__num {
+  width: 6rem;
+}
+
+/*
+ * ---------- the drag handle ----------
+ *
+ * It is drawn and it is inert, so it must not claim to be draggable. No `cursor: grab`, and
+ * the hint in the card head says what it will do — the mockup's `cursor: grab` arrives with
+ * the handler in AA.3 (#202), and the two belong on the same commit.
+ */
+.models-matrix__drag {
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+  user-select: none;
+}
+
+/* ---------- the task cell ---------- */
+
+/*
+ * The mono name, the grey description and the route tag, stacked. `block` on the first two
+ * because the cell's children are three separate lines rather than a wrapped phrase.
+ */
+.models-matrix__kind {
+  display: block;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 500;
+}
+
+.models-matrix__desc {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.models-matrix__tag {
+  margin-top: var(--sp-3);
+}
+
+/* ---------- the two alias cells ---------- */
+
+/*
+ * The mockup's `.alias-cell`: the pill, and the resolution line under it. A column rather
+ * than a row, so the alias a route *names* and what that name currently *means* read as two
+ * levels rather than as one long phrase.
+ */
+.models-matrix__alias {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+/*
+ * The mockup's `.alias-res`. Mono because every part of it is a value — a model id, a
+ * provider's name — and quiet because it is the derived half of the cell.
+ *
+ * It wraps rather than being clipped: a model id long enough to overflow is a model id
+ * somebody needs to be able to read, and `text-overflow` would hide exactly the tail that
+ * distinguishes two versions of one model.
+ */
+.models-matrix__resolution {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * ---------- what an empty cell looks like ----------
+ *
+ * Half this matrix's cells can legitimately be empty — a kind with no route, a chain one hop
+ * long, a workspace that has run nothing (decision M7) — so the em-dash is the ordinary case
+ * and is styled as one: the same faint ink the mockup gives it, and no change to the row's
+ * height or the column's alignment. A row of em-dashes has to sit on the same baseline as a
+ * row of figures.
+ */
+.models-matrix__none {
+  color: var(--ink-faint);
+}
+
+/* ---------- the escalation cell ---------- */
+
+/*
+ * A `ul`, so the browser's list defaults are what this has to undo. Two rules on one row are
+ * two statements, and a reader hearing them run together would have no way to tell where one
+ * ends.
+ */
+.models-matrix__rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * The mockup's `small mono muted`. Mono because these sentences are generated from structure
+ * and read as configuration — `effort ≥ L → implement uses coder-max (max thinking)`.
+ */
+.models-matrix__rule {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
 }

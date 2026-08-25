@@ -1,7 +1,15 @@
 import { Button, Card, EmptyState } from "@/app/ui";
 
+import {
+  MATRIX_FAILED_TITLE,
+  NO_KINDS_NOTE,
+  NO_KINDS_TITLE,
+  matrixRows,
+  selectedKind,
+} from "./matrix";
 import { ModelsFrame } from "./models-frame";
 import { ProviderStrip } from "./provider-strip";
+import { RoutingMatrix } from "./routing-matrix";
 import { type ModelsReadings, SIMULATE_REASON, saveRoutesReason } from "./view";
 
 import "./models.css";
@@ -30,16 +38,24 @@ import "./models.css";
  *
  * ### What this page does not pretend
  *
- * The frame is honest about being a frame. Two of its four tabs point at surfaces other
- * roadmaps have not built and are labelled *soon* rather than linked to a `404`; both head
- * actions are inert and say why; and the space the routing matrix will occupy carries an
- * empty state naming the issues that fill it, rather than a placeholder table of numbers
- * nobody computed. That is § 3.5 applied to a page that is mostly not built yet: a surface
- * that is not ready is **labelled**, never dead, and never a mock-up of itself.
+ * The frame is honest about being a frame. The one unbuilt sibling tab is labelled *soon*
+ * rather than linked to a `404`, both head actions are inert and say why, and the seat the
+ * route inspector will take names the issue that fills it rather than drawing an invented
+ * chain of hops. That is § 3.5 applied to a page that is now mostly built: a surface that is
+ * not ready is **labelled**, never dead, and never a mock-up of itself.
  *
- * The one region drawing real data is the health strip, and it is the one region on the page
- * where being wrong would matter — which is why `view.ts` carries the argument for every
- * treatment it takes.
+ * Since AA.2 ([#201](https://github.com/NobuData/ouroboros/issues/201)) two of its regions
+ * draw real data — the health strip and the matrix — and they are the two regions where being
+ * wrong would matter. `view.ts` carries the argument for every treatment the strip takes and
+ * `matrix.ts` for every cell the table draws; between them, nothing on this page is a figure
+ * this component decided.
+ *
+ * ### Three regions, three independent failures
+ *
+ * The strip and the matrix are separate reads and degrade separately: a workspace whose
+ * health check is unreadable still gets its eight rows, and a workspace whose matrix is
+ * refused still gets its chips. Neither takes the page's frame with it, which is the rule
+ * `app/api/reading.ts` exists to keep.
  */
 
 /**
@@ -60,9 +76,14 @@ const SUBLINE =
  * The routing screen.
  *
  * @param props.readings Everything the reader was able to read, and why not for the rest.
+ * @param props.route Which row the URL asks for, as it arrived — unchecked, because checking
+ *   it needs the rows and the rows are decided below. `null` when the URL named none.
  * @returns The screen.
  */
-export function ModelsScreen({ readings }: Readonly<{ readings: ModelsReadings }>) {
+export function ModelsScreen({
+  readings,
+  route = null,
+}: Readonly<{ readings: ModelsReadings; route?: string | string[] | null }>) {
   return (
     <ModelsFrame
       active="routing"
@@ -91,18 +112,50 @@ export function ModelsScreen({ readings }: Readonly<{ readings: ModelsReadings }
     >
       <ProviderStrip providers={readings.providers} />
 
-      {/*
-        The rest of the mockup, named rather than mocked. A placeholder matrix of invented
-        rows would be the one dishonest thing on a page built to be honest — and would be
-        indistinguishable, in a screenshot, from the real one AA.2 ships.
-      */}
-      <Card className="models__next" fill>
-        <EmptyState
-          fill
-          note="The eight-kind matrix and its route inspector arrive with #201 and #203; chain editing with #202, and the escalation rules and spend cards with #204. Provider health above is live."
-          title="The routing matrix arrives next"
-        />
-      </Card>
+      <MatrixRegion matrix={readings.matrix} route={route} />
     </ModelsFrame>
   );
+}
+
+/**
+ * The matrix and the inspector's seat, or the one line that says why there are none.
+ *
+ * Three states, and the two that draw no rows are deliberately different sentences. A
+ * workspace whose routing foundations have not been seeded **has** an answer — an empty
+ * one — and is a state the product guides out of (AA.6,
+ * [#205](https://github.com/NobuData/ouroboros/issues/205)); a workspace whose matrix was
+ * refused has no answer at all, and carries the service's own reason. Neither is a blank
+ * region (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.3), and neither looks like the other.
+ *
+ * The rows are decided **here, on the server**, and handed to the Client Component already
+ * formed. That keeps `app/format.ts` and the contract's shapes out of the browser bundle, and
+ * leaves the client with the one thing it is a client for: which row is selected.
+ *
+ * @param props.matrix The read: the payload, or why it could not be made.
+ * @param props.route What `?route=` carried, unchecked.
+ * @returns The region.
+ */
+function MatrixRegion({
+  matrix,
+  route,
+}: Readonly<{ matrix: ModelsReadings["matrix"]; route: string | string[] | null }>) {
+  if (!matrix.ok) {
+    return (
+      <Card className="models__next" fill>
+        <EmptyState fill note={matrix.reason} title={MATRIX_FAILED_TITLE} />
+      </Card>
+    );
+  }
+
+  const rows = matrixRows(matrix.value.taskKinds, matrix.value.rules);
+
+  if (rows.length === 0) {
+    return (
+      <Card className="models__next" fill>
+        <EmptyState fill note={NO_KINDS_NOTE} title={NO_KINDS_TITLE} />
+      </Card>
+    );
+  }
+
+  return <RoutingMatrix rows={rows} selected={selectedKind(rows, route)} />;
 }
