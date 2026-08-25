@@ -200,3 +200,55 @@ export function moneyOfCents(cents: number): string {
 
   return `${sign}$${grouped(dollars)}.${String(remainder).padStart(2, "0")}`;
 }
+
+/** Milliseconds in a tenth of a second — the precision this column is drawn at. */
+const MS_PER_TENTH = 100;
+
+/** Tenths in a second. */
+const TENTHS_PER_SECOND = 10;
+
+/** Below this many milliseconds, a duration rounds to `0.0s` and is drawn as a floor instead. */
+const SUB_TENTH_MS = 50;
+
+/** What a duration too short to draw at this precision reads as. */
+const SUB_TENTH = "<0.1s";
+
+/**
+ * A measured duration in milliseconds, drawn in seconds to one decimal — `41.0s`, `0.8s`.
+ *
+ * This is mockup 06's **p50 latency** column, and it is a third duration formatter rather
+ * than a reuse of either of the two above because it answers a third question.
+ * {@link durationOfMinutes} sizes a queue in working hours; {@link elapsedOfSeconds} is a
+ * clock, padded and never dropping a part because it is drawn while it moves. This is
+ * neither: it is a *measurement*, held still, read down a column beside seven others.
+ *
+ * **One unit for the whole column, always.** A cell that switched to `840ms` below a second
+ * would break the property the column is aligned for — figures read down their last digit —
+ * and would make two rows of the same table incomparable at a glance. So everything is
+ * seconds, and the one case that unit cannot state honestly is stated in words instead:
+ * a duration under {@link SUB_TENTH_MS} would round to `0.0s`, which is a claim that a call
+ * took no time, so it is drawn `<0.1s`. A measured **zero** keeps `0.0s`, because that is
+ * what was measured.
+ *
+ * A figure nobody measured is not this function's business at all: it is `null` at the
+ * contract's boundary and renders as an em-dash (roadmap decision **M7**). Passing a zero
+ * here to mean *unknown* is the specific mistake the null exists to prevent.
+ *
+ * **The rounding happens in whole milliseconds, before the division.** `(3150 / 1000)` is a
+ * binary float a hair *below* 3.15, so `toFixed(1)` gives `3.1` — the same class of surprise
+ * this module's header refuses `Intl` for. Rounding to tenths as integers first makes the
+ * boundary land where a reader expects it, on every runtime.
+ *
+ * @param ms The duration in milliseconds. Negative is drawn as zero, which is what a
+ *   measurement that came back before it started means; a non-finite one is drawn the same.
+ * @returns The duration in seconds to one decimal, or {@link SUB_TENTH} for a non-zero
+ *   duration too short to draw at that precision.
+ */
+export function latencyOfMs(ms: number): string {
+  const total = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+
+  if (total > 0 && total < SUB_TENTH_MS) return SUB_TENTH;
+
+  const tenths = Math.round(total / MS_PER_TENTH);
+  return `${(tenths / TENTHS_PER_SECOND).toFixed(1)}s`;
+}

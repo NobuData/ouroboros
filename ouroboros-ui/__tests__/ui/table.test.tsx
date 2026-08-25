@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { type Column, Table } from "@/app/ui";
 
@@ -198,6 +198,153 @@ describe("the sticky head", () => {
     );
 
     expect(container.firstElementChild).toHaveClass("ou-table-scroll--open", "dash-runs");
+  });
+});
+
+describe("selectable rows (#201)", () => {
+  /**
+   * The suite's table, with its rows selectable.
+   *
+   * @param selected Which row is current, or `null`.
+   * @param onSelect What to call when the reader picks one.
+   * @returns The Testing Library render result.
+   */
+  function selectable(selected: string | null, onSelect = vi.fn()) {
+    return {
+      onSelect,
+      ...render(
+        <Table
+          caption="Recent runs"
+          columns={COLUMNS}
+          rowKey={(run) => run.id}
+          rows={RUNS}
+          selection={{ selected, onSelect }}
+        />,
+      ),
+    };
+  }
+
+  /** One body row, by its key. */
+  function row(id: string): HTMLElement {
+    const found = screen
+      .getAllByRole("row")
+      .find((candidate) => candidate.dataset.rowKey === id);
+
+    if (found === undefined) throw new Error(`no rendered row for ${id}`);
+    return found;
+  }
+
+  it("is a grid rather than a table, because that is what makes the state mean anything", () => {
+    // `aria-selected` on a `<tr>` inside a plain `<table>` is not valid ARIA. Declaring the
+    // selection declares the role, so the two can never be set apart.
+    selectable("run-1");
+
+    expect(screen.getByRole("grid", { name: "Recent runs" })).toBeInTheDocument();
+  });
+
+  it("stays an ordinary table when no selection is declared", () => {
+    // The rows of a table nobody can select must not be announced as selectable, must not be
+    // in the tab order, and must not respond to a click.
+    table();
+
+    expect(screen.getByRole("table", { name: "Recent runs" })).toBeInTheDocument();
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+    for (const candidate of screen.getAllByRole("row")) {
+      expect(candidate).not.toHaveAttribute("aria-selected");
+      expect(candidate).not.toHaveAttribute("tabindex");
+    }
+  });
+
+  it("marks the selected row and only the selected row", () => {
+    selectable("run-2");
+
+    expect(screen.getAllByRole("row", { selected: true })).toEqual([row("run-2")]);
+    expect(row("run-2")).toHaveClass("ou-table__row", "ou-table__row--selected");
+    expect(row("run-1")).toHaveClass("ou-table__row");
+    expect(row("run-1")).not.toHaveClass("ou-table__row--selected");
+  });
+
+  it("selects nothing when nothing is selected, rather than falling back to the first row", () => {
+    // A table that selected its own first row would put a row into whatever the selection
+    // drives that nobody chose.
+    selectable(null);
+
+    expect(screen.queryByRole("row", { selected: true })).not.toBeInTheDocument();
+  });
+
+  it("tells the caller which row was clicked", () => {
+    const { onSelect } = selectable(null);
+
+    fireEvent.click(row("run-2"));
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("run-2");
+  });
+
+  it("puts exactly one row in the tab order — the selected one", () => {
+    // A `tabIndex` on every row would put one stop per row in the tab sequence of a page
+    // that should have one.
+    selectable("run-2");
+
+    expect(row("run-1").tabIndex).toBe(-1);
+    expect(row("run-2").tabIndex).toBe(0);
+  });
+
+  it("holds that tab stop on the first row while nothing is selected", () => {
+    selectable(null);
+
+    expect(row("run-1").tabIndex).toBe(0);
+    expect(row("run-2").tabIndex).toBe(-1);
+  });
+
+  it("moves by one row on the arrow keys, and moves focus with it", () => {
+    const { onSelect } = selectable("run-1");
+
+    fireEvent.keyDown(row("run-1"), { key: "ArrowDown" });
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith("run-2");
+    expect(row("run-2")).toHaveFocus();
+  });
+
+  it("goes to the ends on Home and End", () => {
+    const { onSelect } = selectable("run-2");
+
+    fireEvent.keyDown(row("run-2"), { key: "Home" });
+    expect(onSelect).toHaveBeenLastCalledWith("run-1");
+
+    fireEvent.keyDown(row("run-1"), { key: "End" });
+    expect(onSelect).toHaveBeenLastCalledWith("run-2");
+  });
+
+  it("does nothing at the ends rather than wrapping round", () => {
+    const { onSelect } = selectable("run-1");
+
+    fireEvent.keyDown(row("run-1"), { key: "ArrowUp" });
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("re-selects the focused row on Enter and Space, for a reader who arrived by Tab", () => {
+    const { onSelect } = selectable(null);
+
+    fireEvent.keyDown(row("run-1"), { key: "Enter" });
+    fireEvent.keyDown(row("run-1"), { key: " " });
+
+    expect(onSelect.mock.calls).toEqual([["run-1"], ["run-1"]]);
+  });
+
+  it("prevents the default of every key it handles, so the pane does not scroll under it", () => {
+    selectable("run-1");
+
+    expect(fireEvent.keyDown(row("run-1"), { key: "ArrowDown" })).toBe(false);
+    expect(fireEvent.keyDown(row("run-2"), { key: "ArrowDown" })).toBe(false);
+    expect(fireEvent.keyDown(row("run-1"), { key: " " })).toBe(false);
+  });
+
+  it("leaves a key it does not own entirely alone", () => {
+    const { onSelect } = selectable("run-1");
+
+    expect(fireEvent.keyDown(row("run-1"), { key: "a" })).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });
 

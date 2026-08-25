@@ -37,7 +37,12 @@
  */
 
 import type { Reading } from "@/app/api/reading";
-import type { ProviderCheck, ProviderHealth, ProviderStatus } from "@/app/api/routing";
+import type {
+  ProviderCheck,
+  ProviderHealth,
+  ProviderStatus,
+  RoutingMatrix,
+} from "@/app/api/routing";
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 
 /* ------------------------------------------------------------------ what the page reads */
@@ -60,6 +65,22 @@ export interface ModelsReadings {
    * says something different for each.
    */
   readonly providers: Reading<readonly ProviderHealth[]>;
+  /**
+   * The matrix, the escalation rules and the spend card
+   * ([#195](https://github.com/NobuData/ouroboros/issues/195),
+   * [#198](https://github.com/NobuData/ouroboros/issues/198)) — or why none of them could be
+   * read.
+   *
+   * One reading for all three because the service serves them in one payload, and that is a
+   * correctness property rather than an economy: the matrix's escalation column and the rules
+   * card render the same rows, and its `$/run avg` and the spend card's totals are aggregates
+   * over the same ledger over the same window. Two readings would be two instants.
+   *
+   * Independent of {@link ModelsReadings.providers}, which is the rule this whole type is
+   * built on — **one failed read is one degraded region, never a blank page**. A workspace
+   * whose health strip is unreadable still gets its matrix, and the other way round.
+   */
+  readonly matrix: Reading<RoutingMatrix>;
   /**
    * How many routes have been changed and not yet saved — what **Save routes** is enabled
    * by.

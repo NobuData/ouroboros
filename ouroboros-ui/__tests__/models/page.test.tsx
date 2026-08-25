@@ -29,6 +29,19 @@ vi.mock("@/app/models/data", () => ({ readModels: (access: unknown) => readModel
 
 const Page = (await import("@/app/(app)/models/page")).default;
 
+/**
+ * The route, with a query.
+ *
+ * `searchParams` is a promise in this Next, and every case but the selection ones passes an
+ * empty one — which is what a `/models` with no query resolves to.
+ *
+ * @param query What the URL carried.
+ * @returns What the page rendered.
+ */
+function open(query: Record<string, string | string[] | undefined> = {}) {
+  return Page({ searchParams: Promise.resolve(query) });
+}
+
 /** What the gate hands back, in the seeded world. */
 const ACCESS = {
   session: { user: sessionUser(), memberships: [membership()], tenantSuggestion: null },
@@ -44,7 +57,7 @@ describe("the routing route", () => {
   it("asks the gate before it reads anything", async () => {
     // "Unauthenticated `(app)` routes redirect to the login screen" is true because of this
     // call, not because of a check in the layout — see `app/(app)/layout.tsx` for why.
-    render(await Page());
+    render(await open());
 
     expect(requireWorkspace).toHaveBeenCalledOnce();
   });
@@ -52,13 +65,13 @@ describe("the routing route", () => {
   it("hands the reader exactly what the gate resolved, rather than resolving it again", async () => {
     // The page's authorization and the page's data are one decision. The reader dereferences
     // nothing off it, which is the point: taking it is what makes the gate unskippable.
-    await Page();
+    await open();
 
     expect(readModels).toHaveBeenCalledExactlyOnceWith(ACCESS);
   });
 
   it("draws what the reader returned", async () => {
-    render(await Page());
+    render(await open());
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Route every kind of work",
@@ -72,7 +85,7 @@ describe("the routing route", () => {
     // to a service that would refuse it.
     requireWorkspace.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
-    await expect(Page()).rejects.toThrow("NEXT_REDIRECT /login");
+    await expect(open()).rejects.toThrow("NEXT_REDIRECT /login");
     expect(readModels).not.toHaveBeenCalled();
   });
 
@@ -80,17 +93,50 @@ describe("the routing route", () => {
     // A session that expired between the gate and the call still reaches the login screen.
     readModels.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
-    await expect(Page()).rejects.toThrow("NEXT_REDIRECT /login");
+    await expect(open()).rejects.toThrow("NEXT_REDIRECT /login");
   });
 
-  it("renders the frame even when the one read it makes failed", async () => {
+  it("renders the frame even when a read it makes failed", async () => {
     // The route has no freshness boundary and needs none: the strip degrades in place, and
     // the page around it is not built from that read.
     readModels.mockResolvedValue(readings({ providers: { ok: false, reason: "Down." } }));
 
-    render(await Page());
+    render(await open());
 
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Down.");
+    expect(screen.getByText("Down.")).toBeInTheDocument();
+    // …and the matrix, which is a different read, is still drawn.
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+  });
+});
+
+describe("the selected route, which the URL carries", () => {
+  it("selects the row `?route=` names", async () => {
+    // The server half of *a selected route survives a reload*: the parameter is read here, so
+    // the very first paint already has the right row selected. A client component reading it
+    // would render an unselected matrix first.
+    render(await open({ route: "implement" }));
+
+    expect(screen.getByRole("row", { selected: true })).toHaveTextContent("implement");
+  });
+
+  it("selects nothing when the URL names nothing", async () => {
+    render(await open());
+
+    expect(screen.queryByRole("row", { selected: true })).not.toBeInTheDocument();
+  });
+
+  it("selects nothing when the URL names a kind this workspace does not have", async () => {
+    // A URL is input. A `?route=` naming a kind nobody configured must not put a name nobody
+    // can act on into the inspector's title.
+    render(await open({ route: "deploy" }));
+
+    expect(screen.queryByRole("row", { selected: true })).not.toBeInTheDocument();
+  });
+
+  it("selects nothing when the parameter is repeated, because two answers are not an answer", async () => {
+    render(await open({ route: ["implement", "review"] }));
+
+    expect(screen.queryByRole("row", { selected: true })).not.toBeInTheDocument();
   });
 });

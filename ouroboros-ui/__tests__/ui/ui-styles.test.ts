@@ -235,6 +235,38 @@ describe("the table", () => {
   });
 });
 
+describe("the selected row (#201)", () => {
+  it("grounds the cells rather than the row, so the selection survives the hover rule", () => {
+    // `.ou-table tbody tr:hover` paints the row; a `td` background paints over its row's. The
+    // ground on the cells is what keeps a selected row selected-looking under the pointer.
+    expect(CODE).toMatch(/\.ou-table__row--selected td\s*\{[^}]*background:\s*var\(--model-tint\)/);
+  });
+
+  it("takes the model hue from the published triple rather than mixing one", () => {
+    // Both palettes state contrast against `--model-tint` and `--model`; the mockup's
+    // hand-mixed `rgba(167, 139, 250, 0.07)` is stated for neither.
+    expect(CODE).not.toMatch(/rgba\(167,\s*139,\s*250/);
+  });
+
+  it("draws the violet rail as an inset shadow, so it takes no space", () => {
+    // A real border would shift every cell in the selected row sideways, and the column of
+    // task names would jog as the reader arrowed down it.
+    expect(CODE).toMatch(
+      /\.ou-table__row--selected td:first-child\s*\{[^}]*box-shadow:\s*inset 3px 0 0 var\(--model\)/,
+    );
+  });
+
+  it("pulls the focus ring inside the row rather than offsetting it outward", () => {
+    // The product's one ring, at an offset that does not overlap the rows above and below or
+    // get clipped by the scrolling wrapper at the table's edges.
+    expect(CODE).toMatch(/\.ou-table__row:focus-visible\s*\{[^}]*outline-offset:\s*-2px/);
+  });
+
+  it("says a selectable row is selectable", () => {
+    expect(CODE).toMatch(/\.ou-table__row\s*\{[^}]*cursor:\s*pointer/);
+  });
+});
+
 describe("the in-pane chrome", () => {
   /**
    * One rule's declarations — the frame suite's anchored helper, copied for the same

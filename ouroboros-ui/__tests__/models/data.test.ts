@@ -4,15 +4,16 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { TENANT_ID, membership, sessionUser } from "../helpers/login";
-import { seededProviders, stripPayload } from "../helpers/models";
+import { seededMatrix, seededProviders, stripPayload } from "../helpers/models";
 
 /**
- * The routing page's reader (#200).
+ * The routing page's reader (#200, extended by #201).
  *
- * One call today, so the suite is about the two properties that have to survive AA.2–AA.5
- * adding four more: **a refused read is a value rather than a throw**, and **anything that is
- * not a refusal keeps travelling** — which is what keeps a session that expired mid-render
- * from being drawn as an empty strip instead of reaching the login screen.
+ * Two calls, and the suite is about the three properties that hold across them: **a refused
+ * read is a value rather than a throw**, **anything that is not a refusal keeps travelling** —
+ * which is what keeps a session that expired mid-render from being drawn as an empty page
+ * instead of reaching the login screen — and, since the matrix joined the strip, **one failed
+ * read is one degraded region**: neither call can take the other's region down with it.
  */
 
 vi.mock("server-only", () => ({}));
@@ -20,7 +21,12 @@ vi.mock("server-only", () => ({}));
 /** What the strip endpoint answers this case with, or the signal it throws instead. */
 const providers = vi.fn();
 
-vi.mock("@/app/api/routing", () => ({ routing: { providers: () => providers() } }));
+/** What the matrix endpoint answers this case with, or the signal it throws instead. */
+const matrix = vi.fn();
+
+vi.mock("@/app/api/routing", () => ({
+  routing: { providers: () => providers(), matrix: () => matrix() },
+}));
 
 const { readModels } = await import("@/app/models/data");
 
@@ -44,6 +50,7 @@ const ACCESS: Workspace = {
 
 beforeEach(() => {
   providers.mockReset().mockResolvedValue(stripPayload());
+  matrix.mockReset().mockResolvedValue(seededMatrix());
 });
 
 describe("reading the page", () => {
@@ -92,10 +99,76 @@ describe("reading the page", () => {
     await expect(readModels(ACCESS)).rejects.toThrow("fetch failed");
   });
 
-  it("asks for the strip once, and asks for nothing else", async () => {
+  it("asks for the strip once, and for the matrix once", async () => {
     await readModels(ACCESS);
 
     expect(providers).toHaveBeenCalledOnce();
+    expect(matrix).toHaveBeenCalledOnce();
+  });
+
+  it("hands the matrix over as the service sent it", async () => {
+    // One payload for the matrix, the rules and the spend card, because they are one screen:
+    // reading them apart would be reading aggregates over the same ledger at two instants.
+    const readings = await readModels(ACCESS);
+
+    expect(readings.matrix).toEqual({ ok: true, value: seededMatrix() });
+  });
+
+  it("starts both reads before either has answered", async () => {
+    // Sequential awaits would make the page as slow as the sum of the two calls, and a slow
+    // health check would delay a matrix that has nothing to do with it.
+    let released!: () => void;
+    providers.mockReturnValue(
+      new Promise((resolve) => {
+        released = () => resolve(stripPayload());
+      }),
+    );
+
+    const reading = readModels(ACCESS);
+    await Promise.resolve();
+
+    expect(matrix).toHaveBeenCalledOnce();
+
+    released();
+    await reading;
+  });
+});
+
+describe("one failed read is one degraded region", () => {
+  it("keeps the strip when the matrix is refused", async () => {
+    matrix.mockRejectedValue(new ApiError(503, "unavailable", "Routing is down."));
+
+    const readings = await readModels(ACCESS);
+
+    expect(readings.matrix).toEqual({ ok: false, reason: "Routing is down." });
+    expect(readings.providers).toEqual({ ok: true, value: seededProviders() });
+  });
+
+  it("keeps the matrix when the strip is refused", async () => {
+    providers.mockRejectedValue(new ApiError(503, "unavailable", "Health is down."));
+
+    const readings = await readModels(ACCESS);
+
+    expect(readings.providers).toEqual({ ok: false, reason: "Health is down." });
+    expect(readings.matrix).toEqual({ ok: true, value: seededMatrix() });
+  });
+
+  it("degrades both when both are refused, and still returns a page", async () => {
+    providers.mockRejectedValue(new ApiError(503, "unavailable", "Health is down."));
+    matrix.mockRejectedValue(new ApiError(503, "unavailable", "Routing is down."));
+
+    const readings = await readModels(ACCESS);
+
+    expect(readings.providers.ok).toBe(false);
+    expect(readings.matrix.ok).toBe(false);
+  });
+
+  it("lets a redirect raised by the matrix read through as well", async () => {
+    // The narrow catch is per read, not per page: a `401` on either call is Next.js's
+    // redirect signal and must reach the login screen rather than becoming a card's caption.
+    matrix.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(readModels(ACCESS)).rejects.toThrow("NEXT_REDIRECT /login");
   });
 });
 

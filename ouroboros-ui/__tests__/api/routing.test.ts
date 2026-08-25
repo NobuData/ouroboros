@@ -2,10 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
 // Types only, so this import is erased and nothing loads before the mocks below.
-import type { ProviderHealthStrip } from "@/app/api/routing";
+import type { ProviderHealthStrip, RoutingMatrix } from "@/app/api/routing";
 
 import { clientAnswering } from "../helpers/api";
-import { seededProviders, stripPayload } from "../helpers/models";
+import {
+  emptyMatrix,
+  seededMatrix,
+  seededProviders,
+  stripPayload,
+  unmeasuredMatrix,
+} from "../helpers/models";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these
 // three answers.
@@ -18,12 +24,14 @@ vi.mock("next/navigation", () => ({ redirect: () => {} }));
 const { routing } = await import("@/app/api/routing");
 
 /**
- * The provider health strip's read (#196, consumed by #200).
+ * The routing page's two reads — the provider health strip (#196, consumed by #200) and the
+ * matrix (#195/#198, consumed by #201).
  *
- * One `GET` with no parameters, so most of what is worth holding is about what this module
- * does *not* do — it names no workspace, it triggers no check, and it hands back what the
- * service composed rather than recomposing it — and about the one property the whole page's
- * honesty rests on: **an absent measurement survives the crossing as `null`.**
+ * Two `GET`s with no parameters, so most of what is worth holding is about what this module
+ * does *not* do — it names no workspace, it triggers no check, it makes no second request for
+ * a card the first one already carried, and it hands back what the service composed rather
+ * than recomposing it — and about the one property the whole page's honesty rests on: **an
+ * absent measurement survives the crossing as `null`.**
  */
 
 /** The refusal a screen behind the gate can still meet: a session acting in no workspace. */
@@ -61,7 +69,8 @@ describe("routing.providers", () => {
     await routing.providers(client);
 
     expect(requests.map((request) => request.method)).toEqual(["GET"]);
-    expect(Object.keys(routing)).toEqual(["providers"]);
+    // Every operation this module publishes, and both of them are reads.
+    expect(Object.keys(routing)).toEqual(["providers", "matrix"]);
   });
 
   it("names no workspace, because the session's active organization is the scope", async () => {
@@ -123,6 +132,72 @@ describe("routing.providers", () => {
   });
 });
 
+describe("routing.matrix", () => {
+  it("calls the routing endpoint and returns the body itself", async () => {
+    const { client, requests } = clientAnswering(seededMatrix());
+
+    const payload = await routing.matrix(client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/routing");
+    expect(requests[0]?.method).toBe("GET");
+    expect(payload).toEqual(seededMatrix());
+  });
+
+  it("reads the matrix, the rules and the spend card in one request", async () => {
+    // A correctness property rather than an economy. The escalation column and the rules card
+    // render the same rows, and the matrix's `$/run avg` and the card's totals are aggregates
+    // over the same ledger — fetched apart they would be aggregates at two instants.
+    const { client, requests } = clientAnswering(seededMatrix());
+
+    const payload = await routing.matrix(client);
+
+    expect(requests).toHaveLength(1);
+    expect(payload.taskKinds).toHaveLength(8);
+    expect(payload.rules).toHaveLength(3);
+    expect(payload.spend).toBeDefined();
+  });
+
+  it("names no workspace, because the session's active organization is the scope", async () => {
+    const { client, requests } = clientAnswering(seededMatrix());
+
+    await routing.matrix(client);
+
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+    expect(new URL(requests[0]!.url).search).toBe("");
+  });
+
+  it("reads an unseeded workspace as empty arrays rather than as a failure", async () => {
+    // *Nobody has configured this* is a state the product guides out of (AA.6, #205), not an
+    // error — and the page says something different for it than for a refused read.
+    const { client } = clientAnswering(emptyMatrix());
+
+    const payload = await routing.matrix(client);
+
+    expect(payload.taskKinds).toEqual([]);
+    expect(payload.rules).toEqual([]);
+  });
+
+  it("carries an unmeasured figure across as null rather than as a zero", async () => {
+    // Decision M7, asserted at the boundary it could be lost at. A workspace that has run
+    // nothing has not spent `$0.00` per run, and `0ms` is not a latency anybody timed.
+    const { client } = clientAnswering(unmeasuredMatrix());
+
+    const payload = await routing.matrix(client);
+
+    expect(payload.taskKinds[0]?.route?.stats.costCentsPerRunAvg).toBeNull();
+    expect(payload.taskKinds[0]?.route?.stats.latencyP50Ms).toBeNull();
+  });
+
+  it("rejects with the service's envelope rather than swallowing it", async () => {
+    const { client } = clientAnswering(NO_ORGANIZATION, 400);
+
+    const caught: unknown = await routing.matrix(client).catch((e: unknown) => e);
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect((caught as ApiError).code).toBe("organization_required");
+  });
+});
+
 describe("the typing, which is the reason the client is generated", () => {
   it("types the strip end to end", async () => {
     const { client } = clientAnswering(stripPayload());
@@ -131,6 +206,16 @@ describe("the typing, which is the reason the client is generated", () => {
 
     expect(payload.providers).toHaveLength(5);
     expect(payload.providers[0]?.latencyMs).toBe(42);
+  });
+
+  it("types the matrix end to end", async () => {
+    const { client } = clientAnswering(seededMatrix());
+
+    const payload: RoutingMatrix = await routing.matrix(client);
+
+    expect(payload.taskKinds[3]?.name).toBe("implement");
+    expect(payload.taskKinds[3]?.route?.hops).toHaveLength(3);
+    expect(payload.rules[0]?.display).toContain("coder-max");
   });
 
   it("holds a chip to the eleven fields the strip draws from", () => {
