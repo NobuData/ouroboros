@@ -3,7 +3,7 @@ import "server-only";
 /**
  * Everything the provider cards read ([#228](https://github.com/NobuData/ouroboros/issues/228)).
  *
- * Four calls and then one per card, composed here for the reason `app/models/data.ts` exists:
+ * Five calls and then one per card, composed here for the reason `app/models/data.ts` exists:
  * the route stays three lines, the composition is a function that can be tested against a
  * stub, and the screen is handed one object rather than issuing calls of its own. The property
  * every reader in this module keeps — **one failed read is one degraded region, never a blank
@@ -13,11 +13,20 @@ import "server-only";
  *
  * ### Two rounds, and the second fans out
  *
- * The listing, the catalog, the health strip and the month are independent and read at once.
- * The models are per connection — `GET /api/v1/registry/aliases/model-options` takes one —
- * so they cannot start until the listing has answered, and then they all start together. A
- * grid of five cards costs nine requests in two round trips rather than five sequential ones,
- * and a workspace with no connections costs four and asks for no models at all.
+ * The listing, the catalog, the health strip, the month and the registry's aliases are
+ * independent and read at once. The models are per connection —
+ * `GET /api/v1/registry/aliases/model-options` takes one — so they cannot start until the
+ * listing has answered, and then they all start together. A grid of five cards costs ten
+ * requests in two round trips rather than five sequential ones, and a workspace with no
+ * connections costs five and asks for no models at all.
+ *
+ * The aliases are one read for the whole grid rather than one per card, because the listing
+ * that names an alias's connection is the registry's and takes no filter; each card picks
+ * its own dependents out of it (`cards.ts`'s `dependentsOf`). They exist for AE.3's
+ * ([#229](https://github.com/NobuData/ouroboros/issues/229)) two guards — the switch that
+ * asks before it takes routes down, and the delete the service will refuse — and a read that
+ * failed degrades to *the routes could not be checked*, which the switch says before it
+ * asks anyway.
  *
  * `attempt` is `app/api/reading.ts`'s: it catches an `ApiError` and nothing else, so a `401`
  * still reaches the login screen as Next.js's redirect signal rather than as a card captioned
@@ -32,6 +41,7 @@ import "server-only";
 
 import type { Workspace } from "@/app/api/access";
 import {
+  type ModelAlias,
   type ModelOption,
   type ProviderCatalogEntry,
   type ProviderConnection,
@@ -51,6 +61,8 @@ export interface ProvidersReadings {
   readonly health: Reading<readonly ProviderHealth[]>;
   /** The month's spend — each card's meter, by kind. */
   readonly spend: Reading<ProviderMonthlySpend>;
+  /** The registry's aliases — each card's dependents, by the connection each resolves on. */
+  readonly aliases: Reading<readonly ModelAlias[]>;
   /**
    * Each connection's models, by connection id. Absent for a connection when the listing
    * itself could not be read, because there was nothing to ask for.
@@ -77,11 +89,12 @@ export async function readProviders(
 ): Promise<ProvidersReadings> {
   void access;
 
-  const [connections, catalog, health, spend] = await Promise.all([
+  const [connections, catalog, health, spend, aliases] = await Promise.all([
     attempt(async () => (await providers.list()).items),
     attempt(async () => (await providers.catalog()).kinds),
     attempt(async () => (await routing.providers()).providers),
     attempt(async () => providers.spend()),
+    attempt(async () => providers.aliases()),
   ]);
 
   const models = new Map<string, Reading<readonly ModelOption[]>>();
@@ -97,5 +110,5 @@ export async function readProviders(
     for (const [id, reading] of read) models.set(id, reading);
   }
 
-  return { connections, catalog, health, spend, models, now: now.toISOString() };
+  return { connections, catalog, health, spend, aliases, models, now: now.toISOString() };
 }

@@ -328,10 +328,18 @@ export async function setActiveOrganization(
  * published for nobody.
  *
  * @param fetchImpl The fetch to call through. Defaults to the runtime's.
- * @throws Next.js's redirect signal, always — to the login screen, with no return-to, since
- *   the page being left is one this browser may no longer see.
+ * @param returnTo Where the login screen should land the visitor once they have signed in
+ *   again. **Absent for a sign-out**, since the page being left is one this browser may no
+ *   longer see; passed by the one caller that signs out *in order to* sign in again — the
+ *   reveal dialog's step-up (AE.3, [#229](https://github.com/NobuData/ouroboros/issues/229)),
+ *   whose page the same person is coming straight back to. `loginPath` validates it the way
+ *   it validates every return-to, so an off-origin value lands on a bare `/login`.
+ * @throws Next.js's redirect signal, always — to the login screen.
  */
-export async function signOutSession(fetchImpl: typeof fetch = fetch): Promise<void> {
+export async function signOutSession(
+  fetchImpl: typeof fetch = fetch,
+  returnTo?: string,
+): Promise<void> {
   const fetchOptions = await authFetchOptions(fetchImpl);
 
   // A refusal is not a reason to stay signed in on this browser. The row may already be
@@ -345,7 +353,7 @@ export async function signOutSession(fetchImpl: typeof fetch = fetch): Promise<v
   }
   await forgetWorkspace();
 
-  redirect(loginPath());
+  redirect(loginPath(returnTo));
 }
 
 /**

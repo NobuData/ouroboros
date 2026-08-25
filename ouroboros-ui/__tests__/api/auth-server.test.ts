@@ -590,6 +590,15 @@ describe("signOutSession", () => {
     expect(redirectedTo).toBe(LOGIN_PATH);
   });
 
+  it("carries a return-to when one is given, for the reveal step-up's fresh sign-in (#229)", async () => {
+    // The one caller that signs out in order to sign straight back in: the reader lands on
+    // the page they were revealing a key on.
+    serviceAnswering({});
+
+    await expect(signOutSession(fetch, "/models/providers")).rejects.toThrow(RedirectSignal);
+    expect(redirectedTo).toBe(`${LOGIN_PATH}?next=%2Fmodels%2Fproviders`);
+  });
+
   it("signs out of this browser even when the service refused", async () => {
     // An expired session answers `401` to its own sign-out. Leaving the cookies in place
     // because of it would be a person who pressed *sign out* and stayed signed in.

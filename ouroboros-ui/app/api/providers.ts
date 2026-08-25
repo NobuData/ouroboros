@@ -5,12 +5,25 @@ import "server-only";
  * ([#228](https://github.com/NobuData/ouroboros/issues/228)), and the catalog that adds one
  * ([#231](https://github.com/NobuData/ouroboros/issues/231)).
  *
- * Six operations, and they are the page's whole surface on this side of the wire: the
+ * Ten operations, and they are the page's whole surface on this side of the wire: the
  * **catalog** the dialog draws its tiles from and the cards read their schemas from, the
  * **listing** the grid is drawn from, the **add** itself, the cards' **monthly spend**, the
- * **models** each card lists, and the one **edit** a card makes today — its switch. The rest
- * of the tag — reveal, rotate, disconnect — is AE.3's ([#229](https://github.com/NobuData/ouroboros/issues/229))
- * and belongs beside these when it arrives, because they are one page's calls to one tag.
+ * **models** each card lists, the **edits** a card makes — its switch, and its address — and,
+ * since AE.3 ([#229](https://github.com/NobuData/ouroboros/issues/229)), the key row's
+ * **reveal** and **rotate**, the overflow menu's **remove**, and the **aliases** the delete
+ * guard and the switch's confirmation name. One page's calls to one tag, kept together.
+ *
+ * ### The key row is not an exfiltration UI (decision P4)
+ *
+ * {@link providers.reveal} is the one call in this module that hands back a credential in
+ * the clear, and everything about it is the service's rule rather than this file's: it is a
+ * `POST` so a password can travel in a body, it costs a step-up the service answers as
+ * `401 step_up_required` (which `app/api/errors.ts` deliberately does not read as a session
+ * gone), it is rate-limited per person and per connection, it is audited whether it
+ * succeeded or not, and it carries an `expiresAt` the key row stops displaying at.
+ * {@link providers.rotate} verifies the new secret with the provider before one conditional
+ * `UPDATE` retires the old one — a refusal leaves the old key live, which is the fact the
+ * rotate dialog states rather than implies.
  *
  * ### The card is composed from two answers the wire now carries
  *
@@ -88,6 +101,24 @@ export type ProviderConnectionPage = components["schemas"]["ProviderConnectionPa
 
 /** What an add sends: the kind, the card's heading, and the adapter's own settings. */
 export type ProviderConnectionCreate = components["schemas"]["ProviderConnectionCreate"];
+
+/**
+ * How a reveal steps up, if it does. `{}` is a legitimate body: a session created inside
+ * the window is a re-authentication in itself.
+ */
+export type ProviderRevealRequest = components["schemas"]["ProviderRevealRequest"];
+
+/** A credential in the clear, and the instant a client should stop showing it. */
+export type ProviderRevealed = components["schemas"]["ProviderRevealed"];
+
+/** The replacement credential a rotate sends. Live-validated before the old one is retired. */
+export type ProviderRotateRequest = components["schemas"]["ProviderRotateRequest"];
+
+/**
+ * One alias of the registry — the thing that resolves *through* a connection, and therefore
+ * what deleting or switching off a connection takes with it.
+ */
+export type ModelAlias = components["schemas"]["ModelAlias"];
 
 /**
  * How many connections one listing asks for — the service's own ceiling.
@@ -212,5 +243,98 @@ export const providers = {
         params: { query: { connection: connectionId } },
       }),
     ).models;
+  },
+
+  /**
+   * Reveal a connection's credential, in the clear.
+   *
+   * The one call here that returns secret material, and the service prices it accordingly:
+   * a step-up, a rate limit, and an audit row whether or not it succeeded. `expiresAt` in the
+   * answer is the instant to stop displaying the value at — an instruction the key row keeps,
+   * because a value handed to a browser is in the browser and no header takes it back.
+   *
+   * @param id The connection.
+   * @param body How this reveal steps up: `{ password }` when the reader has just typed one,
+   *   `{}` to lean on a session created inside the window.
+   * @param client The client to call through.
+   * @returns The credential, the connection it belongs to, and when to forget it.
+   * @throws {ApiError} What the service answered: `401 step_up_required` with
+   *   `details.methods` and `details.maxAgeSeconds` — the challenge, not a session gone;
+   *   `429 provider_reveal_rate_limited` with `details.retryAfterSeconds`;
+   *   `409 provider_credential_absent` for a connection that stores none; `403 forbidden`;
+   *   `404 provider_connection_not_found`.
+   */
+  async reveal(
+    id: string,
+    body: ProviderRevealRequest,
+    client: ApiClient = api(),
+  ): Promise<ProviderRevealed> {
+    return unwrap(
+      await client.POST("/api/v1/providers/{id}/reveal", { params: { path: { id } }, body }),
+    );
+  },
+
+  /**
+   * Replace a connection's credential — verify, then retire.
+   *
+   * The service checks the new secret with the provider first and only then issues one
+   * conditional `UPDATE`, so a refusal here means the old credential is still the one in
+   * use and a success has no window in which neither was. The same call stores a *first*
+   * key on a connection whose adapter declares the credential optional — the vLLM card's
+   * **Save** — because storing one and replacing one are the same swap with nothing to
+   * retire.
+   *
+   * @param id The connection.
+   * @param secret The new credential, exactly as typed: the service trims nothing.
+   * @param client The client to call through.
+   * @returns The connection as stored, masked with the new credential's suffix.
+   * @throws {ApiError} What the service answered: `422 provider_validation_failed` with the
+   *   provider's own `details.detail` — **and the old key still live**;
+   *   `409 provider_connection_changed` when the row was rewritten mid-check;
+   *   `409 provider_credential_absent` for a kind that takes no credential; `403 forbidden`;
+   *   `404 provider_connection_not_found`.
+   */
+  async rotate(id: string, secret: string, client: ApiClient = api()): Promise<ProviderConnection> {
+    return unwrap(
+      await client.POST("/api/v1/providers/{id}/rotate", {
+        params: { path: { id } },
+        body: { secret },
+      }),
+    );
+  },
+
+  /**
+   * Disconnect a provider.
+   *
+   * The service refuses while any alias still resolves on the connection — Y.1's foreign
+   * key, thrown at last — and names them, so the card can say which routes to repoint
+   * first rather than that something, somewhere, depends on it.
+   *
+   * @param id The connection.
+   * @param client The client to call through.
+   * @returns Nothing: the contract's `204`.
+   * @throws {ApiError} What the service answered: `409 provider_connection_in_use` with
+   *   `details.aliases` — the dependent aliases' names, sorted; `403 forbidden`;
+   *   `404 provider_connection_not_found`.
+   */
+  async remove(id: string, client: ApiClient = api()): Promise<void> {
+    await client.DELETE("/api/v1/providers/{id}", { params: { path: { id } } });
+  },
+
+  /**
+   * Every alias of the registry, with the connection each resolves through.
+   *
+   * Read from the registry tag for the same reason {@link providers.models} is: an alias is
+   * the registry's row, and the one listing that names its connection is this one. The cards
+   * need it for one question — *which routes does this card carry* — asked before a switch is
+   * pressed off, because `PATCH { enabled: false }` has no guard of its own and a loop that
+   * resolves through a switched-off provider fails exactly as it would through a deleted one.
+   *
+   * @param client The client to call through.
+   * @returns The aliases, ordered by name. Empty for a workspace that has defined none.
+   * @throws {ApiError} What the service answered.
+   */
+  async aliases(client: ApiClient = api()): Promise<readonly ModelAlias[]> {
+    return unwrap(await client.GET("/api/v1/registry/aliases", {})).aliases;
   },
 };

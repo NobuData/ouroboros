@@ -159,6 +159,7 @@ function ProviderGrid({
             health: health.get(connection.id) ?? null,
             spend: spend.get(connection.kind) ?? null,
             models: readings.models.get(connection.id) ?? null,
+            aliases: readings.aliases,
             now,
           })}
         />

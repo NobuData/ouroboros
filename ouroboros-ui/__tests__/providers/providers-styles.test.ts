@@ -61,12 +61,16 @@ describe("the sheet and the component", () => {
     }
   });
 
-  it("adds nothing the dialog already owns", () => {
+  it("adds nothing the dialog already owns, and stacks only the one dropdown it introduces", () => {
     // The panel, the scrim, the scroll lock and the focus ring are `.shell-overlay`'s — the
-    // one implementation of § 1.3's dialog contract. A second set here would be a fork of it.
+    // one implementation of § 1.3's dialog contract, and a second set here would fork it. The
+    // card's overflow menu (#229) is the sheet's first dropdown, though, and a dropdown that
+    // did not lift above the card below it would open behind it; the registry's import menu
+    // makes exactly this one exception in its own sheet, at the same value.
     expect(CODE).not.toContain("position: fixed");
-    expect(CODE).not.toContain("z-index");
     expect(CODE).not.toContain("--scrim");
+    expect([...CODE.matchAll(/z-index/g)]).toHaveLength(1);
+    expect(rule("\\.providers-card__menu-panel")).toMatch(/z-index:\s*20/);
   });
 });
 

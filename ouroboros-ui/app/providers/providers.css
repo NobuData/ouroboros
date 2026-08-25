@@ -627,3 +627,214 @@
 .providers-card__cap .ou-input {
   text-align: right;
 }
+
+/* ---------- key management (#229) ---------- */
+
+/*
+ * The key row's actions, kept on their own line's trailing edge so the masked field takes
+ * what is left the way it did before this issue. Reveal/Rotate, or Copy/Mask once a value is
+ * shown — the same slot, so the row does not change width when it flips.
+ */
+.providers-card__key-actions {
+  display: flex;
+  flex: none;
+  gap: var(--sp-3);
+}
+
+/*
+ * A revealed value and everything it carries — the value, its countdown, the audited line,
+ * and a copy result — stacked where the masked field was, taking the row's flexible column.
+ */
+.providers-card__revealed {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* The countdown and the audited-notice on one line under the value, both quiet and mono. */
+.providers-card__reveal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* *Masks in 41s* — in the warn hue, because it is a clock the reader is racing. */
+.providers-card__countdown {
+  color: var(--warn);
+}
+
+/* *This reveal was recorded* — faint, a statement rather than a warning. */
+.providers-card__audited {
+  color: var(--ink-faint);
+}
+
+/*
+ * The editable address and its save, laid out like the key row: the field takes what is
+ * left, the button keeps its width, and any note sits under both.
+ */
+.providers-card__address {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.providers-card__address-field {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-4);
+}
+
+/*
+ * The card's overflow menu. The trigger sits in the head; the panel drops from its trailing
+ * edge, anchored right so it does not hang off the pane, and lifts above the card below it —
+ * the one place this sheet needs a stacking order, and the value the registry's own menu
+ * uses, above the page and below the shell's chrome.
+ */
+.providers-card__menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.providers-card__menu-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--sp-3));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 12rem;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/* One action. A reset button, the same shape the registry's menu item takes. */
+.providers-card__menu-item {
+  padding: var(--sp-4) var(--sp-5);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Delete is destructive, so the item wears the error hue on hover — colour plus the word. */
+.providers-card__menu-item--danger:hover {
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+/*
+ * A dialog's body — the shared column inside `.shell-overlay`'s panel. The panel owns the
+ * frame and the gap between top-level blocks; this groups a title, a note, a form and its
+ * actions as one flow when several dialogs share the overlay in this module.
+ */
+.providers-keys__dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* A dialog's form — a field over its own actions. */
+.providers-keys__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* The step-up's second path, set off from the password form by a hairline above it. */
+.providers-keys__reauth {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+/* A dialog's action row — the primary leading, the way out beside it. */
+.providers-keys__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* A state line inside a dialog or under a row — neutral by default. */
+.providers-keys__note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A refusal. */
+.providers-keys__note--err {
+  color: var(--err);
+}
+
+/* A confirmation — a save that took, a swap that landed. */
+.providers-keys__note--ok {
+  color: var(--ok);
+}
+
+/*
+ * The standing rail beside a refusal: *your existing key is still active*, *the working
+ * address is unchanged*. Quieter than the refusal it sits under, because it is the reassuring
+ * half — nothing broke — and it should not compete with the reason for attention.
+ */
+.providers-keys__standing {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The dependent routes a delete or a switch-off names — chips, wrapping, a list. */
+.providers-keys__aliases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * The validating spinner: a ring with one lit arc. Drawn always so the line keeps its shape;
+ * it turns only where motion is welcome, the house rule (the bar never spins for a reader who
+ * asked it not to).
+ */
+.providers-keys__spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--r-round);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .providers-keys__spinner {
+    animation: providers-keys-spin 0.7s linear infinite;
+  }
+
+  @keyframes providers-keys-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}

@@ -8,6 +8,7 @@ import {
   anthropicModels,
   catalogPayload,
   connectionPage,
+  seededAliases,
   seededCards,
   seededSpend,
 } from "../helpers/providers";
@@ -27,6 +28,7 @@ const catalog = vi.fn();
 const spend = vi.fn();
 const models = vi.fn();
 const health = vi.fn();
+const aliases = vi.fn();
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/providers", () => ({
@@ -35,6 +37,7 @@ vi.mock("@/app/api/providers", () => ({
     catalog: () => catalog(),
     spend: () => spend(),
     models: (id: string) => models(id),
+    aliases: () => aliases(),
   },
 }));
 vi.mock("@/app/api/routing", () => ({ routing: { providers: () => health() } }));
@@ -54,6 +57,7 @@ beforeEach(() => {
   catalog.mockReset().mockResolvedValue(catalogPayload());
   spend.mockReset().mockResolvedValue(seededSpend());
   health.mockReset().mockResolvedValue(stripPayload());
+  aliases.mockReset().mockResolvedValue(seededAliases());
   models.mockReset().mockResolvedValue(anthropicModels());
 });
 
@@ -65,6 +69,7 @@ describe("a clean read", () => {
     expect(readings.catalog).toEqual({ ok: true, value: catalogPayload().kinds });
     expect(readings.health).toEqual({ ok: true, value: stripPayload().providers });
     expect(readings.spend).toEqual({ ok: true, value: seededSpend() });
+    expect(readings.aliases).toEqual({ ok: true, value: seededAliases() });
     expect(readings.now).toBe(READ_AT);
   });
 

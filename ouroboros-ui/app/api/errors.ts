@@ -27,6 +27,15 @@ export type ErrorEnvelope = components["schemas"]["Error"];
 export const UNAUTHENTICATED_CODE = "unauthenticated";
 
 /**
+ * The one `401` that does not mean *sign in again*: revealing a credential needs a recent
+ * re-authentication, and `POST /api/v1/providers/{id}/reveal` asks for one with this code
+ * ([#223](https://github.com/NobuData/ouroboros/issues/223)). The session is live and the
+ * page is still the reader's; the answer is a challenge to act on in place — a password, or
+ * a fresh sign-in — carried in `details.methods`, never a wall.
+ */
+export const STEP_UP_REQUIRED_CODE = "step_up_required";
+
+/**
  * The `code` used when a failure carried no envelope this client could read.
  *
  * The `client_` prefix is the point: every code the service can answer with is named in
@@ -62,9 +71,18 @@ export class ApiError extends Error {
     super(message);
   }
 
-  /** Whether this is the one failure that means *sign in again* (`401`). */
+  /**
+   * Whether this is the one failure that means *sign in again* (`401`).
+   *
+   * A step-up challenge is a `401` by the contract's own design — the action asked for is
+   * *authenticate again* — but it is answered to a session the service still honours, and
+   * the page that asked is one the reader is still entitled to be on. Sending it to the
+   * login screen would turn a challenge the reveal dialog can answer into a sign-out, so it
+   * is the one `401` this reads as something else. `code` decides; the status alone does
+   * not.
+   */
   get isUnauthenticated(): boolean {
-    return this.status === 401;
+    return this.status === 401 && this.code !== STEP_UP_REQUIRED_CODE;
   }
 
   /**

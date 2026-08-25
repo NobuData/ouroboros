@@ -1,4 +1,5 @@
 import type {
+  ModelAlias,
   ModelOption,
   ProviderCapabilities,
   ProviderCatalog,
@@ -404,6 +405,50 @@ export function fakeConnection(over: Partial<ProviderConnection> = {}): Provider
   });
 }
 
+/** The Anthropic connection two seeded aliases resolve through — the delete-guard case. */
+export const SEEDED_ANTHROPIC_ID = "5eed000c-0000-4000-8000-000000000001";
+
+/**
+ * One registry alias, defaulting to one that resolves through the seeded Anthropic card.
+ *
+ * @param over What this case is about — its name, and which connection it points at.
+ * @returns The alias as `GET /api/v1/registry/aliases` serves it.
+ */
+export function modelAlias(over: Partial<ModelAlias> = {}): ModelAlias {
+  return {
+    id: "a11a5000-0000-4000-8000-000000000001",
+    alias: "coder-max",
+    enabled: true,
+    connection: { id: SEEDED_ANTHROPIC_ID, kind: "anthropic", displayName: "Anthropic Claude" },
+    modelId: "claude-fable-5",
+    params: {},
+    restrictions: {},
+    notes: null,
+    references: [],
+    updatedBy: null,
+    createdAt: "2026-06-12T09:00:00.000Z",
+    updatedAt: "2026-06-12T09:00:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * The seeded aliases — two resolving through the Anthropic card, so its delete is guarded and
+ * its switch-off asks; the same two names `provider-connections.integration-spec.ts` asserts.
+ *
+ * @returns The aliases, sorted by name the way the service serves them.
+ */
+export function seededAliases(): ModelAlias[] {
+  return [
+    modelAlias({ id: "a11a5000-0000-4000-8000-000000000001", alias: "coder-max" }),
+    modelAlias({
+      id: "a11a5000-0000-4000-8000-000000000002",
+      alias: "local-docs",
+      modelId: "claude-haiku-4-5",
+    }),
+  ];
+}
+
 /**
  * One month row, defaulting to the seed's Anthropic figure — `$412.80`.
  *
@@ -532,6 +577,7 @@ export function readings(over: Partial<ProvidersReadings> = {}): ProvidersReadin
     catalog: { ok: true, value: seededCatalog() },
     health: { ok: true, value: seededProviders() },
     spend: { ok: true, value: seededSpend() },
+    aliases: { ok: true, value: seededAliases() },
     models: seededModels(),
     now: READ_AT,
     ...over,

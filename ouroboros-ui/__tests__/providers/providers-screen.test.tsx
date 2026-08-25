@@ -57,7 +57,17 @@ vi.mock("@/app/providers/add-actions", () => ({
   addProvider: vi.fn(),
 }));
 vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/app/providers/key-actions", () => ({
+  revealCredential: vi.fn(),
+  rotateCredential: vi.fn(),
+  removeProvider: vi.fn(),
+  saveProviderAddress: vi.fn(),
+  reauthenticate: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/models/providers",
+}));
 
 const { ProvidersScreen } = await import("@/app/providers/providers-screen");
 

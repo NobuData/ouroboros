@@ -400,6 +400,21 @@ describe("a 401", () => {
     await expect(client.GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
     expect(onUnauthenticated).not.toHaveBeenCalled();
   });
+
+  it("is not raised for a step-up challenge, so the reveal dialog keeps it (#229)", async () => {
+    // `step_up_required` is a 401, but the session is live and the page is still the
+    // reader's. Sending it to the login handler would turn a challenge the dialog can answer
+    // into a sign-out. The client throws it to the caller like any other refusal.
+    const onUnauthenticated = vi.fn();
+    const { client } = clientOver(
+      [errorResponse(401, "step_up_required", "Confirm it's you.")],
+      { onUnauthenticated },
+    );
+
+    await expect(client.POST("/api/v1/providers/{id}/reveal", { params: { path: { id: "x" } }, body: {} }))
+      .rejects.toMatchObject({ status: 401, code: "step_up_required" });
+    expect(onUnauthenticated).not.toHaveBeenCalled();
+  });
 });
 
 describe("unwrap", () => {

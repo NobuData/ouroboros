@@ -38,7 +38,17 @@ vi.mock("@/app/providers/add-actions", () => ({
   addProvider: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "", details: {} } }),
 }));
 vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/app/providers/key-actions", () => ({
+  revealCredential: vi.fn(),
+  rotateCredential: vi.fn(),
+  removeProvider: vi.fn(),
+  saveProviderAddress: vi.fn(),
+  reauthenticate: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/models/providers",
+}));
 
 /** What the reader answers this case with. Its own suite is `data.test.ts`. */
 const readProviders = vi.fn();
