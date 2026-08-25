@@ -680,7 +680,7 @@ that roadmap's "Existing issues affected" section.
 | 121 | **CG.4** | ✅ [#582](https://github.com/NobuData/ouroboros/issues/582) | Registry dev seeds — mockup-21 parity | ouroboros-db | M | Y.4, CG.1, CG.3 |
 | 122 | **CH.1** | ✅ [#584](https://github.com/NobuData/ouroboros/issues/584) | Alias lifecycle API | ouroboros-rest | L | C.3, CG.1, CG.3 |
 | 123 | **CI.1** | [#591](https://github.com/NobuData/ouroboros/issues/591) | Registry route, subnav & page frame | ouroboros-ui | S | 5.3, D.5, AA.1 |
-| 124 | **Z.6** | [#199](https://github.com/NobuData/ouroboros/issues/199) | Routing integration tests | ouroboros-rest | M | Z.1, Z.5 |
+| 124 | **Z.6** | ✅ [#199](https://github.com/NobuData/ouroboros/issues/199) | Routing integration tests | ouroboros-rest | M | Z.1, Z.5 |
 | 125 | **AA.2** | [#201](https://github.com/NobuData/ouroboros/issues/201) | Routing matrix table | ouroboros-ui | L | Z.2, Z.5, AA.1 |
 | 126 | **AA.5** | [#204](https://github.com/NobuData/ouroboros/issues/204) | Escalation rules & spend cards | ouroboros-ui | M | Z.2, Z.5, AA.1 |
 | 127 | **AE.2** | [#228](https://github.com/NobuData/ouroboros/issues/228) | Provider cards | ouroboros-ui | L | AC.6, AE.1 |

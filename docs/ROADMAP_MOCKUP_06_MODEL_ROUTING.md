@@ -699,7 +699,7 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 | Z.3 | #196 | 🟢 Done | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
 | Z.4 | #197 | 🟢 Done | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate` shipped; the two consumer amendments wait on #106 and #145 | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest |
 | Z.5 | #198 | 🟢 Done | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
-| Z.6 | #199 | 🟡 Open | ouroboros-rest: [Z.6] Routing integration tests | Resolution matrices, save/reorder, rules, stats, isolation | mvp, routing, rest, ci | N (after Z.1–Z.5) | Y | M | ouroboros-rest |
+| Z.6 | #199 | 🟢 Done | ouroboros-rest: [Z.6] Routing integration tests | Resolution matrices, save/reorder, rules, stats, isolation | mvp, routing, rest, ci | N (after Z.1–Z.5) | Y | M | ouroboros-rest |
 
 ### Issue Z.1 — ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations)
 
@@ -1212,7 +1212,59 @@ by-provider ─▶ $412.80 · $96.40 · $54.10 · $0.00(zero-priced) · local sh
 
 ### Issue Z.6 — ouroboros-rest: [Z.6] Routing integration tests
 
-> **GitHub issue:** #199 · **Status:** 🟡 Open · **Parent epic:** #186
+> **GitHub issue:** #199 · **Status:** 🟢 Done · **Parent epic:** #186
+
+> **Shipped 2026-08-24.** Four Testcontainers suites in `ci/rest` —
+> [`matrix.integration-spec.ts`](../ouroboros-rest/src/modules/routing/matrix.integration-spec.ts),
+> [`persistence.integration-spec.ts`](../ouroboros-rest/src/modules/routing/persistence.integration-spec.ts),
+> [`isolation.integration-spec.ts`](../ouroboros-rest/src/modules/routing/isolation.integration-spec.ts)
+> and [`honesty.integration-spec.ts`](../ouroboros-rest/src/modules/routing/honesty.integration-spec.ts),
+> over a shared
+> [`workspace.fixture.ts`](../ouroboros-rest/src/modules/routing/workspace.fixture.ts) — plus
+> Z.3's loopback provider stub lifted into
+> [`provider.stub.fixture.ts`](../ouroboros-rest/src/modules/provider-health/provider.stub.fixture.ts)
+> so two suites can make opposite claims about the same code. **No production code changed**, which
+> is the point: 60 tests were added and every one of them passed against `main` unmodified.
+>
+> **The matrix is asserted as invariants, not as 480 expected chains.** `rules × health × floor ×
+> allow_local_fallback × cost cap` is 480 cells; they are resolved once in `beforeAll` — twice each,
+> for determinism — and the assertions are mockup 06's headline promises restated as properties that
+> must hold in *every* cell: the floor is never crossed by a kept hop, a breach refuses rather than
+> degrades, a route with local off never runs local, a `route_local` rule never leaves a cloud hop
+> running, an unusable provider is never kept and an **unchecked** one is never dropped. A failure
+> names the cell — `rules=none health=cloud-down floor=2 local=on cost=250` — so a regression reports
+> the one combination that broke. An expected-chain-per-cell table would have been written by
+> somebody who already knew which cells were interesting, which is the bug class this ticket exists
+> to catch.
+>
+> **The isolation census is read out of the running application, so the coverage claim cannot go
+> stale.** The criterion is *every routing endpoint, not a sample*, and a hand-maintained list
+> satisfies it exactly once. `SwaggerModule.createDocument` is asked what this Nest routes under
+> `/api/v1/routing` and the probe table is held to that set **in both directions** — verified by
+> adding an endpoint and watching the census fail by name. `routing/providers` is in the census
+> although `provider-health` serves it: it is a routing endpoint from every angle a client can see,
+> and a neighbouring module is exactly what a hand-written audit forgets. Naming a workspace one is
+> not in answers `404 tenant_not_found` on all ten, never `403` — the whole list asserted, because
+> one endpoint disagreeing with the other nine *is* the leak.
+>
+> **All four red-criteria were spot-verified by mutation, not asserted.**
+> `position > floorHopIndex` → `position > Number.MAX_SAFE_INTEGER` fails *the floor is never
+> crossed* on the first cell. `route_hops_alias_fk` re-declared `on delete cascade` — the refactor
+> that really happens, since it keeps the constraint's name and fails open — fails the retire
+> refusal; re-declared without its `organization_id` half, it fails the cross-workspace hop. Both
+> em-dash paths in `stats.ts` set to `0` fail the honesty suite, and they fail it as *two rows that
+> must differ now agree* rather than as a literal that stopped matching, which is the reading a
+> reviewer can act on.
+>
+> **A resolution contacts nothing, and the whole matrix is the evidence.** The bench's two local
+> connections point at listening loopback stubs that answer `200` to anything and record what they
+> were asked; after 960 resolutions across every health state, both recorded nothing. Z.3 proves the
+> *sweep* issues only listings; this is the same promise from routing's side — the passive-first
+> design would be worth little if a routing decision put an outbound request on the path of every
+> run.
+>
+> **Added runtime: 10.4s** (76.7s → 87.2s for the module's integration suite), against a budget of
+> 75s.
 
 
 - **Problem Statement:** Resolution matrices, revisioned saves, and stats math
@@ -1914,3 +1966,24 @@ Next in epic Z is **#199** ([Z.6] the integration suite), which now has all five
 exercise — and AA.2 (#201) and AA.5 (#204) have the numbers they were blocked on: the matrix's two
 columns are no longer em-dashes by construction, and the spend card arrives in the same payload
 rather than behind a second request.
+
+**#199** ([Z.6] the integration suite) has landed and **epic Z is complete.** It added no
+production code at all — 60 tests, every one green against `main` unmodified — which is the honest
+outcome for an insurance ticket and is also what makes the four *turns-red* criteria the real
+deliverable. Each was verified by mutation rather than asserted: neutering the floor comparison,
+re-declaring `route_hops_alias_fk` as a cascade, dropping its `organization_id` half, and setting
+both em-dash paths in `stats.ts` to `0`. All four are caught, and three of them are caught by a
+suite that names the cell or the constraint rather than a line number.
+
+**The two ideas worth carrying into the next test ticket are the invariant matrix and the census.**
+The resolution suite asserts 480 cells against mockup 06's promises rather than against 480
+expected chains, because an expected-value table is written by somebody who already knows which
+cells are interesting — and a routing bug is precisely the one that returns a *different
+valid-looking chain*. The isolation suite reads its endpoint list out of `SwaggerModule`, so
+*covers every routing endpoint* stays true after the next endpoint is added rather than being true
+on the day it was written; adding one and watching the census fail by name is how that was
+confirmed. `routing/providers` is in that census even though `provider-health` serves it.
+
+Epic AA is now the only thing between mockup 06 and a page: **#201** ([AA.2] the matrix table) is
+next, and every service claim it renders — the chains, the two stats columns, the health states,
+the spend card — is now covered by a suite that fails when the claim stops being true.

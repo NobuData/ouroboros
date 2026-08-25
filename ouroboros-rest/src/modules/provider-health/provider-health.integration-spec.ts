@@ -1,6 +1,3 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
-
 import type request from "supertest";
 
 import { ApiHarness } from "../../testing/harness.fixture";
@@ -8,6 +5,7 @@ import { SCHEMA_NAME } from "../db/schema";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { VaultService } from "../vault/vault.service";
 import { ProviderHealthService } from "./provider-health.service";
+import { ProviderStub } from "./provider.stub.fixture";
 import { TRAFFIC_KEY } from "./snapshot";
 
 /**
@@ -60,63 +58,6 @@ interface Space {
   id: string;
   slug: string;
   owner: Awaited<ReturnType<ApiHarness["signIn"]>>;
-}
-
-/** One request a provider stub received. */
-interface Received {
-  method: string | undefined;
-  url: string | undefined;
-  body: string;
-  headers: NodeJS.Dict<string | string[]>;
-}
-
-/** A provider that answers on loopback, and remembers what it was asked. */
-class ProviderStub {
-  private constructor(
-    private readonly server: Server,
-    readonly baseUrl: string,
-    /** Every request this stub was sent, in order — what the no-completions claim is read off. */
-    readonly received: readonly Received[],
-  ) {}
-
-  /**
-   * Start a stub answering every path with one JSON body.
-   *
-   * @param body - What to answer with, or a function of the path for a stub that serves two
-   *   routes.
-   * @returns The started stub.
-   */
-  static async start(body: (url: string) => unknown): Promise<ProviderStub> {
-    const received: Received[] = [];
-    const server = createServer((request: IncomingMessage, response: ServerResponse) => {
-      const chunks: Buffer[] = [];
-
-      request.on("data", (chunk: Buffer) => chunks.push(chunk));
-      request.on("end", () => {
-        received.push({
-          method: request.method,
-          url: request.url,
-          body: Buffer.concat(chunks).toString("utf8"),
-          headers: request.headers,
-        });
-
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify(body(request.url ?? "")));
-      });
-    });
-
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-
-    const { port } = server.address() as AddressInfo;
-
-    return new ProviderStub(server, `http://127.0.0.1:${port.toString()}`, received);
-  }
-
-  /** Stop answering — a daemon somebody turned off. */
-  async stop(): Promise<void> {
-    this.server.closeAllConnections();
-    await new Promise<void>((resolve) => this.server.close(() => resolve()));
-  }
 }
 
 describe("provider health, against a migrated database", () => {
