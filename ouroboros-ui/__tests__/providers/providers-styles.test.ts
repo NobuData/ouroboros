@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The properties of `app/providers/providers.css` that are agreements with something outside
- * it (#225, and the add-provider flow's rules since #231).
+ * it (#225, the add-provider flow's rules since #231, and the cards' since #228).
  *
  * The generic rule — no colour literal anywhere but the token sheet — is
  * `__tests__/styles.test.ts`'s, and it covers this sheet as it covers every other. What is
@@ -146,6 +146,53 @@ describe("the add-provider flow", () => {
   it("sizes the monogram and the tile grid in rem, so the font-size preference moves them", () => {
     expect(rule("\\.providers-catalog__monogram")).toMatch(/width:\s*[\d.]+rem/);
     expect(rule("\\.providers-catalog")).toMatch(/minmax\([\d.]+rem/);
+  });
+});
+
+describe("the provider cards", () => {
+  it("lays the grid out two abreast, collapsing to one at a rem breakpoint", () => {
+    // Responsive two-column → single (#228), and the breakpoint moves with the reader's
+    // font-size preference because it is rem rather than px.
+    expect(rule("\\.providers-grid")).toContain("repeat(2, minmax(0, 1fr))");
+    expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{\s*\.providers-grid\s*\{[^}]*minmax\(0, 1fr\)/);
+  });
+
+  it("tints each monogram from the token sheet's published triples, and never a mixed colour", () => {
+    // The mockup mixes its tints with `color-mix()`; here each tint is the hue's own
+    // `-line` / `-tint` tokens, which both palettes publish contrast for.
+    for (const [tint, hue] of [
+      ["model", "model"],
+      ["accent", "accent"],
+      ["warn", "warn"],
+      ["ok", "ok"],
+    ]) {
+      const declarations = rule(`\\.providers-card__monogram--${tint}`);
+
+      expect(declarations).toContain(`border-color: var(--${hue}-line)`);
+      expect(declarations).toContain(`background: var(--${hue}-tint)`);
+      expect(declarations).toContain(`color: var(--${hue})`);
+    }
+    expect(CODE).not.toContain("color-mix");
+  });
+
+  it("sizes the monogram in rem — the mockup's 42px square, following the preference", () => {
+    expect(rule("\\.providers-card__monogram")).toMatch(/width:\s*[\d.]+rem/);
+    expect(rule("\\.providers-card__monogram")).toMatch(/height:\s*[\d.]+rem/);
+  });
+
+  it("dims a switched-off card's regions and keeps its head at full ink", () => {
+    expect(CODE).toMatch(/\.providers-card--off > :not\(\.providers-card__head\)\s*\{[^}]*opacity/);
+  });
+
+  it("pushes the foot to the bottom so two cards' feet share a line", () => {
+    expect(rule("\\.providers-card__foot")).toContain("margin-top: auto");
+    expect(rule("\\.providers-card__foot")).toContain("border-top: 1px solid var(--line)");
+  });
+
+  it("draws the test note in the ok hue and the meta row in the faint mono the mockup uses", () => {
+    expect(rule("\\.providers-card__test-note")).toContain("color: var(--ok)");
+    expect(rule("\\.providers-card__meta")).toContain("font-family: var(--f-mono)");
+    expect(rule("\\.providers-card__meta")).toContain("color: var(--ink-faint)");
   });
 });
 

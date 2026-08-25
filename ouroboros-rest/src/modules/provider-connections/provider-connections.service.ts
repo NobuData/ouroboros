@@ -62,6 +62,7 @@ import {
 } from "../providers/provider.forms";
 import { isProviderConnectionInUse, providerConnectionInUse } from "../registry/registry.errors";
 import { RegistryService } from "../registry/registry.service";
+import { RoutingStatsRepository } from "../routing/stats.repository";
 import { pageOf, windowOf, type Page } from "../tenancy/pagination";
 import { zeroize } from "../vault/envelope";
 import { VaultService } from "../vault/vault.service";
@@ -107,6 +108,7 @@ import {
   type RevealResource,
 } from "./resources";
 import { RevealLimiter } from "./reveal.limiter";
+import { monthWindow, toProviderMonthlySpend, type ProviderMonthlySpendResource } from "./spend";
 import { STEP_UP_METHODS, STEP_UP_MAX_AGE_SECONDS, StepUpService } from "./step-up";
 
 /**
@@ -149,6 +151,9 @@ export class ProviderConnectionsService {
    * @param stepUp - The re-authentication reveal requires.
    * @param limiter - How often a credential may be asked for.
    * @param audit - The trail. Interim sink until AD.4 (#225) — see `connection.audit.ts`.
+   * @param stats - Z.5's aggregation over the ledger, for the cards' monthly meters
+   *   ([#228](https://github.com/NobuData/ouroboros/issues/228)). Borrowed rather than
+   *   re-implemented — see `spend.ts` on why one statement serves two windows.
    */
   constructor(
     private readonly connections: ProviderConnectionsRepository,
@@ -158,6 +163,7 @@ export class ProviderConnectionsService {
     private readonly stepUp: StepUpService,
     private readonly limiter: RevealLimiter,
     private readonly audit: ProviderAudit,
+    private readonly stats: RoutingStatsRepository,
   ) {}
 
   /**
@@ -193,13 +199,38 @@ export class ProviderConnectionsService {
       rows.map((row) => row.id),
     );
 
+    const names = await this.connections.adderNames(organizationId);
+
     const items = await Promise.all(
       rows.map(async (row) =>
-        connectionResource(row, await this.mask(organizationId, row.id, envelopes.get(row.id))),
+        connectionResource(
+          row,
+          await this.mask(organizationId, row.id, envelopes.get(row.id)),
+          adderNameOf(names, row),
+        ),
       ),
     );
 
     return pageOf(items, total, window);
+  }
+
+  /**
+   * This workspace's calendar-month spend, per provider kind — the cards' meters.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param now - The request instant. Injected so a suite can assert the month's boundary
+   *   without owning time.
+   * @returns The month and one row per kind with usage in it — see `spend.ts`. Empty
+   *   `providers` for a workspace that has spent nothing this month.
+   */
+  async spend(
+    organizationId: string,
+    now: Date = new Date(),
+  ): Promise<ProviderMonthlySpendResource> {
+    const window = monthWindow(now);
+    const rows = await this.stats.byProvider(organizationId, window.since);
+
+    return toProviderMonthlySpend(rows, window);
   }
 
   /**
@@ -215,7 +246,11 @@ export class ProviderConnectionsService {
     const row = await this.require(organizationId, connectionId);
     const envelope = await this.connections.envelopeOf(organizationId, connectionId);
 
-    return connectionResource(row, await this.mask(organizationId, connectionId, envelope));
+    return connectionResource(
+      row,
+      await this.mask(organizationId, connectionId, envelope),
+      await this.adderName(organizationId, row),
+    );
   }
 
   /**
@@ -296,7 +331,11 @@ export class ProviderConnectionsService {
       // anything this callback throws, so a statement that could throw *after* a successful
       // audit write would leave two rows describing one operation. The audit call is
       // therefore the last thing here that can fail, in all five operations.
-      const resource = connectionResource(row, maskOf(submission.secret));
+      const resource = connectionResource(
+        row,
+        maskOf(submission.secret),
+        await this.adderName(organizationId, row),
+      );
 
       await this.audit.added(contextFor(organizationId, row, actorId, at));
 
@@ -492,7 +531,11 @@ export class ProviderConnectionsService {
     }
 
     // Built before the event is recorded — see `add` for why that ordering is the rule.
-    const resource = connectionResource(swapped, maskOf(body.secret));
+    const resource = connectionResource(
+      swapped,
+      maskOf(body.secret),
+      await this.adderName(organizationId, swapped),
+    );
 
     await this.audit.rotated(contextFor(organizationId, swapped, actorId, at));
 
@@ -614,7 +657,11 @@ export class ProviderConnectionsService {
     if (fields.length === 0) {
       const envelope = await this.connections.envelopeOf(organizationId, connectionId);
 
-      return connectionResource(row, await this.mask(organizationId, connectionId, envelope));
+      return connectionResource(
+        row,
+        await this.mask(organizationId, connectionId, envelope),
+        await this.adderName(organizationId, row),
+      );
     }
 
     const updated = await this.connections.update(organizationId, connectionId, patch);
@@ -631,6 +678,7 @@ export class ProviderConnectionsService {
     const resource = connectionResource(
       updated,
       await this.mask(organizationId, connectionId, envelope),
+      await this.adderName(organizationId, updated),
     );
 
     await this.audit.updated(
@@ -734,6 +782,26 @@ export class ProviderConnectionsService {
 
       throw error;
     }
+  }
+
+  /**
+   * The display name of whoever a row's `added_by` names, or null.
+   *
+   * One read of the workspace's adders for one connection. The listing reads the same map
+   * once for a whole page ({@link adderNameOf}); the four single-connection answers read it
+   * here, after every other statement of theirs, so a suite recording statements sees the
+   * order it recorded before this field existed.
+   *
+   * @param organizationId - The workspace.
+   * @param row - The connection.
+   * @returns The name, or null when `added_by` is null or names nobody still on the table.
+   */
+  private async adderName(organizationId: string, row: ConnectionRow): Promise<string | null> {
+    if (row.added_by === null) {
+      return null;
+    }
+
+    return adderNameOf(await this.connections.adderNames(organizationId), row);
   }
 
   /**
@@ -919,6 +987,18 @@ export class ProviderConnectionsService {
       zeroize(plaintext);
     }
   }
+}
+
+/**
+ * The display name behind a row's `added_by`, looked up in a workspace's adders.
+ *
+ * @param names - `ProviderConnectionsRepository.adderNames`'s answer.
+ * @param row - The connection.
+ * @returns The name, or null when the row names nobody or names somebody the map does not
+ *   hold — a person deleted since, whose row keeps its provider (V015's set-null).
+ */
+function adderNameOf(names: ReadonlyMap<string, string>, row: ConnectionRow): string | null {
+  return row.added_by === null ? null : (names.get(row.added_by) ?? null);
 }
 
 /**

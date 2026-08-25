@@ -149,6 +149,31 @@ export class ProviderConnectionsRepository {
   }
 
   /**
+   * The display names of the people who connected this workspace's providers, by id.
+   *
+   * The card's *Added by Ken* ([#228](https://github.com/NobuData/ouroboros/issues/228)).
+   * Read from `"user"` through the connections rather than by a list of ids, and for a
+   * reason beyond tidiness: it keeps this statement under this file's rule — every read
+   * carries the workspace — and it can name nobody who did not add one of *this* workspace's
+   * providers, however the ids reached the caller. A person deleted since (V015's set-null)
+   * is simply absent from the map, and the resource then carries `null`.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @returns `"user".id` → `"user".name`, for every distinct adder still on the table.
+   */
+  async adderNames(organizationId: string): Promise<Map<string, string>> {
+    const rows = await this.database.db
+      .selectFrom("provider_connections")
+      .innerJoin("user", "user.id", "provider_connections.added_by")
+      .select(["user.id as id", "user.name as name"])
+      .distinct()
+      .where("provider_connections.organization_id", "=", organizationId)
+      .execute();
+
+    return new Map(rows.map((row) => [row.id, row.name]));
+  }
+
+  /**
    * One connection of this workspace.
    *
    * @param organizationId - The workspace, from the tenant context.

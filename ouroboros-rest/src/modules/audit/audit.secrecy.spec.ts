@@ -16,6 +16,7 @@ import { FakeModelProviderAdapter } from "../providers/adapters/fake.adapter.fix
 import { BASE_URL_FIELD } from "../providers/provider.config";
 import { ModelProviderRegistry } from "../providers/provider.registry";
 import type { RegistryService } from "../registry/registry.service";
+import type { RoutingStatsRepository } from "../routing/stats.repository";
 import { DENIED_WORDS } from "../vault/no-secret-logging";
 import { inMemoryVault } from "../vault/vault.fixture";
 import { LeaseAudit } from "../internal/lease.audit";
@@ -87,6 +88,7 @@ async function everythingThatCanBeRecorded() {
     update: jest.fn().mockResolvedValue(stored),
     swapCredential: jest.fn().mockResolvedValue(stored),
     remove: jest.fn().mockResolvedValue(true),
+    adderNames: jest.fn().mockResolvedValue(new Map()),
   } as unknown as jest.Mocked<ProviderConnectionsRepository>;
 
   const service = new ProviderConnectionsService(
@@ -97,6 +99,7 @@ async function everythingThatCanBeRecorded() {
     { satisfied: jest.fn().mockResolvedValue("password") } as unknown as StepUpService,
     new RevealLimiter(),
     new ProviderAudit(trail.service),
+    { byProvider: jest.fn().mockResolvedValue([]) } as unknown as RoutingStatsRepository,
   );
 
   // The envelope a reveal and a rotation open is a *real* one: the in-memory vault seals the

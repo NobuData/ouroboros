@@ -15,6 +15,7 @@ import {
 import { ModelProviderRegistry } from "../providers/provider.registry";
 import type { RegistryService } from "../registry/registry.service";
 import { FOREIGN_KEY_VIOLATION, PROVIDER_DEPENDENCY_CONSTRAINT } from "../registry/registry.errors";
+import type { ProviderSpendRow, RoutingStatsRepository } from "../routing/stats.repository";
 import { inMemoryVault } from "../vault/vault.fixture";
 import type { VaultService } from "../vault/vault.service";
 import { ProviderAudit } from "./connection.audit";
@@ -53,9 +54,14 @@ const PRINCIPAL = principalFor(FIXTURE_USER, FIXTURE_WORKSPACE);
 /** The submission mockup 07's vLLM card produces — a required address and an optional key. */
 const CONFIG = { [BASE_URL_FIELD]: "https://fake.invalid/v1", apiKey: FIXTURE_SECRET };
 
+/** The name the repository answers for {@link FIXTURE_ACTOR} — the card's *Added by Ken*. */
+const ADDER = "Ken Suenobu";
+
 interface Harness {
   service: ProviderConnectionsService;
   connections: jest.Mocked<ProviderConnectionsRepository>;
+  /** Z.5's aggregation, answering whatever a case queues for the month. */
+  stats: { byProvider: jest.Mock };
   adapter: FakeModelProviderAdapter;
   vault: VaultService;
   aliases: { dependentAliases: jest.Mock };
@@ -92,11 +98,13 @@ function harness(): Harness {
     update: jest.fn(),
     swapCredential: jest.fn(),
     remove: jest.fn(),
+    adderNames: jest.fn().mockResolvedValue(new Map([[FIXTURE_ACTOR, ADDER]])),
   } as unknown as jest.Mocked<ProviderConnectionsRepository>;
 
   const aliases = { dependentAliases: jest.fn().mockResolvedValue([]) };
   const stepUp = { satisfied: jest.fn().mockResolvedValue("password") };
   const limiter = new RevealLimiter();
+  const stats = { byProvider: jest.fn().mockResolvedValue([]) };
 
   // The trail, as records rather than log lines: AD.4 (#225) turned the interim sink into
   // `audit_events`, so what a suite asserts about is now the row that was written.
@@ -111,9 +119,21 @@ function harness(): Harness {
     stepUp as unknown as StepUpService,
     limiter,
     new ProviderAudit(trail.service),
+    stats as unknown as RoutingStatsRepository,
   );
 
-  return { service, connections, adapter, vault, aliases, stepUp, limiter, audited, validate };
+  return {
+    service,
+    connections,
+    adapter,
+    vault,
+    aliases,
+    stepUp,
+    limiter,
+    audited,
+    validate,
+    stats,
+  };
 }
 
 describe("adding a provider", () => {
@@ -181,6 +201,7 @@ describe("adding a provider", () => {
       subject.stepUp as unknown as StepUpService,
       subject.limiter,
       new ProviderAudit(recordingAudit().service),
+      subject.stats as unknown as RoutingStatsRepository,
     );
 
     await expect(
@@ -244,6 +265,7 @@ describe("adding a provider", () => {
       subject.stepUp as unknown as StepUpService,
       subject.limiter,
       new ProviderAudit(recordingAudit().service),
+      subject.stats as unknown as RoutingStatsRepository,
     );
 
     await service.add(FIXTURE_WORKSPACE, FIXTURE_ACTOR, {
@@ -325,6 +347,7 @@ describe("the catalog", () => {
             expect.objectContaining({ name: BASE_URL_FIELD, widget: "url", required: true }),
             expect.objectContaining({ name: "apiKey", widget: "secret", required: false }),
           ],
+          capabilities: { discovery: true, pull: false, entitlements: false, invocation: false },
         },
       ],
     });
@@ -382,6 +405,121 @@ describe("reading", () => {
     await expect(subject.service.read(FIXTURE_WORKSPACE, FIXTURE_CONNECTION)).rejects.toMatchObject(
       { response: { code: "provider_connection_not_found" } },
     );
+  });
+
+  it("names the adder on every listed connection, from one read of the workspace's adders", async () => {
+    // The card's *Added by Ken* (#228): a name rather than an id, resolved once per page rather
+    // than once per row — and resolved through the workspace, so the map can name nobody who
+    // did not connect one of its providers.
+    subject.connections.list.mockResolvedValue({
+      rows: [connectionRow(), connectionRow({ id: "5eed000c-0000-4000-8000-000000000002" })],
+      total: 2,
+    });
+    subject.connections.envelopesFor.mockResolvedValue(new Map());
+
+    const page = await subject.service.list(FIXTURE_WORKSPACE, {});
+
+    expect(page.items.map((item) => item.addedByName)).toEqual([ADDER, ADDER]);
+    expect(subject.connections.adderNames).toHaveBeenCalledTimes(1);
+    expect(subject.connections.adderNames).toHaveBeenCalledWith(FIXTURE_WORKSPACE);
+  });
+
+  it("carries a null name for a connection whose adder has since gone, and asks nothing for one nobody added", async () => {
+    // V015's set-null leaves `added_by` pointing at nobody; the card draws an em-dash for it,
+    // and must never be handed an id to draw instead.
+    subject.connections.find.mockResolvedValue(connectionRow());
+    subject.connections.envelopeOf.mockResolvedValue(null);
+    subject.connections.adderNames.mockResolvedValue(new Map());
+
+    await expect(
+      subject.service.read(FIXTURE_WORKSPACE, FIXTURE_CONNECTION),
+    ).resolves.toMatchObject({ addedBy: FIXTURE_ACTOR, addedByName: null });
+
+    subject.connections.find.mockResolvedValue(connectionRow({ added_by: null }));
+    subject.connections.adderNames.mockClear();
+
+    await expect(
+      subject.service.read(FIXTURE_WORKSPACE, FIXTURE_CONNECTION),
+    ).resolves.toMatchObject({ addedBy: null, addedByName: null });
+    expect(subject.connections.adderNames).not.toHaveBeenCalled();
+  });
+});
+
+describe("the monthly spend", () => {
+  let subject: Harness;
+
+  beforeEach(() => {
+    subject = harness();
+  });
+
+  /** A ledger row as Z.5's statement answers one — text where PostgreSQL keeps precision. */
+  const row = (overrides: Partial<ProviderSpendRow> = {}): ProviderSpendRow => ({
+    provider: "anthropic",
+    spend_cents: "41280.0000",
+    tokens: "24000000",
+    priced_calls: 15,
+    unpriced_calls: 0,
+    ...overrides,
+  });
+
+  it("asks Z.5's statement for the rows since the first of the UTC month, for this workspace", async () => {
+    // Decision P7: a cap is a calendar-month agreement, so the meter's numerator is measured
+    // from the first of the month — in UTC, the zone the seed places its rows in — and never
+    // from a rolling thirty days. The same statement the routing card uses, with one instant
+    // changed, so the two surfaces cannot come to differ about an invoice.
+    await subject.service.spend(FIXTURE_WORKSPACE, new Date("2026-08-23T09:59:41.882Z"));
+
+    expect(subject.stats.byProvider).toHaveBeenCalledWith(
+      FIXTURE_WORKSPACE,
+      new Date("2026-08-01T00:00:00.000Z"),
+    );
+  });
+
+  it("answers the month, and one row per kind in the contract's vocabulary", async () => {
+    subject.stats.byProvider.mockResolvedValue([
+      row(),
+      row({
+        provider: "ollama",
+        spend_cents: null,
+        tokens: "2100000",
+        priced_calls: 0,
+        unpriced_calls: 2,
+      }),
+    ]);
+
+    const spend = await subject.service.spend(
+      FIXTURE_WORKSPACE,
+      new Date("2026-08-23T09:59:41.882Z"),
+    );
+
+    expect(spend).toEqual({
+      month: { since: "2026-08-01T00:00:00.000Z", until: "2026-08-23T09:59:41.882Z" },
+      providers: [
+        {
+          kind: "anthropic",
+          local: false,
+          spendCents: 41_280,
+          tokens: 24_000_000,
+          pricedCalls: 15,
+          unpricedCalls: 0,
+        },
+        // Unpriced stays null — the meter's *no metered spend* — and never becomes a `$0.00`.
+        {
+          kind: "ollama",
+          local: true,
+          spendCents: null,
+          tokens: 2_100_000,
+          pricedCalls: 0,
+          unpricedCalls: 2,
+        },
+      ],
+    });
+  });
+
+  it("answers no rows at all for a workspace that has spent nothing this month", async () => {
+    await expect(
+      subject.service.spend(FIXTURE_WORKSPACE, new Date("2026-08-23T09:59:41.882Z")),
+    ).resolves.toMatchObject({ providers: [] });
   });
 });
 
@@ -596,6 +734,7 @@ describe("rotating a credential", () => {
       subject.stepUp as unknown as StepUpService,
       subject.limiter,
       new ProviderAudit(recordingAudit().service),
+      subject.stats as unknown as RoutingStatsRepository,
     );
 
     await expect(

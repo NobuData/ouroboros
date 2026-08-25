@@ -401,9 +401,13 @@ describe("the copy", () => {
     expect(ADD_CARD_NOTE).toMatch(/OpenAI, Google and Bedrock are on their way/);
   });
 
-  it("tells the done step's reader where the card is, and that the trail already has it", () => {
+  it("tells the done step's reader the card is in the grid, and that the trail has the add", () => {
+    // The grid re-reads when the dialog closes (AE.2, #228), so the sentence names where the
+    // card is rather than an issue number — and still names the trail, because somebody has
+    // just handed over a key.
     expect(addedNote("vLLM · lab cluster")).toContain("\"vLLM · lab cluster\"");
-    expect(addedNote("x")).toMatch(/#228/);
+    expect(addedNote("x")).toMatch(/in the grid/);
     expect(addedNote("x")).toMatch(/Audit log/);
+    expect(addedNote("x")).not.toMatch(/#228/);
   });
 });

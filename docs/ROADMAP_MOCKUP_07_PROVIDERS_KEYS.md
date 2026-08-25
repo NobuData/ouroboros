@@ -1325,7 +1325,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AE.1 | #227 | 🟢 Done | ouroboros-ui: [AE.1] Providers route, subnav & page frame | `/models/providers`, head + Audit log sheet, subnav live | mvp, providers, ui, design | N (after AA.1, AD.4, BA-D.5) | Y | S | ouroboros-ui |
-| AE.2 | #228 | 🟡 Open | ouroboros-ui: [AE.2] Provider cards | Card grid: monograms, pills, switches, meta, chips, meters, feet | mvp, providers, ui, design | N (after AE.1, AC.6) | Y | L | ouroboros-ui |
+| AE.2 | #228 | 🟢 Done | ouroboros-ui: [AE.2] Provider cards | Card grid: monograms, pills, switches, meta, chips, meters, feet | mvp, providers, ui, design | N (after AE.1, AC.6) | Y | L | ouroboros-ui, ouroboros-rest |
 | AE.3 | #229 | 🟡 Open | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
 | AE.4 | #230 | 🟡 Open | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui |
 | AE.5 | #231 | 🟢 Done | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui, ouroboros-rest |
@@ -1424,7 +1424,78 @@ Routing | Model registry·soon | ●Providers & keys | Spend·soon
 
 ### Issue AE.2 — ouroboros-ui: [AE.2] Provider cards
 
-> **GitHub issue:** #228 · **Status:** 🟡 Open · **Parent epic:** #214
+> **GitHub issue:** #228 · **Status:** 🟢 Done · **Parent epic:** #214
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-ui/app/providers/provider-card.tsx`](../ouroboros-ui/app/providers/provider-card.tsx)
+> — one component — drawn per connection by
+> [`app/providers/providers-screen.tsx`](../ouroboros-ui/app/providers/providers-screen.tsx)
+> from a model [`app/providers/cards.ts`](../ouroboros-ui/app/providers/cards.ts) composes,
+> read by [`app/providers/data.ts`](../ouroboros-ui/app/providers/data.ts), with the switch in
+> [`app/providers/provider-switch.tsx`](../ouroboros-ui/app/providers/provider-switch.tsx) over
+> [`app/providers/card-actions.ts`](../ouroboros-ui/app/providers/card-actions.ts). The empty
+> state that named this issue is gone from the page, and AE.5's done step now says the card is
+> in the grid.
+>
+> **Nothing branches on `kind`, and the proof is a test.** The catalog entry's `fields` decide
+> the key row — a `url` field is an address row under the adapter's own label, *Base URL* on the
+> vLLM card and *Host* on Ollama's; the `secret` field is the masked row — and
+> `capabilities.pull` decides chips against the pull-list slot. Whether a cap exists decides
+> between a meter and an em-dash. `provider-card.test.tsx` feeds the component a **sixth
+> connection of the conformance kit's fake adapter**, a kind no file under `app/providers/`
+> names, and reads a correct card off it with zero changes to card code; it also reads the two
+> components' source with comments stripped and fails on any of V015's six spellings. The
+> monogram's letters and tint are the one per-kind thing, and they are copy — a token map with
+> a fallback that derives an unknown kind's letters from its own name.
+>
+> **Three things the wire did not carry were added to `ouroboros-rest`, additively, on #231's
+> precedent** (0.30.12 → 0.30.13). Each catalog entry carries the adapter's own `capabilities()`
+> unchanged. Each connection carries `addedByName`, resolved at read time through the
+> workspace's own connections (`adderNames`, an inner join that can name nobody who did not
+> add one of *this* workspace's providers), so the meta row prints *Added by Ken* and never an
+> id. And `GET /api/v1/providers/spend` answers the **UTC calendar month's** spend per provider
+> kind — decision **P7**'s window, and the one `tests/seed.sql` asserts the meters against —
+> by handing Z.5's own `byProvider` statement the first of the month instead of thirty days
+> ago (`spend.ts`; one statement, two windows, no second opinion about an invoice). A row is a
+> provider *kind* because that is what the ledger records (F8), and a card says so rather than
+> splitting a number it cannot split.
+>
+> **The honesty rules are per region and each is a case.** The seeded meters read `$412.80 of
+> $600 cap` at 69%, `$64.10 of $120 cap` at 53%, and `$76.00 of $95 cap` on the warn meter at
+> exactly 80%. A cloud kind nobody priced reads *unpriced*; a local kind reads *no metered
+> spend* beside its on-box tokens — `2.1M tokens on-box` on the Ollama card — with no dollar
+> figure, because `$0.00` and *we do not meter this* are different facts (P8); real money on a
+> local kind is still printed. A null cap is an em-dash, not `$0`. The `priority tier` pill
+> exists only where discovery reported a `tier` — the seed's four Anthropic rows — and `· 4
+> seats` only where a check's detail carries a count, read by the spelling
+> `provider.entitlements.ts` writes; the seeded Copilot card therefore shows neither a seat
+> count nor the mockup's *degraded upstream*, because the stored status carries no error class
+> — the taxonomy's finer pills arrive with AE.4's live test, whose answer does. A connection
+> never used shows an em-dash, and every relative time is measured from the one instant the
+> reader took.
+>
+> **The switch round-trips.** The dashboard's optimistic switch to the line, over a Server
+> Action that `PATCH`es `{ enabled }` and nothing else; a refused press goes back with the
+> reason; a switched-off card dims and says under its switch that routing skips it — which is
+> the service's own rule (V018's `where enabled`) made visible. A member's switch renders in
+> its real position, read-only, with the reason. **Reveal**, **Rotate**, **Save**, **Test
+> connection** and the **Monthly cap** field are drawn as the controls they will be, inert with
+> #229, #230 and #232 named.
+>
+> **Both themes, rem, two columns to one.** The grid collapses at a rem breakpoint, so the 125%
+> step gives up its second column sooner; the monogram tints are the token sheet's published
+> `-line` / `-tint` triples rather than the mockup's `color-mix()`; both palettes render
+> byte-identical markup, and `providers-styles.test.ts` holds the sheet to each agreement.
+> **Not changed:** the health strip on `/models` still lists a switched-off connection (Z.3's
+> contract, *every connection*); what a disabled card leaves is routing's resolution, which
+> already skipped it.
+>
+> 24 new REST cases (catalog capabilities, adder names, the month window and rows, the route's
+> place before `:id`) and 107 new UI cases across nine suites: the decisions with the seeded
+> figures, the card's composition per kind and the fake sixth, the switch's window before and
+> after the answer, the action's posture, the reader's degradation per region, the screen's
+> grid in both palettes, the route handing the reader the gate's answer, the client's three new
+> calls, and the sheet's agreements.
 
 
 - **Problem Statement:** The five cards are the page: dense, per-adapter

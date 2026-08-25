@@ -19,7 +19,10 @@
  * lives in one named place is a sentence a reviewer can be pointed at, and the subline in
  * particular is one that is *not the UI's to choose*. The add flow that action opens
  * (AE.5, [#231](https://github.com/NobuData/ouroboros/issues/231)) keeps its own decisions
- * and copy in `app/providers/catalog.ts`, the same way.
+ * and copy in `app/providers/catalog.ts`, and the cards
+ * (AE.2, [#228](https://github.com/NobuData/ouroboros/issues/228)) keep theirs in
+ * `app/providers/cards.ts`, the same way. The empty state that named the cards while they
+ * were not on the page retired with them.
  *
  * ---------------------------------------------------------------------------
  * ### The rule this module exists to keep
@@ -304,16 +307,3 @@ export function providersSubline(workspace: string): string {
  */
 export const ADD_PROVIDER_LABEL = "+ Add provider";
 
-/** What the space below the tab set says it is waiting for. */
-export const PROVIDERS_NEXT_TITLE = "The provider cards arrive next";
-
-/**
- * …and which issues fill it. Named rather than mocked: a grid of invented cards would be the
- * one dishonest thing on a page built to be honest, and indistinguishable in a screenshot
- * from the real one AE.2 ships. The add-provider catalog (#231) is no longer in the list,
- * because it is on the page.
- */
-export const PROVIDERS_NEXT_NOTE =
-  "The five provider cards arrive with #228; key management with #229, test and discovery " +
-  "with #230, and caps, the security strip and the page's states with #232. The Audit log " +
-  "and + Add provider above are live.";

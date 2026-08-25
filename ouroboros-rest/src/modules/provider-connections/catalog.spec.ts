@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { PROVIDER_CONNECTION_KINDS } from "../db/schema";
-import { FakeModelProviderAdapter } from "../providers/adapters/fake.adapter.fixture";
+import {
+  FakeModelProviderAdapter,
+  FakePullingProviderAdapter,
+} from "../providers/adapters/fake.adapter.fixture";
 import { CARD_SHAPES } from "../providers/card.shapes.fixture";
 import { PROVIDER_CONFIG_DIALECT, type ProviderConfigSchema } from "../providers/provider.config";
 import { ModelProviderRegistry } from "../providers/provider.registry";
@@ -94,7 +97,12 @@ describe("the catalog derives from the registry", () => {
     (_kind, _drawn, shape) => {
       const entry = providerCatalog(registryOf()).kinds.find((one) => one.kind === shape.kind);
 
-      expect(entry).toEqual({ kind: shape.kind, title: shape.schema.title, fields: shape.fields });
+      expect(entry).toEqual({
+        kind: shape.kind,
+        title: shape.schema.title,
+        fields: shape.fields,
+        capabilities: { discovery: true, pull: false, entitlements: false, invocation: false },
+      });
     },
   );
 
@@ -144,6 +152,38 @@ describe("the fake adapter shows up unbidden", () => {
 
     providerCatalog(registryOf(fake));
     providerCatalog(registryOf(fake));
+
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the capabilities cross the wire with the fields", () => {
+  it("copies each adapter's own flags onto its entry, unchanged", () => {
+    // AE.2's (#228) card chooses the models region on `pull` and the refresh affordance on
+    // `discovery`, and it lives where neither the registry nor an adapter can be reached — so
+    // the flags travel as the adapter answers them, in the SPI's own vocabulary.
+    const pulling = new FakePullingProviderAdapter({ discovery: false, entitlements: true });
+    const entry = providerCatalog(new ModelProviderRegistry([pulling])).kinds.find(
+      (one) => one.kind === "ollama",
+    );
+
+    expect(entry?.capabilities).toEqual({
+      discovery: false,
+      pull: true,
+      entitlements: true,
+      invocation: false,
+    });
+  });
+
+  it("asks the adapter rather than remembering an answer", () => {
+    // Spied after the registry is built: the registry itself reads the flags once while it
+    // checks the adapter in, and what this holds is that the catalog asks again.
+    const fake = new FakeModelProviderAdapter();
+    const registry = registryOf(fake);
+    const spy = jest.spyOn(fake, "capabilities");
+
+    providerCatalog(registry);
+    providerCatalog(registry);
 
     expect(spy).toHaveBeenCalledTimes(2);
   });

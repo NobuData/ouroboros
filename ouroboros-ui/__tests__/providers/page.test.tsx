@@ -5,6 +5,7 @@ import { ADD_PROVIDER_READ_ONLY } from "@/app/providers/catalog";
 import { ADD_PROVIDER_LABEL, PROVIDERS_TITLE, providersSubline } from "@/app/providers/view";
 
 import { membership, sessionUser } from "../helpers/login";
+import { readings } from "../helpers/providers";
 
 /**
  * The providers page's route (#227).
@@ -36,7 +37,15 @@ vi.mock("@/app/providers/add-actions", () => ({
   readCatalog: () => Promise.resolve({ ok: true, entries: [], existing: [] }),
   addProvider: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "", details: {} } }),
 }));
+vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
+/** What the reader answers this case with. Its own suite is `data.test.ts`. */
+const readProviders = vi.fn();
+
+vi.mock("@/app/providers/data", () => ({
+  readProviders: (access: unknown) => readProviders(access),
+}));
 
 const Page = (await import("@/app/(app)/models/providers/page")).default;
 
@@ -48,6 +57,7 @@ const ACCESS = {
 
 beforeEach(() => {
   requireWorkspace.mockReset().mockResolvedValue(ACCESS);
+  readProviders.mockReset().mockResolvedValue(readings());
 });
 
 describe("the providers route", () => {
@@ -58,6 +68,16 @@ describe("the providers route", () => {
 
     expect(requireWorkspace).toHaveBeenCalledOnce();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(PROVIDERS_TITLE);
+  });
+
+  it("reads the cards through the reader, handing it what the gate returned", async () => {
+    // The route composes nothing itself: the gate's answer is the reader's precondition, and
+    // what the reader answers is what the grid draws — five seeded cards here.
+    render(await Page());
+
+    expect(readProviders).toHaveBeenCalledOnce();
+    expect(readProviders).toHaveBeenCalledWith(ACCESS);
+    expect(document.querySelectorAll(".providers-card")).toHaveLength(5);
   });
 
   it("draws the subline for the workspace the gate resolved", async () => {
@@ -110,9 +130,23 @@ describe("the providers route", () => {
 
   it("draws nothing at all when the gate redirects instead of returning", async () => {
     // `redirect()` signals by throwing, so a request with no session or no chosen workspace
-    // never reaches the screen.
+    // never reaches the screen — and never reaches the reader.
     requireWorkspace.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
     await expect(Page()).rejects.toThrow("NEXT_REDIRECT /login");
+    expect(readProviders).not.toHaveBeenCalled();
+  });
+
+  it("hands a member's page read-only switches as well as an inert opener", async () => {
+    requireWorkspace.mockResolvedValue({
+      ...ACCESS,
+      membership: membership({ roles: ["member"] }),
+    });
+
+    render(await Page());
+
+    for (const toggle of screen.getAllByRole("switch")) {
+      expect(toggle).toHaveAttribute("aria-disabled", "true");
+    }
   });
 });

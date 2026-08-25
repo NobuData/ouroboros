@@ -81,10 +81,10 @@ import "./providers.css";
  * never seen.
  *
  * **Done** — the connection's name and what happens next. It is a step rather than a closed
- * dialog because the card grid is AE.2's ([#228](https://github.com/NobuData/ouroboros/issues/228))
- * and is not on the page yet; closing over an empty state would leave a reader unsure whether
- * anything happened. **Done** closes and refreshes the route, so the grid re-reads the day it
- * exists.
+ * dialog because somebody has just handed over a key and deserves a sentence saying it took;
+ * **Done** closes and refreshes the route, so the grid (AE.2,
+ * [#228](https://github.com/NobuData/ouroboros/issues/228)) re-reads and the new card is on
+ * the page behind the dialog.
  *
  * ### A refusal keeps the form open, with the adapter's sentence under the field
  *

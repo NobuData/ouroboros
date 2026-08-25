@@ -1,10 +1,18 @@
 import type {
+  ModelOption,
+  ProviderCapabilities,
   ProviderCatalog,
   ProviderCatalogEntry,
   ProviderConnection,
   ProviderConnectionPage,
   ProviderFormField,
+  ProviderMonthlySpend,
+  ProviderMonthlySpendRow,
 } from "@/app/api/providers";
+import type { Reading } from "@/app/api/reading";
+import type { ProvidersReadings } from "@/app/providers/data";
+
+import { seededProviders } from "./models";
 
 /**
  * The add-provider flow's fixtures — the catalog as `GET /api/v1/providers/catalog` serves
@@ -18,7 +26,12 @@ import type {
  *
  * {@link fakeEntry} is the sixth, and it is the proof the ticket asks for: a kind no UI file
  * names, with a form that includes the one widget none of the five declares — a `select`, the
- * shape AF.3's Bedrock region will take. A dialog that draws it draws anything.
+ * shape AF.3's Bedrock region will take. A dialog that draws it draws anything — and, since
+ * AE.2 (#228), so does a card: {@link fakeConnection} is a connection of that kind, and the
+ * card suite renders it with the five seeded cards and zero card-code changes.
+ *
+ * The five cards themselves are {@link seededCards}, `R__dev_seed_providers.sql` row for row,
+ * with the month {@link seededSpend} and the models {@link seededModels} that seed writes.
  */
 
 /** Every optional keyword, explicitly unset — the shape the service answers. */
@@ -44,11 +57,22 @@ export function formField(
   return { required: false, ...NOTHING_SET, ...over };
 }
 
+/**
+ * An adapter's four flags, defaulting to what every cloud adapter answers.
+ *
+ * @param over What this kind is about — `pull` for Ollama, `entitlements` for Copilot.
+ * @returns The flags, all four present.
+ */
+export function capabilities(over: Partial<ProviderCapabilities> = {}): ProviderCapabilities {
+  return { discovery: true, pull: false, entitlements: false, invocation: false, ...over };
+}
+
 /** Mockup 07's Anthropic card: a masked key row and nothing else. */
 export function anthropicEntry(): ProviderCatalogEntry {
   return {
     kind: "anthropic",
     title: "Connect Anthropic",
+    capabilities: capabilities(),
     fields: [
       formField({
         name: "apiKey",
@@ -67,6 +91,7 @@ export function openaiCompatibleEntry(): ProviderCatalogEntry {
   return {
     kind: "openai_compatible",
     title: "Connect an OpenAI-compatible endpoint",
+    capabilities: capabilities(),
     fields: [
       formField({
         name: "baseUrl",
@@ -92,6 +117,7 @@ export function ollamaEntry(): ProviderCatalogEntry {
   return {
     kind: "ollama",
     title: "Connect an Ollama host",
+    capabilities: capabilities({ pull: true }),
     fields: [
       formField({
         name: "baseUrl",
@@ -111,6 +137,7 @@ export function copilotEntry(): ProviderCatalogEntry {
   return {
     kind: "copilot",
     title: "Connect GitHub Copilot",
+    capabilities: capabilities({ entitlements: true }),
     fields: [
       formField({
         name: "token",
@@ -130,6 +157,7 @@ export function cursorEntry(): ProviderCatalogEntry {
   return {
     kind: "cursor",
     title: "Connect Cursor",
+    capabilities: capabilities({ discovery: false }),
     fields: [
       formField({
         name: "apiKey",
@@ -158,6 +186,7 @@ export function fakeEntry(): ProviderCatalogEntry {
   return {
     kind: "custom",
     title: FAKE_TITLE,
+    capabilities: capabilities(),
     fields: [
       formField({
         name: "baseUrl",
@@ -206,6 +235,12 @@ export function catalogPayload(kinds: readonly ProviderCatalogEntry[] = seededCa
   return { kinds: [...kinds] };
 }
 
+/** The seed's owner, as `addedByName` spells them — the card's *Added by Ken*. */
+export const ADDER = "Ken Suenobu";
+
+/** The instant every card suite reads the page at — the seed's *last used 3m ago* is from here. */
+export const READ_AT = "2026-08-23T10:00:12.004Z";
+
 /**
  * One connection, defaulting to the seed's Anthropic one.
  *
@@ -224,6 +259,7 @@ export function connection(over: Partial<ProviderConnection> = {}): ProviderConn
     monthlyCapCents: 60_000,
     mask: "••••Xq4A",
     addedBy: "5eed0003-0000-4000-8000-000000000001",
+    addedByName: ADDER,
     lastCheckedAt: "2026-08-23T09:59:41.882Z",
     lastUsedAt: "2026-08-23T09:57:12.004Z",
     createdAt: "2026-06-12T16:20:00.000Z",
@@ -278,4 +314,226 @@ export function connectionPage(
   items: readonly ProviderConnection[] = seededConnections(),
 ): ProviderConnectionPage {
   return { items: [...items], total: items.length, limit: 100, offset: 0 };
+}
+
+/* ------------------------------------------------------------------------------ the cards */
+
+/**
+ * The five seeded cards, in the listing's order — by display name — with the seed's own
+ * columns: caps, notes, addresses, masks, and last-used instants measured from {@link READ_AT}.
+ *
+ * @returns Mockup 07's five connections.
+ */
+export function seededCards(): ProviderConnection[] {
+  return [
+    // last used 3m ago
+    connection({ lastUsedAt: "2026-08-23T09:57:12.004Z" }),
+    connection({
+      id: "5eed000c-0000-4000-8000-000000000002",
+      kind: "cursor",
+      displayName: "Cursor",
+      capabilityNote: "api.cursor.com · used for second-opinion reviews",
+      monthlyCapCents: 12_000,
+      mask: "••••9f2e",
+      // last used 26m ago
+      lastUsedAt: "2026-08-23T09:34:12.004Z",
+      createdAt: "2026-07-02T10:05:00.000Z",
+    }),
+    connection({
+      id: "5eed000c-0000-4000-8000-000000000003",
+      kind: "copilot",
+      displayName: "GitHub Copilot",
+      capabilityNote: "billed through GitHub org acme-robotics",
+      status: "error",
+      monthlyCapCents: 9_500,
+      mask: "••••7Kd2",
+      // last used 1h 12m ago
+      lastUsedAt: "2026-08-23T08:48:12.004Z",
+      createdAt: "2026-06-18T09:40:00.000Z",
+    }),
+    connection({
+      id: "5eed000c-0000-4000-8000-000000000005",
+      kind: "ollama",
+      displayName: "Ollama · workstation",
+      baseUrl: SEEDED_OLLAMA_URL,
+      capabilityNote: "zero-cost lane — used for docs & commit messages",
+      monthlyCapCents: null,
+      mask: null,
+      // last used 41s ago
+      lastUsedAt: "2026-08-23T09:59:31.004Z",
+      createdAt: "2026-05-14T08:55:00.000Z",
+    }),
+    connection({
+      id: "5eed000c-0000-4000-8000-000000000004",
+      kind: "openai_compatible",
+      displayName: "OpenAI-compatible · local vLLM",
+      baseUrl: SEEDED_VLLM_URL,
+      capabilityNote: "self-hosted · A100 ×2",
+      monthlyCapCents: null,
+      mask: null,
+      // last used 9m ago
+      lastUsedAt: "2026-08-23T09:51:12.004Z",
+      createdAt: "2026-05-30T14:12:00.000Z",
+    }),
+  ];
+}
+
+/** The id the fake adapter's connection carries — a sixth card no file names. */
+export const FAKE_CONNECTION_ID = "5eed000c-0000-4000-8000-000000000006";
+
+/**
+ * A connection of the fake adapter's kind — the sixth card, and the schema-driven proof.
+ *
+ * @param over What this case is about.
+ * @returns A `custom` connection at the fake's address, with its optional key stored.
+ */
+export function fakeConnection(over: Partial<ProviderConnection> = {}): ProviderConnection {
+  return connection({
+    id: FAKE_CONNECTION_ID,
+    kind: "custom",
+    displayName: "Fake provider · conformance kit",
+    baseUrl: "https://fake.invalid/v1",
+    capabilityNote: null,
+    status: "unknown",
+    monthlyCapCents: null,
+    mask: "••••cret",
+    lastUsedAt: null,
+    lastCheckedAt: null,
+    createdAt: "2026-08-20T08:00:00.000Z",
+    ...over,
+  });
+}
+
+/**
+ * One month row, defaulting to the seed's Anthropic figure — `$412.80`.
+ *
+ * @param over What this case is about.
+ * @returns The row as the contract serves it.
+ */
+export function spendRow(over: Partial<ProviderMonthlySpendRow> = {}): ProviderMonthlySpendRow {
+  return {
+    kind: "anthropic",
+    local: false,
+    spendCents: 41_280,
+    tokens: 24_000_000,
+    pricedCalls: 15,
+    unpricedCalls: 0,
+    ...over,
+  };
+}
+
+/**
+ * The seeded month — `tests/seed.sql`'s meters: `$412.80`, `$64.10`, `$76.00`, vLLM priced at
+ * nothing, and Ollama's 2.1M unpriced tokens.
+ *
+ * @returns The payload.
+ */
+export function seededSpend(): ProviderMonthlySpend {
+  return {
+    month: { since: "2026-08-01T00:00:00.000Z", until: READ_AT },
+    providers: [
+      spendRow(),
+      spendRow({ kind: "copilot", spendCents: 7_600, tokens: 5_000_000, pricedCalls: 6 }),
+      spendRow({ kind: "cursor", spendCents: 6_410, tokens: 4_400_000, pricedCalls: 3 }),
+      spendRow({
+        kind: "ollama",
+        local: true,
+        spendCents: null,
+        tokens: 2_100_000,
+        pricedCalls: 0,
+        unpricedCalls: 5,
+      }),
+      spendRow({
+        kind: "openai_compatible",
+        local: true,
+        spendCents: 0,
+        tokens: 2_600_000,
+        pricedCalls: 12,
+      }),
+    ],
+  };
+}
+
+/**
+ * One discovered model.
+ *
+ * @param over What this case is about.
+ * @returns The option as the contract serves it, with no tier unless the case says so.
+ */
+export function modelOption(over: Partial<ModelOption> = {}): ModelOption {
+  return {
+    modelId: "claude-fable-5",
+    display: "claude-fable-5",
+    discoveredAt: "2026-08-23T09:56:00.000Z",
+    meta: { context_tokens: 1_000_000 },
+    ...over,
+  };
+}
+
+/** The seed's four Anthropic models, each carrying the real `priority` signal. */
+export function anthropicModels(): ModelOption[] {
+  return ["claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"].map((id) =>
+    modelOption({
+      modelId: id,
+      display: id,
+      meta: { context_tokens: id === "claude-haiku-4-5" ? 200_000 : 1_000_000, tier: "priority" },
+    }),
+  );
+}
+
+/**
+ * Every seeded card's models, by connection id — the eleven `provider_models` rows.
+ *
+ * @returns The map the reader hands the screen.
+ */
+export function seededModels(): Map<string, Reading<readonly ModelOption[]>> {
+  const ok = (models: readonly ModelOption[]): Reading<readonly ModelOption[]> => ({
+    ok: true,
+    value: models,
+  });
+
+  return new Map([
+    ["5eed000c-0000-4000-8000-000000000001", ok(anthropicModels())],
+    [
+      "5eed000c-0000-4000-8000-000000000002",
+      ok([modelOption({ modelId: "composer-2", display: "cursor/composer-2" })]),
+    ],
+    [
+      "5eed000c-0000-4000-8000-000000000003",
+      ok([modelOption({ modelId: "gpt-5-codex", display: "copilot/gpt-5-codex" })]),
+    ],
+    [
+      "5eed000c-0000-4000-8000-000000000004",
+      ok([
+        modelOption({ modelId: "llama-4-maverick", display: "local/llama-4-maverick" }),
+        modelOption({ modelId: "deepseek-v3.2", display: "local/deepseek-v3.2" }),
+      ]),
+    ],
+    [
+      "5eed000c-0000-4000-8000-000000000005",
+      ok([
+        modelOption({ modelId: "qwen3-coder:32b", display: "qwen3-coder:32b" }),
+        modelOption({ modelId: "llama4:scout", display: "llama4:scout" }),
+        modelOption({ modelId: "phi4:14b", display: "phi4:14b" }),
+      ]),
+    ],
+  ]);
+}
+
+/**
+ * What the reader hands the screen, for the seeded workspace read cleanly.
+ *
+ * @param over What this case is about.
+ * @returns The readings.
+ */
+export function readings(over: Partial<ProvidersReadings> = {}): ProvidersReadings {
+  return {
+    connections: { ok: true, value: seededCards() },
+    catalog: { ok: true, value: seededCatalog() },
+    health: { ok: true, value: seededProviders() },
+    spend: { ok: true, value: seededSpend() },
+    models: seededModels(),
+    now: READ_AT,
+    ...over,
+  };
 }

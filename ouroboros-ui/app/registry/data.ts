@@ -16,11 +16,12 @@ import "server-only";
  * `GET /api/v1/routing/providers` is the only read this application has over
  * `provider_connections` today (`app/api/routing.ts`), and it answers exactly the question
  * this page asks: *which providers has this workspace connected*. Mockup 07's own management
- * surface will bring a richer read with AE.2
- * ([#228](https://github.com/NobuData/ouroboros/issues/228)); until it does, adding a second
- * client for the same table would be a second answer to one question. The health each row
- * carries is simply not read here — see `importSources` in `app/registry/view.ts` for why a
- * paused connection is still a connection.
+ * surface reads the same table through `app/api/providers.ts` since AE.2
+ * ([#228](https://github.com/NobuData/ouroboros/issues/228)), and this page deliberately keeps
+ * the strip: the cards need masks, caps and names, and a menu of import sources needs none
+ * of them — a second, heavier read for the same list would be a second answer to one
+ * question. The health each row carries is simply not read here — see `importSources` in
+ * `app/registry/view.ts` for why a paused connection is still a connection.
  *
  * {@link attempt} is `app/api/reading.ts`'s, shared with the dashboard and the routing page.
  * It catches an `ApiError` and nothing else, deliberately: a `401` reaches this layer as

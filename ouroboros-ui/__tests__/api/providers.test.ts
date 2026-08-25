@@ -5,7 +5,13 @@ import { ApiError } from "@/app/api/errors";
 import type { ProviderConnectionCreate } from "@/app/api/providers";
 
 import { clientAnswering, stubClient } from "../helpers/api";
-import { catalogPayload, connection, connectionPage } from "../helpers/providers";
+import {
+  anthropicModels,
+  catalogPayload,
+  connection,
+  connectionPage,
+  seededSpend,
+} from "../helpers/providers";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these
 // three answers.
@@ -146,5 +152,89 @@ describe("providers.add", () => {
       status: 403,
       code: "forbidden",
     });
+  });
+});
+
+describe("providers.spend", () => {
+  it("calls the month endpoint and returns the body itself", async () => {
+    const { client, requests } = clientAnswering(seededSpend());
+
+    const payload = await providers.spend(client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/providers/spend");
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+    expect(payload).toEqual(seededSpend());
+  });
+
+  it("hands an unpriced row back null, never zero", async () => {
+    // The card's *no metered spend* depends on the null surviving the trip.
+    const { client } = clientAnswering(seededSpend());
+
+    const payload = await providers.spend(client);
+
+    expect(payload.providers.find((row) => row.kind === "ollama")?.spendCents).toBeNull();
+  });
+});
+
+describe("providers.update", () => {
+  it("PATCHes the one connection with only what changes", async () => {
+    const stored = connection({ enabled: false });
+    const { client, requests } = clientAnswering(stored);
+
+    const payload = await providers.update(stored.id, { enabled: false }, client);
+
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/providers/${stored.id}`);
+    expect(requests[0]?.method).toBe("PATCH");
+    expect(await requests[0]?.json()).toEqual({ enabled: false });
+    expect(payload).toEqual(stored);
+  });
+
+  it("rejects with the service's own envelope for a role that may not write", async () => {
+    const { client } = clientAnswering(
+      { code: "forbidden", message: "Switching is for owners and admins.", details: {} },
+      403,
+    );
+
+    await expect(providers.update(connection().id, { enabled: false }, client)).rejects.toMatchObject(
+      { status: 403, code: "forbidden" },
+    );
+  });
+});
+
+describe("providers.models", () => {
+  it("asks the registry's model-options for the one connection, and returns the models", async () => {
+    const { client, requests } = clientAnswering({
+      connection: { id: connection().id, kind: "anthropic", displayName: "Anthropic Claude" },
+      models: anthropicModels(),
+    });
+
+    const models = await providers.models(connection().id, client);
+
+    expect(requests[0]?.url).toBe(
+      `http://rest.test:4000/api/v1/registry/aliases/model-options?connection=${connection().id}`,
+    );
+    expect(requests[0]?.method).toBe("GET");
+    expect(models).toEqual(anthropicModels());
+  });
+
+  it("hands back an empty list as an empty list — discovery not having run is a state", async () => {
+    const { client } = clientAnswering({
+      connection: { id: connection().id, kind: "anthropic", displayName: "Anthropic Claude" },
+      models: [],
+    });
+
+    await expect(providers.models(connection().id, client)).resolves.toEqual([]);
+  });
+
+  it("rejects with the service's envelope for a connection this workspace does not have", async () => {
+    const { client } = clientAnswering(
+      { code: "provider_connection_not_found", message: "no", details: {} },
+      404,
+    );
+
+    await expect(providers.models("5eed000c-0000-4000-8000-0000000000ff", client)).rejects.toMatchObject(
+      { status: 404, code: "provider_connection_not_found" },
+    );
   });
 });

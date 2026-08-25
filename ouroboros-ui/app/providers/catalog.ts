@@ -563,18 +563,18 @@ export const ADDED_TITLE = "Connected";
 /**
  * The done step's line.
  *
- * Honest about what the reader will see next: the card grid is AE.2's
- * ([#228](https://github.com/NobuData/ouroboros/issues/228)) and is not on the page yet, so a
- * dialog that simply closed would leave somebody looking at an empty state wondering whether
- * anything happened. The trail already records it, and says so.
+ * Says what the reader will see next: the grid re-reads when the dialog closes, so the new
+ * card is on the page by the time they are looking at it (AE.2,
+ * [#228](https://github.com/NobuData/ouroboros/issues/228)) — and the trail records the add
+ * besides, which is worth saying on the one screen where somebody has just handed over a key.
  *
  * @param displayName The heading the connection was given.
  * @returns The sentence.
  */
 export function addedNote(displayName: string): string {
   return (
-    `"${displayName}" is connected and switched on. Its card arrives with #228; ` +
-    "until then the Audit log above records it."
+    `"${displayName}" is connected and switched on. Its card is in the grid, ` +
+    "and the Audit log records the add."
   );
 }
 

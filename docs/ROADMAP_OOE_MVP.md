@@ -683,7 +683,7 @@ that roadmap's "Existing issues affected" section.
 | 124 | **Z.6** | ✅ [#199](https://github.com/NobuData/ouroboros/issues/199) | Routing integration tests | ouroboros-rest | M | Z.1, Z.5 |
 | 125 | **AA.2** | ✅ [#201](https://github.com/NobuData/ouroboros/issues/201) | Routing matrix table | ouroboros-ui | L | Z.2, Z.5, AA.1 |
 | 126 | **AA.5** | ✅ [#204](https://github.com/NobuData/ouroboros/issues/204) | Escalation rules & spend cards | ouroboros-ui | M | Z.2, Z.5, AA.1 |
-| 127 | **AE.2** | [#228](https://github.com/NobuData/ouroboros/issues/228) | Provider cards | ouroboros-ui | L | AC.6, AE.1 |
+| 127 | **AE.2** | ✅ [#228](https://github.com/NobuData/ouroboros/issues/228) | Provider cards | ouroboros-ui, ouroboros-rest | L | AC.6, AE.1 |
 | 128 | **AE.5** | [#231](https://github.com/NobuData/ouroboros/issues/231) | Add-provider flow & catalog | ouroboros-ui | M | AC.1, AD.2, AE.1 |
 | 129 | **CG.5** | [#583](https://github.com/NobuData/ouroboros/issues/583) | Registry constraints in ci/db | ouroboros-db, .github | XS | 3.6, CG.4 |
 | 130 | **CH.4** | [#587](https://github.com/NobuData/ouroboros/issues/587) | Import from provider | ouroboros-rest | M | AC.6, CH.1 |

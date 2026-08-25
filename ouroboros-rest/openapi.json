@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.30.12",
+    "version": "0.30.13",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -4438,6 +4438,7 @@
                       "monthlyCapCents": 60000,
                       "mask": "••••Xq4A",
                       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                      "addedByName": "Ken Suenobu",
                       "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                       "lastUsedAt": "2026-08-23T09:57:12.004Z",
                       "createdAt": "2026-06-12T16:20:00.000Z",
@@ -4454,6 +4455,7 @@
                       "monthlyCapCents": null,
                       "mask": null,
                       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                      "addedByName": "Ken Suenobu",
                       "lastCheckedAt": "2026-08-23T09:59:40.101Z",
                       "lastUsedAt": null,
                       "createdAt": "2026-05-14T08:55:00.000Z",
@@ -4568,6 +4570,7 @@
                   "monthlyCapCents": 60000,
                   "mask": "••••Xq4A",
                   "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                  "addedByName": "Ken Suenobu",
                   "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                   "lastUsedAt": null,
                   "createdAt": "2026-08-23T09:59:41.882Z",
@@ -4833,6 +4836,12 @@
                     {
                       "kind": "anthropic",
                       "title": "Connect Anthropic",
+                      "capabilities": {
+                        "discovery": true,
+                        "pull": false,
+                        "entitlements": false,
+                        "invocation": false
+                      },
                       "fields": [
                         {
                           "name": "apiKey",
@@ -4852,6 +4861,12 @@
                     {
                       "kind": "openai_compatible",
                       "title": "Connect an OpenAI-compatible endpoint",
+                      "capabilities": {
+                        "discovery": true,
+                        "pull": false,
+                        "entitlements": false,
+                        "invocation": false
+                      },
                       "fields": [
                         {
                           "name": "baseUrl",
@@ -4884,6 +4899,12 @@
                     {
                       "kind": "ollama",
                       "title": "Connect an Ollama host",
+                      "capabilities": {
+                        "discovery": true,
+                        "pull": true,
+                        "entitlements": false,
+                        "invocation": false
+                      },
                       "fields": [
                         {
                           "name": "baseUrl",
@@ -4948,6 +4969,95 @@
         }
       }
     },
+    "/api/v1/providers/spend": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "This workspace's calendar-month spend, per provider kind",
+        "description": "The provider cards' monthly meters\n([#228](https://github.com/NobuData/ouroboros/issues/228)) — *This month $412.80 of\n$600 cap* — as one row per provider kind with any usage in the current month, and the\nmonth itself.\n\n**A calendar month, not the routing page's rolling thirty days.** Roadmap decision\n**P7**: a cap is a figure agreed with a vendor for a billing period, so a meter that\nreads *of $600 cap* is only true if its numerator is measured from the first of the\nmonth. The month is the **UTC** one — the zone `R__dev_seed_providers.sql` places its\nrows in and `tests/seed.sql` asserts the meters against — and `month` is served with\nthe figures so a client can say which month it is drawing.\n\n**The statement is `GET /api/v1/routing/spend`'s, with one instant changed.** Both\nsurfaces sum the token-spend ledger per provider since an instant; publishing a second\naggregation for this page would be a second opinion about one invoice. What differs is\nthe shape: no local-row merge, no meter fractions — a cap belongs to a connection, so\nthe fraction is the card's to compute from its own cap — and `local` served per row.\n\n**A row is a provider kind, because that is what the ledger records** (decision\n**F8**). A workspace with two Ollama daemons has one Ollama figure, and a card is\nhonest about that by saying so rather than by splitting a number it cannot split.\n\n**Nothing is coalesced** (decision **M7**, and **P8** for this page). A kind whose\ncalls nobody has priced answers `spendCents: null` — a local card's *no metered spend*\n— and a kind priced at nothing answers `0`. A kind with no usage at all is absent, not\na row of zeros.\n\n**Any member may read it**, viewers included: what a workspace spends on models is\nsomething everybody in it may look at, which is the rule the routing card keeps.\n\n**The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this\npath, the session's active organization or `X-Ouro-Tenant` decides, and membership is\nchecked before the operation runs. No other workspace's usage can reach a total here.",
+        "operationId": "readProviderMonthlySpend",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The month, and its rows ordered by kind. `providers` is empty for a workspace that\nhas spent nothing this month — the cards' absence, never `$0.00` five times.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderMonthlySpend"
+                },
+                "example": {
+                  "month": {
+                    "since": "2026-08-01T00:00:00.000Z",
+                    "until": "2026-08-23T09:59:41.882Z"
+                  },
+                  "providers": [
+                    {
+                      "kind": "anthropic",
+                      "local": false,
+                      "spendCents": 41280,
+                      "tokens": 24000000,
+                      "pricedCalls": 15,
+                      "unpricedCalls": 0
+                    },
+                    {
+                      "kind": "copilot",
+                      "local": false,
+                      "spendCents": 7600,
+                      "tokens": 5000000,
+                      "pricedCalls": 6,
+                      "unpricedCalls": 0
+                    },
+                    {
+                      "kind": "ollama",
+                      "local": true,
+                      "spendCents": null,
+                      "tokens": 2100000,
+                      "pricedCalls": 0,
+                      "unpricedCalls": 2
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/providers/{id}": {
       "get": {
         "tags": [
@@ -4983,6 +5093,7 @@
                   "monthlyCapCents": null,
                   "mask": null,
                   "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                  "addedByName": "Ken Suenobu",
                   "lastCheckedAt": "2026-08-23T09:59:38.221Z",
                   "lastUsedAt": "2026-08-23T09:50:12.000Z",
                   "createdAt": "2026-05-30T14:12:00.000Z",
@@ -5091,6 +5202,7 @@
                   "monthlyCapCents": 75000,
                   "mask": "••••Xq4A",
                   "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                  "addedByName": "Ken Suenobu",
                   "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                   "lastUsedAt": "2026-08-23T09:57:12.004Z",
                   "createdAt": "2026-06-12T16:20:00.000Z",
@@ -5439,6 +5551,7 @@
                   "monthlyCapCents": 60000,
                   "mask": "••••7Kd2",
                   "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                  "addedByName": "Ken Suenobu",
                   "lastCheckedAt": "2026-08-23T10:04:02.510Z",
                   "lastUsedAt": "2026-08-23T09:57:12.004Z",
                   "createdAt": "2026-06-12T16:20:00.000Z",
@@ -12127,6 +12240,7 @@
           "monthlyCapCents",
           "mask",
           "addedBy",
+          "addedByName",
           "lastCheckedAt",
           "lastUsedAt",
           "createdAt",
@@ -12210,9 +12324,19 @@
               "string",
               "null"
             ],
-            "description": "The person who connected this provider — the card's *Added by Ken* — or `null`.\nNull is both *nobody in this table added it* and *the person who did has since\ngone*: deleting a person must not delete their workspace's provider.",
+            "description": "The person who connected this provider, or `null`. Null is both *nobody in this\ntable added it* and *the person who did has since gone*: deleting a person must\nnot delete their workspace's provider.",
             "examples": [
               "5eed0003-0000-4000-8000-000000000001"
+            ]
+          },
+          "addedByName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Their display name — the card's *Added by Ken*\n([#228](https://github.com/NobuData/ouroboros/issues/228)) — or `null` when\n`addedBy` is null or names nobody this installation still has. Resolved at read\ntime from `\"user\"`, so a person who renames themselves is named correctly on every\ncard; a client draws an em-dash for null and never the id.",
+            "examples": [
+              "Ken Suenobu"
             ]
           },
           "lastCheckedAt": {
@@ -12452,7 +12576,8 @@
         "required": [
           "kind",
           "title",
-          "fields"
+          "fields",
+          "capabilities"
         ],
         "properties": {
           "kind": {
@@ -12471,6 +12596,51 @@
               "$ref": "#/components/schemas/ProviderFormField"
             },
             "description": "The fields, in the order the form renders them — the schema's own property order,\nwhich is a contract rather than a coincidence (address first, key second, as\nmockup 07 draws the vLLM card)."
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/ProviderCapabilities"
+          }
+        }
+      },
+      "ProviderCapabilities": {
+        "type": "object",
+        "title": "ProviderCapabilities",
+        "description": "What an adapter can do — its own `capabilities()`, copied onto the catalog entry\nunchanged ([#228](https://github.com/NobuData/ouroboros/issues/228)). Four flags and\nall four always present: a total shape, so no client has to decide what an absent\nflag means.\n\nThe provider card is composed from these beside the fields: `pull` decides whether\nthe models region is a set of chips or Ollama's pull-list, `discovery` whether a\nrefresh affordance means anything (a spinner over a fixed catalog would be a lie\nabout where data comes from), and `entitlements` whether a seat count can ever\narrive in a check's detail. `invocation` is reserved for AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)) and is `false` on every\nadapter this build ships.",
+        "additionalProperties": false,
+        "required": [
+          "discovery",
+          "pull",
+          "entitlements",
+          "invocation"
+        ],
+        "properties": {
+          "discovery": {
+            "type": "boolean",
+            "description": "Whether discovering models asks the provider, or answers a fixed catalog.",
+            "examples": [
+              true
+            ]
+          },
+          "pull": {
+            "type": "boolean",
+            "description": "Whether the adapter can pull a model onto the machine serving it.",
+            "examples": [
+              false
+            ]
+          },
+          "entitlements": {
+            "type": "boolean",
+            "description": "Whether a live check also reports what the credential is entitled to.",
+            "examples": [
+              false
+            ]
+          },
+          "invocation": {
+            "type": "boolean",
+            "description": "Reserved for AF.2. `false` on every adapter this build ships.",
+            "examples": [
+              false
+            ]
           }
         }
       },
@@ -12488,6 +12658,120 @@
             "items": {
               "$ref": "#/components/schemas/ProviderCatalogEntry"
             }
+          }
+        }
+      },
+      "MonthWindow": {
+        "type": "object",
+        "title": "MonthWindow",
+        "description": "The calendar month the provider cards' meters are measured over\n([#228](https://github.com/NobuData/ouroboros/issues/228)): from the first instant\nof the request's **UTC** month to the request itself. Served with the figures so a\nclient draws *This month* for the month the service meant.",
+        "additionalProperties": false,
+        "required": [
+          "since",
+          "until"
+        ],
+        "properties": {
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The first instant of the month. Inclusive.",
+            "examples": [
+              "2026-08-01T00:00:00.000Z"
+            ]
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the figures were measured.",
+            "examples": [
+              "2026-08-23T09:59:41.882Z"
+            ]
+          }
+        }
+      },
+      "ProviderMonthlySpendRow": {
+        "type": "object",
+        "title": "ProviderMonthlySpendRow",
+        "description": "One provider kind's calendar month — what one card's meter is computed from.\n\n**`spendCents: 0` and `spendCents: null` are different facts**, exactly as on the\nrouting card: zero is calls priced at nothing, null is calls nobody priced. A local\ncard renders the null as *no metered spend* beside its on-box tokens and never as a\ndollar figure (decision **P8**).",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "local",
+          "spendCents",
+          "tokens",
+          "pricedCalls",
+          "unpricedCalls"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "The `token_usage.provider` value — a provider *kind*, which is how the ledger\nattributes spend. A card matches its own connection's `kind` against it.",
+            "examples": [
+              "anthropic"
+            ]
+          },
+          "local": {
+            "type": "boolean",
+            "description": "Whether the kind is served without a credential — the same list the worker lease\npolicy draws, published so a client keeps no list of its own.",
+            "examples": [
+              false
+            ]
+          },
+          "spendCents": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The month's priced spend in cents, or null when none of the kind's calls are\npriced. `41280` is `$412.80`.",
+            "examples": [
+              41280
+            ]
+          },
+          "tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "`tokens_in + tokens_out` over the month — the local cards' *2.1M tokens on-box*.",
+            "examples": [
+              24000000
+            ]
+          },
+          "pricedCalls": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many of the kind's calls carried a price.",
+            "examples": [
+              15
+            ]
+          },
+          "unpricedCalls": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many did not. Non-zero makes `spendCents` a lower bound.",
+            "examples": [
+              0
+            ]
+          }
+        }
+      },
+      "ProviderMonthlySpend": {
+        "type": "object",
+        "title": "ProviderMonthlySpend",
+        "description": "The provider cards' monthly meters: the month, and one row per kind with usage in it.\nA kind with no usage is **absent** rather than a row of zeros — the card draws an\nabsence, never `$0.00` for money nobody spent.",
+        "additionalProperties": false,
+        "required": [
+          "month",
+          "providers"
+        ],
+        "properties": {
+          "month": {
+            "$ref": "#/components/schemas/MonthWindow"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderMonthlySpendRow"
+            },
+            "description": "One row per kind with usage this month, ordered by kind."
           }
         }
       },

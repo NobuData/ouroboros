@@ -1562,9 +1562,10 @@ cards are drawn from, over V015's `provider_connections`, and the surface `provi
 deliberately left free by naming its own route `routing/providers`.
 
 ```
-GET    /api/v1/providers/catalog    the registry, as forms — one entry per kind · every member
+GET    /api/v1/providers/catalog    the registry, as forms + capabilities — one entry per kind · every member
+GET    /api/v1/providers/spend      the UTC calendar month's spend per kind — the cards' meters · every member
 POST   /api/v1/providers            schema ─▶ live validate ─▶ seal ─▶ store   ✗ = nothing stored
-GET    /api/v1/providers            ••••Xq4A, computed server-side · every member
+GET    /api/v1/providers            ••••Xq4A + the adder's name, computed server-side · every member
 GET    /api/v1/providers/{id}       the same, for one
 POST   /api/v1/providers/{id}/reveal   rate limit ─▶ step-up ─▶ open ─▶ audit · no-store
 POST   /api/v1/providers/{id}/rotate   validate NEW ─▶ one conditional UPDATE ─▶ old retired
@@ -1578,7 +1579,22 @@ and the fields `provider.forms.ts` derives from it — so mockup 07's **Browse c
 its tiles from what this build can actually connect, and a new adapter is in the catalog the
 day it is registered. `src/modules/provider-connections/catalog.ts` is one total function over
 the registry with no provider kind in it, and its spec registers the conformance kit's fake
-under `custom` to prove the point.
+under `custom` to prove the point. Since AE.2 ([#228](https://github.com/NobuData/ouroboros/issues/228))
+each entry also carries the adapter's own `capabilities()`, unchanged: the provider card is
+composed from the same two answers the SPI gives core code — the fields decide the key row,
+`pull` decides whether the models region is chips or Ollama's pull-list — and the card lives
+where neither the registry nor an adapter can be reached.
+
+**The cards' meters are the routing card's statement over a different window** ([#228](https://github.com/NobuData/ouroboros/issues/228),
+decision **P7**). `GET /api/v1/providers/spend` answers the current **UTC calendar month**'s
+spend per provider kind — the window a cap is agreed over, and the one `tests/seed.sql`
+asserts the seeded meters against — by handing `RoutingStatsRepository.byProvider` the first
+of the month instead of thirty days ago. `src/modules/provider-connections/spend.ts` is the
+month's boundary and the row mapping; nothing there coalesces, so an unpriced kind stays
+`null` (a local card's *no metered spend*) and a kind priced at nothing stays `0`. Each
+listed connection also carries `addedByName`, resolved at read time through the workspace's
+own connections (`ProviderConnectionsRepository.adderNames`) so a card prints *Added by Ken*
+and never an id.
 
 **Every acceptance criterion is a claim about *order*, so the order is the design.** `add`
 asks the adapter before it seals and before it inserts — so *a bad key is never stored
