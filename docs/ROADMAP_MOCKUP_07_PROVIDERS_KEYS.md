@@ -1326,7 +1326,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AE.1 | #227 | 🟢 Done | ouroboros-ui: [AE.1] Providers route, subnav & page frame | `/models/providers`, head + Audit log sheet, subnav live | mvp, providers, ui, design | N (after AA.1, AD.4, BA-D.5) | Y | S | ouroboros-ui |
 | AE.2 | #228 | 🟢 Done | ouroboros-ui: [AE.2] Provider cards | Card grid: monograms, pills, switches, meta, chips, meters, feet | mvp, providers, ui, design | N (after AE.1, AC.6) | Y | L | ouroboros-ui, ouroboros-rest |
-| AE.3 | #229 | 🟡 Open | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
+| AE.3 | #229 | 🟢 Done | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
 | AE.4 | #230 | 🟡 Open | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui |
 | AE.5 | #231 | 🟢 Done | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui, ouroboros-rest |
 | AE.6 | #232 | 🟡 Open | ouroboros-ui: [AE.6] Caps, security strip & states | Cap fields + warn meters, truthful strip, empty/read-only/error states | mvp, providers, ui, design | N (after AE.2–AE.5, AD.5) | Y | M | ouroboros-ui |
@@ -1529,7 +1529,49 @@ This month $412.80 of $600 ▓▓▓▓▓▓▓░░░   [Test connection] �
 
 ### Issue AE.3 — ouroboros-ui: [AE.3] Key management flows
 
-> **GitHub issue:** #229 · **Status:** 🟡 Open · **Parent epic:** #214
+> **GitHub issue:** #229 · **Status:** 🟢 Done · **Parent epic:** #214
+
+> **Shipped 2026-08-25.**
+> Five client islands on AE.2's server-rendered card, over one `"use server"` module and one
+> pure-copy module:
+> [`key-row.tsx`](../ouroboros-ui/app/providers/key-row.tsx) (Reveal + Rotate/Save),
+> [`step-up-dialog.tsx`](../ouroboros-ui/app/providers/step-up-dialog.tsx),
+> [`secret-dialog.tsx`](../ouroboros-ui/app/providers/secret-dialog.tsx),
+> [`address-row.tsx`](../ouroboros-ui/app/providers/address-row.tsx) and
+> [`card-menu.tsx`](../ouroboros-ui/app/providers/card-menu.tsx), plus the switch-off
+> confirmation folded into [`provider-switch.tsx`](../ouroboros-ui/app/providers/provider-switch.tsx).
+> The server hops are [`key-actions.ts`](../ouroboros-ui/app/providers/key-actions.ts); every
+> sentence and refusal-to-sentence mapping is [`keys.ts`](../ouroboros-ui/app/providers/keys.ts).
+> **No REST or contract change** — AD.2's reveal/rotate/delete and the registry's aliases were
+> already in the generated client, so this is a pure `ouroboros-ui` ticket (0.45.0 → 0.46.0).
+>
+> **The rails are made visible, not trusted silently (decision P4).** Reveal is
+> `masked → step-up → shown → masked`: a `401 step_up_required` is the one `401`
+> [`app/api/errors.ts`](../ouroboros-ui/app/api/errors.ts) refuses to read as a session gone —
+> it is a challenge to answer in place, drawn as a dialog offering a password or a fresh
+> sign-in (a sign-out with the providers page as its return-to; the only method a GitHub-only
+> account has). A revealed value carries the service's own `expiresAt` as a countdown (off the
+> shell clock, one interval per page), a visible audited-notice, and a copy button that claims
+> nothing about the clipboard — and it **auto-masks on the timer and on navigating away**, by
+> clearing the value from state rather than hiding it. A wrong password answers exactly as an
+> absent one, so the dialog can only re-challenge.
+>
+> **Rotate renders its state machine honestly**, which is the ticket's own criterion: a failed
+> validation stands *your existing key is still active* beside the provider's reason, not a
+> toast, because the service verifies before the one conditional swap and the old key is
+> genuinely still live. The address save is the same discipline (a bad endpoint does not
+> overwrite a working one, and the row says the working address is unchanged), and delete
+> renders AD.2's `409` as a dialog naming the dependent aliases with a link into routing. The
+> switch-off borrows that guard, because disabling a connection routes resolve through is a
+> deletion for a running loop. A **member sees none of these affordances**; the API is the
+> enforcer behind the presentation.
+>
+> **The card stays kind-free.** The key row, the address row and the pull-list are still
+> composed from the catalog entry, so `provider-card.test.tsx`'s sixth fake-adapter connection
+> renders every new control with zero card-code changes. 90+ new UI cases across nine suites:
+> `keys`, `key-actions`, `key-row`, `secret-dialog`, `step-up-dialog`, `address-row`,
+> `card-menu`, the switch's new confirmation, the three new client calls, and the step-up
+> `401`'s exemption from the login redirect. E2e certification is AE.7's (#233).
 
 
 - **Problem Statement:** Reveal and Rotate are security-critical UX: step-up

@@ -14,6 +14,7 @@ import {
   capFigure,
   capValue,
   cardModel,
+  dependentsOf,
   meterLine,
   meterTone,
   metaRow,
@@ -40,6 +41,7 @@ import {
   copilotEntry,
   fakeConnection,
   fakeEntry,
+  modelAlias,
   modelOption,
   ollamaEntry,
   openaiCompatibleEntry,
@@ -432,6 +434,7 @@ describe("the whole card", () => {
       health,
       spend: seededSpend().providers[0],
       models: { ok: true, value: anthropicModels() },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -449,6 +452,7 @@ describe("the whole card", () => {
       models: { kind: "chips", models: anthropicModels(), tiers: ["priority"] },
       meter: { figure: "$412.80", note: "of $600 cap", fraction: 41_280 / 60_000, tone: "accent" },
       cap: "$600",
+      dependents: { ok: true, value: [] },
     });
   });
 
@@ -461,6 +465,7 @@ describe("the whole card", () => {
       health: null,
       spend: null,
       models: { ok: true, value: [modelOption({ modelId: "fake/small", display: "Fake Small" })] },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -485,6 +490,7 @@ describe("the whole card", () => {
       health: null,
       spend: null,
       models: null,
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -502,10 +508,62 @@ describe("the whole card", () => {
       health: provider({ detail: "200 · 4 seats" }),
       spend: spendRow({ kind: "copilot", spendCents: 7_600 }),
       models: { ok: true, value: [] },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
     expect(model.meter.note).toBe("of $95 cap · 4 seats");
     expect(model.pillDetail).toBe("200 · 4 seats");
+  });
+});
+
+describe("the dependents", () => {
+  const ID = "5eed000c-0000-4000-8000-000000000001";
+
+  it("names the aliases that resolve through the connection, sorted", () => {
+    const dependents = dependentsOf(
+      {
+        ok: true,
+        value: [
+          modelAlias({ alias: "local-docs", connection: { id: ID, kind: "anthropic", displayName: "A" } }),
+          modelAlias({ alias: "coder-max", connection: { id: ID, kind: "anthropic", displayName: "A" } }),
+        ],
+      },
+      ID,
+    );
+
+    expect(dependents).toEqual({ ok: true, value: ["coder-max", "local-docs"] });
+  });
+
+  it("counts a switched-off alias, because the foreign key does not read enabled", () => {
+    const dependents = dependentsOf(
+      { ok: true, value: [modelAlias({ alias: "paused", enabled: false, connection: { id: ID, kind: "anthropic", displayName: "A" } })] },
+      ID,
+    );
+
+    expect(dependents).toEqual({ ok: true, value: ["paused"] });
+  });
+
+  it("ignores an alias that resolves through another connection, or through none", () => {
+    const dependents = dependentsOf(
+      {
+        ok: true,
+        value: [
+          modelAlias({ alias: "elsewhere", connection: { id: "other", kind: "cursor", displayName: "B" } }),
+          modelAlias({ alias: "unbound", connection: null }),
+          modelAlias({ alias: "mine", connection: { id: ID, kind: "anthropic", displayName: "A" } }),
+        ],
+      },
+      ID,
+    );
+
+    expect(dependents).toEqual({ ok: true, value: ["mine"] });
+  });
+
+  it("passes a failed read through, so the card can say the routes could not be checked", () => {
+    expect(dependentsOf({ ok: false, reason: "the registry is away" }, ID)).toEqual({
+      ok: false,
+      reason: "the registry is away",
+    });
   });
 });

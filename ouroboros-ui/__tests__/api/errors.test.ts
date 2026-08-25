@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ApiError,
+  STEP_UP_REQUIRED_CODE,
   UNAUTHENTICATED_CODE,
   UNREADABLE_ERROR_CODE,
   isApiError,
@@ -159,6 +160,23 @@ describe("ApiError.isUnauthenticated", () => {
     );
 
     expect(forbidden.isUnauthenticated).toBe(false);
+  });
+
+  it("is false for the one 401 that is a step-up challenge, so the reveal dialog keeps it", async () => {
+    // `step_up_required` is a 401 by the contract's own design — the action asked for is
+    // *authenticate again* — but the session is live and the page is still the reader's.
+    // Reading it as *session gone* would turn a challenge into a sign-out (AE.3, #229).
+    const challenge = await ApiError.fromResponse(
+      jsonResponse(401, {
+        code: STEP_UP_REQUIRED_CODE,
+        message: "Revealing a credential needs a recent re-authentication.",
+        details: { methods: ["session", "password"], maxAgeSeconds: 300 },
+      }),
+    );
+
+    expect(challenge.status).toBe(401);
+    expect(challenge.code).toBe(STEP_UP_REQUIRED_CODE);
+    expect(challenge.isUnauthenticated).toBe(false);
   });
 });
 

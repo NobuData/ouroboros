@@ -1,24 +1,23 @@
 import { Button, Card, Chip, Meter, TextField, cx } from "@/app/ui";
 
+import { AddressRow } from "./address-row";
+import { CardMenu } from "./card-menu";
 import {
   CAP_LABEL,
   CAP_SOON,
   type CardModel,
   DETECTED_LABEL,
-  KEY_ACTIONS_SOON,
   MODELS_LABEL,
   type ModelsRegion,
   type MonogramTint,
   NO_MODELS,
   PULL_SOON,
-  REVEAL,
-  ROTATE,
-  SAVE_KEY,
   TEST_CONNECTION,
   TEST_SOON,
   THIS_MONTH,
   tierLabel,
 } from "./cards";
+import { KeyRow } from "./key-row";
 import { ProviderSwitch } from "./provider-switch";
 
 import "./providers.css";
@@ -37,14 +36,19 @@ import "./providers.css";
  *
  * ### What is live, and what is honestly not
  *
- * The **switch** persists (`provider-switch.tsx`). Everything else that acts on the mockup —
- * **Reveal**, **Rotate**, **Save**, **Test connection**, the **Monthly cap** field — belongs
- * to AE.3, AE.4 and AE.6, and each is drawn as the control it will be, inert with the issue
- * named (design system § 3.5): a card with the controls missing would look like a card with
- * fewer affordances, and a card with dead ones would look broken.
+ * The **switch** persists (`provider-switch.tsx`), and since AE.3
+ * ([#229](https://github.com/NobuData/ouroboros/issues/229)) the **key row** reveals,
+ * rotates and saves (`key-row.tsx`), the **address** validates on save (`address-row.tsx`),
+ * and the head's **overflow menu** deletes behind the dependency guard (`card-menu.tsx`).
+ * What is still drawn inert with its issue named (design system § 3.5): **Test connection**
+ * (AE.4) and the **Monthly cap** field (AE.6) — a card with dead controls looks broken and a
+ * card missing them looks like it has fewer affordances, so each is the control it will be.
  *
- * A Server Component, with the switch the one Client Component inside it. Every figure
- * arrives already decided, so this file is a description of a card.
+ * A Server Component. The controls that write — the switch, the key row, the address row and
+ * the menu — are its Client Component islands, each handed the decided model and a
+ * `mayAdminister` boolean; a member is handed the same card with those islands drawn
+ * read-only or absent, never a different card. Every figure arrives already decided, so this
+ * file is a description of a card.
  */
 
 /**
@@ -102,51 +106,27 @@ export function ProviderCard({ model, mayAdminister }: ProviderCardProps) {
           {model.pill.label}
         </Chip>
         <ProviderSwitch
+          dependents={model.dependents}
           displayName={model.name}
           enabled={model.enabled}
           id={model.id}
           mayAdminister={mayAdminister}
         />
+        {/* The overflow menu is an administrator's affordance: a member sees none of these. */}
+        {mayAdminister && <CardMenu connectionId={model.id} displayName={model.name} />}
       </header>
 
       {model.address !== null && (
-        <TextField
-          id={`provider-${model.id}-address`}
-          label={model.address.label}
-          mono
-          readOnly
-          value={model.address.value}
-        />
+        <AddressRow address={model.address} connectionId={model.id} mayAdminister={mayAdminister} />
       )}
 
       {model.secret !== null && (
-        <div className="providers-card__key-row">
-          <TextField
-            className="providers-card__key"
-            id={`provider-${model.id}-key`}
-            // The mockup's key row has no visible label; the adapter's own title still names
-            // the control for a screen reader.
-            label={<span className="sr-only">{model.secret.label}</span>}
-            mono
-            placeholder={model.secret.placeholder ?? undefined}
-            readOnly
-            value={model.secret.mask ?? ""}
-          />
-          {model.secret.mask === null ? (
-            <Button reason={KEY_ACTIONS_SOON} size="sm">
-              {SAVE_KEY}
-            </Button>
-          ) : (
-            <>
-              <Button reason={KEY_ACTIONS_SOON} size="sm">
-                {REVEAL}
-              </Button>
-              <Button reason={KEY_ACTIONS_SOON} size="sm">
-                {ROTATE}
-              </Button>
-            </>
-          )}
-        </div>
+        <KeyRow
+          connectionId={model.id}
+          displayName={model.name}
+          mayAdminister={mayAdminister}
+          secret={model.secret}
+        />
       )}
 
       <p className="providers-card__meta">

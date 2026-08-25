@@ -10,6 +10,8 @@ import {
   catalogPayload,
   connection,
   connectionPage,
+  modelAlias,
+  seededAliases,
   seededSpend,
 } from "../helpers/providers";
 
@@ -236,5 +238,146 @@ describe("providers.models", () => {
     await expect(providers.models("5eed000c-0000-4000-8000-0000000000ff", client)).rejects.toMatchObject(
       { status: 404, code: "provider_connection_not_found" },
     );
+  });
+});
+
+describe("providers.reveal", () => {
+  it("POSTs a password when given one, and returns the credential the service handed back", async () => {
+    const revealed = {
+      connectionId: connection().id,
+      value: "sk-ant-api03-not-a-real-key-Xq4A",
+      expiresAt: "2026-08-23T10:00:41.882Z",
+    };
+    const { client, requests } = clientAnswering(revealed);
+
+    const payload = await providers.reveal(connection().id, { password: "hunter2" }, client);
+
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/providers/${connection().id}/reveal`);
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual({ password: "hunter2" });
+    expect(payload).toEqual(revealed);
+  });
+
+  it("POSTs an empty body when leaning on a recent session", async () => {
+    const { client, requests } = clientAnswering({
+      connectionId: connection().id,
+      value: "x",
+      expiresAt: "2026-08-23T10:00:41.882Z",
+    });
+
+    await providers.reveal(connection().id, {}, client);
+
+    expect(await requests[0]?.json()).toEqual({});
+  });
+
+  it("lets the step-up challenge through with its methods and window intact", async () => {
+    const { client } = clientAnswering(
+      {
+        code: "step_up_required",
+        message: "confirm",
+        details: { methods: ["session", "password"], maxAgeSeconds: 300 },
+      },
+      401,
+    );
+
+    await expect(providers.reveal(connection().id, {}, client)).rejects.toMatchObject({
+      status: 401,
+      code: "step_up_required",
+      details: { methods: ["session", "password"], maxAgeSeconds: 300 },
+    });
+  });
+
+  it("lets the rate limit through with its scope and retry-after", async () => {
+    const { client } = clientAnswering(
+      {
+        code: "provider_reveal_rate_limited",
+        message: "slow down",
+        details: { scope: "connection", retryAfterSeconds: 240 },
+      },
+      429,
+    );
+
+    await expect(providers.reveal(connection().id, {}, client)).rejects.toMatchObject({
+      status: 429,
+      code: "provider_reveal_rate_limited",
+    });
+  });
+});
+
+describe("providers.rotate", () => {
+  it("POSTs the new secret and returns the connection re-masked", async () => {
+    const swapped = connection({ mask: "••••7Kd2" });
+    const { client, requests } = clientAnswering(swapped);
+
+    const payload = await providers.rotate(connection().id, "sk-new-7Kd2", client);
+
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/providers/${connection().id}/rotate`);
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual({ secret: "sk-new-7Kd2" });
+    expect(payload.mask).toBe("••••7Kd2");
+  });
+
+  it("lets the provider's rejection through with its error class and detail", async () => {
+    const { client } = clientAnswering(
+      {
+        code: "provider_validation_failed",
+        message: "refused",
+        details: { errorClass: "auth", detail: "key rejected (401)" },
+      },
+      422,
+    );
+
+    await expect(providers.rotate(connection().id, "bad", client)).rejects.toMatchObject({
+      status: 422,
+      code: "provider_validation_failed",
+      details: { detail: "key rejected (401)" },
+    });
+  });
+});
+
+describe("providers.remove", () => {
+  it("DELETEs the one connection and resolves to nothing on the 204", async () => {
+    const { client, requests } = stubClient(() => ({ body: undefined, status: 204 }));
+
+    await expect(providers.remove(connection().id, client)).resolves.toBeUndefined();
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/providers/${connection().id}`);
+    expect(requests[0]?.method).toBe("DELETE");
+  });
+
+  it("lets the in-use refusal through with the dependent alias names", async () => {
+    const { client } = clientAnswering(
+      {
+        code: "provider_connection_in_use",
+        message: "still in use",
+        details: { connectionId: connection().id, aliases: ["coder-max", "local-docs"] },
+      },
+      409,
+    );
+
+    await expect(providers.remove(connection().id, client)).rejects.toMatchObject({
+      status: 409,
+      code: "provider_connection_in_use",
+      details: { aliases: ["coder-max", "local-docs"] },
+    });
+  });
+});
+
+describe("providers.aliases", () => {
+  it("reads the registry's aliases and returns them", async () => {
+    const { client, requests } = clientAnswering({ aliases: seededAliases() });
+
+    const payload = await providers.aliases(client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/registry/aliases");
+    expect(requests[0]?.method).toBe("GET");
+    expect(payload).toEqual(seededAliases());
+  });
+
+  it("hands back an empty registry as an empty list", async () => {
+    const { client } = clientAnswering({ aliases: [] });
+
+    await expect(providers.aliases(client)).resolves.toEqual([]);
+    // A sanity anchor on the fixture the delete guard leans on.
+    expect(modelAlias().connection?.id).toBe("5eed000c-0000-4000-8000-000000000001");
   });
 });

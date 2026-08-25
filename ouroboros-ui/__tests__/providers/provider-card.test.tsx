@@ -7,15 +7,18 @@ import {
   CAP_LABEL,
   CAP_SOON,
   DETECTED_LABEL,
-  KEY_ACTIONS_SOON,
   MODELS_LABEL,
   NO_MODELS,
   PULL_SOON,
+  REVEAL,
+  ROTATE,
+  SAVE_KEY,
   TEST_CONNECTION,
   TEST_SOON,
   cardModel,
   switchLabel,
 } from "@/app/providers/cards";
+import { menuLabel } from "@/app/providers/keys";
 
 import { provider, seededProviders } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
@@ -47,13 +50,25 @@ import {
  * renders correctly with zero card-code changes.** The card is fed a kind no file in
  * `app/providers/` names, and the assertions read the same card anatomy off it.
  *
- * The switch's action and `useRouter()` are replaced, because a suite that drove the real
- * ones would be testing the API client through a button; `provider-switch.test.tsx` is the
- * switch's own suite.
+ * The write actions and `useRouter()`/`usePathname()` are replaced, because a suite that drove
+ * the real ones would be testing the API client through a button; each control has its own
+ * suite (`provider-switch.test.tsx`, `key-row.test.tsx`, `address-row.test.tsx`,
+ * `card-menu.test.tsx`). This suite reads the card's anatomy: which controls are present, for
+ * whom, and drawn from which primitives.
  */
 
 vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/app/providers/key-actions", () => ({
+  revealCredential: vi.fn(),
+  rotateCredential: vi.fn(),
+  removeProvider: vi.fn(),
+  saveProviderAddress: vi.fn(),
+  reauthenticate: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/models/providers",
+}));
 
 const { ProviderCard } = await import("@/app/providers/provider-card");
 
@@ -86,6 +101,7 @@ function seeded(kind: string, mayAdminister = true): HTMLElement {
     health: seededProviders().find((row) => row.id === card.id) ?? null,
     spend: seededSpend().providers.find((row) => row.kind === kind) ?? null,
     models: seededReadings.models.get(card.id) ?? null,
+    aliases: { ok: true, value: [] },
     now: NOW,
   });
 
@@ -114,7 +130,7 @@ describe("the seeded Anthropic card", () => {
     );
   });
 
-  it("draws the masked key row with Reveal and Rotate, each inert with AE.3 named", () => {
+  it("draws the masked key row with Reveal and Rotate, live for an administrator", () => {
     const card = seeded("anthropic");
     const key = within(card).getByLabelText("API key");
 
@@ -122,12 +138,20 @@ describe("the seeded Anthropic card", () => {
     expect(key).toHaveValue("••••Xq4A");
     expect(key).toHaveClass("ou-input--mono");
 
-    for (const label of ["Reveal", "Rotate"]) {
+    // Live since AE.3 — the buttons act rather than announcing an issue that will wire them.
+    for (const label of [REVEAL, ROTATE]) {
       const button = within(card).getByRole("button", { name: label });
 
-      expect(button).toHaveAttribute("aria-disabled", "true");
-      expect(button).toHaveAttribute("title", KEY_ACTIONS_SOON);
+      expect(button).not.toHaveAttribute("aria-disabled");
     }
+  });
+
+  it("carries the overflow menu for an administrator", () => {
+    const card = seeded("anthropic");
+
+    expect(
+      within(card).getByRole("button", { name: menuLabel("Anthropic Claude") }),
+    ).toHaveAttribute("aria-haspopup", "menu");
   });
 
   it("draws the meta row as the mockup writes it", () => {
@@ -204,8 +228,10 @@ describe("the other four seeded cards", () => {
       "placeholder",
       "API key — optional, no auth configured",
     );
-    expect(within(card).getByRole("button", { name: "Save" })).toHaveAttribute("aria-disabled", "true");
-    expect(within(card).queryByRole("button", { name: "Reveal" })).toBeNull();
+    // The empty optional key's one action is Save, live; there is no Reveal for a key that
+    // is not stored.
+    expect(within(card).getByRole("button", { name: SAVE_KEY })).not.toHaveAttribute("aria-disabled");
+    expect(within(card).queryByRole("button", { name: REVEAL })).toBeNull();
     expect(meterReads(card)).toBe("no metered spend 2.6M tokens on-box");
     expect(meterReads(card)).not.toMatch(/\$/);
     expect(card.querySelector(".ou-meter")).toHaveClass("ou-meter--ok");
@@ -250,6 +276,7 @@ describe("the sixth card — the schema-driven proof", () => {
           modelOption({ modelId: "fake/large", display: "Fake Large", meta: {} }),
         ],
       },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -315,6 +342,7 @@ describe("a switched-off card", () => {
       health: null,
       spend: spendRow(),
       models: { ok: true, value: anthropicModels() },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -335,6 +363,7 @@ describe("what a region says when it has nothing to draw", () => {
       health: null,
       spend: null,
       models: { ok: true, value: [] },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -351,6 +380,7 @@ describe("what a region says when it has nothing to draw", () => {
       health: null,
       spend: null,
       models: { ok: false, reason: "the registry is away" },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -366,6 +396,7 @@ describe("what a region says when it has nothing to draw", () => {
       health: provider({ detail: "200 · 4 seats" }),
       spend: spendRow({ kind: "copilot", spendCents: 7_600 }),
       models: { ok: true, value: [] },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -384,6 +415,27 @@ describe("a member's card", () => {
     expect(toggle).toHaveAttribute("aria-checked", "true");
     expect(toggle).toHaveAccessibleDescription(/owners and admins/);
   });
+
+  it("sees none of the key-management affordances — no Reveal, Rotate, or overflow menu", () => {
+    // The criterion in one case: a member's card is the same card with the write islands
+    // drawn read-only or absent, never a different card. The masked value is still there —
+    // reading a masked suffix is not revealing a key.
+    const card = seeded("anthropic", false);
+
+    expect(within(card).getByLabelText("API key")).toHaveValue("••••Xq4A");
+    expect(within(card).queryByRole("button", { name: REVEAL })).toBeNull();
+    expect(within(card).queryByRole("button", { name: ROTATE })).toBeNull();
+    expect(within(card).queryByRole("button", { name: menuLabel("Anthropic Claude") })).toBeNull();
+  });
+
+  it("draws an editable provider's address read-only, with no Save", () => {
+    const card = seeded("openai_compatible", false);
+
+    const address = within(card).getByLabelText("Base URL");
+    expect(address).toHaveValue("http://10.0.4.20:8000/v1");
+    expect(address).toHaveAttribute("readonly");
+    expect(within(card).queryByRole("button", { name: "Save Base URL" })).toBeNull();
+  });
 });
 
 describe("both palettes", () => {
@@ -394,6 +446,7 @@ describe("both palettes", () => {
       health: seededProviders()[0],
       spend: seededSpend().providers[0],
       models: { ok: true, value: anthropicModels() },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
 
@@ -419,7 +472,9 @@ describe("what the card is built from", () => {
     expect(card.querySelectorAll(".ou-meter")).toHaveLength(1);
     expect(card.querySelectorAll(".ou-switch")).toHaveLength(1);
     expect(card.querySelectorAll(".ou-input")).toHaveLength(2);
-    expect(card.querySelectorAll(".ou-btn")).toHaveLength(3);
+    // The overflow menu, Reveal, Rotate and Test connection — every acting control is the
+    // primitive, and the card draws none of its own.
+    expect(card.querySelectorAll(".ou-btn")).toHaveLength(4);
     // The one figure the card computes is passed as the meter's datum, never as a width.
     expect(card.innerHTML).not.toMatch(/style="width/);
   });
@@ -432,6 +487,7 @@ describe("what the card is built from", () => {
       health: null,
       spend: null,
       models: { ok: true, value: [] },
+      aliases: { ok: true, value: [] },
       now: NOW,
     });
     const second = { ...first, id: "x", name: "B", address: { label: "Host", value: "http://b" } };

@@ -1489,18 +1489,20 @@ of V015's six spellings appears.
 **What decides each region.** The catalog entry's `fields` decide the key row: a `url` field is
 an address row under whatever label the adapter titled it — *Base URL* on the vLLM card, *Host*
 on Ollama's — and the `secret` field is the masked key row, with the mockup's **Reveal** and
-**Rotate** (or **Save**, for an optional key left empty) inert until AE.3
-([#229](https://github.com/NobuData/ouroboros/issues/229)). The entry's `capabilities.pull`
+**Rotate** (or **Save**, for an optional key left empty) live since AE.3 ([the key management
+flows](#the-key-management-flows), [#229](https://github.com/NobuData/ouroboros/issues/229)).
+The entry's `capabilities.pull`
 decides whether the models region is chips or Ollama's pull-list slot, which AE.4
 ([#230](https://github.com/NobuData/ouroboros/issues/230)) fills. Whether a cap exists decides
 between a meter and an em-dash. The monogram's two letters and tint are the one thing written
 per kind, and they are *copy*: a token map with a fallback that derives an unknown kind's
 letters from its own name in the neutral tint.
 
-**What the cards read.** [`app/providers/data.ts`](app/providers/data.ts) composes five
-readings — the listing, the catalog, the health strip, the month's spend, and each
-connection's models — under the rule every reader here keeps: one failed read is one degraded
-region. A catalog that could not be read leaves every key row under a fallback label; a month
+**What the cards read.** [`app/providers/data.ts`](app/providers/data.ts) composes six
+readings — the listing, the catalog, the health strip, the month's spend, the registry's
+aliases (each card's dependent routes, for AE.3's delete guard and switch-off confirm), and
+each connection's models — under the rule every reader here keeps: one failed read is one
+degraded region. A catalog that could not be read leaves every key row under a fallback label; a month
 that could not be read leaves every meter at *no spend recorded*; one card's models failing
 says so on that card. The listing failing is the one read the grid cannot survive, and it says
 so where the grid would be. Three of those readings are new to the contract with this issue
@@ -1534,7 +1536,52 @@ a refused press going back with the reason under it — over a Server Action
 ([`app/providers/card-actions.ts`](app/providers/card-actions.ts)) that `PATCH`es `{ enabled }`
 and nothing else. A switched-off card dims and says under its switch that routing skips it,
 which is the service's own rule (resolution reads `where enabled`, V018) made visible. A member's
-switch renders in its real position, read-only, with the reason.
+switch renders in its real position, read-only, with the reason. **The switch-off now asks
+first** when routes resolve through the connection (AE.3): disabling has the same practical
+effect on a running loop as deleting, and unlike delete the service has no guard to catch it,
+so the confirmation names the routes.
+
+#### The key management flows
+
+The security-critical half of the card — **Reveal**, **Rotate**, the address **Save**, and the
+overflow menu's **Delete** — is AE.3 ([#229](https://github.com/NobuData/ouroboros/issues/229)),
+and it makes AD.2's ([#223](https://github.com/NobuData/ouroboros/issues/223)) safety rails
+*visible* rather than trusting them silently. Each control is a client island of the otherwise
+server-rendered card; the copy and every refusal-to-sentence mapping live as pure values in
+[`app/providers/keys.ts`](app/providers/keys.ts), and the server hops are one `"use server"`
+module, [`app/providers/key-actions.ts`](app/providers/key-actions.ts), on `card-actions.ts`'s
+posture — a refusal is a value the control draws, never a rejection that replaces the page.
+
+- **Reveal** ([`key-row.tsx`](app/providers/key-row.tsx)) is `masked → step-up → shown →
+  masked`. A click asks `POST /api/v1/providers/{id}/reveal`; without a recent
+  re-authentication the service answers `401 step_up_required`, which
+  [`app/api/errors.ts`](app/api/errors.ts) is careful **not** to read as a session gone — it is
+  the one `401` that is a challenge to act on in place rather than a sign-out. The
+  [`step-up-dialog.tsx`](app/providers/step-up-dialog.tsx) offers the two methods BetterAuth
+  gives this build and no third: a password confirmed through the service, or a fresh sign-in
+  (a sign-out with this page as the return-to — the only method a GitHub-only account has). A
+  **wrong password answers exactly as an absent one**, so the dialog can only re-challenge. A
+  revealed value carries a **countdown** (off the service's own `expiresAt`, driven by the
+  shell clock so there is one interval per page, not one per row), a visible **audited-notice**,
+  and a **copy** button that claims nothing about the clipboard — and it **auto-masks on the
+  timer and on navigating away**, by clearing the value from state so it is not merely hidden.
+- **Rotate** ([`secret-dialog.tsx`](app/providers/secret-dialog.tsx)) renders a state machine
+  honestly: `entering → validating → swapped`, or `entering → validating → failed`. The
+  service verifies the new key with the provider before one conditional `UPDATE` retires the
+  old one, so a failure means the old key is still live — and the failed state **says so**,
+  standing *your existing key is still active* beside the provider's own reason, not a toast.
+  The same dialog stores a first key on a connection whose adapter left the credential optional
+  (the vLLM card's **Save**). A success updates the masked suffix without a reload.
+- **Base URL / Host** ([`address-row.tsx`](app/providers/address-row.tsx)) saves with the same
+  validate-on-save discipline — the service checks the address and asks the provider at it
+  before writing, so a bad endpoint does not overwrite a working one, and the row says the
+  working address is unchanged on a refusal.
+- **Delete** ([`card-menu.tsx`](app/providers/card-menu.tsx), on `app/shell/menu.ts`'s ARIA
+  menu pattern) carries the dependency guard: the service returns `409` naming the aliases that
+  still resolve through the connection, and the dialog lists them and links to routing rather
+  than showing a bare failure.
+- **A member sees none of these affordances**: the buttons, the menu and the editable address
+  are all gated on `mayAdminister`, and the service is the enforcer behind the presentation.
 
 **Responsive and rem.** The grid is two cards abreast collapsing to one at a rem breakpoint,
 so at the 125% font-scale step it gives up its second column sooner, which is the point. Every

@@ -42,6 +42,7 @@
  */
 
 import type {
+  ModelAlias,
   ModelOption,
   ProviderCatalogEntry,
   ProviderConnection,
@@ -234,7 +235,11 @@ export function secretRow(
     : { label: CREDENTIAL_LABEL, mask: connection.mask, placeholder: null };
 }
 
-/** The key row's two actions, and what they say while AE.3 has not wired them. */
+/**
+ * The key row's two actions — live since AE.3
+ * ([#229](https://github.com/NobuData/ouroboros/issues/229)); what each does, and every
+ * sentence it says, is `app/providers/keys.ts`'s.
+ */
 export const REVEAL = "Reveal";
 
 /** The second. */
@@ -243,8 +248,39 @@ export const ROTATE = "Rotate";
 /** The empty optional key row's one action — the mockup's **Save**. */
 export const SAVE_KEY = "Save";
 
-/** Why none of the three acts yet. */
-export const KEY_ACTIONS_SOON = "Revealing, rotating and saving a key arrive with #229.";
+/* ---------------------------------------------------------------------- the dependents */
+
+/**
+ * The aliases that resolve through one connection — the routes a delete would break and a
+ * switch-off would take down.
+ *
+ * Read off the registry's own listing rather than kept on the connection, because the
+ * alias is what points at the connection and not the other way round (Y.1,
+ * [#189](https://github.com/NobuData/ouroboros/issues/189)); the service's delete guard
+ * names the same aliases, from the same rows, so the two cannot disagree. Every alias
+ * counts, switched-off ones included: the foreign key does not read `enabled`, and neither
+ * does a loop that resolves the alias tomorrow.
+ *
+ * @param aliases The registry's aliases, as read — or why they could not be.
+ * @param connectionId The connection.
+ * @returns The dependent aliases' names, sorted the way the service sorts them; or the
+ *   reading's own refusal, so the switch can say the routes could not be checked rather
+ *   than pretend there are none.
+ */
+export function dependentsOf(
+  aliases: Reading<readonly ModelAlias[]>,
+  connectionId: string,
+): Reading<readonly string[]> {
+  if (!aliases.ok) return aliases;
+
+  return {
+    ok: true,
+    value: aliases.value
+      .filter((alias) => alias.connection?.id === connectionId)
+      .map((alias) => alias.alias)
+      .sort((left, right) => left.localeCompare(right)),
+  };
+}
 
 /* ------------------------------------------------------------------------- the meta row */
 
@@ -603,6 +639,11 @@ export interface CardModel {
   readonly meter: MeterLine;
   /** What the foot's cap field reads. */
   readonly cap: string;
+  /**
+   * The aliases that resolve through this connection, or why they could not be read — what
+   * the switch asks about before it goes off, and what a refused delete names.
+   */
+  readonly dependents: Reading<readonly string[]>;
 }
 
 /** What one card is composed from. */
@@ -616,6 +657,8 @@ export interface CardInputs {
   readonly spend: ProviderMonthlySpendRow | null;
   /** What the models read produced, or null when it was not attempted. */
   readonly models: Reading<readonly ModelOption[]> | null;
+  /** What the registry's aliases read produced — one read for the whole grid. */
+  readonly aliases: Reading<readonly ModelAlias[]>;
   /** The instant the page was read. */
   readonly now: Date;
 }
@@ -629,7 +672,15 @@ export interface CardInputs {
  * @param inputs See {@link CardInputs}.
  * @returns The model.
  */
-export function cardModel({ connection, entry, health, spend, models, now }: CardInputs): CardModel {
+export function cardModel({
+  connection,
+  entry,
+  health,
+  spend,
+  models,
+  aliases,
+  now,
+}: CardInputs): CardModel {
   return {
     id: connection.id,
     name: connection.displayName,
@@ -644,6 +695,7 @@ export function cardModel({ connection, entry, health, spend, models, now }: Car
     models: modelsRegion(entry, models),
     meter: meterLine(connection, spend, seatsIn(pillDetail(health))),
     cap: capValue(connection.monthlyCapCents),
+    dependents: dependentsOf(aliases, connection.id),
   };
 }
 
