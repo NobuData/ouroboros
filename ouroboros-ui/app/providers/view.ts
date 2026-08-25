@@ -15,9 +15,11 @@
  *
  * Since AE.1 ([#227](https://github.com/NobuData/ouroboros/issues/227)) the foot of this file
  * also holds the **page's** copy — the title, the subline the security model approved, and
- * what the head's other action says while it cannot act — for the reason the sheet's copy is
- * here: a sentence that lives in one named place is a sentence a reviewer can be pointed at,
- * and the subline in particular is one that is *not the UI's to choose*.
+ * the head's other action's label — for the reason the sheet's copy is here: a sentence that
+ * lives in one named place is a sentence a reviewer can be pointed at, and the subline in
+ * particular is one that is *not the UI's to choose*. The add flow that action opens
+ * (AE.5, [#231](https://github.com/NobuData/ouroboros/issues/231)) keeps its own decisions
+ * and copy in `app/providers/catalog.ts`, the same way.
  *
  * ---------------------------------------------------------------------------
  * ### The rule this module exists to keep
@@ -289,21 +291,18 @@ export function providersSubline(workspace: string): string {
   return PROVIDERS_SUBLINE_TEMPLATE.replace(WORKSPACE_SLOT, () => workspace);
 }
 
-/** The head's primary action, as the mockup labels it. */
-export const ADD_PROVIDER_LABEL = "+ Add provider";
-
 /**
- * Why **+ Add provider** cannot act yet.
+ * The head's primary action, as the mockup labels it.
  *
- * A constant rather than a rule: the catalog and form it opens are AE.5's
- * ([#231](https://github.com/NobuData/ouroboros/issues/231)) and do not exist, so there is no
- * state in which this control acts today. `Button`'s `reason` is how a control is switched
- * off in this product — it sets `aria-disabled`, becomes the tooltip, and cannot be omitted —
- * and naming the issue is what makes that tooltip a usable answer to *when?* rather than the
- * word *soon* on its own (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.5).
+ * What it opens — the catalog and the form behind each tile — is AE.5's
+ * ([#231](https://github.com/NobuData/ouroboros/issues/231)), and every decision that flow
+ * makes lives in `app/providers/catalog.ts` beside its copy; the label stays here because it
+ * is the page's, named in the mockup's head before the flow existed. For a reader who may not
+ * connect a provider the control is inert with `catalog.ts`'s `ADD_PROVIDER_READ_ONLY` as its
+ * reason, which is how a control is switched off in this product
+ * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.5).
  */
-export const ADD_PROVIDER_REASON =
-  "The add-provider flow is not built yet — it arrives with #231.";
+export const ADD_PROVIDER_LABEL = "+ Add provider";
 
 /** What the space below the tab set says it is waiting for. */
 export const PROVIDERS_NEXT_TITLE = "The provider cards arrive next";
@@ -311,9 +310,10 @@ export const PROVIDERS_NEXT_TITLE = "The provider cards arrive next";
 /**
  * …and which issues fill it. Named rather than mocked: a grid of invented cards would be the
  * one dishonest thing on a page built to be honest, and indistinguishable in a screenshot
- * from the real one AE.2 ships.
+ * from the real one AE.2 ships. The add-provider catalog (#231) is no longer in the list,
+ * because it is on the page.
  */
 export const PROVIDERS_NEXT_NOTE =
   "The five provider cards arrive with #228; key management with #229, test and discovery " +
-  "with #230, the add-provider catalog with #231, and caps, the security strip and the " +
-  "page's states with #232. The Audit log above is live.";
+  "with #230, and caps, the security strip and the page's states with #232. The Audit log " +
+  "and + Add provider above are live.";

@@ -655,6 +655,22 @@
 }
 
 /*
+ * A refused value. The boundary takes the error hue where the focus treatment takes the
+ * accent, and the error line under the field says what is wrong — the hue on its own would
+ * be the one signal a reader who cannot distinguish two colours never receives.
+ */
+.ou-input[aria-invalid="true"] {
+  border-color: var(--err);
+}
+
+.ou-field__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
  * A disabled input carries the real `disabled` rather than `aria-disabled`, unlike a
  * button: a text box that accepts typing and then discards it is worse than one that does
  * not, and an input has no explanation to keep in the tab order — its field's hint does.
@@ -667,6 +683,19 @@
 .ou-input--mono {
   font-family: var(--f-mono);
   font-size: var(--t-xs);
+}
+
+/*
+ * A schema-driven form's fields, as one column.
+ *
+ * The renderer (`schema-form.tsx`) draws a field per entry of a list it did not write, so the
+ * rhythm between them has to be its own rather than each caller's: a caller placing the list
+ * knows nothing about how many rows it holds.
+ */
+.ou-schema-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
 }
 
 /*

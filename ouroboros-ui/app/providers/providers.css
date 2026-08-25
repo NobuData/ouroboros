@@ -108,3 +108,182 @@
   font-size: var(--t-sm);
   line-height: var(--lh-body);
 }
+
+/* ---------- the add-provider flow (#231) ---------- */
+
+/*
+ * Mockup 07's dashed add-provider card, on the design system's card: the plane is
+ * .ou-card's, and what this adds is the mockup's own treatment — a dashed hairline on a
+ * transparent ground, centred, with the plus over the line of prose. The border is written
+ * whole rather than as a style on its own so the hue stays a token beside the width.
+ */
+.providers-add-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-6);
+  padding: var(--sp-10) var(--sp-8);
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  text-align: center;
+}
+
+.providers-add-card__plus {
+  color: var(--ink-faint);
+  font-family: var(--f-disp);
+  font-size: var(--t-xl);
+}
+
+/* The mockup's 34ch measure, so the sentence wraps as a sentence rather than as a banner. */
+.providers-add-card__note {
+  margin: 0;
+  max-width: 34ch;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The catalog: tiles in a grid that reflows with the panel and the font-size preference —
+ * two abreast at the panel's width, one when the type is large enough to want it.
+ */
+.providers-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * One tile. A button for a live kind, so it takes the button reset here rather than the
+ * browser's own; the monogram, the label and the needs line sit in a row.
+ */
+.providers-catalog__tile {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  width: 100%;
+  padding: var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.providers-catalog__tile:hover {
+  border-color: var(--accent);
+}
+
+/*
+ * A promised kind. Visibly not a control: the hairline goes dashed, the ground drops away,
+ * the ink goes muted and the cursor stays an arrow — and it is a list item rather than a
+ * button, so there is nothing to focus and nothing to press. The `coming soon` tag beside the
+ * label is the word, so the state is not carried by the treatment alone.
+ */
+.providers-catalog__tile--soon {
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--ink-mut);
+  cursor: default;
+}
+
+/*
+ * The monogram box — the mockup's 42px square in rem, so it follows the reader's preference.
+ * Two letters derived from the label; the per-provider tints are AE.2's (#228).
+ */
+.providers-catalog__monogram {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.625rem;
+  height: 2.625rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 700;
+  letter-spacing: var(--tr-wide);
+}
+
+.providers-catalog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.providers-catalog__label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+  font-family: var(--f-disp);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+/* What the form will ask for — *Base URL · API key (optional)* — in the card's faint ink. */
+.providers-catalog__needs {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The form step: the name, the adapter's fields, the lines under them, the controls. */
+.providers-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.providers-add__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+}
+
+/*
+ * The refusal, under the form. The sentence carries the fact — *nothing was stored* — and the
+ * error hue reinforces it; the field it is about carries its own line besides.
+ */
+.providers-add__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The duplicate warning. A warning rather than an error, and drawn as one: the warn tint and
+ * hairline the meters use for a cap that is close, because this is *probably a mistake* and
+ * not *refused*. The control under it relabels itself to say a second press proceeds.
+ */
+.providers-add__warning {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The line the dialog shows while it has nothing else to show: reading, refused, empty, or
+ * asking the provider. One class for all four because they are the same shape — the audit
+ * sheet's `providers-audit__state`, for the same reason.
+ */
+.providers-add__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}

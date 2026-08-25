@@ -1562,6 +1562,7 @@ cards are drawn from, over V015's `provider_connections`, and the surface `provi
 deliberately left free by naming its own route `routing/providers`.
 
 ```
+GET    /api/v1/providers/catalog    the registry, as forms — one entry per kind · every member
 POST   /api/v1/providers            schema ─▶ live validate ─▶ seal ─▶ store   ✗ = nothing stored
 GET    /api/v1/providers            ••••Xq4A, computed server-side · every member
 GET    /api/v1/providers/{id}       the same, for one
@@ -1570,6 +1571,14 @@ POST   /api/v1/providers/{id}/rotate   validate NEW ─▶ one conditional UPDAT
 PATCH  /api/v1/providers/{id}       switch · cap · note · address (validated like an add)
 DELETE /api/v1/providers/{id}       409 while aliases resolve on it, naming them
 ```
+
+**The catalog is the registry crossing the wire** ([#231](https://github.com/NobuData/ouroboros/issues/231)).
+`GET /api/v1/providers/catalog` answers one entry per registered kind — the schema's `title`
+and the fields `provider.forms.ts` derives from it — so mockup 07's **Browse catalog** draws
+its tiles from what this build can actually connect, and a new adapter is in the catalog the
+day it is registered. `src/modules/provider-connections/catalog.ts` is one total function over
+the registry with no provider kind in it, and its spec registers the conformance kit's fake
+under `custom` to prove the point.
 
 **Every acceptance criterion is a claim about *order*, so the order is the design.** `add`
 asks the adapter before it seals and before it inserts — so *a bad key is never stored

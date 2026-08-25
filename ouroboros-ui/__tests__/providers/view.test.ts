@@ -6,7 +6,6 @@ import { join } from "node:path";
 import type { AuditAction } from "@/app/api/audit";
 import {
   ADD_PROVIDER_LABEL,
-  ADD_PROVIDER_REASON,
   NOBODY,
   PROVIDERS_NEXT_NOTE,
   PROVIDERS_SUBLINE_TEMPLATE,
@@ -261,17 +260,14 @@ describe("the rest of the head", () => {
     expect(ADD_PROVIDER_LABEL).toBe("+ Add provider");
   });
 
-  it("explains + Add provider by naming the issue that builds the catalog", () => {
-    // The sidebar's treatment for an unbuilt surface: a usable answer to "when?" rather than
-    // the word *soon* on its own. AE.5 (#231) is the flow.
-    expect(ADD_PROVIDER_REASON).toMatch(/#231/);
-  });
-
   it("names the issues that fill the space below the tab set, and says what is live", () => {
-    for (const issue of ["#228", "#229", "#230", "#231", "#232"]) {
+    // AE.5 (#231) is no longer in the list, because the catalog it names is on the page —
+    // `catalog.test.ts` is that flow's own suite.
+    for (const issue of ["#228", "#229", "#230", "#232"]) {
       expect(PROVIDERS_NEXT_NOTE).toContain(issue);
     }
 
-    expect(PROVIDERS_NEXT_NOTE).toMatch(/Audit log .* live/);
+    expect(PROVIDERS_NEXT_NOTE).not.toContain("#231");
+    expect(PROVIDERS_NEXT_NOTE).toMatch(/Audit log and \+ Add provider .* live/);
   });
 });

@@ -100,6 +100,7 @@ import type {
   RotateConnectionDto,
   UpdateConnectionDto,
 } from "./provider-connections.dto";
+import { providerCatalog, type ProviderCatalogResource } from "./catalog";
 import {
   connectionResource,
   type ProviderConnectionResource,
@@ -158,6 +159,20 @@ export class ProviderConnectionsService {
     private readonly limiter: RevealLimiter,
     private readonly audit: ProviderAudit,
   ) {}
+
+  /**
+   * The kinds this build can connect, each with the form its adapter declares.
+   *
+   * What AE.5's ([#231](https://github.com/NobuData/ouroboros/issues/231)) **Browse catalog**
+   * draws its tiles from. Not workspace-scoped — the registry is the build's — and not a
+   * read of anything: `catalog.ts` is a total function over the registry, and this is the one
+   * line that hands it the registry the service was constructed with.
+   *
+   * @returns The catalog, in V015's order.
+   */
+  catalog(): ProviderCatalogResource {
+    return providerCatalog(this.registry);
+  }
 
   /**
    * One page of this workspace's connections, each with its credential masked.

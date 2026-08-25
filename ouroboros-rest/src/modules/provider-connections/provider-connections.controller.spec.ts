@@ -1,5 +1,10 @@
-import { HttpStatus } from "@nestjs/common";
-import { HEADERS_METADATA, HTTP_CODE_METADATA } from "@nestjs/common/constants";
+import { HttpStatus, RequestMethod } from "@nestjs/common";
+import {
+  HEADERS_METADATA,
+  HTTP_CODE_METADATA,
+  METHOD_METADATA,
+  PATH_METADATA,
+} from "@nestjs/common/constants";
 import { Reflector } from "@nestjs/core";
 
 import { COOKIE } from "../auth/http";
@@ -9,6 +14,7 @@ import { ADMINISTRATORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
 import { FIXTURE_CONNECTION, FIXTURE_MASK, FIXTURE_WORKSPACE } from "./connection.fixture";
 import { ProviderConnectionsController } from "./provider-connections.controller";
 import type { ProviderConnectionsService } from "./provider-connections.service";
+import type { ProviderCatalogResource } from "./catalog";
 import type { ProviderConnectionResource } from "./resources";
 
 /**
@@ -41,6 +47,31 @@ const CONNECTION: ProviderConnectionResource = {
   updatedAt: "2026-08-23T09:59:41.882Z",
 };
 
+/** The catalog, as the service composes it — one entry is enough to prove the hand-off. */
+const CATALOG: ProviderCatalogResource = {
+  kinds: [
+    {
+      kind: "anthropic",
+      title: "Connect Anthropic",
+      fields: [
+        {
+          name: "apiKey",
+          label: "API key",
+          widget: "secret",
+          required: true,
+          help: null,
+          placeholder: "sk-ant-api03-…",
+          defaultValue: null,
+          choices: null,
+          minLength: 1,
+          maxLength: null,
+          pattern: null,
+        },
+      ],
+    },
+  ],
+};
+
 describe("the provider connections controller", () => {
   let service: jest.Mocked<ProviderConnectionsService>;
   let controller: ProviderConnectionsController;
@@ -48,6 +79,7 @@ describe("the provider connections controller", () => {
   beforeEach(() => {
     service = {
       list: jest.fn().mockResolvedValue({ items: [CONNECTION], total: 1, limit: 25, offset: 0 }),
+      catalog: jest.fn().mockReturnValue(CATALOG),
       read: jest.fn().mockResolvedValue(CONNECTION),
       add: jest.fn().mockResolvedValue(CONNECTION),
       reveal: jest.fn().mockResolvedValue({
@@ -74,6 +106,15 @@ describe("the provider connections controller", () => {
       await expect(controller.read(WORKSPACE, PARAMS)).resolves.toEqual(CONNECTION);
 
       expect(service.read).toHaveBeenCalledWith(WORKSPACE.id, FIXTURE_CONNECTION);
+    });
+
+    it("answers the catalog from the service, which scopes it to nothing", () => {
+      // The registry is the build's, not a workspace's: there is no organization to pass and
+      // the handler reads none. The tenant guard still runs — a session acting nowhere is a
+      // `400` here as everywhere — but what it establishes is not an input to this answer.
+      expect(controller.catalog()).toEqual(CATALOG);
+
+      expect(service.catalog).toHaveBeenCalledWith();
     });
 
     it("scopes every write", async () => {
@@ -153,6 +194,7 @@ describe("the provider connections controller", () => {
 
       expect(reflector.get<string[]>(REQUIRED_ROLES, controller.list)).toBeUndefined();
       expect(reflector.get<string[]>(REQUIRED_ROLES, controller.read)).toBeUndefined();
+      expect(reflector.get<string[]>(REQUIRED_ROLES, controller.catalog)).toBeUndefined();
     });
   });
 
@@ -186,16 +228,18 @@ describe("the provider connections controller", () => {
     });
   });
 
-  it("declares the seven operations the ticket names, over four paths, and no eighth", () => {
+  it("declares the seven operations the ticket names plus AE.5's catalog, and no ninth", () => {
     // Worth an assertion because the obvious next endpoints — *test this connection*,
     // *discover its models* — are AE.4's (#230), and a slice of them written here is one that
-    // ticket would have to negotiate with rather than write.
+    // ticket would have to negotiate with rather than write. `catalog` is the one addition
+    // since: AE.5 (#231) reads the registry through it, and it writes nothing.
     const handlers = Object.getOwnPropertyNames(ProviderConnectionsController.prototype).filter(
       (name) => name !== "constructor",
     );
 
     expect(handlers.sort()).toEqual([
       "add",
+      "catalog",
       "list",
       "read",
       "remove",
@@ -203,5 +247,23 @@ describe("the provider connections controller", () => {
       "rotate",
       "update",
     ]);
+  });
+
+  describe("the catalog's place in the route table", () => {
+    it("is declared before the `:id` read, so `catalog` is never read as a connection id", () => {
+      // Express matches in registration order and `ConnectionParams` refuses a non-uuid, so a
+      // `catalog` declared after `read` would answer `422 validation_failed` to every caller.
+      // Nest registers a controller's handlers in declaration order, which is the property
+      // held here.
+      const handlers = Object.getOwnPropertyNames(ProviderConnectionsController.prototype);
+
+      expect(handlers.indexOf("catalog")).toBeGreaterThan(-1);
+      expect(handlers.indexOf("catalog")).toBeLessThan(handlers.indexOf("read"));
+    });
+
+    it("is a plain GET at /providers/catalog", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, controller.catalog)).toBe("catalog");
+      expect(Reflect.getMetadata(METHOD_METADATA, controller.catalog)).toBe(RequestMethod.GET);
+    });
   });
 });

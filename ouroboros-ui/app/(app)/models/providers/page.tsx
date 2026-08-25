@@ -1,4 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
+import { mayAdminister } from "@/app/api/membership";
 import { ProvidersScreen } from "@/app/providers/providers-screen";
 
 /**
@@ -16,10 +17,14 @@ import { ProvidersScreen } from "@/app/providers/providers-screen";
  * `requireWorkspace()` is called here rather than in the group's layout for the reason
  * `app/(app)/layout.tsx` sets out at length: a layout does not re-render on a client-side
  * navigation and does not control whether the segment beneath it renders anyway. Here the
- * gate is also the page's one **input**: the subline the security model approved names the
+ * gate is also the page's two **inputs**: the subline the security model approved names the
  * workspace, and the workspace's display name is what the gate returns — the session/role
  * context the ticket lists as its BA-D.5 dependency, arriving through the same call every
- * other signed-in screen makes.
+ * other signed-in screen makes — and whether this reader may connect a provider (AE.5,
+ * [#231](https://github.com/NobuData/ouroboros/issues/231)) is answered once, here, from the
+ * same membership, the way `app/(app)/models/page.tsx` answers it for the rules card. The
+ * screen is handed a boolean rather than a role, so there is one place deciding what a role
+ * may do and it is `app/api/membership.ts`; the gate that **enforces** is the service's.
  *
  * **Under `/models`, not beside it.** The sidebar highlights the entry whose route the URL
  * is under (`app/shell/nav.ts`), so this segment's placement is what keeps **Models** lit on
@@ -30,5 +35,10 @@ import { ProvidersScreen } from "@/app/providers/providers-screen";
 export default async function Page() {
   const { membership } = await requireWorkspace();
 
-  return <ProvidersScreen workspaceName={membership.name} />;
+  return (
+    <ProvidersScreen
+      mayAdminister={mayAdminister(membership.roles)}
+      workspaceName={membership.name}
+    />
+  );
 }

@@ -119,6 +119,56 @@ describe("the select", () => {
   });
 });
 
+describe("a field's error", () => {
+  it("is an alert the control is described by, and marks the control invalid", () => {
+    // A refused value is a fact about the control, not a sentence that happens to be near
+    // it: `aria-invalid` is what a screen reader announces, and the description is how it
+    // reaches the reader with the control rather than by luck.
+    render(
+      <TextField
+        id="key"
+        label="API key"
+        hint="From the provider's console."
+        error="key rejected (401)"
+      />,
+    );
+
+    const key = screen.getByLabelText("API key");
+
+    expect(key).toHaveAttribute("aria-invalid", "true");
+    expect(key).toHaveAccessibleDescription(/From the provider's console\./);
+    expect(key).toHaveAccessibleDescription(/key rejected \(401\)/);
+    expect(screen.getByRole("alert")).toHaveTextContent("key rejected (401)");
+    expect(screen.getByRole("alert")).toHaveClass("ou-field__error");
+  });
+
+  it("is absent — no alert, no invalid mark — when there is nothing wrong", () => {
+    render(<TextField id="key" label="API key" hint="From the provider's console." />);
+
+    expect(screen.getByLabelText("API key")).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps a caller's own aria-invalid when the field has no error of its own", () => {
+    // The login screen's domain form reports its refusal through the attribute it passes;
+    // the primitive adding its own must not lose it under the spread.
+    render(<TextField id="domain" label="Company domain" aria-invalid />);
+
+    expect(screen.getByLabelText("Company domain")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("reaches a select the same way", () => {
+    render(
+      <SelectField id="region" label="Region" error="Choose a region.">
+        <option value="us-east-1">us-east-1</option>
+      </SelectField>,
+    );
+
+    expect(screen.getByLabelText("Region")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Region")).toHaveAccessibleDescription("Choose a region.");
+  });
+});
+
 describe("the switch", () => {
   it("announces as a switch, in the state it is in, saying what a press would do", () => {
     render(<Toggle checked label="Enable acme-robotics" />);

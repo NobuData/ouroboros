@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.30.11",
+    "version": "0.30.12",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -4786,6 +4786,147 @@
           },
           "422": {
             "description": "`validation_failed` — a filter or a window parameter was out of range, not an\ninteger, not a uuid, or named an action this service does not write. `details`\ncarries the entry keyed by the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/catalog": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "The kinds this build can connect, each with its form",
+        "description": "Every provider kind this build has an adapter for, with the form its adapter declares\n([#231](https://github.com/NobuData/ouroboros/issues/231)) — what mockup 07's\n**Browse catalog** draws its tiles from, and what the form behind each tile renders.\n\n**The entries derive from the adapter registry, and from nothing else.** Decision\n**P1** made pluggability structural: core code imports the `ModelProviderAdapter`\ninterface and never an adapter, so an adapter registered tomorrow is in tomorrow's\ncatalog without a change here, in the UI, or in any list somebody keeps. The\nconformance kit's in-memory fake, registered under `custom` in a test, comes out of\nthis endpoint with a working form — which is the property AF.3\n([#236](https://github.com/NobuData/ouroboros/issues/236)) relies on to light its\nthree tiles the day its adapters land.\n\n**Each entry's `fields` are the form, already derived.** Which widget a field takes,\nwhether it is required, what its placeholder is and which field is the credential are\nread from the adapter's `configSchema()` by one function in this service, once, so\nthe add-form and the provider card cannot disagree about which value goes to the\nvault. A client iterates `fields` in order and needs no knowledge of any provider —\na `select` for an `enum` field, a masked row for the one marked secret, a URL input\nfor an address — and submits what it collected as `config` to `POST /api/v1/providers`,\nkeyed by each field's `name`.\n\n**A kind that is not here is not connectable in this build.** There is no *coming\nsoon* flag: the registry answers what it has, and which kinds are announced is a\nproduct statement the page makes, not a fact this service keeps in step with a\nroadmap. `POST /api/v1/providers` refuses an absent kind with\n`501 provider_kind_unsupported` regardless.\n\n**Any member may read it**, viewers included: the catalog names no credential and no\nworkspace fact — it is *what could be connected*, which is open to the same readers as\n*what is connected*. The flow it starts is gated where it writes.\n\n**Not workspace-scoped, and still under the tenant guard.** The registry is the\nbuild's, so the answer is the same for every workspace; a session acting in none is\nnevertheless a `400` here as everywhere in `/api/v1`, because a caller with no\nworkspace has nowhere to connect a provider to.",
+        "operationId": "listProviderCatalog",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The catalog, in the order V015 declares the kinds — stable between builds rather\nthan an injector's ordering. Empty only in a build that registers no adapter.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderCatalog"
+                },
+                "example": {
+                  "kinds": [
+                    {
+                      "kind": "anthropic",
+                      "title": "Connect Anthropic",
+                      "fields": [
+                        {
+                          "name": "apiKey",
+                          "label": "API key",
+                          "widget": "secret",
+                          "required": true,
+                          "help": null,
+                          "placeholder": "sk-ant-api03-…",
+                          "defaultValue": null,
+                          "choices": null,
+                          "minLength": 1,
+                          "maxLength": null,
+                          "pattern": null
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "openai_compatible",
+                      "title": "Connect an OpenAI-compatible endpoint",
+                      "fields": [
+                        {
+                          "name": "baseUrl",
+                          "label": "Base URL",
+                          "widget": "url",
+                          "required": true,
+                          "help": "The OpenAI-compatible root — vLLM, LM Studio, llama.cpp, TGI.",
+                          "placeholder": "http://10.0.4.20:8000/v1",
+                          "defaultValue": null,
+                          "choices": null,
+                          "minLength": 1,
+                          "maxLength": null,
+                          "pattern": null
+                        },
+                        {
+                          "name": "apiKey",
+                          "label": "API key",
+                          "widget": "secret",
+                          "required": false,
+                          "help": null,
+                          "placeholder": "API key — optional, no auth configured",
+                          "defaultValue": null,
+                          "choices": null,
+                          "minLength": null,
+                          "maxLength": null,
+                          "pattern": null
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "ollama",
+                      "title": "Connect an Ollama host",
+                      "fields": [
+                        {
+                          "name": "baseUrl",
+                          "label": "Host",
+                          "widget": "url",
+                          "required": true,
+                          "help": "Where the daemon is listening. No credential — it is your own machine.",
+                          "placeholder": "http://ken-station.local:11434",
+                          "defaultValue": null,
+                          "choices": null,
+                          "minLength": 1,
+                          "maxLength": null,
+                          "pattern": null
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -12168,6 +12309,187 @@
             "capabilityNote": "self-hosted · A100 ×2"
           }
         ]
+      },
+      "ProviderFormWidget": {
+        "type": "string",
+        "title": "ProviderFormWidget",
+        "enum": [
+          "text",
+          "url",
+          "secret",
+          "select"
+        ],
+        "description": "How one form field is drawn. Four values, **derived** from the adapter's schema rather\nthan declared by it — a field marked secret is a masked row whatever else it says, an\n`enum` is a select, a `uri` is a URL input, and everything else is text — so an\nadapter author picks a widget by describing the field truthfully, and a fifth widget\ncannot be invented per provider.",
+        "examples": [
+          "secret"
+        ]
+      },
+      "ProviderFormField": {
+        "type": "object",
+        "title": "ProviderFormField",
+        "description": "One field of an add-form, as the form renders it. Every optional schema keyword is an\nexplicit `null` here rather than absent: absence is fine in a schema an author is\nwriting, and unhelpful in a value a renderer is consuming.\n\nThe credential is the field whose `widget` is `secret`. At most one per entry, by the\nconformance kit; it is submitted in `config` like every other field and is routed to\nthe vault by the service, never stored as a setting.",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "label",
+          "widget",
+          "required",
+          "help",
+          "placeholder",
+          "defaultValue",
+          "choices",
+          "minLength",
+          "maxLength",
+          "pattern"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The property name — what the submitted value is keyed by in `config`. Never shown\nto a person. Two names are reserved across every adapter: `baseUrl` is the\nconnection's address and `capabilityNote` is the card's second line.",
+            "examples": [
+              "apiKey"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "What the `<label>` says.",
+            "examples": [
+              "API key"
+            ]
+          },
+          "widget": {
+            "$ref": "#/components/schemas/ProviderFormWidget"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the schema requires a value.",
+            "examples": [
+              true
+            ]
+          },
+          "help": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The help line under the input, or null.",
+            "examples": [
+              "Where the daemon is listening. No credential — it is your own machine."
+            ]
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The input's placeholder, or null. Prose rather than an example value — mockup 07's\n*API key — optional, no auth configured* — which is why it is not the schema's\n`examples`.",
+            "examples": [
+              "sk-ant-api03-…"
+            ]
+          },
+          "defaultValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the input starts at, or null. Never set on the secret field.",
+            "examples": [
+              null
+            ]
+          },
+          "choices": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "The options for a `select`, or null for every other widget.",
+            "examples": [
+              null
+            ]
+          },
+          "minLength": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The shortest acceptable value, or null. `1` is how a schema says *not blank*.",
+            "examples": [
+              1
+            ]
+          },
+          "maxLength": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The longest acceptable value, or null.",
+            "examples": [
+              null
+            ]
+          },
+          "pattern": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A regular expression the value must match, in ECMA-262 syntax, or null.",
+            "examples": [
+              null
+            ]
+          }
+        }
+      },
+      "ProviderCatalogEntry": {
+        "type": "object",
+        "title": "ProviderCatalogEntry",
+        "description": "One connectable kind — a tile in mockup 07's catalog, and the form behind it. The\n`title` is the form's heading, straight from the adapter's schema (*Connect Anthropic*,\n*Connect an Ollama host*); `fields` is what the form draws, in order.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "title",
+          "fields"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ProviderConnectionKind"
+          },
+          "title": {
+            "type": "string",
+            "description": "The form's heading — the adapter's own `configSchema().title`.",
+            "examples": [
+              "Connect Anthropic"
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderFormField"
+            },
+            "description": "The fields, in the order the form renders them — the schema's own property order,\nwhich is a contract rather than a coincidence (address first, key second, as\nmockup 07 draws the vLLM card)."
+          }
+        }
+      },
+      "ProviderCatalog": {
+        "type": "object",
+        "title": "ProviderCatalog",
+        "description": "Every kind this build can connect, in V015's declaration order. Empty only in a build\nthat registers no adapter at all.",
+        "additionalProperties": false,
+        "required": [
+          "kinds"
+        ],
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderCatalogEntry"
+            }
+          }
+        }
       },
       "ProviderConnectionCreate": {
         "type": "object",
