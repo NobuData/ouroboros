@@ -1157,7 +1157,7 @@ a *soon* row on the commit that built this — retiring the `/models` placeholde
 ```
 MODELS
 Route every kind of work to the model that earns it.  [ Simulate routing ] [ Save routes ]
-Each task kind resolves to a primary model with…        ↑ #203 not built    ↑ nothing staged
+Each task kind resolves to a primary model with…        ↑ opens the sheet   ↑ nothing staged
 ────────────────────────────────────────────────────────────────────────────────────────────
  Routing    Model registry soon   Providers & keys   Spend soon      ← sticky in the pane
  ▔▔▔▔▔▔▔ (the model purple)      ↑ a link since #227
@@ -1166,12 +1166,12 @@ Each task kind resolves to a primary model with…        ↑ #203 not built    
 ```
 
 Below the strip, the routing matrix ([#201](https://github.com/NobuData/ouroboros/issues/201))
-takes eight of twelve columns and a right column stacks the inspector's seat, the
+takes eight of twelve columns and a right column stacks the
+[route inspector](#the-route-inspector-and-the-simulate-panel)
+([#202](https://github.com/NobuData/ouroboros/issues/202),
+[#203](https://github.com/NobuData/ouroboros/issues/203)), the
 [escalation rules card and the spend card](#the-rules-card-and-the-spend-card)
-([#204](https://github.com/NobuData/ouroboros/issues/204)). The inspector itself is
-[#203](https://github.com/NobuData/ouroboros/issues/203)'s; its seat names the selected route and
-says so. A placeholder chain of invented hops would be the one dishonest thing on a page built to
-be honest — and indistinguishable, in a screenshot, from the real one.
+([#204](https://github.com/NobuData/ouroboros/issues/204)).
 
 ### The strip is the page's one claim about the outside world
 
@@ -1212,15 +1212,75 @@ under-report every real outage on the strip.
 
 `saveRoutesReason(pending)` is the whole of it. A save button that is always enabled teaches
 nothing about whether there is anything to save; one hard-coded to *disabled* teaches that the
-page is broken. `pending` is zero today because nothing here can change a route until
-[#201](https://github.com/NobuData/ouroboros/issues/201) and
-[#202](https://github.com/NobuData/ouroboros/issues/202) land — and when one of them supplies a
-number, the control enables itself.
+page is broken. `pending` is the route editor's count of routes that differ from what the server
+holds ([#202](https://github.com/NobuData/ouroboros/issues/202)) — a chain edit or, since
+[#203](https://github.com/NobuData/ouroboros/issues/203), a policy edit on the same draft — and
+the control enables itself the moment it is above zero. **Simulate routing** answers to the same
+shape of rule, `simulateReason(kinds)`: it opens the sheet for any member, and is inert with its
+reason only for a workspace with no task kinds to ask about.
 
-Both head actions are inert through `Button`'s `reason`, so each says what is missing rather than
-sitting dead; the two unbuilt sibling tabs are `SubnavSoon`, which does the same for a
-destination. The head and the tab set themselves are the **section's** since
+An inert head action carries `Button`'s `reason`, so it says what is missing rather than sitting
+dead; the one unbuilt sibling tab is `SubnavSoon`, which does the same for a destination. The head
+and the tab set themselves are the **section's** since
 [#227](https://github.com/NobuData/ouroboros/issues/227) — see the next section.
+
+### The route inspector and the simulate panel
+
+Mockup 06's **ROUTE — implement-primary** card, whole
+([#203](https://github.com/NobuData/ouroboros/issues/203)), around the chain
+[#202](https://github.com/NobuData/ouroboros/issues/202) put in it:
+
+```
+ROUTE — implement-primary                               selected
+① coder-max      → claude-fable-5 · Anthropic Claude  ●   Primary · healthy · 42ms
+② coder-fallback → gpt-5-codex · GitHub Copilot       ●   Fallback on 5xx / timeouts
+③ local-docs     → qwen3-coder:32b · Ollama · work…   ●   Offline mode — keeps the loop turning…
+──────────────────────────────────────────────────────────────────────────────────
+Allow fallback to local models                                              [on ]
+Fail run instead of degrading below fallback 2                              [off]
+Max cost per run  [$2.50    ]
+Aliases resolve in the Model registry — routes never name raw models. Open registry →
+[Simulate this route]
+```
+
+**The dots are the strip's read, indexed.** A route hop carries no status — the contract
+publishes health once, on `GET /api/v1/routing/providers`, so that it cannot be shown two ways
+at once — and the inspector looks each hop's connection up in the same read the strip above the
+matrix is drawn from ([`app/models/inspector.ts`](app/models/inspector.ts)'s `hopHealthIndex`,
+formed on the server). The dot wears `providerChip`'s treatment, its `title` is the strip's
+last-checked detail, and `unknown` is a ring with the word here as it is there — as are an alias
+bound to no provider, a strip that could not be read, and a connection the strip does not list,
+each with its own hover.
+
+**The line under a hop is the operator's note, or the hop's health line.** The seed stores hops
+2 and 3's notes and leaves hop 1's null on purpose: the mockup's *Primary · API key valid, 42ms
+to us-east* is a position, a state and a measurement, and a note that froze those would disagree
+with the chip the first time a check ran. A hop with no note prints `Primary · healthy · 42ms` —
+the role, the state's word and the service's composed `meta`, the shape the simulate panel's
+kept-hop sentence takes.
+
+**Policy edits join the dirty batch, and nothing on the card saves on change.** The two switches
+and the cap edit the route editor's draft through the same path a hop move takes
+([`app/models/chain.ts`](app/models/chain.ts)'s `setAllowLocal`, `setFloor`, `setMaxCost`), so a
+flipped switch marks the row *changed*, counts in the bar, is discarded by **Discard** and commits
+with **Save routes**. The floor is drawn as the mockup's sentence with the floor as its number —
+`floorHopIndex` itself, the hop the rail prints — which becomes a select over the chain's hops
+while the switch is on, and names the floor the switch would set (one above the last resort)
+while it is off. The cap is parsed in whole cents by string arithmetic on every keystroke, refused
+inline for a fraction of a cent or a `$0.00` (*a route that can never run*), and read as no cap
+when the field is empty. A member sees every control in its real position, inert with one
+reason.
+
+**The simulate panel renders and never narrates.** [`app/models/simulate-sheet.tsx`](app/models/simulate-sheet.tsx)
+takes a task kind, an effort, labels and a diff kind — the rules grammar's own vocabulary — and
+asks Z.4's `POST /api/v1/routing/simulate` through a Server Action, sending only the facts the
+reader set (an absent fact is *unknown*, never small, and never `null`). The answer is the
+`Resolution` drawn whole: every hop kept or dropped with its explanation verbatim, dropped hops
+struck through with the word beside them, every matched rule with *applied* or *did not apply*
+and its reason, the votes, the floor's sentence, the cap. A **`fail_run` is the answer, not an
+error** — the outcome chip, the failure's own sentence first, as a status and never an alert —
+because a run that stops *and says why* is the whole point of the floor. The panel resolves the
+routes as saved and says so above the form whenever the page holds an unsaved edit.
 
 ### The rules card and the spend card
 

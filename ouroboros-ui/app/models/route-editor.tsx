@@ -15,6 +15,7 @@ import {
 import {
   type BatchProblems,
   type ChainDraft,
+  type HopTarget,
   ROUTES_REFUSED,
   ROUTES_SAVED,
   type SavedRoute,
@@ -23,10 +24,12 @@ import {
   moveHop,
   removeHop,
   sameChain,
+  setAllowLocal,
+  setFloor,
+  setMaxCost,
   swapHop,
   toSaveInput,
 } from "./chain";
-import type { AliasCell } from "./matrix";
 import { readRuleTargets } from "./rule-actions";
 import { saveRoutes } from "./route-actions";
 import type { RuleTargetsReading } from "./rules";
@@ -34,8 +37,8 @@ import type { RuleTargetsReading } from "./rules";
 /**
  * The editing state behind **Save routes**
  * ([#202](https://github.com/NobuData/ouroboros/issues/202)) — the one state four surfaces
- * read: the matrix's cells and row marks, the inspector's chain, the dirty-state bar, and the
- * head's own **Save routes** action.
+ * read: the matrix's cells and row marks, the inspector's chain and policy controls, the
+ * dirty-state bar, and the head's own **Save routes** action.
  *
  * A context rather than a prop, because the four are not in one subtree: the head is drawn
  * by `app/models/models-frame.tsx` above the matrix, and the bar sits between them. A count
@@ -54,8 +57,11 @@ import type { RuleTargetsReading } from "./rules";
  * than from what this browser sent.
  *
  * An edit that lands back on the baseline is dropped rather than stored — a hop dragged
- * away and back is not a change — so the count the bar prints is a count of routes that
- * would actually be written.
+ * away and back is not a change, and neither is a switch flipped twice — so the count the
+ * bar prints is a count of routes that would actually be written. The inspector's policy
+ * edits (AA.4, [#203](https://github.com/NobuData/ouroboros/issues/203)) go through the same
+ * `edit` as a chain edit, onto the same draft, which is the whole of *policy edits join the
+ * dirty batch*: there is one batch, and nothing on the page saves on change.
  *
  * ### The registry list is read once, on demand
  *
@@ -106,11 +112,17 @@ export interface RouteEditor {
   /** Move a hop within a route. `from` and `to` are indexes from 0; `to` is clamped. */
   readonly move: (kind: string, from: number, to: number) => void;
   /** Point a hop at another alias. */
-  readonly swap: (kind: string, index: number, target: AliasCell) => void;
+  readonly swap: (kind: string, index: number, target: HopTarget) => void;
   /** Append a hop. */
-  readonly add: (kind: string, target: AliasCell) => void;
+  readonly add: (kind: string, target: HopTarget) => void;
   /** Remove a hop — when `app/models/chain.ts`'s `removalReason` allows it. */
   readonly remove: (kind: string, index: number) => void;
+  /** Move **Allow fallback to local models**. */
+  readonly allowLocal: (kind: string, allow: boolean) => void;
+  /** Move the floor — the deepest hop the route may run on, from 1 — or switch it off with `null`. */
+  readonly floor: (kind: string, floor: number | null) => void;
+  /** Move the cost cap, in whole cents — or remove it with `null`. */
+  readonly maxCost: (kind: string, cents: number | null) => void;
   /** Drop every edit, restoring the last saved state exactly. */
   readonly discard: () => void;
   /** Commit every edit in one batch. */
@@ -139,6 +151,9 @@ const READ_ONLY: RouteEditor = {
   swap: () => {},
   add: () => {},
   remove: () => {},
+  allowLocal: () => {},
+  floor: () => {},
+  maxCost: () => {},
   discard: () => {},
   save: () => {},
   readRegistry: () => {},
@@ -316,6 +331,15 @@ export function RouteEditorProvider({ routes, editable, children }: RouteEditorP
           const removal = removeHop(draft, index);
           return removal.ok ? removal.draft : draft;
         });
+      },
+      allowLocal: (kind, allow) => {
+        edit(kind, (draft) => setAllowLocal(draft, allow));
+      },
+      floor: (kind, floor) => {
+        edit(kind, (draft) => setFloor(draft, floor));
+      },
+      maxCost: (kind, cents) => {
+        edit(kind, (draft) => setMaxCost(draft, cents));
       },
       discard,
       save,

@@ -25,9 +25,9 @@
  *   ({@link sameChain}); a hop dragged away and dragged back is not a change.
  * - **Discard** is the empty set of edits, so it restores the last saved state *exactly*,
  *   because the saved state was never modified — it is the baseline every draft is measured
- *   against, and policy edits joining the batch from AA.4
- *   ([#203](https://github.com/NobuData/ouroboros/issues/203)) are discarded by the same
- *   emptying.
+ *   against, and the policy edits AA.4
+ *   ([#203](https://github.com/NobuData/ouroboros/issues/203)) makes on the same draft are
+ *   discarded by the same emptying.
  * - The batch **Save routes** sends is the drafts and only the drafts ({@link toSaveInput}),
  *   so a route nobody edited is a route the server is not asked to rewrite — and cannot
  *   refuse.
@@ -74,17 +74,40 @@ export interface DraftHop {
   readonly resolution: string;
   /** The inspector's hop-meta line, or `null` for a hop with none. */
   readonly note: string | null;
+  /**
+   * The connection the alias is bound to, or `null` for an alias bound to none.
+   *
+   * Carried so the inspector can draw the hop's health dot (AA.4,
+   * [#203](https://github.com/NobuData/ouroboros/issues/203)) by looking the connection up
+   * in the strip's own read, rather than by carrying a status of its own — `RouteHop.provider`
+   * publishes no status, and the contract says why. Not sent: nothing about where an alias
+   * runs is the client's to say.
+   */
+  readonly providerId: string | null;
+}
+
+/**
+ * An alias as the swap and add menus offer it: the matrix's cell, plus the connection it runs
+ * on — what a hop made from it needs to carry.
+ *
+ * The registry list (`app/models/rules.ts`'s `ruleTarget`) produces these, so a hop picked
+ * from a menu knows its connection exactly as a saved hop does.
+ */
+export interface HopTarget extends AliasCell {
+  /** The connection's id, or `null` for an alias bound to no provider. */
+  readonly providerId: string | null;
 }
 
 /**
  * One route as the editor holds it: its chain, and the policy triple the contract requires
  * beside it.
  *
- * The policy fields are carried unchanged from the saved route: `PUT /api/v1/routing/routes`
- * has no leave-this-alone case, so a chain edit has to send the floor and the cap it did not
- * touch. Editing them is AA.4's ([#203](https://github.com/NobuData/ouroboros/issues/203)),
- * and it edits them *here*, on this draft — which is how policy edits join the same dirty
- * batch.
+ * The policy fields are the inspector's controls (AA.4,
+ * [#203](https://github.com/NobuData/ouroboros/issues/203)) and are edited *here*, on this
+ * draft, by {@link setAllowLocal}, {@link setFloor} and {@link setMaxCost} — which is how a
+ * policy edit joins the same dirty batch as a chain edit and commits with the same **Save
+ * routes**. `PUT /api/v1/routing/routes` has no leave-this-alone case, so a chain edit sends
+ * the floor and the cap it did not touch, and a policy edit sends the chain.
  */
 export interface ChainDraft {
   /** The task kind — the matrix row's identity, and the batch entry's key. */
@@ -154,6 +177,7 @@ export function savedRoute(kind: RoutingTaskKind): SavedRoute | null {
         alias: hop.alias,
         resolution: aliasCell(hop).resolution,
         note: hop.note,
+        providerId: hop.provider?.id ?? null,
       })),
     allowLocalFallback: route.allowLocalFallback,
     floorHopIndex: route.floorHopIndex,
@@ -210,17 +234,23 @@ export function moveHop(draft: ChainDraft, from: number, to: number): ChainDraft
  *
  * @param draft The route.
  * @param index Which hop, from 0.
- * @param target The alias to use, with the resolution line the registry list carries for it.
+ * @param target The alias to use, with the resolution line and the connection the registry
+ *   list carries for it.
  * @returns The draft, or the same draft for an index the chain does not have or an alias the
  *   hop already names.
  */
-export function swapHop(draft: ChainDraft, index: number, target: AliasCell): ChainDraft {
+export function swapHop(draft: ChainDraft, index: number, target: HopTarget): ChainDraft {
   const hop = draft.hops[index];
   if (hop === undefined || hop.alias === target.alias) return draft;
 
   const hops = draft.hops.map((candidate, at) =>
     at === index
-      ? { ...candidate, alias: target.alias, resolution: target.resolution }
+      ? {
+          ...candidate,
+          alias: target.alias,
+          resolution: target.resolution,
+          providerId: target.providerId,
+        }
       : candidate,
   );
 
@@ -239,10 +269,19 @@ export function swapHop(draft: ChainDraft, index: number, target: AliasCell): Ch
  * @param id The new hop's id, from {@link addedHopId}.
  * @returns The draft, one hop longer, the new hop carrying no note.
  */
-export function addHop(draft: ChainDraft, target: AliasCell, id: string): ChainDraft {
+export function addHop(draft: ChainDraft, target: HopTarget, id: string): ChainDraft {
   return {
     ...draft,
-    hops: [...draft.hops, { id, alias: target.alias, resolution: target.resolution, note: null }],
+    hops: [
+      ...draft.hops,
+      {
+        id,
+        alias: target.alias,
+        resolution: target.resolution,
+        note: null,
+        providerId: target.providerId,
+      },
+    ],
   };
 }
 
@@ -253,10 +292,9 @@ export const LAST_HOP_REASON =
 /**
  * Why a hop cannot be removed: the chain would be shorter than the route's floor.
  *
- * The floor is a policy field, and the control that moves it is the inspector's (AA.4,
- * [#203](https://github.com/NobuData/ouroboros/issues/203)); until it lands, the honest
- * sentence names the floor and says what it protects rather than offering a control that is
- * not there.
+ * The floor is a policy field, and the control that moves it is the inspector's switch
+ * (AA.4, [#203](https://github.com/NobuData/ouroboros/issues/203)), a few lines below the
+ * chain; the sentence names the floor, says what it protects, and points at the switch.
  *
  * @param floor The route's floor, 1-based.
  * @returns The reason.
@@ -316,6 +354,72 @@ export function removeHop(draft: ChainDraft, index: number): Removal {
   if (reason !== null) return { ok: false, reason };
 
   return { ok: true, draft: { ...draft, hops: draft.hops.filter((_hop, at) => at !== index) } };
+}
+
+/* ------------------------------------------------------------------ the policy edits */
+
+/**
+ * The route with **Allow fallback to local models** in a position.
+ *
+ * @param draft The route.
+ * @param allow The position.
+ * @returns The draft, or the same draft when the switch is already there.
+ */
+export function setAllowLocal(draft: ChainDraft, allow: boolean): ChainDraft {
+  return draft.allowLocalFallback === allow ? draft : { ...draft, allowLocalFallback: allow };
+}
+
+/**
+ * The floor the switch sets when it is turned on: one above the last resort.
+ *
+ * The deepest floor that still refuses something — on a three-hop chain, hop 2, which is
+ * mockup 06's *fallback 2*; on a two-hop chain, the primary. A floor at the last hop would be
+ * a switch that changes nothing, and a switch that changes nothing is not what a reader who
+ * turned it on asked for.
+ *
+ * @param draft The route.
+ * @returns The hop, from 1. `1` for a chain one hop long.
+ */
+export function floorDefault(draft: ChainDraft): number {
+  return Math.max(1, draft.hops.length - 1);
+}
+
+/**
+ * The route with its floor moved — or switched off.
+ *
+ * Measured against the chain in this draft, as the contract measures it against the chain in
+ * the same body: a floor past the end of the chain is refused here rather than sent, and so
+ * is one below the primary.
+ *
+ * @param draft The route.
+ * @param floor The deepest hop the route may run on, from 1 — or `null` for no floor.
+ * @returns The draft, or the same draft for a floor the chain does not have or one already set.
+ */
+export function setFloor(draft: ChainDraft, floor: number | null): ChainDraft {
+  if (floor !== null && (!Number.isInteger(floor) || floor < 1 || floor > draft.hops.length)) {
+    return draft;
+  }
+
+  return draft.floorHopIndex === floor ? draft : { ...draft, floorHopIndex: floor };
+}
+
+/**
+ * The route with its cost cap moved — or removed.
+ *
+ * The contract's own rule: a cap is a positive integer of cents, and `null` is no cap. A zero
+ * is refused here for the reason the contract gives — *a cap of zero is not a cap, it is a
+ * route that can never run* — and `app/models/inspector.ts`'s `parseMaxCost` is what turns
+ * typed text into a number this will take.
+ *
+ * @param draft The route.
+ * @param cents The cap in whole cents, or `null` for none.
+ * @returns The draft, or the same draft for a cap that is not a positive whole number of cents
+ *   or one already set.
+ */
+export function setMaxCost(draft: ChainDraft, cents: number | null): ChainDraft {
+  if (cents !== null && (!Number.isInteger(cents) || cents < 1)) return draft;
+
+  return draft.maxCostCentsPerRun === cents ? draft : { ...draft, maxCostCentsPerRun: cents };
 }
 
 /**
@@ -624,11 +728,6 @@ export const AT_BOTTOM_REASON = "Already the last hop.";
 
 /** The drag handle's tooltip — the pointer's path; the buttons are the keyboard's. */
 export const DRAG_HINT = "Drag to reorder";
-
-/** What the chain says about the controls the inspector does not have yet. */
-export const POLICY_NOTE =
-  "The policy switches and the cost cap arrive with the route inspector (#203); until then " +
-  "a save carries them unchanged.";
 
 /** What the inspector says for a selected kind that has no route. */
 export const NO_ROUTE_NOTE =

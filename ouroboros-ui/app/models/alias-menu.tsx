@@ -5,8 +5,7 @@ import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState 
 import { menuConsumesKey, menuFocusTarget, menuItems, menuKeyAction } from "@/app/shell/menu";
 import { cx } from "@/app/ui";
 
-import { EMPTY_REGISTRY, RESOLVES } from "./chain";
-import type { AliasCell } from "./matrix";
+import { EMPTY_REGISTRY, type HopTarget, RESOLVES } from "./chain";
 import { useRouteEditor } from "./route-editor";
 import { TARGETS_LOADING } from "./rules";
 
@@ -66,7 +65,7 @@ export interface AliasMenuProps {
   /** The alias the hop names now, for a swap. Omitted for an add, which has no current row. */
   readonly current?: string;
   /** What to do with the alias picked. The menu closes itself. */
-  readonly onPick: (target: AliasCell) => void;
+  readonly onPick: (target: HopTarget) => void;
   /** The trigger, drawn by the caller with these props spread onto it. */
   readonly trigger: (props: AliasMenuTriggerProps) => ReactNode;
   /** Classes from the page — placement only. */
@@ -184,7 +183,7 @@ export function AliasMenu({ label, menuLabel, current, onPick, trigger, classNam
    *
    * @param target The alias.
    */
-  function pick(target: AliasCell): void {
+  function pick(target: HopTarget): void {
     onPick(target);
     close(true);
   }
@@ -236,7 +235,7 @@ function MenuBody({
 }: Readonly<{
   registry: ReturnType<typeof useRouteEditor>["registry"];
   current: string | undefined;
-  onPick: (target: AliasCell) => void;
+  onPick: (target: HopTarget) => void;
 }>) {
   if (registry === null) {
     return (

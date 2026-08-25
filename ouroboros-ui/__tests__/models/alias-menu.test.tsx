@@ -175,7 +175,11 @@ describe("the rows", () => {
 
     fireEvent.click(rows[2]);
 
-    expect(onPick).toHaveBeenCalledExactlyOnceWith({ alias: "coder-std", resolution: "claude-sonnet-5 · Anthropic Claude" });
+    expect(onPick).toHaveBeenCalledExactlyOnceWith({
+      alias: "coder-std",
+      resolution: "claude-sonnet-5 · Anthropic Claude",
+      providerId: "5eed000c-0000-4000-8000-000000000001",
+    });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(trigger()).toHaveFocus();
   });

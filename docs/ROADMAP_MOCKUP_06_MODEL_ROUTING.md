@@ -1298,7 +1298,7 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 | AA.1 | #200 | 🟢 Done | ouroboros-ui: [AA.1] Models route, subnav & provider health strip | `/models` head, violet subnav, honest health chips | mvp, routing, ui, design | N (after #41, Z.3, BA-D.5) | Y | M | ouroboros-ui |
 | AA.2 | #201 | 🟢 Done | ouroboros-ui: [AA.2] Routing matrix table | 8-kind matrix: alias cells, escalation summaries, stats, selection | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | L | ouroboros-ui |
 | AA.3 | #202 | 🟢 Done | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
-| AA.4 | #203 | 🟡 Open | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
+| AA.4 | #203 | 🟢 Done | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
 | AA.5 | #204 | 🟢 Done | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
 | AA.6 | #205 | 🟡 Open | ouroboros-ui: [AA.6] Routing states & guards | Empty foundations guidance, member read-only, load/error states | mvp, routing, ui, design | N (after AA.2–AA.5) | Y | S | ouroboros-ui |
 | AA.7 | #206 | 🟡 Open | ouroboros-ui: [AA.7] Routing e2e leg | Parity, reorder→save, rule toggle, simulate, honesty states, themes | mvp, routing, ui, ci | N (after AA.1–AA.6) | Y | S | ouroboros-ui, .github |
@@ -1596,7 +1596,111 @@ alias swap ▾ ─▶ registry list + "→ resolves: claude-sonnet-5 · Anthropi
 
 ### Issue AA.4 — ouroboros-ui: [AA.4] Route inspector & simulate panel
 
-> **GitHub issue:** #203 · **Status:** 🟡 Open · **Parent epic:** #187
+> **GitHub issue:** #203 · **Status:** 🟢 Done · **Parent epic:** #187
+
+> **Shipped 2026-08-25.** The inspector whole, in the seat AA.2 left and around the chain AA.3
+> put there: each hop's health dot and hop-meta line in
+> [`app/models/chain-editor.tsx`](../ouroboros-ui/app/models/chain-editor.tsx), the two policy
+> switches, the **Max cost per run** field and the registry footnote in
+> [`app/models/route-policy.tsx`](../ouroboros-ui/app/models/route-policy.tsx), and the
+> **Simulate routing** sheet — opened from the head's action and from the inspector's
+> **Simulate this route** — in
+> [`app/models/simulate-sheet.tsx`](../ouroboros-ui/app/models/simulate-sheet.tsx). The
+> decisions are pure: [`app/models/inspector.ts`](../ouroboros-ui/app/models/inspector.ts)
+> (health lookup, meta line, floor sentence, currency parsing) and
+> [`app/models/simulation.ts`](../ouroboros-ui/app/models/simulation.ts) (the request, the
+> panel's copy); the policy edits are three more functions in
+> [`app/models/chain.ts`](../ouroboros-ui/app/models/chain.ts) over the same draft the chain
+> editor moves hops on; the question travels through
+> [`app/models/simulate-actions.ts`](../ouroboros-ui/app/models/simulate-actions.ts) onto Z.4's
+> `POST /api/v1/routing/simulate` (`routing.simulate`,
+> [`app/api/routing.ts`](../ouroboros-ui/app/api/routing.ts)).
+>
+> **The dots are the strip's read, indexed — not a status of the hop's own.** `RouteHop.provider`
+> publishes no health, and the contract says why: a status published twice is a status that
+> can be shown two ways at once. So the screen indexes the page's own
+> `GET /api/v1/routing/providers` by connection id on the server (`hopHealthIndex`), hands it
+> down as a plain object, and each hop looks its connection up and wears `providerChip`'s
+> treatment — the chip above the matrix and the dot beside the hop are one decision. Every
+> hop's `providerId` rides on the draft for that lookup and is never sent; the registry list
+> the swap and add menus offer carries it too (`ruleTarget` returns a `HopTarget`), so a hop
+> swapped onto a Copilot alias wears Copilot's dot at once. Decision **M8** holds on the rail as
+> on the strip: `unknown` is a ring with the word, and three more absences get the same ring
+> with their own hover — an unbound alias, a strip that could not be read (with the read's
+> reason), a connection the strip does not list. The dot's `title` and accessible name are the
+> state's word and the strip's last-checked detail.
+>
+> **Hop 1's meta line is composed from the strip, and the mockup's wording is amended.** The
+> seed stores hops 2 and 3's notes and deliberately leaves hop 1's null: *"Primary · API key
+> valid, 42ms to us-east"* is a position, a state and a measurement minutes old, and a note that
+> froze those would disagree with the chip the first time a check ran. So a hop with no note
+> prints its **health line** — the role, the strip's word for the state, and the service's
+> composed `meta` — which for the seeded primary reads **`Primary · healthy · 42ms`**: the shape
+> Z.1's kept-hop explanation takes, so the inspector and the simulate panel read alike. *API
+> key valid* and *to us-east* are not reachable from what the strip publishes (the check is
+> `key_validation`, and no region is on the contract), and a client that printed them would be
+> composing a sentence. A hop with a note prints the note; the dot carries the state either
+> way. **AA.7 (#206) must write its parity assertion against `Primary · healthy · 42ms`.**
+>
+> **The floor is the mockup's sentence, with the number a control inside it.** *Fail run instead
+> of degrading below fallback N* is drawn as that sentence, and `N` is `floorHopIndex` itself —
+> the hop number the rail prints, so *fallback 2* on the three-hop `implement` chain means hops
+> 1 and 2 may run and hop 3 may not. While the switch is off the sentence names the floor the
+> switch would set (`floorDefault`: one above the last resort — the deepest floor that still
+> refuses something, and the mockup's own `2`); on, the number becomes a select over the
+> chain's hops. Off is `floorHopIndex: null`, which is how the contract spells *no floor*.
+> `setFloor` refuses a floor the chain does not have, as the contract would.
+>
+> **The cap is parsed in whole cents, never rounded.** `parseMaxCost` reads `$2.50`, `2.5`,
+> `1,250.00` and `.99` by string arithmetic rather than `Number(text) * 100` (which is
+> `114.99999999999999` for `$1.15`), refuses a third decimal rather than rounding it, refuses
+> `$0.00` with the contract's own sentence (*a route that can never run*), and reads an empty
+> field as no cap. The field parses every keystroke: an amount lands on the draft at once, a
+> malformed one is refused **inline** through `TextField`'s `error` — wired into the control's
+> description and `aria-invalid` — while the draft keeps the last amount that parsed, and an
+> accepted amount is reprinted as `$2.50` on blur.
+>
+> **Policy edits join the AA.3 batch, and nothing on the card saves on change.** Each control
+> edits the route editor's draft through the same `edit` a hop move goes through, so a flipped
+> switch marks the row *changed*, counts in the bar, is discarded by **Discard** and commits
+> with **Save routes** — one batch, one `PUT`, the chain it did not touch sent beside the policy
+> it did. A member sees the policy in its real positions, every control inert with one reason
+> (§ 3.3's permission-limited state): a route's policy is part of its story, and a card that
+> hid it would look like a route with none.
+>
+> **The simulate panel renders and never narrates.** Four inputs — task kind, effort, labels,
+> diff — whose vocabulary is the rules grammar's own (`EFFORT_LEVELS`, `DIFF_KINDS`), composed
+> into a request that **omits** every fact the reader left unset (no `null`, no default, and no
+> `ctx` at all when nothing is known — an absent fact is unknown, never small). The answer is
+> the `Resolution`, drawn whole: every hop kept or dropped with its `explanation` verbatim,
+> dropped hops struck through and worded rather than hidden, every matched rule's `display`
+> with *applied* or *did not apply* and its reason, the votes as requirements rather than hops,
+> the floor's sentence, the cap and the local switch. A **`fail_run` is drawn as the answer** —
+> the outcome chip, the failure's own sentence first, under the same heading a resolved chain
+> gets, as a `status` and never an alert; only a refused *question* (a kind with no route, a
+> `422`) is drawn in the error hue. The suite's proof of *no client-side story assembly* is a
+> resolution whose explanations are nonsense strings, rendered exactly as nonsense. The panel
+> resolves the routes **as saved** and says so above the form whenever the page holds an
+> unsaved edit, because the endpoint is the code path a run takes and a run does not see a
+> browser's drafts. The head's **Simulate routing** is inert with its reason only for a
+> workspace with no task kinds; any member may open it.
+>
+> **Two corrections to the ticket's wording.** The registry footnote links the registry rather
+> than labelling it *soon*: CI.1 (#591) built `/models/registry` before this card was drawn, and
+> a *soon* over a surface that exists would be the dishonest rendering. And the panel's
+> *Simulating…* is plain state rather than `useTransition`'s flag: the flag is not observable
+> under jsdom once the answer has rendered, and a control whose return cannot be asserted is a
+> control whose return cannot be promised — the answer and the control's return now land in
+> one render.
+>
+> **Deliberately not here:** the states-and-guards pass (AA.6, #205); the e2e leg (AA.7, #206),
+> whose *simulate* assertion against the live stack is what proves a dead-primary scenario
+> answers `fail_run` end to end — the contract's own `failRun` example is what this ticket
+> renders and asserts on.
+>
+> **130 tests added** across the pure decisions, the policy controls, the sheet, the chain's
+> dots, the matrix, the screen, the editor, the action, the API client and the stylesheet;
+> 3,292 pass in `ouroboros-ui`.
 
 
 - **Problem Statement:** The inspector tells one route's full story — chain
@@ -2223,3 +2327,25 @@ than the mockup's two figures.
 
 Next in epic AA are **#202**, **#203** and **#205** ([AA.6] the states and guards), which now has a
 right column to draw its skeletons and its read-only pass over.
+
+**#203** ([AA.4] the route inspector and simulate panel) has landed, and the right column is
+complete: the seat AA.2 left holds the inspector whole — each hop with the strip's own dot and a
+line beneath it, the two switches, the cap and the footnote — and the head's **Simulate routing**
+opens a sheet that asks Z.4 and prints the Z.1 story verbatim. Two things were worth getting
+right and both are pure. The dots are a *lookup* into the page's own strip read rather than a
+status carried on the hop, so the chip above the matrix and the dot beside the hop cannot
+disagree, and `unknown` stays a ring on the rail as it is on the strip. And the panel narrates
+nothing: a resolution whose explanations are nonsense is rendered as nonsense, which is the test
+that keeps "no client-side story assembly" true after the next edit to `explanations.ts`.
+
+**Three amendments are recorded for AA.7 (#206) to assert against.** The seeded primary's
+hop-meta line reads `Primary · healthy · 42ms`, not the mockup's *API key valid, 42ms to
+us-east* — the seed stores no such note on purpose, and neither the check's name nor a region is
+on the strip's contract. The registry footnote is a link, not a *soon*, because CI.1 built the
+surface first. And the floor's sentence numbers the floor by the hop the rail prints, with the
+switch defaulting to one above the last resort — the mockup's `2` on the three-hop chain, and a
+floor that refuses something on every chain.
+
+Next in epic AA are **#205** ([AA.6] the states and guards), which now has every card drawn to
+draw its skeletons and its read-only pass over, and **#206** ([AA.7] the e2e leg), whose
+*reorder → save*, *rule toggle* and *simulate* assertions now have every control they script.

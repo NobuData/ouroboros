@@ -285,17 +285,26 @@ export function saveRoutesReason(pending: number): string | undefined {
   return pending > 0 ? undefined : "Nothing to save — no route has been changed.";
 }
 
+/** Why **Simulate routing** cannot act: there is no task kind to ask about. */
+export const NO_KINDS_TO_SIMULATE =
+  "Nothing to simulate — this workspace has no task kinds to route.";
+
 /**
- * Why **Simulate routing** cannot act yet.
+ * Why **Simulate routing** cannot act, or `undefined` when it can.
  *
- * A constant rather than a rule: the panel it opens is AA.4's
- * ([#203](https://github.com/NobuData/ouroboros/issues/203)) and does not exist, so there is
- * no state in which this control acts today. Naming the issue is what makes the tooltip a
- * usable answer to *when?* rather than the word *soon* on its own — the same treatment the
- * sidebar gives an unbuilt module.
+ * AA.1 held this as a constant naming the issue that would build the panel; since AA.4
+ * ([#203](https://github.com/NobuData/ouroboros/issues/203)) the panel exists and the rule is
+ * the same shape as {@link saveRoutesReason}'s: a number decides. The number is how many task
+ * kinds the matrix has — a workspace whose routing foundations are not seeded, or whose matrix
+ * could not be read, has no route to ask about, and the control says so rather than opening a
+ * panel with an empty select in it.
+ *
+ * @param kinds How many task kinds the page holds.
+ * @returns The reason it is inert, or `undefined` when there is something to simulate.
  */
-export const SIMULATE_REASON =
-  "The simulate panel is not built yet — it arrives with #203.";
+export function simulateReason(kinds: number): string | undefined {
+  return kinds > 0 ? undefined : NO_KINDS_TO_SIMULATE;
+}
 
 /* ------------------------------------------------------------------ the tab set */
 

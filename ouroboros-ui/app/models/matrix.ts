@@ -389,9 +389,10 @@ export const MATRIX_FAILED_TITLE = "The routing matrix could not be read";
 
 /*
  * The seat holds the selected route's chain since AA.3 (#202) — `app/models/chain-editor.tsx`
- * over `app/models/chain.ts` — and what it still does not hold, the policy switches and the
- * cost cap, is said there (`POLICY_NOTE`) rather than here. What is left below is the card's
- * title and its two empty states.
+ * over `app/models/chain.ts` — and, since AA.4 (#203), the rest of the inspector: the hops'
+ * health dots (`app/models/inspector.ts`), the policy switches and the cost cap
+ * (`app/models/route-policy.tsx`) and the way into the simulate panel. What is left below is
+ * the card's title and its two empty states.
  */
 
 /**

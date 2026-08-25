@@ -8,13 +8,13 @@ import {
   DRAG_HINT,
   LAST_HOP_REASON,
   NO_ROUTE_NOTE,
-  POLICY_NOTE,
   floorReason,
   savedRoutes,
 } from "@/app/models/chain";
+import { HEALTH_NOT_READ, HEALTH_UNBOUND, hopHealthIndex } from "@/app/models/inspector";
 import { ruleTarget } from "@/app/models/rules";
 
-import { seededAliases, seededTaskKinds } from "../helpers/models";
+import { seededAliases, seededProviders, seededTaskKinds, unknownProvider } from "../helpers/models";
 import { PALETTES, renderInBothPalettes } from "../helpers/palettes";
 
 /**
@@ -61,12 +61,31 @@ function chain({
   editable = true,
   routes = ROUTES,
   focusToken,
-}: { kind?: string; editable?: boolean; routes?: typeof ROUTES; focusToken?: number } = {}) {
+  health = STRIP,
+}: {
+  kind?: string;
+  editable?: boolean;
+  routes?: typeof ROUTES;
+  focusToken?: number;
+  health?: ReturnType<typeof hopHealthIndex>;
+} = {}) {
   return render(
     <RouteEditorProvider editable={editable} routes={routes}>
-      <ChainEditor focusToken={focusToken} kind={kind} />
+      <ChainEditor focusToken={focusToken} health={health} kind={kind} />
     </RouteEditorProvider>,
   );
+}
+
+/** The seeded strip, indexed — what the screen hands the inspector. */
+const STRIP = hopHealthIndex({ ok: true, value: seededProviders() });
+
+/** The health dots down the rail, in order. */
+function dots(): HTMLElement[] {
+  return hops().map((hop) => {
+    const dot = hop.querySelector<HTMLElement>(".models-chain__dot");
+    if (dot === null) throw new Error("every hop wears a dot");
+    return dot;
+  });
 }
 
 /** The rail's hops, in order. */
@@ -100,12 +119,17 @@ describe("the rail, as the mockup draws it", () => {
     expect(hops().map((hop) => hop.querySelector(".models-chain__idx")?.textContent)).toEqual(["1", "2", "3"]);
   });
 
-  it("prints the operator's note under the hops that have one, and nothing under the rest", () => {
+  it("prints the mockup's three hop-meta lines — the health line where no note is stored (#203)", () => {
+    // The seed stores hops 2 and 3's notes and leaves hop 1's null on purpose: *Primary · API
+    // key valid, 42ms* is a position, a state and a measurement, and the product composes it
+    // from the strip rather than freezing it into a note.
     chain();
 
-    expect(screen.getByText("Fallback on 5xx / timeouts")).toBeInTheDocument();
-    expect(screen.getByText("Offline mode — keeps the loop turning without a network")).toBeInTheDocument();
-    expect(hops()[0].querySelector(".models-chain__meta")).toBeNull();
+    expect(hops().map((hop) => hop.querySelector(".models-chain__meta")?.textContent)).toEqual([
+      "Primary · healthy · 42ms",
+      "Fallback on 5xx / timeouts",
+      "Offline mode — keeps the loop turning without a network",
+    ]);
   });
 
   it("draws the primary in the model hue and the fallbacks in the quiet neutral, as the matrix does", () => {
@@ -123,12 +147,91 @@ describe("the rail, as the mockup draws it", () => {
     expect(hops().map((hop) => hop.querySelector(".models-chain__line") !== null)).toEqual([true, true, false]);
   });
 
-  it("names the issue that brings the policy switches rather than drawing switches that persist nothing", () => {
+  it("holds no switch of its own — the policy controls are the inspector's, under the chain", () => {
     chain();
 
-    expect(screen.getByText(POLICY_NOTE)).toBeInTheDocument();
-    expect(POLICY_NOTE).toMatch(/#203/);
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByText(/#203/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the health dots (#203)", () => {
+  it("draws the seeded implement chain's dots from the strip — healthy, error, healthy", () => {
+    chain();
+
+    expect(dots().map((dot) => dot.className)).toEqual([
+      "models-chain__dot models-chain__dot--ok",
+      "models-chain__dot models-chain__dot--err",
+      "models-chain__dot models-chain__dot--ok",
+    ]);
+  });
+
+  it("gives every dot a name and a title carrying the state and the last-checked detail", () => {
+    chain();
+
+    const [primary, fallback] = dots();
+
+    expect(primary).toHaveAttribute("role", "img");
+    expect(primary).toHaveAccessibleName(/^healthy · Last checked 2026-08-24 09:58 UTC · key validation$/);
+    expect(primary).toHaveAttribute("title", primary.getAttribute("aria-label"));
+    expect(fallback).toHaveAccessibleName(/^error · Last checked .* · elevated latency$/);
+  });
+
+  it("draws unknown as a ring with the word, distinct from healthy without colour (M8)", () => {
+    const fresh = unknownProvider({ id: "5eed000c-0000-4000-8000-000000000001" });
+    chain({ health: hopHealthIndex({ ok: true, value: [fresh] }) });
+
+    const [primary] = dots();
+
+    expect(primary).toHaveClass("models-chain__dot--unknown", "models-chain__dot--ring");
+    expect(primary).not.toHaveClass("models-chain__dot--ok");
+    expect(primary).toHaveAccessibleName(/^unknown · Never checked/);
+    expect(hops()[0].querySelector(".models-chain__meta")).toHaveTextContent("Primary · unknown");
+  });
+
+  it("draws a ring saying so when the strip could not be read, rather than guessing", () => {
+    chain({ health: { ok: false, reason: "Down." } });
+
+    for (const dot of dots()) {
+      expect(dot).toHaveClass("models-chain__dot--ring");
+      expect(dot).toHaveAccessibleName(`unknown · ${HEALTH_NOT_READ} · Down.`);
+    }
+  });
+
+  it("draws a ring for an alias bound to no provider, and says there is nothing to check", () => {
+    const unbound = ROUTES.map((route) =>
+      route.kind === "implement"
+        ? { ...route, hops: route.hops.map((hop, at) => (at === 0 ? { ...hop, providerId: null } : hop)) }
+        : route,
+    );
+    chain({ routes: unbound });
+
+    expect(dots()[0]).toHaveClass("models-chain__dot--ring");
+    expect(dots()[0]).toHaveAccessibleName(`no provider · ${HEALTH_UNBOUND}`);
+  });
+
+  it("follows a swap: the dot is the new alias's connection's", async () => {
+    // Every menu row carries the connection its alias runs on, so a hop swapped onto a
+    // Copilot alias wears Copilot's dot at once, with no second read.
+    chain();
+
+    fireEvent.click(screen.getByRole("button", { name: "Swap hop 1: coder-max" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: /coder-fallback/ }));
+
+    expect(dots()[0]).toHaveClass("models-chain__dot--err");
+  });
+
+  it("falls back on *not read* when rendered without a strip, and says nothing it cannot know", () => {
+    render(
+      <RouteEditorProvider editable routes={ROUTES}>
+        <ChainEditor kind="implement" />
+      </RouteEditorProvider>,
+    );
+
+    for (const dot of dots()) {
+      expect(dot).toHaveClass("models-chain__dot--ring");
+      expect(dot).toHaveAccessibleName(new RegExp(`^unknown · ${HEALTH_NOT_READ}`));
+    }
   });
 
   it("says so for a kind with no route rather than drawing an empty rail", () => {

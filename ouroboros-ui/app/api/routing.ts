@@ -1,7 +1,7 @@
 /**
  * Model routing — what mockup 06's `/models` surface reads from `ouroboros-rest`.
  *
- * Three reads and four writes. The provider health strip
+ * Three reads, four writes and one question. The provider health strip
  * ([#196](https://github.com/NobuData/ouroboros/issues/196)) is what AA.1
  * ([#200](https://github.com/NobuData/ouroboros/issues/200)) draws above the matrix; the
  * matrix itself ([#195](https://github.com/NobuData/ouroboros/issues/195), with its numerics
@@ -12,9 +12,9 @@
  * the registry list its builder chooses aliases from — and the fourth write is **Save routes**
  * itself, the batch AA.3 ([#202](https://github.com/NobuData/ouroboros/issues/202)) commits
  * after the chain editor has staged its edits. They are one page's calls to one tag, which is
- * why they are one module; the inspector's simulate call is AA.4's
- * ([#203](https://github.com/NobuData/ouroboros/issues/203)) and belongs here beside them
- * when it arrives.
+ * why they are one module — and the fifth call, **Simulate routing**, is AA.4's
+ * ([#203](https://github.com/NobuData/ouroboros/issues/203)): a `POST` that reads, asking Z.4's
+ * endpoint ([#197](https://github.com/NobuData/ouroboros/issues/197)) what would run and why.
  *
  * ### The writes send structure, never a sentence
  *
@@ -221,6 +221,59 @@ export type RouteHopInput = components["schemas"]["RouteHopInput"];
  */
 export type SaveRoutesResult = components["schemas"]["SaveRoutesResult"];
 
+/* ------------------------------------------------------------------ Simulate routing */
+
+/**
+ * What to simulate: a task kind, and what is known about the work.
+ *
+ * There is no workspace in it — the workspace is the session's, as everywhere in `/api/v1`,
+ * and a body that could name one would be a body that could simulate somebody else's routes.
+ */
+export type RoutingSimulationRequest = components["schemas"]["RoutingSimulationRequest"];
+
+/**
+ * What is known about the work: `effort`, `labels`, `diffKind` — exactly the three facts an
+ * escalation rule may test, and nothing else. **Every field is optional and absence is a real
+ * answer**: an unstated fact never satisfies a condition about it, and `null` is refused.
+ */
+export type RoutingSimulationContext = components["schemas"]["RoutingSimulationContext"];
+
+/**
+ * One resolution — what would run for a task kind in a context, and why.
+ *
+ * **Every sentence in it is the service's, rendered verbatim.** Each hop, each matched rule,
+ * the floor and a failure carry a stable `code` to branch on and an `explanation` to print;
+ * nothing in `app/models/` composes a second account of any of them. `fail_run` is an
+ * `outcome` of a `200`, not an error: a well-formed question about a route that exists is
+ * answered, and the answer may be *this run would not proceed*.
+ */
+export type Resolution = components["schemas"]["Resolution"];
+
+/**
+ * One hop of a resolved chain — kept or dropped, and why. **Dropped hops stay in the
+ * array**, so the panel can draw hop 2 struck through with its reason beside it.
+ */
+export type ResolutionHop = components["schemas"]["ResolutionHop"];
+
+/** One escalation rule whose predicate matched, and what it did — or why it did nothing. */
+export type ResolutionRule = components["schemas"]["ResolutionRule"];
+
+/** A second opinion an `add_vote` rule attached: a requirement on the executor, not a hop. */
+export type ResolutionVote = components["schemas"]["ResolutionVote"];
+
+/** What the floor decided — recorded on every resolution, including the ones it did not touch. */
+export type ResolutionFloor = components["schemas"]["ResolutionFloor"];
+
+/** Why a resolution refuses to produce a chain — present exactly when `outcome` is `fail_run`. */
+export type ResolutionFailure = components["schemas"]["ResolutionFailure"];
+
+/**
+ * Where a resolved hop's model runs, with the health the resolution decided on — the one
+ * shape on this page that carries a status beside a provider, because the sentence about
+ * the hop was composed from it.
+ */
+export type ResolvedProvider = components["schemas"]["ResolvedProvider"];
+
 /* ------------------------------------------------------------------ the spend card */
 
 /**
@@ -381,5 +434,33 @@ export const routing = {
    */
   async removeRule(id: string, client: ApiClient = api()): Promise<void> {
     await client.DELETE("/api/v1/routing/rules/{id}", { params: { path: { id } } });
+  },
+
+  /**
+   * Ask what would run for a task kind in a context — mockup 06's **Simulate routing**.
+   *
+   * **A `POST` that creates nothing.** The contract explains the verb: a context is a nested
+   * document with an array in it, and `?ctx[labels][]=security` is a shape every client
+   * library spells differently. Nothing is written, the answer is a `200`, and the same
+   * question asked twice against the same route and snapshot answers byte for byte.
+   *
+   * **The answer is the resolution function's, unchanged.** The endpoint calls the same
+   * `ResolutionService` execution calls and returns what it said — which is what makes the
+   * panel a window onto routing rather than a second implementation of it.
+   *
+   * @param request The task kind, and what is known about the work. Facts the caller does
+   *   not have are **absent**, never `null` and never defaulted: an unstated effort is
+   *   unknown, not small.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The resolution — `fail_run` included, since that is an answer and not an error.
+   * @throws {ApiError} What the service answered — `404 route_not_found` for a kind with no
+   *   chain to explain, `422 validation_failed` for a context carrying a fact no rule could
+   *   read.
+   */
+  async simulate(
+    request: RoutingSimulationRequest,
+    client: ApiClient = api(),
+  ): Promise<Resolution> {
+    return unwrap(await client.POST("/api/v1/routing/simulate", { body: request }));
   },
 };

@@ -44,7 +44,8 @@ import type {
   RoutingAlias,
 } from "@/app/api/routing";
 
-import { type AliasCell, aliasCell } from "./matrix";
+import type { HopTarget } from "./chain";
+import { aliasCell } from "./matrix";
 
 /* ------------------------------------------------------------------ the card */
 
@@ -208,23 +209,31 @@ export type RuleWriteResult =
 /**
  * What the builder reads when it opens: every alias the workspace has, each with the
  * resolution line the matrix draws for it — or why the list could not be read.
+ *
+ * The same list the chain editor's swap and add menus offer (AA.3,
+ * [#202](https://github.com/NobuData/ouroboros/issues/202)), which is why each entry is a
+ * `HopTarget` rather than a bare cell: a hop picked from it has to know which connection it
+ * runs on, so the inspector can draw its health dot (AA.4,
+ * [#203](https://github.com/NobuData/ouroboros/issues/203)).
  */
 export type RuleTargetsReading =
-  | { readonly ok: true; readonly aliases: readonly AliasCell[] }
+  | { readonly ok: true; readonly aliases: readonly HopTarget[] }
   | { readonly ok: false; readonly reason: string };
 
 /**
- * One alias as the builder's select offers it: the name, and what it currently means.
+ * One alias as the builder's select — and the chain editor's menus — offer it: the name,
+ * what it currently means, and where it runs.
  *
  * The same cell the matrix draws, from the registry list rather than from a chain, so the
  * option a rule is composed from and the pill the matrix prints for it agree about what the
  * alias resolves to.
  *
  * @param alias The alias from `GET /api/v1/routing/aliases`.
- * @returns The name and its resolution line.
+ * @returns The name, its resolution line, and its connection's id — `null` for an alias bound
+ *   to no provider, which the registry still offers and the resolution line says so.
  */
-export function ruleTarget(alias: RoutingAlias): AliasCell {
-  return aliasCell(alias);
+export function ruleTarget(alias: RoutingAlias): HopTarget {
+  return { ...aliasCell(alias), providerId: alias.provider?.id ?? null };
 }
 
 /** The `code` the contract answers when a role may read the card and not write to it. */

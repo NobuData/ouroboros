@@ -6,6 +6,7 @@ import { Card, CardHead, Chip, EmptyState, Table, Tag, type Column } from "@/app
 
 import { CHANGED, type EditedRow, NO_ROUTE_NOTE, editChainHint, editedRow } from "./chain";
 import { ChainEditor } from "./chain-editor";
+import { HEALTH_UNREAD, type HopHealthIndex, SIMULATE_ROUTE } from "./inspector";
 import {
   EM_DASH,
   INSPECTOR_EMPTY_NOTE,
@@ -22,6 +23,8 @@ import {
 } from "./matrix";
 import { ModelsGrid } from "./models-grid";
 import { useRouteEditor } from "./route-editor";
+import { RoutePolicy } from "./route-policy";
+import { SimulateButton } from "./simulate-sheet";
 
 import "./models.css";
 
@@ -29,7 +32,9 @@ import "./models.css";
  * Mockup 06's **ROUTING MATRIX** — the eight-kind table, and the route card beside it
  * ([#201](https://github.com/NobuData/ouroboros/issues/201)); since AA.3
  * ([#202](https://github.com/NobuData/ouroboros/issues/202)), the card holds the selected
- * route's chain and edits it.
+ * route's chain and edits it, and since AA.4
+ * ([#203](https://github.com/NobuData/ouroboros/issues/203)) it is the inspector whole: the
+ * hops with their health, the policy controls under them, and the way into the simulate panel.
  *
  * This table is the page: everything else on `/models` explains or edits what it shows. Which
  * makes its two hard properties the ticket's two hard properties — **density** (two levels of
@@ -271,6 +276,14 @@ export interface RoutingMatrixProps {
    * prop are rendered where they are placed and no further.
    */
   readonly aside?: ReactNode;
+  /**
+   * The strip, indexed by connection — what the inspector's health dots are drawn from
+   * (`app/models/inspector.ts`'s `hopHealthIndex`), formed on the server from the same read
+   * the strip above the matrix is drawn from.
+   *
+   * Defaults to *not read*, which draws every dot as a ring with a hover saying so.
+   */
+  readonly health?: HopHealthIndex;
 }
 
 /**
@@ -279,7 +292,12 @@ export interface RoutingMatrixProps {
  * @param props See {@link RoutingMatrixProps}.
  * @returns The two cards.
  */
-export function RoutingMatrix({ rows, selected: initial, aside }: RoutingMatrixProps) {
+export function RoutingMatrix({
+  rows,
+  selected: initial,
+  aside,
+  health = HEALTH_UNREAD,
+}: RoutingMatrixProps) {
   const editor = useRouteEditor();
   const [selected, setSelected] = useState<string | null>(initial);
   const [focusToken, setFocusToken] = useState(0);
@@ -349,7 +367,12 @@ export function RoutingMatrix({ rows, selected: initial, aside }: RoutingMatrixP
       }
       aside={
         <>
-          <RouteInspectorSeat focusToken={focusToken} row={row} />
+          <RouteInspectorSeat
+            focusToken={focusToken}
+            health={health}
+            kinds={rows.map((candidate) => candidate.kind)}
+            row={row}
+          />
           {aside}
         </>
       }
@@ -358,23 +381,36 @@ export function RoutingMatrix({ rows, selected: initial, aside }: RoutingMatrixP
 }
 
 /**
- * Mockup 06's **ROUTE — implement-primary** card: the selected route's chain, or the two
- * states in which there is no chain to draw.
+ * Mockup 06's **ROUTE — implement-primary** card: the selected route's chain, its policy and
+ * its way into the simulate panel — or the two states in which there is no route to draw.
  *
  * With no row chosen it says how to choose one; with a kind chosen that has no route it says
- * so rather than drawing an empty rail; and with a route it draws the chain — read-only for a
- * member, editable for a role that may. The policy switches and the cost cap the mockup draws
- * under the chain are AA.4's ([#203](https://github.com/NobuData/ouroboros/issues/203)), and
- * the chain's foot names it.
+ * so rather than drawing an empty rail; and with a route it draws the inspector — read-only
+ * for a member, editable for a role that may. The chain is `app/models/chain-editor.tsx`'s,
+ * the switches and the cap are `app/models/route-policy.tsx`'s, and both edit one draft, so
+ * a policy edit and a chain edit are one entry in one batch.
+ *
+ * **Simulate this route** is the head's own button with the selected kind preset; it is keyed
+ * by the kind so the sheet opens on the route the reader is looking at rather than on the one
+ * they looked at first.
  *
  * @param props.row The selected row, or `null` when none is.
  * @param props.focusToken The matrix's shortcut, passed through to the chain.
+ * @param props.health The strip, indexed, for the health dots.
+ * @param props.kinds Every row's kind, for the simulate panel's select.
  * @returns The card.
  */
 function RouteInspectorSeat({
   row,
   focusToken,
-}: Readonly<{ row: EditedRow | null; focusToken: number }>) {
+  health,
+  kinds,
+}: Readonly<{
+  row: EditedRow | null;
+  focusToken: number;
+  health: HopHealthIndex;
+  kinds: readonly string[];
+}>) {
   return (
     <Card aria-labelledby={INSPECTOR_TITLE_ID} as="section" fill>
       <CardHead
@@ -395,7 +431,13 @@ function RouteInspectorSeat({
       ) : row.tag === null ? (
         <EmptyState fill note={NO_ROUTE_NOTE} title={row.kind} />
       ) : (
-        <ChainEditor focusToken={focusToken} kind={row.kind} />
+        <>
+          <ChainEditor focusToken={focusToken} health={health} kind={row.kind} />
+          <RoutePolicy kind={row.kind} />
+          <div className="models-inspector__foot">
+            <SimulateButton key={row.kind} kind={row.kind} label={SIMULATE_ROUTE} size="sm" taskKinds={kinds} />
+          </div>
+        </>
       )}
     </Card>
   );

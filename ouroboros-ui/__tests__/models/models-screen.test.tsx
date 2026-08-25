@@ -20,6 +20,8 @@ vi.mock("@/app/models/rule-actions", () => ({
 }));
 // The chain editor's save is the same kind of seam (`route-actions.test.ts`).
 vi.mock("@/app/models/route-actions", () => ({ saveRoutes: vi.fn() }));
+// …and the simulate panel's question is the same seam again (`simulate-actions.test.ts`).
+vi.mock("@/app/models/simulate-actions", () => ({ simulateRoute: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const { ModelsScreen } = await import("@/app/models/models-screen");
@@ -92,13 +94,27 @@ describe("Save routes", () => {
 });
 
 describe("Simulate routing", () => {
-  it("is inert and names the issue that builds the panel", () => {
+  it("opens the simulate sheet on the matrix's first kind, for any member (#203)", () => {
     render(<ModelsScreen readings={readings()} />);
 
     const simulate = screen.getByRole("button", { name: "Simulate routing" });
 
+    expect(simulate).not.toHaveAttribute("aria-disabled");
+
+    fireEvent.click(simulate);
+
+    const dialog = screen.getByRole("dialog", { name: "Simulate routing" });
+
+    expect(within(dialog).getByLabelText("Task kind")).toHaveValue("analyze");
+  });
+
+  it("is inert with its reason for a workspace with nothing to simulate", () => {
+    render(<ModelsScreen readings={readings({ matrix: { ok: true, value: emptyMatrix() } })} />);
+
+    const simulate = screen.getByRole("button", { name: "Simulate routing" });
+
     expect(simulate).toHaveAttribute("aria-disabled", "true");
-    expect(simulate.getAttribute("title")).toMatch(/#203/);
+    expect(simulate.getAttribute("title")).toMatch(/Nothing to simulate/);
   });
 });
 
@@ -237,12 +253,29 @@ describe("the matrix, in its place on the page", () => {
 });
 
 describe("what the page does not pretend", () => {
-  it("names the surface that will fill the inspector's seat rather than mocking it up", () => {
-    // An invented chain of hops there would be the one dishonest thing on a page built to be
-    // honest — and indistinguishable, in a screenshot, from the real one AA.4 ships.
+  it("draws the inspector from the page's own two reads, and names no issue for it (#203)", () => {
+    // The seat AA.2 left is filled: the seeded implement route's three hops wear the strip's
+    // dots — healthy, error, healthy — and its two switches stand where the mockup draws them.
     render(<ModelsScreen readings={readings()} route="implement" />);
 
-    expect(screen.getByText(/#203/)).toBeInTheDocument();
+    const card = screen.getByRole("region", { name: "Route — implement-primary" });
+
+    expect(within(card).getAllByRole("img")).toHaveLength(3);
+    expect(within(card).getByRole("switch", { name: "Allow fallback to local models" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByText(/#203/)).not.toBeInTheDocument();
+  });
+
+  it("draws the inspector's dots as rings, with the reason, when the strip could not be read", () => {
+    // One failed read is one degraded region: the matrix and the chain still draw, and every
+    // dot says the strip was unreadable rather than claiming a state.
+    render(<ModelsScreen readings={readings({ providers: { ok: false, reason: "Down." } })} route="implement" />);
+
+    const card = screen.getByRole("region", { name: "Route — implement-primary" });
+
+    for (const dot of within(card).getAllByRole("img")) {
+      expect(dot).toHaveClass("models-chain__dot--ring");
+      expect(dot).toHaveAccessibleName(/could not be read · Down\.$/);
+    }
   });
 
   it("draws a meter only where the ledger computed one", () => {

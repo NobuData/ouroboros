@@ -1,7 +1,8 @@
-import { Button, Card, EmptyState } from "@/app/ui";
+import { Card, EmptyState } from "@/app/ui";
 
 import { savedRoutes } from "./chain";
 import { DirtyBar } from "./dirty-bar";
+import { type HopHealthIndex, hopHealthIndex } from "./inspector";
 import {
   MATRIX_FAILED_TITLE,
   NO_KINDS_NOTE,
@@ -16,8 +17,9 @@ import { RouteEditorProvider } from "./route-editor";
 import { RoutingMatrix } from "./routing-matrix";
 import { RulesCard } from "./rules-card";
 import { SaveRoutesButton } from "./save-routes-button";
+import { SimulateButton } from "./simulate-sheet";
 import { SpendCard } from "./spend-card";
-import { type ModelsReadings, SIMULATE_REASON } from "./view";
+import type { ModelsReadings } from "./view";
 
 import "./models.css";
 
@@ -46,18 +48,28 @@ import "./models.css";
  * ### What this page does not pretend
  *
  * The frame is honest about being a frame. The one unbuilt sibling tab is labelled *soon*
- * rather than linked to a `404`, **Simulate routing** is inert and says why, and the route
- * card's foot names the issue that brings the policy switches rather than drawing switches
- * that persist nothing. That is § 3.5 applied to a page that is now mostly built: a surface
- * that is not ready is **labelled**, never dead, and never a mock-up of itself.
+ * rather than linked to a `404`, and **Simulate routing** is inert with its reason for the
+ * one workspace that has nothing to simulate. That is § 3.5 applied to a page that is now
+ * built: a surface that is not ready is **labelled**, never dead, and never a mock-up of
+ * itself.
  *
- * Since AA.2 ([#201](https://github.com/NobuData/ouroboros/issues/201)) and AA.5
- * ([#204](https://github.com/NobuData/ouroboros/issues/204)) four of its regions draw real
- * data — the health strip, the matrix, the rules card and the spend card — and they are the
- * regions where being wrong would matter. `view.ts` carries the argument for every treatment
- * the strip takes, `matrix.ts` for every cell the table draws, `rules.ts` for every sentence
- * and switch the rules card holds and `spend.ts` for every figure the spend card prints;
- * between them, nothing on this page is a figure this component decided.
+ * Since AA.2 ([#201](https://github.com/NobuData/ouroboros/issues/201)), AA.4
+ * ([#203](https://github.com/NobuData/ouroboros/issues/203)) and AA.5
+ * ([#204](https://github.com/NobuData/ouroboros/issues/204)) every region draws real data —
+ * the health strip, the matrix, the inspector, the rules card and the spend card — and they
+ * are the regions where being wrong would matter. `view.ts` carries the argument for every
+ * treatment the strip takes, `matrix.ts` for every cell the table draws, `inspector.ts` for
+ * every dot and line the route card holds, `rules.ts` for every sentence and switch the rules
+ * card holds and `spend.ts` for every figure the spend card prints; between them, nothing on
+ * this page is a figure this component decided.
+ *
+ * ### The inspector's dots are the strip's read, indexed
+ *
+ * The route card's health dots are drawn from the same `GET /api/v1/routing/providers` the
+ * strip is, indexed by connection here on the server (`hopHealthIndex`) and handed down as a
+ * plain object — so the chip above the matrix and the dot beside the hop are one decision,
+ * and a strip that could not be read is a ring with that reason rather than a dot that
+ * guessed.
  *
  * ### The editor is above the frame, and the role decides what it draws
  *
@@ -126,6 +138,10 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
   // The editor's baseline: every route the read produced, and nothing for a read that failed
   // — there is no chain to edit on a page whose matrix could not be read.
   const routes = readings.matrix.ok ? savedRoutes(readings.matrix.value.taskKinds) : [];
+  // What the simulate panel may ask about, and what decides whether its button acts at all.
+  const kinds = readings.matrix.ok ? readings.matrix.value.taskKinds.map((kind) => kind.name) : [];
+  // The strip, indexed for the inspector's dots.
+  const health = hopHealthIndex(readings.providers);
 
   return (
     <RouteEditorProvider editable={mayAdminister} routes={routes}>
@@ -139,9 +155,11 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
         subline={SUBLINE}
         actions={
           <>
-            <Button reason={SIMULATE_REASON} tone="ghost">
-              Simulate routing
-            </Button>
+            {/*
+              The mockup's ghost action, opening AA.4's sheet on the matrix's first kind —
+              inert with its reason for a workspace that has no kinds to ask about.
+            */}
+            <SimulateButton taskKinds={kinds} />
             {/*
               Inert while clean, which is AA.1's acceptance criterion: `saveRoutesReason` is
               still the rule, and the editor's count is what it now decides from. Drawn for a
@@ -156,7 +174,12 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
 
         <ProviderStrip providers={readings.providers} />
 
-        <MatrixRegion matrix={readings.matrix} mayAdminister={mayAdminister} route={route} />
+        <MatrixRegion
+          health={health}
+          matrix={readings.matrix}
+          mayAdminister={mayAdminister}
+          route={route}
+        />
       </ModelsFrame>
     </RouteEditorProvider>
   );
@@ -186,16 +209,19 @@ export function ModelsScreen({ readings, route = null, mayAdminister = false }: 
  * @param props.matrix The read: the payload, or why it could not be made.
  * @param props.mayAdminister Whether the rules card draws its controls.
  * @param props.route What `?route=` carried, unchecked.
+ * @param props.health The strip, indexed, for the inspector's dots.
  * @returns The region.
  */
 function MatrixRegion({
   matrix,
   mayAdminister,
   route,
+  health,
 }: Readonly<{
   matrix: ModelsReadings["matrix"];
   mayAdminister: boolean;
   route: string | string[] | null;
+  health: HopHealthIndex;
 }>) {
   if (!matrix.ok) {
     return (
@@ -232,5 +258,7 @@ function MatrixRegion({
     );
   }
 
-  return <RoutingMatrix aside={aside} rows={rows} selected={selectedKind(rows, route)} />;
+  return (
+    <RoutingMatrix aside={aside} health={health} rows={rows} selected={selectedKind(rows, route)} />
+  );
 }

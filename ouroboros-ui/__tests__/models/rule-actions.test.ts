@@ -186,10 +186,12 @@ describe("readRuleTargets", () => {
       expect(reading.aliases[1]).toEqual({
         alias: "coder-max",
         resolution: "claude-fable-5 · Anthropic Claude",
+        providerId: "5eed000c-0000-4000-8000-000000000001",
       });
       expect(reading.aliases[3]).toEqual({
         alias: "gpt5-experiments",
         resolution: "gpt-5 · no provider",
+        providerId: null,
       });
     }
   });
