@@ -2,13 +2,14 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
-/** Brand tagline phrasings, cycled in order. Each entry splits into a `lead`
- *  and a trailing `em` — the hero paints `em` in the accent color, so the
- *  emphasized words must always come last. `lang` marks non-English entries so
- *  screen readers pronounce them correctly. */
-export const PHRASES: { lead: string; em: string; lang?: string }[] = [
+/** Brand tagline phrasings, cycled in order. Each entry splits into an optional
+ *  `lead` and a trailing `em` — the hero paints `em` in the accent color, so the
+ *  emphasized words must always come last. A lead-less entry is all accent.
+ *  `lang` marks non-English entries so screen readers pronounce them correctly. */
+export const PHRASES: { lead?: string; em: string; lang?: string }[] = [
   { lead: "Infinity in", em: "Autonomy" },
   { lead: "Infinitas ", em: "Autonomia", lang: "la" },
+  { em: "Ouroboros" },
 ];
 
 const INTERVAL_MS = 5000;
@@ -66,7 +67,8 @@ export function RotatingHeadline() {
       className="headline-phrase"
       render={(p) => (
         <>
-          {p.lead} <em>{p.em}</em>
+          {p.lead ? `${p.lead} ` : null}
+          <em>{p.em}</em>
         </>
       )}
     />
@@ -77,7 +79,7 @@ export function RotatingHeadline() {
 export default function RotatingTagline() {
   return (
     <div className="tagline">
-      <Rotator className="tagline-phrase" render={(p) => `${p.lead} ${p.em}`} />
+      <Rotator className="tagline-phrase" render={(p) => (p.lead ? `${p.lead} ${p.em}` : p.em)} />
     </div>
   );
 }
