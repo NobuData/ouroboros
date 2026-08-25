@@ -502,6 +502,20 @@
   box-shadow: inset 3px 0 0 var(--model);
 }
 
+/*
+ * Mockup 21's `tr.selected` (#592): the same shape in the accent. The registry table selects
+ * in the brand hue where the routing matrix selects in the model violet, and the difference
+ * is the mockups' own — so it is a tone the page declares on the table (`table.tsx`,
+ * `SelectionTone`) rather than a rule the page's sheet writes over this one.
+ */
+.ou-table--accent .ou-table__row--selected td {
+  background: var(--accent-tint);
+}
+
+.ou-table--accent .ou-table__row--selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 /* The caption names the table for a reader moving by landmark; it is not a heading. */
 .ou-table__caption {
   margin-bottom: var(--sp-5);

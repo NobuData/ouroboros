@@ -371,6 +371,80 @@ describe("selectable rows (#201)", () => {
   });
 });
 
+describe("a page's own row class (#592)", () => {
+  it("wears it on the row it is given for, and on no other", () => {
+    // Mockup 21's dimmed unbound row: a state the row as a whole is in, which no column can say.
+    render(
+      <Table
+        caption="Recent runs"
+        columns={COLUMNS}
+        rowClassName={(run) => run.minutes < 10 && "runs__row--short"}
+        rowKey={(run) => run.id}
+        rows={RUNS}
+      />,
+    );
+
+    const [, first, second] = screen.getAllByRole("row");
+
+    expect(second).toHaveClass("runs__row--short");
+    expect(first).not.toHaveClass("runs__row--short");
+    expect(first).not.toHaveAttribute("class");
+  });
+
+  it("keeps it beside the selection's own classes on a selectable row", () => {
+    render(
+      <Table
+        caption="Recent runs"
+        columns={COLUMNS}
+        rowClassName={() => "runs__row--own"}
+        rowKey={(run) => run.id}
+        rows={RUNS}
+        selection={{ selected: "run-1", onSelect: vi.fn() }}
+      />,
+    );
+
+    const [, first] = screen.getAllByRole("row");
+
+    expect(first).toHaveClass("ou-table__row", "ou-table__row--selected", "runs__row--own");
+  });
+});
+
+describe("the selection's tone (#592)", () => {
+  it("selects in the model hue by default — mockup 06's `.selected`", () => {
+    render(
+      <Table
+        caption="Recent runs"
+        columns={COLUMNS}
+        rowKey={(run) => run.id}
+        rows={RUNS}
+        selection={{ selected: "run-1", onSelect: vi.fn() }}
+      />,
+    );
+
+    expect(screen.getByRole("grid")).not.toHaveClass("ou-table--accent");
+  });
+
+  it("selects in the accent when told to — mockup 21's", () => {
+    render(
+      <Table
+        caption="Recent runs"
+        columns={COLUMNS}
+        rowKey={(run) => run.id}
+        rows={RUNS}
+        selection={{ selected: "run-1", onSelect: vi.fn(), tone: "accent" }}
+      />,
+    );
+
+    expect(screen.getByRole("grid")).toHaveClass("ou-table", "ou-table--accent");
+  });
+
+  it("wears no tone at all when nothing is selectable", () => {
+    table();
+
+    expect(screen.getByRole("table")).not.toHaveClass("ou-table--accent");
+  });
+});
+
 describe("both palettes", () => {
   it.each(PALETTES)("renders in the %s palette", (palette) => {
     renderInPalette(

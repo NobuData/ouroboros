@@ -1862,7 +1862,9 @@ is organised around them:
 [`docs/mockups/21-model-registry.html`](../docs/mockups/21-model-registry.html)'s **frame**:
 the naming promise in the head, the two actions that create aliases, and the Models tab set
 with **Model registry** finally live. It is the section's third page, and it retires the `#49`
-placeholder this route was.
+placeholder this route was. Since CI.2
+([#592](https://github.com/NobuData/ouroboros/issues/592)) the frame holds the mockup's centre
+of gravity — the eight-column **ALLOWED MODELS** table — with the inspector's seat beneath it.
 
 ```
 MODELS
@@ -1874,7 +1876,14 @@ point of bring-your-own-key.
 ──────────────────────────────────────────────────────────────────────────────────────────────────
  Routing → /models   Model registry   Providers & keys → /models/providers   Spend soon
                      ▔▔▔▔▔▔▔▔▔▔▔▔▔▔ (the accent)
-┌ The allowed-models table arrives next — #592 … #596 ┐
+ALLOWED MODELS · 8 aliases                                                    Manage providers →
+ ALIAS            PROVIDER          MODEL            PARAMS                HEALTH      $ PER 1M IN·OUT  USED BY  ON
+▌(coder-max)      [AN] Anthropic…   claude-fable-5   (max thinking)(400k)  ● ok        $10 · $50        4 routes [on]   ◀ selected
+ (coder-fallback) [GH] GitHub Cop…  gpt-5-codex      —                     ● degraded  seat-based       2 routes [on]
+ (gpt5-experiments) no provider     gpt-5.2-preview  —                     ● no key — connect a provider
+                                                                           [Fix in Providers →]   —    0 routes [off ⓘ]   ← dimmed, health cell exempt
+ Aliases are unique per workspace. Deleting one is blocked while any route or workflow references it.
+┌ EDIT — CODER-MAX (coder-max) · the alias inspector arrives next — #593 … #596 ┐
 ```
 
 ### The head is the product's argument, and it is verbatim
@@ -1926,9 +1935,61 @@ the sidebar's **Models** entry stays lit here for the ordinary reason: the URL i
 `/models`. **Spend** is the last honest `soon` tab and waits for AB.4
 ([#210](https://github.com/NobuData/ouroboros/issues/210)).
 
-Below the tab set is where CI.2's eight-column table goes; the space names the issues that fill
-it rather than mocking a table of invented aliases, which would be indistinguishable in a
-screenshot from the real one.
+### The allowed-models table
+
+Eight columns, each a different subsystem's truth, and almost none of it decided here.
+[`app/registry/table.ts`](app/registry/table.ts) decides the rows over CH.5's one payload
+(`GET /api/v1/registry`, [`app/api/registry.ts`](app/api/registry.ts)) and
+[`app/registry/registry-table.tsx`](app/registry/registry-table.tsx) draws them through the
+#46 `Table`:
+
+| Cell | What it is | What it must not do |
+| --- | --- | --- |
+| **Alias** | the accent-tinted mono pill — the mockup's `.pill.alias` | read like a cell of data: it is the name everything else points at |
+| **Provider** | the AE.2 monogram ([`provider-monogram.tsx`](app/providers/provider-monogram.tsx), the *same* component mockup 07's cards draw, at its 24px size) and the connection's name; *no provider* in the faint ink | be a second monogram: the letters are the server's, the tint is AE.2's map |
+| **Model** | the raw id, mono — the only place in the product one renders | — |
+| **Params** | the server's chips, `—` when there are none | derive a chip client-side |
+| **Health** | a dot, the state word, the check's own note; **Fix in Providers →** inside the cell where the server said there is a fix | draw `unknown` as healthy — it is warn, and a **ring** (decision M8) |
+| **$ per 1M in·out** | what CH.3 resolved — `$10 · $50`, `seat-based`, `usage-based`, `$0`, `—` — with the provenance on hover (`bundled@<version>` or `org override`) | re-derive the figure, or give a `—` a provenance |
+| **Used by** | `N routes`; clicking selects the row | disagree with the inspector's chips — both come off one array |
+| **On** | CH.1's switch ([`alias-switch.tsx`](app/registry/alias-switch.tsx)) | take routes down silently |
+
+**The unbound row is dimmed and its health cell is not** — the mockup's `tr.dim` and
+`td.no-dim`. The #46 Table gained a `rowClassName` for the first half (a state the row as a
+whole is in), and the page's sheet exempts the health cell by its column's own class. The
+same ticket gave `TableSelection` a `tone`: mockup 21 selects in the **accent** where mockup
+06 selects in the model violet, and the difference is the mockups' own, so it is declared on
+the table rather than written over `.ou-table` from this page's sheet.
+
+**The switch asks before it drops hops.** Switching off an alias anything references opens
+the shell's overlay naming every referrer as a chip — *3 routes reference this alias — their
+hops through it will be dropped at the next resolution* — and cancel or Escape writes nothing.
+Switching on never asks. The round trip is the provider card's: optimistic for exactly the
+transition's lifetime, `router.refresh()` on success, the refusal under the track as an alert
+on failure ([`switch-actions.ts`](app/registry/switch-actions.ts) maps the service's
+`forbidden`, `model_alias_not_found` and `model_alias_unbound` to sentences). The unbound
+row's switch is `aria-disabled` with the reason *before* the service can refuse it; a member's
+is `aria-disabled` with the role reason.
+
+**Selection is the routing matrix's arrangement.** Client state, reflected into `?alias=`
+(`app/paths.ts`'s `ALIAS_PARAM` — the provider card's *not listed upstream* link now lands on
+its row) with `history.replaceState`, and read back server-side by the route so the first
+paint has the right row. One tab stop per table, arrow keys and Home/End between rows, a key
+pressed on a switch left to the switch, and a `role="status"` region saying which alias was
+selected. The seat beneath the table follows the selection — the mockup's `EDIT — CODER-MAX`
+with the pill beside it — which is what CI.3's inspector
+([#593](https://github.com/NobuData/ouroboros/issues/593)) builds on; its body names the
+issues that fill the rest of the page.
+
+**When there is no table**, `tableState` keeps *could not be read* (the service's sentence,
+under a head and a tab set that still work) apart from *no aliases yet*. The designed
+empty-workspace guidance and the page's retry are CI.6's
+([#596](https://github.com/NobuData/ouroboros/issues/596)).
+
+The fixture behind all of it ([`__tests__/helpers/registry.ts`](__tests__/helpers/registry.ts))
+transcribes the REST integration suite's eight expected rows rather than inventing eight
+plausible ones — which is why it prints `$10 · $50` where the mockup draws `$15 · $75`: the
+shipped catalog says so, and the table renders what the service resolved.
 
 ## The polling store
 

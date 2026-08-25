@@ -1,27 +1,39 @@
 import Link from "next/link";
 
 import { ModelsFrame } from "@/app/models/models-frame";
-import { Button, Card, EmptyState } from "@/app/ui";
+import { Button, Card, CardHead, EmptyState, Tag } from "@/app/ui";
 
 import { ImportMenu } from "./import-menu";
+import { InspectorSeat, RegistryTable } from "./registry-table";
+import {
+  TABLE_EMPTY_NOTE,
+  TABLE_EMPTY_TITLE,
+  TABLE_FAILED_NOTE,
+  TABLE_FAILED_TITLE,
+  TABLE_TITLE,
+  aliasCount,
+  selectedAlias,
+} from "./table";
 import {
   CONNECT_PROVIDER_HREF,
   CONNECT_PROVIDER_LABEL,
   NEW_ALIAS_LABEL,
-  REGISTRY_NEXT_NOTE,
-  REGISTRY_NEXT_TITLE,
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
+  type RegistryReadings,
+  type TableState,
   importState,
   newAliasReason,
-  type RegistryReadings,
+  tableState,
 } from "./view";
 
 import "./registry.css";
 
 /**
- * The `/models/registry` frame ([#591](https://github.com/NobuData/ouroboros/issues/591)) —
- * `docs/mockups/21-model-registry.html`'s page head and tab set as a working page.
+ * The `/models/registry` page ([#591](https://github.com/NobuData/ouroboros/issues/591)) —
+ * `docs/mockups/21-model-registry.html`'s page head and tab set as a working page, and since
+ * CI.2 ([#592](https://github.com/NobuData/ouroboros/issues/592)) its centre of gravity: the
+ * eight-column **ALLOWED MODELS** table, with the inspector's seat beneath it.
  *
  * It renders **inside the app shell** and inside the Models section's own frame
  * (`app/models/models-frame.tsx`), so it starts at its page head, contributes no chrome of its
@@ -33,7 +45,8 @@ import "./registry.css";
  * It is a component rather than markup written in the route, for the reason every screen in
  * this module is: everything it draws can be rendered and asserted on without Next.js's
  * routing around it. The route gates and reads (`app/(app)/models/registry/page.tsx`,
- * `app/registry/data.ts`), a pure module decides (`app/registry/view.ts`), and this draws.
+ * `app/registry/data.ts`), two pure modules decide (`app/registry/view.ts` for the head and
+ * the page's states, `app/registry/table.ts` for every cell), and this draws.
  *
  * ### The head is the product's argument, and it is verbatim
  *
@@ -62,16 +75,17 @@ import "./registry.css";
  * ([#596](https://github.com/NobuData/ouroboros/issues/596)); what this ticket owes is that the
  * two controls it builds are already honest about who may press them.
  *
- * ### What this page does not pretend
+ * ### The table, and the two states in which there is not one
  *
- * Below the tab set is where the eight-column allowed-models table goes, and it is CI.2's
- * ([#592](https://github.com/NobuData/ouroboros/issues/592)). The space carries an empty state
- * naming the issues that fill it rather than a table of invented aliases — § 3.5 applied to a
- * frame: a surface that is not ready is **labelled**, never dead, and never a mock-up of
- * itself.
+ * With rows, the seat below the tab set is `app/registry/registry-table.tsx`'s: the table,
+ * its selection, and the inspector's seat that selection drives. Without — a refused read, or
+ * a workspace that has created nothing — the seat is the same card with a captioned empty
+ * state in it, and the two are kept apart (`tableState`): *could not be read* names the
+ * service's own sentence, *no aliases yet* names the two ways to get one. Neither is a blank
+ * region, and the head and the tab set above them work in every case (§ 3.5).
  *
- * A Server Component. Its one interactive piece is the import menu, which declares its own
- * client boundary.
+ * A Server Component. Its interactive pieces — the import menu, the table with its switches —
+ * declare their own client boundaries.
  */
 
 /** What the screen needs to draw itself. */
@@ -79,13 +93,19 @@ export interface RegistryScreenProps {
   /** Everything the reader was able to read, and why not for the rest. */
   readonly readings: RegistryReadings;
   /**
-   * Whether this reader's role may create aliases — `app/api/membership.ts`'s
+   * Whether this reader's role may create aliases and press switches — `app/api/membership.ts`'s
    * `mayAdminister`, decided at the gate.
    *
    * A boolean rather than the role itself, because the page asks one question of it and a
    * screen holding a role would be a second place deciding what a role may do.
    */
   readonly mayAdminister: boolean;
+  /**
+   * The alias the URL asked for — `?alias=` as the route read it — or `null` when it carried
+   * nothing. Validated against the rows before it selects anything (`selectedAlias`): a name
+   * the workspace does not have selects nothing.
+   */
+  readonly alias?: string | string[] | null;
 }
 
 /**
@@ -94,8 +114,9 @@ export interface RegistryScreenProps {
  * @param props See {@link RegistryScreenProps}.
  * @returns The screen.
  */
-export function RegistryScreen({ readings, mayAdminister }: RegistryScreenProps) {
+export function RegistryScreen({ readings, mayAdminister, alias = null }: RegistryScreenProps) {
   const importing = importState(readings.providers, mayAdminister);
+  const table = tableState(readings.aliases);
 
   return (
     <ModelsFrame
@@ -128,14 +149,45 @@ export function RegistryScreen({ readings, mayAdminister }: RegistryScreenProps)
         </>
       }
     >
-      {/*
-        The rest of the mockup, named rather than mocked. A placeholder table of invented
-        aliases would be the one dishonest thing on a page built to be honest — and would be
-        indistinguishable, in a screenshot, from the real one CI.2 ships.
-      */}
-      <Card className="models__next" fill>
-        <EmptyState fill note={REGISTRY_NEXT_NOTE} title={REGISTRY_NEXT_TITLE} />
-      </Card>
+      {table.kind === "populated" ? (
+        <RegistryTable
+          mayAdminister={mayAdminister}
+          rows={table.rows}
+          selected={selectedAlias(table.rows, alias)}
+        />
+      ) : (
+        <>
+          <TableSeat state={table} />
+          <div className="registry-aside">
+            <InspectorSeat row={null} />
+          </div>
+        </>
+      )}
     </ModelsFrame>
+  );
+}
+
+/** The id the table card's `aria-labelledby` points at while there is no table in it. */
+const SEAT_TITLE_ID = "registry-table-title";
+
+/**
+ * The table's card when there is no table to draw: the same head, with a true count of zero,
+ * over the sentence that says why.
+ *
+ * @param props.state Which of the two reasons.
+ * @returns The card.
+ */
+function TableSeat({ state }: Readonly<{ state: Exclude<TableState, { kind: "populated" }> }>) {
+  return (
+    <Card aria-labelledby={SEAT_TITLE_ID} as="section" className="models__next" fill>
+      <CardHead beside={<Tag>{aliasCount(0)}</Tag>} title={TABLE_TITLE} titleId={SEAT_TITLE_ID} />
+      {state.kind === "failed" ? (
+        // The service's own sentence, then what to do: a refused read must not look like a
+        // workspace that has created nothing.
+        <EmptyState fill note={`${state.reason} ${TABLE_FAILED_NOTE}`} title={TABLE_FAILED_TITLE} />
+      ) : (
+        <EmptyState fill note={TABLE_EMPTY_NOTE} title={TABLE_EMPTY_TITLE} />
+      )}
+    </Card>
   );
 }

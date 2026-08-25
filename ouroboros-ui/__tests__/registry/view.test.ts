@@ -15,15 +15,16 @@ import {
   NEW_ALIAS_REASON,
   NO_PROVIDERS_REASON,
   PROVIDERS_UNREADABLE_REASON,
-  REGISTRY_NEXT_NOTE,
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
   importSources,
   importState,
   newAliasReason,
+  tableState,
 } from "@/app/registry/view";
 
 import { provider, seededProviders } from "../helpers/models";
+import { seededRegistry } from "../helpers/registry";
 
 /**
  * The registry frame's copy and its one judgement (#591).
@@ -81,14 +82,25 @@ describe("the head copy", () => {
   });
 });
 
-describe("what the page says it is waiting for", () => {
-  it("names the issues that fill the space rather than mocking a table into it", () => {
-    // § 3.5 applied to a frame: a surface that is not ready is labelled, never a mock-up of
-    // itself. A table of invented aliases would be indistinguishable in a screenshot from the
-    // real one CI.2 ships.
-    for (const issue of ["#592", "#593", "#594", "#595", "#596"]) {
-      expect(REGISTRY_NEXT_NOTE, issue).toContain(issue);
-    }
+describe("the table's seat (#592)", () => {
+  it("is populated with the rows decided from a read that succeeded", () => {
+    const state = tableState({ ok: true, value: seededRegistry() });
+
+    expect(state.kind).toBe("populated");
+    if (state.kind === "populated") expect(state.rows.map((row) => row.alias)).toContain("coder-max");
+  });
+
+  it("is empty for a workspace that has created nothing", () => {
+    expect(tableState({ ok: true, value: [] })).toEqual({ kind: "empty" });
+  });
+
+  it("is failed, with the service's sentence, for a read that was refused", () => {
+    // *Could not be read* and *no aliases yet* are different facts; drawing one as the other
+    // would hide an outage or accuse an empty workspace of an error it has not had.
+    expect(tableState({ ok: false, reason: "registry away" })).toEqual({
+      kind: "failed",
+      reason: "registry away",
+    });
   });
 });
 

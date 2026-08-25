@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { settle } from "../helpers/settle";
+
 import type { Reading } from "@/app/api/reading";
 import { SWITCHED_OFF, SWITCH_READ_ONLY, switchLabel } from "@/app/providers/cards";
 import {
@@ -115,6 +117,9 @@ describe("an administrator's press", () => {
     fireEvent.click(control());
 
     const alert = await screen.findByRole("alert");
+    // The alert is the failed write's output; the transition that reverts the optimistic
+    // position ends a turn later, and this waits for it (`../helpers/settle.ts`).
+    await settle();
     expect(alert).toHaveTextContent("The switch could not be saved.");
     expect(alert).toHaveClass("providers-card__switch-note--err");
     expect(control()).toHaveAttribute("aria-checked", "true");

@@ -13,6 +13,7 @@ import {
 } from "@/app/models/rules";
 
 import { seededAliases, seededRules, seededTaskKinds } from "../helpers/models";
+import { settle } from "../helpers/settle";
 
 /**
  * The **+ Add rule** builder as it is drawn (#204).
@@ -60,6 +61,9 @@ async function openBuilder(kinds: readonly string[] = KINDS): Promise<HTMLElemen
 
   const dialog = screen.getByRole("dialog", { name: BUILDER_TITLE });
   await within(dialog).findByLabelText("Alias");
+  // The alias field is the read's *output*; the read's transition may still be pending for a
+  // turn, and the builder drops a save pressed while it is (`../helpers/settle.ts`).
+  await settle();
 
   return dialog;
 }

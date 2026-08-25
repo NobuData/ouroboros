@@ -1,13 +1,16 @@
 /*
- * The model registry page (#591) — mockup 21's head actions.
+ * The model registry page (#591) — mockup 21's head actions — and its allowed-models table
+ * (#592).
  *
  * The mockup is docs/mockups/21-model-registry.html over docs/mockups/assets/ouroboros.css.
  * Almost nothing of its page frame is this sheet's: the anatomy — gutter rhythm, page head,
  * tab-set placement — belongs to the **Models section** and is app/models/models.css, drawn
  * through app/models/models-frame.tsx, because /models, /models/providers and this page share
  * it. What is left here is what only this page has: the dropdown behind **Import from
- * provider ▾**, and the one line of hint under the actions when there is nothing to import
- * from.
+ * provider ▾**, the one line of hint under the actions when there is nothing to import from,
+ * and — since CI.2 (#592) — the inside of the allowed-models table's cells, its dimmed row,
+ * the switch-off confirmation and the seat row beneath the card (the second half of this
+ * sheet).
  *
  * The mockup draws neither. It shows a ghost button with a caret and stops there, so the
  * panel below is drawn to the shell's own menu (app/shell/shell.css .shell-menu__panel) —
@@ -132,4 +135,255 @@
 
 .registry__hint-link:hover {
   text-decoration: underline;
+}
+
+/* ---------- the allowed-models table (#592) ---------- */
+
+/*
+ * The table itself is the #46 primitive and is styled nowhere but app/ui/ui.css — the
+ * accent inset on the selected row included, because that is a tone the table declares
+ * (`SelectionTone`) rather than a rule this sheet writes over the design system. What this
+ * sheet contributes is the inside of the cells the mockup draws its own markup for — the
+ * provider cell, the chips, the health cell with its button, the switch with its note — plus
+ * the dimmed row, the caption line, and the seat row beneath the card.
+ *
+ * The mockup's pixel sizes are translated, not copied: its 24px monogram is
+ * `.providers-card__monogram--cell` in app/providers/providers.css (the AE.2 component at its
+ * second size), its 11.5px mono notes are --t-2xs, its 12px caption is --t-xs.
+ */
+
+/* The mockup's `.card-link`: a link in the accent, quiet until hovered. */
+.registry-table__link {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.registry-table__link:hover,
+.registry-table__link:focus-visible {
+  text-decoration: underline;
+}
+
+/*
+ * ---------- column widths ----------
+ *
+ * The alias, the provider and the model are names read whole, so none of them wraps; the
+ * params column takes the floor that keeps two chips on one line at the ordinary width; the
+ * two numeric columns share one width so `$10 · $50`, `seat-based` and `—` take the same
+ * room, which is what "alignment holds whether the cell has a number or a dash" means in
+ * practice; and the switch column is its track and nothing else.
+ */
+.registry-table__alias,
+.registry-table__provider,
+.registry-table__model {
+  white-space: nowrap;
+}
+
+.registry-table__params {
+  min-width: 12rem;
+}
+
+.registry-table__num {
+  width: 7rem;
+  white-space: nowrap;
+}
+
+.registry-table__switch {
+  width: 4rem;
+}
+
+/* The mockup's `.prov-cell`: the monogram and the name on one line. */
+.registry-table__provider-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+/* The mockup's `.faint`: *no provider* on the unbound row, and the `—` where no chip is. */
+.registry-table__none {
+  color: var(--ink-faint);
+}
+
+/* The mockup's `.param-chips`: tags, wrapping. */
+.registry-table__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/*
+ * ---------- the health cell ----------
+ *
+ * The mockup's `.health-cell`: a dot, then the state in mono. `color` is set on the cell by
+ * its tone modifier and the dot, the state and (for the two tones that are not ok) the
+ * detail all take it from `currentColor` — one declaration per tone, and no way for the dot
+ * and the word to disagree about what the cell is reporting.
+ */
+.registry-table__health {
+  white-space: nowrap;
+}
+
+.registry-table__health-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/*
+ * The dot, and the second shape: a ring for a state nobody reported, the same distinction
+ * `.ou-chip__dot--ring` draws for the primitive and `.models-health__dot--ring` for the strip.
+ */
+.registry-table__dot {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  flex: none;
+  border-radius: var(--r-round);
+  background: currentColor;
+}
+
+.registry-table__dot--ring {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* The state word — the mockup's `.note`, `.note.warn`, `.note.err`. */
+.registry-table__state {
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The check's own note beside the word — `elevated latency` — quieter than the state. */
+.registry-table__detail {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * The three tones. Healthy hues only the dot — a cell whose every part was green would shout
+ * — so its word takes the muted ink the mockup's plain `.note` has.
+ */
+.registry-table__health-cell--ok {
+  color: var(--ok);
+}
+
+.registry-table__health-cell--ok .registry-table__state {
+  color: var(--ink-mut);
+}
+
+.registry-table__health-cell--warn {
+  color: var(--warn);
+}
+
+.registry-table__health-cell--err {
+  color: var(--err);
+}
+
+/* The mockup's `Fix in Providers →` under the health line — its `margin-bottom: 6px`. */
+.registry-table__fix {
+  margin-top: var(--sp-4);
+}
+
+/*
+ * ---------- the dimmed row ----------
+ *
+ * The mockup's `tr.dim`: the unbound alias recedes, cell by cell, and its health cell does
+ * not — on that row it is the one cell that says what to do. The exemption is by the health
+ * column's own class, which the primitive puts on every cell of the column, so the rule
+ * cannot drift from the markup.
+ */
+.registry-table__row--dim td {
+  opacity: 0.55;
+}
+
+.registry-table__row--dim td.registry-table__health {
+  opacity: 1;
+}
+
+/* The mockup's `.tbl-caption`. */
+.registry-table__caption {
+  margin: var(--sp-6) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * ---------- the switch ----------
+ *
+ * The switch, and the one line it may need under itself: the last press's refusal. Normal
+ * white-space, because the column is `nowrap` for its heading and a sentence has to wrap.
+ */
+.registry-switch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.registry-switch__note {
+  max-width: 14rem;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  white-space: normal;
+}
+
+.registry-switch__note--err {
+  color: var(--err);
+}
+
+/*
+ * ---------- the switch-off confirmation ----------
+ *
+ * The dialog's column, its referrer chips and its action row. The frame — backdrop, panel,
+ * title and note — is the shell's (app/shell/overlay.tsx, app/shell/shell.css); what is here
+ * is the layout inside the panel, the same three rules mockup 07's dialogs need and keep in
+ * their own sheet.
+ */
+.registry-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* The referrers a switch-off names — chips, wrapping, a list. */
+.registry-confirm__referrers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The action row — the destructive control leading, the way out beside it. */
+.registry-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/*
+ * ---------- the seat row ----------
+ *
+ * Mockup 21's side column: three cards abreast under the table — the inspector, the
+ * why-aliases card and the resolution chain. The inspector's seat is the one this ticket
+ * places; CI.3 fills it and CI.5 draws the other two beside it. The section's own grid
+ * (app/models/models.css `.models-grid`) is the matrix's eight-and-four and not this shape,
+ * so the row is this page's, at the section's gap and the section's break.
+ */
+.registry-aside {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-8);
+  align-items: start;
+  margin-top: var(--sp-8);
+}
+
+@media (max-width: 68.75rem) {
+  .registry-aside {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

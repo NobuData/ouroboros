@@ -1286,7 +1286,7 @@ dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CI.1 | #591 | 🟢 Done | ouroboros-ui: [CI.1] Registry route, subnav & page frame | `/models/registry`, head + actions, subnav tab live (AA.1/AE.1 amendment) | mvp, registry, ui, design | N (after #41, AA.1, BA-D.5) | Y | S | ouroboros-ui |
-| CI.2 | #592 | 🟡 Open | ouroboros-ui: [CI.2] Allowed-models table | 8-column table: alias pills, monograms, chips, health states, prices, switches | mvp, registry, ui, design | N (after CI.1, CH.5) | Y | L | ouroboros-ui |
+| CI.2 | #592 | 🟢 Done | ouroboros-ui: [CI.2] Allowed-models table | 8-column table: alias pills, monograms, chips, health states, prices, switches | mvp, registry, ui, design | N (after CI.1, CH.5) | Y | L | ouroboros-ui |
 | CI.3 | #593 | 🟡 Open | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
 | CI.4 | #594 | 🟡 Open | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
 | CI.5 | #595 | 🟡 Open | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
@@ -1396,7 +1396,98 @@ Routing | ●Model registry | Providers & keys | Spend·soon
 
 ### Issue CI.2 — ouroboros-ui: [CI.2] Allowed-models table
 
-> **GitHub issue:** #592 · **Status:** 🟡 Open · **Parent epic:** #577
+> **GitHub issue:** #592 · **Status:** 🟢 Done · **Parent epic:** #577
+
+> **Shipped 2026-08-25.** [`ouroboros-ui/app/registry/`](../ouroboros-ui/app/registry) —
+> `registry-table.tsx` over the pure `table.ts`, the `alias-switch.tsx` island with its
+> `switch-actions.ts` server hop, and `app/api/registry.ts` for CH.5's `GET /api/v1/registry`
+> and CH.1's `PATCH /api/v1/registry/aliases/{id}`; `ouroboros-ui` 0.49.0. Proven by 235
+> tests across the twelve suites that touch it — six new (`table.test.ts`,
+> `registry-table.test.tsx`, `alias-switch.test.tsx`, `switch-actions.test.ts`,
+> `api/registry.test.ts`, `providers/provider-monogram.test.tsx`) and CI.1's re-pointed — over
+> a fixture
+> ([`__tests__/helpers/registry.ts`](../ouroboros-ui/__tests__/helpers/registry.ts)) that
+> transcribes `registry-read.integration-spec.ts`'s eight expected rows rather than inventing
+> eight plausible ones.
+>
+> **Every cell is served, none is re-derived.** `table.ts` copies CH.5's chips, `price.display`,
+> `usedBy` and the health note into the row and composes nothing; what it decides is only what
+> the payload deliberately left to the surface that owns the classes — which dot a state takes
+> (`HEALTH_CELLS`, total over the six states, with `unknown` in the warn hue **and a ring**
+> rather than a disc, decision M8), what a provenance reads as on hover (`bundled@<version>` /
+> `org override`, and nothing for a `—`), how a count is worded, which row dims, and what the
+> switch has to say before it takes routes down.
+>
+> **The monogram is one component, and this is the ticket that made it one.** AE.2 drew its
+> square inline in `provider-card.tsx`; it is now `app/providers/provider-monogram.tsx` with
+> a `size` — the card's 42px and the mockup's 24px `.mg` — and both surfaces render it. The
+> registry cell takes the **letters from the server** (`binding.monogram`, so 07 and 21
+> cannot disagree) and the **tint from AE.2's map** (`monogramFor`), because the payload
+> carries no colour by design. `provider-monogram.test.tsx` and the render suite's *one
+> square per bound row* assertion hold the "no second implementation" criterion.
+>
+> **Two primitive extensions rather than two page overrides.** Mockup 21's `tr.dim` is a fact
+> about the alias, not about any of its eight cells, so the #46 Table gained `rowClassName`;
+> the page's sheet dims the cells from the row and exempts the health cell by its column's own
+> class, which the primitive puts on every cell of the column. And mockup 21 selects in the
+> **accent** where mockup 06 selects in the model violet — a difference the mockups own — so
+> `TableSelection` gained a `tone`, drawn by `ui.css` beside the violet rule; the registry
+> sheet is asserted to write nothing over `.ou-table`.
+>
+> **The switch asks first, and the unbound row's is inert before the service can refuse it.**
+> `AliasSwitch` is the provider card's switch to the line — optimistic for exactly the
+> transition's lifetime, `router.refresh()` on success, the refusal drawn under the track as
+> an alert on failure — and turning *off* an alias anything references opens the shell's
+> overlay naming every referrer as a chip with the consequence in the count's words (*3 routes
+> reference this alias — their hops through it will be dropped at the next resolution*);
+> cancel and Escape write nothing. The orphan's switch is `aria-disabled` with
+> `SWITCH_UNBOUND`, because CH.1 refuses `model_alias_unbound` and a switch the reader could
+> press and then watch fail would be honest one round trip late; the server hop still maps
+> that code, for a stale render. A member's is `aria-disabled` with the role reason, role
+> first. The full gating pass stays CI.6 (#596).
+>
+> **Selection is the routing matrix's arrangement**: client state, reflected with
+> `history.replaceState` into `?alias=` — `app/paths.ts`'s `ALIAS_PARAM`, which AE.4's *not
+> listed upstream* flag already links with, so that link now lands on its row — and read back
+> **server-side** by the route so the first paint has the right row selected. Rows are the
+> focusable unit with one tab stop; a key pressed on a switch is the switch's; a pointer
+> selection is announced through a `role="status"` region. The inspector's seat beneath the
+> table follows the selection — its title is the mockup's `EDIT — CODER-MAX` with the pill
+> beside it — which is the wiring CI.3 (#593) builds on; its body names #593–#596 rather than
+> mocking a field stack.
+>
+> **Three cells are not the drawing's, and the divergence is upstream.** The shipped catalog
+> prices `claude-fable-5` at `$10 · $50` and `claude-sonnet-5` at `$2 · $10`, and the seeded
+> matrix's chains count `local-docs` at two routes and `sizer` at one; the table prints what
+> CH.5 resolved, which is the whole point of a composed payload. The integration suite's
+> header records both and where they are written up. The payload's order is by alias name
+> rather than the drawing's order, for the same reason.
+>
+> **What the page says when there is no table.** `tableState` keeps *could not be read* (the
+> service's sentence, where the table would be, under a head and a tab set that still work)
+> apart from *no aliases yet* (the two ways to get one); neither is a blank region. The
+> designed empty-workspace guidance and the page's retry stay CI.6's.
+>
+> **One thing landed beyond the ticket, because the ticket's suites surfaced it.** With this
+> ticket's files in the run, `ouroboros-ui`'s full vitest pass failed on the same machine five
+> times in seven — never in isolation, never on `main`, and on tests in `models/`, `dashboard/`
+> and `providers/` that this branch does not touch. The cause is React 19's documented rule
+> that a `setState` after an `await` inside a `startTransition` action is **not** part of the
+> transition: a switch's failure note commits first, the transition's end — the optimistic
+> revert, `isPending` false — lands one scheduler turn later, and a `findByRole("alert")` can
+> resolve in between. Every switch and dialog in the module guards a press with
+> `if (pending) return`, so a test that pressed again, or asserted the revert, right after the
+> alert was racing that turn; under a saturated run it sometimes lost.
+> [`__tests__/helpers/settle.ts`](../ouroboros-ui/__tests__/helpers/settle.ts) drains React's
+> queue after such a `findBy`, and the eight sites of that shape call it — five green full
+> runs followed. The components are unchanged: the guard is deliberate and correct.
+>
+> Deliberately **not** here: the inspector (CI.3, #593), the create dialog and import wizard
+> (CI.4, #594), the why-aliases and chain cards (CI.5, #595), and the role gating and page
+> states (CI.6, #596). No screenshot harness exists in this module yet — "screenshot-tested in
+> both themes" is held the way every UI ticket before it holds it: byte-identical markup under
+> both palettes, every hue a published token, and the sheet's agreements asserted; CI.7 (#597)
+> adds the theme render check.
 
 - **Problem Statement:** The table is the page's core: eight dense columns
   where every cell is a different subsystem's truth — pills, monograms,
@@ -1869,7 +1960,8 @@ Issue-level impact:
 | Issue | GitHub | Status | Amendment |
 |---|:---:|:---:|---|
 | CI.1 | #591 | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar **Models** entry, not a topbar link; the Models subnav renders as PageSubnav, sticky in-pane |
-| CI.2, CI.3, CI.4, CI.5, CI.6 | #592, #593, #594, #595, #596 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| CI.2 | #592 | 🟢 Done | The table scrolls inside the #46 Table's own wrapper, never at pane level; rem-based column widths and monogram; the switch-off confirmation is the shell's overlay outside the pane |
+| CI.3, CI.4, CI.5, CI.6 | #593, #594, #595, #596 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | CI.7 | #597 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
@@ -1904,7 +1996,16 @@ placeholder for the route is retired. Both head actions exist as real entry poin
 **Import from provider ▾** is a menu over the workspace's connected providers with the
 empty, unreadable and member states each carrying their own sentence, and **+ New alias**
 names CI.4 — so #592–#596 each arrive as content in a frame rather than as a frame plus
-content. Next is **#592** (the allowed-models table), which needs CH.5 (#588).
+content.
+
+**#592** ([CI.2] the allowed-models table) has landed: mockup 21's eight columns over CH.5's
+one payload, every cell served rather than derived; the AE.2 monogram extracted into one
+shared component both pages render; the #46 Table extended with a row class and an accent
+selection tone rather than overridden; the **On** switch round-tripping through CH.1 and
+asking first, with the referrers named, before it drops hops; selection reflected into
+`?alias=` and read back server-side, with the inspector's seat already following it. Next is
+**#593** (the alias inspector), which needs CI.2, CH.1 and CH.2 — the seat, the selection and
+the payload's `params`, `references` and `binding.mask` are all in place for it.
 
 The deepest risk here is **CG.3 / CH.1 (#581, #584)**: the reference index is
 what makes `Used by`, the blocked Remove and the rename guard true, and a

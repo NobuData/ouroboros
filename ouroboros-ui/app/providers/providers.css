@@ -440,6 +440,18 @@
   color: var(--ink-dim);
 }
 
+/*
+ * The table-cell size — mockup 21's `.mg`, the same square at 24px for the registry's
+ * provider cell (CI.2, #592). One component draws both sizes (provider-monogram.tsx), so the
+ * tints above are the only tints there are; what changes here is the box and the type on it.
+ */
+.providers-card__monogram--cell {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--r-sm);
+  font-size: var(--t-2xs);
+}
+
 .providers-card__identity {
   flex: 1;
   min-width: 0;

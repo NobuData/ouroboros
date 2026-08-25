@@ -35,8 +35,11 @@
  */
 
 import type { Reading } from "@/app/api/reading";
+import type { RegistryAlias } from "@/app/api/registry";
 import type { ProviderHealth } from "@/app/api/routing";
 import { PROVIDERS_PATH } from "@/app/paths";
+
+import { type TableRow, tableRows } from "./table";
 
 /* ------------------------------------------------------------------ what the page reads */
 
@@ -48,9 +51,11 @@ import { PROVIDERS_PATH } from "@/app/paths";
  * screen and its tests can then name the shape without pulling `server-only`, `next/headers`
  * and a configured environment in behind it.
  *
- * One read today. CI.2–CI.5 add the alias table, the inspector and the chain card here beside
- * it, and the property that has to survive them is the one `app/models/data.ts` established —
- * **one failed read is one degraded region, never a blank page**.
+ * Two reads since CI.2 ([#592](https://github.com/NobuData/ouroboros/issues/592)). CI.3–CI.5
+ * add the inspector's own reads and the chain card beside them, and the property that has to
+ * survive them is the one `app/models/data.ts` established — **one failed read is one
+ * degraded region, never a blank page**: a refused registry read is a captioned card where the
+ * table would be, under a head and a tab set that still work.
  */
 export interface RegistryReadings {
   /**
@@ -62,6 +67,50 @@ export interface RegistryReadings {
    * something different for each — see {@link importState}.
    */
   readonly providers: Reading<readonly ProviderHealth[]>;
+  /**
+   * Every alias in the workspace with every cell composed — CH.5's payload
+   * ([#588](https://github.com/NobuData/ouroboros/issues/588)) — or why it could not be read.
+   *
+   * A workspace with no aliases reads successfully and answers an empty array; the table's
+   * empty state and its failed state are different facts — see {@link tableState}.
+   */
+  readonly aliases: Reading<readonly RegistryAlias[]>;
+}
+
+/* ------------------------------------------------------------------ the table's seat */
+
+/**
+ * What stands where the allowed-models table goes: the table, or one of the two honest
+ * reasons there is not one.
+ *
+ * A discriminated union for the reason `ImportState` is one: the seat renders exactly one of
+ * three things, and a shape that could hold *rows and a reason at once* would let it render
+ * both. The rows arrive already decided (`app/registry/table.ts`), so the screen is handed
+ * cells rather than a payload.
+ */
+export type TableState =
+  /** There are aliases, and these are their rows. */
+  | { readonly kind: "populated"; readonly rows: readonly TableRow[] }
+  /** The read succeeded and the workspace has no aliases yet. */
+  | { readonly kind: "empty" }
+  /** The read was refused, with the service's own sentence. */
+  | { readonly kind: "failed"; readonly reason: string };
+
+/**
+ * Which of the three the seat draws.
+ *
+ * @param aliases The registry read, or why it failed.
+ * @returns The state. *Empty* and *failed* are kept apart deliberately — a workspace that has
+ *   created nothing and a read that was refused are different facts, and drawing one as the
+ *   other would either hide an outage behind *no aliases yet* or accuse an empty workspace of
+ *   an error it has not had.
+ */
+export function tableState(aliases: Reading<readonly RegistryAlias[]>): TableState {
+  if (!aliases.ok) return { kind: "failed", reason: aliases.reason };
+
+  const rows = tableRows(aliases.value);
+
+  return rows.length === 0 ? { kind: "empty" } : { kind: "populated", rows };
 }
 
 /* ------------------------------------------------------------------ the page head */
@@ -157,20 +206,11 @@ export const PROVIDERS_UNREADABLE_REASON =
   "The connected providers could not be read just now — nothing is wrong with the registry, " +
   "try again in a moment.";
 
-/** What the space below the tab set says it is waiting for. */
-export const REGISTRY_NEXT_TITLE = "The allowed-models table arrives next";
-
-/**
- * …and which issues fill it.
- *
- * Named rather than mocked, exactly as the providers page's is: a table of invented aliases
- * would be the one dishonest thing on a page built to be honest, and indistinguishable in a
- * screenshot from the real one CI.2 ships.
+/*
+ * What the space below the tab set is waiting for is no longer this module's: since CI.2 the
+ * table is there, and the seat beneath it names the issues that fill the rest of the page —
+ * `app/registry/table.ts`'s `INSPECTOR_NEXT_NOTE`.
  */
-export const REGISTRY_NEXT_NOTE =
-  "The eight-column allowed-models table arrives with #592 and the alias inspector with " +
-  "#593; the create and import flows with #594, the why-aliases and resolution-chain cards " +
-  "with #595, and the role gating and page states with #596.";
 
 /* ------------------------------------------------------------------ the import action */
 

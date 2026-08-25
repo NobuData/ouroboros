@@ -13,6 +13,7 @@ import {
 
 import { seededRules, seededTaskKinds } from "../helpers/models";
 import { PALETTES, renderInBothPalettes } from "../helpers/palettes";
+import { settle } from "../helpers/settle";
 
 /**
  * The rules card as it is drawn (#204) — mockup 06's three switchable sentences, and the two
@@ -206,6 +207,9 @@ describe("an administrator's switch", () => {
     fireEvent.click(screen.getAllByRole("switch")[0]);
 
     const note = await screen.findByRole("alert");
+    // The alert is the failed write's output; the transition that reverts the optimistic
+    // position ends a turn later, and this waits for it (`../helpers/settle.ts`).
+    await settle();
 
     expect(note).toHaveTextContent(RULE_FORBIDDEN);
     expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
@@ -219,6 +223,9 @@ describe("an administrator's switch", () => {
 
     fireEvent.click(screen.getAllByRole("switch")[0]);
     await screen.findByRole("alert");
+    // The alert is the failed press's output; its transition may still be pending for a turn,
+    // and a press while it is would be dropped (`../helpers/settle.ts`).
+    await settle();
 
     fireEvent.click(screen.getAllByRole("switch")[0]);
 

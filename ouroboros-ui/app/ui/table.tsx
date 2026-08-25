@@ -1,6 +1,6 @@
 import type { ComponentProps, KeyboardEvent, ReactNode } from "react";
 
-import { cx } from "./class-names";
+import { type ClassName, cx } from "./class-names";
 
 import "./ui.css";
 
@@ -134,7 +134,30 @@ export interface TableSelection {
    * step would make the arrow keys move a highlight that means nothing yet.
    */
   readonly onSelect: (key: string) => void;
+  /**
+   * Which hue the selected row wears. Defaults to `model`.
+   *
+   * The mockups disagree with each other here, and the disagreement is a choice rather than
+   * drift: mockup 06's routing matrix selects in the model violet and mockup 21's registry
+   * table selects in the accent. A page says which, the same way it says which hue its tab
+   * underline takes (`page-subnav.tsx`), and the two rules live in `ui.css` beside each other
+   * so neither page reaches into `.ou-table` from its own sheet.
+   */
+  readonly tone?: SelectionTone;
 }
+
+/** The hue a selected row wears. */
+export type SelectionTone =
+  /** Mockup 06's `tr.selected`: the model-routing violet. The default. */
+  | "model"
+  /** Mockup 21's `tr.selected`: the brand accent. */
+  | "accent";
+
+/** The modifier each selection tone adds to the table, or nothing for the default one. */
+const SELECTION_TONE_CLASS: Record<SelectionTone, string> = {
+  model: "",
+  accent: "ou-table--accent",
+};
 
 /** What a table takes. */
 export interface TableProps<Row> {
@@ -165,6 +188,15 @@ export interface TableProps<Row> {
    * interactive.
    */
   readonly selection?: TableSelection;
+  /**
+   * Classes from the page for one row — a state the row as a whole is in, which no column
+   * can say. Mockup 21's dimmed unbound row is the case: `tr.dim` is a fact about the alias,
+   * not about any one of its eight cells, and the page's sheet dims the cells from the row
+   * (with the one it exempts named by its column's `className`).
+   *
+   * Placement and state only, never colour or type — the same rule `className` keeps.
+   */
+  readonly rowClassName?: (row: Row) => ClassName;
   /** Classes from the page — placement only, never colour or type. */
   readonly className?: string;
 }
@@ -186,12 +218,17 @@ export function Table<Row>({
   rowKey,
   stickyHeader,
   selection,
+  rowClassName,
   className,
 }: TableProps<Row>) {
   return (
     <div className={cx("ou-table-scroll", stickyHeader && "ou-table-scroll--open", className)}>
       <table
-        className={cx("ou-table", stickyHeader && "ou-table--sticky")}
+        className={cx(
+          "ou-table",
+          stickyHeader && "ou-table--sticky",
+          selection !== undefined && SELECTION_TONE_CLASS[selection.tone ?? "model"],
+        )}
         role={selection === undefined ? undefined : "grid"}
       >
         <caption className={captionHidden ? "sr-only" : "ou-table__caption"}>
@@ -209,13 +246,14 @@ export function Table<Row>({
         <tbody>
           {rows.map((row, index) => {
             const key = rowKey(row);
+            const own = rowClassName?.(row);
 
             return (
               <tr
                 key={key}
                 {...(selection === undefined
-                  ? {}
-                  : selectableRow(key, index, selection))}
+                  ? { className: cx(own) || undefined }
+                  : selectableRow(key, index, selection, own))}
               >
                 {columns.map((column) => (
                   <td key={column.key} className={cellClass(column)}>
@@ -253,18 +291,21 @@ type SelectableRowProps = ComponentProps<"tr"> & { readonly "data-row-key": stri
  * @param index Where the row sits, so the first one can hold the tab stop when nothing is
  *   selected.
  * @param selection What is selected, and what to call.
+ * @param own The page's own class for this row, if it gave one — see
+ *   {@link TableProps.rowClassName}.
  * @returns The row's props.
  */
 function selectableRow(
   key: string,
   index: number,
   selection: TableSelection,
+  own: ClassName,
 ): SelectableRowProps {
   const isSelected = selection.selected === key;
 
   return {
     "aria-selected": isSelected,
-    className: cx("ou-table__row", isSelected && "ou-table__row--selected"),
+    className: cx("ou-table__row", isSelected && "ou-table__row--selected", own),
     // Read back by the key handler off whichever row it moved to — which is how arrow
     // navigation names its destination without this component keeping a ref per row.
     "data-row-key": key,
