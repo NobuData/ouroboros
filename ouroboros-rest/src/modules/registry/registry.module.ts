@@ -43,7 +43,7 @@
  * makes that a build failure rather than a review comment. `provider-connections/` imports this
  * module for the same one binding and for the same reason.
  *
- * **It exports three providers with very different audiences.** {@link RegistryService} is for
+ * **It exports four providers with very different audiences.** {@link RegistryService} is for
  * Y.2's routes, Z.1's resolution, Z.2's swap menu and the engine's estimator — everything
  * that has to turn a name into a model. {@link ProviderCredentialStore} is for exactly one
  * consumer, `VaultModule`, which is where `VAULT_SECRET_STORES` is bound; see
@@ -58,6 +58,16 @@
  * route's: every alias write has to be checked against the schema its inspector was rendered
  * from, and the alternative to exporting this is that ticket re-implementing a precedence rule
  * about capabilities. The export *is* the internal contract, exactly as `PricingModule`'s is.
+ *
+ * {@link AliasesService} is the fourth, added by CH.5
+ * ([#588](https://github.com/NobuData/ouroboros/issues/588)) for `RegistryReadModule`. That
+ * module composes mockup 21's whole table — chips, health, price and references onto the row —
+ * and it builds on `AliasesService.list` rather than querying `model_aliases` again, because
+ * two readings of *what is an alias* are two answers, and the `Used by` column disagreeing with
+ * the inspector's chips on the same page is exactly what decision **R5** exists to prevent. A
+ * service rather than the repository beside it, for the reason every other entry in this list
+ * is one: what CH.5 needs is the *list* — references grouped and mapped — and a repository
+ * handed out here would be an invitation to re-derive it.
  *
  * **`VaultModule` is deliberately *not* imported.** Nothing here decrypts anything: a
  * resolution carries an address and a model, never a credential (`resolution.ts` argues
@@ -97,6 +107,6 @@ import { ProviderCredentialStore } from "./registry.secrets";
     ImportRepository,
     ImportService,
   ],
-  exports: [RegistryService, ProviderCredentialStore, ParamSchemaService],
+  exports: [RegistryService, ProviderCredentialStore, ParamSchemaService, AliasesService],
 })
 export class RegistryModule {}
