@@ -1329,7 +1329,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | AE.3 | #229 | 🟢 Done | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
 | AE.4 | #230 | 🟢 Done | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui, ouroboros-rest |
 | AE.5 | #231 | 🟢 Done | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui, ouroboros-rest |
-| AE.6 | #232 | 🟡 Open | ouroboros-ui: [AE.6] Caps, security strip & states | Cap fields + warn meters, truthful strip, empty/read-only/error states | mvp, providers, ui, design | N (after AE.2–AE.5, AD.5) | Y | M | ouroboros-ui |
+| AE.6 | #232 | 🟢 Done | ouroboros-ui: [AE.6] Caps, security strip & states | Cap fields + warn meters, truthful strip, empty/read-only/error states | mvp, providers, ui, design | N (after AE.2–AE.5, AD.5) | Y | M | ouroboros-ui |
 | AE.7 | #233 | 🟡 Open | ouroboros-ui: [AE.7] Providers e2e leg | Parity, add→test→rotate→audit flow, pull progress, themes | mvp, providers, ui, ci | N (after AE.1–AE.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue AE.1 — ouroboros-ui: [AE.1] Providers route, subnav & page frame
@@ -1736,7 +1736,93 @@ This month $412.80 of $600 ▓▓▓▓▓▓▓░░░   [Test connection] �
 
 ### Issue AE.6 — ouroboros-ui: [AE.6] Caps, security strip & states
 
-> **GitHub issue:** #232 · **Status:** 🟡 Open · **Parent epic:** #214
+> **GitHub issue:** #232 · **Status:** 🟢 Done · **Parent epic:** #214
+
+> **Shipped 2026-08-25.**
+> One client island in three parts on AE.2's card —
+> [`cap-field.tsx`](../ouroboros-ui/app/providers/cap-field.tsx): `CapScope`, `CapMeter`,
+> `CapField` — over one new pure module ([`caps.ts`](../ouroboros-ui/app/providers/caps.ts))
+> and a second server hop in [`card-actions.ts`](../ouroboros-ui/app/providers/card-actions.ts);
+> one pure module for the page's states ([`states.ts`](../ouroboros-ui/app/providers/states.ts))
+> drawn by [`providers-screen.tsx`](../ouroboros-ui/app/providers/providers-screen.tsx) through
+> [`providers-banner.tsx`](../ouroboros-ui/app/providers/providers-banner.tsx); the strip
+> ([`security-strip.tsx`](../ouroboros-ui/app/providers/security-strip.tsx)) from copy held in
+> [`view.ts`](../ouroboros-ui/app/providers/view.ts); and the skeleton
+> ([`providers-skeleton.tsx`](../ouroboros-ui/app/providers/providers-skeleton.tsx)) behind a
+> new [`loading.tsx`](../ouroboros-ui/app/(app)/models/providers/loading.tsx), 0.47.0 → 0.48.0.
+> **No REST change**: AD.2's `PATCH { monthlyCapCents }` already carried the cap, and this is
+> the ticket that finally sends it.
+>
+> **A cap is parsed in the browser and stored in integer cents, and null is not zero.** The
+> field commits on blur and on Enter, the way a spreadsheet cell does, because a Save button
+> beside a 92-pixel input would double its width. `parseCap` reads `$95`, `95` and
+> `1,250.50`, computes cents in integers rather than through a float, refuses a word, a
+> negative and a third decimal with a sentence under the field and no round trip, and mirrors
+> the contract's `int32` ceiling so the service's refusal is pre-empted with a figure. An
+> emptied field stores `null` — the em-dash, drawn as the editable box's *placeholder* rather
+> than a glyph to delete first — and `$0` stores zero, the real cap meaning *spend nothing*;
+> a lone `$` is a refusal rather than a clear, because it is somebody who stopped typing.
+> **The meter moves before the server answers**: the card model now carries the meter's
+> inputs rather than a decided line, `meterFor` is one pure function called by the server for
+> the first paint and by the island with the cap just typed, and the optimistic cap lives
+> exactly as long as the transition that set it — a refused save goes back on its own, and
+> `router.refresh()` brings the stored figure with the re-read.
+>
+> **Decision P7 is one constant, in two places, and #237 deletes it.** `CAP_WARNING_ONLY` —
+> *Warning only — enforcement arrives with invocation.* — is the `ⓘ` after every capped
+> meter's note and the editable field's description and tooltip; a member's read-only field
+> carries the read-only reason instead but still sees the meter's glyph, because the warning
+> is about the cap and not the reader. AF.4 removes the constant, and everything that names
+> it then fails the typecheck, which is the point of spelling it once.
+>
+> **The strip is § 7.1, read from the document by the test.** `view.test.ts` splits
+> `docs/SECURITY_MODEL.md` at the heading and compares the fenced blocks to the constants —
+> the sentence, and the tag row of exactly one word — the way it already held the subline to
+> § 7.2; `security-strip.test.tsx` is the review the acceptance criteria ask for, at the
+> surface: it greps the rendered strip for `SOC`, `ISO`, `KMS`, `15-minute` and `token` and
+> finds none. The badge slot renders what the document lists and nothing else, so AF.3's
+> KMS sentence has a place to go when it is true. The link is the ghost button, to the
+> document at the path § 7.1 names, in a new tab because the destination leaves the
+> application.
+>
+> **The states are decided in one file and explained once.** `providersState` is failed,
+> empty or populated from the listing alone, because it is the one read the grid cannot
+> survive; `degradedReads` names whichever of the four grid-wide reads failed — the catalog,
+> the strip, the month, the aliases — and the page draws DASH-I.7's banner for either case,
+> with the service's sentence once and the page's one retry: never both banners at once, and
+> never a card's own models reason, which that region already prints. The empty workspace —
+> the personal seed's, `kensuenobu` — gets *Connect your first provider* across the whole
+> grid, with **+ Add provider** on it for an owner or admin and a sentence naming who can act
+> for a member. **The dashed card is not drawn beside it**, a deliberate departure from AE.2's
+> empty seat: two doors to one dialog in one view is clutter rather than guidance, and the
+> dashed card returns with the first card. A member's page names the role once under the tab
+> set — the routing page's note, on this page — and the address field a member could not edit
+> now says why, as every other control on the card already did; the key actions and the card
+> menu stay undrawn, which AE.3 decided and the note states. A switched-off card's frame goes
+> dashed as well as dim, the sheet's *not in play* treatment, so it is tellable from a degraded
+> one — which stays solid at full ink and wears its warn or error pill, because it is in play
+> and struggling.
+>
+> **The skeleton is the card's own anatomy, and the subline is drawn around a slot.** Five
+> card shapes built from the card's region classes, bars at the box of each control
+> (`.ou-input`, `.ou-btn--sm`, `.ou-chip`, `.ou-switch`, `.ou-meter`) in rem, the dashed
+> card's shape after them, and the strip as itself, since its copy depends on no read. The
+> one word the head cannot know — the workspace's name — is a bar *inside* § 7.2's sentence,
+> so the subline wraps on the same line before and after the data lands; `ModelsFrame.subline`
+> became a `ReactNode` for that purpose and nothing else. The `loading.tsx` sits beside the
+> page rather than in a route group because `providers/` is a leaf segment.
+>
+> **What was verified where.** The providers suites grew from 495 to 606 cases: `caps.test.ts`
+> (the parser, the ceiling, the refusals), `cap-field.test.tsx` (blur and Enter, the meter
+> moving before the answer, null against zero, the revert, Escape, the in-flight guard, a
+> member's field), `states.test.ts`, `security-strip.test.tsx`, `providers-skeleton.test.tsx`,
+> `providers-banner.test.tsx`, and the additions to the screen, card, page, actions, view and
+> styles suites — the last of which holds every new hue to a token, every new size to rem or
+> a token, and the pulse to `prefers-reduced-motion: no-preference`. **Both themes and the
+> 125% step are verified the way this module verifies them**: identical markup under both
+> palettes for every new surface, and no length the preference should move written in px.
+> The Playwright leg — cap edit + warn meter, member read-only, both themes screenshot-diffed
+> — is AE.7's (#233), as the ticket says.
 
 
 - **Problem Statement:** Cap editing with warning semantics (P7), the

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AddressRow as AddressRowModel } from "@/app/providers/cards";
-import { ADDRESS_KEPT, ADDRESS_SAVED, ADDRESS_UNCHANGED } from "@/app/providers/keys";
+import { ADDRESS_KEPT, ADDRESS_READ_ONLY, ADDRESS_SAVED, ADDRESS_UNCHANGED } from "@/app/providers/keys";
 
 /**
  * The editable address row (#229): validate-on-save, and a bad endpoint does not overwrite a
@@ -67,10 +67,13 @@ describe("an administrator's address", () => {
 });
 
 describe("a member's address", () => {
-  it("is read-only, with no Save", () => {
+  it("is read-only, with no Save, and says why (#232)", () => {
     render(<AddressRow address={ADDRESS} connectionId={ID} mayAdminister={false} />);
 
-    expect(screen.getByLabelText("Base URL")).toHaveAttribute("readonly");
+    const field = screen.getByLabelText("Base URL");
+    expect(field).toHaveAttribute("readonly");
+    expect(field).toHaveAttribute("title", ADDRESS_READ_ONLY);
+    expect(field).toHaveAccessibleDescription(ADDRESS_READ_ONLY);
     expect(screen.queryByRole("button", { name: "Save Base URL" })).toBeNull();
   });
 });

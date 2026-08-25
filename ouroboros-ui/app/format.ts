@@ -252,3 +252,17 @@ export function latencyOfMs(ms: number): string {
   const tenths = Math.round(total / MS_PER_TENTH);
   return `${(tenths / TENTHS_PER_SECOND).toFixed(1)}s`;
 }
+
+/**
+ * The indefinite article a word takes — *an owner*, *a member*.
+ *
+ * Written for the read-only notes two pages draw (`app/models/states.ts`,
+ * `app/providers/states.ts`), which name the reader's role in a sentence: the contract's four
+ * roles are the whole input, and a rule by first letter is right for all four.
+ *
+ * @param word The word.
+ * @returns `an` before a vowel, `a` otherwise.
+ */
+export function article(word: string): "a" | "an" {
+  return /^[aeiou]/i.test(word) ? "an" : "a";
+}

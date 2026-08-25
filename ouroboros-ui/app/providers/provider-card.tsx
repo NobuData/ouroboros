@@ -1,15 +1,13 @@
-import { Card, Chip, Meter, TextField, cx } from "@/app/ui";
+import { Card, Chip, cx } from "@/app/ui";
 
 import { AddressRow } from "./address-row";
+import { CapField, CapMeter, CapScope } from "./cap-field";
 import { CardMenu } from "./card-menu";
 import {
-  CAP_LABEL,
-  CAP_SOON,
   type CardModel,
   MODELS_LABEL,
   type ModelsRegion as Region,
   type MonogramTint,
-  THIS_MONTH,
 } from "./cards";
 import { KeyRow } from "./key-row";
 import { ModelsRegion } from "./models-region";
@@ -39,15 +37,24 @@ import "./providers.css";
  * and since AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)) the foot's
  * **Test connection** answers with what the provider said (`test-connection.tsx`), the
  * **models region** refreshes and flags a stranded alias (`models-region.tsx`), and the
- * pull-list's **Pull latest** streams a transfer the service tracks (`pull-list.tsx`). What
- * is still drawn inert with its issue named (design system § 3.5): the **Monthly cap** field
- * (AE.6) — a card with a dead control looks broken and a card missing it looks like it has
- * fewer affordances, so it is the control it will be.
+ * pull-list's **Pull latest** streams a transfer the service tracks (`pull-list.tsx`); and
+ * since AE.6 ([#232](https://github.com/NobuData/ouroboros/issues/232)) the foot's
+ * **Monthly cap** saves and the meter above it moves with it (`cap-field.tsx`), warning-only
+ * and labelled so until AF.4 ([#237](https://github.com/NobuData/ouroboros/issues/237)).
+ * Nothing on the card is drawn inert with an issue named any more.
  *
  * A Server Component. The controls that write are its Client Component islands, each handed
  * the decided model and a `mayAdminister` boolean; a member is handed the same card with
  * those islands drawn read-only or absent, never a different card. Every figure arrives
  * already decided, so this file is a description of a card.
+ *
+ * ### Switched off, and degraded, are two treatments
+ *
+ * A switched-off connection is dimmed and its frame goes dashed — the sheet's treatment for
+ * *not in play*, the same one the dashed add card and a promised catalog tile wear — and
+ * the switch says in words that routing skips it. A degraded one keeps its full ink and
+ * solid frame and carries the warn or error pill: it is in play and struggling, which is
+ * the opposite fact.
  */
 
 /**
@@ -74,7 +81,8 @@ export interface ProviderCardProps {
  * The card.
  *
  * @param props See {@link ProviderCardProps}.
- * @returns A `section` named by its heading, dimmed when the connection is switched off.
+ * @returns A `section` named by its heading, dimmed and dashed when the connection is
+ *   switched off.
  */
 export function ProviderCard({ model, mayAdminister }: ProviderCardProps) {
   const headingId = `provider-${model.id}-name`;
@@ -134,36 +142,19 @@ export function ProviderCard({ model, mayAdminister }: ProviderCardProps) {
 
       <ModelsRegionView id={model.id} mayAdminister={mayAdminister} region={model.models} />
 
-      <div className="providers-card__meter">
-        <div className="providers-card__meter-line">
-          <span className="providers-card__meter-label">{THIS_MONTH}</span>
-          <span className="providers-card__meter-figure">
-            {model.meter.figure}
-            {model.meter.note !== null && (
-              <span className="providers-card__meter-note"> {model.meter.note}</span>
-            )}
-          </span>
-        </div>
-        {/* Decoration for the line above it, which already says the figure — so it is
-            `aria-hidden`, the primitive's own rule when it is given no label. */}
-        {model.meter.fraction !== null && (
-          <Meter tone={model.meter.tone} value={model.meter.fraction} />
-        )}
-      </div>
+      {/*
+        The meter and the foot's cap field share the cap through the scope, so a saved cap
+        moves the meter before the route has re-read. The scope adds no element, so the foot
+        is still the card's last flex child and `margin-top: auto` still lands it.
+      */}
+      <CapScope connectionId={model.id} spend={model.spend}>
+        <CapMeter />
 
-      <footer className="providers-card__foot">
-        <TestConnection connectionId={model.id} mayAdminister={mayAdminister} />
-        <TextField
-          className="providers-card__cap"
-          hint={<span className="sr-only">{CAP_SOON}</span>}
-          id={`provider-${model.id}-cap`}
-          label={CAP_LABEL}
-          mono
-          readOnly
-          title={CAP_SOON}
-          value={model.cap}
-        />
-      </footer>
+        <footer className="providers-card__foot">
+          <TestConnection connectionId={model.id} mayAdminister={mayAdminister} />
+          <CapField connectionId={model.id} mayAdminister={mayAdminister} />
+        </footer>
+      </CapScope>
     </Card>
   );
 }

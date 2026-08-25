@@ -684,16 +684,16 @@ that roadmap's "Existing issues affected" section.
 | 125 | **AA.2** | ✅ [#201](https://github.com/NobuData/ouroboros/issues/201) | Routing matrix table | ouroboros-ui | L | Z.2, Z.5, AA.1 |
 | 126 | **AA.5** | ✅ [#204](https://github.com/NobuData/ouroboros/issues/204) | Escalation rules & spend cards | ouroboros-ui | M | Z.2, Z.5, AA.1 |
 | 127 | **AE.2** | ✅ [#228](https://github.com/NobuData/ouroboros/issues/228) | Provider cards | ouroboros-ui, ouroboros-rest | L | AC.6, AE.1 |
-| 128 | **AE.5** | [#231](https://github.com/NobuData/ouroboros/issues/231) | Add-provider flow & catalog | ouroboros-ui | M | AC.1, AD.2, AE.1 |
+| 128 | **AE.5** | ✅ [#231](https://github.com/NobuData/ouroboros/issues/231) | Add-provider flow & catalog | ouroboros-ui | M | AC.1, AD.2, AE.1 |
 | 129 | **CG.5** | [#583](https://github.com/NobuData/ouroboros/issues/583) | Registry constraints in ci/db | ouroboros-db, .github | XS | 3.6, CG.4 |
 | 130 | **CH.4** | [#587](https://github.com/NobuData/ouroboros/issues/587) | Import from provider | ouroboros-rest | M | AC.6, CH.1 |
 | 131 | **CH.5** | ✅ [#588](https://github.com/NobuData/ouroboros/issues/588) | Registry read model & alias health | ouroboros-rest | M | Z.3, CH.1, CH.3 |
 | 132 | **AA.3** | ✅ [#202](https://github.com/NobuData/ouroboros/issues/202) | Chain editing & drag-reorder | ouroboros-ui | M | AA.2 |
 | 133 | **AA.4** | ✅ [#203](https://github.com/NobuData/ouroboros/issues/203) | Route inspector & simulate panel | ouroboros-ui | M | Z.4, AA.2 |
 | 134 | **AA.6** | ✅ [#205](https://github.com/NobuData/ouroboros/issues/205) | Routing states & guards | ouroboros-ui | S | AA.2, AA.5 |
-| 135 | **AE.3** | [#229](https://github.com/NobuData/ouroboros/issues/229) | Key management flows | ouroboros-ui | M | AD.2, AE.2 |
+| 135 | **AE.3** | ✅ [#229](https://github.com/NobuData/ouroboros/issues/229) | Key management flows | ouroboros-ui | M | AD.2, AE.2 |
 | 136 | **AE.4** | ✅ [#230](https://github.com/NobuData/ouroboros/issues/230) | Test, discovery & Ollama pulls UX | ouroboros-ui, ouroboros-rest | M | AC.4, AE.2 |
-| 137 | **AE.6** | [#232](https://github.com/NobuData/ouroboros/issues/232) | Caps, security strip & states | ouroboros-ui | M | AD.5, AE.2, AE.5 |
+| 137 | **AE.6** | ✅ [#232](https://github.com/NobuData/ouroboros/issues/232) | Caps, security strip & states | ouroboros-ui | M | AD.5, AE.2, AE.5 |
 | 138 | **CI.2** | [#592](https://github.com/NobuData/ouroboros/issues/592) | Allowed-models table | ouroboros-ui | L | CH.5, CI.1 |
 | 139 | **CI.4** | [#594](https://github.com/NobuData/ouroboros/issues/594) | New-alias & import flows | ouroboros-ui | M | CH.1, CH.4, CI.1 |
 | 140 | **AA.7** | [#206](https://github.com/NobuData/ouroboros/issues/206) | Routing e2e leg | ouroboros-ui, .github | S | AA.1, AA.6 |

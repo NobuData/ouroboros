@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
+import { CAP_FAILED, CAP_READ_ONLY } from "@/app/providers/caps";
 import { SWITCH_FAILED, SWITCH_GONE, SWITCH_READ_ONLY } from "@/app/providers/cards";
+import { PROVIDER_GONE } from "@/app/providers/keys";
 
 import { connection } from "../helpers/providers";
 
@@ -21,7 +23,7 @@ vi.mock("@/app/api/providers", () => ({
   providers: { update: (id: string, patch: unknown) => update(id, patch) },
 }));
 
-const { setProviderEnabled } = await import("@/app/providers/card-actions");
+const { setProviderCap, setProviderEnabled } = await import("@/app/providers/card-actions");
 
 /** The seed's Anthropic card. */
 const ID = "5eed000c-0000-4000-8000-000000000001";
@@ -73,5 +75,53 @@ describe("switching a provider", () => {
     update.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
     await expect(setProviderEnabled(ID, false)).rejects.toThrow("NEXT_REDIRECT /login");
+  });
+});
+
+describe("setting a cap (#232)", () => {
+  it("PATCHes only the cap asked for, for the one connection", async () => {
+    update.mockResolvedValue(connection({ monthlyCapCents: 12_000 }));
+
+    await setProviderCap(ID, 12_000);
+
+    expect(update).toHaveBeenCalledWith(ID, { monthlyCapCents: 12_000 });
+  });
+
+  it("sends null to clear the cap — no cap, which the contract keeps distinct from zero", async () => {
+    update.mockResolvedValue(connection({ monthlyCapCents: null }));
+
+    await expect(setProviderCap(ID, null)).resolves.toEqual({ ok: true, cents: null });
+    expect(update).toHaveBeenCalledWith(ID, { monthlyCapCents: null });
+
+    update.mockResolvedValue(connection({ monthlyCapCents: 0 }));
+
+    await expect(setProviderCap(ID, 0)).resolves.toEqual({ ok: true, cents: 0 });
+    expect(update).toHaveBeenCalledWith(ID, { monthlyCapCents: 0 });
+  });
+
+  it("hands back the cap the service now holds — which is what the meter draws", async () => {
+    update.mockResolvedValue(connection({ monthlyCapCents: 9_500 }));
+
+    await expect(setProviderCap(ID, 9_500)).resolves.toEqual({ ok: true, cents: 9_500 });
+  });
+
+  it("turns the service's 403 into the read-only sentence, and its 404 into the gone one", async () => {
+    update.mockRejectedValue(new ApiError(403, "forbidden", "no"));
+    await expect(setProviderCap(ID, 1)).resolves.toEqual({ ok: false, reason: CAP_READ_ONLY });
+
+    update.mockRejectedValue(new ApiError(404, "provider_connection_not_found", "no"));
+    await expect(setProviderCap(ID, 1)).resolves.toEqual({ ok: false, reason: PROVIDER_GONE });
+  });
+
+  it("says the cap could not be saved for anything else the service refused", async () => {
+    update.mockRejectedValue(new ApiError(500, "internal_error", "x"));
+
+    await expect(setProviderCap(ID, 1)).resolves.toEqual({ ok: false, reason: CAP_FAILED });
+  });
+
+  it("lets anything that is not the service's refusal travel — the redirect above all", async () => {
+    update.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(setProviderCap(ID, 1)).rejects.toThrow("NEXT_REDIRECT /login");
   });
 });

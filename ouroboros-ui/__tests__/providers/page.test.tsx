@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ADD_PROVIDER_READ_ONLY } from "@/app/providers/catalog";
+import { readOnlyNote } from "@/app/providers/states";
 import { ADD_PROVIDER_LABEL, PROVIDERS_TITLE, providersSubline } from "@/app/providers/view";
 
 import { membership, sessionUser } from "../helpers/login";
@@ -37,7 +38,10 @@ vi.mock("@/app/providers/add-actions", () => ({
   readCatalog: () => Promise.resolve({ ok: true, entries: [], existing: [] }),
   addProvider: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "", details: {} } }),
 }));
-vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
+vi.mock("@/app/providers/card-actions", () => ({
+  setProviderEnabled: vi.fn(),
+  setProviderCap: vi.fn(),
+}));
 vi.mock("@/app/providers/live-actions", () => ({
   testConnection: vi.fn(),
   refreshModels: vi.fn(),
@@ -163,5 +167,24 @@ describe("the providers route", () => {
     for (const toggle of screen.getAllByRole("switch")) {
       expect(toggle).toHaveAttribute("aria-disabled", "true");
     }
+  });
+
+  it("names a member's strongest role in the read-only note, from the same membership (#232)", async () => {
+    // The role travels beside `mayAdminister` for one purpose — to be named — and it is the
+    // strongest one held, which is what `primaryRole` answers.
+    requireWorkspace.mockResolvedValue({
+      ...ACCESS,
+      membership: membership({ roles: ["viewer", "member"] }),
+    });
+
+    render(await Page());
+
+    expect(screen.getByRole("note")).toHaveTextContent(readOnlyNote("member").head);
+  });
+
+  it("draws no read-only note for an owner", async () => {
+    render(await Page());
+
+    expect(screen.queryByRole("note")).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister } from "@/app/api/membership";
+import { mayAdminister, primaryRole } from "@/app/api/membership";
 import { readProviders } from "@/app/providers/data";
 import { ProvidersScreen } from "@/app/providers/providers-screen";
 
@@ -23,7 +23,9 @@ import { ProvidersScreen } from "@/app/providers/providers-screen";
  * answered once, here, from the same membership, the way `app/(app)/models/(routing)/page.tsx` answers
  * it for the rules card. The screen is handed a boolean rather than a role, so there is one
  * place deciding what a role may do and it is `app/api/membership.ts`; the gate that
- * **enforces** is the service's.
+ * **enforces** is the service's. The role travels beside the boolean since AE.6
+ * ([#232](https://github.com/NobuData/ouroboros/issues/232)) for one purpose — to be
+ * *named* in the read-only note — and is decided from nowhere.
  *
  * **Under `/models`, not beside it.** The sidebar highlights the entry whose route the URL
  * is under (`app/shell/nav.ts`), so this segment's placement is what keeps **Models** lit on
@@ -39,6 +41,7 @@ export default async function Page() {
     <ProvidersScreen
       mayAdminister={mayAdminister(access.membership.roles)}
       readings={readings}
+      role={primaryRole(access.membership.roles)}
       workspaceName={access.membership.name}
     />
   );

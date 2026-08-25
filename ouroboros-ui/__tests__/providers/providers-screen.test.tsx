@@ -2,12 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
-import {
-  GRID_LABEL,
-  NO_PROVIDERS_TITLE,
-  PROVIDERS_UNAVAILABLE,
-  switchLabel,
-} from "@/app/providers/cards";
+import { CAP_WARNING_ONLY } from "@/app/providers/caps";
+import { GRID_LABEL, switchLabel } from "@/app/providers/cards";
 import {
   ADD_CARD_NOTE,
   ADD_DIALOG_TITLE,
@@ -17,14 +13,28 @@ import {
 } from "@/app/providers/catalog";
 import type { ProvidersReadings } from "@/app/providers/data";
 import {
+  DEGRADED_HEADLINE,
+  EMPTY_MEMBER_NOTE,
+  EMPTY_TITLE,
+  GRID_FAILED_TITLE,
+  PROVIDERS_FAILED_HEADLINE,
+  READ_ONLY_BODY,
+  SPEND_READ,
+  readOnlyNote,
+} from "@/app/providers/states";
+import {
   ADD_PROVIDER_LABEL,
   AUDIT_LOADING,
   AUDIT_LOG_LABEL,
   AUDIT_SHEET_TITLE,
   PROVIDERS_TITLE,
+  SECURITY_MODEL_LINK,
+  SECURITY_MODEL_URL,
+  SECURITY_STRIP_LABEL,
   type AuditReading,
   providersSubline,
 } from "@/app/providers/view";
+import { RETRY_LABEL } from "@/app/ui";
 
 import { seededTrail } from "../helpers/audit";
 import { membership } from "../helpers/login";
@@ -56,7 +66,10 @@ vi.mock("@/app/providers/add-actions", () => ({
   readCatalog: () => readCatalog(),
   addProvider: vi.fn(),
 }));
-vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
+vi.mock("@/app/providers/card-actions", () => ({
+  setProviderEnabled: vi.fn(),
+  setProviderCap: vi.fn(),
+}));
 vi.mock("@/app/providers/live-actions", () => ({
   testConnection: vi.fn(),
   refreshModels: vi.fn(),
@@ -69,8 +82,11 @@ vi.mock("@/app/providers/key-actions", () => ({
   saveProviderAddress: vi.fn(),
   reauthenticate: vi.fn(),
 }));
+/** What tells the server's own render to re-read — the banner's retry. */
+const refresh = vi.fn();
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
+  useRouter: () => ({ refresh }),
   usePathname: () => "/models/providers",
 }));
 
@@ -101,6 +117,7 @@ function grid(): HTMLElement {
 }
 
 beforeEach(() => {
+  refresh.mockReset();
   readAuditTrail.mockReset();
   readAuditTrail.mockResolvedValue({ ok: true, events: seededTrail(), total: 7 });
   readCatalog.mockReset();
@@ -286,20 +303,27 @@ describe("the grid", () => {
     expect(within(card).getByText("unknown")).toHaveClass("ou-chip--warn");
   });
 
-  it("draws the empty state beside the dashed card for a workspace that has connected nothing", () => {
+  it("draws the guidance, full width and alone, for a workspace that has connected nothing (#232)", () => {
+    // *Connect your first provider*: one card across the grid, with the primary action on it.
+    // The dashed card is not drawn beside it — two doors to one dialog in one view.
     seeded(true, { connections: { ok: true, value: [] }, models: new Map() });
 
-    expect(screen.getByText(NO_PROVIDERS_TITLE)).toBeInTheDocument();
+    expect(within(grid()).getByText(EMPTY_TITLE)).toBeInTheDocument();
     expect(within(grid()).queryAllByRole("region")).toHaveLength(0);
-    expect(within(grid()).getByRole("button", { name: BROWSE_CATALOG_LABEL })).toBeInTheDocument();
+    expect(grid().querySelector(".providers-grid__guidance")).not.toBeNull();
+    expect(within(grid()).queryByRole("button", { name: BROWSE_CATALOG_LABEL })).toBeNull();
+    expect(within(grid()).getByRole("button", { name: ADD_PROVIDER_LABEL })).not.toHaveAttribute(
+      "aria-disabled",
+    );
   });
 
-  it("says why when the listing could not be read, and keeps the dashed card", () => {
+  it("draws the banner and the seat when the listing could not be read, and keeps the dashed card (#232)", () => {
     seeded(true, { connections: { ok: false, reason: "the vault is away" }, models: new Map() });
 
-    const state = within(grid()).getByRole("status");
-    expect(state).toHaveTextContent(PROVIDERS_UNAVAILABLE);
-    expect(state).toHaveTextContent("the vault is away");
+    const banner = screen.getByRole("status");
+    expect(banner).toHaveTextContent(PROVIDERS_FAILED_HEADLINE);
+    expect(banner).toHaveTextContent("the vault is away");
+    expect(within(grid()).getByText(GRID_FAILED_TITLE)).toBeInTheDocument();
     expect(within(grid()).queryAllByRole("region")).toHaveLength(0);
     expect(within(grid()).getByRole("button", { name: BROWSE_CATALOG_LABEL })).toBeInTheDocument();
   });
@@ -410,6 +434,143 @@ describe("the tab set", () => {
     expect(tab.tagName).toBe("SPAN");
     expect(tab).toHaveTextContent("soon");
     expect(within(tabs).getAllByRole("link")).toHaveLength(3);
+  });
+});
+
+describe("the states (#232)", () => {
+  it("draws the failed read's reason once, in the banner, with the page's one retry", () => {
+    seeded(true, { connections: { ok: false, reason: "the vault is away" }, models: new Map() });
+
+    expect(screen.getAllByText(/the vault is away/)).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: RETRY_LABEL }));
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a failed read and an empty workspace visually distinct", () => {
+    // The criterion in one case: the banner and the seat for one, the guidance and no banner
+    // for the other, and neither wears the other's words.
+    const failed = seeded(true, { connections: { ok: false, reason: "away" }, models: new Map() });
+    expect(screen.queryByText(EMPTY_TITLE)).toBeNull();
+    failed.unmount();
+
+    seeded(true, { connections: { ok: true, value: [] }, models: new Map() });
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText(GRID_FAILED_TITLE)).toBeNull();
+    expect(screen.getByText(EMPTY_TITLE)).toBeInTheDocument();
+  });
+
+  it("gives a member the explanation in the empty state, and no button", () => {
+    seeded(false, { connections: { ok: true, value: [] }, models: new Map() });
+
+    expect(within(grid()).getByText(EMPTY_MEMBER_NOTE)).toBeInTheDocument();
+    expect(within(grid()).queryByRole("button")).toBeNull();
+  });
+
+  it("draws one banner naming a grid-wide read that failed, and keeps every card", () => {
+    // DASH-I.7's rule: five meters read *no spend recorded* — that is the region degrading —
+    // and the reason is said once, above them, with the retry.
+    const { container } = seeded(true, { spend: { ok: false, reason: "ledger away" } });
+
+    const banner = screen.getByRole("status");
+    expect(banner).toHaveTextContent(DEGRADED_HEADLINE);
+    expect(banner).toHaveTextContent(`${SPEND_READ}: ledger away`);
+    expect(screen.getAllByText(/ledger away/)).toHaveLength(1);
+    expect(container.querySelectorAll(".providers-card")).toHaveLength(5);
+  });
+
+  it("draws no banner when every read answered", () => {
+    seeded();
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("draws only the failed banner when the listing failed, whatever else did", () => {
+    seeded(true, {
+      connections: { ok: false, reason: "away" },
+      spend: { ok: false, reason: "ledger away" },
+      models: new Map(),
+    });
+
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.queryByText(DEGRADED_HEADLINE)).toBeNull();
+  });
+
+  it("explains the role once, near the top, for a reader who may not change anything", () => {
+    render(
+      <ProvidersScreen
+        mayAdminister={false}
+        readings={readings()}
+        role="member"
+        workspaceName={WORKSPACE}
+      />,
+    );
+
+    const note = screen.getByRole("note");
+    expect(note).toHaveTextContent(readOnlyNote("member").head);
+    expect(note).toHaveTextContent(READ_ONLY_BODY);
+    expect(screen.getAllByRole("note")).toHaveLength(1);
+  });
+
+  it("reads as a viewer's page when no role was named, and draws no note for a role that may edit", () => {
+    const member = seeded(false);
+    expect(screen.getByRole("note")).toHaveTextContent(readOnlyNote("viewer").head);
+    member.unmount();
+
+    seeded(true);
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it("is read-only across every card for a member, with the reason on each control", () => {
+    seeded(false);
+
+    for (const toggle of screen.getAllByRole("switch")) {
+      expect(toggle).toHaveAttribute("aria-disabled", "true");
+      expect(toggle).toHaveAccessibleDescription(/owners and admins/);
+    }
+    for (const cap of screen.getAllByLabelText("Monthly cap")) {
+      expect(cap).toHaveAttribute("readonly");
+      expect(cap).toHaveAccessibleDescription(/owners and admins/);
+    }
+    for (const button of screen.getAllByRole("button", { name: "Test connection" })) {
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button).toHaveAttribute("title", expect.stringMatching(/owners and admins/));
+    }
+  });
+
+  it("draws the Copilot warn meter with the warning-only tooltip, on the seeded grid", () => {
+    const { container } = seeded();
+
+    expect(container.querySelectorAll(".ou-meter--warn")).toHaveLength(1);
+    expect(container.querySelectorAll(".providers-card__meter-warning")).toHaveLength(3);
+    expect(container.querySelector(".providers-card__meter-warning")).toHaveAttribute(
+      "title",
+      CAP_WARNING_ONLY,
+    );
+  });
+});
+
+describe("the security strip (#232)", () => {
+  it("is under the grid, named, with the document's link, in every state", () => {
+    for (const over of [
+      {},
+      { connections: { ok: true, value: [] } as const, models: new Map() },
+      { connections: { ok: false, reason: "away" } as const, models: new Map() },
+    ]) {
+      const { unmount } = seeded(true, over);
+
+      const strip = screen.getByRole("complementary", { name: SECURITY_STRIP_LABEL });
+      expect(within(strip).getByRole("link", { name: SECURITY_MODEL_LINK })).toHaveAttribute(
+        "href",
+        SECURITY_MODEL_URL,
+      );
+      unmount();
+    }
+  });
+
+  it("carries no unearned compliance badge — the reviewer's check", () => {
+    const { container } = seeded();
+
+    expect(container.textContent).not.toMatch(/SOC 2|ISO 27001|KMS|15-minute/);
   });
 });
 
