@@ -1,6 +1,6 @@
 /*
  * The model registry page (#591) — mockup 21's head actions — its allowed-models table (#592),
- * and the two flows behind the head's actions (#594).
+ * the two flows behind the head's actions (#594), and the alias inspector (#593).
  *
  * The mockup is docs/mockups/21-model-registry.html over docs/mockups/assets/ouroboros.css.
  * Almost nothing of its page frame is this sheet's: the anatomy — gutter rhythm, page head,
@@ -9,8 +9,9 @@
  * it. What is left here is what only this page has: the dropdown behind **Import from
  * provider ▾**, the one line of hint under the actions when there is nothing to import from,
  * the inside of the allowed-models table's cells with its dimmed row, the switch-off
- * confirmation and the seat row beneath the card (CI.2, #592), and — since CI.4 (#594) — the
- * columns inside the create dialog, the parameter form and the import wizard.
+ * confirmation and the seat row beneath the card (CI.2, #592), the columns inside the create
+ * dialog, the parameter form and the import wizard (CI.4, #594), and — since CI.3 (#593) — the
+ * inspector card's column, its two mono lines and its foot.
  *
  * The three dialogs are drawn inside the shell's overlay (app/shell/overlay.tsx,
  * app/shell/shell.css), which owns the backdrop, the panel, the title and the note; this sheet
@@ -765,6 +766,223 @@
 
 /* The action row — the primary control leading, the way out beside it. */
 .registry-wizard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- the alias inspector (#593) ---------- */
+
+/*
+ * Mockup 21's EDIT — CODER-MAX card. The card itself is the #46 Card and the fields inside it
+ * are the #46 primitives; what is here is the column, the two lines the mockup draws in mono
+ * (the rename guard and the blocked why-line), the used-by region, and the foot.
+ *
+ * The mockup's pixel rhythm is translated rather than copied: its 13px gap between fields is
+ * --sp-7, its .usedby-label is the eyebrow treatment at --t-2xs with the mockup's tracking, and
+ * its .inspector-foot hairline is the same --line every card divider in this product uses.
+ */
+
+.registry-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/*
+ * The unbound alias's way out, at the top of the card — the same sentence the table's health
+ * cell carries, in the one place a reader who selected that row is looking. On the accent wash
+ * like the create dialog's bind-later notice, because both describe a state rather than report
+ * a failure: an alias with no key is something somebody chose.
+ */
+.registry-inspector__unbound {
+  margin: 0;
+  padding: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--accent-wash);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.registry-inspector__unbound-link {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.registry-inspector__unbound-link:hover,
+.registry-inspector__unbound-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* The mockup's `.inspector .field + .field { margin-top: 13px }`, as a column. */
+.registry-inspector__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+/*
+ * The rename guard: *referenced — rename is blocked while 4 references exist*, standing under
+ * the name field before anything is typed.
+ *
+ * Mono and in the warn hue: mono because it is the same register as the why-line in the foot
+ * and both are statements about this alias rather than prose, and warn because it is a
+ * constraint a reader is about to run into rather than a failure they already have. It sits
+ * directly under the field, so the column's own gap is removed above it.
+ */
+.registry-inspector__guard {
+  margin: calc(var(--sp-7) * -1 + var(--sp-3)) 0 0;
+  color: var(--warn);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's `.card-link` inside a field hint. */
+.registry-inspector__hint-link {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.registry-inspector__hint-link:hover,
+.registry-inspector__hint-link:focus-visible {
+  text-decoration: underline;
+}
+
+/*
+ * ---------- the two schema-drawn sections ----------
+ *
+ * The model's parameters and the registry's restrictions, each headed and set apart from the
+ * fields above it by a hairline — the same treatment the create dialog gives its one section,
+ * because they are the same form.
+ */
+.registry-inspector__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+.registry-inspector__subtitle {
+  margin: 0;
+  font-size: var(--t-lg);
+}
+
+/* A line the card says about itself: a read in flight, an empty section, an explanation. */
+.registry-inspector__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The refusal, in the error hue, above the foot it explains. */
+.registry-inspector__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * ---------- used by ----------
+ *
+ * The mockup's `.usedby-label` and `.chips`. This is the card's one **unbounded** region — an
+ * alias can be referenced by any number of routes and rules — so it scrolls inside its own
+ * wrapper rather than growing the card past the fold, which is what keeps the foot's controls
+ * reachable at 125% type as well as at 100%.
+ */
+.registry-inspector__used {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.registry-inspector__used-label {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.registry-inspector__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  max-height: 9rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/*
+ * A chip that navigates to the surface holding the reference. The tag inside it is the #46
+ * primitive and is not restyled; what this adds is that the whole chip reads as a link when it
+ * is one — the underline is on the text the tag draws, since `text-decoration` inherits.
+ */
+.registry-inspector__chip-link {
+  display: inline-flex;
+  border-radius: var(--r-pill);
+  color: inherit;
+}
+
+.registry-inspector__chip-link:hover,
+.registry-inspector__chip-link:focus-visible {
+  text-decoration: underline;
+}
+
+/*
+ * ---------- the foot ----------
+ *
+ * The mockup's `.inspector-foot`: three controls on one line over a hairline, with the why-line
+ * taking the full basis so it wraps beneath them rather than squeezing between two buttons.
+ */
+.registry-inspector__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+/*
+ * The mockup's `.inspector-foot .why` — `blocked — 4 routes reference this alias`, in mono and
+ * in the faint ink, on its own line. A permanent state of the Remove button rather than an
+ * error, which is why it is not drawn in the error hue: nothing has gone wrong.
+ */
+.registry-inspector__why {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * ---------- the remove confirmation ----------
+ *
+ * The frame — backdrop, panel, title and note — is the shell's (app/shell/overlay.tsx); what is
+ * here is the column inside the panel and its action row, the same two rules the switch-off
+ * confirmation keeps beside it.
+ */
+.registry-inspector__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.registry-inspector__confirm-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-4);

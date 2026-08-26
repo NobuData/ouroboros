@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   PARAM_REASONS,
   PROVIDER_DEFAULT,
+  documentsEqual,
   paramDefaults,
   paramFieldErrors,
   paramHint,
   paramValue,
+  paramValues,
   paramsDocument,
   paramsNote,
 } from "@/app/registry/params";
@@ -30,6 +32,13 @@ import { budgetField, paramField, paramSection } from "../helpers/registry";
  * 3. **An empty form explains itself.** Three honest reasons, none of them an error, and each a
  *    different sentence — a form that said nothing would be indistinguishable from one that
  *    failed to load.
+ *
+ * CI.3 ([#593](https://github.com/NobuData/ouroboros/issues/593)) adds the counterpart to the
+ * first: the inspector opens on **what is stored**, because that is what it is editing, and the
+ * two forms differ in that one decision and nowhere else. A fourth property comes with it —
+ * *a control typed into and typed back out of is not a change* — which is what
+ * {@link documentsEqual} answers and what keeps a dirty-aware Save from offering to write a
+ * revision nothing asked for.
  */
 
 describe("what a fresh form starts in", () => {
@@ -205,5 +214,89 @@ describe("a refusal's field paths", () => {
   it("finds nothing in a refusal that named no field", () => {
     expect(paramFieldErrors({}, "params")).toEqual({});
     expect(paramFieldErrors({ alias: ["taken"] }, "params")).toEqual({});
+  });
+});
+
+describe("what an editing form starts in", () => {
+  it("prefills every control from what the alias has stored", () => {
+    // The counterpart of `paramDefaults`, and the one decision the two forms differ in: a create
+    // dialog has nothing stored yet, an inspector is editing what is.
+    expect(paramValues([paramField(), budgetField()], { thinking: "max", token_budget: 400_000 })).toEqual(
+      { thinking: "max", token_budget: "400000" },
+    );
+  });
+
+  it("leaves a control empty for a key the stored document says nothing about", () => {
+    // An alias that says nothing about `thinking` must open with a blank select rather than
+    // with a value nobody wrote — the same rule the create dialog keeps for every field.
+    expect(paramValues([paramField(), budgetField()], { token_budget: 1000 })).toEqual({
+      thinking: "",
+      token_budget: "1000",
+    });
+  });
+
+  it("gives every field an entry, so no control is uncontrolled on its first render either", () => {
+    expect(Object.keys(paramValues([paramField(), budgetField()], {}))).toEqual([
+      "thinking",
+      "token_budget",
+    ]);
+  });
+
+  it("reads a stored null as *nothing was said*, which is what an absent key means", () => {
+    expect(paramValues([paramField()], { thinking: null })).toEqual({ thinking: "" });
+  });
+
+  it("takes a switch's position from the stored boolean, and only from a true one", () => {
+    const flag = paramField({ name: "batch_ok", label: "Batch ok", widget: "switch", choices: null });
+
+    expect(paramValues([flag], { batch_ok: true })).toEqual({ batch_ok: true });
+    expect(paramValues([flag], { batch_ok: "yes" })).toEqual({ batch_ok: false });
+    expect(paramValues([flag], {})).toEqual({ batch_ok: false });
+  });
+
+  it("opens blank on a value no control could edit, rather than on `[object Object]`", () => {
+    expect(paramValues([budgetField()], { token_budget: { min: 1 } })).toEqual({
+      token_budget: "",
+    });
+  });
+
+  it("round-trips what is stored back into the same document, so an untouched form is clean", () => {
+    // The property the whole prefill exists for: opening a card must not make it dirty.
+    const fields = [paramField(), budgetField()];
+    const stored = { thinking: "max", token_budget: 400_000 };
+
+    expect(paramsDocument(fields, paramValues(fields, stored))).toEqual(stored);
+  });
+
+  it("drops a stored key the current schema has no control for", () => {
+    // A model that cannot honour a parameter has no field for it, so the form neither shows it
+    // nor claims it — which is exactly what a rebind has to send.
+    const fields = [budgetField()];
+    const stored = { thinking: "max", token_budget: 400_000 };
+
+    expect(paramsDocument(fields, paramValues(fields, stored))).toEqual({ token_budget: 400_000 });
+  });
+});
+
+describe("whether two documents say the same thing", () => {
+  it("ignores the order the keys arrived in, because two objects are not two documents", () => {
+    expect(documentsEqual({ a: 1, b: "x" }, { b: "x", a: 1 })).toBe(true);
+  });
+
+  it("sees a changed value", () => {
+    expect(documentsEqual({ a: 1 }, { a: 2 })).toBe(false);
+  });
+
+  it("sees a key one of them does not have, in either direction", () => {
+    expect(documentsEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false);
+    expect(documentsEqual({ a: 1, b: 2 }, { a: 1 })).toBe(false);
+  });
+
+  it("does not confuse a number with the string of it, which is what the typing is for", () => {
+    expect(documentsEqual({ a: 1 }, { a: "1" })).toBe(false);
+  });
+
+  it("calls two empty documents equal, which is the ordinary untouched case", () => {
+    expect(documentsEqual({}, {})).toBe(true);
   });
 });

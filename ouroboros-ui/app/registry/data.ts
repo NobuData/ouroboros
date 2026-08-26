@@ -3,16 +3,17 @@ import "server-only";
 /**
  * Everything the `/models/registry` page reads.
  *
- * Two calls — the workspace's provider connections, which is the list **Import from
- * provider** offers, and CH.5's composed registry payload
+ * Two calls — the workspace's provider connections, which every control on the page that names
+ * a provider is drawn from, and CH.5's composed registry payload
  * ([#588](https://github.com/NobuData/ouroboros/issues/588)), which is every cell of the
- * allowed-models table (CI.2, [#592](https://github.com/NobuData/ouroboros/issues/592)) —
- * issued together and each allowed to fail on its own, for the reason `app/models/data.ts`
- * and `app/dashboard/data.ts` exist: the route stays three lines, the composition is a
- * function that can be tested against a stub, and the screen is handed one object rather
- * than issuing calls of its own. CI.3–CI.5 add the inspector's reads and the chain card here
- * beside them, and the property that has to survive them is the one those files establish —
- * **one failed read is one degraded region, never a blank page**.
+ * allowed-models table (CI.2, [#592](https://github.com/NobuData/ouroboros/issues/592)) and
+ * the inspector's whole prefill (CI.3,
+ * [#593](https://github.com/NobuData/ouroboros/issues/593)) — issued together and each allowed
+ * to fail on its own, for the reason `app/models/data.ts` and `app/dashboard/data.ts` exist:
+ * the route stays three lines, the composition is a function that can be tested against a
+ * stub, and the screen is handed one object rather than issuing calls of its own. CI.5 adds
+ * the chain card here beside them, and the property that has to survive it is the one those
+ * files establish — **one failed read is one degraded region, never a blank page**.
  *
  * ### The table is one request, and that is a correctness property
  *
@@ -21,17 +22,24 @@ import "server-only";
  * that read aliases, then health, then prices would render a row nobody's database was ever
  * in. Nothing here composes a cell from two reads.
  *
- * ### Why the health endpoint, for a list that is not about health
+ * ### The connections, and which of the two reads answers *which providers do I have*
  *
- * `GET /api/v1/routing/providers` is the only read this application has over
- * `provider_connections` today (`app/api/routing.ts`), and it answers exactly the question
- * this page asks: *which providers has this workspace connected*. Mockup 07's own management
- * surface reads the same table through `app/api/providers.ts` since AE.2
- * ([#228](https://github.com/NobuData/ouroboros/issues/228)), and this page deliberately keeps
- * the strip: the cards need masks, caps and names, and a menu of import sources needs none
- * of them — a second, heavier read for the same list would be a second answer to one
- * question. The health each row carries is simply not read here — see `importSources` in
- * `app/registry/view.ts` for why a paused connection is still a connection.
+ * Two endpoints list `provider_connections`: `GET /api/v1/routing/providers`, which is mockup
+ * 06's health strip, and `GET /api/v1/providers`, which is mockup 07's cards. This page reads
+ * the **second**, and until CI.3 it read the first.
+ *
+ * The reason is one field. Three controls here name a connection — the import menu's rows, the
+ * create dialog's provider select, and the inspector's rebind select — and the last of them is
+ * mockup 21's `Anthropic — key sk-ant-…Xq4A`, which needs the **mask**. The health payload does
+ * not carry one and never should: it answers *is this provider up*. The connections payload
+ * carries the mask, the id and the display name, is ordered by display name exactly as the
+ * other is, and is readable by any member, so one read now answers the whole question. Reading
+ * both would be two answers to *which providers has this workspace connected*, which is the
+ * arrangement this file exists to avoid.
+ *
+ * What is **not** read is the health of each connection, and that is deliberate — see
+ * `importSources` in `app/registry/view.ts` for why a paused connection is still a connection,
+ * and the table's own health cell (CH.5) for where an alias's provider trouble is reported.
  *
  * {@link attempt} is `app/api/reading.ts`'s, shared with the dashboard and the routing page.
  * It catches an `ApiError` and nothing else, deliberately: a `401` reaches this layer as
@@ -41,9 +49,9 @@ import "server-only";
  */
 
 import type { Workspace } from "@/app/api/access";
+import { providers } from "@/app/api/providers";
 import { attempt } from "@/app/api/reading";
 import { registry } from "@/app/api/registry";
-import { routing } from "@/app/api/routing";
 
 import type { RegistryReadings } from "./view";
 
@@ -65,12 +73,12 @@ export async function readRegistry(access: Workspace): Promise<RegistryReadings>
   // nobody deletes an argument that is carrying a proof.
   void access;
 
-  // Both at once: neither read depends on the other, and a page that waited for the strip
-  // before asking for the table would be paying two round trips for one screen.
-  const [providers, aliases] = await Promise.all([
-    attempt(async () => (await routing.providers()).providers),
+  // Both at once: neither read depends on the other, and a page that waited for the
+  // connections before asking for the table would be paying two round trips for one screen.
+  const [connections, aliases] = await Promise.all([
+    attempt(async () => (await providers.list()).items),
     attempt(async () => (await registry.read()).aliases),
   ]);
 
-  return { providers, aliases };
+  return { providers: connections, aliases };
 }

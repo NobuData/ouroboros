@@ -17,12 +17,25 @@ import { budgetField, paramField } from "../helpers/registry";
  *
  * `params.test.ts` proves the judgements; this proves what reaches the DOM: which control each
  * widget becomes, that the bounds are on the input as well as in the hint, that the default is
- * drawn beside the box rather than typed into it, and that a refusal lands on the control it
- * was about.
+ * drawn beside the box rather than typed into it, that a refusal lands on the control it was
+ * about, and — since CI.3 ([#593](https://github.com/NobuData/ouroboros/issues/593)) — that a
+ * reader who may not write sees every one of them readable and inert.
  */
 
 /** The Anthropic adapter's two parameters — a select and an integer. */
 const FIELDS = [paramField(), budgetField()];
+
+/** …and the registry's own boolean, which is the switch widget. */
+const SWITCH = paramField({
+  name: "batch_ok",
+  label: "Batch ok",
+  widget: "switch",
+  choices: null,
+  help: null,
+});
+
+/** Why a member may not move any of them — the inspector's role gate (#593). */
+const READ_ONLY = "Editing an alias is for workspace owners and admins.";
 
 describe("the five widgets", () => {
   it("draws a select over the schema's own choices, with a way to choose nothing", () => {
@@ -231,6 +244,73 @@ describe("the form's frame", () => {
     const [first, second] = screen.getAllByLabelText("Thinking", { exact: false });
 
     expect(first?.id).not.toBe(second?.id);
+  });
+});
+
+describe("a reader who may not change them", () => {
+  /** The Anthropic adapter's two parameters and a boolean, which is the third widget shape. */
+  const ALL = [paramField(), budgetField(), SWITCH];
+
+  it("disables every box and select outright, rather than accepting typing and discarding it", () => {
+    // `app/ui/field.tsx`'s rule: a field that takes a keystroke and throws it away is worse
+    // than one that will not take it, and the explanation belongs in the hint rather than in a
+    // tooltip only a focused control could show.
+    render(
+      <ParamFields
+        fields={ALL}
+        idPrefix="p"
+        onChange={vi.fn()}
+        reason={READ_ONLY}
+        values={paramDefaults(ALL)}
+      />,
+    );
+
+    expect(screen.getByLabelText("Thinking", { exact: false })).toBeDisabled();
+    expect(screen.getByLabelText("Token budget", { exact: false })).toBeDisabled();
+  });
+
+  it("makes the switch inert with the reason, because a switch keeps its own explanation", () => {
+    render(
+      <ParamFields
+        fields={ALL}
+        idPrefix="p"
+        onChange={vi.fn()}
+        reason={READ_ONLY}
+        values={paramDefaults(ALL)}
+      />,
+    );
+
+    const toggle = screen.getByRole("switch", { name: "Batch ok" });
+
+    expect(toggle).toHaveAttribute("aria-disabled", "true");
+    expect(toggle).toHaveAttribute("title", READ_ONLY);
+  });
+
+  it("changes nothing when a control is pressed anyway", () => {
+    const onChange = vi.fn();
+
+    render(
+      <ParamFields
+        fields={ALL}
+        idPrefix="p"
+        onChange={onChange}
+        reason={READ_ONLY}
+        values={paramDefaults(ALL)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Batch ok" }));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("leaves every control alone when there is no reason to", () => {
+    render(
+      <ParamFields fields={ALL} idPrefix="p" onChange={vi.fn()} values={paramDefaults(ALL)} />,
+    );
+
+    expect(screen.getByLabelText("Thinking", { exact: false })).not.toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Batch ok" })).not.toHaveAttribute("aria-disabled");
   });
 });
 

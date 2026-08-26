@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The properties of `app/registry/registry.css` that are agreements with something outside it
- * (#591, the allowed-models table's rules since #592, and the two flows behind the head's
- * actions since #594).
+ * (#591, the allowed-models table's rules since #592, the two flows behind the head's actions
+ * since #594, and the alias inspector since #593).
  *
  * The generic rules — no colour literal anywhere but the token sheet, no absolute type size —
  * are `__tests__/styles.test.ts`'s, and they cover this sheet as they cover every other. What
@@ -337,5 +337,76 @@ describe("the create dialog, the parameter form and the import wizard (#594)", (
 
   it("lets a row's error wrap inside a cell whose column would hold it on one line", () => {
     expect(rule("\\.registry-wizard__name-field")).toMatch(/white-space:\s*normal/);
+  });
+});
+
+describe("the alias inspector (#593)", () => {
+  it("restyles none of the #46 primitives its fields and foot are built from", () => {
+    // The card, the fields and the three buttons are the design system's; what this sheet adds
+    // is the column around them and the two lines the mockup draws in mono.
+    for (const primitive of [".ou-field", ".ou-input", ".ou-btn", ".ou-card"]) {
+      expect(CODE, primitive).not.toContain(primitive);
+    }
+  });
+
+  it("draws the mockup's `.usedby-label` as an eyebrow: mono, uppercase, tracked, faint", () => {
+    const label = rule("\\.registry-inspector__used-label");
+
+    expect(label).toContain("var(--f-mono)");
+    expect(label).toContain("var(--ink-faint)");
+    expect(label).toMatch(/text-transform:\s*uppercase/);
+    expect(label).toMatch(/letter-spacing:\s*0\.14em/);
+  });
+
+  it("scrolls the card's one unbounded region inside its own wrapper, sized in rem", () => {
+    // An alias can be referenced by any number of routes and rules; the pane refuses to grow
+    // for it, so the chips scroll and the foot's controls stay reachable at 125% type.
+    const chips = rule("\\.registry-inspector__chips");
+
+    expect(chips).toMatch(/max-height:\s*[\d.]+rem/);
+    expect(chips).toMatch(/overflow-y:\s*auto/);
+    expect(chips).toMatch(/list-style:\s*none/);
+  });
+
+  it("draws the blocked why-line in mono and in the faint ink, not in the error hue", () => {
+    // It is a permanent, explanatory state of the Remove button rather than a failure after a
+    // press; drawing it red would say something went wrong when nothing has.
+    const why = rule("\\.registry-inspector__why");
+
+    expect(why).toContain("var(--f-mono)");
+    expect(why).toContain("var(--ink-faint)");
+    expect(why).not.toContain("var(--err)");
+  });
+
+  it("gives the why-line the whole line, as the mockup's `.inspector-foot .why` does", () => {
+    expect(rule("\\.registry-inspector__why")).toMatch(/flex-basis:\s*100%/);
+  });
+
+  it("warns rather than errs in the rename guard, because nothing is wrong yet", () => {
+    const guard = rule("\\.registry-inspector__guard");
+
+    expect(guard).toContain("var(--warn)");
+    expect(guard).toContain("var(--f-mono)");
+  });
+
+  it("draws the refusal in the error hue, as every other refusal on this page is", () => {
+    expect(rule("\\.registry-inspector__failure")).toContain("var(--err)");
+  });
+
+  it("sets the unbound banner on the accent wash, like the create dialog's bind-later notice", () => {
+    // Two surfaces describing the same chosen state, drawn the same way.
+    expect(rule("\\.registry-inspector__unbound")).toContain("var(--accent-wash)");
+    expect(rule("\\.registry-create__unbound")).toContain("var(--accent-wash)");
+  });
+
+  it("separates the two schema-drawn sections with the same hairline every card divider uses", () => {
+    expect(rule("\\.registry-inspector__section")).toContain("var(--line)");
+    expect(rule("\\.registry-inspector__foot")).toContain("var(--line)");
+  });
+
+  it("names no parameter here either, because the card is drawn from a schema it did not write", () => {
+    for (const parameter of ["thinking", "budget", "temperature", "restriction"]) {
+      expect(CODE, parameter).not.toContain(parameter);
+    }
   });
 });

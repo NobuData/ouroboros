@@ -4,28 +4,33 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { TENANT_ID, membership, sessionUser } from "../helpers/login";
-import { seededProviders, stripPayload } from "../helpers/models";
+import { connectionPage, seededCards } from "../helpers/providers";
 import { registryPayload, seededRegistry } from "../helpers/registry";
 
 /**
  * The registry page's reader (#591, and the table's read since #592).
  *
- * Two calls, so the suite is about the three properties that have to survive CI.3–CI.5 adding
- * the inspector's reads and the chain card beside them: **a refused read is a value rather
- * than a throw**, **one refused read leaves the other standing**, and **anything that is not a
- * refusal keeps travelling** — which is what keeps a session that expired mid-render from
- * being drawn as an empty import menu instead of reaching the login screen.
+ * Two calls, and the suite is about the three properties that have to survive CI.5 adding the
+ * chain card beside them: **a refused read is a value rather than a throw**, **one refused read
+ * leaves the other standing**, and **anything that is not a refusal keeps travelling** — which
+ * is what keeps a session that expired mid-render from being drawn as an empty import menu
+ * instead of reaching the login screen.
+ *
+ * The connections call is `GET /api/v1/providers` rather than the routing page's health strip
+ * since CI.3 ([#593](https://github.com/NobuData/ouroboros/issues/593)): the inspector's
+ * provider select renders the masked key, which only that payload carries. The last case below
+ * is what holds the page to **one** read of the connection list rather than two.
  */
 
 vi.mock("server-only", () => ({}));
 
-/** What the providers endpoint answers this case with, or the signal it throws instead. */
-const providers = vi.fn();
+/** What the connections endpoint answers this case with, or the signal it throws instead. */
+const list = vi.fn();
 
 /** What the registry endpoint answers with. */
 const read = vi.fn();
 
-vi.mock("@/app/api/routing", () => ({ routing: { providers: () => providers() } }));
+vi.mock("@/app/api/providers", () => ({ providers: { list: () => list() } }));
 vi.mock("@/app/api/registry", () => ({ registry: { read: () => read() } }));
 
 const { readRegistry } = await import("@/app/registry/data");
@@ -49,17 +54,17 @@ const ACCESS: Workspace = {
 };
 
 beforeEach(() => {
-  providers.mockReset().mockResolvedValue(stripPayload());
+  list.mockReset().mockResolvedValue(connectionPage(seededCards()));
   read.mockReset().mockResolvedValue(registryPayload());
 });
 
 describe("reading the page", () => {
   it("unwraps both envelopes into the lists the page draws from", () => {
-    // The endpoints' envelopes are `{providers: [...]}` and `{aliases: [...]}`; the page wants
-    // the connections and the rows. Unwrapping here rather than in the components is what
-    // keeps them free of the contract's shape.
+    // The endpoints' envelopes are `{items, total, limit, offset}` and `{aliases: [...]}`; the
+    // page wants the connections and the rows. Unwrapping here rather than in the components is
+    // what keeps them free of the contract's shape.
     return expect(readRegistry(ACCESS)).resolves.toEqual({
-      providers: { ok: true, value: seededProviders() },
+      providers: { ok: true, value: seededCards() },
       aliases: { ok: true, value: seededRegistry() },
     });
   });
@@ -74,14 +79,14 @@ describe("reading the page", () => {
 
   it("leaves the table standing when the strip could not be read, and the other way round", async () => {
     // One failed read is one degraded region, never a blank page.
-    providers.mockRejectedValue(new ApiError(503, "upstream_unavailable", "strip away"));
+    list.mockRejectedValue(new ApiError(503, "upstream_unavailable", "connections away"));
 
     const first = await readRegistry(ACCESS);
 
-    expect(first.providers).toEqual({ ok: false, reason: "strip away" });
+    expect(first.providers).toEqual({ ok: false, reason: "connections away" });
     expect(first.aliases.ok).toBe(true);
 
-    providers.mockResolvedValue(stripPayload());
+    list.mockResolvedValue(connectionPage(seededCards()));
     read.mockRejectedValue(new ApiError(503, "upstream_unavailable", "registry away"));
 
     const second = await readRegistry(ACCESS);
@@ -94,7 +99,7 @@ describe("reading the page", () => {
     // *Nothing connected* and *nobody could read the connections* are different facts, and
     // `importState` says something different for each — which it can only do if this layer
     // keeps them apart.
-    providers.mockResolvedValue(stripPayload([]));
+    list.mockResolvedValue(connectionPage([]));
 
     const readings = await readRegistry(ACCESS);
 
@@ -102,7 +107,7 @@ describe("reading the page", () => {
   });
 
   it("turns a refused read into a value the page can render around", async () => {
-    providers.mockRejectedValue(new ApiError(503, "upstream_unavailable", "upstream refused"));
+    list.mockRejectedValue(new ApiError(503, "upstream_unavailable", "upstream refused"));
 
     const readings = await readRegistry(ACCESS);
 
@@ -113,7 +118,7 @@ describe("reading the page", () => {
     // Next.js's redirect signal above all: a `catch` wide enough to hold it would swallow the
     // navigation to the login screen and draw a registry page captioned with the framework's
     // internal message.
-    providers.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+    list.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
     await expect(readRegistry(ACCESS)).rejects.toThrow("NEXT_REDIRECT /login");
   });
@@ -124,8 +129,8 @@ describe("reading the page", () => {
     // request: nothing here composes a cell from two reads.
     await readRegistry(ACCESS);
 
-    expect(providers).toHaveBeenCalledOnce();
-    expect(providers).toHaveBeenCalledWith();
+    expect(list).toHaveBeenCalledOnce();
+    expect(list).toHaveBeenCalledWith();
     expect(read).toHaveBeenCalledOnce();
     expect(read).toHaveBeenCalledWith();
   });

@@ -2,6 +2,7 @@
 
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
+import { ROUTING_MATRIX_HASH } from "@/app/paths";
 import { Card, CardHead, Chip, EmptyState, Table, Tag, type Column } from "@/app/ui";
 
 import { CHANGED, type EditedRow, NO_ROUTE_NOTE, editChainHint, editedRow } from "./chain";
@@ -248,8 +249,13 @@ function EscalationCell({ summaries }: Readonly<{ summaries: readonly string[] }
   );
 }
 
-/** The id the matrix card's `aria-labelledby` points at. */
-const MATRIX_TITLE_ID = "models-matrix-title";
+/**
+ * The id the matrix card's `aria-labelledby` points at — and, since CI.3
+ * ([#593](https://github.com/NobuData/ouroboros/issues/593)), the fragment the registry
+ * inspector's route chips link to. Spelled from `app/paths.ts` so the link and its target
+ * cannot come apart.
+ */
+const MATRIX_TITLE_ID = ROUTING_MATRIX_HASH;
 
 /** The id the inspector card's `aria-labelledby` points at. */
 const INSPECTOR_TITLE_ID = "models-inspector-title";

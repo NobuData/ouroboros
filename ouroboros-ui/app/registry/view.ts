@@ -47,9 +47,9 @@
  * read the table draws, so nothing on the screen can disagree about which names are taken.
  */
 
+import type { ProviderConnection } from "@/app/api/providers";
 import type { Reading } from "@/app/api/reading";
 import type { RegistryAlias } from "@/app/api/registry";
-import type { ProviderHealth } from "@/app/api/routing";
 import { PROVIDERS_PATH } from "@/app/paths";
 
 import { type TableRow, tableRows } from "./table";
@@ -72,14 +72,18 @@ import { type TableRow, tableRows } from "./table";
  */
 export interface RegistryReadings {
   /**
-   * The workspace's provider connections, or why they could not be read — the list
-   * **Import from provider** offers.
+   * The workspace's provider connections, credentials masked, or why they could not be read.
+   *
+   * Three things on this page are drawn from this one list: the rows **Import from provider**
+   * offers, the connections the create dialog may bind to, and — since CI.3
+   * ([#593](https://github.com/NobuData/ouroboros/issues/593)) — the inspector's provider
+   * select, which needs the **mask** to tell two connections of one kind apart.
    *
    * A workspace that has connected none reads successfully and answers an empty array. *No
    * providers* and *nobody could read the providers* are different facts, and this page says
    * something different for each — see {@link importState}.
    */
-  readonly providers: Reading<readonly ProviderHealth[]>;
+  readonly providers: Reading<readonly ProviderConnection[]>;
   /**
    * Every alias in the workspace with every cell composed — CH.5's payload
    * ([#588](https://github.com/NobuData/ouroboros/issues/588)) — or why it could not be read.
@@ -205,10 +209,19 @@ export const PROVIDERS_UNREADABLE_REASON =
 
 /** One provider the import menu offers — a connection this workspace has. */
 export interface ImportSource {
-  /** The connection's id, which is the React key and what CI.4's wizard will be scoped by. */
+  /** The connection's id, which is the React key and what CI.4's wizard is scoped by. */
   readonly id: string;
   /** What the row says: the connection's display name, drawn as the workspace wrote it. */
   readonly name: string;
+  /**
+   * `••••Xq4A`, or `null` for a connection that stores no credential.
+   *
+   * Not drawn by the import menu, which lists connections by name; read by CI.3's inspector
+   * ([#593](https://github.com/NobuData/ouroboros/issues/593)), whose provider select is the
+   * mockup's *Anthropic — key sk-ant-…Xq4A* and would otherwise offer two connections of one
+   * kind under one name.
+   */
+  readonly mask: string | null;
 }
 
 /**
@@ -244,7 +257,7 @@ export type ImportState =
  * @returns The state, ready or blocked with its reason.
  */
 export function importState(
-  providers: Reading<readonly ProviderHealth[]>,
+  providers: Reading<readonly ProviderConnection[]>,
   mayAdminister: boolean,
 ): ImportState {
   if (!mayAdminister) {
@@ -270,16 +283,24 @@ export function importState(
  * from the one it is asked — *which providers do I have* rather than *which providers are up
  * right now*. Whether an import can actually read a catalog from a paused provider is CI.4's
  * to decide, at the point where it tries; a menu that had quietly decided in advance would
- * leave a reader wondering where their provider went.
+ * leave a reader wondering where their provider went. The same holds for the inspector's
+ * rebind select since CI.3: an alias may be pointed at a connection that is switched off, and
+ * the table's health cell is where that is then said out loud.
  *
- * The order is the service's, which is by display name (`GET /api/v1/routing/providers`), so
- * the menu is scanned the same way the health strip on `/models` is.
+ * The order is the service's, which is by display name (`GET /api/v1/providers`), so the menu
+ * is scanned the same way mockup 07's own grid is.
  *
  * @param providers Every connection in the workspace, as the contract serves them.
  * @returns One row per connection, in the order given.
  */
-export function importSources(providers: readonly ProviderHealth[]): readonly ImportSource[] {
-  return providers.map((provider) => ({ id: provider.id, name: provider.displayName }));
+export function importSources(
+  providers: readonly ProviderConnection[],
+): readonly ImportSource[] {
+  return providers.map((provider) => ({
+    id: provider.id,
+    name: provider.displayName,
+    mask: provider.mask,
+  }));
 }
 
 /**
@@ -314,7 +335,7 @@ export function newAliasReason(mayAdminister: boolean): string | undefined {
  * @returns The connections, or none.
  */
 export function aliasSources(
-  providers: Reading<readonly ProviderHealth[]>,
+  providers: Reading<readonly ProviderConnection[]>,
 ): readonly ImportSource[] {
   return providers.ok ? importSources(providers.value) : [];
 }

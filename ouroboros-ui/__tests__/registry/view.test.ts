@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import type { ProviderConnection } from "@/app/api/providers";
 import type { Reading } from "@/app/api/reading";
-import type { ProviderHealth } from "@/app/api/routing";
 import { PROVIDERS_PATH } from "@/app/paths";
 import {
   CONNECT_PROVIDER_HREF,
@@ -23,7 +23,7 @@ import {
   tableState,
 } from "@/app/registry/view";
 
-import { provider, seededProviders } from "../helpers/models";
+import { connection, seededCards } from "../helpers/providers";
 import { seededRegistry } from "../helpers/registry";
 
 /**
@@ -50,12 +50,14 @@ const MOCKUP = readFileSync(
 );
 
 /** A read that succeeded, carrying these connections. */
-function read(providers: readonly ProviderHealth[]): Reading<readonly ProviderHealth[]> {
+function read(
+  providers: readonly ProviderConnection[],
+): Reading<readonly ProviderConnection[]> {
   return { ok: true, value: providers };
 }
 
 /** A read that did not. */
-const FAILED: Reading<readonly ProviderHealth[]> = { ok: false, reason: "upstream refused" };
+const FAILED: Reading<readonly ProviderConnection[]> = { ok: false, reason: "upstream refused" };
 
 describe("the head copy", () => {
   it("takes the h1 from the mockup, verbatim", () => {
@@ -125,7 +127,7 @@ describe("why + New alias cannot act", () => {
 
 describe("what the create dialog is handed", () => {
   it("offers every connected provider, in the service's order", () => {
-    expect(aliasSources(read(seededProviders()))).toEqual(importSources(seededProviders()));
+    expect(aliasSources(read(seededCards()))).toEqual(importSources(seededCards()));
   });
 
   it("answers a failed provider read with no providers rather than a state of its own", () => {
@@ -150,22 +152,22 @@ describe("what the create dialog is handed", () => {
 
 describe("what the import action may do", () => {
   it("offers every connected provider when there is one and the reader may import", () => {
-    const state = importState(read(seededProviders()), true);
+    const state = importState(read(seededCards()), true);
 
     expect(state.kind).toBe("ready");
     expect(state.kind === "ready" ? state.sources.map((source) => source.name) : []).toEqual([
       "Anthropic Claude",
       "Cursor",
       "GitHub Copilot",
-      "OpenAI-compatible · local vLLM",
       "Ollama · workstation",
+      "OpenAI-compatible · local vLLM",
     ]);
   });
 
   it("blocks a member before it looks at the providers at all", () => {
     // The order is the judgement: a member offered *"connect a provider →"* is being pointed
     // at a page that would also refuse them.
-    const state = importState(read(seededProviders()), false);
+    const state = importState(read(seededCards()), false);
 
     expect(state).toEqual({ kind: "blocked", reason: MEMBER_REASON, connect: false });
   });
@@ -201,7 +203,7 @@ describe("what the import action may do", () => {
     // Asserted as an exclusive property rather than three separate cases: a link on the
     // wrong state is a reader sent somewhere that cannot help them.
     const blocked = [
-      importState(read(seededProviders()), false),
+      importState(read(seededCards()), false),
       importState(read([]), false),
       importState(read([]), true),
       importState(FAILED, true),
@@ -227,14 +229,14 @@ describe("what the import action may do", () => {
 
 describe("which providers the menu offers", () => {
   it("keeps the order the service served, which is by name", () => {
-    // So the menu is scanned the same way the health strip on /models is.
-    expect(importSources(seededProviders()).map((source) => source.name)).toEqual(
-      seededProviders().map((health) => health.displayName),
+    // So the menu is scanned the same way mockup 07's own grid is.
+    expect(importSources(seededCards()).map((source) => source.name)).toEqual(
+      seededCards().map((one) => one.displayName),
     );
   });
 
   it("carries the connection id, which is what the import wizard is scoped by", () => {
-    expect(importSources(seededProviders())[0].id).toBe(seededProviders()[0].id);
+    expect(importSources(seededCards())[0].id).toBe(seededCards()[0].id);
   });
 
   it("does not filter by health, because the question is which providers exist", () => {
@@ -242,9 +244,9 @@ describe("which providers the menu offers", () => {
     // would answer *which providers are up right now* instead, and leave a reader wondering
     // where their provider went.
     const unhealthy = [
-      provider({ id: "a", displayName: "Paused", status: "paused" }),
-      provider({ id: "b", displayName: "Broken", status: "error" }),
-      provider({ id: "c", displayName: "Unchecked", status: "unknown" }),
+      connection({ id: "a", displayName: "Paused", status: "paused" }),
+      connection({ id: "b", displayName: "Broken", status: "error" }),
+      connection({ id: "c", displayName: "Unchecked", status: "unknown" }),
     ];
 
     expect(importSources(unhealthy).map((source) => source.name)).toEqual([
@@ -256,5 +258,15 @@ describe("which providers the menu offers", () => {
 
   it("offers nothing for a workspace that has connected nothing", () => {
     expect(importSources([])).toEqual([]);
+  });
+
+  it("carries the masked key, which is what the inspector's provider select renders", () => {
+    // The page reads `GET /api/v1/providers` rather than the routing health strip for exactly
+    // this field (#593): two connections of one kind read as one name without it, and the
+    // health payload has no mask to give.
+    const sources = importSources(seededCards());
+
+    expect(sources[0].mask).toBe(seededCards()[0].mask);
+    expect(sources.some((source) => source.mask === null)).toBe(true);
   });
 });

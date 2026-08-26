@@ -41,14 +41,22 @@ vi.mock("@/app/registry/switch-actions", () => ({ setAliasEnabled: vi.fn() }));
 // client; the actions have their own suites (`create-actions.test.ts`, `import-actions.test.ts`).
 vi.mock("@/app/registry/create-actions", () => ({
   createAlias: vi.fn(),
-  readModelOptions: vi.fn(),
-  readParamSchema: vi.fn(),
+  readModelOptions: () => new Promise(() => {}),
+  readParamSchema: () => new Promise(() => {}),
 }));
 vi.mock("@/app/registry/import-actions", () => ({
   importAliases: vi.fn(),
   readCandidates: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+// …and so does the inspector (`inspector-actions.test.ts`, `alias-inspector.test.tsx`).
+vi.mock("@/app/registry/inspector-actions", () => ({
+  saveAlias: vi.fn(),
+  duplicateAlias: vi.fn(),
+  removeAlias: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }),
+}));
 
 const Route = (await import("@/app/(app)/models/registry/page")).default;
 
