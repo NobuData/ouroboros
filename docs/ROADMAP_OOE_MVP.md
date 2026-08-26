@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**92 of 454 ordered issues are closed** — P0, P1, P2 and P4 are complete; P3, P5 and P6
+**93 of 454 ordered issues are closed** — P0, P1, P2 and P4 are complete; P3, P5 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4 | **84** |
-| 🟡 **In progress** | P3 (5/8), P5 (48/50), P6 (1/23) | **54** of 81 |
+| 🟡 **In progress** | P3 (5/8), P5 (49/50), P6 (1/23) | **55** of 81 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -108,7 +108,7 @@ position is not forced by dependencies, one of these decided it.
 | **P2** | Identity, tenancy & login page | ✅ **29/29** | 29 | 86 | Login/BetterAuth |
 | **P3** | Application shell & font scale | 🟡 5/8 | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
-| **P5** | Model plane — vault, providers, registry, routing | 🟡 48/50 | 50 | 153 | Mockups 06, 07, 21 |
+| **P5** | Model plane — vault, providers, registry, routing | 🟡 49/50 | 50 | 153 | Mockups 06, 07, 21 |
 | **P6** | Issue intake & estimation | — 0/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
@@ -637,7 +637,7 @@ that roadmap's "Existing issues affected" section.
 
 > **50 issues** · 153 complexity points · order **#93–#142** · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md`, `ROADMAP_MOCKUP_21_MODEL_REGISTRY.md`, `ROADMAP_MOCKUP_06_MODEL_ROUTING.md`
-> **Status:** 🟡 **In progress** — 48 of 50 issues closed
+> **Status:** 🟡 **In progress** — 49 of 50 issues closed
 
 **Goal.** Deliver the envelope-encryption secrets vault and audit plane (`AD`), the provider adapter SPI with five conforming adapters and a conformance kit (`AC`), the priced and governed model-alias registry (`CG`/`CH`), route resolution as a tested pure function (`Y`/`Z`), and the three screens over them.
 
@@ -697,7 +697,7 @@ that roadmap's "Existing issues affected" section.
 | 138 | **CI.2** | ✅ [#592](https://github.com/NobuData/ouroboros/issues/592) | Allowed-models table | ouroboros-ui | L | CH.5, CI.1 |
 | 139 | **CI.4** | ✅ [#594](https://github.com/NobuData/ouroboros/issues/594) | New-alias & import flows | ouroboros-ui | M | CH.1, CH.4, CI.1 |
 | 140 | **AA.7** | ✅ [#206](https://github.com/NobuData/ouroboros/issues/206) | Routing e2e leg | ouroboros-ui, .github | S | AA.1, AA.6 |
-| 141 | **AE.7** | [#233](https://github.com/NobuData/ouroboros/issues/233) | Providers e2e leg | ouroboros-ui, .github | S | AE.1, AE.6 |
+| 141 | **AE.7** | ✅ [#233](https://github.com/NobuData/ouroboros/issues/233) | Providers e2e leg | ouroboros-ui, .github | S | AE.1, AE.6 |
 | 142 | **CI.3** | [#593](https://github.com/NobuData/ouroboros/issues/593) | Alias inspector | ouroboros-ui | L | CH.1, CH.2, CI.2 |
 
 ## P6 — Issue Intake — Work Enters the System

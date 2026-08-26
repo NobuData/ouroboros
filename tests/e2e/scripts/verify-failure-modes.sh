@@ -24,6 +24,10 @@
 #                                 than out of the mockup (#88)
 #   db        routing.spec.ts     the routing screen's matrix, chains, rules and simulations
 #                                 come out of four tables and the resolution engine (#206)
+#   db        providers.spec.ts   the providers screen's cards, meters and audit trail come
+#                                 out of the database rather than out of the mockup (#233)
+#   provider-  providers.spec.ts  the add flow really asks a provider, and the credential
+#   stub                          lifecycle really talks to one (#233)
 #
 # ## The routing pair, and the three breakages its ticket asks for
 #
@@ -58,6 +62,47 @@
 # leaving a pair out until its leg runs, is how a leg ships with no failure mode at all.
 # The day the `test.fixme` lines went, this script started checking it with nobody having
 # to remember that it should. The mechanism stays for the next parked leg.
+#
+# ## The providers leg's three hand-verified breakages
+#
+# #233 asks for the leg to be spot-verified "by breaking the vault service, the adapter, and
+# the audit interceptor in turn". Those are three code paths inside one service and this
+# script's lever is a container, so they were done by hand at the ticket — each stubbed in
+# `ouroboros-rest`, the image rebuilt, the leg re-run — and the result is recorded here rather
+# than automated, for the reason the routing block above gives: automating it means shipping a
+# switch that makes the service lie.
+#
+# What each stub took down, for the next person who repeats it:
+#
+#   the vault opening every envelope to one value
+#                            -> eight: the seeded key rows, the add flow's mask, all three
+#                               reveal tests, both rotations, the trail, and the member's row
+#   the adapter agreeing with everything
+#                            -> the add flow's negative case (a card IS created from a key the
+#                               provider refuses), the test-connection flip, and the
+#                               rotate-failure leg — plus the three that then see six cards
+#   the audit interceptor writing nothing
+#                            -> only the trail leg
+#
+# The third one is the reason the trail leg is written the way it is. Stubbed, it left **all
+# twenty-one tests green**: `audit_events` are not cleared between runs, so *the sheet says
+# `rotated` somewhere* was satisfied by a previous run's rotation. The leg now anchors on the
+# minute it started (`auditStamp` in support/providers.ts) and the stub takes it down.
+#
+# ## The provider-stub pair, and the one thing it shares with the leg
+#
+# `provider-stub` is `docker-compose.e2e.yml`'s fourth service (#233) and the only one in the
+# stack whose absence is not a stack failure — nothing depends on it, and the seeded five
+# connections point somewhere else entirely. Stopping it is *the provider went away*, which is
+# the most specific breakage any pair in this table can produce: with it stopped, a card cannot
+# be connected at all, so the add flow, the rotation and the pull all go red while the parity
+# and shell legs stay green.
+#
+# The leg puts it back by itself part-way through — `specs/providers.spec.ts` restarts it in
+# the teardown of its own test-connection group, which it must, because a test may fail after
+# stopping it. So this pair proves the *first* three tests red rather than the whole file, and
+# the marker below is the sentence the connect helper fails with. `compose start` afterwards is
+# then a no-op, which is the correct outcome and not a sign the pair did nothing.
 #
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
@@ -253,6 +298,20 @@ expect_red db dashboard.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 # first step for the same reason the dashboard's does: a session is a row, so with no database
 # there is nobody to sign in as, and `support/session.ts` says so by name.
 expect_red db routing.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# The providers leg (#233), against the layer its cards, meters and trail all come out of. Every
+# figure on that screen is a column or an aggregate, and the audit sheet is a table — so a page
+# that still drew mockup 07 with the database stopped would be a page drawing the artwork.
+#
+# `db` rather than `rest` for the reason every pair above uses it, and the leg breaks at its
+# first step for the reason the dashboard's and the routing's do: a session is a row.
+expect_red db providers.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# …and the same leg against the provider itself. This is the pair that proves the add flow is a
+# live call rather than an insert: with nothing answering at the endpoint, a connection cannot be
+# created, and `support/providers.ts` fails by name. See the header on why only the first tests
+# go red.
+expect_red provider-stub providers.spec.ts "connecting the .* stub as"
 
 printf '\n'
 if check_summary; then

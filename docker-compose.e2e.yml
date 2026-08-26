@@ -67,6 +67,38 @@
 # of them is true"), and this file does not invent one — it asks for the slowest cadence an
 # operator may ask for, through the same validated setting an operator would use.
 #
+# ---------------------------------------------------------------------------
+# The fourth service, and why the paragraph above does not forbid it (issue #233, AE.7).
+# ---------------------------------------------------------------------------
+#
+# The argument against "inventing a fake provider service in compose" is about the **seed**,
+# and it is unchanged: `R__dev_seed_providers.sql` is mockup 07 as rows, its five connections
+# keep their unreachable fixture addresses, and the health strip stays a report of what a real
+# probe measured rather than of what a stub said. Nothing below touches any of that.
+#
+# What it serves is the half of AE.7 the seed cannot. A provider card only exists if the
+# adapter reached something and it answered — that is the add flow's whole promise — so with
+# no reachable provider anywhere in the stack the leg could assert *a bad key produces no card*
+# and nothing else: no add, no rotate (a rotation is a verify-then-retire), no reveal of a
+# value this deployment's vault actually sealed, and no pull, because there is no stream. The
+# leg therefore connects **its own** cards to this container and deletes them again, and the
+# seeded five are read and never written.
+#
+# It is also the *stoppable* thing the ticket's `test-connection truth` leg needs. AE.4's
+# roadmap note handed AE.7 "the Playwright leg that stops the real container and pulls a real
+# model"; this is that container. The model is not real, and it cannot be: the `ollama` service
+# in the base file is over a gigabyte before it holds anything, a model is several more off the
+# network, and the ticket's stated allowance is two and a half minutes.
+#
+# **It is a provider, not a mock** — it applies one authorisation rule and answers 200 or 401,
+# and the adapter classifies what comes back with no knowledge of what is at the other end.
+# `tests/e2e/fixtures/provider-stub/server.mjs` is the whole of it.
+#
+# `profiles: [full]` puts it in the same set as the three application services, so
+# `--profile full up` starts it and the two verify-* scripts see it without naming it.
+# It publishes nothing: `rest` reaches it over the network below, and nothing on the host
+# needs to.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -75,3 +107,20 @@ services:
       NODE_ENV: test
       OURO_LISTEN_HOST: "0.0.0.0"
       OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: "86400"
+
+  provider-stub:
+    build:
+      context: ./tests/e2e/fixtures/provider-stub
+    healthcheck:
+      # busybox's wget, which the alpine base already has — the alternative is adding curl to
+      # an image whose whole point is that it installs nothing.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+      start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - full

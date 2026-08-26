@@ -1330,7 +1330,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | AE.4 | #230 | 🟢 Done | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui, ouroboros-rest |
 | AE.5 | #231 | 🟢 Done | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui, ouroboros-rest |
 | AE.6 | #232 | 🟢 Done | ouroboros-ui: [AE.6] Caps, security strip & states | Cap fields + warn meters, truthful strip, empty/read-only/error states | mvp, providers, ui, design | N (after AE.2–AE.5, AD.5) | Y | M | ouroboros-ui |
-| AE.7 | #233 | 🟡 Open | ouroboros-ui: [AE.7] Providers e2e leg | Parity, add→test→rotate→audit flow, pull progress, themes | mvp, providers, ui, ci | N (after AE.1–AE.6) | Y | S | ouroboros-ui, .github |
+| AE.7 | #233 | 🟢 Done | ouroboros-ui: [AE.7] Providers e2e leg | Parity, add→test→rotate→audit flow, pull progress, themes | mvp, providers, ui, ci | N (after AE.1–AE.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue AE.1 — ouroboros-ui: [AE.1] Providers route, subnav & page frame
 
@@ -1849,8 +1849,60 @@ cap [$95] ─▶ meter warn ▓▓▓▓▓▓▓▓░ 80% · ⓘ "warning only
 
 ### Issue AE.7 — ouroboros-ui: [AE.7] Providers e2e leg
 
-> **GitHub issue:** #233 · **Status:** 🟡 Open · **Parent epic:** #214
+> **GitHub issue:** #233 · **Status:** 🟢 Done · **Parent epic:** #214
 
+> **Shipped 2026-08-26. The epic's MVP gate closes.**
+> [`tests/e2e/specs/providers.spec.ts`](../tests/e2e/specs/providers.spec.ts) — twenty-one tests
+> over [`support/providers.ts`](../tests/e2e/support/providers.ts) (mockup 07 as this suite
+> asserts against it, the stub's keys, and the two restores) and
+> [`support/compose.ts`](../tests/e2e/support/compose.ts) (the one service a spec may stop), a
+> pair of parity baselines, and a **fourth compose service**:
+> [`tests/e2e/fixtures/provider-stub`](../tests/e2e/fixtures/provider-stub/server.mjs), a
+> dependency-free Node server speaking the OpenAI-compatible listing route and Ollama's
+> version, tags and NDJSON pull. `ouroboros-e2e` 0.7.0; **thirty-seven seconds** from a cold
+> compose stack against a stated allowance of two and a half minutes, in a suite that is now
+> ninety-four tests and one minute twenty.
+>
+> **The seeded five are read and never written.** Their addresses exist only in the fixture and
+> their envelopes were never sealed by anything, so the credential lifecycle is exercised on
+> cards the leg connects to the stub itself and deletes again — which is why
+> `R__dev_seed_providers.sql` is untouched and the sweep stays at AA.7's cadence.
+>
+> **One product fix, outside the ticket and blocking its first acceptance criterion.**
+> `GET /api/v1/providers` opened every stored credential to compute its mask and let a
+> `VaultCryptoError` out, so **one** unopenable envelope answered `500` and took the whole page
+> with it — which is what a cold compose stack has, three times over, for the reason
+> `R__dev_seed_providers.sql`'s own header gives. No suite on either side could see it: the
+> service's specs mask envelopes they sealed a moment earlier, and the UI's draw whatever
+> payload they are handed. A mask is one field of one row and is now treated as one; the card
+> draws its placeholder and a **Save**, which is the honest reading of *sealed here, unopenable
+> here*. `provider-connections.integration-spec.ts` gains the pair that holds it, verified red
+> without the fix. `ouroboros-rest` 0.30.17.
+>
+> **Three divergences from the ticket's words, all argued in the spec's header.** The reveal is
+> not preceded by a step-up, because a session minted a moment earlier *is* one
+> (`step-up.ts`'s `session` method) and the dialog's absence is asserted as that rather than
+> left as a silence; the sixty-second auto-mask is asserted through `page.clock`, which moves
+> the browser clock the row measures against and leaves the service's `expiresAt` untouched;
+> and the pulled model is four gigabytes of nothing, because the real `ollama` image is over a
+> gigabyte before it holds anything and the transfer comes off the network.
+>
+> **Two findings for the next leg.** Each card's meta row ends in a *relative* time —
+> `last_used_at` is `now() - interval` evaluated at **migration** time — so the parity pair
+> masks that row rather than pinning a clock. And `REVEAL_ATTEMPTS_PER_USER` is ten in five
+> minutes counted per person: this leg reveals four times, so two runs back to back are fine
+> and a third inside the window is not, and it presents as three tests failing together.
+>
+> `verify-failure-modes.sh` gains two pairs: `db`, as every browser leg has, and
+> **`provider-stub`** — the most specific breakage in that table, since with nothing answering
+> at the endpoint no card can be connected at all. Eighteen checks, none failing.
+>
+> **The ticket's three breakages were spot-verified by hand**, each stubbed in
+> `ouroboros-rest`, the image rebuilt and the leg re-run; that script's header records what
+> each took down. The audit one is the reason the trail leg is written the way it is: stubbed,
+> the interceptor writing nothing left **all twenty-one tests green**, because `audit_events`
+> are not cleared between runs and *the sheet says `rotated` somewhere* is satisfied by any
+> previous run. The leg now anchors on the minute it started, and the stub takes it down.
 
 - **Problem Statement:** The credential lifecycle spans UI, REST, crypto, and
   adapters — only e2e certifies the whole chain.
@@ -2066,7 +2118,7 @@ Plus **7 amendments** — comments posted and the `providers` label applied on
 | Issue | Amendment |
 |---|---|
 | #200 | AA.1's **Providers & keys** tab goes live via AE.1 (#227); registry and Spend stay honest stubs |
-| #56 | The e2e suite gains the providers leg AE.7 (#233), composing with the routing leg (#206) |
+| #56 | ✅ The e2e suite gained the providers leg AE.7 (#233) as **leg 10**, composing with the routing leg (#206); the override file gained the `provider-stub` service the leg connects to |
 | #26 | AD.4 (#225) early-adopted the `audit_events` shape — and, #26 still being unbuilt, **landed the table**: `ouroboros-db`'s `V022`, column for column plus the `ip` that issue did not name, with the coordination recorded in its header. AD.3 (#224) was the first emitter, and #225 turned that method body into an insert as promised. #26 now inherits a table rather than creating one, and adds its own events to it |
 | #138 | WF-Q.1's ad-hoc AES-GCM helper superseded by the AD.1 (#222) vault service, with a migration |
 | #101 | INTAKE-K.3's GitHub credential encryption likewise moves to AD.1 (#222) |

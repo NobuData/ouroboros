@@ -27,6 +27,7 @@ deployment. Five legs from the issue, and four amended in since:
 | 7 | [`specs/shell-nav.spec.ts`](specs/shell-nav.spec.ts) | The shell's promises on a laid-out page: chrome that holds still under a deep pane scroll, containment nothing escapes, the sidebar's eleven honest entries, the rail and the drawer — in both themes, and the reader's own font-size stepper taken to 150% and back |
 | 8 | [`specs/readability.spec.ts`](specs/readability.spec.ts) | Whether the product is still usable at the top of the font-size range: {100%, 125%, 150%} × both palettes × the dense pages, diffed; and the four things at 150% a screenshot review cannot see — pane-level scroll, clipped labels, chrome over chrome, AA contrast |
 | 9 | [`specs/routing.spec.ts`](specs/routing.spec.ts) | Mockup 06 against four seeded tables and the resolution engine: a chain reordered, saved and re-read; a rule switched off changing what the simulator answers; a floor turning a degradable run into a designed failure; and a member served the page read-only |
+| 10 | [`specs/providers.spec.ts`](specs/providers.spec.ts) | Mockup 07's credential lifecycle across four layers: a key the provider refuses connecting **no** card; a rotation that failed leaving the old key *still working*, proved by testing it; a reveal shown, recorded and masked again; a pull whose progress survives a reload; and a provider that really goes away |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -73,6 +74,37 @@ outcome rather than an error; and the same page served to `jorge@acme-robotics.d
 workspace, which carries no connection, no alias, no task kind and no usage row, so the page's
 zero states are a *workspace* rather than a mocked payload. It carries the same shell
 assertions leg 6 does and screenshot-diffs both palettes.
+
+Leg 10 is [#233](https://github.com/NobuData/ouroboros/issues/233), the providers roadmap's
+MVP gate, and its sharpest assertion is a **negative** one: **a rotation the provider refused
+must leave the old key working.** A rotation is verify-then-retire across four layers — the
+browser sends a candidate, the service asks the provider, the vault swaps a ciphertext only if
+the provider agreed, and the card has to say which of those happened. Neither side of that
+boundary can see the whole of it: `ouroboros-ui` proves the dialog renders a failure,
+`ouroboros-rest` proves the vault was not written, and *neither* can prove that what is still
+in the vault is a key the provider will accept. This leg rotates to a key the stub refuses and
+then presses **Test connection**, which passes only if the stored ciphertext still opens to a
+working key.
+
+Around it: seeded parity for five cards and the security strip; the add flow through the
+catalog to the adapter's own form, with the negative case that matters (a refused key must
+leave **no** card, on the page and after a reload); a reveal shown in place with its countdown
+and its audited notice, masked again by the timer and by a navigation; an Ollama pull whose
+bar is still moving after a **mid-pull page reload**, which is what makes the progress the
+service's record rather than this browser's animation; a cap saved and a warn meter that moves
+with it; the audit sheet listing four operations performed in one test; and the same page
+served to `jorge@acme-robotics.dev`, a `member`. It carries the same shell assertions leg 6
+does and screenshot-diffs both palettes.
+
+It is also the first leg with a **provider** in the stack.
+`docker-compose.e2e.yml` grew a fourth service for it —
+[`fixtures/provider-stub`](fixtures/provider-stub/server.mjs), a small Node server speaking the
+OpenAI-compatible listing route and Ollama's version, tags and NDJSON pull — because a card
+only exists if an adapter reached something and it answered. The seeded five keep their
+unreachable fixture addresses and are never written to; the leg connects **its own** cards to
+the stub and removes them again. It is the one thing in this suite a spec stops and starts
+(`support/compose.ts`), which is how *a provider went away* becomes a state transition rather
+than a fixture.
 
 It needs one thing from the stack, and the compose override (§ *Signing in*) supplies it:
 **the provider health sweep is slowed to a day**. Z.3's sweep really does probe each seeded
@@ -197,7 +229,10 @@ publishing cannot reach. The override file's header says why that is safe there 
 nowhere else; the host ports stay published on `127.0.0.1`. It carries one more line since
 leg 9 ([#206](https://github.com/NobuData/ouroboros/issues/206)) —
 `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS=86400`, which keeps the health sweep from rewriting
-the seed in the middle of a suite — and that file argues it in full. Between #703 and #647 the
+the seed in the middle of a suite — and, since leg 10
+([#233](https://github.com/NobuData/ouroboros/issues/233)), one more service:
+`provider-stub`, the model host that answers so that a provider can actually be connected.
+That file argues both in full. Between #703 and #647 the
 signed-in legs were **parked** under `test.fixme` — `support/session.ts` § *The parking,
 and what ended it* is that history.
 
@@ -215,12 +250,14 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # leg 6's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9 and 10's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
 │   ├── dashboard.ts            # what mockup 02 renders against those values (leg 6)
 │   ├── routing.ts              # what mockup 06 renders, and putting a route or a rule back (leg 9)
+│   ├── providers.ts            # what mockup 07 renders, the stub's keys, and removing what leg 10 connects
+│   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -232,6 +269,8 @@ tests/e2e/
 │   ├── settings.ts             # the font scale and the auto-merge switch, set and put back
 │   ├── rest.ts                 # a write on a context's behalf, and a restore that never throws
 │   └── api.ts                  # scripted requests and their failure messages
+├── fixtures/
+│   └── provider-stub/          # the provider leg 10 connects to, and really stops
 └── scripts/
     ├── run.sh                  # stack up (with the e2e compose override) → suite → down
     ├── verify-failure-modes.sh # #56 acceptance criterion 2
@@ -295,8 +334,9 @@ explains.
 Leg 8 adds twelve more under `specs/__screenshots__/readability/`, named
 `<page>-<scale>-<theme>-chromium-linux.png`. Same rules, one more axis.
 
-Leg 9 adds a pair of its own, taken through a **larger window** than the suite's Desktop
-Chrome: `PARITY_WINDOW` in [`specs/routing.spec.ts`](specs/routing.spec.ts) is 1920 × 2200,
+Legs 9 and 10 add a pair each, taken through a **larger window** than the suite's Desktop
+Chrome: `PARITY_WINDOW` in [`specs/routing.spec.ts`](specs/routing.spec.ts) is 1920 × 2200 and
+[`specs/providers.spec.ts`](specs/providers.spec.ts)'s is 1920 × 1800,
 and that file says why. The short version is that the shell's pane is the only scroll
 container, so an element screenshot of a `<main>` taller than the viewport cannot reveal what
 is below the fold — it records the tail as bare ground, which is how the first recording of
@@ -338,9 +378,16 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Leg 6's and leg 9's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
---update-snapshots` — or `specs/routing.spec.ts` — at step 2. The precondition is the same,
-and it is the same seed.
+Legs 6, 9 and 10's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+--update-snapshots` — or `specs/routing.spec.ts`, or `specs/providers.spec.ts` — at step 2.
+The precondition is the same, and it is the same seed.
+
+Leg 10's pair masks one thing, and it is worth knowing why before re-recording: each card's
+meta row ends in a **relative** time. `R__dev_seed_providers.sql` writes `last_used_at` as
+`now() - interval`, and that `now()` is *migration* time — so the same card reads *last used
+3m ago* on a stack that has just come up and *1h 13m ago* an hour later. The row is masked
+rather than the clock pinned; its stable half, `Added by Ken Suenobu · 2026-06-12`, is
+asserted as text elsewhere in the leg.
 
 Leg 6's pair has **one more precondition, and it is a clock.**
 `R__dev_seed_dashboard.sql` dates its merged runs relative to `now()`, and the page head's
@@ -404,3 +451,6 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#206](https://github.com/NobuData/ouroboros/issues/206) — leg 9, routing, and the mockup 06 roadmap's MVP gate
 - [#192](https://github.com/NobuData/ouroboros/issues/192) — the routing seed leg 9 asserts against
 - [#196](https://github.com/NobuData/ouroboros/issues/196) — the provider health sweep leg 9 asks the stack to slow down
+- [#233](https://github.com/NobuData/ouroboros/issues/233) — leg 10, providers, and the mockup 07 roadmap's MVP gate
+- [#221](https://github.com/NobuData/ouroboros/issues/221) — the providers seed leg 10 asserts against
+- [#223](https://github.com/NobuData/ouroboros/issues/223) — the credential lifecycle leg 10 certifies end to end
