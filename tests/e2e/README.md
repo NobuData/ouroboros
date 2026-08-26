@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and three amended in since:
+deployment. Five legs from the issue, and four amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -26,6 +26,7 @@ deployment. Five legs from the issue, and three amended in since:
 | 6 | [`specs/dashboard.spec.ts`](specs/dashboard.spec.ts) | Mockup 02 drawn from the rows Flyway seeded — and the same page telling the truth in a workspace that has none |
 | 7 | [`specs/shell-nav.spec.ts`](specs/shell-nav.spec.ts) | The shell's promises on a laid-out page: chrome that holds still under a deep pane scroll, containment nothing escapes, the sidebar's eleven honest entries, the rail and the drawer — in both themes, and the reader's own font-size stepper taken to 150% and back |
 | 8 | [`specs/readability.spec.ts`](specs/readability.spec.ts) | Whether the product is still usable at the top of the font-size range: {100%, 125%, 150%} × both palettes × the dense pages, diffed; and the four things at 150% a screenshot review cannot see — pane-level scroll, clipped labels, chrome over chrome, AA contrast |
+| 9 | [`specs/routing.spec.ts`](specs/routing.spec.ts) | Mockup 06 against four seeded tables and the resolution engine: a chain reordered, saved and re-read; a rule switched off changing what the simulator answers; a floor turning a degradable run into a designed failure; and a member served the page read-only |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -55,6 +56,32 @@ against a payload; nothing but this leg asks whether the payload is the database
 carries the shell assertions that are only true of a laid-out page — four regions of which
 exactly one scrolls, the sidebar entry that knows where the reader is, and the whole page at
 the 125% font scale — and screenshot-diffs both palettes.
+
+Leg 9 is [#206](https://github.com/NobuData/ouroboros/issues/206), the routing roadmap's MVP
+gate, and it is the leg with the sharpest single assertion in the directory: **switching an
+escalation rule off must change what the simulator answers.** If it does not, the switches on
+mockup 06 are decoration and escalation is not a feature — and nothing else in the repository
+can see that, because the rules are a table in one service, the switch is a control in
+another, and the only place the two meet is a running stack. Around it: seeded parity for the
+five surfaces the page draws, where three of the figures are *computed* (`$0.87` is an average
+over fifteen ledger rows, `41.0s` a median, `31%` a ratio — decision **M7**, which forbids
+storing any of them); a chain reordered, committed with **Save routes** and re-read, with the
+matrix's resolution lines redrawn from what the server now holds; a floor switched on over a
+route whose primary is genuinely unreachable, so the run **stops and says so** as a designed
+outcome rather than an error; and the same page served to `jorge@acme-robotics.dev`, a
+`member` — a session, not a fixture. It also walks AA.6's guidance path in the personal
+workspace, which carries no connection, no alias, no task kind and no usage row, so the page's
+zero states are a *workspace* rather than a mocked payload. It carries the same shell
+assertions leg 6 does and screenshot-diffs both palettes.
+
+It needs one thing from the stack, and the compose override (§ *Signing in*) supplies it:
+**the provider health sweep is slowed to a day**. Z.3's sweep really does probe each seeded
+connection every sixty seconds and write what it finds back onto the row — and the seeded
+connections point at addresses that exist only in the fixture, so about a minute into any
+stack the health strip stops being the seed's and becomes a report of five failed probes.
+Without that line this leg's parity, its screenshots and even *which model the simulator
+resolves to* depend on how long the stack has been up; `docker-compose.e2e.yml` argues it in
+full.
 
 ## Stack
 
@@ -167,7 +194,10 @@ under `NODE_ENV=test` — the single flag the password routes turn on — and se
 `OURO_LISTEN_HOST=0.0.0.0`, the validated override `ouroboros-rest` grew for exactly this
 stack, because non-production otherwise binds a loopback interface Docker's port
 publishing cannot reach. The override file's header says why that is safe there and
-nowhere else; the host ports stay published on `127.0.0.1`. Between #703 and #647 the
+nowhere else; the host ports stay published on `127.0.0.1`. It carries one more line since
+leg 9 ([#206](https://github.com/NobuData/ouroboros/issues/206)) —
+`OURO_PROVIDER_HEALTH_INTERVAL_SECONDS=86400`, which keeps the health sweep from rewriting
+the seed in the middle of a suite — and that file argues it in full. Between #703 and #647 the
 signed-in legs were **parked** under `test.fixme` — `support/session.ts` § *The parking,
 and what ended it* is that history.
 
@@ -182,7 +212,7 @@ nothing, and #33's `ouro_session` is neither honoured nor crashed into.
 
 ```
 tests/e2e/
-├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer
+├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
 │   └── __screenshots__/        # leg 6's baselines, and leg 8's matrix under readability/
@@ -190,6 +220,7 @@ tests/e2e/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
 │   ├── dashboard.ts            # what mockup 02 renders against those values (leg 6)
+│   ├── routing.ts              # what mockup 06 renders, and putting a route or a rule back (leg 9)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -199,6 +230,7 @@ tests/e2e/
 │   ├── session.ts              # signing in — one HTTP call; read the header
 │   ├── workspace.ts            # putting a context into a workspace without re-clicking
 │   ├── settings.ts             # the font scale and the auto-merge switch, set and put back
+│   ├── rest.ts                 # a write on a context's behalf, and a restore that never throws
 │   └── api.ts                  # scripted requests and their failure messages
 └── scripts/
     ├── run.sh                  # stack up (with the e2e compose override) → suite → down
@@ -216,7 +248,7 @@ assumed:
 
 | gate | budget | enforced by | what it answers |
 |---|---|---|---|
-| the smoke suite, legs 1–7 | 10 minutes | `SUITE_BUDGET_MS` | is the deployment the product? (#56) |
+| the smoke suite, every leg but 8 | 10 minutes | `SUITE_BUDGET_MS` | is the deployment the product? (#56) |
 | the readability matrix, leg 8 | 3 minutes | `READABILITY_BUDGET_MS` | is it still usable at 150%? (#650) |
 
 Both are `globalTimeout`s rather than sentences somebody measures. They are separate because
@@ -225,14 +257,25 @@ first gate to grow would spend the other's allowance and neither issue's criteri
 still be checked. In CI they are two steps of the same job, sharing one compose stack —
 bringing the stack up is the expensive part, and `run.sh --keep` has already paid for it.
 
-Four things in [`playwright.config.ts`](playwright.config.ts) are decisions rather than
+Five things in [`playwright.config.ts`](playwright.config.ts) are decisions rather than
 defaults, and each is argued in that file: there is **no `webServer`** (what is under test
 is the compose stack, and `docker compose up --wait` is a stronger definition of ready than
 a port opening), the ten-minute budget is **enforced** by `globalTimeout` rather than
 measured by hand, there are **no retries** (a gate that needs a second attempt is not
 reporting on the system, and it is precisely the mechanism by which "each leg fails
-meaningfully" quietly stops being true), and screenshot baselines live in **one directory
-for the suite** with the platform in each name, because pixels are a platform artefact.
+meaningfully" quietly stops being true), there is **one worker**, and screenshot baselines
+live in **one directory for the suite** with the platform in each name, because pixels are a
+platform artefact.
+
+The single worker is [#206](https://github.com/NobuData/ouroboros/issues/206)'s, and it is
+the one of the five that changed. Every browser leg signs the **same seeded owner** into the
+**same seeded workspace**, and three of them now write the reader's font scale — a row keyed
+on the person. Run side by side they photograph each other's preference, which reads as flake
+rather than as the ordering nobody declared: about one run in four went red, on a different
+test each time. The same is true of every other row a leg arranges — the auto-merge switch, a
+route's chain, an escalation rule — and the suite is scheduled to gain a dozen more legs that
+will each want to arrange them. Forty seconds serial against twelve parallel, inside a
+ten-minute budget, is the whole of the cost.
 
 ### Screenshot baselines
 
@@ -251,6 +294,15 @@ explains.
 
 Leg 8 adds twelve more under `specs/__screenshots__/readability/`, named
 `<page>-<scale>-<theme>-chromium-linux.png`. Same rules, one more axis.
+
+Leg 9 adds a pair of its own, taken through a **larger window** than the suite's Desktop
+Chrome: `PARITY_WINDOW` in [`specs/routing.spec.ts`](specs/routing.spec.ts) is 1920 × 2200,
+and that file says why. The short version is that the shell's pane is the only scroll
+container, so an element screenshot of a `<main>` taller than the viewport cannot reveal what
+is below the fold — it records the tail as bare ground, which is how the first recording of
+this pair lost two of the five cards it was meant to be comparing. Giving the window the
+page's own height makes the pane not scroll, and the leg asserts that it does not, so a page
+that outgrows the window turns red rather than being quietly cropped.
 
 #### Refreshing them
 
@@ -286,8 +338,18 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Leg 6's pair refreshes the same way with `yarn e2e specs/dashboard.spec.ts
---update-snapshots` at step 2 — the precondition is the same, and it is the same seed.
+Leg 6's and leg 9's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+--update-snapshots` — or `specs/routing.spec.ts` — at step 2. The precondition is the same,
+and it is the same seed.
+
+Leg 6's pair has **one more precondition, and it is a clock.**
+`R__dev_seed_dashboard.sql` dates its merged runs relative to `now()`, and the page head's
+second sentence counts what merged *since midnight UTC* — so a stack seeded in the first
+three quarters of an hour after UTC midnight has nothing to count, the sentence collapses
+from two lines to one, and every card below it moves up twenty-odd pixels. That seed's own
+header says as much: *a stack brought up at 00:05 has no morning to have merged six things
+in*. It is not a regression and it is not something to re-record over — record and verify
+outside that window, as CI's 03:17 schedule always does.
 
 **Baselines are Linux's.** A refresh recorded on macOS will be rejected by CI for a reason
 that is not a regression; the platform is in every filename so this is visible rather than
@@ -339,3 +401,6 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#647](https://github.com/NobuData/ouroboros/issues/647) — leg 7, the shell's containment, and the compose override that unparked sign-in
 - [#650](https://github.com/NobuData/ouroboros/issues/650) — leg 8, the readability matrix and the 150% audit
 - [#649](https://github.com/NobuData/ouroboros/issues/649) — the font-size preference legs 7 and 8 drive
+- [#206](https://github.com/NobuData/ouroboros/issues/206) — leg 9, routing, and the mockup 06 roadmap's MVP gate
+- [#192](https://github.com/NobuData/ouroboros/issues/192) — the routing seed leg 9 asserts against
+- [#196](https://github.com/NobuData/ouroboros/issues/196) — the provider health sweep leg 9 asks the stack to slow down

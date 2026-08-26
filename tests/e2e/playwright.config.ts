@@ -28,6 +28,29 @@ import { EXPECT_TIMEOUT_MS, SUITE_BUDGET_MS, TEST_TIMEOUT_MS, UI_URL } from "./s
  * stated budget of its own — so the number that matters is the total, and the runner is
  * the only thing that will still be checking it in six months.
  *
+ * ### One worker
+ *
+ * Three legs now write the reader's **font scale**, which is a row keyed on the *person*
+ * (`support/settings.ts`) and shared by every browser context in the run: the dashboard's
+ * 125% test, the shell's 100% → 150% → 100% stepper, and the routing screen's 125% test. Run
+ * side by side they photograph each other's preference — a dashboard baseline shot at 150%,
+ * a stepper that reads back a scale another file set — and the failure looks like flake
+ * rather than like the ordering nobody declared. It was observed exactly that way while
+ * [#206](https://github.com/NobuData/ouroboros/issues/206) was being written: about one run
+ * in four went red, on a different test each time.
+ *
+ * `playwright.readability.config.ts` already made this argument for its own leg, where every
+ * test writes that row. What #206 changed is that it is now true of the smoke suite too, and
+ * the same reasoning reaches further: the auto-merge switch is a row keyed on the
+ * *workspace*, a route's chain and an escalation rule are rows keyed on the workspace, and
+ * every browser leg signs the same seeded owner into the same seeded workspace. The suite is
+ * scheduled to gain a dozen more legs and each will want to arrange the same rows.
+ *
+ * The cost is the whole of the argument against it, and it is small: forty seconds serial
+ * against twelve parallel, inside a ten-minute budget. A gate that is green in forty seconds
+ * and a gate that is green in twelve are the same gate; a gate that is red once in four runs
+ * for a reason nobody can reproduce is not one at all.
+ *
  * ### No retries
  *
  * The second acceptance criterion is that each leg *fails meaningfully when its service is
@@ -90,11 +113,10 @@ export default defineConfig({
   // the name because pixels are a platform artefact.
   snapshotPathTemplate: "{testDir}/__screenshots__/{arg}-{projectName}-{platform}{ext}",
 
-  // Files run side by side; tests within a file run in order. The tenant leg writes rows
-  // the same file then reads back, and a shared stack is not a place to discover that a
-  // suite depended on ordering it never declared.
+  // Tests within a file run in order — the tenant leg writes rows the same file then reads
+  // back — and, since #206, **files do not run beside each other either**. See the header.
   fullyParallel: false,
-  workers: process.env.CI === undefined ? undefined : 2,
+  workers: 1,
 
   // See the header: a green that needed a second attempt is not a gate.
   retries: 0,

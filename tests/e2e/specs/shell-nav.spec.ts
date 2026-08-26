@@ -97,9 +97,19 @@ const ALL_ELEVEN = [
   "Settings",
 ] as const;
 
-/** Of the eleven, the ones whose routes are built. Growing this list is what #49 and each
- *  mockup roadmap do; the spec's own copy is what makes a silently dead link fail here. */
-const LIVE_ENTRIES = ["Dashboard"] as const;
+/**
+ * Of the eleven, the ones whose routes are built, in the sidebar's own order.
+ *
+ * Growing this list is what #49 and each mockup roadmap do; the spec's own copy is what makes
+ * a silently dead link fail here. **Models** joined it with AA.7
+ * ([#206](https://github.com/NobuData/ouroboros/issues/206)) rather than with the ticket that
+ * built the route: AA.1 (#200) turned the row from a *soon* chip into a link
+ * (`app/shell/nav-modules.ts`) and left this roster behind, which is the mechanism working in
+ * the direction nobody expects — the list catches a link that leads nowhere, and it also
+ * catches a route that landed without telling the suite. The MVP gate for that epic is where
+ * it was noticed.
+ */
+const LIVE_ENTRIES = ["Dashboard", "Models"] as const;
 
 /** The sidebar landmark — its accessible name is `aria-label="Primary"`. */
 function sidebar(page: Page) {

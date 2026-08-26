@@ -4,7 +4,7 @@
 #
 #   docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full up
 #
-# It changes one service, and the two lines it sets are one decision
+# It changes one service. The first two lines it sets are one decision
 # (issue #647, which unparked the suite's signed-in legs):
 #
 #   * `NODE_ENV: test` — the image pins `production`, and production is the posture in
@@ -24,6 +24,49 @@
 # the machine running the suite and from nowhere else. A deployment inherits neither line
 # — this file is composed by the e2e runner and must never be handed to one.
 #
+# ---------------------------------------------------------------------------
+# The third line, and the finding behind it (issue #206, the routing leg).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: "86400"` — the sweep's nominal cadence, set
+#     to the maximum the service accepts (one day, `MAX_PROVIDER_HEALTH_SECONDS`). Since
+#     the *first* delay is jittered too (provider-health/cadence.ts, and it argues why),
+#     this puts the first sweep between eighteen and thirty hours after boot: comfortably
+#     outside the suite's ten-minute budget, and outside a `--keep` stack somebody debugs
+#     against for an afternoon.
+#
+# **What it is for.** Z.3's sweep (#196) is real: every sixty seconds it asks each of the
+# workspace's five seeded connections whether it is reachable, and *writes what it finds
+# back onto the row*. The seeded connections point at addresses that exist only in the
+# fixture — `ken-station.local:11434`, `10.0.4.20:8000` — and carry credentials that are
+# literally the words *dev-seed-value-not-a-real-credential*. So about a minute after any
+# compose stack comes up, mockup 06's health strip stops being the seed's and becomes a
+# report of five failed probes, and `R__dev_seed_routing.sql`'s parity (#192) is gone.
+#
+# That is correct behaviour and the strip is *right* to say so. It is also fatal to a
+# parity leg: with the sweep running, `specs/routing.spec.ts` asserts against a workspace
+# whose health depends on how long the stack has been up, its two screenshot baselines are
+# a coin flip, and — because a resolution reads the same snapshots — even *which model the
+# simulator resolves to* changes underneath the rule-toggle leg. All four were observed
+# failing exactly that way before this line existed.
+#
+# **Why the cadence rather than the fixture.** The alternative is seeding connections that
+# point at something the stack really serves, which would mean inventing a fake provider
+# service in compose: a fifth image, a second answer to what a provider *is*, and a strip
+# that is green because a stub said so. The seed's job is to be mockup 06 as rows, and the
+# honest way to hold a stack to it is to not overwrite it mid-suite.
+#
+# **What this therefore does not test, and where that is tested.** The sweep itself — that
+# a stopped Ollama goes amber within one cycle — is Z.3's own integration coverage in
+# `ouroboros-rest`, against a probe it controls. This suite asserts the other half: that
+# whatever the snapshots say reaches the chip, the hop's dot and the resolution, which is
+# the boundary a unit test on either side cannot see.
+#
+# The variable has no off value, deliberately (configuration.ts: "a strip that has stopped
+# updating and a strip that honestly says unknown look different to a person, and only one
+# of them is true"), and this file does not invent one — it asks for the slowest cadence an
+# operator may ask for, through the same validated setting an operator would use.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -31,3 +74,4 @@ services:
     environment:
       NODE_ENV: test
       OURO_LISTEN_HOST: "0.0.0.0"
+      OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: "86400"

@@ -22,6 +22,28 @@
 #   ui        shell.spec.ts       the browser legs are served by the UI container
 #   db        dashboard.spec.ts   the dashboard's figures come out of the read model rather
 #                                 than out of the mockup (#88)
+#   db        routing.spec.ts     the routing screen's matrix, chains, rules and simulations
+#                                 come out of four tables and the resolution engine (#206)
+#
+# ## The routing pair, and the three breakages its ticket asks for
+#
+# #206 asks for the leg to be spot-verified "by breaking resolution, the save endpoint and
+# the health service in turn". Those are three code paths inside one service, and this
+# script's lever is a *container*: `rest` cannot be stopped for the reason below, so what is
+# registered here is `db`, which is underneath all three at once — a resolution reads four
+# tables, a save writes one, and the health snapshots are a column.
+#
+# The three individual breakages were verified by hand at the ticket, by stubbing each in
+# `ouroboros-rest` and requiring the matching legs to go red, and the result is recorded in
+# the PR and in the roadmap rather than automated here: automating it would mean shipping a
+# switch that makes the service lie, which is a worse thing to have in a repository than a
+# verification somebody repeats. What each stub took down, for the next person who repeats
+# it:
+#
+#   rule evaluation stubbed  -> only "a rule's switch changes what the simulator answers"
+#   the save writing nothing -> only the reorder leg and the floor leg
+#   health answering nothing -> the strip, the inspector's dots, both simulations, the
+#                               parity screenshots
 #
 # ## A pair whose leg is parked
 #
@@ -67,7 +89,7 @@ BRING_UP=0
 while [ $# -gt 0 ]; do
   case $1 in
     --up) BRING_UP=1; shift ;;
-    -h | --help) sed -n '2,40p' "$0" | cut -c 3-; exit 0 ;;
+    -h | --help) sed -n '2,46p' "$0" | cut -c 3-; exit 0 ;;
     *) printf 'verify-failure-modes.sh: unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
@@ -220,6 +242,17 @@ expect_red ui shell-nav.spec.ts "ERR_EMPTY_RESPONSE|ERR_CONNECTION_REFUSED|ECONN
 # (an aggregate's `internal_error`, a guard redirect to `/login`) never got a chance
 # to happen, because nothing gets past the credential exchange.
 expect_red db dashboard.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# The routing leg (#206), against the layer all three of its services sit on. Every figure in
+# the matrix is an aggregate over `token_usage`, every chain is `route_hops`, every sentence
+# is a generated column, and a simulation is all of them read at once — so a page that still
+# drew mockup 06 with the database stopped would be a page drawing the artwork, which is the
+# failure this leg exists to make impossible.
+#
+# `db` rather than `rest` for the reason the pairs above use it, and the leg breaks at its
+# first step for the same reason the dashboard's does: a session is a row, so with no database
+# there is nobody to sign in as, and `support/session.ts` says so by name.
+expect_red db routing.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 
 printf '\n'
 if check_summary; then
