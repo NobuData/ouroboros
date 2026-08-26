@@ -43,61 +43,43 @@
  * interesting failure is the one the test has already reported and an exception would
  * replace it with a less useful one — but a restore that did not land is written to stderr,
  * because the next run needs to know.
+ *
+ * ## The write and the restore are `support/rest.ts`'s
+ *
+ * Both used to live here. The routing leg
+ * ([#206](https://github.com/NobuData/ouroboros/issues/206)) arranges a route's chain and a
+ * rule's switch the same way and puts both back the same way, so the two moves moved into a
+ * module of their own rather than being written a second time — and the decisions behind them
+ * (a failed write throws, a failed restore warns) are stated once. What stayed here is what
+ * these two settings *are*: their paths, their steps, and what an untouched stack holds.
  */
 
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 
-import { SESSION_COOKIE, sessionTokenOf } from "./session";
-import { REST_URL } from "./stack";
+import { quietly, writeAs } from "./rest";
 
 /**
  * `PATCH` a path with the context's session, and insist it worked.
+ *
+ * A thin naming of `support/rest.ts`'s write: every surface here takes *what changed*, so an
+ * object with one property is the whole request, and the verb never varies.
  *
  * @param context - The context to act for. It must already carry a session
  *   (`support/session.ts`) — these are the caller's own settings, so there is nobody to
  *   store one against otherwise.
  * @param path - The absolute path to patch.
- * @param body - What changed. Every one of these surfaces takes *what changed*, so an
- *   object with one property is the whole request.
+ * @param body - What changed.
  * @param what - What the caller is doing, for both failure messages.
  * @returns When the service has stored it.
- * @throws {Error} If the context carries no session, or if the service refused — with the
- *   status and the body it answered. A silent failure here would surface as a page that
- *   simply rendered the old value, which looks like a passing test of the wrong thing.
+ * @throws {Error} As `writeAs` does.
  */
-async function patch(
+function patch(
   context: BrowserContext,
   path: string,
   body: Readonly<Record<string, unknown>>,
   what: string,
 ): Promise<void> {
-  const token = await sessionTokenOf(context, what);
-
-  const response = await fetch(`${REST_URL}${path}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", cookie: `${SESSION_COOKIE}=${token}` },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`${what} answered ${response.status}: ${await response.text()}`);
-  }
-}
-
-/**
- * Attempt a restore, and complain rather than throw when it does not land.
- *
- * @param restore - The write to attempt.
- * @param what - What was being put back, and what a leftover value would cost — the whole of
- *   the warning, since nobody is watching the run that prints it.
- * @returns When the restore has been attempted.
- */
-async function quietly(restore: () => Promise<void>, what: string): Promise<void> {
-  try {
-    await restore();
-  } catch (reason) {
-    process.stderr.write(`warning: ${what} ${String(reason)}\n`);
-  }
+  return writeAs(context, "PATCH", path, body, what);
 }
 
 /**

@@ -75,6 +75,32 @@ export const SEED_OWNER = {
 } as const;
 
 /**
+ * The seeded **member** of the same workspace — the role every read-only assertion is made
+ * as.
+ *
+ * `R__dev_seed.sql` spreads three of the four roles across `acme-robotics` so that "the role
+ * gate has someone to refuse in each shared workspace", and Jorge is that person: a `member`
+ * row and nothing more, in the workspace every mockup is drawn in. That is what makes a
+ * read-only leg a *session* rather than a fixture — the page a member is served is the page
+ * the service and `mayAdminister` between them decided to serve, and neither can be told to
+ * pretend.
+ *
+ * The routing leg ([#206](https://github.com/NobuData/ouroboros/issues/206)) is the first to
+ * need him, which is why he arrives here now rather than with the seed: a constant nothing
+ * signs in as would be a claim about the database that nothing checks.
+ */
+export const SEED_MEMBER = {
+  /** `ouroboros."user".id` — literal in the migration. */
+  id: "5eed0003-0000-4000-8000-000000000003",
+  /** The address `support/session.ts` presents to the development sign-in route. */
+  email: "jorge@acme-robotics.dev",
+  /** What the shell's user menu renders, and the name the read-only note is *not* about. */
+  displayName: "Jorge Reyes",
+  /** The role `member` row he holds in {@link SEED_TENANT} — what the page's note names. */
+  role: "member",
+} as const;
+
+/**
  * The password every seeded person signs in with.
  *
  * One value for all of them, because this is demo data on a development machine and a
@@ -93,7 +119,7 @@ export const SEED_OWNER = {
 export const SEED_PASSWORD = "ouroboros-dev-password";
 
 /** Every person the seed creates, by id — what {@link seededUser} looks up. */
-const SEEDED_USERS = [SEED_OWNER] as const;
+const SEEDED_USERS = [SEED_OWNER, SEED_MEMBER] as const;
 
 /**
  * Find a seeded person by id.

@@ -1301,7 +1301,7 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 | AA.4 | #203 | 🟢 Done | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
 | AA.5 | #204 | 🟢 Done | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
 | AA.6 | #205 | 🟢 Done | ouroboros-ui: [AA.6] Routing states & guards | Empty foundations guidance, member read-only, load/error states | mvp, routing, ui, design | N (after AA.2–AA.5) | Y | S | ouroboros-ui |
-| AA.7 | #206 | 🟡 Open | ouroboros-ui: [AA.7] Routing e2e leg | Parity, reorder→save, rule toggle, simulate, honesty states, themes | mvp, routing, ui, ci | N (after AA.1–AA.6) | Y | S | ouroboros-ui, .github |
+| AA.7 | #206 | 🟢 Done | ouroboros-ui: [AA.7] Routing e2e leg | Parity, reorder→save, rule toggle, simulate, honesty states, themes | mvp, routing, ui, ci | N (after AA.1–AA.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue AA.1 — ouroboros-ui: [AA.1] Models route, subnav & provider health strip
 
@@ -1913,7 +1913,112 @@ SPEND · 30D  Anthropic ▓▓▓▓▓ $412.80 … Local ▓ $0.00 · "Local se
 
 ### Issue AA.7 — ouroboros-ui: [AA.7] Routing e2e leg
 
-> **GitHub issue:** #206 · **Status:** 🟡 Open · **Parent epic:** #187
+> **GitHub issue:** #206 · **Status:** 🟢 Done · **Parent epic:** #187
+
+> **Shipped 2026-08-26. The epic's MVP gate closes.**
+> [`tests/e2e/specs/routing.spec.ts`](../tests/e2e/specs/routing.spec.ts) — seventeen tests over
+> [`support/routing.ts`](../tests/e2e/support/routing.ts) (mockup 06 as this suite asserts
+> against it, and the two restores), a new
+> [`support/rest.ts`](../tests/e2e/support/rest.ts) that `support/settings.ts` now shares, the
+> seeded **member** in [`support/seed.ts`](../tests/e2e/support/seed.ts), a pair of parity
+> baselines and a new pair in
+> [`scripts/verify-failure-modes.sh`](../tests/e2e/scripts/verify-failure-modes.sh);
+> `ouroboros-e2e` 0.6.0. **13 seconds** against a stated allowance of two minutes, so
+> `SUITE_BUDGET_MS` did not move.
+>
+> **The stack needed one change, and it is the finding of this ticket.** Z.3's health sweep
+> (#196) is real: every sixty seconds it probes each of the workspace's five seeded
+> connections and **writes what it finds back onto the row**. The seeded connections point at
+> addresses that exist only in the fixture — `ken-station.local:11434`, `10.0.4.20:8000` — and
+> carry credentials that are literally the words *dev-seed-value-not-a-real-credential*. So
+> about a minute after any compose stack comes up, the health strip stops being Y.4's (#192)
+> and becomes a report of five failed probes, and mockup-06 parity is gone. That is correct
+> behaviour — the strip is right to say so — and it is fatal to a parity leg: the first run of
+> this suite went red on the strip, on the inspector's dots, on **which model the simulator
+> resolved to** (a resolution reads the same snapshots), and on both screenshots.
+> `docker-compose.e2e.yml` now asks for the slowest cadence the service accepts,
+> `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS=86400`, through the same validated setting an
+> operator would use — the variable deliberately has no *off* value and this invents none. The
+> alternative was a fake provider service in compose, which is a fifth image, a second answer
+> to what a provider *is*, and a strip that is green because a stub said so.
+>
+> **The second finding is a Suspense boundary.** `models/(routing)/loading.tsx` puts this
+> segment behind one, so the server streams the screen into a hidden `<div>` and React
+> relocates it on hydration — and the copy **outlives `readyState: "complete"`**, which is what
+> `page.goto` waits for. Until hydration the document holds two complete copies of
+> `<main class="models">`, one out of the accessibility tree; role locators ignore it and
+> `getByText` does not. `enterRouting` waits for the page to be one page, which is both the
+> guard and this file's hydration barrier.
+>
+> **Two divergences from the ticket's own words, both argued in the spec's header.** The
+> rule-toggle context carries a **diff kind as well as an effort**: at effort L alone the
+> applied-rules list changes and the resolved primary does not, because the seed's `effort ≥ L`
+> rule names `coder-max`, which is already `implement`'s hop 1 — the service's own
+> `params_merged` near-case, and the mockup's. With *effort L and a docs-only diff* two rules
+> match, the leg switches the second, and both halves of the ticket's assertion are real:
+> the primary moves `coder-max` → `local-docs` and back, and the list loses a sentence and
+> regains it, while the effort rule keeps applying — which is what makes it a test of *that*
+> switch rather than of any switch. And the reorder is made with the **move buttons**: a drop
+> and a press are one `editor.move` by construction, `ouroboros-ui` drives the drag events
+> directly, and native HTML5 drag-and-drop through a synthetic pointer is the one mechanism
+> here that fails intermittently in a suite that runs with `retries: 0`. What a browser adds —
+> that the handles ship, one per hop, `draggable` — is asserted.
+>
+> **The floor is observed on `test-gen`, not on `implement`.** It is the one route whose
+> **primary** is bound to the one connection the seed leaves unhealthy, so a floor at hop 1
+> leaves the run with nowhere to go: the primary is unreachable and the fallback is forbidden,
+> and the panel draws `fail_run` under the same heading a resolved chain gets, with the
+> service's own sentence first. `implement`'s floor defaults to hop 2 and still resolves.
+>
+> **The three breakages the ticket asks for were spot-verified by hand**, each by stubbing it
+> in `ouroboros-rest`, rebuilding the image and re-running the leg. Rule evaluation returning
+> no matches takes down **only** *a rule's switch changes what the simulator answers*. A save
+> that answers `200` and writes nothing takes down **only** the reorder leg and the floor leg —
+> the failure mode an optimistic UI hides, and the reason both assert after a reload. Health
+> answering nothing takes down five: the strip, the inspector's dots, both simulations and the
+> parity pair. The compose lever is coarser than that — `rest` cannot be stopped without
+> stranding `ui` in its network namespace — so what is *registered* is `db`, which is
+> underneath all three; the script's header records what each stub took down for the next
+> person who repeats it.
+>
+> **The suite now runs one worker, and that is this ticket's third finding.** Every browser
+> leg signs the same seeded owner into the same seeded workspace, and three of them write the
+> reader's font scale — a row keyed on the *person*: the dashboard's 125% test, the shell's
+> 100% → 150% → 100% stepper, and this leg's 125% test. Run side by side they photograph each
+> other's preference, and about one run in four went red on a different test each time. It was
+> latent before this leg and this leg is the third writer; the same is true of every other row
+> a leg arranges — the auto-merge switch, a route's chain, a rule's switch —  and a dozen more
+> legs are scheduled to want them. `playwright.readability.config.ts` had already made exactly
+> this argument for its own leg. Forty seconds serial against twelve parallel, inside a
+> ten-minute budget, is the whole of the cost.
+>
+> **One thing this ticket fixed that AA.1 left behind.** `specs/shell-nav.spec.ts` keeps a
+> roster of which sidebar entries are built, and #200 turned **Models** from a *soon* chip into
+> a link without growing it — so the suite this leg amends was already red. The roster is the
+> mechanism working in the direction nobody expects: it catches a link that leads nowhere, and
+> it also catches a route that landed without telling the suite.
+>
+> **One thing it did not fix, and reported instead.** Leg 6's parity pair is red on a stack
+> **seeded in the first three quarters of an hour after UTC midnight**: the dashboard's second
+> sentence counts what merged *since midnight UTC*, the seed dates its merged runs relative to
+> `now()`, and with nothing to count the sentence collapses from two lines to one and every
+> card below it moves up twenty-odd pixels. `R__dev_seed_dashboard.sql`'s header already says
+> that boundary cannot be pinned by a seed whose windows are relative. It is not a regression,
+> re-recording would encode the rarest case, and CI's 03:17 schedule is outside the window;
+> `tests/e2e/README.md` now states it as a precondition of refreshing that pair.
+>
+> **The guidance path is here**, which the ticket's own scope did not ask for and AA.6's
+> shipped note handed to this leg twice. `kensuenobu` carries no connection, no alias, no task
+> kind and no usage row, so the empty states are a *workspace* rather than a mocked payload:
+> the strip's seat is a sentence and a link rather than the refusal's banner, the guidance card
+> stands where the matrix would with `aria-current="step"` on the step that is next and the
+> action only on that one, and the spend card's zero-state carries **no em-dash** — decision M7
+> read from the other side, since *nobody measured this* and *nothing has happened* may not
+> render alike. It costs a second.
+>
+> **Deliberately not here:** a screenshot pair for the guided workspace. The states are
+> asserted as text, and a second baseline of a page that is mostly two sentences would be two
+> more images for the budget and no bit of information the assertions do not already carry.
 
 
 - **Problem Statement:** Chain editing, rule effects, and simulation honesty
@@ -2442,3 +2547,29 @@ is epic Z's to file, and wiring the control is the one edit this page then needs
 Next in epic AA is **#206** ([AA.7] the e2e leg), which should script the guidance path against
 the `kensuenobu` workspace (no providers → no routes) and the read-only pass as a `member`
 session, beside the *reorder → save*, *rule toggle* and *simulate* assertions.
+
+**#206** ([AA.7] the e2e leg) has landed, and **epic AA is closed** — mockup 06 has a page, and
+the page has a gate. Seventeen tests, thirteen seconds, and the one that matters is the negative
+one: *simulate `implement`, switch the `route_local` rule off, simulate again, and the resolved
+primary must be a different model.* Nothing else in the repository can fail on that. The rules
+are a table in one service and the switch is a control in another; a rules table nothing
+evaluated would answer identically both times and every other assertion in the file would still
+be green. It was confirmed by stubbing `matchedRules` and watching exactly that one test go red.
+
+**The finding worth carrying into every later parity leg is that a live stack rewrites its own
+fixture.** Z.3's health sweep probes each seeded connection every sixty seconds and writes the
+result back, and the seeded connections point at addresses that exist only in the fixture — so
+roughly a minute into any compose stack, mockup 06's health strip stops being Y.4's and becomes
+a report of five failed probes. It takes the inspector's dots with it, and, because a resolution
+reads the same snapshots, *which model the simulator resolves to*. The e2e override now asks for
+the slowest cadence the service accepts through the same validated setting an operator would
+use. **AE.7 (#233) will meet this first**, since mockup 07 is the providers screen and its whole
+subject is those rows; the roster of seeds a leg has to hold still is now a thing this
+repository knows it has.
+
+**And a smaller one, for any leg over a route with a `loading.tsx`.** A Suspense boundary means
+the server streams the segment into a hidden `<div>` that React relocates on hydration — and it
+outlives `readyState: "complete"`, which is what `page.goto` waits for. Until then the document
+holds two complete copies of the page, one out of the accessibility tree: role locators ignore
+it and `getByText` does not. Waiting for the page to be one page is both the guard and a
+hydration barrier.
