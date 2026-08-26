@@ -1287,7 +1287,7 @@ dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CI.1 | #591 | 🟢 Done | ouroboros-ui: [CI.1] Registry route, subnav & page frame | `/models/registry`, head + actions, subnav tab live (AA.1/AE.1 amendment) | mvp, registry, ui, design | N (after #41, AA.1, BA-D.5) | Y | S | ouroboros-ui |
 | CI.2 | #592 | 🟢 Done | ouroboros-ui: [CI.2] Allowed-models table | 8-column table: alias pills, monograms, chips, health states, prices, switches | mvp, registry, ui, design | N (after CI.1, CH.5) | Y | L | ouroboros-ui |
-| CI.3 | #593 | 🟡 Open | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
+| CI.3 | #593 | 🟢 Done | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
 | CI.4 | #594 | 🟢 Done | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
 | CI.5 | #595 | 🟡 Open | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
 | CI.6 | #596 | 🟡 Open | ouroboros-ui: [CI.6] Registry states & guards | Empty org, member read-only, load/error, unbound guidance | mvp, registry, ui, design | N (after CI.2–CI.5) | Y | S | ouroboros-ui |
@@ -1522,7 +1522,66 @@ Routing | ●Model registry | Providers & keys | Spend·soon
 
 ### Issue CI.3 — ouroboros-ui: [CI.3] Alias inspector
 
-> **GitHub issue:** #593 · **Status:** 🟡 Open · **Parent epic:** #577
+> **GitHub issue:** #593 · **Status:** 🟢 Done · **Parent epic:** #577
+
+> **Shipped 2026-08-25.** [`ouroboros-ui/app/registry/`](../ouroboros-ui/app/registry) —
+> `alias-inspector.tsx` over the pure `inspector.ts`, with `inspector-actions.ts` as its server
+> hop and two new calls in `app/api/registry.ts`
+> (`POST /registry/aliases/{id}/duplicate`, `DELETE /registry/aliases/{id}`); `ouroboros-ui`
+> 0.51.0. Proven by 598 tests across the twenty-one suites that touch this page (4,218 across
+> the module) — three new (`inspector.test.ts`, `inspector-actions.test.ts`,
+> `alias-inspector.test.tsx`) over the same fixtures the table's suites use, so the card and
+> the row it edits are asserted against one seed.
+>
+> **Rebinding is unremarkable, and that is a property of the request.** *Point coder-max at
+> Bedrock tomorrow; zero workflow or route edits.* The provider select has no warning around
+> it, changing it **keeps the model id**, and `updateBody` diffs the draft against the row it
+> was prefilled from — so the save is a `PATCH` carrying the binding and the parameters that
+> binding governs, and nothing else. No name that did not change, no restrictions nobody
+> touched, and nothing at all about any route, rule or workflow. The parameters travel with a
+> rebind deliberately: they are parameters *of the model*, the field set is replaced whenever
+> the model is, and a document validated against the old one is what the service would
+> otherwise refuse.
+>
+> **The field set is the schema's, and neither module names a parameter.** The controls are
+> CI.4's `param-fields.tsx` over CH.2's answer (#585), read per `(connection, model)` and
+> cached by it; `inspector.ts` holds the frame around them and no list. Switching to a model
+> with no thinking select loses the thinking and budget controls because the answer has fewer
+> fields, and the suite that proves it feeds the card a tunable no adapter in this build has.
+> The restrictions section is drawn by the same component over the same dialect and is offered
+> **always** — even for an unbound alias — because a restriction is this workspace's policy
+> about the alias rather than a capability of the thing behind it.
+>
+> **The rename guard explains early, and the blocked Remove is a state rather than an error.**
+> `renameGuardNote` stands under the name field for any referenced alias *before* it is
+> touched, `RENAME_BLOCKED` replaces it the moment the box holds a different name, and
+> `saveReason` keeps the button inert — so nothing is sent that could only come back refused.
+> `removeWhy` is the mockup's own mono line with the row's own count in it, drawn permanently
+> beside a `Remove` that is `aria-disabled` and `aria-describedby` it; the service's `409` is
+> what decides, and `removeFailure` names the *service's* referrers rather than the card's,
+> because a refusal reaching there means they changed underneath the reader.
+>
+> **The card reads the connections rather than the health strip, and that changed one read.**
+> The provider select is mockup 21's `Anthropic — key sk-ant-…Xq4A`, which needs the mask —
+> and `GET /api/v1/routing/providers` carries none, by design, because it answers *is this
+> provider up*. So `app/registry/data.ts` now reads `GET /api/v1/providers`, which carries the
+> id, the display name **and** the mask, is ordered by display name exactly as the other is,
+> and is readable by any member: one read answering the whole question rather than two answering
+> it twice. The mask drawn is the service's `••••Xq4A` rather than the drawing's
+> `sk-ant-…Xq4A` — the only masked form this product publishes is the one computed inside
+> `ouroboros-rest`, and the question the option answers is met either way.
+>
+> **An unsaved edit survives the selection moving.** The drafts are held by alias id inside the
+> card, and the card is deliberately **not** keyed by the row, so selecting another alias and
+> coming back finds it as it was left — nothing is discarded silently and nothing has to be
+> confirmed on the way out. A successful save, duplicate or remove clears that alias's draft,
+> because after those the row itself is the truth.
+>
+> Two anchors moved to `app/paths.ts` (`ROUTING_MATRIX_HASH`, `ROUTING_RULES_HASH`) so the
+> **Used by** chips and the cards they point at are one string rather than two literals a rename
+> would part; `workflow` and `chat_pin` chips navigate nowhere, because their storage does not
+> exist yet and a chip pointing at a page this build has not got would be worse than one that
+> plainly does not act. No OpenAPI change, so no spec bump.
 
 - **Problem Statement:** The inspector is where BYOK becomes tangible: rename
   with guard awareness, rebind provider/model from live lists, edit only the
@@ -2038,7 +2097,8 @@ Issue-level impact:
 |---|:---:|:---:|---|
 | CI.1 | #591 | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar **Models** entry, not a topbar link; the Models subnav renders as PageSubnav, sticky in-pane |
 | CI.2 | #592 | 🟢 Done | The table scrolls inside the #46 Table's own wrapper, never at pane level; rem-based column widths and monogram; the switch-off confirmation is the shell's overlay outside the pane |
-| CI.3, CI.4, CI.5, CI.6 | #593, #594, #595, #596 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| CI.3, CI.4 | #593, #594 | 🟢 Done | rem-based type, shell tokens; the inspector's used-by region and the wizard's candidate table each scroll in their own wrapper |
+| CI.5, CI.6 | #595, #596 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | CI.7 | #597 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
@@ -2080,9 +2140,20 @@ one payload, every cell served rather than derived; the AE.2 monogram extracted 
 shared component both pages render; the #46 Table extended with a row class and an accent
 selection tone rather than overridden; the **On** switch round-tripping through CH.1 and
 asking first, with the referrers named, before it drops hops; selection reflected into
-`?alias=` and read back server-side, with the inspector's seat already following it. Next is
-**#593** (the alias inspector), which needs CI.2, CH.1 and CH.2 — the seat, the selection and
-the payload's `params`, `references` and `binding.mask` are all in place for it.
+`?alias=` and read back server-side, with the inspector's seat already following it.
+
+**#594** ([CI.4] the new-alias and import flows) has landed: the create dialog with its two
+modes over one `POST`, and the review-first import wizard behind **Import from provider ▾** —
+which is also where `param-fields.tsx`, the form drawn from CH.2's schema, was built.
+
+**#593** ([CI.3] the alias inspector) has landed, and with it the ticket the whole registry
+argues for: a rebind is one select and one press, the save carries the binding and nothing that
+is not the binding's, the fields come and go with the model's own schema, the rename guard explains before Save
+rather than after, and **Remove** wears the mockup's mono why-line with the row's real count.
+The page's connection read moved from the routing health strip to `GET /api/v1/providers`,
+because the provider select needs the masked key and only that payload has one. Next are
+**#595** (the why-aliases and resolution-chain cards) and **#596** (the page's states and role
+gating), after which **#597** certifies the cross-surface BYOK story end to end.
 
 The deepest risk here is **CG.3 / CH.1 (#581, #584)**: the reference index is
 what makes `Used by`, the blocked Remove and the rename guard true, and a

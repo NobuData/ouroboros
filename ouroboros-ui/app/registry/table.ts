@@ -60,25 +60,48 @@ export { EM_DASH, NO_PROVIDER };
  * keeps the two surfaces one vocabulary.
  */
 export interface ProviderCell {
+  /**
+   * `provider_connections.id` — what the inspector's provider select is preset to, and what a
+   * rebind addresses.
+   *
+   * The cell does not draw it. It is here because the binding is one fact read once: the table
+   * shows the square and the name, the inspector shows the same connection as a chosen option,
+   * and a second read to learn *which* connection that is would be a second answer to a
+   * question this payload has already answered.
+   */
+  readonly id: string;
   /** The square, as `app/providers/provider-monogram.tsx` draws it. */
   readonly monogram: Monogram;
   /** The connection's display name — what mockup 07's card calls it. */
   readonly name: string;
+  /**
+   * `••••Xq4A` — the mockup inspector's *key sk-ant-…Xq4A* — or `null` for a connection that
+   * stores no credential (an Ollama daemon, an unauthenticated OpenAI-compatible endpoint) or
+   * one this deployment could not open.
+   *
+   * Server-computed, from the plaintext, inside `ouroboros-rest`: the characters it hides never
+   * cross the wire. Not drawn in the table either — the column has the name and the square —
+   * and read by the inspector, where telling two connections of one kind apart is the whole
+   * point of showing a key at all.
+   */
+  readonly mask: string | null;
 }
 
 /**
  * The provider cell for a binding.
  *
  * @param binding The alias's binding, as served.
- * @returns The monogram and the name.
+ * @returns The connection, its monogram and its mask.
  */
 export function providerCell(binding: RegistryBinding): ProviderCell {
   return {
+    id: binding.id,
     monogram: {
       letters: binding.monogram,
       tint: monogramFor(binding.kind, binding.displayName).tint,
     },
     name: binding.displayName,
+    mask: binding.mask,
   };
 }
 
@@ -235,6 +258,17 @@ export interface TableRow {
   readonly provider: ProviderCell | null;
   /** The raw model id — the only place in the product one renders (decision **M1**). */
   readonly modelId: string;
+  /**
+   * `model_aliases.params` as stored — what the inspector's parameter controls prefill from.
+   *
+   * The **structured** document beside the chips, not a second source for them: the `Params`
+   * column draws `chips` and never this. It is on the row because the inspector edits the same
+   * alias the table shows, off the same read, so a control can never open on a value the row
+   * beside it disagrees with.
+   */
+  readonly params: Readonly<Record<string, unknown>>;
+  /** `model_aliases.restrictions` as stored — the registry's own policy flags, likewise. */
+  readonly restrictions: Readonly<Record<string, unknown>>;
   /** The server-derived chips. Empty is the mockup's `—`. */
   readonly chips: readonly string[];
   /** The health cell. */
@@ -270,6 +304,8 @@ export function tableRows(aliases: readonly RegistryAlias[]): readonly TableRow[
     enabled: alias.enabled,
     provider: alias.binding === null ? null : providerCell(alias.binding),
     modelId: alias.modelId,
+    params: alias.params,
+    restrictions: alias.restrictions,
     chips: alias.chips,
     health: healthCell(alias.health),
     price: priceCell(alias.price),
@@ -402,20 +438,22 @@ export function inspectorTitle(alias: string | null): string {
   return alias === null ? INSPECTOR_TITLE : `${INSPECTOR_TITLE} — ${alias}`;
 }
 
-/** What the inspector's seat says it is waiting for. */
-export const INSPECTOR_NEXT_TITLE = "The alias inspector arrives next";
+/** What the inspector's card says when no row is selected. */
+export const INSPECTOR_EMPTY_TITLE = "No alias selected";
 
 /**
- * …and which issues fill the rest of the page.
+ * …and how to select one.
  *
- * Named rather than mocked, exactly as the frame's empty state was before the table landed:
- * a mocked-up field stack would be indistinguishable in a screenshot from the real one CI.3
- * ships. The selection this seat follows is real, which is what CI.3 builds on.
+ * The placeholder that named #593–#596 is **deleted rather than reworded**: CI.3
+ * ([#593](https://github.com/NobuData/ouroboros/issues/593)) fills this card, so what is left
+ * to say is the one thing a reader of an unselected card needs, which is that the card follows
+ * the table. The remaining two cards of the side column are CI.5's
+ * ([#595](https://github.com/NobuData/ouroboros/issues/595)) and are their own seats, not this
+ * one's caption.
  */
-export const INSPECTOR_NEXT_NOTE =
-  "The alias inspector — its fields, rebind selects and used-by chips — arrives with #593; " +
-  "the why-aliases and resolution-chain cards with #595, and the role gating and page states " +
-  "with #596. Creating and importing aliases works now, from the two actions in the head.";
+export const INSPECTOR_EMPTY_NOTE =
+  "Choose a row in the allowed-models table to edit its alias — its name, the provider and " +
+  "model it resolves to, and what it may be tuned with.";
 
 /* ------------------------------------------------------------------ the switch */
 

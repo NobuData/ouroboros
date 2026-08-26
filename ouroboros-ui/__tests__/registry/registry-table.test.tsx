@@ -7,7 +7,6 @@ import { ALIAS_PARAM, PROVIDERS_PATH } from "@/app/paths";
 import {
   EM_DASH,
   FIX_IN_PROVIDERS,
-  INSPECTOR_NEXT_TITLE,
   MANAGE_PROVIDERS,
   NO_PROVIDER,
   ORG_OVERRIDE,
@@ -22,7 +21,10 @@ import {
   tableRows,
 } from "@/app/registry/table";
 
+import { importSources } from "@/app/registry/view";
+
 import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
+import { seededCards } from "../helpers/providers";
 import {
   CATALOG_VERSION,
   NO_KEY_NOTE,
@@ -45,9 +47,23 @@ import {
  */
 
 // The switch's write sits on the server-only client and is `switch-actions.test.ts`'s
-// subject; the switch itself is `alias-switch.test.tsx`'s.
+// subject; the switch itself is `alias-switch.test.tsx`'s. The inspector's own reads and
+// writes are `alias-inspector.test.tsx`'s and `inspector-actions.test.ts`'s; here they answer
+// nothing, because what this suite is about is the table and the card's *frame*.
 vi.mock("@/app/registry/switch-actions", () => ({ setAliasEnabled: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/app/registry/create-actions", () => ({
+  createAlias: vi.fn(),
+  readModelOptions: vi.fn(async () => ({ ok: true as const, models: [] })),
+  readParamSchema: vi.fn(async () => ({ ok: false as const, reason: "not read here" })),
+}));
+vi.mock("@/app/registry/inspector-actions", () => ({
+  saveAlias: vi.fn(),
+  duplicateAlias: vi.fn(),
+  removeAlias: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }),
+}));
 
 const { RegistryTable } = await import("@/app/registry/registry-table");
 
@@ -59,6 +75,12 @@ const MOCKUP = readFileSync(
 
 /** The seeded table's rows, decided. */
 const ROWS: readonly TableRow[] = tableRows(seededRegistry());
+
+/** The two facts the page hands the inspector beside the row — CI.3 (#593). */
+const SOURCES = importSources(seededCards());
+
+/** …and every alias name, for its live uniqueness check. */
+const NAMES = seededRegistry().map((alias) => alias.alias);
 
 /**
  * Where these tests pretend to be, so an assertion about the address bar is about
@@ -87,7 +109,15 @@ function table({
   selected = null,
   mayAdminister = true,
 }: { rows?: readonly TableRow[]; selected?: string | null; mayAdminister?: boolean } = {}) {
-  return render(<RegistryTable mayAdminister={mayAdminister} rows={rows} selected={selected} />);
+  return render(
+    <RegistryTable
+      aliasNames={NAMES}
+      mayAdminister={mayAdminister}
+      rows={rows}
+      selected={selected}
+      sources={SOURCES}
+    />,
+  );
 }
 
 /** Every body row, in order. */
@@ -361,14 +391,15 @@ describe("the selection", () => {
     expect(url.searchParams.get(ALIAS_PARAM)).toBe("local-docs");
   });
 
-  it("drives the inspector's seat: the mockup's `EDIT — CODER-MAX`, with the pill beside it", () => {
+  it("drives the inspector's card: the mockup's `EDIT — CODER-MAX`, with the pill beside it", () => {
     table({ selected: "coder-max" });
 
     const seat = screen.getByRole("region", { name: "Edit — coder-max" });
 
-    expect(within(seat).getByText("coder-max")).toHaveClass("ou-chip--accent");
-    expect(within(seat).getByText(INSPECTOR_NEXT_TITLE)).toBeInTheDocument();
-    expect(within(seat).getByText(/#593/)).toBeInTheDocument();
+    expect(within(seat).getAllByText("coder-max")[0]).toHaveClass("ou-chip--accent");
+    // …and the card is the inspector rather than a placeholder: the alias field the mockup
+    // draws is in it. What that field does is `alias-inspector.test.tsx`'s subject.
+    expect(within(seat).getByLabelText("Alias")).toHaveValue("coder-max");
   });
 
   it("moves the seat's title with the selection", () => {
@@ -379,6 +410,22 @@ describe("the selection", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Edit — local-free" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Edit — coder-max" })).not.toBeInTheDocument();
   });
+
+  it("reconciles the inspector rather than remounting it, so an unsaved edit survives", () => {
+    // A `key` on the card would throw away the two things it exists to keep — the drafts it
+    // holds by alias id, and the reads it caches by what they answer. The card's own suite
+    // proves it keeps them; this proves the table lets it.
+    table({ selected: "coder-max" });
+
+    fireEvent.change(screen.getByLabelText("Alias"), { target: { value: "coder-max-2" } });
+    fireEvent.click(rowFor("local-free"));
+
+    expect(screen.getByLabelText("Alias")).toHaveValue("local-free");
+
+    fireEvent.click(rowFor("coder-max"));
+
+    expect(screen.getByLabelText("Alias")).toHaveValue("coder-max-2");
+  });
 });
 
 describe("a selection the table did not make (#594)", () => {
@@ -387,7 +434,15 @@ describe("a selection the table did not make (#594)", () => {
     // the selected one, and a `useState` initialiser is read once and never again.
     const view = table({ selected: "coder-max" });
 
-    view.rerender(<RegistryTable mayAdminister rows={ROWS} selected="sizer" />);
+    view.rerender(
+      <RegistryTable
+        aliasNames={NAMES}
+        mayAdminister
+        rows={ROWS}
+        selected="sizer"
+        sources={SOURCES}
+      />,
+    );
 
     expect(screen.getByRole("row", { selected: true })).toBe(rowFor("sizer"));
     expect(screen.getAllByRole("row", { selected: true })).toHaveLength(1);
@@ -399,7 +454,15 @@ describe("a selection the table did not make (#594)", () => {
     const view = table({ selected: "coder-max" });
 
     fireEvent.click(rowFor("sizer"));
-    view.rerender(<RegistryTable mayAdminister rows={ROWS} selected="coder-max" />);
+    view.rerender(
+      <RegistryTable
+        aliasNames={NAMES}
+        mayAdminister
+        rows={ROWS}
+        selected="coder-max"
+        sources={SOURCES}
+      />,
+    );
 
     expect(screen.getByRole("row", { selected: true })).toBe(rowFor("sizer"));
   });
@@ -407,7 +470,15 @@ describe("a selection the table did not make (#594)", () => {
   it("clears the selection when a navigation asks for none", () => {
     const view = table({ selected: "coder-max" });
 
-    view.rerender(<RegistryTable mayAdminister rows={ROWS} selected={null} />);
+    view.rerender(
+      <RegistryTable
+        aliasNames={NAMES}
+        mayAdminister
+        rows={ROWS}
+        selected={null}
+        sources={SOURCES}
+      />,
+    );
 
     expect(screen.queryByRole("row", { selected: true })).not.toBeInTheDocument();
   });
@@ -464,18 +535,31 @@ describe("the keyboard", () => {
 });
 
 describe("what is announced", () => {
+  /**
+   * The table's own live region.
+   *
+   * Scoped to the table's card rather than taken from the page, because the inspector card
+   * beneath it announces its own reads (#593) and *the selection moved* and *the model list is
+   * on its way* are two different things being said at once.
+   *
+   * @returns The element.
+   */
+  function announcement(): HTMLElement {
+    return within(screen.getByRole("region", { name: TABLE_TITLE })).getByRole("status");
+  }
+
   it("says which alias was selected, in a sentence", () => {
     table();
 
     fireEvent.click(rowFor("sizer"));
 
-    expect(screen.getByRole("status")).toHaveTextContent(selectionAnnouncement("sizer"));
+    expect(announcement()).toHaveTextContent(selectionAnnouncement("sizer"));
   });
 
   it("keeps the region in the document while nothing is selected, so the first move is heard", () => {
     table();
 
-    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(announcement()).toBeEmptyDOMElement();
   });
 });
 
@@ -513,7 +597,16 @@ describe("the shell's scroll rule", () => {
 
 describe("both palettes", () => {
   it.each(PALETTES)("renders the table in the %s palette", (palette) => {
-    renderInPalette(palette, <RegistryTable mayAdminister rows={ROWS} selected="coder-max" />);
+    renderInPalette(
+      palette,
+      <RegistryTable
+        aliasNames={NAMES}
+        mayAdminister
+        rows={ROWS}
+        selected="coder-max"
+        sources={SOURCES}
+      />,
+    );
 
     expect(document.documentElement).toHaveAttribute("data-theme", palette);
     expect(screen.getByRole("row", { selected: true })).toHaveClass("ou-table__row--selected");
@@ -522,7 +615,13 @@ describe("both palettes", () => {
 
   it("draws the same markup in both, selection, dim row and switches included", () => {
     const [light, dark] = renderInBothPalettes(
-      <RegistryTable mayAdminister rows={ROWS} selected="coder-max" />,
+      <RegistryTable
+        aliasNames={NAMES}
+        mayAdminister
+        rows={ROWS}
+        selected="coder-max"
+        sources={SOURCES}
+      />,
     );
 
     expect(maskIds(light)).toBe(maskIds(dark));

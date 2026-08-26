@@ -7,12 +7,13 @@ import { ALIAS_PARAM, PROVIDERS_PATH } from "@/app/paths";
 import { ProviderMonogram } from "@/app/providers/provider-monogram";
 import { Button, Card, CardHead, Chip, EmptyState, Table, Tag, type Column, cx } from "@/app/ui";
 
+import { AliasInspector } from "./alias-inspector";
 import { AliasSwitch } from "./alias-switch";
 import {
   EM_DASH,
   FIX_IN_PROVIDERS,
-  INSPECTOR_NEXT_NOTE,
-  INSPECTOR_NEXT_TITLE,
+  INSPECTOR_EMPTY_NOTE,
+  INSPECTOR_EMPTY_TITLE,
   MANAGE_PROVIDERS,
   NO_PROVIDER,
   TABLE_CAPTION,
@@ -25,6 +26,7 @@ import {
   inspectorTitle,
   selectionAnnouncement,
 } from "./table";
+import type { ImportSource } from "./view";
 
 import "./registry.css";
 
@@ -75,10 +77,13 @@ import "./registry.css";
  * lands the page on `?alias=<the new name>`, so the row that was just made is the selected one
  * and the inspector's seat is already open on it. The state below is what adopts it.
  *
- * The seat beneath the table is CI.3's ([#593](https://github.com/NobuData/ouroboros/issues/593))
- * to fill. What it already does is follow the selection — its title is the mockup's
- * `EDIT — CODER-MAX` for the selected row — which is the wiring the inspector builds on, and
- * what its body says is which issues fill it rather than a mock-up of fields.
+ * The card beneath the table is CI.3's ([#593](https://github.com/NobuData/ouroboros/issues/593))
+ * and is filled: {@link InspectorSeat} is its frame — titled `EDIT — CODER-MAX` for the
+ * selected row, with the alias pill beside the title — and
+ * `app/registry/alias-inspector.tsx` is what is inside it. The two facts this table hands it
+ * beyond the row are the page's, not the table's: the workspace's connections and every alias
+ * name, both taken from the same reads the head's actions use, so nothing on the screen can
+ * disagree about which providers exist or which names are taken.
  */
 
 /** What the table takes. */
@@ -94,8 +99,12 @@ export interface RegistryTableProps {
    * a changed value is adopted (see the state below).
    */
   readonly selected: string | null;
-  /** Whether this reader may press the switches. */
+  /** Whether this reader may press the switches, and edit the selected alias. */
   readonly mayAdminister: boolean;
+  /** The workspace's connections — the inspector's provider select (CI.3). */
+  readonly sources: readonly ImportSource[];
+  /** Every alias name this workspace has — the inspector's live uniqueness check. */
+  readonly aliasNames: readonly string[];
 }
 
 /** The id the table card's `aria-labelledby` points at. */
@@ -251,7 +260,13 @@ function HealthCellView({ cell }: Readonly<{ cell: HealthCell }>) {
  * @param props See {@link RegistryTableProps}.
  * @returns The table card, the announcement, and the inspector's seat.
  */
-export function RegistryTable({ rows, selected: initial, mayAdminister }: RegistryTableProps) {
+export function RegistryTable({
+  rows,
+  selected: initial,
+  mayAdminister,
+  sources,
+  aliasNames,
+}: RegistryTableProps) {
   /**
    * The selection, and the prop it was last adopted from.
    *
@@ -320,24 +335,52 @@ export function RegistryTable({ rows, selected: initial, mayAdminister }: Regist
       </Card>
 
       <div className="registry-aside">
-        <InspectorSeat row={row} />
+        <InspectorSeat
+          aliasNames={aliasNames}
+          mayAdminister={mayAdminister}
+          row={row}
+          sources={sources}
+        />
       </div>
     </>
   );
 }
 
 /**
- * Mockup 21's **EDIT — CODER-MAX** card's seat: titled for the selected alias, with its pill
- * beside the title as the mockup draws it, and — until CI.3 fills it — an empty state naming
- * what fills it.
+ * Mockup 21's **EDIT — CODER-MAX** card: titled for the selected alias, with its pill beside
+ * the title as the mockup draws it, and CI.3's inspector
+ * ([#593](https://github.com/NobuData/ouroboros/issues/593)) inside it.
  *
- * Exported so the screen can draw the same seat when there is no table to select from (a
- * refused or empty read), and the page keeps one shape across its states.
+ * The **frame** is here rather than in `app/registry/alias-inspector.tsx` for one reason: the
+ * card exists whether or not a row is selected, and whether or not there is a table to select
+ * from. A refused read and an empty workspace draw the same card with the same heading and an
+ * empty state in it (`app/registry/registry-screen.tsx` draws that one), so the page keeps one
+ * shape across every state it has.
+ *
+ * The inspector is **not keyed by the row**, deliberately. A `key` here would remount it on
+ * every selection, which would throw away the two things it exists to keep: the drafts it holds
+ * by alias id — so an unsaved edit survives the selection moving away and back — and the model
+ * and schema reads it caches by what they answer, so arrowing through eight rows on one
+ * connection asks once. It takes the row as a prop and reconciles, exactly as this table does
+ * with its own selection.
  *
  * @param props.row The selected row, or `null` when none is.
+ * @param props.sources The workspace's connections, for the provider select.
+ * @param props.aliasNames Every alias name, for the live uniqueness check.
+ * @param props.mayAdminister Whether this reader may edit.
  * @returns The card.
  */
-export function InspectorSeat({ row }: Readonly<{ row: TableRow | null }>) {
+export function InspectorSeat({
+  row,
+  sources = [],
+  aliasNames = [],
+  mayAdminister = false,
+}: Readonly<{
+  row: TableRow | null;
+  sources?: readonly ImportSource[];
+  aliasNames?: readonly string[];
+  mayAdminister?: boolean;
+}>) {
   return (
     <Card aria-labelledby={INSPECTOR_TITLE_ID} as="section" fill>
       <CardHead
@@ -351,7 +394,16 @@ export function InspectorSeat({ row }: Readonly<{ row: TableRow | null }>) {
         title={inspectorTitle(row?.alias ?? null)}
         titleId={INSPECTOR_TITLE_ID}
       />
-      <EmptyState fill note={INSPECTOR_NEXT_NOTE} title={INSPECTOR_NEXT_TITLE} />
+      {row === null ? (
+        <EmptyState fill note={INSPECTOR_EMPTY_NOTE} title={INSPECTOR_EMPTY_TITLE} />
+      ) : (
+        <AliasInspector
+          aliasNames={aliasNames}
+          mayAdminister={mayAdminister}
+          row={row}
+          sources={sources}
+        />
+      )}
     </Card>
   );
 }

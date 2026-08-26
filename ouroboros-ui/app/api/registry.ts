@@ -47,6 +47,23 @@
  * was switched off, the hops the next resolution will drop — which is why the table asks
  * *before* the write rather than reporting after it.
  *
+ * ### …and the inspector sends only what it changed (CI.3)
+ *
+ * CI.3 ([#593](https://github.com/NobuData/ouroboros/issues/593)) writes through the same
+ * `PATCH` and two more operations, and the same rule governs all three:
+ *
+ * | Call | What it answers | Whose ticket |
+ * |---|---|---|
+ * | `PATCH /registry/aliases/{id}` | a rename, a rebind, or new params | CH.1 (#584) |
+ * | `POST /registry/aliases/{id}/duplicate` | `<alias>-copy`, switched off | CH.1 (#584) |
+ * | `DELETE /registry/aliases/{id}` | gone, or the referrers that refuse | CH.1 (#584) |
+ *
+ * **Only the fields present are written**, so the inspector diffs its draft against the row it
+ * was prefilled from and sends the difference — a save that touched the provider select carries
+ * a `connectionId` and nothing else, which is what makes *rebind is one row and touches nothing
+ * else* true of the request as well as of the service. The copy's name and the delete's guard
+ * are both the service's: neither is proposed or decided here.
+ *
  * ### The workspace is the session's
  *
  * There is no workspace in these paths and this client sends no `X-Ouro-Tenant`
@@ -115,8 +132,13 @@ export type ModelAliasReference = components["schemas"]["ModelAliasReference"];
 export type RegistryReadModel = components["schemas"]["RegistryReadModel"];
 
 /**
- * What the switch sends: `{ enabled }` and nothing else. The other fields are the inspector's
- * (CI.3) and the contract writes only the fields present.
+ * What a save sends — **only the fields it changed**, because the contract writes only the
+ * fields present.
+ *
+ * The table's switch sends `{ enabled }` and nothing else; the inspector
+ * ([#593](https://github.com/NobuData/ouroboros/issues/593)) sends the difference between its
+ * draft and the row it was prefilled from, which for the ticket's central case is a
+ * `connectionId` on its own.
  */
 export type UpdateModelAlias = components["schemas"]["UpdateModelAlias"];
 
@@ -400,5 +422,50 @@ export const registry = {
     client: ApiClient = api(),
   ): Promise<ImportResult> {
     return unwrap(await client.POST("/api/v1/registry/import", { body }));
+  },
+
+  /**
+   * Copy one alias — mockup 21's **Duplicate**
+   * ([#584](https://github.com/NobuData/ouroboros/issues/584)), the *same model, different
+   * keys* story.
+   *
+   * **The copy's name is the service's**: `<alias>-copy`, or `-copy-2`, `-copy-3` when that is
+   * taken. The inspector does not propose one and must not — two clients proposing names for
+   * one workspace is how two aliases end up called `coder-max-copy`.
+   *
+   * The copy carries the binding, the params, the restrictions and the notes, and is
+   * **switched off**, so a duplicate never starts taking traffic before it has been edited into
+   * what it is for.
+   *
+   * @param id The alias to copy.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The copy as stored, and its revision.
+   * @throws {ApiError} What the service answered — `403 forbidden` for a member,
+   *   `404 model_alias_not_found` for an alias somebody else removed, and
+   *   `422 model_alias_copy_name_too_long` when the suffixed name would pass 64 characters.
+   */
+  async duplicate(id: string, client: ApiClient = api()): Promise<ModelAliasChange> {
+    return unwrap(
+      await client.POST("/api/v1/registry/aliases/{id}/duplicate", { params: { path: { id } } }),
+    );
+  },
+
+  /**
+   * Remove one alias — mockup 21's **Remove**, and the caption beside it.
+   *
+   * **The guard is the service's, inside the delete's own transaction, under a lock** on the
+   * alias: the referrer list a `409` names is still true at the instant the delete would have
+   * run. The inspector draws the blocked foot from the references it already read, which is
+   * presentation; this is what decides.
+   *
+   * @param id The alias to remove.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns Nothing: the contract's `204`.
+   * @throws {ApiError} What the service answered — `403 forbidden` for a member,
+   *   `404 model_alias_not_found` for one already gone, and `409 model_alias_referenced` with
+   *   `details.references` naming every referrer, which is the work list.
+   */
+  async remove(id: string, client: ApiClient = api()): Promise<void> {
+    await client.DELETE("/api/v1/registry/aliases/{id}", { params: { path: { id } } });
   },
 };

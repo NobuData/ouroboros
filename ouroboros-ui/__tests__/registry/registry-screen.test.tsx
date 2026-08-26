@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Reading } from "@/app/api/reading";
 import type { RegistryAlias } from "@/app/api/registry";
-import type { ProviderHealth } from "@/app/api/routing";
+import type { ProviderConnection } from "@/app/api/providers";
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 import {
-  INSPECTOR_NEXT_TITLE,
+  INSPECTOR_EMPTY_TITLE,
   TABLE_EMPTY_TITLE,
   TABLE_FAILED_TITLE,
   TABLE_TITLE,
@@ -26,7 +26,7 @@ import {
 import { CREATE_TITLE, NAME_LABEL, NAME_TAKEN, PROVIDER_LABEL } from "@/app/registry/create";
 import { wizardTitle } from "@/app/registry/wizard";
 
-import { seededProviders } from "../helpers/models";
+import { seededCards } from "../helpers/providers";
 import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 import { seededRegistry } from "../helpers/registry";
 
@@ -45,7 +45,16 @@ vi.mock("@/app/registry/import-actions", () => ({
   importAliases: vi.fn(),
   readCandidates: () => new Promise(() => {}),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+// …and the inspector's three writes (#593), whose own suites are `inspector-actions.test.ts`'s
+// and `alias-inspector.test.tsx`'s.
+vi.mock("@/app/registry/inspector-actions", () => ({
+  saveAlias: vi.fn(),
+  duplicateAlias: vi.fn(),
+  removeAlias: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }),
+}));
 
 const { RegistryScreen } = await import("@/app/registry/registry-screen");
 
@@ -70,14 +79,17 @@ const { RegistryScreen } = await import("@/app/registry/registry-screen");
  * @returns The readings.
  */
 function readings(
-  providers: readonly ProviderHealth[] = seededProviders(),
+  providers: readonly ProviderConnection[] = seededCards(),
   aliases: readonly RegistryAlias[] = seededRegistry(),
 ): RegistryReadings {
   return { providers: { ok: true, value: providers }, aliases: { ok: true, value: aliases } };
 }
 
 /** …and a provider read that did not. */
-const UNREADABLE: Reading<readonly ProviderHealth[]> = { ok: false, reason: "upstream refused" };
+const UNREADABLE: Reading<readonly ProviderConnection[]> = {
+  ok: false,
+  reason: "upstream refused",
+};
 
 /** …and a registry read that did not. */
 const TABLE_UNREADABLE: Reading<readonly RegistryAlias[]> = { ok: false, reason: "registry away" };
@@ -258,7 +270,7 @@ describe("the two flows the head's actions open (#594)", () => {
     const options = [...(screen.getByLabelText(PROVIDER_LABEL) as HTMLSelectElement).options];
 
     expect(options.slice(1).map((option) => option.textContent)).toEqual(
-      seededProviders().map((health) => health.displayName),
+      seededCards().map((health) => health.displayName),
     );
   });
 
@@ -409,12 +421,26 @@ describe("the allowed-models table (#592)", () => {
     }
   });
 
-  it("names the issues that fill the rest of the page in the inspector's seat, not in a mock-up", () => {
+  it("opens the inspector on the row the URL asked for, with the page's own two facts in it", () => {
+    // The card is the inspector rather than a placeholder, and what it offers is the *page's*
+    // connections — one list for the import menu, the create dialog and the rebind select —
+    // and the *page's* alias names, one set for a create's refusal and a rename's.
+    page({ alias: "coder-max" });
+
+    const card = screen.getByRole("region", { name: "Edit — coder-max" });
+
+    expect(within(card).getByLabelText("Alias")).toHaveValue("coder-max");
+    expect(
+      within(card).getByRole("option", { name: /Anthropic Claude — key/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(INSPECTOR_EMPTY_TITLE)).toBeNull();
+  });
+
+  it("says how to select one when nothing is, rather than heading a card with a hole in it", () => {
     page();
 
-    expect(screen.getByText(INSPECTOR_NEXT_TITLE)).toBeInTheDocument();
-    expect(screen.getByText(/#593/)).toBeInTheDocument();
-    expect(screen.queryByText(/#592/)).toBeNull();
+    expect(screen.getByText(INSPECTOR_EMPTY_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Edit" })).toBeInTheDocument();
   });
 });
 
@@ -436,7 +462,7 @@ describe("a workspace whose registry could not be read", () => {
 
 describe("a workspace with no aliases yet", () => {
   it("says so rather than drawing an empty grid, and keeps the two states apart", () => {
-    page({ readings: readings(seededProviders(), []) });
+    page({ readings: readings(seededCards(), []) });
 
     expect(screen.getByText(TABLE_EMPTY_TITLE)).toBeInTheDocument();
     expect(screen.getByText("0 aliases")).toBeInTheDocument();

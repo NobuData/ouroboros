@@ -7,6 +7,8 @@ import {
   PROVIDERS_PATH,
   REGISTRY_PATH,
   RETURN_TO_PARAM,
+  ROUTING_MATRIX_HASH,
+  ROUTING_RULES_HASH,
   loginPath,
   safeReturnTo,
 } from "@/app/paths";
@@ -48,6 +50,16 @@ describe("the paths themselves", () => {
     // Three routes, three destinations. Two that collided would be two tabs leading to one
     // page, with the section's underline unable to say which one a reader is on.
     expect(new Set([MODELS_PATH, REGISTRY_PATH, PROVIDERS_PATH]).size).toBe(3);
+  });
+
+  it("name the two regions of the routing page a reference can point at", () => {
+    // #593: the registry inspector's **Used by** chips link to the surface that holds each
+    // reference, and both surfaces are on mockup 06. The ids live here rather than beside
+    // either card so the link and its target are one string — `app/models/routing-matrix.tsx`
+    // and `app/models/rules-card.tsx` render them.
+    expect(ROUTING_MATRIX_HASH).toBe("models-matrix-title");
+    expect(ROUTING_RULES_HASH).toBe("models-rules-title");
+    expect(ROUTING_MATRIX_HASH).not.toBe(ROUTING_RULES_HASH);
   });
 });
 

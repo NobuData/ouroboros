@@ -9,6 +9,11 @@
  * how a typed string becomes the value a `params` document carries, which sentence explains an
  * empty form, and how a `422`'s field paths map back onto the controls that produced them.
  *
+ * The two forms differ in exactly one decision and it is stated twice here: a create dialog
+ * opens **empty** ({@link paramDefaults}) because nothing is stored yet, and an inspector opens
+ * on **what is stored** ({@link paramValues}) because that is what it is editing. Everything
+ * downstream of that — the typing, the hints, the document, the refusals — is one code path.
+ *
  * **Framework-free and pure**, like `app/registry/table.ts` and `app/registry/view.ts` beside
  * it: nothing here imports React, `next/*` or the server-only client. `app/registry/param-fields.tsx`
  * draws what this decides.
@@ -81,6 +86,83 @@ export type ParamValues = Readonly<Record<string, ParamValue>>;
  */
 export function paramDefaults(fields: readonly ModelParamFormField[]): ParamValues {
   return Object.fromEntries(fields.map((field) => [field.name, field.widget === "switch" ? false : ""]));
+}
+
+/**
+ * The state a form opens in when the alias **already has** parameters — CI.3's prefill
+ * ([#593](https://github.com/NobuData/ouroboros/issues/593)).
+ *
+ * The counterpart of {@link paramDefaults}, and the one place the two forms differ: a create
+ * dialog starts empty because there is nothing stored yet, and an inspector starts on what is
+ * stored because that is what it is editing. Every control is still present, and a key the
+ * stored document does not carry is still {@link paramDefaults}'s empty — an alias that says
+ * nothing about `thinking` must open with a blank select rather than with a value nobody wrote.
+ *
+ * A stored value is turned into what a control holds rather than into what it means: `400000`
+ * becomes the string `"400000"`, because that is what an `<input>` carries, and the typing
+ * happens once on the way back out ({@link paramsDocument}). A stored `null` — which the
+ * contract's `additionalProperties: true` permits — is the same as an absent key, since neither
+ * says anything about the parameter.
+ *
+ * @param fields The section's fields, in the order the service gave them.
+ * @param stored The alias's `params` (or `restrictions`) document as served.
+ * @returns One entry per field, prefilled where the document says something.
+ */
+export function paramValues(
+  fields: readonly ModelParamFormField[],
+  stored: Readonly<Record<string, unknown>>,
+): ParamValues {
+  return Object.fromEntries(
+    fields.map((field) => [field.name, storedValue(field, stored[field.name])]),
+  );
+}
+
+/**
+ * One stored value, as the control that edits it holds it.
+ *
+ * @param field The field, which says which widget carries it.
+ * @param value Whatever the stored document had under that key.
+ * @returns The control's value — `false` or `""` for anything the document did not say.
+ */
+function storedValue(field: ModelParamFormField, value: unknown): ParamValue {
+  if (field.widget === "switch") return value === true;
+
+  if (value === undefined || value === null) return "";
+
+  // A number, a string or a boolean is what a form control can hold; an object under a key
+  // this form draws is a value no control could edit, and it opens blank rather than as
+  // `[object Object]`. Nothing is lost by that on its own — a save sends the `params` document
+  // only when a control moved (`app/registry/inspector.ts`'s `updateBody`), so a form nobody
+  // touched leaves the stored document exactly as it was.
+  return typeof value === "object" ? "" : String(value);
+}
+
+/**
+ * Whether two `params` documents say the same thing.
+ *
+ * What the inspector's **Save alias** is dirty-aware *about*: a control typed into and typed
+ * back out of is not a change, and a form that treated it as one would offer to write a
+ * revision that changed nothing. Compared by key and by value rather than by serialisation,
+ * because two objects with the same entries in different orders are the same document and
+ * `JSON.stringify` says otherwise.
+ *
+ * Shallow, deliberately: every value a form control produces is a string, a number or a
+ * boolean ({@link paramValue}), so there is no nesting for a deep compare to reach.
+ *
+ * @param one A document.
+ * @param other The other.
+ * @returns Whether they carry the same keys with the same values.
+ */
+export function documentsEqual(
+  one: Readonly<Record<string, unknown>>,
+  other: Readonly<Record<string, unknown>>,
+): boolean {
+  const keys = Object.keys(one);
+
+  return (
+    keys.length === Object.keys(other).length &&
+    keys.every((key) => Object.hasOwn(other, key) && one[key] === other[key])
+  );
 }
 
 /**

@@ -15,12 +15,13 @@ import "./registry.css";
  * The registry's **parameter form** — one control per tunable the bound model actually has,
  * drawn from CH.2's merged schema ([#585](https://github.com/NobuData/ouroboros/issues/585)).
  *
- * The create dialog's *bind now* mode renders it (CI.4,
- * [#594](https://github.com/NobuData/ouroboros/issues/594)) and CI.3's inspector
- * ([#593](https://github.com/NobuData/ouroboros/issues/593)) will render the same component
- * over the same answer, which is why it is a component of its own rather than markup inside a
- * dialog. What it decides is nothing: the widget, the label, the bounds and the help all arrive
- * on the field, and `app/registry/params.ts` holds the few judgements that are left.
+ * Two surfaces render it over the same answer, which is why it is a component of its own
+ * rather than markup inside a dialog: the create dialog's *bind now* mode (CI.4,
+ * [#594](https://github.com/NobuData/ouroboros/issues/594)) and the alias inspector's two
+ * sections (CI.3, [#593](https://github.com/NobuData/ouroboros/issues/593)) — `params` and
+ * `restrictions`, which are one dialect and therefore one renderer. What it decides is nothing:
+ * the widget, the label, the bounds and the help all arrive on the field, and
+ * `app/registry/params.ts` holds the few judgements that are left.
  *
  * **A form for a model nobody wrote UI for.** That is the whole claim of the endpoint behind
  * it, and it is only true if this file contains no list of parameters. It does not: there is no
@@ -68,6 +69,18 @@ export interface ParamFieldsProps {
   readonly idPrefix: string;
   /** The service's refusals, keyed by field name — `params.ts`'s `paramFieldErrors`. */
   readonly errors?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Why this reader may not change these controls, or `undefined` when they may.
+   *
+   * The inspector's role gate ([#593](https://github.com/NobuData/ouroboros/issues/593)): a
+   * member sees the alias's parameters in full and can change none of them. It is a *sentence*
+   * rather than a boolean because that is what an inert control owes a reader (design system
+   * § 3.5), and because the `Toggle` primitive already takes one.
+   *
+   * The text boxes and selects carry the real `disabled`, as `app/ui/field.tsx` argues every
+   * field should: a box that accepts typing and discards it is worse than one that does not.
+   */
+  readonly reason?: string;
 }
 
 /**
@@ -78,7 +91,14 @@ export interface ParamFieldsProps {
  *   say instead is the caller's, because *why* a section is empty is the response's `reason`
  *   and the caller is what has it.
  */
-export function ParamFields({ fields, values, onChange, idPrefix, errors = {} }: ParamFieldsProps) {
+export function ParamFields({
+  fields,
+  values,
+  onChange,
+  idPrefix,
+  errors = {},
+  reason,
+}: ParamFieldsProps) {
   if (fields.length === 0) return null;
 
   return (
@@ -90,6 +110,7 @@ export function ParamFields({ fields, values, onChange, idPrefix, errors = {} }:
           id={`${idPrefix}-${field.name}`}
           key={field.name}
           onChange={onChange}
+          reason={reason}
           value={values[field.name]}
         />
       ))}
@@ -109,6 +130,7 @@ export function ParamFields({ fields, values, onChange, idPrefix, errors = {} }:
  * @param props.onChange Called with the field's name and its new value.
  * @param props.id The control's id.
  * @param props.error What the service said is wrong with it, if anything.
+ * @param props.reason Why this reader may not change it, or `undefined` when they may.
  * @returns The control.
  */
 export function ParamField({
@@ -117,15 +139,18 @@ export function ParamField({
   onChange,
   id,
   error,
+  reason,
 }: Readonly<{
   field: ModelParamFormField;
   value: ParamValue | undefined;
   onChange: (name: string, value: ParamValue) => void;
   id: string;
   error?: readonly string[];
+  reason?: string;
 }>) {
   const hint = paramHint(field);
   const common = {
+    disabled: reason !== undefined,
     error: errorLine(error),
     hint: hint ?? undefined,
     id,
@@ -143,6 +168,7 @@ export function ParamField({
           checked={value === true}
           label={field.label}
           onClick={() => { onChange(field.name, value !== true); }}
+          reason={reason}
         />
         <span aria-hidden="true" className="registry-params__switch-label">
           {field.label}

@@ -15,9 +15,11 @@ import type {
   RegistryBinding,
   RegistryReadModel,
 } from "@/app/api/registry";
+import type { ProviderConnection } from "@/app/api/providers";
 import type { RegistryReadings } from "@/app/registry/view";
 
-import { CHECKED_AT, seededProviders } from "./models";
+import { CHECKED_AT } from "./models";
+import { seededCards } from "./providers";
 
 /**
  * The registry page's fixtures — the seeded workspace's allowed-models table, as
@@ -55,8 +57,16 @@ export const FIX_PATH = "/models/providers";
 /** The orphan row's note, verbatim from the mockup and the service alike. */
 export const NO_KEY_NOTE = "no key — connect a provider";
 
-/** The seeded connections' ids, in the order `seededProviders()` lists them. */
-const [ANTHROPIC, CURSOR, COPILOT, VLLM, OLLAMA] = seededProviders();
+/**
+ * The seeded connections, in mockup 07's own listing order.
+ *
+ * `seededCards()` rather than the routing page's health strip: since CI.3
+ * ([#593](https://github.com/NobuData/ouroboros/issues/593)) the registry page reads
+ * `GET /api/v1/providers`, because the inspector's provider select needs the **mask** and the
+ * health payload carries none. The five are the same five connections either way — same ids,
+ * same names — and this is the payload that also has what a binding says about them.
+ */
+const [ANTHROPIC, CURSOR, COPILOT, OLLAMA, VLLM] = seededCards();
 
 /**
  * One binding.
@@ -78,6 +88,16 @@ function binding(
     monogram,
     mask,
   };
+}
+
+/**
+ * The connections the registry page reads, as `GET /api/v1/providers` serves them.
+ *
+ * Named here as well as in `providers.ts` so a registry suite says what it means — the page's
+ * *connections* read — rather than borrowing mockup 07's word for the same five rows.
+ */
+export function registryConnections(): ProviderConnection[] {
+  return seededCards();
 }
 
 /**
@@ -324,7 +344,7 @@ export function registryPayload(aliases: readonly RegistryAlias[] = seededRegist
  */
 export function registryReadings(over: Partial<RegistryReadings> = {}): RegistryReadings {
   return {
-    providers: { ok: true, value: seededProviders() },
+    providers: { ok: true, value: registryConnections() },
     aliases: { ok: true, value: seededRegistry() },
     ...over,
   };

@@ -37,6 +37,12 @@ const { registry } = await import("@/app/api/registry");
  * are two requests, and the create is one request for both of its modes.** A bound alias and a
  * name reserved ahead of its key differ only by a field in the body, which is what keeps the
  * dialog's toggle a decision rather than a fork.
+ *
+ * The CI.3 half ([#593](https://github.com/NobuData/ouroboros/issues/593)) adds two more
+ * operations and one property that runs through them: **the service names the copy and the
+ * service refuses the delete.** Neither is proposed here, which is what the last two blocks
+ * hold — a duplicate sends an empty body and reads the name back, and a delete answers `204`
+ * with nothing or a `409` carrying the work list.
  */
 
 /** The refusal a screen behind the gate can still meet: a session acting in no workspace. */
@@ -365,5 +371,112 @@ describe("registry.importAliases", () => {
     await expect(
       registry.importAliases({ connectionId: "c", items: [] }, client),
     ).rejects.toMatchObject({ status: 422, code: "model_import_invalid", details });
+  });
+});
+
+describe("registry.duplicate", () => {
+  /** What a copy of the seeded `coder-max` answers with — the service's own name for it. */
+  const COPY = {
+    alias: modelAlias({
+      id: "5eed000f-0000-4000-8000-000000000009",
+      alias: "coder-max-copy",
+      enabled: false,
+    }),
+    revisionId: "a1000000-0000-4000-8000-000000000003",
+    warnings: [],
+    nextResolution: null,
+    droppedHops: [],
+  };
+
+  it("POSTs the copy sub-resource, with no body of its own", async () => {
+    const stored = registryAlias();
+    const { client, requests } = stubClient(() => ({ body: COPY, status: 201 }));
+
+    const change = await registry.duplicate(stored.id, client);
+
+    expect(requests[0]?.url).toBe(
+      `http://rest.test:4000/api/v1/registry/aliases/${stored.id}/duplicate`,
+    );
+    expect(requests[0]?.method).toBe("POST");
+    expect(change).toEqual(COPY);
+  });
+
+  it("proposes no name, because the service composes one inside its own transaction", async () => {
+    // Two readers can press Duplicate at once; a client that proposed `-copy` would be a second
+    // opinion about a name only one of them can have.
+    const { client, requests } = stubClient(() => ({ body: COPY, status: 201 }));
+
+    const change = await registry.duplicate(registryAlias().id, client);
+    const sent = await requests[0]?.text();
+
+    expect(sent === undefined || sent === "" || sent === "null").toBe(true);
+    expect(change.alias.alias).toBe("coder-max-copy");
+  });
+
+  it("hands back a copy that is switched off, which is the contract's own promise", async () => {
+    const { client } = stubClient(() => ({ body: COPY, status: 201 }));
+
+    await expect(registry.duplicate(registryAlias().id, client)).resolves.toMatchObject({
+      alias: { enabled: false },
+    });
+  });
+
+  it("rejects when the suffixed name would not fit, with the name that did not", async () => {
+    const { client } = clientAnswering(
+      {
+        code: "model_alias_copy_name_too_long",
+        message: "The copy's name would be too long.",
+        details: { proposed: `${"a".repeat(60)}-copy` },
+      },
+      422,
+    );
+
+    await expect(registry.duplicate(registryAlias().id, client)).rejects.toMatchObject({
+      status: 422,
+      code: "model_alias_copy_name_too_long",
+    });
+  });
+});
+
+describe("registry.remove", () => {
+  it("DELETEs the one alias and reads nothing back", async () => {
+    // `204` and no body: there is nothing to say about a row that no longer exists, so this is
+    // the one registry call that does not unwrap an envelope.
+    const stored = registryAlias();
+    const { client, requests } = stubClient(() => ({ body: undefined, status: 204 }));
+
+    await expect(registry.remove(stored.id, client)).resolves.toBeUndefined();
+
+    expect(requests[0]?.url).toBe(
+      `http://rest.test:4000/api/v1/registry/aliases/${stored.id}`,
+    );
+    expect(requests[0]?.method).toBe("DELETE");
+  });
+
+  it("rejects with the referrers a blocked delete names, which is the work list", async () => {
+    // The guard is read inside the delete's own transaction under a lock, so the list this
+    // carries was still true at the instant the delete would have run.
+    const { client } = clientAnswering(
+      {
+        code: "model_alias_referenced",
+        message: "coder-max cannot be removed while 4 references reference it.",
+        details: { alias: "coder-max", references: registryAlias().references },
+      },
+      409,
+    );
+
+    await expect(registry.remove(registryAlias().id, client)).rejects.toMatchObject({
+      status: 409,
+      code: "model_alias_referenced",
+    });
+  });
+
+  it("rejects for an alias somebody else has already removed", async () => {
+    const { client } = clientAnswering(
+      { code: "model_alias_not_found", message: "No such alias.", details: {} },
+      404,
+    );
+
+    await expect(registry.remove(registryAlias().id, client)).rejects.toBeInstanceOf(ApiError);
   });
 });

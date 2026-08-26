@@ -68,6 +68,7 @@ const { ImportWizard } = await import("@/app/registry/import-wizard");
 const ANTHROPIC: ImportSource = {
   id: "5eed000c-0000-4000-8000-000000000001",
   name: "Anthropic Claude",
+  mask: "••••Xq4A",
 };
 
 /** Every alias name the seeded workspace has. */

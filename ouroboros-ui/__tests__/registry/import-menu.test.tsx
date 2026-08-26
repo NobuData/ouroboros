@@ -12,7 +12,7 @@ import {
 } from "@/app/registry/view";
 import { wizardTitle } from "@/app/registry/wizard";
 
-import { seededProviders } from "../helpers/models";
+import { seededCards } from "../helpers/providers";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 
 // Choosing a row opens the import wizard, which reads through a Server Action on the
@@ -47,7 +47,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
  */
 
 /** The state for a workspace with the seeded five connections, read by an admin. */
-const READY: ImportState = { kind: "ready", sources: importSources(seededProviders()) };
+const READY: ImportState = { kind: "ready", sources: importSources(seededCards()) };
 
 /** The trigger, by its accessible name — which is the label without the mockup's caret. */
 function trigger(): HTMLElement {
@@ -97,8 +97,8 @@ describe("when there is something to import from", () => {
       "Anthropic Claude",
       "Cursor",
       "GitHub Copilot",
-      "OpenAI-compatible · local vLLM",
       "Ollama · workstation",
+      "OpenAI-compatible · local vLLM",
     ]);
     expect(trigger()).toHaveAttribute("aria-expanded", "true");
   });

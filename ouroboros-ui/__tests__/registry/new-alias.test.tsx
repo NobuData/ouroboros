@@ -32,7 +32,7 @@ import {
 } from "@/app/registry/create";
 import { MEMBER_REASON, NEW_ALIAS_LABEL, importSources } from "@/app/registry/view";
 
-import { seededProviders } from "../helpers/models";
+import { seededCards } from "../helpers/providers";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 import { modelOptionList, paramSchemaResponse, seededRegistry } from "../helpers/registry";
 import { settle } from "../helpers/settle";
@@ -69,7 +69,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace, refresh }) }));
 const { NewAlias } = await import("@/app/registry/new-alias");
 
 /** The workspace's five connections, as the page hands them over. */
-const SOURCES = importSources(seededProviders());
+const SOURCES = importSources(seededCards());
 
 /** Every alias name the seeded workspace has. */
 const TAKEN = seededRegistry().map((alias) => alias.alias);

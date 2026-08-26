@@ -86,11 +86,17 @@ import "./registry.css";
  * ### The table, and the two states in which there is not one
  *
  * With rows, the seat below the tab set is `app/registry/registry-table.tsx`'s: the table,
- * its selection, and the inspector's seat that selection drives. Without — a refused read, or
- * a workspace that has created nothing — the seat is the same card with a captioned empty
- * state in it, and the two are kept apart (`tableState`): *could not be read* names the
- * service's own sentence, *no aliases yet* names the two ways to get one. Neither is a blank
- * region, and the head and the tab set above them work in every case (§ 3.5).
+ * its selection, and the inspector card (CI.3,
+ * [#593](https://github.com/NobuData/ouroboros/issues/593)) that selection drives. Without — a
+ * refused read, or a workspace that has created nothing — the seat is the same card with a
+ * captioned empty state in it, and the two are kept apart (`tableState`): *could not be read*
+ * names the service's own sentence, *no aliases yet* names the two ways to get one. Neither is
+ * a blank region, and the head and the tab set above them work in every case (§ 3.5).
+ *
+ * **The same two facts feed all three surfaces.** `aliasSources` and `aliasNames` are computed
+ * once here and handed to the import menu, the create dialog *and* the inspector, so the
+ * provider a reader may import from, bind to and rebind to is one list, and the names a create
+ * refuses and a rename refuses are one set.
  *
  * A Server Component. Its interactive pieces — the import menu, the table with its switches —
  * declare their own client boundaries.
@@ -126,6 +132,7 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
   const importing = importState(readings.providers, mayAdminister);
   const table = tableState(readings.aliases);
   const names = aliasNames(readings.aliases);
+  const sources = aliasSources(readings.providers);
 
   return (
     <ModelsFrame
@@ -141,7 +148,7 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
           <NewAlias
             aliasNames={names}
             mayAdminister={mayAdminister}
-            sources={aliasSources(readings.providers)}
+            sources={sources}
           />
 
           {/*
@@ -162,9 +169,11 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
     >
       {table.kind === "populated" ? (
         <RegistryTable
+          aliasNames={names}
           mayAdminister={mayAdminister}
           rows={table.rows}
           selected={selectedAlias(table.rows, alias)}
+          sources={sources}
         />
       ) : (
         <>

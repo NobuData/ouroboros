@@ -79,6 +79,28 @@ export const PROVIDERS_PATH = `${MODELS_PATH}/providers`;
 export const REGISTRY_PATH = `${MODELS_PATH}/registry`;
 
 /**
+ * The routing matrix's heading, as an element id — where a **Used by** chip naming a route
+ * goes ([#593](https://github.com/NobuData/ouroboros/issues/593)).
+ *
+ * Written down here for the same reason every route above is: two modules have to agree about
+ * it and neither can import the other. `app/models/routing-matrix.tsx` renders it as the card's
+ * `aria-labelledby` target, and the registry inspector links to it — so the link and its target
+ * are one string rather than two literals that a rename would part.
+ *
+ * A **fragment** rather than the matrix's own `?route=` selection, deliberately: that parameter
+ * names a *task kind*, and a reference carries the referring hop's id and its chip label, from
+ * neither of which a kind may be guessed.
+ */
+export const ROUTING_MATRIX_HASH = "models-matrix-title";
+
+/**
+ * The escalation-rules card's heading, likewise — where a chip naming a rule goes.
+ *
+ * `app/models/rules-card.tsx` renders it.
+ */
+export const ROUTING_RULES_HASH = "models-rules-title";
+
+/**
  * The query parameter carrying where a visitor was heading when they were sent to sign in.
  *
  * Added by [#716](https://github.com/NobuData/ouroboros/issues/716): a `401` routes to the

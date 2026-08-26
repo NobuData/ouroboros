@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useId, useOptimistic, useState, useTransition } from "react";
 
 import type { EscalationRule } from "@/app/api/routing";
+import { ROUTING_RULES_HASH } from "@/app/paths";
 import { ShellOverlay } from "@/app/shell/overlay";
 import { Button, Card, CardHead, EmptyState, Tag, Toggle, cx } from "@/app/ui";
 
@@ -59,8 +60,13 @@ import "./models.css";
  * `app/models/rule-actions.ts` says what happens to a member who reaches a write anyway.
  */
 
-/** The id the card's `aria-labelledby` points at. */
-const RULES_TITLE_ID = "models-rules-title";
+/**
+ * The id the card's `aria-labelledby` points at — and, since CI.3
+ * ([#593](https://github.com/NobuData/ouroboros/issues/593)), the fragment the registry
+ * inspector's escalation chips link to. Spelled from `app/paths.ts` so the link and its target
+ * cannot come apart.
+ */
+const RULES_TITLE_ID = ROUTING_RULES_HASH;
 
 /** What the card takes. */
 export interface RulesCardProps {

@@ -8,7 +8,8 @@ import {
   EM_DASH,
   FIX_IN_PROVIDERS,
   HEALTH_CELLS,
-  INSPECTOR_NEXT_NOTE,
+  INSPECTOR_EMPTY_NOTE,
+  INSPECTOR_EMPTY_TITLE,
   INSPECTOR_TITLE,
   MANAGE_PROVIDERS,
   NO_PROVIDER,
@@ -33,6 +34,7 @@ import {
   usedByCell,
 } from "@/app/registry/table";
 
+import { SEEDED_ANTHROPIC_ID } from "../helpers/providers";
 import {
   CATALOG_VERSION,
   NO_KEY_NOTE,
@@ -87,9 +89,18 @@ describe("the rows", () => {
   it("decides the mockup's `coder-max` row whole, and derives none of it", () => {
     const max = row("coder-max");
 
-    expect(max.provider).toEqual({ monogram: { letters: "AN", tint: "model" }, name: "Anthropic Claude" });
+    expect(max.provider).toEqual({
+      id: SEEDED_ANTHROPIC_ID,
+      monogram: { letters: "AN", tint: "model" },
+      name: "Anthropic Claude",
+      mask: "••••Xq4A",
+    });
     expect(max.modelId).toBe("claude-fable-5");
     expect(max.chips).toEqual(["max thinking", "400k budget"]);
+    // The structured documents beside the chips — the inspector's prefill (#593), copied and
+    // not composed: the row carries what the service stored, and the chips stay the server's.
+    expect(max.params).toEqual({ thinking: "max", token_budget: 400_000 });
+    expect(max.restrictions).toEqual({});
     expect(max.health).toMatchObject({ state: "ok", tone: "ok", dot: "filled", label: "ok", detail: null, fix: false });
     expect(max.price).toEqual({ display: "$10 · $50", provenance: `bundled@${CATALOG_VERSION}` });
     expect(max.usedBy).toBe("4 routes");
@@ -150,7 +161,12 @@ describe("the provider cell", () => {
       mask: null,
     });
 
-    expect(cell).toEqual({ monogram: { letters: "GH", tint: "warn" }, name: "GitHub Copilot" });
+    expect(cell).toEqual({
+      id: "x",
+      monogram: { letters: "GH", tint: "warn" },
+      name: "GitHub Copilot",
+      mask: null,
+    });
   });
 
   it("gives a kind the mockup does not draw the neutral tint, with the server's letters", () => {
@@ -330,22 +346,18 @@ describe("the inspector's seat", () => {
     expect(inspectorTitle(null)).toBe(INSPECTOR_TITLE);
   });
 
-  it("names the issues that still fill the rest of the page, and no delivered one", () => {
-    // A placeholder that keeps naming a ticket after it has shipped is a placeholder telling a
-    // reader to wait for something they already have — so #592 left this note when the table
-    // landed, and #594 left it when the two flows did.
-    for (const issue of ["#593", "#595", "#596"]) {
-      expect(INSPECTOR_NEXT_NOTE, issue).toContain(issue);
-    }
-    for (const shipped of ["#592", "#594"]) {
-      expect(INSPECTOR_NEXT_NOTE, shipped).not.toContain(shipped);
+  it("names no issue at all now that the card is filled", () => {
+    // The placeholder that named #593–#596 is deleted rather than reworded: CI.3 filled this
+    // card, and a note still telling a reader to wait for it would be telling them to wait for
+    // what they are looking at. What is left says the one thing an unselected card owes.
+    for (const issue of ["#592", "#593", "#594", "#595", "#596"]) {
+      expect(INSPECTOR_EMPTY_NOTE, issue).not.toContain(issue);
     }
   });
 
-  it("says the two flows work now, rather than saying nothing about them", () => {
-    // The seat is where a reader looks for *what else is there*; leaving the create and import
-    // flows out of it entirely would hide two actions that are one press away above.
-    expect(INSPECTOR_NEXT_NOTE).toMatch(/[Cc]reating and importing/);
+  it("says how to select an alias, since that is the only thing missing", () => {
+    expect(INSPECTOR_EMPTY_TITLE).toBe("No alias selected");
+    expect(INSPECTOR_EMPTY_NOTE).toMatch(/allowed-models table/);
   });
 });
 
