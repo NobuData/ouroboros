@@ -172,6 +172,30 @@ describe("the credential lifecycle, against a migrated database and a live provi
   }
 
   /**
+   * Replace a connection's sealed credential with one this deployment cannot open.
+   *
+   * Written outside the application, because there is no operation that produces this: it is
+   * what `ouroboros-db/migrations/R__dev_seed_providers.sql` stores for its three cloud cards,
+   * and what a workspace whose key version has been rotated away and lost holds for real. The
+   * shape satisfies V015's CHECK — `ouro.v1.<version>.<nonce>.<ciphertext>`, base64url — and
+   * the body is the seed's own words rather than random bytes, so a failure names something a
+   * reader can search for.
+   *
+   * @param connectionId - The connection to break.
+   * @returns When the row holds it.
+   */
+  async function unsealable(connectionId: string): Promise<void> {
+    await api.sql.query(
+      `update ${SCHEMA_NAME}.provider_connections set credentials_encrypted = $2 where id = $1`,
+      [
+        connectionId,
+        "ouro.v1.1.c2VlZC1ub25jZS0x." +
+          "ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1jcmVkZW50aWFsLWFudGhyb3BpYw",
+      ],
+    );
+  }
+
+  /**
    * A second, **older** session for somebody, and a request builder that carries it.
    *
    * A person who has just signed up has *just re-authenticated*, so their session satisfies
@@ -317,6 +341,64 @@ describe("the credential lifecycle, against a migrated database and a live provi
 
       expect(page.total).toBe(1);
       expect(page.items[0].mask).toBe(`••••${GOOD_KEY.slice(-SUFFIX_LENGTH)}`);
+    });
+
+    it("serves a connection whose credential this deployment cannot open, with no mask", async () => {
+      // The failure the AE.7 e2e leg ([#233](https://github.com/NobuData/ouroboros/issues/233))
+      // found by pointing a browser at a cold compose stack, where three of the seeded cards
+      // hold exactly this: a value that satisfies V015's envelope CHECK and was never sealed by
+      // anything, because no SQL file can produce an AES-256-GCM envelope under a workspace DEK.
+      //
+      // The listing opens every credential to compute its mask, so before the fix one such row
+      // answered `500` and took the whole page — every other provider included — with it. A
+      // mask is one field of one row, and this is the assertion that it is treated as one.
+      const { owner, space } = await owned();
+      const connection = await connect(owner, space);
+
+      await unsealable(connection.id);
+
+      const page = bodyOf<Page<ProviderConnectionResource>>(
+        await acting(owner, space)("get", PROVIDERS).expect(200),
+      );
+
+      expect(page.total).toBe(1);
+      // `null` rather than bare bullets: `MASK_ONLY` means *a credential too short to have a
+      // readable tail*, and reusing it here would say something false about a value nobody
+      // read. What the card draws from a null mask is its placeholder and a **Save**.
+      expect(page.items[0].mask).toBeNull();
+    });
+
+    it("keeps the rest of the workspace readable when one credential will not open", async () => {
+      // The half that makes the one above worth having. A page of five providers where one row
+      // is unreadable must be a page of five providers, not a refusal — which is the difference
+      // between a card with an empty key field and a screen that says nothing could be read.
+      const { owner, space } = await owned();
+      const broken = await connect(owner, space);
+      const working = bodyOf<ProviderConnectionResource>(
+        await acting(owner, space)("post", PROVIDERS)
+          .send({ ...addBody(GOOD_KEY), displayName: "Still readable" })
+          .expect(201),
+      );
+
+      await unsealable(broken.id);
+
+      const page = bodyOf<Page<ProviderConnectionResource>>(
+        await acting(owner, space)("get", PROVIDERS).expect(200),
+      );
+
+      expect(page.total).toBe(2);
+      expect(page.items.find((item) => item.id === working.id)?.mask).toBe(
+        `••••${GOOD_KEY.slice(-SUFFIX_LENGTH)}`,
+      );
+      expect(page.items.find((item) => item.id === broken.id)?.mask).toBeNull();
+
+      // …and the single read of the broken row is a row too, for the same reason.
+      const read = bodyOf<ProviderConnectionResource>(
+        await acting(owner, space)("get", `${PROVIDERS}/${broken.id}`).expect(200),
+      );
+
+      expect(read.mask).toBeNull();
+      expect(read.displayName).toBe(broken.displayName);
     });
 
     it("never puts secret material in a list or a read payload", async () => {

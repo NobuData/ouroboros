@@ -75,6 +75,7 @@ import { RegistryService } from "../registry/registry.service";
 import { RoutingStatsRepository } from "../routing/stats.repository";
 import { pageOf, windowOf, type Page } from "../tenancy/pagination";
 import { zeroize } from "../vault/envelope";
+import { VaultError } from "../vault/vault.errors";
 import { VaultService } from "../vault/vault.service";
 import { columnsFor, submissionOf, unstorableFields } from "./config.mapping";
 import { configViolations } from "./config.validation";
@@ -1339,12 +1340,47 @@ export class ProviderConnectionsService {
   /**
    * The mask for one stored credential.
    *
+   * ### An envelope that will not open is one row's problem, never the listing's
+   *
+   * A mask is *one field of one row*, and it is the only field on the read path that needs a
+   * key. So a credential the vault refuses answers `null` — the same value a connection that
+   * stores none answers — and the rest of the row is served. The card then draws the field
+   * with its placeholder and a **Save**, which is the honest reading of *there is something
+   * sealed here that this deployment cannot open*: it cannot be revealed, it cannot be
+   * rotated against, and the way out is to store a new one.
+   *
+   * Letting the error out instead makes every provider on the page unreadable because one
+   * ciphertext is, which is what `GET /api/v1/providers` did until
+   * [#233](https://github.com/NobuData/ouroboros/issues/233)'s e2e leg pointed a browser at a
+   * cold compose stack — where `R__dev_seed_providers.sql`'s three cloud connections hold
+   * well-formed envelopes that were never sealed by anything (its own header says so), and
+   * the whole screen degraded to *the provider connections could not be read*. No suite on
+   * either side of that boundary could see it: this service's own specs mask envelopes it
+   * sealed a moment earlier, and `ouroboros-ui`'s draw whatever payload they are handed.
+   *
+   * `VaultError` rather than `VaultCryptoError` alone, because both of its subclasses
+   * mean *this record is unreadable* to a reader of this page and neither is a reason to
+   * withhold the other four connections: a crypto failure is a broken record, and a key
+   * failure is a broken deployment whose operator is not helped by a `500` either. It is
+   * **not** caught any wider than that — a driver error, a bug in `maskCredential`, anything
+   * that is not the vault declining, is still this service failing and still says so.
+   *
+   * It is logged at `warn` once per row, with the two identifiers `vault.errors.ts` permits
+   * and nothing else: a page quietly drawing an empty key row where a key is stored is a
+   * fact an operator has to be able to find afterwards.
+   *
+   * Revealing such a credential is a separate path and still refuses — it has to, since
+   * there is nothing to hand back — and making *that* refusal a designed answer rather than
+   * an `internal_error` is AD.2's (#223), which is where the seed's own header says it
+   * belongs.
+   *
    * @param organizationId - The workspace.
    * @param connectionId - The connection, which is the record the envelope is bound to.
    * @param envelope - The sealed credential, `null` for a provider that stores none, or
    *   `undefined` when the row was not in the batch — which a caller that read the row and
    *   the envelope in two statements can legitimately see if the row was deleted in between.
-   * @returns `••••Xq4A`, or null when there is nothing to mask.
+   * @returns `••••Xq4A`, or null when there is nothing to mask — including when there is
+   *   something to mask that this deployment cannot open.
    */
   private async mask(
     organizationId: string,
@@ -1355,7 +1391,20 @@ export class ProviderConnectionsService {
       return null;
     }
 
-    const plaintext = await this.vault.decrypt(organizationId, connectionId, envelope);
+    let plaintext: Buffer;
+
+    try {
+      plaintext = await this.vault.decrypt(organizationId, connectionId, envelope);
+    } catch (error) {
+      if (!(error instanceof VaultError)) throw error;
+
+      this.logger.warn(
+        `connection ${connectionId} in workspace ${organizationId} holds a credential this ` +
+          `deployment cannot open, so its card is served with no mask: ${error.message}`,
+      );
+
+      return null;
+    }
 
     try {
       return maskCredential(plaintext);
