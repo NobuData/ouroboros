@@ -1,12 +1,22 @@
-"""Sizing an issue — the contract, and whatever is currently behind it.
+"""Sizing an issue — the contract, the rules behind it, and the seam between them.
 
-Epic L (`#95 <https://github.com/NobuData/ouroboros/issues/95>`_). Two modules, and the
+Epic L (`#95 <https://github.com/NobuData/ouroboros/issues/95>`_). Four modules, and the
 split between them is the whole design:
-:mod:`~ouroboros_engine.estimation.contract` is what ``ouroboros-rest`` is written against
-and is not allowed to change, and :mod:`~ouroboros_engine.estimation.estimator` is what
-produces an answer and is expected to be replaced twice — by the heuristic L.2
-(`#106 <https://github.com/NobuData/ouroboros/issues/106>`_) and then by the LLM estimator
-O.2 (`#123 <https://github.com/NobuData/ouroboros/issues/123>`_).
+
+* :mod:`~ouroboros_engine.estimation.contract` is what ``ouroboros-rest`` is written against
+  and is not allowed to change.
+* :mod:`~ouroboros_engine.estimation.estimator` is the seam — a one-method
+  :class:`~ouroboros_engine.estimation.estimator.Estimator` protocol, and the check that
+  holds every answer to the caller's own vocabularies.
+* :mod:`~ouroboros_engine.estimation.signals` is the rules L.2
+  (`#106 <https://github.com/NobuData/ouroboros/issues/106>`_) reads an issue with — one
+  table and one threshold each, so the heuristic is something a reviewer can argue with a
+  line at a time.
+* :mod:`~ouroboros_engine.estimation.heuristic` is
+  :class:`~ouroboros_engine.estimation.heuristic.HeuristicEstimator`, the arithmetic that
+  combines those signals into an estimate. It is what ``create_app`` installs, and it stays
+  installed as the fallback path when the LLM estimator O.2
+  (`#123 <https://github.com/NobuData/ouroboros/issues/123>`_) lands beside it.
 
 The response mirrors K.2's ``issue_estimates`` row (`#100
 <https://github.com/NobuData/ouroboros/issues/100>`_) field for field so that L.3
@@ -30,27 +40,33 @@ from ouroboros_engine.estimation.contract import (
     Trace,
 )
 from ouroboros_engine.estimation.estimator import (
-    CONTRACT_STUB,
-    ContractStub,
     Estimator,
     EstimatorContractError,
     honours_context,
 )
+from ouroboros_engine.estimation.heuristic import (
+    HEURISTIC,
+    NEEDS_HUMAN_CONFIDENCE_FLOOR,
+    HeuristicEstimator,
+    needs_human,
+)
 
 __all__ = [
-    "CONTRACT_STUB",
     "EFFORTS",
+    "HEURISTIC",
+    "NEEDS_HUMAN_CONFIDENCE_FLOOR",
     "RISKS",
     "Breakdown",
-    "ContractStub",
     "Effort",
     "Estimate",
     "EstimateRequest",
     "EstimationContext",
     "Estimator",
     "EstimatorContractError",
+    "HeuristicEstimator",
     "IssueContext",
     "Risk",
     "Trace",
     "honours_context",
+    "needs_human",
 ]

@@ -145,15 +145,18 @@ def test_the_answer_is_the_installed_estimators(
     assert body == mockup_estimate.model_dump()
 
 
-def test_the_placeholder_estimator_is_the_one_installed_by_default(
+def test_the_heuristic_is_the_estimator_installed_by_default(
     client: TestClient, estimate_body: dict
 ) -> None:
-    # Until #106 lands. Provenance is decision K10's, and this is where a deployment that
-    # thinks it has a heuristic finds out it does not.
+    # L.2's rule engine, and provenance is decision K10's: this is where a deployment that
+    # thinks it has a model estimator finds out which one it actually has. The estimate's
+    # own arithmetic is `tests/test_estimation_heuristic.py`'s — what the route owns is that
+    # `create_app` installed it at all.
     body = client.post(ESTIMATE_PATH, json=estimate_body).json()
 
-    assert body["trace"]["estimator"] == "contract-stub-v0"
-    assert body["confidence"] == 0
+    assert body["trace"]["estimator"] == "heuristic-v0"
+    assert body["trace"]["tokens_used"] == 0
+    assert body["breakdown"]["files"] == []
 
 
 def test_an_issue_opened_without_a_description_can_be_sized(
@@ -213,8 +216,8 @@ def test_a_sizing_is_logged_with_what_answered_it(
 
     assert record.repo == "acme-robotics/helios-firmware"
     assert record.number == 485
-    assert record.estimator == "contract-stub-v0"
-    assert record.confidence == 0
+    assert record.estimator == "heuristic-v0"
+    assert record.confidence == 77
 
 
 def test_the_log_line_carries_no_mirrored_github_content(

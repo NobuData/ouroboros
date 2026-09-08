@@ -2462,11 +2462,13 @@ it: the callers are the sync pipeline and the re-estimation endpoints
 would be a generic proxy under another name.
 
 Two things about that call are worth knowing before writing against it. **What answers it
-changes and the shape does not** — today the engine's estimator is a placeholder reporting
-`contract-stub-v0` with confidence `0`, replaced by the heuristic
-([#106](https://github.com/NobuData/ouroboros/issues/106)) and then by an LLM estimator
-([#123](https://github.com/NobuData/ouroboros/issues/123)) — so a caller reads
-`trace.estimator` and `confidence` and never branches on which engine build answered. And
+changes and the shape does not** — today the engine's estimator is the deterministic rule
+engine `heuristic-v0` ([#106](https://github.com/NobuData/ouroboros/issues/106)), which
+returns an empty `breakdown.files` and `trace.tokensUsed: 0` because it knows no files and
+invokes nothing; an LLM estimator
+([#123](https://github.com/NobuData/ouroboros/issues/123)) answers the same shape later — so
+a caller reads `trace.estimator` and `confidence` and never branches on which engine build
+answered. And
 **a `202` is a `502` here, for now**: the engine specifies a `202`-plus-poll escalation for
 the slower estimator and cannot yet send one, so this client refuses a response it does not
 know how to follow rather than guessing. The poll arrives with the estimator that needs it.

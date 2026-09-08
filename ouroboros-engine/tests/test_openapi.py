@@ -34,6 +34,7 @@ from ouroboros_engine.estimation.contract import (
     IssueContext,
     Trace,
 )
+from ouroboros_engine.estimation.heuristic import HeuristicEstimator
 from ouroboros_engine.main import _PUBLIC_PATHS, create_app
 from ouroboros_engine.settings import Settings
 
@@ -400,6 +401,23 @@ def test_every_documented_example_is_a_body_the_service_could_send(
         assert model is not None, f"{label} refers to a schema no model produces"
 
         model.model_validate(body["example"])
+
+
+def test_the_documented_estimate_is_the_one_the_installed_estimator_gives(
+    document: dict,
+) -> None:
+    # Stronger than "the example validates": the request example and the response example
+    # on `POST /v0/estimate` are one worked case, so a reader can follow the rules that
+    # produced it. That is only true while the two agree, and a change to a table in
+    # `ouroboros_engine.estimation.signals` moves the answer without touching this file —
+    # which is exactly the drift this catches.
+    operation = document["paths"]["/v0/estimate"]["post"]
+    sent = operation["requestBody"]["content"]["application/json"]["example"]
+    documented = operation["responses"]["200"]["content"]["application/json"]["example"]
+
+    answer = HeuristicEstimator().estimate(EstimateRequest.model_validate(sent))
+
+    assert answer.model_dump(mode="json") == documented
 
 
 def test_every_body_the_document_describes_carries_an_example(document: dict) -> None:

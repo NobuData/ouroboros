@@ -176,9 +176,10 @@ def estimation_context() -> EstimationContext:
 
     Returns:
         An :class:`ouroboros_engine.estimation.contract.EstimationContext` holding the
-        tags L.2's label map produces and a model per class of work. The first entry of
-        each is what the placeholder estimator answers with, so a test can assert an
-        answer came from the offer rather than from a constant in this service.
+        four tags L.2's label map classifies into, and a model for the documentation class
+        of work beside a default. Deliberately not a model per tag: a caller with a partial
+        map is the normal case, so the estimator's fall-through to ``default`` is exercised
+        by the fixture every suite uses rather than only by the test written for it.
     """
     return EstimationContext(
         workflow_tags=["standard-fix", "docs-loop", "feature-loop", "deps-refresh"],
@@ -235,8 +236,17 @@ def mockup_estimate() -> Estimate:
 
     Every number is the panel's: three files, ~180k tokens, a 12-18 minute cycle beside
     23 estimated minutes, effort M at 92%, low risk with its sentence, and the trace's own
-    two lines. So a test asserting the contract can carry the design is asserting it
-    against the design rather than against a shape invented to fit the model.
+    two lines — including that it was ``claude-sonnet-5`` that produced it, for 41k tokens.
+    So a test asserting the contract can carry the design is asserting it against the
+    design rather than against a shape invented to fit the model.
+
+    **It is deliberately not an answer the installed estimator could give.** L.2's
+    ``heuristic-v0`` knows no files and spends no tokens, and the whole point of the
+    contract being written for the *second* estimator is that it carries what the first one
+    cannot. Which is also what makes this the right fixture for a test double: an answer
+    that is visibly not the heuristic's proves the route served the estimator's answer
+    rather than computing one. The heuristic's own answers are
+    ``tests/test_estimation_heuristic.py``'s fixture table.
 
     Returns:
         A complete :class:`ouroboros_engine.estimation.contract.Estimate`.
@@ -262,7 +272,7 @@ def mockup_estimate() -> Estimate:
             "Isolated to the I²C driver path; full HIL coverage exists for bus recovery."
         ),
         trace=Trace(
-            estimator="heuristic-v0",
+            estimator="claude-sonnet-5",
             tokens_used=41_000,
             signals=["3 similar closed issues", "driver map", "HIL test index"],
         ),

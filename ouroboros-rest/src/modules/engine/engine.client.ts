@@ -167,11 +167,15 @@ export class EngineClient {
    * translate one.
    *
    * **What answers this can change without this method changing.** Today the engine's
-   * estimator is a placeholder reporting `contract-stub-v0` and confidence `0`; the heuristic
-   * ([#106](https://github.com/NobuData/ouroboros/issues/106)) and then the LLM estimator
-   * ([#123](https://github.com/NobuData/ouroboros/issues/123)) answer the same shape. So a
-   * caller reads `trace.estimator` to know what sized an issue and `confidence` to know
-   * whether to trust it, and never branches on which engine build answered.
+   * estimator is the deterministic rule engine `heuristic-v0`
+   * ([#106](https://github.com/NobuData/ouroboros/issues/106)); the LLM estimator
+   * ([#123](https://github.com/NobuData/ouroboros/issues/123)) answers the same shape, with
+   * the heuristic retained behind it as the fallback path. So a caller reads
+   * `trace.estimator` to know what sized an issue and `confidence` to know whether to trust
+   * it, and never branches on which engine build answered. Two things the heuristic always
+   * reports are worth knowing before writing against them: `breakdown.files` is empty,
+   * because a rule engine cannot know which files an issue touches, and `trace.tokensUsed`
+   * is `0`, because it invoked nothing.
    *
    * @param request - The issue to size and the vocabularies an answer may use.
    * @returns The estimate, parsed and in this service's names.

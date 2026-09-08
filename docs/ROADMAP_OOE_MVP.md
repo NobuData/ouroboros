@@ -758,17 +758,19 @@ that roadmap's "Existing issues affected" section.
 > `O.2` will need is specified now, as a checked `x-async-escalation` block rather than a
 > `202` this build cannot answer.
 >
-> **There is no estimator behind it yet**, and the placeholder says so in every field it
-> fills: `contract-stub-v0`, confidence `0`, a breakdown of zeros. That is `L.2`'s
-> ([`#106`](https://github.com/NobuData/ouroboros/issues/106)) to replace, and it is what
-> makes the gateway leg and `L.3`'s persistence buildable before any estimator exists.
+> **`L.2` ([`#106`](https://github.com/NobuData/ouroboros/issues/106)) shipped the same
+> day**, so there is an estimator behind it: `heuristic-v0`, a deterministic rule engine over
+> labels, title verbs and body shape. It sizes every issue without an AI stack and never
+> pretends to be one — `files[]` is empty because a rule engine cannot know which files a
+> change touches, `tokens_used` is `0` because nothing was invoked, the `routed-model` trace
+> line says *resolved, not invoked*, and a confidence under the published floor of `70`
+> carries a `needs-human:` line for `L.3` to act on. Swapping the placeholder for it was one
+> line in `create_app`, which is what the seam was for.
 >
-> **`L.2` is now the next engine row**, and it is the only row this unblocks: `L.3` still
-> needs `K.2` and `K.4`.
+> **`L.3` is what Epic L waits on now**, and it still needs `K.2` and `K.4`.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 144 | **L.2** | [#106](https://github.com/NobuData/ouroboros/issues/106) | Heuristic estimator v0 | ouroboros-engine | M | L.1 |
 | 146 | **K.2** | [#100](https://github.com/NobuData/ouroboros/issues/100) | Issue estimates schema | ouroboros-db | M | K.1 |
 | 147 | **K.3** | [#101](https://github.com/NobuData/ouroboros/issues/101) | GitHub credentials & API client | ouroboros-rest | M | 4.2, C.3 |
 | 148 | **K.4** | [#102](https://github.com/NobuData/ouroboros/issues/102) | Backlog sync service | ouroboros-rest | L | K.1, K.3 |

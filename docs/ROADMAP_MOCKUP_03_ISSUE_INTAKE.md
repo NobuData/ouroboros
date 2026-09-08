@@ -463,7 +463,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | L.1 | #105 | 🟢 Done | ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`) | Request/response schema for sizing an issue; extends the #52 contract | mvp, intake, engine, rest | N (after #52) | Y | M | ouroboros-engine, ouroboros-rest |
-| L.2 | #106 | 🟡 Open | ouroboros-engine: [L.2] Heuristic estimator v0 | Deterministic sizing from labels/title/body signals, honest provenance | mvp, intake, engine | N (after L.1) | Y | M | ouroboros-engine |
+| L.2 | #106 | 🟢 Done | ouroboros-engine: [L.2] Heuristic estimator v0 | Deterministic sizing from labels/title/body signals, honest provenance | mvp, intake, engine | N (after L.1) | Y | M | ouroboros-engine |
 | L.3 | #107 | 🟡 Open | ouroboros-rest: [L.3] Estimation orchestration & persistence | Dispatch, status transitions, versioned persistence, failure → needs_human | mvp, intake, rest | N (after L.1, K.2, K.4) | Y | L | ouroboros-rest |
 | L.4 | #108 | 🟡 Open | ouroboros-rest: [L.4] Re-estimation endpoints (single & all) | `POST /backlog/:id/estimate`, `POST /backlog/estimate-all` with guards | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
 | L.5 | #109 | 🟡 Open | ouroboros-rest: [L.5] Pipeline integration tests | Lifecycle, failure paths, concurrency, provenance assertions | mvp, intake, rest, ci | N (after L.4) | Y | M | ouroboros-rest |
@@ -518,15 +518,12 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 > is required and non-empty in the engine's model *and* in the gateway's zod schema, one and
 > two hops before the `not null` would catch it.
 >
-> **There is no estimator yet, and the placeholder says so in every field.** L.2 (#106) is
-> the heuristic; until it lands `create_app` installs a `ContractStub` that answers
-> `estimator: "contract-stub-v0"` — not `heuristic-v0`, which would be exactly the
-> masquerade K10 exists to prevent — with `confidence: 0`, a breakdown of zeros, no files,
-> `risk: high` and a note that names the issue replacing it. Confidence `0` is below any
-> floor L.3 could set, so an issue "sized" this way becomes `needs_human` rather than
-> `sized`. That is what makes the gateway leg, the specification and L.3's persistence
-> buildable before any estimator exists, and swapping in the real one is one line in the
-> factory: the estimator is reached through `app.state`, not imported.
+> **The estimator behind it is reached through `app.state`, not imported.** This ticket
+> shipped with a `ContractStub` that said in every field that nothing had estimated the
+> issue, so the gateway leg, the specification and L.3's persistence were buildable before
+> any estimator existed. **L.2 (#106) replaced it on 2026-09-08** — `create_app` now
+> installs `HeuristicEstimator` and the stub is gone, which is the swap this seam was built
+> for: one line in the factory, no change to the route, the contract or `ouroboros-rest`.
 >
 > **The 202 escalation is specified as an extension rather than promised as a response.**
 > `x-async-escalation` on the operation names the status, the accepted body, the
@@ -570,7 +567,74 @@ REST ── POST /v0/estimate {issue, context} ──▶ engine
 
 ### Issue L.2 — ouroboros-engine: [L.2] Heuristic estimator v0
 
-> **GitHub issue:** #106 · **Status:** 🟡 Open · **Parent epic:** #95
+> **GitHub issue:** #106 · **Status:** 🟢 Done · **Parent epic:** #95
+
+> **Shipped 2026-09-08. Epic L is open.**
+>
+> `heuristic-v0` is installed and `POST /v0/estimate` answers with a real estimate for every
+> issue. `ouroboros-engine` 0.5.2; 288 new tests in the engine's suite, and the seam L.1 left
+> is exactly the line that changed — `create_app` installs `HeuristicEstimator` instead of
+> the `ContractStub`, which is now gone. Nothing in the route, the contract or
+> `ouroboros-rest` moved.
+>
+> **Two modules, because a heuristic that cannot be argued with is a heuristic nobody
+> maintains.** `estimation/signals.py` is the rules — a table and a threshold each, seventeen
+> labels, sixteen title words, four body bands, three checklist bands — and
+> `estimation/heuristic.py` is the arithmetic over them plus the tables that turn an effort
+> into a breakdown and a risk. So a disagreement about whether `tech-debt` really means `m`
+> is a one-line diff and a fixture row, not a rewrite. Every rule may **abstain**, and the
+> silence is the input confidence is computed from; only the body-length rule always votes,
+> which is what guarantees a denominator.
+>
+> **Effort is the strongest signal, and the hedging goes in confidence.** A heuristic that
+> cannot see the code should not size work *below* its loudest signal, so aggregation is a
+> maximum rather than a mean — and how much the rules agreed, how far apart they were, and
+> what was missing (no description, no label the tables know) is reported separately as a
+> number L.3 can act on. The ceiling is 98 rather than 100 on purpose: a rule engine reading
+> a label and a character count is never certain, and a round 100 beside a model's estimate
+> would be claiming it was.
+>
+> **`needs_human` is a real outcome, and the floor is published rather than hidden.** The
+> contract has no `needs_human` field because the transition is L.3's state machine, so the
+> engine exports `NEEDS_HUMAN_CONFIDENCE_FLOOR` (70) as the value the tables are calibrated
+> against, `needs_human()` applies it, and an estimate under it carries a `needs-human:` line
+> in its own trace. The fixture table has rows on both sides, and the tests that assert the
+> table covers every effort, every workflow tag and both sides of the floor fail if a row
+> stops doing so.
+>
+> **Deterministic, and checked three ways.** The same request produces the same bytes; two
+> instances agree; and **the same labels in a different order produce the same estimate** —
+> which is stronger than the ticket asks and is the one that matters, because K.4's re-sync
+> reorders labels and an estimator that answered differently afterwards would version an
+> estimate for an issue that had not changed. A fourth test parses both modules' imports and
+> fails on `datetime`, `random`, `time`, `uuid`, `os` or `pathlib`, so "no clock, no
+> randomness" stays a property rather than a paragraph.
+>
+> **Provenance is one constant with one reference.** `trace.estimator` is `heuristic-v0`
+> unconditionally, `trace.tokens_used` is `0` because nothing was invoked, and a test offers
+> the estimator a `model_defaults` map whose values are plausible provenance strings —
+> including `heuristic-v0` itself — to show the answer comes out of the caller's map and the
+> provenance does not. **The routing amendment's honesty constraint** (Z.4 #197, decision
+> M6) is enforced in the same place: the `routed-model` signal says *resolved, not invoked*
+> in those words, on every estimate. The amendment's other half is the gateway's and travels
+> with L.3 — filling `model_defaults` from `POST /api/v1/routing/simulate` instead of from
+> configuration changes nothing here, because the map was always the caller's.
+>
+> **Calibrated against the mockup, and honest about the part it will not reproduce.** Over
+> the mockup's nine issues the estimator matches the design's **effort** on eight and its
+> **workflow tag** on all nine; `#488` comes out `xs`/98%/`docs-loop`, the design's own
+> numbers, and `#490` comes out `xl` under the floor where the design shows 61% and *needs
+> human* — the two the acceptance criteria name. The design's other percentages are
+> deliberately not chased: its own trace line says they came from a model that had three
+> similar closed issues, a driver map and a HIL test index to read. `files[]` is empty on
+> every path, and present as `[]` rather than omitted, because N.5 renders the absence and a
+> missing key reads as an older schema.
+>
+> **The specification's example is now a worked case.** `openapi.yaml`'s response example is
+> what the installed estimator really answers for the request example above it, and
+> `tests/test_openapi.py` asserts the two agree — so a change to a table in `signals.py` that
+> moved the answer would be a red build rather than a document that quietly stopped being
+> true.
 
 - **Problem Statement:** MVP needs real estimates without the AI stack (hard truth
   #2). A deterministic heuristic keeps the pipeline honest and the page alive —
@@ -579,7 +643,9 @@ REST ── POST /v0/estimate {issue, context} ──▶ engine
   hints like `good-first-issue`/`tech-debt`, title verbs, body length/checklist
   count), confidence from signal agreement, workflow from label→tag map
   (`docs`→`docs-loop`, `enhancement`→`feature-loop`, deps patterns→`deps-refresh`,
-  default `standard-fix`), routed model from a config-listed default map (K6),
+  default `standard-fix`), routed model resolved out of the caller's own
+  `model_defaults` map (K6 — the engine holds no list; trace says *resolved*,
+  never *invoked*, per the Z.4 amendment),
   breakdown with conservative ranges and `files[]` empty (v0 cannot know files —
   the UI renders its absence honestly), risk from effort+label heuristics; low-
   confidence (< threshold) returns `needs_human`; trace `estimator:
@@ -1323,9 +1389,12 @@ needs both.
 
 **Epic L opened on 2026-09-08.** **L.1 (#105) shipped**: `POST /v0/estimate` is the
 REST↔engine contract for sizing one issue, and the shape it answers is one version of K.2's
-row — so L.3 will persist an answer rather than translate one. There is no estimator behind
-it yet; the placeholder reports `contract-stub-v0` with confidence `0`, which is L.2's
-(#106) to replace and is honest in the meantime.
+row — so L.3 will persist an answer rather than translate one. **L.2 (#106) shipped the same
+day**: `heuristic-v0` is installed behind that contract, so the operation returns a real
+estimate — effort, confidence, workflow tag, model, breakdown, risk and a trace of the rules
+that produced it — for every issue, without an AI stack. `files[]` is empty and says so,
+`tokens_used` is `0`, and a confidence under the published floor of 70 carries a
+`needs-human:` line for L.3 to act on.
 
 > The thing L.1 leaves for **K.2 (#100)**: the contract's shipped test lists every column
 > and jsonb key the response was written against and starts comparing them to the migration

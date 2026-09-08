@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.5.1
+  version: 0.5.2
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -121,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.5.1
+                version: 0.5.2
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.5.1
+                version: 0.5.2
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -195,7 +195,7 @@ paths:
                   task_kind: echo
                   payload:
                     note: hello from ouroboros-rest
-                engine_version: 0.5.1
+                engine_version: 0.5.2
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -229,14 +229,26 @@ paths:
         not only by the database's `not null`. Provenance checked at the last hop is
         provenance the hops before it can lose.
 
-        **The estimator behind this contract is replaced twice and the contract is not.**
-        Today it is a placeholder that reports `contract-stub-v0`, confidence `0` and a
-        breakdown of zeros — a well-formed answer that says in every field that nothing
-        estimated it, which is what lets the gateway leg and the persistence be built
-        before an estimator exists. The heuristic
-        ([#106](https://github.com/NobuData/ouroboros/issues/106)) and then the LLM
-        estimator ([#123](https://github.com/NobuData/ouroboros/issues/123)) answer this
-        same shape.
+        **The estimator behind this contract is replaced and the contract is not.** Today
+        it is the deterministic rule engine of L.2
+        ([#106](https://github.com/NobuData/ouroboros/issues/106)) — `heuristic-v0`, which
+        reads an issue's labels, its title and the shape of its body and nothing else. Two
+        consequences a caller should read from the example below rather than discover:
+        `breakdown.files` is **always empty**, because a rule engine cannot know which
+        files an issue touches and an empty list is the honest answer rather than a
+        missing key; and `trace.tokens_used` is **always `0`**, because nothing was
+        invoked. `trace.signals` names the rules that produced the answer, so an estimate
+        can be argued with rather than only accepted. The LLM estimator
+        ([#123](https://github.com/NobuData/ouroboros/issues/123)) answers this same shape,
+        with the heuristic retained behind it as the fallback path.
+
+        **A low confidence is an answer, not a failure.** The heuristic reports how much
+        its rules agreed; L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107))
+        compares that against its own floor and moves the issue to `needs_human` rather
+        than `sized`. The engine publishes the value it is calibrated against —
+        `ouroboros_engine.estimation.heuristic.NEEDS_HUMAN_CONFIDENCE_FLOOR`, currently
+        `70` — and the estimate's trace carries a `needs-human:` line when it falls under
+        it.
 
         **v0 answers synchronously.** A rule engine has nothing to wait for. The
         `202`-plus-poll escalation an LLM estimator will need is specified in
@@ -300,27 +312,32 @@ paths:
                 $ref: "#/components/schemas/Estimate"
               example:
                 effort: m
-                confidence: 92
+                confidence: 77
                 suggested_workflow: standard-fix
                 routed_model: claude-fable-5
                 breakdown:
-                  files:
-                    - drivers/i2c_recovery.c
-                    - drivers/imu_bmi270.c
-                    - tests/unit/test_i2c_lockup.c
+                  files: []
                   est_tokens: 180000
                   cycle_min: 12
-                  cycle_max: 18
+                  cycle_max: 32
                   est_minutes: 23
-                risk: low
-                risk_note: Isolated to the I²C driver path; full HIL coverage exists for bus recovery.
+                risk: medium
+                risk_note: >-
+                  M-sized work starts at medium regression risk. heuristic-v0 reads an
+                  issue's labels and text only — not the code, its tests, or how much
+                  depends on it — so this is where a reviewer starts rather than what the
+                  change measures.
                 trace:
                   estimator: heuristic-v0
-                  tokens_used: 41000
+                  tokens_used: 0
                   signals:
-                    - 3 similar closed issues
-                    - driver map
-                    - HIL test index
+                    - 'label-effort: the "bug" label -> m'
+                    - "body-length: 126 characters -> s"
+                    - "effort: strongest of 2 signals -> m"
+                    - "confidence: 1 of 2 agree, spread 1 -> 77"
+                    - "workflow: no docs, dependency or feature signal -> standard-fix"
+                    - 'routed-model: model_defaults["default"] -> resolved, not invoked'
+                    - "risk: m effort -> medium"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -642,9 +659,12 @@ components:
             maxLength: 4096
           description: |-
             The paths an estimator believes the work touches, as the panel's *Estimated
-            files touched* list. **Empty is a real answer**: the heuristic v0 cannot know
-            files and the mockup renders their absence rather than guessing, so this is a
-            list that may have nothing in it — never a promise.
+            files touched* list. **Empty is a real answer, and the one `heuristic-v0`
+            always gives**: a rule engine reading labels and body length cannot know which
+            files an issue touches, and the mockup renders that absence rather than
+            guessing. The key is always present — an empty list, never a missing field —
+            because the two mean different things to a reader. The example below is the
+            LLM estimator's shape; today's answers carry `[]`.
           examples: [[drivers/i2c_recovery.c, tests/unit/test_i2c_lockup.c]]
         est_tokens:
           type: integer
@@ -698,10 +718,10 @@ components:
           minLength: 1
           maxLength: 64
           description: |-
-            What produced this — `heuristic-v0` for the rule engine, a model identifier for
-            the LLM estimator, `contract-stub-v0` for the placeholder that is installed
-            until the first of those lands. **Decision K10**: required and non-empty here as
-            well as `not null` there, so provenance cannot be lost on the way to the row.
+            What produced this — `heuristic-v0` for the rule engine installed today, and a
+            model identifier for the LLM estimator that replaces it. **Decision K10**:
+            required and non-empty here as well as `not null` there, so provenance cannot be
+            lost on the way to the row. It is never a model this estimate did not use.
           examples: [heuristic-v0]
         tokens_used:
           type: integer
@@ -710,8 +730,8 @@ components:
           description: |-
             What producing *this estimate* cost, in model tokens. `0` for an estimator that
             called no model, which is the honest answer for a rule engine rather than a
-            missing field.
-          examples: [41000]
+            missing field — and what `heuristic-v0` always reports.
+          examples: [0]
         signals:
           type: array
           maxItems: 64

@@ -195,23 +195,29 @@ describe("the estimate schema", () => {
     });
   });
 
-  it("keeps the estimate the placeholder estimator produces", () => {
-    // Until #106 lands the engine answers `contract-stub-v0` with confidence 0 and a
-    // breakdown of zeros. That is a *valid* estimate and this client must read it, because
-    // the decision it drives — route the issue to needs_human — is the orchestration's and
-    // not the parser's.
-    const stub = {
+  it("keeps the estimate the heuristic estimator produces", () => {
+    // The engine's installed estimator (#106) knows no files, spends no tokens and reports a
+    // confidence low enough to route an issue to needs_human. All three are *valid* and this
+    // client must read them: an empty `files` is an answer, a `0` token count is the truth
+    // about a rule engine, and the decision a low confidence drives is the orchestration's
+    // and not the parser's.
+    const heuristic = {
       ...ENGINE_ESTIMATE_BODY,
-      confidence: 0,
-      breakdown: { files: [], est_tokens: 0, cycle_min: 0, cycle_max: 0, est_minutes: 0 },
-      risk: "high",
-      trace: { estimator: "contract-stub-v0", tokens_used: 0, signals: ["no-estimator-installed"] },
+      confidence: 59,
+      breakdown: { files: [], est_tokens: 180_000, cycle_min: 12, cycle_max: 32, est_minutes: 23 },
+      risk: "medium",
+      trace: {
+        estimator: "heuristic-v0",
+        tokens_used: 0,
+        signals: ['label-effort: the "bug" label -> m', "confidence: 1 of 2 agree, spread 2 -> 59"],
+      },
     };
 
-    const parsed = estimateSchema.parse(stub);
+    const parsed = estimateSchema.parse(heuristic);
 
-    expect(parsed.trace.estimator).toBe("contract-stub-v0");
-    expect(parsed.confidence).toBe(0);
+    expect(parsed.trace.estimator).toBe("heuristic-v0");
+    expect(parsed.trace.tokensUsed).toBe(0);
+    expect(parsed.confidence).toBe(59);
     expect(parsed.breakdown.files).toEqual([]);
   });
 
