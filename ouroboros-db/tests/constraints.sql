@@ -3443,6 +3443,35 @@ select pg_temp.must_reject(
   'author_login refuses a value GitHub could not have issued',
   'github_issues_author_login_format');
 
+-- V028 (#102): a GitHub App opens issues under a login with a literal `[bot]` suffix, and
+-- V014's rule — V003's *organisation* login rule — refused every one of them. Renovate's
+-- dependency dashboard and everything a workflow files are issues a backlog must hold, so
+-- the suffix is part of the format rather than a reason to drop a row.
+update ouroboros.github_issues set author_login = 'dependabot[bot]'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select author_login = 'dependabot[bot]'
+     from ouroboros.github_issues where id = 'd1000000-0000-0000-0000-000000000485'),
+  'author_login accepts a GitHub App''s [bot] login');
+
+update ouroboros.github_issues set author_login = 'github-actions[bot]'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+-- Widened to the documented suffix and no further. A bracket anywhere else is the mapping
+-- bug this constraint exists to catch — a display name, or a stringified `{"login": …}`.
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set author_login = '[bot]dependabot'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'author_login refuses brackets anywhere but the documented suffix',
+  'github_issues_author_login_format');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set author_login = 'field support'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'author_login still refuses a space — a display name is not a login',
+  'github_issues_author_login_format');
+
 update ouroboros.github_issues set author_login = 'field-support'
   where id = 'd1000000-0000-0000-0000-000000000485';
 

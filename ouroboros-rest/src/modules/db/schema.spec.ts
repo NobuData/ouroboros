@@ -277,10 +277,13 @@ describe("TABLE_COLUMNS", () => {
     // all read CG.3's one definition through the query builder rather than through raw SQL.
     //
     // The twenty-seventh is K.3's (#101): V027's `github_credentials`, the per-workspace
-    // GitHub token the backlog sync authenticates with. `github_issues` (V014, #99) is
-    // deliberately *not* here — nothing in this service reads it until K.4 (#102) lands the
-    // sync that fills it, and a mirrored table with no reader is drift waiting to happen.
-    expect(TABLE_NAMES).toHaveLength(27);
+    // GitHub token the backlog sync authenticates with.
+    //
+    // The twenty-eighth is `github_issues` (V014, #99), which K.4 (#102) brought in. It was
+    // deliberately absent until then — nothing in this service read it while the table was
+    // empty, and a mirrored table with no reader is drift waiting to happen — and the sync
+    // that fills it is the first thing here to read or write a row.
+    expect(TABLE_NAMES).toHaveLength(28);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

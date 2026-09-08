@@ -1,6 +1,7 @@
 import {
   ALL_INTERFACES_HOST,
   ConfigurationError,
+  DEFAULT_BACKLOG_SYNC_INTERVAL_SECONDS,
   DEFAULT_DASHBOARD_POLL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
@@ -83,6 +84,8 @@ describe("the development defaults", () => {
       // A template that drifted from the defaults would be caught here as a difference.
       providerHealthIntervalSeconds: DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
       providerHealthKeyCheckSeconds: DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
+      // K.4's (#102) cadence, written out in the template for the same reason.
+      backlogSyncIntervalSeconds: DEFAULT_BACKLOG_SYNC_INTERVAL_SECONDS,
     });
   });
 });

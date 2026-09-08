@@ -2,6 +2,7 @@ import { Module, type DynamicModule } from "@nestjs/common";
 
 import { BetterAuthModule } from "../../auth/auth.module";
 import { AuditModule } from "../audit/audit.module";
+import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
 import { AuthModule } from "../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
 import type { Configuration } from "../config/configuration";
@@ -148,6 +149,17 @@ import { AppService } from "./app.service";
  * imports that module, because decision **M6** says resolution consumes health *snapshots* as
  * pure inputs rather than checking anything itself, and the import is where that is visible.
  *
+ * `BacklogSyncModule` ([#102](https://github.com/NobuData/ouroboros/issues/102)) follows
+ * `GithubModule`, and it is the **second** module here to run periodic work — the first since
+ * `ProviderHealthModule` brought `@nestjs/schedule` in. It has no controller: the manual
+ * re-sync and the sync-status endpoint are M.4's
+ * ([#113](https://github.com/NobuData/ouroboros/issues/113)), and what this ticket contributes
+ * is the cycle those routes will call. Its position is about its imports rather than about
+ * middleware — it needs `GithubModule`'s client factory and credentials service, so it cannot
+ * precede it — and the consequence of listing it at all is the same one `ProviderHealthModule`
+ * carries: a process with this module in it makes outbound requests to github.com that nobody
+ * asked for, on a jittered timer, as soon as a workspace has a token and an enabled repository.
+ *
  * `InternalModule` ([#224](https://github.com/NobuData/ouroboros/issues/224)) is last, and
  * its position is the only one it could have. It registers a global guard, and Nest runs
  * global guards in the order their modules are initialised — so being listed after
@@ -228,6 +240,11 @@ export class AppModule {
         // cannot collide with `SettingsModule`'s `/settings/auto-merge`, so its position
         // among the tenant-required modules carries no routing rule of its own.
         GithubModule,
+        // K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) — the poller that
+        // fills `github_issues`. After `GithubModule`, which it imports for the client and
+        // for the *which workspaces have a token* question; it declares no route at all, so
+        // its position says nothing about middleware and everything about what it depends on.
+        BacklogSyncModule,
         InternalModule,
       ],
     };

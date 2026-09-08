@@ -13,8 +13,8 @@
  * criterion asks for a period that is different on every tick and different between
  * deployments. So each tick schedules the next one, through `SchedulerRegistry` — which is
  * what gives the timer a name, a place an operator can see it, and a single owner responsible
- * for clearing it. `cadence.ts` argues why the jitter matters and why the *first* delay is
- * jittered too.
+ * for clearing it. `scheduling/cadence.ts` argues why the jitter matters and why the *first*
+ * delay is jittered too.
  *
  * **The sweep never overlaps itself.** The next delay is computed after the previous sweep has
  * settled rather than on a fixed schedule, so a cycle that runs long delays the following one
@@ -37,7 +37,7 @@ import { SchedulerRegistry } from "@nestjs/schedule";
 
 import { AppConfigService } from "../config/config.service";
 import { describeForLog } from "../errors/failure";
-import { jittered } from "./cadence";
+import { jittered } from "../scheduling/cadence";
 import { ProviderHealthService } from "./provider-health.service";
 
 /**

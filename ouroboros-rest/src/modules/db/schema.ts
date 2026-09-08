@@ -379,6 +379,159 @@ export interface GithubCredentialsTable {
 }
 
 /**
+ * `github_issues.state` — GitHub's own two (V014,
+ * [#99](https://github.com/NobuData/ouroboros/issues/99)).
+ *
+ * The `github_issues_state` CHECK, mirrored the way this file's header says a CHECK becomes a
+ * type, and the filter bar's *State* select. Two words rather than three: a *merged* pull
+ * request is not an issue state, and pull requests never reach this table at all — see
+ * {@link GithubIssuesTable}.
+ */
+export type GithubIssueState = "open" | "closed";
+
+/** The same two, in the order the CHECK declares them — what a test iterates. */
+export const GITHUB_ISSUE_STATES = [
+  "open",
+  "closed",
+] as const satisfies readonly GithubIssueState[];
+
+/**
+ * `github_issues.sizing_status` — where an issue is in *our* sizing pipeline (V014, decision
+ * **K4**).
+ *
+ * The one column of that table this product owns, and the pill mockup 03's backlog table
+ * renders. The lifecycle is `unsized → estimating → sized | needs_human`, and moving a row
+ * along it is L.3's ([#107](https://github.com/NobuData/ouroboros/issues/107)); the sync
+ * writes only the first, because a freshly mirrored issue has no estimate and a row that
+ * arrived with any other value would be claiming one that does not exist.
+ */
+export type SizingStatus = "unsized" | "estimating" | "sized" | "needs_human";
+
+/** The four, in the order the CHECK declares them — lifecycle order, as {@link RunStatus}' lists are. */
+export const SIZING_STATUSES = [
+  "unsized",
+  "estimating",
+  "sized",
+  "needs_human",
+] as const satisfies readonly SizingStatus[];
+
+/**
+ * What a freshly mirrored issue is — the column default, and the only value K.4 writes.
+ *
+ * Named rather than spelled at the one call site, because the sync's *"a new issue enters the
+ * estimation pipeline"* handoff and this default are the same fact seen from two sides: the
+ * pipeline claims `unsized` work, and the sync is what makes work `unsized`.
+ */
+export const DEFAULT_SIZING_STATUS: SizingStatus = "unsized";
+
+/**
+ * `ouroboros.github_issues` — the mirror of an enabled repository's GitHub issues (V014,
+ * [#99](https://github.com/NobuData/ouroboros/issues/99)), filled by K.4
+ * ([#102](https://github.com/NobuData/ouroboros/issues/102)).
+ *
+ * **Decision K3: this is a cache and GitHub is the source of truth.** Of the columns below,
+ * exactly one is this product's — {@link sizing_status}. Everything from {@link number} to
+ * {@link gh_url} is a *copy of something GitHub owns*, and nothing in this service authors
+ * one: a title is re-read from GitHub and overwritten here, never edited here. The migration
+ * carries the full argument, and the shape is deliberately unhelpful to the alternative —
+ * there is no `edited_by`, no `local_title` and no dirty flag.
+ *
+ * **Pull requests are not in this table.** GitHub's issues endpoint returns both, and
+ * `backlog-sync/issue.mapping.ts` drops anything carrying a `pull_request` key before a row
+ * is built. There is no column that would record the difference, deliberately: a PR in the
+ * backlog is a bug a user sees immediately, and the only way to be sure one is not stored is
+ * for the mirror to have no way to say *this one is a pull request*.
+ *
+ * **Was deliberately absent from this file until K.4.** V014 landed the table in the same
+ * release that left it empty, and a mirrored table with no reader is drift waiting to happen;
+ * the sync that fills it is the first thing here that reads or writes a row.
+ */
+export interface GithubIssuesTable {
+  id: Generated<string>;
+  /**
+   * Owning workspace, and the leading column of every read the backlog screen makes.
+   *
+   * Held to the repository's own workspace by the `github_issues_repo_in_organization`
+   * trigger — the composite foreign key `github_repos` cannot offer, because it reaches the
+   * workspace through `github_orgs`. Same rule, same trigger function, as {@link RunsTable}
+   * and {@link QueueItemsTable}.
+   */
+  organization_id: string;
+  /** Repository the issue lives in. The upsert key with {@link number}. */
+  github_repo_id: string;
+  /**
+   * The issue number GitHub assigns — the `485` the table renders as `#485`.
+   *
+   * Unique *within the repository* and meaningless outside it: every repo has a `#1`. That is
+   * why `github_issues_repo_number_key` is `(github_repo_id, number)` and not
+   * `(organization_id, number)`.
+   */
+  number: number;
+  /**
+   * The title as GitHub currently has it.
+   *
+   * Overwritten by the next sync that sees it change — unlike {@link RunsTable.issue_title},
+   * which is frozen at the moment a run started. The two columns look alike and mean opposite
+   * things.
+   */
+  title: string;
+  /** The body in full, or null when GitHub's is: an issue opened with no description. */
+  body: string | null;
+  /** GitHub's own two. The filter bar's *State* select, and what a close flips. */
+  state: GithubIssueState;
+  /**
+   * **GitHub's** label names, as a JSON array of strings — `["bug", "i2c", "watchdog"]`.
+   *
+   * Not Ouroboros' vocabulary: that is {@link sizing_status} and K.2's estimate. Typed as
+   * `string[]` rather than `unknown`, because `github_issues_labels_shape` is a CHECK that
+   * refuses anything else and this file's header says a CHECK becomes a type. Read by
+   * containment through `github_issues_labels_idx`.
+   *
+   * `ColumnType` rather than a bare `string[]`: `pg` hands a `jsonb` column back parsed, and
+   * Kysely wants the value *written* to be the string a driver will send. Every write here
+   * goes through `JSON.stringify`, which is what the `insert`/`update` position says.
+   */
+  labels: ColumnType<string[], string, string>;
+  /**
+   * Who opened it — `by field-support` on the panel's meta line.
+   *
+   * GitHub's login in the case GitHub returns it, **unfolded**: this is a mirrored value and
+   * folding it would be an edit, which K3 forbids. Null when GitHub's author is — an issue
+   * whose author deleted their account comes back with no user at all.
+   */
+  author_login: string | null;
+  /** When GitHub says the issue was opened — what *"opened 2d ago"* counts from. */
+  gh_created_at: Date;
+  /**
+   * When GitHub last touched it.
+   *
+   * The value the per-repo `since` watermark is drawn from (decision **K2**), which is why it
+   * is not nullable: a row with no update time could not take part in an incremental sync.
+   */
+  gh_updated_at: Date;
+  /** The issue on GitHub — the href behind *"Open on GitHub ↗"*, constrained to `https`. */
+  gh_url: string;
+  /**
+   * When this row was last written from GitHub.
+   *
+   * Distinct from {@link updated_at}, which the `github_issues_touch_updated_at` trigger moves
+   * on *every* update. The sync keeps the two apart the only way an unconditional trigger
+   * allows — by not issuing an update when nothing in the row differs — so a row whose
+   * `updated_at` moved is a row GitHub actually changed. `github_repos.issues_synced_at` is
+   * the per-repository freshness the card renders, and that one moves on every poll,
+   * including a poll that found nothing.
+   */
+  synced_at: Generated<Date>;
+  /**
+   * Our sizing pipeline (decision **K4**). Defaults to `unsized`, which is what the sync
+   * writes and the only value it writes.
+   */
+  sizing_status: Generated<SizingStatus>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `runs.status` — where one run of the loop is in its life (V008,
  * [#64](https://github.com/NobuData/ouroboros/issues/64)).
  *
@@ -1874,6 +2027,13 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * `ColumnType` says `never`. It is #26's table, landed early because decision **P5** puts
  * credential auditing in the MVP, and it is the one #26 will inherit rather than replace.
  *
+ * **`github_issues` (V014, [#99](https://github.com/NobuData/ouroboros/issues/99)) is the
+ * twenty-eighth**, and it arrived a release late on purpose: the table landed with K.1 and
+ * nothing in this service read or wrote a row of it until K.4
+ * ([#102](https://github.com/NobuData/ouroboros/issues/102)) landed the sync that fills it,
+ * and a mirrored table with no reader is drift waiting to happen. It is the first table here
+ * whose rows are **somebody else's** — see {@link GithubIssuesTable} on decision K3.
+ *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
  * ([#714](https://github.com/NobuData/ouroboros/issues/714)) — a mirror that still declared
@@ -1889,6 +2049,7 @@ export interface Database {
   github_orgs: GithubOrgsTable;
   github_repos: GithubReposTable;
   github_credentials: GithubCredentialsTable;
+  github_issues: GithubIssuesTable;
   user_preferences: UserPreferencesTable;
   runs: RunsTable;
   queue_items: QueueItemsTable;
@@ -1948,6 +2109,24 @@ export const TABLE_COLUMNS = {
     "issues_sync_cursor",
   ],
   github_credentials: ["organization_id", "token_encrypted", "created_at", "updated_at"],
+  github_issues: [
+    "id",
+    "organization_id",
+    "github_repo_id",
+    "number",
+    "title",
+    "body",
+    "state",
+    "labels",
+    "author_login",
+    "gh_created_at",
+    "gh_updated_at",
+    "gh_url",
+    "synced_at",
+    "sizing_status",
+    "created_at",
+    "updated_at",
+  ],
   user_preferences: ["user_id", "font_scale", "created_at", "updated_at"],
   runs: [
     "id",
@@ -2203,6 +2382,11 @@ export type NewGithubRepo = Insertable<GithubReposTable>;
 export type GithubCredentials = Selectable<GithubCredentialsTable>;
 /** The columns an `insert` into `ouroboros.github_credentials` may carry. */
 export type NewGithubCredentials = Insertable<GithubCredentialsTable>;
+
+/** A row of `ouroboros.github_issues`, as a `select` returns it. */
+export type GithubIssue = Selectable<GithubIssuesTable>;
+/** The columns an `insert` into `ouroboros.github_issues` may carry. */
+export type NewGithubIssue = Insertable<GithubIssuesTable>;
 
 /** A row of `ouroboros.user_preferences`, as a `select` returns it. */
 export type UserPreferences = Selectable<UserPreferencesTable>;

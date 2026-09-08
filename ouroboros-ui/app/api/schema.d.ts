@@ -765,6 +765,94 @@ export interface paths {
         patch: operations["patchAutoMergeSetting"];
         trace?: never;
     };
+    "/api/v1/settings/github-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's GitHub token, masked
+         * @description Whether this workspace has a GitHub token, and the only thing this API will ever say
+         *     about one ([#101](https://github.com/NobuData/ouroboros/issues/101), decision **K1**).
+         *
+         *     **The token is never returned.** `masked` is `ghp_••••abcd` — the token's prefix, four
+         *     bullets, and its last four characters — and it is composed on the server from the
+         *     stored ciphertext, so what crosses the wire cannot be un-masked: the characters it
+         *     hides were never sent. There is no reveal operation on this surface and there will not
+         *     be one. `/api/v1/providers/{id}/reveal` exists because a person has to be able to copy
+         *     a provider API key into another tool; nothing copies this token anywhere, so an
+         *     endpoint that returned it would exist only to be the way it leaks.
+         *
+         *     **`owner` or `admin`, for the read as well as the writes.** This is the one settings
+         *     surface whose read is gated: a viewer looking at the auto-merge switch learns a
+         *     policy, and a viewer looking at this learns that a credential exists, when it was last
+         *     rotated and its last four characters.
+         *
+         *     **Never a `404`.** A workspace with no token answers `configured: false` with null
+         *     stamps — a state to render, and the state mockup 03's no-token guidance
+         *     ([#120](https://github.com/NobuData/ouroboros/issues/120)) is drawn from.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["readGithubToken"];
+        /**
+         * Set or rotate the workspace's GitHub token
+         * @description Store a GitHub personal access token for this workspace, replacing whatever was there.
+         *
+         *     **Setting and rotating are one operation**, because there is one token per workspace:
+         *     making them two endpoints would mean a client had to know which state it was in before
+         *     it could ask, and would answer `409` to an administrator who guessed wrong about a
+         *     token somebody else had already set. The audit trail is where they differ —
+         *     `github.token_set` the first time, `github.token_rotated` afterwards.
+         *
+         *     **The token is sealed before it is stored**, with the per-tenant envelope encryption
+         *     AD.1 ([#222](https://github.com/NobuData/ouroboros/issues/222)) provides, and the
+         *     column refuses any value that is not one of those envelopes — so a plaintext token
+         *     cannot be stored by this operation or by anything else. Deleting the workspace destroys
+         *     both the ciphertext and the key that could open it.
+         *
+         *     **The shape is checked, and the value is never echoed.** A body whose `token` is not
+         *     shaped like a GitHub token is a `422` naming the field — the failure this check exists
+         *     for is a paste error, and a paste error that is *stored* becomes indistinguishable from
+         *     a revoked token an hour later. The message describes the shape expected and never the
+         *     string received, because the rejected value may be a real credential.
+         *
+         *     **What is not checked here is whether GitHub accepts it.** Refusing to *store* a token
+         *     because GitHub was unreachable would make a network outage look like a bad credential;
+         *     a live check belongs to the source's test-connection affordance
+         *     ([#141](https://github.com/NobuData/ouroboros/issues/141)).
+         *
+         *     **`owner` or `admin`, and nobody else.** The token is what the backlog sync acts with,
+         *     so setting one is administering the workspace.
+         */
+        put: operations["putGithubToken"];
+        post?: never;
+        /**
+         * Clear the workspace's GitHub token
+         * @description Remove this workspace's GitHub token. Syncing stops, and the intake surface renders the
+         *     no-token guidance rather than an error.
+         *
+         *     **Idempotent, and answers `200` with the state rather than `204`.** Clearing a
+         *     workspace that had no token is the request already satisfied, not a `404` — and the
+         *     surface still needs a state to render. The audit trail records the press either way,
+         *     with `removed` saying whether anything was there: a trail of outcomes rather than of
+         *     actions would lose the attempt.
+         *
+         *     **The row is deleted, not blanked.** "This workspace has no token" is the absence of a
+         *     row, so there is one state to read rather than two that mean the same thing.
+         *
+         *     **`owner` or `admin`, and nobody else.**
+         */
+        delete: operations["clearGithubToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/registry/prices": {
         parameters: {
             query?: never;
@@ -3992,6 +4080,71 @@ export interface components {
              *     for rows that predate it. Never parse it as a uuid.
              */
             updatedBy: string | null;
+        };
+        /**
+         * GithubToken
+         * @description The state of a workspace's GitHub token — what all three operations on
+         *     `/api/v1/settings/github-token` answer
+         *     ([#101](https://github.com/NobuData/ouroboros/issues/101)).
+         *
+         *     **There is no field the token could be in, and that is the design.** `masked` is
+         *     composed on the server from the stored ciphertext and holds the token's prefix, four
+         *     bullets and its last four characters. Nothing in this schema can be un-masked, because
+         *     the characters it hides never left the service.
+         *
+         *     The three nullable fields are null **together**, exactly when `configured` is `false`.
+         */
+        GithubToken: {
+            /**
+             * @description Whether this workspace has a GitHub token stored. `false` is a state to render —
+             *     the intake surface's no-token guidance — rather than a failure.
+             */
+            configured: boolean;
+            /**
+             * @description `ghp_••••abcd` — the token's prefix, four bullets, and its last four characters.
+             *     Null when nothing is stored. **The whole of what this API will ever say about a
+             *     stored token.** The prefix is kept, unlike the provider-credential mask, because it
+             *     says which *kind* of token this is: a fine-grained `github_pat_` with the wrong
+             *     repository selected and a classic `ghp_` missing the `repo` scope fail identically
+             *     from the sync's side and are fixed in completely different places.
+             */
+            masked: string | null;
+            /**
+             * Format: date-time
+             * @description When the token was first stored, or null when none is.
+             */
+            createdAt: string | null;
+            /**
+             * Format: date-time
+             * @description When it was last written, or null when none is. Past `createdAt` means it has been
+             *     rotated at least once — which is how this surface answers *"is this still the token
+             *     I set in March"* without a column maintained to say so.
+             */
+            updatedAt: string | null;
+        };
+        /**
+         * GithubTokenRequest
+         * @description The body of `PUT /api/v1/settings/github-token`: the token to store.
+         *
+         *     Required rather than optional — `PUT` means *this is the value now*, and a body
+         *     carrying nothing would be a request to set a token to nothing, which is `DELETE` and is
+         *     a different decision an administrator should have to make on purpose.
+         */
+        GithubTokenRequest: {
+            /**
+             * @description A GitHub personal access token: a value beginning `github_pat_`, `ghp_`, `gho_`,
+             *     `ghu_`, `ghs_` or `ghr_`, or a pre-2021 classic token of forty lowercase
+             *     hexadecimal characters. Surrounding whitespace is trimmed — the commonest way a
+             *     good token arrives broken is with the newline a terminal copy left on it — and
+             *     whitespace *inside* the value is refused.
+             *
+             *     Anything else is a `422` naming the field and **never repeating the value**. The
+             *     check exists for paste errors rather than for forgeries: a repository URL, an
+             *     organisation login or a bearer header pasted whole is refused here instead of being
+             *     stored, encrypted, and then failing every sync from now on with a `401` that is
+             *     indistinguishable from a revoked token.
+             */
+            token: string;
         };
         /**
          * AutoMergeSettingPatch
@@ -9000,6 +9153,404 @@ export interface operations {
              *     because a workspace's merge posture is nothing to flip by accident of type.
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readGithubToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The token's state. `configured: false` with null stamps for a workspace that has
+             *     none — a state to render, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "configured": true,
+                     *       "masked": "ghp_••••abcd",
+                     *       "createdAt": "2026-09-01T09:00:00.000Z",
+                     *       "updatedAt": "2026-09-08T10:00:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GithubToken"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Reading a stored credential's state is `owner` or `admin`. `details.role` is
+             *     what you hold and `details.required` is what would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    putGithubToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "token": "ghp_qwertyuiopasdfghjklzxcvbnm0123456789"
+                 *     }
+                 */
+                "application/json": components["schemas"]["GithubTokenRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The token's state after the write, masked. Answered rather than a bare `204`, so
+             *     the surface can render the mask from the response it already has.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "configured": true,
+                     *       "masked": "ghp_••••6789",
+                     *       "createdAt": "2026-09-01T09:00:00.000Z",
+                     *       "updatedAt": "2026-09-08T10:00:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GithubToken"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — setting a workspace's GitHub token is `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `token` was absent, or was not shaped like a GitHub token.
+             *     `details.token` carries the messages, and **none of them repeats the value that was
+             *     refused**: the rejected string may be a working credential pasted into the wrong
+             *     workspace, and echoing it would put it in the response body, the browser's console
+             *     and whatever collects client errors.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    clearGithubToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token's state after the removal — always `configured: false`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "configured": false,
+                     *       "masked": null,
+                     *       "createdAt": null,
+                     *       "updatedAt": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GithubToken"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — clearing a workspace's GitHub token is `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

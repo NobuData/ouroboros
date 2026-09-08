@@ -176,7 +176,7 @@ existing set (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) plus ne
 | K.1 | #99 | 🟢 Done | ouroboros-db: [K.1] GitHub issue cache schema | `github_issues` mirror table + labels + sync cursors | mvp, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | K.2 | #100 | 🟢 Done | ouroboros-db: [K.2] Issue estimates schema | Versioned `issue_estimates` + sizing status + breakdown/trace jsonb | mvp, intake, db | N (after K.1) | Y | M | ouroboros-db |
 | K.3 | #101 | 🟢 Done | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
-| K.4 | #102 | 🟡 Open | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
+| K.4 | #102 | 🟢 Done | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
 | K.5 | #103 | 🟡 Open | ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity | Seeded issues/estimates reproducing the mockup's nine rows | mvp, intake, db | N (after K.2) | Y | S | ouroboros-db |
 | K.6 | #104 | 🟡 Open | ouroboros-db: [K.6] Intake constraints in ci/db | Status vocabularies, cursor invariants, estimate versioning checks | mvp, intake, db, ci | N (after K.5, #24) | Y | XS | ouroboros-db, .github |
 
@@ -460,7 +460,7 @@ settings ─▶ store token (encrypted, masked) ─▶ GitHubClient
 
 ### Issue K.4 — ouroboros-rest: [K.4] Backlog sync service
 
-> **GitHub issue:** #102 · **Status:** 🟡 Open · **Parent epic:** #94
+> **GitHub issue:** #102 · **Status:** 🟢 Done · **Parent epic:** #94
 
 - **Problem Statement:** The page's headline claim — "Ouroboros watches the GitHub
   backlog" — is this service. It must import enabled repos' open issues, keep them
@@ -1563,3 +1563,66 @@ that produced it — for every issue, without an AI stack. `files[]` is empty an
 > either and will refuse to answer out of one it was not given. A `202` from the engine is
 > currently a `502` at the gateway — nothing sends one yet, and following it is O.2's (#123)
 > change rather than L.3's.
+
+
+**K.4 (#102) shipped on 2026-09-08, and `github_issues` has a writer.**
+[`ouroboros-rest/src/modules/backlog-sync/`](../ouroboros-rest/src/modules/backlog-sync/) is
+mockup 03's subline made true: a jittered cycle
+(`OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, five minutes by default) walks every enabled repository
+of every workspace that has a token, drops pull requests, and writes the rows, the cursor and
+the freshness stamp in **one transaction** — so the *"synced 40s ago"* tag can never claim a
+sync that partly failed. A repository whose poll failed is not stamped at all, and its stored
+`synced_at` goes on saying when the last good poll was.
+
+**The issue's own diagram was wrong in one place, and the fix is worth recording.** It writes
+`state=open&since=cursor`, and that pair cannot satisfy the criterion two lines below it —
+*"closing it flips `state`"* — because an issue that closes upstream simply leaves an `open`
+listing and would sit in this mirror as open forever. So the **initial import** takes
+`state=open`, which is what stops a cold start dragging in a decade of closed issues, and every
+**incremental poll** takes `state=all` bounded by `since`. A closed issue the mirror has never
+seen is still not stored, so `state=all` widens what the sync *learns* without widening what it
+*keeps*.
+
+Two decisions carry the acceptance criteria. **The watermark is what the poll saw** — the
+greatest `updated_at` GitHub returned, never this host's clock, because a clock-derived
+watermark is wrong by however far the machine has drifted and wrong in the direction that loses
+issues. And **an unchanged row is not written**: GitHub's `since` is inclusive, so every
+incremental poll re-reads the issue sitting exactly on the watermark, and since
+`github_issues_touch_updated_at` is unconditional the only way to keep `updated_at` meaning
+*"GitHub changed this"* is to issue no statement at all. That is the *"O(1) requests and touches
+no rows"* criterion, asserted against a real database rather than approximated.
+
+**V028 is this ticket's one schema change, and it exists because K.4 is the table's first
+writer.** `V014` gave `github_issues.author_login` V003's *organisation* login rule, which is
+the right rule for `github_orgs.login` and the wrong one for an issue's author: a GitHub App
+opens issues under `dependabot[bot]`, `github-actions[bot]`, `renovate[bot]` — brackets
+included. Nothing had noticed because nothing had written a row, and the behaviour would have
+been Renovate's dependency dashboard and every issue a workflow files **silently missing from
+the backlog**, refused one at a time by a CHECK. Widened to the documented suffix and no
+further; `github_orgs.login` is deliberately left alone, because an organisation is never a bot.
+
+**Nothing is ever a silent no-op.** No token pauses `not_configured`, a token with nothing
+enabled pauses `no_repositories`, a repository the token cannot see pauses `not_found` without
+costing its neighbours their poll, and a spent budget pauses the whole *workspace* because the
+budget belongs to the token. Five of those six words are K.3's taxonomy, unchanged.
+
+> What K.4 leaves for **L.3 (#107)**: the handoff exists and is a **seam, not a queue**.
+> `EstimationIntake` is a Nest token bound in `backlog-sync.module.ts`; new and reopened issues
+> are handed to it *after* the transaction commits, with `imported` or `reopened` on each, and
+> the placeholder bound today records the handoff and says once in the log that nothing is
+> estimating. L.3 replaces one binding and changes nothing else. The rows are `unsized`, which
+> is what `sizing_status` already says about them — so the fourth acceptance criterion's
+> *"(verified together with #107)"* is exactly what remains.
+>
+> And for **M.4 (#113)**: `BacklogSyncService.lastCycle()` is the in-memory half of the status
+> answer — the pause reasons, per workspace and per repository — and `github_repos.issues_synced_at`
+> and `issues_sync_cursor` are the durable half. `BacklogSyncScheduler.tick()` is what a manual
+> re-sync drives; the debounce and the `409` are M.4's to add, because they are properties of the
+> endpoint rather than of the cycle. Whether a pause reason should outlive a restart is M.4's
+> question, and the vocabulary is `sync.report.ts` either way.
+>
+> And for **Q.3 (#140)**, per the 2026-08-09 amendment on this issue: the GitHub specifics the
+> `TicketSourceProvider` SPI will own are already in one file each — the `since` cursor and the
+> `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in
+> `issue.mapping.ts` — so the provider-neutral scheduler inherits a seam rather than having to
+> cut one. Every criterion re-asserted through the SPI is asserted here first.

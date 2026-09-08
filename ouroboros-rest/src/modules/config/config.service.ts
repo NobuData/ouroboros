@@ -157,6 +157,18 @@ export class AppConfigService {
   }
 
   /**
+   * Seconds between backlog sync cycles — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`.
+   *
+   * The nominal interval. `src/modules/backlog-sync/` jitters every delay by ±25% around it,
+   * so a fleet of self-hosted instances does not arrive at github.com in the same second, and
+   * a cycle that left a capped poll behind books its successor sooner than this rather than
+   * waiting a full one.
+   */
+  get backlogSyncIntervalSeconds(): number {
+    return this.config.getOrThrow<number>("backlogSyncIntervalSeconds");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -203,6 +215,7 @@ export class AppConfigService {
       listenHostOverride: this.listenHostOverride,
       providerHealthIntervalSeconds: this.providerHealthIntervalSeconds,
       providerHealthKeyCheckSeconds: this.providerHealthKeyCheckSeconds,
+      backlogSyncIntervalSeconds: this.backlogSyncIntervalSeconds,
       localProviderUrls: this.localProviderUrls,
     };
   }

@@ -2,10 +2,12 @@
  * Every statement this service issues against `github_credentials` (V027,
  * [#101](https://github.com/NobuData/ouroboros/issues/101)).
  *
- * Four, and they are the credential's whole life: read it, write it, remove it, and — for
- * the vault's re-encryption sweep — replace one envelope with another. Nothing else in the
- * service touches the table, which is what makes *"where can a stored token be read"* a
- * question with one answer.
+ * Five, and they are the credential's whole life: read it, write it, remove it, ask which
+ * workspaces have one — the backlog sync's entry point, K.4
+ * ([#102](https://github.com/NobuData/ouroboros/issues/102)) — and, for the vault's
+ * re-encryption sweep, replace one envelope with another. Nothing else in the service touches
+ * the table, which is what makes *"where can a stored token be read"* a question with one
+ * answer.
  *
  * **The write is an upsert, and that is what makes "set" and "rotate" the same request.**
  * There is one token per workspace, so replacing one is not a different operation from
@@ -74,6 +76,34 @@ export class GithubCredentialsRepository {
       .executeTakeFirst();
 
     return row !== undefined;
+  }
+
+  /**
+   * Every workspace that has a token, by id.
+   *
+   * The sync's entry point, and the reason it is a query rather than a loop over
+   * {@link exists}: K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) polls on a
+   * timer with nobody signed in, so there is no workspace to ask about — the question is
+   * *which workspaces are configured at all*. It is also what lets the sync tell a workspace
+   * with **no token** apart from a workspace with a token and **no enabled repositories**,
+   * which are two different sentences on the backlog card and only one of them is fixed in
+   * settings.
+   *
+   * Unscoped by design, like `provider-health.repository.ts`'s due-check and for the same
+   * reason: the caller is a timer rather than a request. What keeps that safe is written into
+   * the statement — it selects the key column and nothing else, so no ciphertext enters the
+   * process, and the ids it returns name workspaces rather than describe them.
+   *
+   * @returns The workspace ids, in no particular order. Empty when nobody has configured a
+   *   token, which is every installation on its first day.
+   */
+  async configured(): Promise<string[]> {
+    const rows = await this.database.db
+      .selectFrom("github_credentials")
+      .select("organization_id")
+      .execute();
+
+    return rows.map((row) => row.organization_id);
   }
 
   /**
