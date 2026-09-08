@@ -24,17 +24,14 @@
  * revisited once its own `last_checked_at` is that old — which means the slow cadence is a
  * property of the row rather than of the sweep, and a sweep that runs every minute still only
  * key-validates a connection every fifteen.
- */
-
-/**
- * How far either side of the base interval a delay may land — ±25%.
  *
- * Wide enough that a fleet spreads across a meaningful window within a few cycles, narrow
- * enough that "checks run about every minute" stays a true sentence an operator can plan
- * against. A spread approaching 1 would make the cadence unpredictable rather than merely
- * unsynchronised, and the acceptance criterion asks for the second thing.
+ * ---------------------------------------------------------------------------
+ * **The jitter itself is not here any more.** `jittered` and `chunked` moved to
+ * `scheduling/cadence.ts` when K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102))
+ * became this service's second periodic job — two copies of a jitter formula are two places a
+ * fleet's schedules can be made to converge, and the reasoning above is unchanged by having
+ * one implementation instead of two. What remains here is what is true of *this* sweep.
  */
-export const JITTER_SPREAD = 0.25;
 
 /**
  * The most connections one sweep will check.
@@ -70,44 +67,3 @@ export const PROBE_CONCURRENCY = 6;
  * rendered as a provider's fault.
  */
 export const PROBE_TIMEOUT_MS = 5000;
-
-/**
- * A delay, moved off the boundary.
- *
- * @param baseMs - The nominal interval.
- * @param random - A source of `[0, 1)`. Injected so a test can assert the endpoints of the
- *   window rather than sample it and hope; nothing in the application passes it.
- * @returns A delay uniformly distributed across `baseMs` ± {@link JITTER_SPREAD}, rounded to
- *   whole milliseconds and never below 1 — `setTimeout(0)` is a delay that fires on the next
- *   tick, which for a sweep is a spin rather than a schedule.
- */
-export function jittered(baseMs: number, random: () => number = Math.random): number {
-  const offset = (random() * 2 - 1) * JITTER_SPREAD * baseMs;
-
-  return Math.max(1, Math.round(baseMs + offset));
-}
-
-/**
- * Split a list into runs of at most `size`, preserving order.
- *
- * The whole of this module's concurrency control: the sweep awaits one chunk before starting
- * the next, so at most {@link PROBE_CONCURRENCY} probes are ever in flight. A semaphore would
- * keep the pipe fuller, and would be a scheduler of its own inside a file whose subject is
- * already scheduling — for background work with a full cycle to finish in, the simpler thing
- * is the right thing.
- *
- * @param items - The list.
- * @param size - The maximum run length. At least 1; a smaller value would produce empty runs
- *   forever and is a caller's bug rather than an input.
- * @returns The runs. Empty for an empty list, which is the common answer: most sweeps find
- *   nothing due.
- */
-export function chunked<T>(items: readonly T[], size: number): T[][] {
-  const runs: T[][] = [];
-
-  for (let index = 0; index < items.length; index += Math.max(1, size)) {
-    runs.push(items.slice(index, index + Math.max(1, size)));
-  }
-
-  return runs;
-}

@@ -2,7 +2,7 @@ import { Logger } from "@nestjs/common";
 import { SchedulerRegistry } from "@nestjs/schedule";
 
 import type { AppConfigService } from "../config/config.service";
-import { JITTER_SPREAD } from "./cadence";
+import { JITTER_SPREAD } from "../scheduling/cadence";
 import { ProviderHealthScheduler, SWEEP_TIMEOUT } from "./provider-health.scheduler";
 import type { ProviderHealthService, SweepReport } from "./provider-health.service";
 

@@ -56,6 +56,27 @@ describe("the GitHub credentials repository", () => {
 
       expect(await credentials.exists(FIXTURE_WORKSPACE)).toBe(false);
     });
+
+    it("lists the configured workspaces without naming a ciphertext (#102)", async () => {
+      // The backlog sync's entry point: a poll runs on a timer with nobody signed in, so it
+      // starts from *which workspaces are configured at all*. Unscoped by design, and the
+      // statement selects the key column and nothing else — so no envelope enters the process
+      // for a question that is about ids.
+      database.answers({
+        rows: [{ organization_id: FIXTURE_WORKSPACE }, { organization_id: "org-other" }],
+      });
+
+      expect(await credentials.configured()).toEqual([FIXTURE_WORKSPACE, "org-other"]);
+      expect(database.statements[0].sql).toContain('select "organization_id"');
+      expect(database.statements[0].sql).not.toContain("token_encrypted");
+      expect(database.statements[0].sql).not.toContain("where");
+    });
+
+    it("answers an installation where nobody has configured a token with an empty list", async () => {
+      database.answers({ rows: [] });
+
+      expect(await credentials.configured()).toEqual([]);
+    });
   });
 
   describe("writing", () => {

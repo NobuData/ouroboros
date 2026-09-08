@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**98 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**99 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (5/23) | **10** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (6/23) | **11** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **18 issues** · 53 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146` and `147` · 12 dependency waves
+> **17 issues** · 48 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147` and `148` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 5 of 23 issues closed
+> **Status:** 🟡 **In progress** — 6 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -845,9 +845,45 @@ that roadmap's "Existing issues affected" section.
 > four closed — `K.1`, `L.1`, `L.2` and `K.2` — and the *less* list names all four order
 > numbers that have left.
 
+
+> **`K.4` · [`#102`](https://github.com/NobuData/ouroboros/issues/102) has shipped, and row
+> `148` has left the table below** — so this phase's order numbers now start at `149`, and
+> `github_issues` has a writer for the first time.
+>
+> [`ouroboros-rest/src/modules/backlog-sync/`](../ouroboros-rest/src/modules/backlog-sync/) is
+> mockup 03's subline made true: a jittered cycle
+> (`OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, five minutes by default) walks every enabled repository
+> of every workspace that has a token, drops pull requests before a row exists, and writes the
+> rows, the cursor and the freshness stamp in **one transaction** — so *"synced 40s ago"* can
+> never claim a sync that partly failed. A repository whose poll failed is not stamped at all.
+>
+> **The `state` parameter is the one place the ticket's own diagram was wrong.** It writes
+> `state=open&since=cursor`, and that pair cannot satisfy the criterion two lines below it —
+> *"closing it flips `state`"* — because a closed issue simply leaves an `open` listing. The
+> initial import takes `state=open`, so a cold start does not drag in a decade of closed issues;
+> every poll after it takes `state=all` bounded by `since`. A closed issue the mirror has never
+> seen is still not stored.
+>
+> **The watermark is what the poll saw**, never this host's clock — a clock-derived one is wrong
+> by however far the machine has drifted, in the direction that loses issues. And **an unchanged
+> row is not written**: `since` is inclusive, so every poll re-reads the issue on the watermark,
+> and the touch trigger is unconditional — issuing no statement is the only way `updated_at` can
+> keep meaning *"GitHub changed this"*. That is the *"O(1) requests and touches no rows"*
+> criterion, asserted against a migrated PostgreSQL.
+>
+> **`V028` is this ticket's one schema change**, and it exists because `K.4` is the table's first
+> writer. `V014` gave `github_issues.author_login` `V003`'s *organisation* login rule, which
+> refuses `dependabot[bot]`, `github-actions[bot]` and `renovate[bot]` — so Renovate's dependency
+> dashboard and every issue a workflow files would have been **silently missing from the
+> backlog**, refused one at a time by a CHECK. Widened to the documented suffix and no further.
+>
+> **`L.3` (`#107`) and `M.4` (`#113`) are what this unblocks.** The estimation handoff is a seam
+> rather than a queue — a Nest token, a placeholder that records and says so, and one binding for
+> `L.3` to replace — and `BacklogSyncService.lastCycle()` plus the two stored columns are the two
+> halves of the status `M.4` renders. `M.1` (`#110`) now has rows to list.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 148 | **K.4** | [#102](https://github.com/NobuData/ouroboros/issues/102) | Backlog sync service | ouroboros-rest | L | K.1, K.3 |
 | 149 | **K.5** | [#103](https://github.com/NobuData/ouroboros/issues/103) | Intake dev seeds — mockup-03 parity | ouroboros-db | S | K.2 |
 | 150 | **K.6** | [#104](https://github.com/NobuData/ouroboros/issues/104) | Intake constraints in ci/db | ouroboros-db, .github | XS | 3.6, K.5 |
 | 151 | **L.3** | [#107](https://github.com/NobuData/ouroboros/issues/107) | Estimation orchestration & persistence | ouroboros-rest | L | K.2, K.4, L.1 |

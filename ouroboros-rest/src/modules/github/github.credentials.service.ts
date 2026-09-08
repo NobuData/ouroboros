@@ -181,6 +181,26 @@ export class GithubCredentialsService {
   }
 
   /**
+   * Which workspaces have a token at all.
+   *
+   * The backlog sync's entry point (K.4,
+   * [#102](https://github.com/NobuData/ouroboros/issues/102)): a poll runs on a timer with
+   * nobody signed in, so it has no workspace to ask about and has to start from the set of
+   * workspaces that are configured. It is also what makes the sync's two *off* states
+   * distinguishable — a workspace with no token reads `not_configured`, and a workspace with
+   * a token and no enabled repositories reads `no_repositories`.
+   *
+   * **No credential is loaded.** The statement selects the key column only, so this method
+   * cannot leak what it does not fetch — which is why it is here rather than a caller mapping
+   * over {@link tokenFor}.
+   *
+   * @returns The workspace ids that have a stored token, in no particular order.
+   */
+  async configuredOrganizations(): Promise<string[]> {
+    return this.credentials.configured();
+  }
+
+  /**
    * The workspace's token, opened, for one call to GitHub.
    *
    * The one method that answers with a live credential, and it is not reachable over HTTP:

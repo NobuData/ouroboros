@@ -170,6 +170,39 @@ export const MIN_PROVIDER_HEALTH_KEY_CHECK_SECONDS = 60;
 export const MAX_PROVIDER_HEALTH_SECONDS = 86400;
 
 /**
+ * Seconds between backlog sync cycles when `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` is not set —
+ * five minutes.
+ *
+ * K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) is what the intake page's
+ * *"synced 40s ago"* tag counts from, and this is how often that number resets. Five minutes
+ * is the honest trade between the acceptance criterion — *an edit on GitHub appears locally
+ * within one poll interval* — and what a poll costs: an incremental cycle is roughly one
+ * request per enabled repository, so a workspace watching fifty repositories spends about six
+ * hundred of a token's five thousand hourly requests. Near-instant is O.1's
+ * ([#122](https://github.com/NobuData/ouroboros/issues/122)) webhooks, which demote this loop
+ * to a reconciliation sweep; until then, polling is the whole mechanism.
+ *
+ * The actual delay is this value jittered by ±25% (`scheduling/cadence.ts`), so a fleet does
+ * not synchronise.
+ */
+export const DEFAULT_BACKLOG_SYNC_INTERVAL_SECONDS = 300;
+
+/**
+ * Shortest sync interval an operator may ask for — one minute.
+ *
+ * A floor rather than a preference, and a higher one than the health sweep's ten seconds
+ * because the two are knocking on different doors. A health check is a `GET` against a daemon
+ * on the operator's own network; a sync cycle is a paginated walk of github.com on behalf of
+ * every enabled repository, spent from one token's hourly budget. An operator who wants the
+ * backlog *now* has M.4's manual re-sync ([#113](https://github.com/NobuData/ouroboros/issues/113));
+ * what this value controls is how often the service knocks unasked.
+ */
+export const MIN_BACKLOG_SYNC_INTERVAL_SECONDS = 60;
+
+/** Longest the sync interval may be set to — one day, as the health cadences are. */
+export const MAX_BACKLOG_SYNC_INTERVAL_SECONDS = 86400;
+
+/**
  * The service's validated configuration.
  *
  * Every field is derived from exactly one environment variable — {@link VARIABLES} is the
@@ -321,6 +354,18 @@ export interface Configuration {
    */
   readonly providerHealthKeyCheckSeconds: number;
   /**
+   * Seconds between backlog sync cycles. From `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`,
+   * {@link DEFAULT_BACKLOG_SYNC_INTERVAL_SECONDS} when unset.
+   *
+   * The nominal interval rather than the actual one: `src/modules/backlog-sync/` jitters every
+   * delay by ±25%, so a fleet of self-hosted instances does not arrive at github.com in the
+   * same second. It is the bound the intake page's *"an edit appears within one poll"* promise
+   * is made against, and there is no value that turns polling off — a backlog that has quietly
+   * stopped updating and one whose freshness tag says how old it is look different to a person,
+   * and only one of them is honest.
+   */
+  readonly backlogSyncIntervalSeconds: number;
+  /**
    * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
    *
    * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
@@ -370,6 +415,7 @@ export const VARIABLES = {
   listenHostOverride: "OURO_LISTEN_HOST",
   providerHealthIntervalSeconds: "OURO_PROVIDER_HEALTH_INTERVAL_SECONDS",
   providerHealthKeyCheckSeconds: "OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS",
+  backlogSyncIntervalSeconds: "OURO_BACKLOG_SYNC_INTERVAL_SECONDS",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
 } as const satisfies Record<keyof Configuration, string>;
 
@@ -553,25 +599,30 @@ const secret = z
   .min(MINIMUM_SECRET_LENGTH, `expected at least ${MINIMUM_SECRET_LENGTH} characters`);
 
 /**
- * One of the two provider-health cadences — a whole number of seconds inside a range.
+ * One background cadence — a whole number of seconds inside a range.
  *
- * A factory rather than two near-identical schemas, because the pair differ only in their
- * floor and their default and the *rules* are the same ones `PORT` and
- * `OURO_DASHBOARD_POLL_SECONDS` are read by: anchored digits, then a range. Writing them
- * twice would be two places for "a cadence is a whole number of seconds" to drift.
+ * A factory rather than three near-identical schemas, because they differ only in their floor,
+ * their ceiling and their default, and the *rules* are the same ones `PORT` and
+ * `OURO_DASHBOARD_POLL_SECONDS` are read by: anchored digits, then a range. Writing them out
+ * each time would be three places for "a cadence is a whole number of seconds" to drift.
+ *
+ * Two of the three are provider health's (#196); the third is the backlog sync's
+ * ([#102](https://github.com/NobuData/ouroboros/issues/102)), which is what made the ceiling a
+ * parameter rather than a constant this function closed over.
  *
  * @param minimum - The floor. See `Configuration` for why each has one.
  * @param fallback - The value when the variable is unset.
+ * @param maximum - The ceiling.
  * @returns The schema.
  */
-function healthCadence(minimum: number, fallback: number) {
-  const range = `expected between ${minimum} and ${MAX_PROVIDER_HEALTH_SECONDS} seconds`;
+function cadenceSeconds(minimum: number, fallback: number, maximum: number) {
+  const range = `expected between ${minimum} and ${maximum} seconds`;
 
   return z
     .string()
     .regex(/^\d+$/, range)
     .transform(Number)
-    .refine((value) => value >= minimum && value <= MAX_PROVIDER_HEALTH_SECONDS, range)
+    .refine((value) => value >= minimum && value <= maximum, range)
     .default(fallback);
 }
 
@@ -688,14 +739,27 @@ const environmentSchema = z.object({
   // own. Neither has an off value, deliberately — a strip that has stopped updating and a
   // strip that honestly says `unknown` look different to a person, and only one of them is
   // true.
-  OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: healthCadence(
+  OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: cadenceSeconds(
     MIN_PROVIDER_HEALTH_INTERVAL_SECONDS,
     DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
+    MAX_PROVIDER_HEALTH_SECONDS,
   ),
 
-  OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS: healthCadence(
+  OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS: cadenceSeconds(
     MIN_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
+    MAX_PROVIDER_HEALTH_SECONDS,
+  ),
+
+  // How often the backlog sync polls (#102), by the same rules and for the same reasons. Its
+  // floor is a minute rather than ten seconds because a cycle is a walk of *somebody else's*
+  // API on behalf of every enabled repository, spent from one token's hourly budget — and,
+  // like the two above, it has no off value: a backlog that has stopped updating and one that
+  // honestly says when it was last read look different to a person.
+  OURO_BACKLOG_SYNC_INTERVAL_SECONDS: cadenceSeconds(
+    MIN_BACKLOG_SYNC_INTERVAL_SECONDS,
+    DEFAULT_BACKLOG_SYNC_INTERVAL_SECONDS,
+    MAX_BACKLOG_SYNC_INTERVAL_SECONDS,
   ),
 
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
@@ -809,6 +873,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     listenHostOverride: values.OURO_LISTEN_HOST,
     providerHealthIntervalSeconds: values.OURO_PROVIDER_HEALTH_INTERVAL_SECONDS,
     providerHealthKeyCheckSeconds: values.OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
+    backlogSyncIntervalSeconds: values.OURO_BACKLOG_SYNC_INTERVAL_SECONDS,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
   });
 }

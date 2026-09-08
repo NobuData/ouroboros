@@ -41,7 +41,8 @@ import { describeForLog } from "../errors/failure";
 import type { ProviderValidation } from "../providers/provider.adapter";
 import { PROVIDER_ERROR_STATUS } from "../providers/provider.errors";
 import { VaultService } from "../vault/vault.service";
-import { MAX_CHECKS_PER_SWEEP, PROBE_CONCURRENCY, chunked } from "./cadence";
+import { chunked } from "../scheduling/cadence";
+import { MAX_CHECKS_PER_SWEEP, PROBE_CONCURRENCY } from "./cadence";
 import {
   checkFor,
   checkKindFor,

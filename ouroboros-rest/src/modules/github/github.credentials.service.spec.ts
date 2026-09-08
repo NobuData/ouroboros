@@ -71,6 +71,9 @@ describe("the GitHub credentials service", () => {
         return Promise.resolve(had);
       }),
       reseal: jest.fn(),
+      configured: jest
+        .fn()
+        .mockImplementation(() => Promise.resolve(stored === undefined ? [] : [FIXTURE_WORKSPACE])),
     } as unknown as jest.Mocked<GithubCredentialsRepository>;
 
     service = new GithubCredentialsService(repository, vault, limiter, audit.service);
@@ -228,6 +231,19 @@ describe("the GitHub credentials service", () => {
         failure: GITHUB_FAILURES.notConfigured,
       });
       await expect(service.tokenFor(FIXTURE_WORKSPACE)).rejects.toBeInstanceOf(GithubApiError);
+    });
+
+    it("says which workspaces have one, without opening any of them (#102)", async () => {
+      // The backlog sync's entry point. Two `off` states depend on this being a different
+      // question from *what is the token*: no row is `not_configured`, and a row with no
+      // enabled repository is `no_repositories`.
+      await expect(service.configuredOrganizations()).resolves.toEqual([]);
+
+      await service.set(fixtureActor(), FIXTURE_TOKEN);
+
+      await expect(service.configuredOrganizations()).resolves.toEqual([FIXTURE_WORKSPACE]);
+      // No envelope was opened for the question — `find` is what loads one.
+      expect(repository.find).not.toHaveBeenCalled();
     });
 
     it("cannot be tricked into opening another workspace's token", async () => {

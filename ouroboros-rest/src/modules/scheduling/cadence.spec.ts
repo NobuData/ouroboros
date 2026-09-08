@@ -1,12 +1,16 @@
 import { JITTER_SPREAD, chunked, jittered } from "./cadence";
 
 /**
- * The anti-thundering-herd rule, and the chunking that keeps a sweep from opening fifty
- * sockets at once.
+ * The anti-thundering-herd rule, and the chunking that keeps a background loop from opening
+ * fifty sockets at once.
  *
  * `jittered` is driven with a fixed source rather than sampled, because the property that
  * matters is *the endpoints of the window*, and sampling a random function to assert a range
  * is a test that passes until it does not.
+ *
+ * Written for the provider-health sweep ([#196](https://github.com/NobuData/ouroboros/issues/196))
+ * and moved here with the code when the backlog sync
+ * ([#102](https://github.com/NobuData/ouroboros/issues/102)) became the second caller.
  */
 
 const MINUTE = 60_000;

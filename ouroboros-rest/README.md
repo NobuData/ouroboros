@@ -236,6 +236,7 @@ service never starts half-configured.
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
 | `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` | Seconds before a cloud provider's key validation is redone — deliberately much slower, because it asks a vendor rather than the operator's own machine |     no — 900      | a whole number of seconds, 60–86400 |
+| `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` | Seconds between [backlog sync](#the-backlog-sync) cycles ([#102](https://github.com/NobuData/ouroboros/issues/102)) — jittered ±25%, and what the intake page's freshness tag counts from |     no — 300      | a whole number of seconds, 60–86400 |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -1816,8 +1817,7 @@ which belongs to the deployment ticket that adds it. See `audit/audit.context.ts
 **One personal access token per workspace, sealed by the vault, and never returned**
 ([#101](https://github.com/NobuData/ouroboros/issues/101), decision **K1**).
 `src/modules/github/` is the credential's whole life and the client every call to GitHub goes
-through; K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) is the sync that will
-use it.
+through; [the backlog sync](#the-backlog-sync) is what uses it.
 
 ```
 PUT    /settings/github-token  ─▶ seal ─▶ upsert ─▶ forget budget ─▶ audit ─▶ ghp_••••abcd
@@ -1865,6 +1865,81 @@ the first `TicketSourceProvider`.
 `Link`-header walk: a repository with ten thousand issues costs one page of memory, a caller
 that stops reading stops the walk, and a conditional first request that GitHub answers `304` to
 ends it immediately — which costs nothing from the hourly budget at all.
+
+
+## The backlog sync
+
+**`github_issues` is filled by a poller, and the *"synced 40s ago"* tag counts from what it
+wrote** ([#102](https://github.com/NobuData/ouroboros/issues/102), decision **K2**).
+`src/modules/backlog-sync/` is mockup 03's subline made true: *"Ouroboros watches the GitHub
+backlog and continuously estimates effort, risk, and routing for every open issue — before you
+ever ask it to work."*
+
+```
+every OURO_BACKLOG_SYNC_INTERVAL_SECONDS, jittered ±25%
+  for each workspace with a token
+    for each enabled repo (its org enabled too), 3 at a time
+      no cursor  ─▶ GET /repos/:o/:r/issues?state=open&sort=updated&direction=asc
+      a cursor   ─▶ …?state=all&since=<watermark>&sort=updated&direction=asc
+      drop pull requests · map · one transaction:
+        upsert changed rows ─▶ repo.issues_synced_at + issues_sync_cursor
+      hand new & reopened issues to the estimation pipeline
+```
+
+**An initial import and an incremental poll ask different questions, and `state=all` on the
+second one is the interesting half.** A cold import takes `state=open`, which is what stops a
+first sync dragging in a decade of closed issues. Every poll after it takes `state=all` bounded
+by `since` — because an issue that closes upstream simply *leaves* an `open` listing, and a
+mirror that only ever asked for open issues would hold it open forever. A closed issue the
+mirror has never seen is still not stored, so `state=all` widens what the sync **learns**
+without widening what it **keeps**.
+
+**The watermark is what the poll saw, never this host's clock.** The next `since` is the
+greatest `updated_at` among the issues GitHub returned. A clock-derived watermark is wrong by
+however far this machine has drifted from GitHub's, and it is wrong in the direction that loses
+issues. A poll that returned nothing leaves the watermark where it was and still stamps
+freshness, because *"we looked and nothing had changed"* is exactly what the tag claims.
+
+**A second poll with no upstream changes touches no rows.** GitHub's `since` is inclusive, so
+every incremental poll re-reads the one issue sitting exactly on the watermark. The poll
+compares it field by field and writes nothing when nothing differs — which is the only way to
+keep `github_issues.updated_at` meaning *"GitHub changed this"*, since the touch trigger is
+unconditional.
+
+**Rows, cursor and freshness move in one transaction**, so the tag can never claim a sync that
+partly failed. A repository whose poll failed is not stamped at all: its stored `synced_at`
+goes on saying when the last good poll was, which is the honest answer.
+
+**Pull requests are dropped before a row exists.** GitHub's issues endpoint returns both, and
+the only thing that distinguishes them is a `pull_request` key. There is no column that could
+record the difference, deliberately — a PR in the backlog table is a bug a user sees
+immediately, and the way to be sure one is never stored is for the mirror to have no way to say
+*this one is a pull request*.
+
+**Nothing is ever a silent no-op.** A workspace with no token pauses `not_configured`; one with
+a token and nothing enabled pauses `no_repositories`; a repository the token cannot see pauses
+`not_found` without costing its neighbours their poll; a spent budget pauses the whole
+*workspace*, because the budget belongs to the token. Five of those six words are the taxonomy
+[the GitHub client](#the-github-token) already named, so M.4
+([#113](https://github.com/NobuData/ouroboros/issues/113)) has a vocabulary to store rather than
+one to invent.
+
+**A poll holds at most five hundred issues**, which is a bound on memory rather than a
+truncation: the walk is in ascending `updated` order, so what a capped poll stored is exactly
+what its watermark claims, and the loop books the next cycle a second later instead of waiting
+a full interval. A cold import of a large backlog is therefore several quick cycles rather than
+an afternoon, and it says so in its report and its log.
+
+**The estimation handoff is a seam, not a queue.** New and reopened issues are handed to
+`EstimationIntake` after the transaction commits. L.3
+([#107](https://github.com/NobuData/ouroboros/issues/107)) owns the orchestrator that will
+consume them; until it lands, the bound implementation records the handoff and says once, in
+the log, that nothing is estimating — the rows are `unsized`, which is what `sizing_status`
+already says about them, so the placeholder makes no claim that is not true.
+
+**There are no routes here.** `POST /api/v1/backlog/sync` and `GET
+/api/v1/backlog/sync-status` are M.4's; this module owns the cycle they will call, which is why
+`BacklogSyncService` and `BacklogSyncScheduler` are exported and no controller is declared.
 
 ## BetterAuth
 
