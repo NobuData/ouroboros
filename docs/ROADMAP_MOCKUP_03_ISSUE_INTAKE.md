@@ -175,7 +175,7 @@ existing set (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) plus ne
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | K.1 | #99 | 🟢 Done | ouroboros-db: [K.1] GitHub issue cache schema | `github_issues` mirror table + labels + sync cursors | mvp, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | K.2 | #100 | 🟢 Done | ouroboros-db: [K.2] Issue estimates schema | Versioned `issue_estimates` + sizing status + breakdown/trace jsonb | mvp, intake, db | N (after K.1) | Y | M | ouroboros-db |
-| K.3 | #101 | 🟡 Open | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
+| K.3 | #101 | 🟢 Done | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
 | K.4 | #102 | 🟡 Open | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
 | K.5 | #103 | 🟡 Open | ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity | Seeded issues/estimates reproducing the mockup's nine rows | mvp, intake, db | N (after K.2) | Y | S | ouroboros-db |
 | K.6 | #104 | 🟡 Open | ouroboros-db: [K.6] Intake constraints in ci/db | Status vocabularies, cursor invariants, estimate versioning checks | mvp, intake, db, ci | N (after K.5, #24) | Y | XS | ouroboros-db, .github |
@@ -430,7 +430,7 @@ issue_estimates(issue, version↑) ─ latest ─▶ effort M · conf 92 · stan
 
 ### Issue K.3 — ouroboros-rest: [K.3] GitHub credentials & API client
 
-> **GitHub issue:** #101 · **Status:** 🟡 Open · **Parent epic:** #94
+> **GitHub issue:** #101 · **Status:** 🟢 Done · **Parent epic:** #94
 
 - **Problem Statement:** Sync needs authenticated GitHub access per organization —
   no credential store or client exists (scaffolding #22 was deliberately data-only).
@@ -1487,10 +1487,10 @@ trigger because unique alone would let *latest* mean the older answer, and the t
 Latest-wins needed no index of its own: the unique key read backwards **is** the descending
 index the ticket asks for, and `constraints.sql` asserts that plan, its lack of a `Sort`, and
 the backlog table's lateral join reaching both relations through an index. Decision **K10**
-has a constraint of its own. **Epic K's Phase 1 now waits on #101** ([K.3] GitHub credentials
+has a constraint of its own. **Epic K's Phase 1 waited on #101** ([K.3] GitHub credentials
 & API client), which has always been the other parallelizable entry point — #102's sync
 service needs both — and **#103** (K.5's seeds) and **#107** (L.3's persistence) are both
-unblocked by this.
+unblocked by this. #101 shipped the same day; see below.
 
 > The question K.2 leaves for **K.6 (#104)**, beside K.1's: the estimate rules have no
 > load-bearing proof yet either, and the *"estimate versioning checks"* bullet now has
@@ -1499,6 +1499,49 @@ unblocked by this.
 > `issue_estimates_breakdown_shape`, `issue_estimates_trace_shape`,
 > `issue_estimates_issue_version_key` and the two triggers,
 > `issue_estimates_version_monotonic` and `issue_estimates_no_update`.
+
+**K.3 (#101) shipped on 2026-09-08, and Epic K's Phase 1 is complete.**
+[`V027__github_credentials.sql`](../ouroboros-db/migrations/V027__github_credentials.sql) is the
+per-workspace GitHub token, and [`ouroboros-rest/src/modules/github/`](../ouroboros-rest/src/modules/github/)
+is its whole life plus the client every call to GitHub goes through. Decision **K1**: one
+personal access token per workspace, set *and rotated* through one `PUT
+/api/v1/settings/github-token` because there is one token per workspace and two endpoints would
+make a client guess which state it was in, cleared by `DELETE`, and read back only as
+`ghp_••••abcd`. **The mask is composed server-side** from the stored ciphertext, so what crosses
+the wire cannot be un-masked; the prefix is kept where `provider-connections`' mask drops it,
+because a fine-grained `github_pat_` with the wrong repository selected and a classic `ghp_`
+missing the `repo` scope fail identically from the sync's side and are fixed in completely
+different places. **There is no reveal operation and there will not be one** — nothing copies
+this token anywhere, so an endpoint that returned it would exist only to be the way it leaks.
+
+The two amendments on the issue both landed rather than being noted. **The encryption is
+AD.1's** (#222, decision **P2**): the vault seals the token under the workspace's own data key,
+and `github_credentials` is the **second store registered with the re-encryption sweep** — a
+sealed column the sweep cannot see is a rotation that reports success while leaving ciphertext
+on a key it then retires. **Octokit lives behind one file** (the mockup-04 amendment, 2026-08-09):
+the module is written against a four-member `OctokitLike`, `github.octokit.ts` is the only file
+in the service that may import `@octokit/*`, and `.dependency-cruiser.cjs` makes that a failing
+build rather than a convention — spot-verified by adding the violation, exactly as AC.1's
+provider boundary is. Q.3 (#140) inherits that seam rather than having to cut one.
+
+Two claims are held by tests rather than by inspection, because the issue asked for that.
+**The token is absent from every API response and every log line**: `github.secrecy.spec.ts`
+drives a real lifecycle against a real vault and greps every response, every audit row and every
+`Logger`/`console` sink for any *eight-character run* of the token — a leak that printed thirty
+of its characters would not contain the token and would still be a leak. And **the rate guard
+backs off before exhaustion**, verified against both mechanisms: a low `x-ratelimit-remaining`
+stands the poller down at a floor of fifty of five thousand, and a `403`/`429` carrying
+`retry-after` is recorded separately because a secondary limit can arrive with thousands of
+requests remaining. Rotating or clearing a token forgets the guard's view of it — the numbers
+described the *old* token's window.
+
+> What K.3 leaves for **K.4 (#102)**: the client is a client and not a poller. `pages()` walks
+> `Link`-header pagination one page at a time and holds none of them, `since` is an ordinary
+> parameter, and a conditional first request that GitHub answers `304` to ends the walk
+> immediately and costs nothing from the hourly budget — but *when* to poll, what watermark to
+> keep and what to upsert are K.4's. The five failure reasons it will render — `not_configured`,
+> `unauthorized`, `not_found`, `rate_limited`, `upstream_error` — are named and mapped onto the
+> #31 envelope here, so M.4 (#113) has a vocabulary to store rather than one to invent.
 
 **Epic L opened on 2026-09-08.** **L.1 (#105) shipped**: `POST /v0/estimate` is the
 REST↔engine contract for sizing one issue, and the shape it answers is one version of K.2's

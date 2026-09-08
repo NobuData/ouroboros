@@ -24,7 +24,15 @@ export default {
   // so a test cannot compile under looser rules than the code it exercises.
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "<rootDir>/tsconfig.json" }],
-    "^.+\\.mjs$": "<rootDir>/jest.esm-transform.cjs",
+    // `.js` and `.cjs` beside `.mjs` since K.3
+    // ([#101](https://github.com/NobuData/ouroboros/issues/101)): Jest picks a transform by
+    // filename, and `@octokit/*` ships ES modules under a plain `.js` extension with
+    // `"type": "module"` in its package. Application code is `.ts` and is unaffected, and a
+    // CommonJS file in `node_modules` passes through `ts.transpileModule` unchanged — so what
+    // this widens is which files *may* be converted, while `transformIgnorePatterns` below
+    // stays the list of which ones actually are. The integration configuration has read
+    // `(mjs|js|cjs)` since #715 for the same reason.
+    "^.+\\.(mjs|js|cjs)$": "<rootDir>/jest.esm-transform.cjs",
   },
 
   // ...and the .mjs rule above reaches only what is named below, because node_modules is
@@ -48,10 +56,29 @@ export default {
   // reachable from here — the plugin proper pulls in `better-auth/api` and is *not*
   // converted, which is why `organization()` is called in `auth.factory.ts` alone.
   //
+  // **Octokit is the third**, added by K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)),
+  // and it is the smallest claim of the three. `@octokit/rest` is published as ES modules
+  // only, and exactly one spec loads it: `github/github.octokit.spec.ts`, which drives the
+  // real library over a stub `fetch` so that auth injection, the `Link` header walk and the
+  // `304` on a matching ETag are assertions about the library rather than about a stand-in
+  // written to agree with the code under test. Everything else in `src/modules/github/` is
+  // written against `OctokitLike` and never reaches this list.
+  //
+  // `before-after-hook`, `content-type`, `json-with-bigint` and `universal-user-agent` are
+  // named beside it because they are the four ES modules `@octokit/core` and
+  // `@octokit/request` pull in; nothing else of the library's graph is CommonJS-hostile.
+  // Naming them rather than widening the pattern is what makes a new one an error a person
+  // reads instead of a silent minute added to every run.
+  //
   // The default pattern is restated because setting this replaces it.
   transformIgnorePatterns: [
     "/node_modules/(?!" +
       [
+        "@octokit/",
+        "before-after-hook/",
+        "content-type/",
+        "json-with-bigint/",
+        "universal-user-agent/",
         "@thallesp/nestjs-better-auth/",
         "better-auth/dist/plugins/access/",
         "better-auth/dist/plugins/organization/access/",

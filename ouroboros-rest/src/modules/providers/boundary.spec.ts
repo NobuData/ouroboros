@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { MODULE_ROOT, cruise, cruiseFixture } from "../../testing/depcruise.fixture";
 
 /**
  * AC.1's second acceptance criterion: **the dependency-cruiser boundary fails the build on a
@@ -14,124 +14,13 @@ import { dirname, join, resolve } from "node:path";
  * rule whose regular expression has quietly stopped matching looks identical to a codebase with
  * no violations.
  *
- * The trees are built in the system temp directory and removed afterwards. They carry their own
- * minimal `tsconfig.json` because dependency-cruiser resolves TypeScript through one, and the
- * rules are read from the real configuration file rather than from a copy — a copy would be a
- * second set of rules, tested instead of the ones that run.
+ * The harness that builds and cruises those trees is `testing/depcruise.fixture.ts`, shared
+ * with `github/boundary.spec.ts` (K.3, [#101](https://github.com/NobuData/ouroboros/issues/101))
+ * since a second rule needed the same proof.
  *
  * The last case is the other half of the criterion: `yarn lint` has to actually run this, or the
  * rules are a file nobody executes.
  */
-
-/** The module root — where `.dependency-cruiser.cjs` and `package.json` live. */
-const MODULE_ROOT = resolve(__dirname, "..", "..", "..");
-
-/** The configuration under test. The real one, not a copy. */
-const CONFIG = join(MODULE_ROOT, ".dependency-cruiser.cjs");
-
-/**
- * A `tsconfig.json` for a fixture tree.
- *
- * Minimal on purpose: dependency-cruiser needs one to resolve TypeScript, and the rules under
- * test are about import *paths* rather than about compiler options.
- */
-const FIXTURE_TSCONFIG = JSON.stringify({
-  compilerOptions: { module: "commonjs", moduleResolution: "node", target: "ES2023" },
-  include: ["src/**/*.ts"],
-});
-
-/**
- * Where the `depcruise` executable is.
- *
- * Walked up from this file rather than resolved as a module specifier, because the package
- * publishes an `exports` map with no `./package.json` entry — so `require.resolve` cannot reach
- * it. Walking also survives both hoisting layouts: the binary may sit in the workspace root's
- * `node_modules/.bin` or in this module's own.
- *
- * @returns The absolute path to the executable script.
- * @throws {Error} When it cannot be found, which means the devDependency is not installed and
- *   every case below would otherwise fail with something unhelpful.
- */
-function depcruiseBin(): string {
-  for (
-    let directory = __dirname;
-    directory !== dirname(directory);
-    directory = dirname(directory)
-  ) {
-    const candidate = join(
-      directory,
-      "node_modules",
-      "dependency-cruiser",
-      "bin",
-      "dependency-cruise.mjs",
-    );
-
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error("dependency-cruiser is not installed — `yarn install` in ouroboros-rest");
-}
-
-/** What one cruise reported. */
-interface CruiseResult {
-  /** The process's exit code. Non-zero is what "fails the build" means. */
-  readonly exitCode: number;
-  /** Everything it printed, both streams, so a rule name can be looked for. */
-  readonly output: string;
-}
-
-/**
- * Run the real rules over a directory.
- *
- * @param cwd - Where to run. Paths in the report are relative to it, which is what lets a
- *   fixture tree match rules anchored on `^src/`.
- * @returns What it reported.
- */
-function cruise(cwd: string): CruiseResult {
-  try {
-    const output = execFileSync(process.execPath, [depcruiseBin(), "src", "--config", CONFIG], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    return { exitCode: 0, output };
-  } catch (error) {
-    const failure = error as { status?: number; stdout?: string; stderr?: string };
-
-    return {
-      exitCode: failure.status ?? -1,
-      output: `${failure.stdout ?? ""}${failure.stderr ?? ""}`,
-    };
-  }
-}
-
-/**
- * Build a source tree, cruise it, and remove it.
- *
- * @param files - The tree, keyed by path relative to the root. Directories are created as
- *   needed.
- * @returns What the cruise reported.
- */
-function cruiseFixture(files: Readonly<Record<string, string>>): CruiseResult {
-  const root = mkdtempSync(join(tmpdir(), "ouro-boundary-"));
-
-  try {
-    writeFileSync(join(root, "tsconfig.json"), FIXTURE_TSCONFIG);
-
-    for (const [path, contents] of Object.entries(files)) {
-      const absolute = join(root, path);
-      mkdirSync(dirname(absolute), { recursive: true });
-      writeFileSync(absolute, contents);
-    }
-
-    return cruise(root);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-}
 
 /** A stand-in adapter, for the trees whose violation is importing one. */
 const AN_ADAPTER = "src/modules/providers/adapters/ollama.adapter.ts";

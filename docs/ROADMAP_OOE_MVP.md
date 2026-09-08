@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**97 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**98 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (4/23) | **9** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (5/23) | **10** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **19 issues** · 56 complexity points · order **#143–#165**, less `143`, `144`, `145` and `146` · 12 dependency waves
+> **18 issues** · 53 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146` and `147` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 4 of 23 issues closed
+> **Status:** 🟡 **In progress** — 5 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -798,6 +798,47 @@ that roadmap's "Existing issues affected" section.
 > (`#101`) remains the other entry point of the intake roadmap's Phase 1 — `#102`'s sync
 > service needs both.
 >
+
+> **`K.3` · [`#101`](https://github.com/NobuData/ouroboros/issues/101) has shipped, and row
+> `147` has left the table below** — so this phase's order numbers now start at `148`, and
+> **Epic K's Phase 1 is complete**.
+>
+> [`V027__github_credentials.sql`](../ouroboros-db/migrations/V027__github_credentials.sql)
+> is the per-workspace GitHub token, and `ouroboros-rest`'s
+> [`src/modules/github/`](../ouroboros-rest/src/modules/github/) is its whole life plus the
+> client every call to GitHub goes through. Decision `K1`: one personal access token per
+> workspace, set and rotated through one `PUT /api/v1/settings/github-token`, cleared by a
+> `DELETE`, and read back only as `ghp_••••abcd` — a mask composed **server-side** from the
+> stored ciphertext, so what crosses the wire cannot be un-masked. There is no reveal
+> operation and there will not be one: nothing copies this token anywhere, so an endpoint
+> that returned it would exist only to be the way it leaks.
+>
+> **The encryption is `AD.1`'s, not this ticket's**, per the amendment
+> [`#222`](https://github.com/NobuData/ouroboros/issues/222) left on it — the vault seals the
+> token with the workspace's own data key, and `github_credentials` is the **second store
+> registered with the re-encryption sweep**, so a DEK rotation now finds it. What the column
+> guarantees is stronger than what the service promises: `github_credentials_token_sealed`
+> refuses any value that is not one of the vault's envelopes, so a plaintext `ghp_…` cannot be
+> stored by a seed, a fixture or a support script either.
+>
+> **The rate guard backs off before exhaustion rather than after a `403`.** GitHub reports the
+> token's hourly budget on every response; fifty of five thousand are kept back for whoever is
+> actually waiting, so a poller stands down and reports *"sync paused (rate-limited)"* instead
+> of spending the budget and taking the intake page down with it. A secondary limit arrives as
+> a `403`/`429` with `retry-after` and is recorded separately, because it can happen with
+> thousands of requests remaining.
+>
+> **Octokit lives behind one file**, which is the amendment mockup 04 left on this issue: the
+> module is written against a four-member `OctokitLike`, `github.octokit.ts` is the only file
+> that may import `@octokit/*`, and `.dependency-cruiser.cjs` makes that a failing build rather
+> than a convention — spot-verified by adding the violation. `Q.3`
+> ([`#140`](https://github.com/NobuData/ouroboros/issues/140)) inherits that seam rather than
+> having to cut one.
+>
+> **`K.4` (`#102`) is what this unblocks**, and it now has both of the things it needs — `K.1`'s
+> tables and this ticket's client. `M.4` (`#113`) reads the same rate guard for the honest
+> pause reason it renders.
+>
 > **This phase's counts are corrected here rather than only incremented.** `L.2`'s landing
 > removed row `144` from the table below without moving the tallies with it, so the header,
 > the phase summary and the *Progress* section had been one issue behind since. They now count
@@ -806,7 +847,6 @@ that roadmap's "Existing issues affected" section.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 147 | **K.3** | [#101](https://github.com/NobuData/ouroboros/issues/101) | GitHub credentials & API client | ouroboros-rest | M | 4.2, C.3 |
 | 148 | **K.4** | [#102](https://github.com/NobuData/ouroboros/issues/102) | Backlog sync service | ouroboros-rest | L | K.1, K.3 |
 | 149 | **K.5** | [#103](https://github.com/NobuData/ouroboros/issues/103) | Intake dev seeds — mockup-03 parity | ouroboros-db | S | K.2 |
 | 150 | **K.6** | [#104](https://github.com/NobuData/ouroboros/issues/104) | Intake constraints in ci/db | ouroboros-db, .github | XS | 3.6, K.5 |

@@ -206,14 +206,23 @@ version is active and starts the sweep detached; `sweep` is public and awaitable
 caller that wants to know when it finished. Nothing runs it periodically today.
 
 **A second, and it is stated rather than implied.** The sweep's registry of secret stores
-is **empty**. Q.1 ([#138](https://github.com/NobuData/ouroboros/issues/138)), K.3
-([#101](https://github.com/NobuData/ouroboros/issues/101)) and Y.1
-([#189](https://github.com/NobuData/ouroboros/issues/189)) are all still open and no
-migration declares an encrypted column, so there is nothing in any database for a sweep to
-convert, and a sweep run today honestly reports zeros. Each of those tickets registers a
-store when it lands, and the same pass both re-seals what this service already sealed and
-**adopts** what it never did — the one-time migration and the rotation sweep are the same
-operation, so the migration is not a second implementation exercised once.
+holds **two**: `provider_connections.credentials_encrypted` (Y.1,
+[#189](https://github.com/NobuData/ouroboros/issues/189), `V015`) and
+`github_credentials.token_encrypted` (K.3,
+[#101](https://github.com/NobuData/ouroboros/issues/101), `V027`). Q.1
+([#138](https://github.com/NobuData/ouroboros/issues/138)) is still open and registers its own
+the same way. **A store is registered with the migration that creates its column**, not with
+the first thing that writes a value into one, because `VaultRotation.rotate` retires the old
+key version once the sweep reports nothing left on it — a sealed column the sweep cannot see is
+not an inert gap, it is a rotation that reports success while leaving ciphertext on a key
+nobody knows is still in use.
+
+The same pass both re-seals what this service already sealed and **adopts** what it never did —
+the one-time migration and the rotation sweep are the same operation, so the migration is not a
+second implementation exercised once. Neither registered store can *actually* adopt anything,
+and that is the schema's doing rather than an assumption: both columns carry a CHECK refusing
+any value that is not one of this service's envelopes, so a row holding an unsealed secret
+cannot exist whatever writes the table.
 
 ### 2.6 Deleting a workspace destroys its credentials
 

@@ -1,6 +1,9 @@
 import {
   AUDIT_ACTIONS,
   auditDetail,
+  GITHUB_TOKEN_CLEARED_EVENT,
+  GITHUB_TOKEN_ROTATED_EVENT,
+  GITHUB_TOKEN_SET_EVENT,
   LEASE_GRANTED_EVENT,
   providerUpdateEvent,
   PROVIDER_ADDED_EVENT,
@@ -27,7 +30,12 @@ import {
  */
 
 describe("the vocabulary", () => {
-  it("is the ten names AD.4 and AD.3 wrote down", () => {
+  it("is the ten names AD.4 and AD.3 wrote down, plus K.3's three", () => {
+    // The three `github.*` names are K.3's ([#101](https://github.com/NobuData/ouroboros/issues/101)),
+    // under decision **AD.4**'s rule that credential operations are audited from the day they
+    // exist. A workspace's GitHub token is a credential like a provider's, and adding a name
+    // is an application release rather than a migration — V022 constrains the *grammar* and
+    // not the vocabulary.
     expect([...AUDIT_ACTIONS]).toEqual([
       "provider.added",
       "provider.revealed",
@@ -39,6 +47,9 @@ describe("the vocabulary", () => {
       "provider.deleted",
       "provider.tested",
       "credential.lease_granted",
+      "github.token_set",
+      "github.token_rotated",
+      "github.token_cleared",
     ]);
   });
 
@@ -56,11 +67,13 @@ describe("the vocabulary", () => {
   });
 
   it("files each event under a family somebody would think to filter on", () => {
-    // Nine provider events and one credential-delivery event. The families are what make
-    // `action like 'provider.%'` a useful question.
+    // Nine provider events, one credential-delivery event and three about the workspace's
+    // GitHub token. The families are what make `action like 'provider.%'` a useful question —
+    // and what keeps *"who changed our GitHub token"* answerable without knowing all three
+    // names.
     const families = new Set(AUDIT_ACTIONS.map((action) => action.split(".")[0]));
 
-    expect([...families].sort()).toEqual(["credential", "provider"]);
+    expect([...families].sort()).toEqual(["credential", "github", "provider"]);
   });
 
   it("exports every name individually as well as in the list", () => {
@@ -78,6 +91,9 @@ describe("the vocabulary", () => {
       PROVIDER_DELETED_EVENT,
       PROVIDER_TESTED_EVENT,
       LEASE_GRANTED_EVENT,
+      GITHUB_TOKEN_SET_EVENT,
+      GITHUB_TOKEN_ROTATED_EVENT,
+      GITHUB_TOKEN_CLEARED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

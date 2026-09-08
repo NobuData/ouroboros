@@ -6,6 +6,7 @@ import { testConfiguration } from "../config/configuration.fixture";
 import { DatabaseService } from "../db/db.service";
 import { KEY_WRAPPER, type KeyWrapper } from "./key.wrapper";
 import { MASTER_WRAPPER_ID, MasterKeyWrapper } from "./master.key.wrapper";
+import { GithubCredentialStore } from "../github/github.secrets";
 import { ProviderCredentialStore } from "../registry/registry.secrets";
 import { REGISTERED_SECRET_STORES, VaultModule } from "./vault.module";
 import { VAULT_SECRET_STORES, VaultRotation, type VaultSecretStore } from "./vault.rotation";
@@ -55,16 +56,29 @@ describe("the vault module", () => {
     expect(wrapper.id).toBe(MASTER_WRAPPER_ID);
   });
 
-  it("registers one secret store — V015's provider credential column", async () => {
-    // #189 is the first migration to declare an encrypted column, so it is the first ticket
-    // to put a store in this list. #138 (ticket sources) and #101 (GitHub credentials) are
-    // still open and add theirs the same way. This test is what makes the list a claim rather
-    // than a sentence in a pull request, and it fails the day the next one lands.
+  it("registers every sealed column in the schema — and today there are two", async () => {
+    // #189 was the first migration to declare an encrypted column and the first ticket to put
+    // a store in this list; #101 (V027's GitHub token) is the second. #138 (ticket sources) is
+    // still open and adds its own the same way. This test is what makes the list a claim rather
+    // than a sentence in a pull request, and it fails the day the next one lands — which is
+    // exactly what it did when this one did.
     const module = await build();
     const stores = module.get<readonly VaultSecretStore[]>(VAULT_SECRET_STORES);
 
-    expect(REGISTERED_SECRET_STORES).toEqual([ProviderCredentialStore]);
-    expect(stores.map((store) => store.name)).toEqual(["provider_connections"]);
+    expect(REGISTERED_SECRET_STORES).toEqual([ProviderCredentialStore, GithubCredentialStore]);
+    expect(stores.map((store) => store.name)).toEqual([
+      "provider_connections",
+      "github_credentials",
+    ]);
+  });
+
+  it("provides the GitHub store itself rather than importing the module that owns it", async () => {
+    // `GithubModule` imports this one — its credential service encrypts — so exporting the
+    // store from there would close a cycle. The class needs nothing but `DatabaseService`,
+    // which `DbModule` above already supplies.
+    const module = await build();
+
+    expect(module.get(GithubCredentialStore)).toBeInstanceOf(GithubCredentialStore);
   });
 
   it("hands the rotation a list it cannot grow", async () => {

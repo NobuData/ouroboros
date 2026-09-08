@@ -60,12 +60,22 @@ export default {
   //   * `zod/` — the request schemas every one of those routes validates against.
   //   * `@opentelemetry/semantic-conventions` — reached by the telemetry module, which this
   //     service turns off but the library still loads.
+  //   * `@octokit/`, and the four ES-module packages its core and request layers pull in —
+  //     `before-after-hook/`, `content-type/`, `json-with-bigint/`, `universal-user-agent/`. K.3
+  //     ([#101](https://github.com/NobuData/ouroboros/issues/101)): `github.module.ts` binds
+  //     `OCTOKIT_FACTORY` to the real `createOctokit`, so an application built by this suite
+  //     loads the library whether or not the spec under it calls GitHub.
   //
   // What this costs is about a second and a half of transform on a cold cache, once per
   // spec file, which the run's #37 container start dwarfs.
   transformIgnorePatterns: [
     "/node_modules/(?!" +
       [
+        "@octokit/",
+        "before-after-hook/",
+        "content-type/",
+        "json-with-bigint/",
+        "universal-user-agent/",
         "@thallesp/nestjs-better-auth/",
         "better-auth/",
         "@better-auth/",

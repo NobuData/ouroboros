@@ -22,9 +22,17 @@
  * ([#189](https://github.com/NobuData/ouroboros/issues/189)) put the first one in it:
  * `provider_connections.credentials_encrypted`, through `RegistryModule`'s
  * `ProviderCredentialStore`. Until V015 there was no encrypted column in this schema and the
- * array was empty, which was accurate rather than a stub. Q.1
- * ([#138](https://github.com/NobuData/ouroboros/issues/138)) and K.3
- * ([#101](https://github.com/NobuData/ouroboros/issues/101)) each add theirs the same way.
+ * array was empty, which was accurate rather than a stub. K.3
+ * ([#101](https://github.com/NobuData/ouroboros/issues/101)) added the second with V027 —
+ * `github_credentials.token_encrypted` — and Q.1
+ * ([#138](https://github.com/NobuData/ouroboros/issues/138)) adds its own the same way.
+ *
+ * **The two are registered differently, and the difference is a cycle.** `RegistryModule` can
+ * export its store because it does not import this module. `GithubModule` does — its
+ * credential service encrypts — so `GithubCredentialStore` is named in this module's own
+ * `providers` instead. The class needs nothing but `DatabaseService`, which `DbModule` above
+ * already supplies, so that is sufficient as well as necessary. `github/github.secrets.ts`
+ * carries the same note from its side.
  *
  * A store is registered **with the migration that creates its column**, not with the first
  * thing that writes one — see `registry/registry.secrets.ts`. A sealed column the sweep
@@ -49,6 +57,7 @@
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { GithubCredentialStore } from "../github/github.secrets";
 import { ProviderCredentialStore } from "../registry/registry.secrets";
 import { RegistryModule } from "../registry/registry.module";
 import { KEY_WRAPPER } from "./key.wrapper";
@@ -62,17 +71,20 @@ import { VaultService } from "./vault.service";
  *
  * A named constant rather than a literal in the `inject` array, so the list has somewhere to
  * be documented and so a test can assert what is in it — which is what stops a table with a
- * sealed column being quietly left out when #138 and #101 land theirs.
+ * sealed column being quietly left out when #138 lands its own.
  *
  * Classes rather than instances: each store injects `DatabaseService`, so Nest has to
  * construct them, and naming them here is what makes "which modules hold a sealed value" one
  * readable list instead of a factory argument list nobody can grep for.
  */
-export const REGISTERED_SECRET_STORES = [ProviderCredentialStore] as const;
+export const REGISTERED_SECRET_STORES = [ProviderCredentialStore, GithubCredentialStore] as const;
 
 @Module({
   imports: [DbModule, RegistryModule],
   providers: [
+    // Named here rather than reached through `GithubModule`, which imports this one. See the
+    // header on `REGISTERED_SECRET_STORES`.
+    GithubCredentialStore,
     VaultRepository,
     VaultService,
     VaultRotation,

@@ -1811,6 +1811,61 @@ specific. Behind `ouroboros-ui`'s server-side client that means a browser-driven
 the UI's address; making a forwarded header trustworthy needs a configured trusted-proxy list,
 which belongs to the deployment ticket that adds it. See `audit/audit.context.ts`.
 
+## The GitHub token
+
+**One personal access token per workspace, sealed by the vault, and never returned**
+([#101](https://github.com/NobuData/ouroboros/issues/101), decision **K1**).
+`src/modules/github/` is the credential's whole life and the client every call to GitHub goes
+through; K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) is the sync that will
+use it.
+
+```
+PUT    /settings/github-token  ─▶ seal ─▶ upsert ─▶ forget budget ─▶ audit ─▶ ghp_••••abcd
+DELETE /settings/github-token  ─▶ delete ────────▶ forget budget ─▶ audit ─▶ configured:false
+GET    /settings/github-token  ─▶ find ─▶ open ─▶ mask ─▶ erase ─▶ ghp_••••abcd
+                                  owner & admin only — the read included
+GithubClient  guard ─▶ request ─▶ observe x-ratelimit-* ─▶ classify
+              401 → unauthorized · 404 → not_found · 403/429 → rate_limited · … → upstream
+```
+
+**Setting and rotating are one `PUT`**, because there is one token per workspace: two
+endpoints would mean a client had to know which state it was in before it could ask. What
+separates them is the audit trail — `github.token_set` the first time, `github.token_rotated`
+after — and `github.token_cleared` records the press even when there was nothing to remove,
+because a trail of outcomes rather than of actions loses the attempt.
+
+**The token is never in a response, and no route could put it there.** `masked` is composed on
+the server from the stored ciphertext, so what crosses the wire cannot be un-masked. There is
+no reveal operation and there will not be one: `/api/v1/providers/{id}/reveal` exists because a
+person has to copy a provider key into another tool, and nothing copies this token anywhere.
+`github.secrecy.spec.ts` is the proof — it drives a real lifecycle and greps every response,
+every audit row and every log sink for any eight-character run of the token.
+
+**The read is `owner`/`admin` too**, which is this surface's one departure from
+`/api/v1/settings/auto-merge`, whose read is every member's. A viewer looking at the auto-merge
+switch learns a policy; a viewer looking at this learns that a credential exists, when it was
+last rotated and its last four characters.
+
+**The rate guard backs off *before* exhaustion.** GitHub reports the token's hourly budget on
+every response, and `github.rate-limit.ts` keeps the last fifty requests of it back for whoever
+is actually waiting — so a poller stops and says *"sync paused (rate-limited)"* instead of
+spending the budget and taking the intake page down with it. A secondary limit (`403`/`429`
+with `retry-after`) is recorded separately, because it can arrive with thousands of requests
+remaining. Rotating or clearing a token forgets the guard's view of it: the numbers described
+the old token's window, and a fresh token arrives with a full one.
+
+**Octokit lives behind one file.** Everything in the module is written against `OctokitLike`,
+and `github.octokit.ts` is the only file in the service that may import `@octokit/*` — enforced
+by `.dependency-cruiser.cjs` and spot-verified in `github/boundary.spec.ts` by adding the
+violation. That is the amendment posted on #101 on 2026-08-09, and it is the seam Q.3
+([#140](https://github.com/NobuData/ouroboros/issues/140)) moves when the GitHub client becomes
+the first `TicketSourceProvider`.
+
+**Pagination holds one page.** `GithubClient.pages()` is a generator over Octokit's
+`Link`-header walk: a repository with ten thousand issues costs one page of memory, a caller
+that stops reading stops the walk, and a conditional first request that GitHub answers `304` to
+ends it immediately — which costs nothing from the hourly budget at all.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -2736,6 +2791,9 @@ ouroboros-rest/
 │       │                   #   the one writer; GET /api/v1/providers/audit reads it
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
+│       ├── github/         # the workspace's GitHub token + the API client   · #101
+│       │                   #   PUT/DELETE/GET /settings/github-token — owner & admin only
+│       │                   #   github.octokit.ts is the only file that may import @octokit/*
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
@@ -2745,11 +2803,11 @@ ouroboros-rest/
 ├── openapi.json            # rendered from it; the copy the service loads
 ├── openapi.internal.yaml   # the engine-facing contract — authoritative      · #224
 ├── openapi.internal.json   # rendered from it; read by AF.1/AF.2, served nowhere
-├── .dependency-cruiser.cjs # the provider boundary — `yarn lint` runs it       · #216
+├── .dependency-cruiser.cjs # the provider and Octokit boundaries — `yarn lint` runs them · #216 #101
 ├── eslint.config.mjs       # flat config; Prettier runs as a lint rule
 ├── jest.config.mjs         # unit suite — src/**/*.spec.ts, starts nothing
 ├── jest.integration.config.mjs  # src/**/*.integration-spec.ts, on a container it starts
-├── jest.esm-transform.cjs  # the one ES-module dependency the suites load for real · #701
+├── jest.esm-transform.cjs  # the ES-module dependencies the suites load for real  · #701 #101
 ├── nest-cli.json
 ├── tsconfig.json           # strict; what typecheck, ts-jest and the linter read
 └── tsconfig.build.json     # the same, minus the specs — what ships
@@ -2853,6 +2911,7 @@ the Ollama adapter and server-side pulls [#219](https://github.com/NobuData/ouro
 the Copilot & Cursor adapters [#220](https://github.com/NobuData/ouroboros/issues/220) ·
 the credential lifecycle [#223](https://github.com/NobuData/ouroboros/issues/223) ·
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
+the GitHub token and API client [#101](https://github.com/NobuData/ouroboros/issues/101) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

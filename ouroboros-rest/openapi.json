@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.30.19",
+    "version": "0.30.20",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -1613,6 +1613,274 @@
           },
           "422": {
             "description": "`validation_failed` — `enabled` was not a boolean. `details` carries the entry\nkeyed by the field. A `\"true\"`, a `1` or a `null` is refused, not coerced,\nbecause a workspace's merge posture is nothing to flip by accident of type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/github-token": {
+      "get": {
+        "tags": [
+          "github"
+        ],
+        "summary": "The workspace's GitHub token, masked",
+        "description": "Whether this workspace has a GitHub token, and the only thing this API will ever say\nabout one ([#101](https://github.com/NobuData/ouroboros/issues/101), decision **K1**).\n\n**The token is never returned.** `masked` is `ghp_••••abcd` — the token's prefix, four\nbullets, and its last four characters — and it is composed on the server from the\nstored ciphertext, so what crosses the wire cannot be un-masked: the characters it\nhides were never sent. There is no reveal operation on this surface and there will not\nbe one. `/api/v1/providers/{id}/reveal` exists because a person has to be able to copy\na provider API key into another tool; nothing copies this token anywhere, so an\nendpoint that returned it would exist only to be the way it leaks.\n\n**`owner` or `admin`, for the read as well as the writes.** This is the one settings\nsurface whose read is gated: a viewer looking at the auto-merge switch learns a\npolicy, and a viewer looking at this learns that a credential exists, when it was last\nrotated and its last four characters.\n\n**Never a `404`.** A workspace with no token answers `configured: false` with null\nstamps — a state to render, and the state mockup 03's no-token guidance\n([#120](https://github.com/NobuData/ouroboros/issues/120)) is drawn from.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "readGithubToken",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The token's state. `configured: false` with null stamps for a workspace that has\nnone — a state to render, not a failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubToken"
+                },
+                "example": {
+                  "configured": true,
+                  "masked": "ghp_••••abcd",
+                  "createdAt": "2026-09-01T09:00:00.000Z",
+                  "updatedAt": "2026-09-08T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Reading a stored credential's state is `owner` or `admin`. `details.role` is\nwhat you hold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "github"
+        ],
+        "summary": "Set or rotate the workspace's GitHub token",
+        "description": "Store a GitHub personal access token for this workspace, replacing whatever was there.\n\n**Setting and rotating are one operation**, because there is one token per workspace:\nmaking them two endpoints would mean a client had to know which state it was in before\nit could ask, and would answer `409` to an administrator who guessed wrong about a\ntoken somebody else had already set. The audit trail is where they differ —\n`github.token_set` the first time, `github.token_rotated` afterwards.\n\n**The token is sealed before it is stored**, with the per-tenant envelope encryption\nAD.1 ([#222](https://github.com/NobuData/ouroboros/issues/222)) provides, and the\ncolumn refuses any value that is not one of those envelopes — so a plaintext token\ncannot be stored by this operation or by anything else. Deleting the workspace destroys\nboth the ciphertext and the key that could open it.\n\n**The shape is checked, and the value is never echoed.** A body whose `token` is not\nshaped like a GitHub token is a `422` naming the field — the failure this check exists\nfor is a paste error, and a paste error that is *stored* becomes indistinguishable from\na revoked token an hour later. The message describes the shape expected and never the\nstring received, because the rejected value may be a real credential.\n\n**What is not checked here is whether GitHub accepts it.** Refusing to *store* a token\nbecause GitHub was unreachable would make a network outage look like a bad credential;\na live check belongs to the source's test-connection affordance\n([#141](https://github.com/NobuData/ouroboros/issues/141)).\n\n**`owner` or `admin`, and nobody else.** The token is what the backlog sync acts with,\nso setting one is administering the workspace.",
+        "operationId": "putGithubToken",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GithubTokenRequest"
+              },
+              "example": {
+                "token": "ghp_qwertyuiopasdfghjklzxcvbnm0123456789"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The token's state after the write, masked. Answered rather than a bare `204`, so\nthe surface can render the mask from the response it already has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubToken"
+                },
+                "example": {
+                  "configured": true,
+                  "masked": "ghp_••••6789",
+                  "createdAt": "2026-09-01T09:00:00.000Z",
+                  "updatedAt": "2026-09-08T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — setting a workspace's GitHub token is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `token` was absent, or was not shaped like a GitHub token.\n`details.token` carries the messages, and **none of them repeats the value that was\nrefused**: the rejected string may be a working credential pasted into the wrong\nworkspace, and echoing it would put it in the response body, the browser's console\nand whatever collects client errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "github"
+        ],
+        "summary": "Clear the workspace's GitHub token",
+        "description": "Remove this workspace's GitHub token. Syncing stops, and the intake surface renders the\nno-token guidance rather than an error.\n\n**Idempotent, and answers `200` with the state rather than `204`.** Clearing a\nworkspace that had no token is the request already satisfied, not a `404` — and the\nsurface still needs a state to render. The audit trail records the press either way,\nwith `removed` saying whether anything was there: a trail of outcomes rather than of\nactions would lose the attempt.\n\n**The row is deleted, not blanked.** \"This workspace has no token\" is the absence of a\nrow, so there is one state to read rather than two that mean the same thing.\n\n**`owner` or `admin`, and nobody else.**",
+        "operationId": "clearGithubToken",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The token's state after the removal — always `configured: false`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubToken"
+                },
+                "example": {
+                  "configured": false,
+                  "masked": null,
+                  "createdAt": null,
+                  "updatedAt": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — clearing a workspace's GitHub token is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10354,6 +10622,64 @@
               "null"
             ],
             "description": "Who last changed it — a `\"user\".id` — or null: never set, or the setter was\nsince deleted. An opaque string with the same two shapes every id in this\ndocument has (see `{orgId}`): 32-character alphanumeric from BetterAuth, uuid\nfor rows that predate it. Never parse it as a uuid."
+          }
+        }
+      },
+      "GithubToken": {
+        "type": "object",
+        "title": "GithubToken",
+        "description": "The state of a workspace's GitHub token — what all three operations on\n`/api/v1/settings/github-token` answer\n([#101](https://github.com/NobuData/ouroboros/issues/101)).\n\n**There is no field the token could be in, and that is the design.** `masked` is\ncomposed on the server from the stored ciphertext and holds the token's prefix, four\nbullets and its last four characters. Nothing in this schema can be un-masked, because\nthe characters it hides never left the service.\n\nThe three nullable fields are null **together**, exactly when `configured` is `false`.",
+        "additionalProperties": false,
+        "required": [
+          "configured",
+          "masked",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "Whether this workspace has a GitHub token stored. `false` is a state to render —\nthe intake surface's no-token guidance — rather than a failure."
+          },
+          "masked": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`ghp_••••abcd` — the token's prefix, four bullets, and its last four characters.\nNull when nothing is stored. **The whole of what this API will ever say about a\nstored token.** The prefix is kept, unlike the provider-credential mask, because it\nsays which *kind* of token this is: a fine-grained `github_pat_` with the wrong\nrepository selected and a classic `ghp_` missing the `repo` scope fail identically\nfrom the sync's side and are fixed in completely different places."
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the token was first stored, or null when none is."
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was last written, or null when none is. Past `createdAt` means it has been\nrotated at least once — which is how this surface answers *\"is this still the token\nI set in March\"* without a column maintained to say so."
+          }
+        }
+      },
+      "GithubTokenRequest": {
+        "type": "object",
+        "title": "GithubTokenRequest",
+        "description": "The body of `PUT /api/v1/settings/github-token`: the token to store.\n\nRequired rather than optional — `PUT` means *this is the value now*, and a body\ncarrying nothing would be a request to set a token to nothing, which is `DELETE` and is\na different decision an administrator should have to make on purpose.",
+        "additionalProperties": false,
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 20,
+            "maxLength": 255,
+            "description": "A GitHub personal access token: a value beginning `github_pat_`, `ghp_`, `gho_`,\n`ghu_`, `ghs_` or `ghr_`, or a pre-2021 classic token of forty lowercase\nhexadecimal characters. Surrounding whitespace is trimmed — the commonest way a\ngood token arrives broken is with the newline a terminal copy left on it — and\nwhitespace *inside* the value is refused.\n\nAnything else is a `422` naming the field and **never repeating the value**. The\ncheck exists for paste errors rather than for forgeries: a repository URL, an\norganisation login or a bearer header pasted whole is refused here instead of being\nstored, encrypted, and then failing every sync from now on with a `401` that is\nindistinguishable from a revoked token."
           }
         }
       },
