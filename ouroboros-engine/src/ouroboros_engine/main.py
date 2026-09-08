@@ -22,7 +22,7 @@ from ouroboros_engine.core.errors import register_error_handlers
 from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
 from ouroboros_engine.core.uptime import Uptime
-from ouroboros_engine.estimation.estimator import ContractStub
+from ouroboros_engine.estimation.heuristic import HeuristicEstimator
 from ouroboros_engine.openapi import document
 from ouroboros_engine.settings import Settings, load_settings
 
@@ -46,7 +46,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         A configured :class:`fastapi.FastAPI` whose ``state.settings`` holds the
         settings it was built with, so a route or a middleware can reach them without
         re-reading the environment, whose ``state.uptime`` is the stopwatch
-        ``/v0/status`` reports from, and whose ``state.estimator`` is the implementation
+        ``/v0/status`` reports from, and whose ``state.estimator`` is the
+        :class:`~ouroboros_engine.estimation.heuristic.HeuristicEstimator`
         ``POST /v0/estimate`` calls.
 
     Raises:
@@ -97,11 +98,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.uptime = Uptime()
 
     # Which estimator answers `POST /v0/estimate` is a property of the application rather
-    # than of the route, so replacing it — the heuristic (#106), then the LLM estimator
-    # (#123) — is this line and nothing else, and a test installs its own by assigning to
-    # the same attribute. `ContractStub` is a placeholder that says so in every field it
-    # fills; see `ouroboros_engine.estimation.estimator`.
-    app.state.estimator = ContractStub()
+    # than of the route, so replacing it — the LLM estimator (#123), with the heuristic
+    # retained behind it as the fallback path — is this line and nothing else, and a test
+    # installs its own by assigning to the same attribute. `HeuristicEstimator` is L.2's
+    # rule engine: deterministic, and provenance `heuristic-v0` in every trace it writes.
+    # See `ouroboros_engine.estimation.heuristic`.
+    app.state.estimator = HeuristicEstimator()
 
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that

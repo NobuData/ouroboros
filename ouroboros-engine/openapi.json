@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.5.1",
+    "version": "0.5.2",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -80,7 +80,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.5.1"
+                  "version": "0.5.2"
                 }
               }
             }
@@ -109,7 +109,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.5.1",
+                  "version": "0.5.2",
                   "uptime_seconds": 1234.567
                 }
               }
@@ -161,7 +161,7 @@
                       "note": "hello from ouroboros-rest"
                     }
                   },
-                  "engine_version": "0.5.1"
+                  "engine_version": "0.5.2"
                 }
               }
             }
@@ -181,7 +181,7 @@
           "v0"
         ],
         "summary": "Estimate the work in one issue",
-        "description": "Size one issue: how much work it is, how sure the estimator is, which workflow\nshould run it, which model it should run on, what the work is expected to cost, and\nwhat any of that was reached from.\n\n**The response is one version of `issue_estimates`**\n([#100](https://github.com/NobuData/ouroboros/issues/100)) field for field, so the\ncaller persists an answer rather than translating one. The five columns with no\nfield here are the persister's: the row's id, the issue it belongs to, its version,\nwhen it was written, and `trace.sized_at`. An estimator does not know which issue\nrow it was called for, cannot know which version its answer will become, and must\nnot be the thing that decides when the answer was written.\n\n**The caller supplies the vocabularies.** `context.workflow_tags` and\n`context.model_defaults` are what the installation has, and `suggested_workflow`\nand `routed_model` are always drawn from them — roadmap decisions **K5** and\n**K6**. This service holds no list of workflow tags and no list of models, so it\ncannot invent one; an estimator that names something outside the offer is a `500`\nhere rather than a value that reaches a row.\n\n**`trace.estimator` is required** — decision **K10**, enforced at this boundary and\nnot only by the database's `not null`. Provenance checked at the last hop is\nprovenance the hops before it can lose.\n\n**The estimator behind this contract is replaced twice and the contract is not.**\nToday it is a placeholder that reports `contract-stub-v0`, confidence `0` and a\nbreakdown of zeros — a well-formed answer that says in every field that nothing\nestimated it, which is what lets the gateway leg and the persistence be built\nbefore an estimator exists. The heuristic\n([#106](https://github.com/NobuData/ouroboros/issues/106)) and then the LLM\nestimator ([#123](https://github.com/NobuData/ouroboros/issues/123)) answer this\nsame shape.\n\n**v0 answers synchronously.** A rule engine has nothing to wait for. The\n`202`-plus-poll escalation an LLM estimator will need is specified in\n`x-async-escalation` below rather than left to be invented then: it adds a status\nand a route and changes no field, so a caller written against this operation today\nneeds only to treat `202` as possible.",
+        "description": "Size one issue: how much work it is, how sure the estimator is, which workflow\nshould run it, which model it should run on, what the work is expected to cost, and\nwhat any of that was reached from.\n\n**The response is one version of `issue_estimates`**\n([#100](https://github.com/NobuData/ouroboros/issues/100)) field for field, so the\ncaller persists an answer rather than translating one. The five columns with no\nfield here are the persister's: the row's id, the issue it belongs to, its version,\nwhen it was written, and `trace.sized_at`. An estimator does not know which issue\nrow it was called for, cannot know which version its answer will become, and must\nnot be the thing that decides when the answer was written.\n\n**The caller supplies the vocabularies.** `context.workflow_tags` and\n`context.model_defaults` are what the installation has, and `suggested_workflow`\nand `routed_model` are always drawn from them — roadmap decisions **K5** and\n**K6**. This service holds no list of workflow tags and no list of models, so it\ncannot invent one; an estimator that names something outside the offer is a `500`\nhere rather than a value that reaches a row.\n\n**`trace.estimator` is required** — decision **K10**, enforced at this boundary and\nnot only by the database's `not null`. Provenance checked at the last hop is\nprovenance the hops before it can lose.\n\n**The estimator behind this contract is replaced and the contract is not.** Today\nit is the deterministic rule engine of L.2\n([#106](https://github.com/NobuData/ouroboros/issues/106)) — `heuristic-v0`, which\nreads an issue's labels, its title and the shape of its body and nothing else. Two\nconsequences a caller should read from the example below rather than discover:\n`breakdown.files` is **always empty**, because a rule engine cannot know which\nfiles an issue touches and an empty list is the honest answer rather than a\nmissing key; and `trace.tokens_used` is **always `0`**, because nothing was\ninvoked. `trace.signals` names the rules that produced the answer, so an estimate\ncan be argued with rather than only accepted. The LLM estimator\n([#123](https://github.com/NobuData/ouroboros/issues/123)) answers this same shape,\nwith the heuristic retained behind it as the fallback path.\n\n**A low confidence is an answer, not a failure.** The heuristic reports how much\nits rules agreed; L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107))\ncompares that against its own floor and moves the issue to `needs_human` rather\nthan `sized`. The engine publishes the value it is calibrated against —\n`ouroboros_engine.estimation.heuristic.NEEDS_HUMAN_CONFIDENCE_FLOOR`, currently\n`70` — and the estimate's trace carries a `needs-human:` line when it falls under\nit.\n\n**v0 answers synchronously.** A rule engine has nothing to wait for. The\n`202`-plus-poll escalation an LLM estimator will need is specified in\n`x-async-escalation` below rather than left to be invented then: it adds a status\nand a route and changes no field, so a caller written against this operation today\nneeds only to treat `202` as possible.",
         "operationId": "estimateIssue",
         "x-async-escalation": {
           "status": 202,
@@ -236,29 +236,29 @@
                 },
                 "example": {
                   "effort": "m",
-                  "confidence": 92,
+                  "confidence": 77,
                   "suggested_workflow": "standard-fix",
                   "routed_model": "claude-fable-5",
                   "breakdown": {
-                    "files": [
-                      "drivers/i2c_recovery.c",
-                      "drivers/imu_bmi270.c",
-                      "tests/unit/test_i2c_lockup.c"
-                    ],
+                    "files": [],
                     "est_tokens": 180000,
                     "cycle_min": 12,
-                    "cycle_max": 18,
+                    "cycle_max": 32,
                     "est_minutes": 23
                   },
-                  "risk": "low",
-                  "risk_note": "Isolated to the I²C driver path; full HIL coverage exists for bus recovery.",
+                  "risk": "medium",
+                  "risk_note": "M-sized work starts at medium regression risk. heuristic-v0 reads an issue's labels and text only — not the code, its tests, or how much depends on it — so this is where a reviewer starts rather than what the change measures.",
                   "trace": {
                     "estimator": "heuristic-v0",
-                    "tokens_used": 41000,
+                    "tokens_used": 0,
                     "signals": [
-                      "3 similar closed issues",
-                      "driver map",
-                      "HIL test index"
+                      "label-effort: the \"bug\" label -> m",
+                      "body-length: 126 characters -> s",
+                      "effort: strongest of 2 signals -> m",
+                      "confidence: 1 of 2 agree, spread 1 -> 77",
+                      "workflow: no docs, dependency or feature signal -> standard-fix",
+                      "routed-model: model_defaults[\"default\"] -> resolved, not invoked",
+                      "risk: m effort -> medium"
                     ]
                   }
                 }
@@ -628,7 +628,7 @@
               "minLength": 1,
               "maxLength": 4096
             },
-            "description": "The paths an estimator believes the work touches, as the panel's *Estimated\nfiles touched* list. **Empty is a real answer**: the heuristic v0 cannot know\nfiles and the mockup renders their absence rather than guessing, so this is a\nlist that may have nothing in it — never a promise.",
+            "description": "The paths an estimator believes the work touches, as the panel's *Estimated\nfiles touched* list. **Empty is a real answer, and the one `heuristic-v0`\nalways gives**: a rule engine reading labels and body length cannot know which\nfiles an issue touches, and the mockup renders that absence rather than\nguessing. The key is always present — an empty list, never a missing field —\nbecause the two mean different things to a reader. The example below is the\nLLM estimator's shape; today's answers carry `[]`.",
             "examples": [
               [
                 "drivers/i2c_recovery.c",
@@ -689,7 +689,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 64,
-            "description": "What produced this — `heuristic-v0` for the rule engine, a model identifier for\nthe LLM estimator, `contract-stub-v0` for the placeholder that is installed\nuntil the first of those lands. **Decision K10**: required and non-empty here as\nwell as `not null` there, so provenance cannot be lost on the way to the row.",
+            "description": "What produced this — `heuristic-v0` for the rule engine installed today, and a\nmodel identifier for the LLM estimator that replaces it. **Decision K10**:\nrequired and non-empty here as well as `not null` there, so provenance cannot be\nlost on the way to the row. It is never a model this estimate did not use.",
             "examples": [
               "heuristic-v0"
             ]
@@ -698,9 +698,9 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 100000000,
-            "description": "What producing *this estimate* cost, in model tokens. `0` for an estimator that\ncalled no model, which is the honest answer for a rule engine rather than a\nmissing field.",
+            "description": "What producing *this estimate* cost, in model tokens. `0` for an estimator that\ncalled no model, which is the honest answer for a rule engine rather than a\nmissing field — and what `heuristic-v0` always reports.",
             "examples": [
-              41000
+              0
             ]
           },
           "signals": {

@@ -3,10 +3,13 @@
 > A five-minute walkthrough of what phase **P6** of
 > [`ROADMAP_OOE_MVP.md`](ROADMAP_OOE_MVP.md) has delivered **so far**, and how to show
 > it.
-> **Status at the time of writing:** 🟡 **1 of 23 issues closed** — only `K.1`
-> ([#99](https://github.com/NobuData/ouroboros/issues/99)). There is no `/issues`
-> route, no sync service and no estimator yet. This is a **schema** demonstration, and
-> the script says so out loud.
+> **Status at the time of writing:** 🟡 **3 of 23 issues closed** — `K.1`
+> ([#99](https://github.com/NobuData/ouroboros/issues/99)), `L.1`
+> ([#105](https://github.com/NobuData/ouroboros/issues/105)) and `L.2`
+> ([#106](https://github.com/NobuData/ouroboros/issues/106)). There is no `/issues` route
+> and no sync service; the engine can now *size* an issue on request, but nothing writes
+> the result to a row. This is a **schema** demonstration, and the script says so out
+> loud.
 
 ## Regeneration prompt
 
@@ -209,9 +212,12 @@ constraints in beat 2 are checked by the pipeline, not just by the demo.
 - **Nothing syncs from GitHub yet.** `K.4`
   ([#102](https://github.com/NobuData/ouroboros/issues/102)) is the service that fills
   this table, and it is not started.
-- **`sizing_status` never moves today.** The estimator that drives it is `L.2`
-  ([#106](https://github.com/NobuData/ouroboros/issues/106)) in the engine, also not
-  started.
+- **`sizing_status` never moves today.** The estimator exists — `L.2`
+  ([#106](https://github.com/NobuData/ouroboros/issues/106)) shipped `heuristic-v0`
+  behind `POST /v0/estimate`, and you can call it by hand — but the orchestration that
+  reads its answer and writes the column is `L.3`
+  ([#107](https://github.com/NobuData/ouroboros/issues/107)), which is not started. An
+  estimate today goes into the response and nowhere else.
 - **The table is empty in a fresh database.** `K.5`
   ([#103](https://github.com/NobuData/ouroboros/issues/103)) is the mockup-03 seed, and
   it has not landed — so `select count(*) from ouroboros.github_issues` is `0`, and

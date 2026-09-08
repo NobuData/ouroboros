@@ -1,23 +1,24 @@
-"""The seam an estimator plugs into, and the one that is installed until L.2 lands.
+"""The seam an estimator plugs into, and the contract check every answer passes.
 
 The contract beside this module is the part that must not change; *this* is the part that
-is meant to. Three estimators are foreseen and two of them do not exist yet:
+is meant to. Two estimators are foreseen and one of them exists:
 
-* :class:`ContractStub` — installed today. It produces a well-formed estimate that says,
-  in every field a reader looks at, that nothing estimated it.
-* the heuristic, L.2 (`#106 <https://github.com/NobuData/ouroboros/issues/106>`_) — rules
-  over labels, title verbs and body shape, provenance ``heuristic-v0``.
+* the heuristic, L.2 (`#106 <https://github.com/NobuData/ouroboros/issues/106>`_) —
+  installed today. Rules over labels, title verbs and body shape, provenance
+  ``heuristic-v0``; :mod:`ouroboros_engine.estimation.heuristic`.
 * the LLM estimator, O.2 (`#123 <https://github.com/NobuData/ouroboros/issues/123>`_) —
   which replaces the heuristic without touching ``ouroboros-rest``, because the thing
   ``ouroboros-rest`` is written against is :class:`~ouroboros_engine.estimation.contract.Estimate`
-  and not whatever produced it.
+  and not whatever produced it. The heuristic is *retained* when it lands, as the fallback
+  path for an issue the model estimator cannot size or a control plane that is down.
 
-**Why a seam at all, for one implementation.** The alternative is a route that computes an
-answer inline, and the cost of that is paid twice: L.2 arrives as a rewrite of a route
-rather than as a new module, and the route's own concerns — validating the caller's
-request, holding the answer to the caller's vocabularies, naming the version that answered
-— get mixed into whichever estimator was written last. A :class:`Protocol` with one method
-costs a dozen lines and makes each of those a separate change.
+**Why a seam at all.** The alternative is a route that computes an answer inline, and the
+cost of that is paid twice: O.2 would arrive as a rewrite of a route rather than as a new
+module, and the route's own concerns — validating the caller's request, holding the answer
+to the caller's vocabularies, naming the version that answered — would get mixed into
+whichever estimator was written last. A :class:`Protocol` with one method costs a dozen
+lines and makes each of those a separate change. It is also what lets L.2 and O.2 be
+*installed side by side*, which is what a fallback path is.
 
 **The answer is checked against the request, not trusted.** :func:`honours_context` is the
 enforcement of decisions **K5** and **K6**: an estimate may only name a workflow tag and a
@@ -31,42 +32,12 @@ import logging
 from typing import Protocol, runtime_checkable
 
 from ouroboros_engine.estimation.contract import (
-    Breakdown,
     Estimate,
     EstimateRequest,
     EstimationContext,
-    Trace,
 )
 
 _logger = logging.getLogger(__name__)
-
-#: What the stub writes into ``trace.estimator``. Decision **K10** says an estimate names
-#: what produced it, and "nothing did" is a thing that has to be sayable: this string is
-#: what L.3 and an operator read to tell a placeholder from a heuristic, and it is
-#: deliberately not ``heuristic-v0`` — a stub borrowing the estimator's name is exactly the
-#: masquerade K10 exists to prevent.
-CONTRACT_STUB = "contract-stub-v0"
-
-#: The one signal the stub reports. A rule name, like the heuristic's will be, so a reader
-#: of a trace sees the same kind of line whichever estimator produced it.
-NO_ESTIMATOR_SIGNAL = "no-estimator-installed"
-
-#: What the stub says under the risk meter. It is the only field in the answer that can
-#: explain the other seven, so it says what happened rather than hedging.
-NO_ESTIMATOR_NOTE = (
-    "No estimator is installed yet, so this is not an estimate: the contract's shape "
-    "with none of its judgement. Confidence is 0 and the risk is reported "
-    "conservatively. #106 replaces it."
-)
-
-#: The effort the stub reports. Every value in the vocabulary is a claim and this one has
-#: no basis for any of them, so it reports the middle and sets confidence to 0 — the field
-#: is required and closed, and omitting it is not an option the contract offers.
-STUB_EFFORT = "m"
-
-#: The risk the stub reports. Unsized work is not low-risk work, and there is no
-#: ``unknown`` in K.2's vocabulary; the note beside it says which of those two this is.
-STUB_RISK = "high"
 
 
 class EstimatorContractError(RuntimeError):
@@ -89,12 +60,12 @@ class Estimator(Protocol):
     not their signatures — which is exactly what a seam with one method needs and no more
     than a :class:`Protocol` can honestly offer.
 
-    One method, and a name for the trace. Synchronous, deliberately: v0's estimator is a
-    rule engine with nothing to wait for, and an ``async def`` that never awaits would be
-    a promise about the route's shape that nothing yet needs. The escalation path for an
-    estimator that *does* wait is the ``202`` documented on the operation
-    (:mod:`ouroboros_engine.api.estimate`), which changes the route rather than this
-    protocol.
+    One method, and a name for the trace. Synchronous, deliberately: the installed
+    estimator is a rule engine with nothing to wait for, and an ``async def`` that never
+    awaits would be a promise about the route's shape that nothing yet needs. The
+    escalation path for an estimator that *does* wait is the ``202`` documented on the
+    operation (:mod:`ouroboros_engine.api.estimate`), which changes the route rather than
+    this protocol.
 
     Attributes:
         name: What goes in :attr:`~ouroboros_engine.estimation.contract.Trace.estimator`.
@@ -117,64 +88,6 @@ class Estimator(Protocol):
             to that, and the route calls it on every answer.
         """
         ...
-
-
-class ContractStub:
-    """The estimator installed until L.2 lands: the shape, and no judgement.
-
-    It exists so ``POST /v0/estimate`` is a working round trip from the day the contract
-    is committed — which is what makes the gateway leg, the specification and L.3's
-    persistence something that can be built and tested before any estimator does. What it
-    must not be is *plausible*: an answer that looked like an estimate would be persisted
-    as one, rendered as one, and re-estimated only when someone noticed. So every field a
-    reader checks says the same thing —
-
-    * ``confidence`` is ``0``, which is below any floor L.3 could set, so an issue sized
-      by this estimator becomes ``needs_human`` rather than ``sized``.
-    * ``trace.estimator`` is :data:`CONTRACT_STUB`, not ``heuristic-v0``.
-    * the breakdown is zeros and no files, rather than a range somebody could plan with.
-    * ``risk_note`` says outright that nothing estimated this.
-
-    Attributes:
-        name: :data:`CONTRACT_STUB`.
-    """
-
-    name = CONTRACT_STUB
-
-    def estimate(self, request: EstimateRequest) -> Estimate:
-        """Answer with the contract's shape and none of its content.
-
-        The workflow tag and the model are taken from the caller's own lists — the first
-        of each, in the order they were offered. That is not a choice about which is
-        right; it is the only way to fill a required field whose vocabulary belongs to
-        the caller (decisions **K5**, **K6**), and it is why the caller has to offer at
-        least one of each.
-
-        Args:
-            request: The validated request.
-
-        Returns:
-            A well-formed :class:`~ouroboros_engine.estimation.contract.Estimate` that
-            reports, in every field, that no estimator produced it.
-        """
-        context = request.context
-
-        return Estimate(
-            effort=STUB_EFFORT,
-            confidence=0,
-            suggested_workflow=context.workflow_tags[0],
-            # `next(iter(...))` rather than `list(...)[0]`: the caller's insertion order
-            # is preserved through JSON parsing, so this is the first default they wrote.
-            routed_model=next(iter(context.model_defaults.values())),
-            breakdown=Breakdown(
-                files=[], est_tokens=0, cycle_min=0, cycle_max=0, est_minutes=0
-            ),
-            risk=STUB_RISK,
-            risk_note=NO_ESTIMATOR_NOTE,
-            trace=Trace(
-                estimator=self.name, tokens_used=0, signals=[NO_ESTIMATOR_SIGNAL]
-            ),
-        )
 
 
 def honours_context(estimate: Estimate, context: EstimationContext) -> None:

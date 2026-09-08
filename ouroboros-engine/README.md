@@ -95,13 +95,13 @@ $ curl -s localhost:8000/v0/status && echo
 {"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.5.1","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.5.2","uptime_seconds":42.5}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
     -d '{"task_kind":"echo","payload":{"note":"hello"}}' \
     localhost:8000/v0/tasks/echo && echo
-{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.5.1"}
+{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.5.2"}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
@@ -163,10 +163,13 @@ $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
          "context":{"workflow_tags":["standard-fix"],
                     "model_defaults":{"default":"claude-fable-5"}}}' \
     localhost:8000/v0/estimate && echo
-{"effort":"m","confidence":0,"suggested_workflow":"standard-fix","routed_model":"claude-fable-5","breakdown":{"files":[],"est_tokens":0,"cycle_min":0,"cycle_max":0,"est_minutes":0},"risk":"high","risk_note":"No estimator is installed yet, …","trace":{"estimator":"contract-stub-v0","tokens_used":0,"signals":["no-estimator-installed"]}}
+{"effort":"m","confidence":59,"suggested_workflow":"standard-fix","routed_model":"claude-fable-5","breakdown":{"files":[],"est_tokens":180000,"cycle_min":12,"cycle_max":32,"est_minutes":23},"risk":"medium","risk_note":"M-sized work starts at medium regression risk. heuristic-v0 reads an issue's labels and text only — …","trace":{"estimator":"heuristic-v0","tokens_used":0,"signals":["label-effort: the \"bug\" label -> m","body-length: no description -> xs","effort: strongest of 2 signals -> m","confidence: 1 of 2 agree, spread 2, no description -> 59","workflow: no docs, dependency or feature signal -> standard-fix","routed-model: model_defaults[\"default\"] -> resolved, not invoked","risk: m effort -> medium","needs-human: 59 is below the 70 confidence floor"]}}
 ```
 
-Three things about that answer are the contract rather than this build's behaviour.
+That answer is `heuristic-v0`, L.2's rule engine
+([#106](https://github.com/NobuData/ouroboros/issues/106)) — and it is worth reading
+line by line, because the trace is the whole of how it was reached. Four things about it
+are the contract rather than this build's behaviour.
 
 **The caller supplies the vocabularies.** `context.workflow_tags` and
 `context.model_defaults` are what the installation has, and `suggested_workflow` and
@@ -177,13 +180,21 @@ that reaches a row.
 
 **`trace.estimator` is required** — decision **K10**, enforced at this boundary and not
 only by the column's `not null`. Provenance checked at the last hop is provenance the hops
-before it can lose. Which is why the answer above says `contract-stub-v0` and `confidence:
-0`: no estimator is installed yet. The placeholder produces a well-formed estimate that
-says in every field that nothing estimated it — a confidence below any floor the caller
-could set, a breakdown of zeros, and a note that names the issue that replaces it. The
-heuristic ([#106](https://github.com/NobuData/ouroboros/issues/106)) and then the LLM
-estimator ([#123](https://github.com/NobuData/ouroboros/issues/123)) answer the same shape,
-and swapping one for another is a single line in `create_app`.
+before it can lose. It is why the answer above says `heuristic-v0` and never a model name:
+the estimator that produced it read a label and a character count, it invoked nothing, and
+`tokens_used: 0` says the same thing a second way. The LLM estimator
+([#123](https://github.com/NobuData/ouroboros/issues/123)) answers the same shape with the
+heuristic retained behind it as the fallback path, and swapping one for another is a single
+line in `create_app`.
+
+**`breakdown.files` is empty, and the key is there anyway.** A rule engine cannot know
+which files an issue touches, so it returns none — and returns them as `[]` rather than by
+omitting the field, because N.5's panel renders the absence and a missing key reads as an
+older schema. **A low confidence is an answer, not a failure**, for the same reason: the
+estimate above is under the floor the engine publishes
+(`estimation.heuristic.NEEDS_HUMAN_CONFIDENCE_FLOOR`, currently `70`) and says so in its
+own trace, so L.3 moves the issue to `needs_human` rather than `sized`. That is a real
+outcome of sizing, and the trace is what a person reads when they pick it up.
 
 **v0 answers synchronously, and the escalation for when that stops being possible is
 already written down.** An LLM estimator is not something to hold a gateway's socket open
@@ -423,7 +434,9 @@ ouroboros-engine/
 │   │   └── client.py   #   builds the requests, reads the answers — no transport yet
 │   ├── estimation/     # sizing an issue — the contract, and what is behind it · #105
 │   │   ├── contract.py #   the shapes; one version of K.2's issue_estimates row
-│   │   └── estimator.py#   the seam L.2 and O.2 plug into, and today's placeholder
+│   │   ├── estimator.py#   the seam an estimator plugs into, and the K5/K6 check
+│   │   ├── signals.py  #   the rules heuristic-v0 reads an issue with          · #106
+│   │   └── heuristic.py#   heuristic-v0 itself: the arithmetic over those rules · #106
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
@@ -490,11 +503,16 @@ carries `runCtx` or `ttlSeconds`.
 
 `estimation/` is the first thing under `api/` that is not a router
 ([#105](https://github.com/NobuData/ouroboros/issues/105)), and the split inside it is the
-design: `contract.py` is what `ouroboros-rest` is written against and is not allowed to
-change, `estimator.py` is what produces an answer and is expected to be replaced twice. The
-route reaches the estimator through `app.state` rather than importing one, so installing a
-different estimator is a line in `create_app` and a test installs its own without patching a
-module. See [Sizing an issue](#sizing-an-issue) above.
+design. `contract.py` is what `ouroboros-rest` is written against and is not allowed to
+change. `estimator.py` is the seam — a one-method protocol, and the check that holds every
+answer to the caller's own vocabularies. `signals.py` and `heuristic.py` are what is behind
+it today ([#106](https://github.com/NobuData/ouroboros/issues/106)): the first is the rules,
+one table and one threshold each, so a heuristic is something a reviewer can argue with a
+line at a time; the second is the arithmetic that combines them, and the tables that turn an
+effort into a breakdown and a risk. The route reaches the estimator through `app.state`
+rather than importing one, so installing a different estimator is a line in `create_app` and
+a test installs its own without patching a module. See
+[Sizing an issue](#sizing-an-issue) above.
 
 `Dockerfile` and `.dockerignore` are the production image — see [Container](#container)
 above. They are read by `docker build` and by
@@ -508,6 +526,7 @@ API contract [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#53](https://github.com/NobuData/ouroboros/issues/53) ·
 task execution [#54](https://github.com/NobuData/ouroboros/issues/54) ·
 estimation contract [#105](https://github.com/NobuData/ouroboros/issues/105) ·
+heuristic estimator [#106](https://github.com/NobuData/ouroboros/issues/106) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 

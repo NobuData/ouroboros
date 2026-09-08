@@ -218,7 +218,7 @@ export interface EstimateBreakdown {
 
 /** Where the estimate came from — `issue_estimates.trace`, minus the clock the writer owns. */
 export interface EstimateTrace {
-  /** What produced it: `heuristic-v0`, a model id, or `contract-stub-v0`. Never empty. */
+  /** What produced it: `heuristic-v0` today, a model id when #123 lands. Never empty. */
   estimator: string;
   /** What producing the estimate cost in model tokens. `0` for a rule engine. */
   tokensUsed: number;

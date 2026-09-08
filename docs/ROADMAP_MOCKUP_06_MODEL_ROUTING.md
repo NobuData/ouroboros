@@ -697,7 +697,7 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 | Z.1 | #194 | 🟢 Done | ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations) | Pure health/rule/floor/cost-aware chain resolution (M6) | mvp, routing, rest | N (after Y.3, Z.3) | Y | L | ouroboros-rest |
 | Z.2 | #195 | 🟢 Done | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
 | Z.3 | #196 | 🟢 Done | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
-| Z.4 | #197 | 🟢 Done | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate` shipped; the two consumer amendments wait on #106 and #145 | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest |
+| Z.4 | #197 | 🟢 Done | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate` shipped; the estimator's honesty half landed with #106, its resolution call waits on #107 and the WF catalog on #145 | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest |
 | Z.5 | #198 | 🟢 Done | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
 | Z.6 | #199 | 🟢 Done | ouroboros-rest: [Z.6] Routing integration tests | Resolution matrices, save/reorder, rules, stats, isolation | mvp, routing, rest, ci | N (after Z.1–Z.5) | Y | M | ouroboros-rest |
 
@@ -1082,12 +1082,19 @@ copilot ─▶ ◌ unknown (until traffic — AB.2)     stopped vllm ─▶ ⚠ 
 > path through `context.ts`; a `null` is a client saying something a context cannot mean.
 >
 > **What is not here, and why.** The estimator amendment (#106) and the WF catalog and
-> `route.task` validation (#145) are unbuilt because their consumers are unbuilt: there is no
-> estimator in `ouroboros-engine` and no workflow module in `ouroboros-rest`, and each sits
+> `route.task` validation (#145) were unbuilt because their consumers were unbuilt: there was
+> no estimator in `ouroboros-engine` and no workflow module in `ouroboros-rest`, and each sat
 > behind its own unlanded chain — #105 → #106, and #133 → #145. The Prerequisites note below
 > already said so (*"INTAKE-L.2 (#106) and WF-R.3 (#145) must exist for the Z.4 amendments"*);
-> what this ticket adds is that the thing they were waiting for now exists. The two amendment
-> rows are unchanged and still open against those issues.
+> what this ticket added is that the thing they were waiting for now exists.
+>
+> **Update 2026-09-08 — #106 landed, and took the engine's half of its amendment with it.**
+> `heuristic-v0` holds no configuration map: it reads the `model_defaults` the caller sends
+> (which L.1's contract had already made structural for decisions **K5**/**K6**) and its
+> trace says *resolved, not invoked* in those words. What is left is the gateway's — L.3
+> (#107) filling that map from this endpoint's resolution rather than from configuration, and
+> the value becoming the resolved primary's alias plus resolution. The amendment row below
+> records the split. #145's row is unchanged and still open.
 
 - **Problem Statement:** "Simulate routing" must expose the resolution function,
   and the existing consumers of opaque model strings must start asking it.
@@ -1101,8 +1108,9 @@ copilot ─▶ ◌ unknown (until traffic — AB.2)     stopped vllm ─▶ ⚠ 
 - **Acceptance Criteria:** Simulate returns chain+why for all seeded kinds and
   rule-triggering contexts; estimator amendment lands (its trace stays honest
   — resolution used, not invocation); WF catalog lists registry kinds.
-  *Met for the endpoint; the last two travel with #106 and #145 — see the
-  shipped note above.*
+  *Met for the endpoint. The estimator's trace-honesty half landed with #106 on
+  2026-09-08; its resolution call and the WF catalog travel with #107 and #145 —
+  see the shipped note above.*
 - **Parallelism/Dependencies:** Needs Z.1. Amends INTAKE-L.2, WF-R.3.
 - **Technical Stack:** NestJS, engine client.
 - **Epic:** Z
@@ -2213,7 +2221,7 @@ Plus **4 amendments** — comments posted and the `routing` label applied on
 |---|---|
 | #49 | The `/models` placeholder is superseded and **retired** by AA.1 (#200) — landed 2026-08-24; #49's own scope note in `ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md` records it |
 | #56 | The e2e suite gains the routing leg AA.7 (#206), including the rule-toggle → simulate assertion and shell checks |
-| #106 | INTAKE-L.2's estimator drops its `model_defaults` map and resolves via routing (Z.4, #197) — trace says *resolved*, never *invoked*. **Still open**: Z.4 landed the endpoint on 2026-08-24 and this amendment waits on the estimator itself, which is #105 → #106 |
+| #106 | INTAKE-L.2's estimator drops its `model_defaults` map and resolves via routing (Z.4, #197) — trace says *resolved*, never *invoked*. **Half landed 2026-09-08 with #106**: the estimator holds no config map at all — it reads the caller's `model_defaults` and its `routed-model` trace line says *resolved, not invoked* on every estimate, asserted by a test. **The remaining half is the gateway's and travels with L.3 (#107)**: filling that map from `POST /api/v1/routing/simulate` instead of from configuration, and carrying the resolved primary's alias plus resolution as the value. Nothing in the engine changes when it does — the map was always the caller's |
 | #145 | WF-R.3's stage catalog serves task-kind names from the Y.2 (#190) registry; DSL `route.task` validates against it. **Still open**: waits on the workflow module, which is #133 → #145 |
 
 ## References
