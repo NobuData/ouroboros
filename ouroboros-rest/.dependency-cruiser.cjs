@@ -8,10 +8,17 @@
  * `@anthropic-ai/sdk` inside a service — or imports `adapters/ollama` to get at a detail the
  * SPI does not expose — is a red check rather than something a reviewer has to notice.
  *
- * `providers/boundary.spec.ts` proves the rules bite: it builds a tree containing exactly the
- * violation each rule describes, cruises it with *this* configuration, and asserts the
- * violation is reported. A lint rule nobody has watched fail is a lint rule that passes
- * everything.
+ * The third rule is the same sentence about a different SDK. The amendment posted on K.3
+ * (#101) on 2026-08-09 requires that Octokit not be imported outside the module that owns the
+ * GitHub provider, *"and that boundary is lint-enforced in CI"* — so it is a rule here rather
+ * than a paragraph in a README. `src/modules/github/github.octokit.ts` is the seam; when Q.3
+ * (#140) turns the GitHub client into the first `TicketSourceProvider`, the seam moves and
+ * this rule's `pathNot` moves with it.
+ *
+ * `providers/boundary.spec.ts` and `github/boundary.spec.ts` prove the rules bite: each
+ * builds a tree containing exactly the violation its rule describes, cruises it with *this*
+ * configuration, and asserts the violation is reported. A lint rule nobody has watched fail is
+ * a lint rule that passes everything.
  *
  * ---------------------------------------------------------------------------
  * **Why a package list rather than "anything that looks like an SDK".**
@@ -64,6 +71,18 @@ module.exports = {
       },
       to: { path: "^src/modules/providers/adapters/" },
     },
+    {
+      name: "no-octokit-outside-the-seam",
+      severity: "error",
+      comment:
+        "The GitHub SDK belongs behind one seam (K.3, #101, and the 2026-08-09 amendment " +
+        "on it). src/modules/github/github.octokit.ts is the only file that may import " +
+        "@octokit/*; everything else is written against OctokitLike in github.client.ts. " +
+        "When Q.3 (#140) moves this behind the ticket-source SPI, move the pathNot with it.",
+      from: { path: "^src/", pathNot: "^src/modules/github/github\\.octokit\\.ts$" },
+      to: { path: "(^|node_modules/)@octokit(/|$)" },
+    },
+
     {
       name: "no-circular",
       severity: "error",

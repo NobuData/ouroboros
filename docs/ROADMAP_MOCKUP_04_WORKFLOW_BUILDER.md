@@ -59,7 +59,7 @@ Surveyed 2026-08-08.
 | Existing work | Disposition under this roadmap |
 |---|---|
 | Intake roadmap (`ROADMAP_MOCKUP_03_ISSUE_INTAKE.md`, filed #99–#126) — decision K5 fixed workflow-tag set; O.3 "workflow entities" (v2, #124) | **Superseded/landed here** — Epic P creates real workflow entities; #124's scope (assign menus + estimator context reading the registry) is folded into P.4/T.6, and amendment comments are posted on #112, #118 and #124. Stored opaque tags remain valid slugs. |
-| Intake roadmap Epic K — GitHub-specific cache & sync (K.1 #99, K.3 #101, K.4 #102) | **Resolved at filing 2026-08-09: Epic K is filed but unbuilt** (no migration or service code in the repository). Q.1 (#138) therefore **replaces** #99, and Q.3 (#140) **implements** #101/#102 SPI-first as the first `TicketSourceProvider`. No acceptance criterion is dropped — each is re-asserted through the SPI and enforced by the conformance kit (#142). Coordination comments posted on all three. |
+| Intake roadmap Epic K — GitHub-specific cache & sync (K.1 #99, K.3 #101, K.4 #102) | **Resolved at filing 2026-08-09: Epic K is filed but unbuilt** (no migration or service code in the repository). Q.1 (#138) therefore **replaces** #99, and Q.3 (#140) **implements** #101/#102 SPI-first as the first `TicketSourceProvider`. No acceptance criterion is dropped — each is re-asserted through the SPI and enforced by the conformance kit (#142). Coordination comments posted on all three. **Overtaken by events, 2026-09-08.** Epic K was executed ticket by ticket instead: `#99` landed `V014`'s `github_issues`, `#100` landed `V026`, and `#101` landed `V027` plus `ouroboros-rest/src/modules/github/`. So Q.1 generalizes a shipped table rather than replacing an unwritten one, and Q.3 **refactors** the shipped GitHub client behind the SPI rather than writing it — a smaller change than either, because #101 landed the Octokit boundary this roadmap's decision **P5** asked for: the module is written against a four-member `OctokitLike`, one file may import the SDK, and `.dependency-cruiser.cjs` fails the build otherwise. |
 | Dashboard roadmap — `runs.workflow_tag` (DASH-F.1), queue actions (INTAKE-M.3) | **Consumed** — P.4's usage stats join `runs`; trigger predicates (R.1) evaluate queue events. |
 | Scaffolding #49 placeholder routes (v2) | **Superseded for `/workflows`** — this roadmap builds the real screen. |
 | Scaffolding #54 engine task skeleton (v2), DASH-J.3 ingestion bridge (v2) | **Consumed by T.6** — actual workflow *execution* bridges through them; MVP here is authoring + validation + dry-run, not running loops. |
@@ -1157,7 +1157,7 @@ on 2026-08-09; no new work created:
 | #56 | e2e suite gains the studio leg S.8 (#154) |
 | #64 | DASH-F.1 `runs` gains P.4 (#135) as a consumer — no schema change |
 | #99 | INTAKE-K.1 `github_issues` **replaced** by the canonical ticket model Q.1 (#138) |
-| #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) |
+| #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) — **overtaken 2026-09-08**: Epic K was built after all (`#99`, `#100`, `#101` all shipped), so Q.3 *refactors* the GitHub client behind the SPI rather than writing it. The boundary the amendment asked for landed with #101: `github.octokit.ts` is the only file that may import `@octokit/*`, lint-enforced |
 | #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) |
 | #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143) |
 | #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135) |
@@ -1232,6 +1232,8 @@ the repository. Therefore:
 
 - **Q.1 (#138) replaces #99** rather than generalizing a shipped `github_issues` table.
 - **Q.3 (#140) implements #101/#102 SPI-first** rather than refactoring built code.
+  *(Superseded 2026-09-08: #101 shipped, so Q.3 refactors it behind the SPI. The seam it needs
+  already exists — see the coordination row above.)*
 
 Coordination comments are posted on all three intake issues; none of their acceptance
 criteria are dropped — they are re-asserted through the SPI and enforced by the

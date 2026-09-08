@@ -38,8 +38,9 @@
 -- AD.4 landed early (V022, #225), and `alias_references`, the one answer to *"what
 -- references this alias?"* (V023, #581), and `resolution_snapshots`, what a run's
 -- resolution decided, kept (V024, #582), and `alias_revisions`, the record every
--- registry write leaves (V025, #584), and `issue_estimates`, the AI Work Breakdown as
--- versioned latest-wins rows (V026, #100).
+-- registry write leaves (V025, #584), `issue_estimates`, the AI Work Breakdown as
+-- versioned latest-wins rows (V026, #100), and `github_credentials`, the per-workspace
+-- GitHub token the backlog sync authenticates with (V027, #101).
 --
 -- The last two sections belong to no migration. Y.5 (#193) names the routing invariants
 -- Z.1's resolution is written against and asks the catalogue for each of them **by name** — a
@@ -8333,6 +8334,180 @@ delete from ouroboros.organization where "id" = 'org-sizing';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.issue_estimates),
   'deleting the workspace reaches the estimates through four cascades — which is why this table needs no organization_id of its own');
+
+-- ===========================================================================
+-- V027 — github_credentials, the per-workspace GitHub token (#101)
+-- ===========================================================================
+--
+-- The credential the backlog sync authenticates with (decision **K1**), and the second
+-- sealed column in this schema after `provider_connections.credentials_encrypted` (V015).
+--
+-- Almost everything asserted below is about **one guarantee**: this column cannot hold a
+-- plaintext. `ouroboros-rest` encrypts before it writes, and that is not what makes the
+-- guarantee — the service is one writer, and `github_credentials_token_sealed` is every
+-- writer, including the seed, the fixture and the support script somebody runs at 2am. So
+-- the shapes a real token actually has are each offered to the column and each refused by
+-- name.
+--
+-- The rest is the shape the surface reads: one row per workspace enforced by the primary key
+-- rather than by a unique somebody could drop, no row rather than a null for *"this workspace
+-- has no token"*, `updated_at` moved by the trigger and not by the writer, and both cascades
+-- — the row with the workspace, and, in the same statement, the key that could open it.
+--
+-- Its own fixture: the V026 section deleted `org-sizing`, and every workspace above it has
+-- gone the same way. Two workspaces here, because the assertion that matters most is the one
+-- about *which* workspace a ciphertext belongs to.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-ghtoken', 'Token Works', 'gh-token-works', now()),
+  ('org-ghtoken-next', 'Token Neighbour', 'gh-token-neighbour', now());
+
+-- --- the column is envelope-only -----------------------------------------------
+--
+-- The acceptance criterion this table carries, offered every shape a leak would arrive in.
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_credentials (organization_id, token_encrypted)
+      values ('org-ghtoken', 'ghp_qwertyuiopasdfghjklzxcvbnm0123456789')$$,
+  'a classic personal access token cannot be stored as itself',
+  'github_credentials_token_sealed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_credentials (organization_id, token_encrypted)
+      values ('org-ghtoken', 'github_pat_11ABCDEFG0abcdefghij_KLMNOPQRSTUVWXYZ0123456789')$$,
+  'nor a fine-grained one',
+  'github_credentials_token_sealed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_credentials (organization_id, token_encrypted)
+      values ('org-ghtoken', '')$$,
+  'nor an empty string, which is a write that lost its value rather than one that had none',
+  'github_credentials_token_sealed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_credentials (organization_id, token_encrypted)
+      values ('org-ghtoken', 'ouro.v1.x.bm9uY2U.Y2lwaGVy')$$,
+  'nor an envelope whose key version is not a number — the field rotation depends on',
+  'github_credentials_token_sealed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_credentials (organization_id, token_encrypted)
+      values ('org-ghtoken', 'ouro.v1.1.bm9uY2U')$$,
+  'nor a truncated envelope, which would decrypt to nothing at the moment it was needed',
+  'github_credentials_token_sealed');
+
+-- --- there is no such thing as a row with no token -------------------------------
+--
+-- `token_encrypted` is `not null`, so *"this workspace has no token"* is the absence of a
+-- row. One state to read, and the honest-pause surface (N.6, #120) reads it without having
+-- to work out whether a null means anything. No expected constraint name: PostgreSQL 17
+-- reports a not-null violation with a column rather than a constraint, so naming one would
+-- be asserting a diagnostic detail instead of the refusal.
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_credentials (organization_id, token_encrypted)
+      values ('org-ghtoken', null)$$,
+  'a credential row without a credential is not a state this surface has');
+
+-- The vault's own framing, accepted — because a CHECK that refused the format the service
+-- produces would be a table nothing could write to, and every rejection above would be
+-- vacuous.
+insert into ouroboros.github_credentials (organization_id, token_encrypted) values
+  ('org-ghtoken', 'ouro.v1.1.bm9uY2UtdmFsdWU.Y2lwaGVydGV4dC1hbmQtdGFn'),
+  ('org-ghtoken-next', 'ouro.v1.1.YW5vdGhlci1ub25jZQ.YW5vdGhlci1jaXBoZXJ0ZXh0');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.github_credentials),
+  'a sealed token is what this column is for');
+
+-- --- one token per workspace ----------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_credentials (organization_id, token_encrypted)
+      values ('org-ghtoken', 'ouro.v1.1.c2Vjb25k.c2Vjb25kLWNpcGhlcg')$$,
+  'a workspace cannot have two GitHub tokens (decision K1)',
+  'github_credentials_pkey');
+
+-- Replacing one is an upsert on that key, which is what makes "set" and "rotate" the same
+-- request in `ouroboros-rest`.
+insert into ouroboros.github_credentials (organization_id, token_encrypted)
+  values ('org-ghtoken', 'ouro.v1.1.cm90YXRlZC1ub25jZQ.cm90YXRlZC1jaXBoZXI')
+  on conflict (organization_id) do update set token_encrypted = excluded.token_encrypted;
+
+select pg_temp.must_hold(
+  (select token_encrypted = 'ouro.v1.1.cm90YXRlZC1ub25jZQ.cm90YXRlZC1jaXBoZXI'
+     from ouroboros.github_credentials where organization_id = 'org-ghtoken'),
+  'and a rotation replaces the value rather than adding a row');
+
+-- --- the workspace must exist ----------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_credentials (organization_id, token_encrypted)
+      values ('org-that-never-was', 'ouro.v1.1.bm9uY2U.Y2lwaGVy')$$,
+  'a token belongs to a workspace that exists',
+  'github_credentials_organization_id_fkey');
+
+-- --- updated_at belongs to the trigger, and to nothing else -----------------------
+--
+-- **What is asserted here is authorship, not ordering**, and the difference is this file's
+-- one transaction: `now()` is the transaction's clock, so every stamp taken below is the
+-- same instant and `updated_at > created_at` could not be true here however correct the
+-- trigger is. That inequality is what makes *"has this token been rotated"* answerable
+-- without a `rotated_at` column, and it is asserted where it can be — across two real
+-- requests, in `ouroboros-rest`'s `github.integration-spec.ts`.
+--
+-- What *can* be proved inside one transaction is the load-bearing half: that a writer does
+-- not get to decide the value. A stamp a client can set is not evidence of anything.
+select pg_temp.must_hold(
+  (select updated_at = created_at from ouroboros.github_credentials
+    where organization_id = 'org-ghtoken-next'),
+  'a token that has never been replaced has its two stamps together');
+
+update ouroboros.github_credentials
+   set token_encrypted = 'ouro.v1.2.bmV3LW5vbmNl.bmV3LWNpcGhlcg',
+       updated_at      = '2000-01-01T00:00:00Z'
+ where organization_id = 'org-ghtoken-next';
+
+select pg_temp.must_hold(
+  (select updated_at = now() and updated_at <> '2000-01-01T00:00:00Z'::timestamptz
+     from ouroboros.github_credentials where organization_id = 'org-ghtoken-next'),
+  'and the trigger overwrites an updated_at the writer tried to set, so the stamp is the server''s account of the rotation rather than a client''s');
+
+-- --- the primary key is the lookup ------------------------------------------------
+--
+-- Every read of this table is `where organization_id = $1`, on both the settings surface and
+-- the sync's per-workspace client. The primary key is that index; asserted so that a later
+-- migration adding a surrogate key would have to notice it is taking the index away.
+select pg_temp.must_use_index(
+  'select token_encrypted from ouroboros.github_credentials where organization_id = ''org-ghtoken''',
+  'github_credentials_pkey');
+
+-- --- deleting the workspace destroys the token, and its key with it ----------------
+--
+-- Both halves of the crypto-shredding claim in one statement: `github_credentials` cascades
+-- from `organization`, and so does `tenant_keys` (V013). What is left in a backup taken
+-- while the workspace existed is a ciphertext with no key anywhere that can open it.
+insert into ouroboros.tenant_keys (organization_id, version, sealed_dek, wrapper)
+  values ('org-ghtoken', 1, '\x00112233445566778899aabbccddeeff'::bytea, 'env-master');
+
+delete from ouroboros.organization where "id" = 'org-ghtoken';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.github_credentials
+    where organization_id = 'org-ghtoken'),
+  'deleting a workspace takes its GitHub token with it');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.tenant_keys where organization_id = 'org-ghtoken'),
+  'and the key that could have opened it, which is what makes the deletion a shred');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.github_credentials
+    where organization_id = 'org-ghtoken-next'),
+  'and reaches no other workspace''s');
+
+delete from ouroboros.organization where "id" = 'org-ghtoken-next';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.github_credentials),
+  'a workspace''s credential goes with the workspace');
+
 
 -- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)

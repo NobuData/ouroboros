@@ -58,7 +58,7 @@ Surveyed 2026-08-08.
 | Routing roadmap AB.1 (invocation-gateway requirements handoff, "the 07 roadmap's ADR") | **Landed here** — AF.1 is that ADR (LiteLLM-under-custom vs pure custom adapters); AF.2 implements the chain executor against it. |
 | Routing roadmap Z.5 (spend aggregation), DASH-F.3 `token_usage`, DASH-J.4 pricing | **Consumed** — the cards' monthly meters aggregate calendar-month spend per provider from the same truth; caps stored here feed enforcement (AF.4). |
 | WF Epic Q ticket-source SPI (pluggability precedent) | **Pattern reused** — the `ModelProviderAdapter` SPI (AC.1) mirrors Q.2's discipline: core code depends on the interface only, conformance kit gates new adapters. The description's pluggable-ticket-sources requirement itself remains satisfied by WF-Q (Jira/Linear/GitLab as WF-T.2–T.4); nothing source-related is duplicated here. |
-| Scaffolding #26 audit log (v2), BA roadmap encryption helper (AES-GCM), #22/BA-B.3 GitHub org data | **Coordinated — and settled.** Credential operations require an audit trail from day one (AD.4), so it early-adopted #26's `audit_events` shape (filing-time coordination) and, since **AD.4 (#225) is 🟢 delivered**, *landed* it: `ouroboros-db`'s `V022` is that table, column for column, plus the `ip` #26 did not name. #26 inherits it and writes `member.added` and `tenant.updated` into it with no migration of its own. BA's helper is superseded by the AD.1 envelope-encryption service (one migration path for Q.1/K.3 credentials too) — **AD.1 (#222) is 🟢 delivered**, and it ships the migration as a registration seam with **no stores registered**: Q.1 (#138), K.3 (#101) and Y.1 (#189) are all still open, so there is no encrypted column in the schema for a job to convert yet. Each of them registers a `VaultSecretStore` when it lands. |
+| Scaffolding #26 audit log (v2), BA roadmap encryption helper (AES-GCM), #22/BA-B.3 GitHub org data | **Coordinated — and settled.** Credential operations require an audit trail from day one (AD.4), so it early-adopted #26's `audit_events` shape (filing-time coordination) and, since **AD.4 (#225) is 🟢 delivered**, *landed* it: `ouroboros-db`'s `V022` is that table, column for column, plus the `ip` #26 did not name. #26 inherits it and writes `member.added` and `tenant.updated` into it with no migration of its own. BA's helper is superseded by the AD.1 envelope-encryption service (one migration path for Q.1/K.3 credentials too) — **AD.1 (#222) is 🟢 delivered**, and it ships the migration as a registration seam, and the stores arrive with the migrations that create their columns: Y.1 (#189, `V015`) registered the first and K.3 (#101, `V027`) the second. Q.1 (#138) is still open and registers its own the same way. |
 | Mockup 21 (model registry UI), Spend tab | **Out of scope** — discovery *feeds* the registry data (aliases resolve against discovered models), but the registry management UI stays with mockup 21's roadmap; Spend stays with AB.4. |
 | Scaffolding #49 placeholder, #56 e2e, AA.1 subnav ("Providers & keys · soon") | **Superseded/amended** — the Providers tab goes live (AA.1 amendment); #56 gains a providers leg. |
 
@@ -794,13 +794,18 @@ erDiagram
 > active rows would split a workspace's ciphertext across two keys with nothing recording
 > which, and two concurrent rotations meet at that index instead. The loser is told it lost.
 >
-> **The migration job ships as a seam with no stores registered, and that is the honest
-> statement.** Q.1 (#138), K.3 (#101) and Y.1 (#189) are all still open and no migration
-> declares an encrypted column, so there is nothing in any database to convert. A
+> **The migration job shipped as a seam with no stores registered, and that was the honest
+> statement at the time.** Q.1 (#138), K.3 (#101) and Y.1 (#189) were all open and no migration
+> declared an encrypted column, so there was nothing in any database to convert. A
 > `VaultSecretStore` registration is what each of them adds, and one code path serves both
 > jobs: a record already sealed on an older version is re-sealed, and a record this service
-> has never sealed is **adopted**. `vault.module.spec.ts` asserts the registry is empty, so the
-> claim fails the day it stops being true rather than going stale quietly.
+> has never sealed is **adopted**. `vault.module.spec.ts` asserts what is registered, so the
+> claim fails the day it stops being true rather than going stale quietly — **which is what it
+> did**: Y.1 (`V015`) registered `provider_connections.credentials_encrypted`, and K.3 (`V027`)
+> registered `github_credentials.token_encrypted`. Neither can actually *adopt* anything, and
+> that is the schema's doing rather than luck: both columns carry a CHECK refusing any value
+> that is not one of the vault's envelopes, so a row holding an unsealed secret cannot exist.
+> Q.1 (#138) is the one still to come.
 >
 > **There is no scheduler**, and none was added: `rotate` returns as soon as the new version is
 > active and starts the sweep detached; `sweep` is public and awaitable for a caller that wants
@@ -2121,7 +2126,7 @@ Plus **7 amendments** — comments posted and the `providers` label applied on
 | #56 | ✅ The e2e suite gained the providers leg AE.7 (#233) as **leg 10**, composing with the routing leg (#206); the override file gained the `provider-stub` service the leg connects to |
 | #26 | AD.4 (#225) early-adopted the `audit_events` shape — and, #26 still being unbuilt, **landed the table**: `ouroboros-db`'s `V022`, column for column plus the `ip` that issue did not name, with the coordination recorded in its header. AD.3 (#224) was the first emitter, and #225 turned that method body into an insert as promised. #26 now inherits a table rather than creating one, and adds its own events to it |
 | #138 | WF-Q.1's ad-hoc AES-GCM helper superseded by the AD.1 (#222) vault service, with a migration |
-| #101 | INTAKE-K.3's GitHub credential encryption likewise moves to AD.1 (#222) |
+| #101 | INTAKE-K.3's GitHub credential encryption likewise moves to AD.1 (#222) — **done**: `V027` seals through the vault and registers a store with the sweep |
 | #189 | Routing Y.1's schema is **extended** by AC.6 (#221) — caps, meta, `enabled`, and `provider_models`; aliases gain soft validation against discovered models (P6) |
 | #207 | Routing AB.1's deferred gateway decision now has its ADR issue: AF.1 (#234), implemented by AF.2 (#235) |
 

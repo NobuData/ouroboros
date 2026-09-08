@@ -10,6 +10,7 @@ import { QueueModule } from "../queue/queue.module";
 import { RunsModule } from "../runs/runs.module";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
+import { GithubModule } from "../github/github.module";
 import { HealthModule } from "../health/health.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
@@ -221,6 +222,12 @@ export class AppModule {
         AuditModule,
         ProviderConnectionsModule,
         RoutingModule,
+        // K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)) — the GitHub token
+        // and the API client. After `VaultModule`, which seals the token, and after
+        // `AuditModule`, which records who set it; its own `/settings/github-token` path
+        // cannot collide with `SettingsModule`'s `/settings/auto-merge`, so its position
+        // among the tenant-required modules carries no routing rule of its own.
+        GithubModule,
         InternalModule,
       ],
     };

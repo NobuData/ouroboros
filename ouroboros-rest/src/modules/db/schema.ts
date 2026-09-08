@@ -344,6 +344,41 @@ export interface GithubReposTable {
 }
 
 /**
+ * `ouroboros.github_credentials` — the per-workspace GitHub token the backlog sync
+ * authenticates with (V027, [#101](https://github.com/NobuData/ouroboros/issues/101)).
+ *
+ * One row per workspace, and **no row is the ordinary state**: a workspace that has never
+ * had a token has nothing here, which is what the intake page's *"no token configured"*
+ * guidance (N.6, [#120](https://github.com/NobuData/ouroboros/issues/120)) is rendered from.
+ * Clearing a token deletes the row rather than nulling a column, so there is one state to
+ * read instead of two that mean the same thing.
+ *
+ * **Nothing outside `github/` may select {@link token_encrypted}.** The column holds one of
+ * the vault's envelopes (AD.1, [#222](https://github.com/NobuData/ouroboros/issues/222)),
+ * `github_credentials_token_sealed` refuses anything else, and the only code that turns one
+ * back into a token is `github/github.credentials.service.ts`.
+ */
+export interface GithubCredentialsTable {
+  /**
+   * The workspace. Primary key — one token each — and the `recordId` the envelope's
+   * additional authenticated data is bound to, which is why it must be a value that never
+   * changes. `on delete cascade`.
+   */
+  organization_id: string;
+  /**
+   * The token, sealed — `ouro.v1.<version>.<nonce>.<ciphertext>`. Never returned by an API,
+   * never logged, and never read by anything but the vault.
+   */
+  token_encrypted: string;
+  created_at: Stamped;
+  /**
+   * When the token was last written. Past `created_at` means it has been rotated; *who*
+   * rotated it is `audit_events` (V022), not this row.
+   */
+  updated_at: Stamped;
+}
+
+/**
  * `runs.status` — where one run of the loop is in its life (V008,
  * [#64](https://github.com/NobuData/ouroboros/issues/64)).
  *
@@ -1853,6 +1888,7 @@ export interface Database {
   member: MemberTable;
   github_orgs: GithubOrgsTable;
   github_repos: GithubReposTable;
+  github_credentials: GithubCredentialsTable;
   user_preferences: UserPreferencesTable;
   runs: RunsTable;
   queue_items: QueueItemsTable;
@@ -1911,6 +1947,7 @@ export const TABLE_COLUMNS = {
     "issues_synced_at",
     "issues_sync_cursor",
   ],
+  github_credentials: ["organization_id", "token_encrypted", "created_at", "updated_at"],
   user_preferences: ["user_id", "font_scale", "created_at", "updated_at"],
   runs: [
     "id",
@@ -2161,6 +2198,11 @@ export type NewGithubOrg = Insertable<GithubOrgsTable>;
 export type GithubRepo = Selectable<GithubReposTable>;
 /** The columns an `insert` into `ouroboros.github_repos` may carry. */
 export type NewGithubRepo = Insertable<GithubReposTable>;
+
+/** A row of `ouroboros.github_credentials`, as a `select` returns it. */
+export type GithubCredentials = Selectable<GithubCredentialsTable>;
+/** The columns an `insert` into `ouroboros.github_credentials` may carry. */
+export type NewGithubCredentials = Insertable<GithubCredentialsTable>;
 
 /** A row of `ouroboros.user_preferences`, as a `select` returns it. */
 export type UserPreferences = Selectable<UserPreferencesTable>;

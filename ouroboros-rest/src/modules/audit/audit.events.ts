@@ -28,10 +28,16 @@
  * The kind of thing an event is about.
  *
  * Half of V022's deliberately non-referential subject — see that migration on why an event
- * about a connection must outlive the connection. Two members today; #26 adds
+ * about a connection must outlive the connection. Three members today; #26 adds
  * `organization` when it lands its own events.
+ *
+ * `github_credential` joined with K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)):
+ * a workspace's GitHub token is a credential like a provider's, and decision **AD.4**'s rule
+ * is that credential operations are audited from the day they exist rather than from the day
+ * somebody asks who changed one. Its `subjectId` is the workspace id — there is one token per
+ * workspace, so the credential has no identity of its own to name.
  */
-export type AuditSubjectType = "provider_connection" | "run";
+export type AuditSubjectType = "provider_connection" | "run" | "github_credential";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -91,9 +97,33 @@ export const PROVIDER_TESTED_EVENT = "provider.tested";
 export const LEASE_GRANTED_EVENT = "credential.lease_granted";
 
 /**
+ * A workspace's GitHub token was stored for the first time — or an attempt to store one was
+ * refused (K.3, [#101](https://github.com/NobuData/ouroboros/issues/101)).
+ *
+ * Separate from {@link GITHUB_TOKEN_ROTATED_EVENT} because the two answer different
+ * questions. *"When did this workspace start syncing"* is this one, once. *"Has the token
+ * been replaced since, and by whom"* is the other, and a trail that spelled both `set` would
+ * make the second unanswerable without counting.
+ */
+export const GITHUB_TOKEN_SET_EVENT = "github.token_set";
+
+/** A workspace's GitHub token was replaced by a new one — or the replacement was refused. */
+export const GITHUB_TOKEN_ROTATED_EVENT = "github.token_rotated";
+
+/**
+ * A workspace's GitHub token was removed — or a removal was refused.
+ *
+ * Written even when there was nothing to remove, with `removed: false` in the detail: an
+ * administrator pressing *Clear* on a workspace that already had no token performed the
+ * operation, and a trail that only recorded the presses that changed something would be a
+ * trail of outcomes rather than of actions.
+ */
+export const GITHUB_TOKEN_CLEARED_EVENT = "github.token_cleared";
+
+/**
  * Every action this service writes.
  *
- * A named list rather than nine loose constants, so `openapi.yaml`'s prose, the trail
+ * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
  * endpoint's filter validation, the UI's renderer and this module's own suite can all be held
  * to one enumeration — which is what stops a tenth operation shipping with no trail because
  * nobody remembered to add one.
@@ -109,6 +139,9 @@ export const AUDIT_ACTIONS = [
   PROVIDER_DELETED_EVENT,
   PROVIDER_TESTED_EVENT,
   LEASE_GRANTED_EVENT,
+  GITHUB_TOKEN_SET_EVENT,
+  GITHUB_TOKEN_ROTATED_EVENT,
+  GITHUB_TOKEN_CLEARED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */
