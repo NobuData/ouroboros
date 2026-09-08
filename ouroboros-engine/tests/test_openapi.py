@@ -26,6 +26,14 @@ from ouroboros_engine.api.status import ServiceStatus
 from ouroboros_engine.api.tasks import EchoRequest, EchoResponse
 from ouroboros_engine.core.errors import ErrorEnvelope
 from ouroboros_engine.core.security import INTERNAL_KEY_HEADER, UNAUTHORIZED_BODY
+from ouroboros_engine.estimation.contract import (
+    Breakdown,
+    Estimate,
+    EstimateRequest,
+    EstimationContext,
+    IssueContext,
+    Trace,
+)
 from ouroboros_engine.main import _PUBLIC_PATHS, create_app
 from ouroboros_engine.settings import Settings
 
@@ -43,6 +51,12 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "ServiceStatus": ServiceStatus,
     "EchoRequest": EchoRequest,
     "EchoResponse": EchoResponse,
+    "IssueContext": IssueContext,
+    "EstimationContext": EstimationContext,
+    "EstimateRequest": EstimateRequest,
+    "Breakdown": Breakdown,
+    "Trace": Trace,
+    "Estimate": Estimate,
     "Error": ErrorEnvelope,
 }
 

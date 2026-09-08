@@ -6,7 +6,7 @@
  * here rather than at each call site — the base URL, the shared secret, a deadline, one
  * retry, and the mapping of every possible failure onto one `502`.
  *
- * Bare `fetch` rather than a client library: Node 24 has one, this is two routes, and
+ * Bare `fetch` rather than a client library: Node 24 has one, this is three routes, and
  * `@nestjs/axios` would add an interceptor stack and an RxJS surface in exchange for a base
  * URL and a header. (`auth/github.ts` made the same call for the same reason until #702
  * replaced it with BetterAuth's provider, which brings its own fetch wrapper.)
@@ -41,15 +41,20 @@ import { AppConfigService } from "../config/config.service";
 import { describeForLog, failureCode } from "../errors/failure";
 import {
   ENGINE_ECHO_ROUTE,
+  ENGINE_ESTIMATE_ROUTE,
   ENGINE_STATUS_ROUTE,
   INTERNAL_KEY_HEADER,
   echoRequestBody,
   echoResultSchema,
   engineRouteUrl,
   engineStatusSchema,
+  estimateRequestBody,
+  estimateSchema,
   type EchoResult,
   type EchoTask,
   type EngineStatus,
+  type Estimate,
+  type EstimateRequest,
 } from "./engine.contract";
 import { engineUnavailable } from "./engine.errors";
 
@@ -147,6 +152,40 @@ export class EngineClient {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(echoRequestBody(task)),
+    });
+  }
+
+  /**
+   * Ask the engine to size one issue.
+   *
+   * The estimation pipeline's engine leg ([#105](https://github.com/NobuData/ouroboros/issues/105)).
+   * The request carries the issue *and* the vocabularies this installation has — the workflow
+   * tags and the model defaults that exist — because the engine holds neither and must not
+   * invent one (roadmap decisions **K5**, **K6**). What comes back is one version of an
+   * `issue_estimates` row, which is what lets the orchestration
+   * ([#107](https://github.com/NobuData/ouroboros/issues/107)) persist an answer rather than
+   * translate one.
+   *
+   * **What answers this can change without this method changing.** Today the engine's
+   * estimator is a placeholder reporting `contract-stub-v0` and confidence `0`; the heuristic
+   * ([#106](https://github.com/NobuData/ouroboros/issues/106)) and then the LLM estimator
+   * ([#123](https://github.com/NobuData/ouroboros/issues/123)) answer the same shape. So a
+   * caller reads `trace.estimator` to know what sized an issue and `confidence` to know
+   * whether to trust it, and never branches on which engine build answered.
+   *
+   * @param request - The issue to size and the vocabularies an answer may use.
+   * @returns The estimate, parsed and in this service's names.
+   * @throws {UpstreamError} `engine_unavailable` for every way this can fail — see
+   *   {@link call} — *including* the engine answering `202`. That is the escalation the
+   *   engine specifies for a slower estimator and cannot yet send; a `502` is the honest
+   *   answer to a response this service does not know how to follow, and following it is the
+   *   change that arrives with the estimator needing it.
+   */
+  async estimate(request: EstimateRequest): Promise<Estimate> {
+    return this.call(ENGINE_ESTIMATE_ROUTE, estimateSchema, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(estimateRequestBody(request)),
     });
   }
 

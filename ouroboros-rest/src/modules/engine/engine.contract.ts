@@ -141,3 +141,207 @@ export const echoResultSchema = z
 export function echoRequestBody(task: EchoTask): Record<string, unknown> {
   return { task_kind: task.taskKind, payload: task.payload };
 }
+
+/** `POST` — size one issue. The estimation pipeline's first engine call (#105). */
+export const ENGINE_ESTIMATE_ROUTE = `${ENGINE_API_VERSION}/estimate`;
+
+/**
+ * How much work an issue is, as the engine answers and as `issue_estimates` stores.
+ *
+ * A closed set on three sides — the engine's `enum`, the column's CHECK, and the effort chip
+ * the backlog table renders — so mirroring it as an enum here is where a disagreement is
+ * caught first and most cheaply. Widening it is a coordinated change to all three, in that
+ * order, and not something a release does to one of them alone.
+ */
+export const ESTIMATE_EFFORTS = ["xs", "s", "m", "l", "xl"] as const;
+
+/** One of {@link ESTIMATE_EFFORTS}. */
+export type Effort = (typeof ESTIMATE_EFFORTS)[number];
+
+/** How likely the change is to break something. Closed on the same three sides as effort. */
+export const ESTIMATE_RISKS = ["low", "medium", "high"] as const;
+
+/** One of {@link ESTIMATE_RISKS}. */
+export type Risk = (typeof ESTIMATE_RISKS)[number];
+
+/** The issue to size, as much of it as an estimator reads. */
+export interface IssueContext {
+  /** The issue's number within its repository — GitHub's, not a database id. */
+  number: number;
+  /** The issue title, as GitHub holds it. */
+  title: string;
+  /** The description in full, or `null` for an issue opened without one. */
+  body: string | null;
+  /** GitHub's label *names* — the heuristic estimator's strongest signal. */
+  labels: string[];
+  /** `owner/name`. */
+  repo: string;
+}
+
+/**
+ * The vocabularies this installation has, which the engine is told rather than assumed to
+ * know.
+ *
+ * Roadmap decisions **K5** and **K6**: a workflow tag and a routed model are opaque strings
+ * the engine ascribes no meaning to, and the set of them is *this* service's. So they travel
+ * with every request, and an estimate naming anything outside them is refused inside the
+ * engine before it is answered — which is why nothing here has to re-check the answer.
+ */
+export interface EstimationContext {
+  /** Every workflow tag that exists, as the tag chip renders one. At least one. */
+  workflowTags: string[];
+  /** Models an estimate may route to, keyed by the class of work each is the default for. */
+  modelDefaults: Record<string, string>;
+}
+
+/** A request to size one issue. */
+export interface EstimateRequest {
+  /** The issue to size. */
+  issue: IssueContext;
+  /** The vocabularies an answer may use. */
+  context: EstimationContext;
+}
+
+/** The *AI Work Breakdown* panel's numbers — `issue_estimates.breakdown`, exactly. */
+export interface EstimateBreakdown {
+  /** Paths the work is believed to touch. Empty is a real answer, never a promise. */
+  files: string[];
+  /** What the *work* is expected to cost in model tokens — not what the estimate cost. */
+  estTokens: number;
+  /** The optimistic end of the wall-clock range, in minutes. */
+  cycleMin: number;
+  /** The pessimistic end, in minutes. */
+  cycleMax: number;
+  /** The single number the queue plans with, in minutes. Not confined to the range above. */
+  estMinutes: number;
+}
+
+/** Where the estimate came from — `issue_estimates.trace`, minus the clock the writer owns. */
+export interface EstimateTrace {
+  /** What produced it: `heuristic-v0`, a model id, or `contract-stub-v0`. Never empty. */
+  estimator: string;
+  /** What producing the estimate cost in model tokens. `0` for a rule engine. */
+  tokensUsed: number;
+  /** What the answer was reached from, one line each. */
+  signals: string[];
+}
+
+/**
+ * One version of an `issue_estimates` row, as the engine answers it.
+ *
+ * The response mirrors that table field for field, so the orchestration that persists it
+ * ([#107](https://github.com/NobuData/ouroboros/issues/107)) writes an answer rather than
+ * translating one. The columns with no field here are this side's: the row's id, the issue it
+ * belongs to, its version, its `created_at`, and `trace.sized_at` — the engine does not own
+ * the clock, and a timestamp in a response body is one two services can disagree about.
+ */
+export interface Estimate {
+  /** How much work it is. */
+  effort: Effort;
+  /** How much the estimator trusts its own answer, 0-100. A low one routes to needs_human. */
+  confidence: number;
+  /** Which workflow should run it — always one of the tags the request offered. */
+  suggestedWorkflow: string;
+  /** Which model it should run on — always one of the defaults the request offered. */
+  routedModel: string;
+  /** The breakdown panel's numbers. */
+  breakdown: EstimateBreakdown;
+  /** How likely the change is to break something. */
+  risk: Risk;
+  /** The sentence under the meter, saying why. Never empty. */
+  riskNote: string;
+  /** What produced the estimate, and from what. */
+  trace: EstimateTrace;
+}
+
+/** The breakdown, as it arrives. */
+const estimateBreakdownSchema = z
+  .object({
+    files: z.array(z.string()),
+    est_tokens: z.number(),
+    cycle_min: z.number(),
+    cycle_max: z.number(),
+    est_minutes: z.number(),
+  })
+  .transform((body): EstimateBreakdown => ({
+    files: body.files,
+    estTokens: body.est_tokens,
+    cycleMin: body.cycle_min,
+    cycleMax: body.cycle_max,
+    estMinutes: body.est_minutes,
+  }));
+
+/** The trace, as it arrives. */
+const estimateTraceSchema = z
+  .object({
+    // Non-empty rather than merely present: roadmap decision **K10** says an estimate that
+    // cannot say what produced it does not get to exist, and `issue_estimates` enforces the
+    // same thing with a `not null`. An empty string would satisfy that column and mean
+    // nothing, so it is refused here — one hop earlier than the database would.
+    estimator: z.string().min(1),
+    tokens_used: z.number(),
+    signals: z.array(z.string()),
+  })
+  .transform((body): EstimateTrace => ({
+    estimator: body.estimator,
+    tokensUsed: body.tokens_used,
+    signals: body.signals,
+  }));
+
+/**
+ * `POST /v0/estimate`, as it arrives.
+ *
+ * **A `202` is not parsed here, and that is on purpose.** The engine specifies a
+ * `202`-plus-poll escalation for the LLM estimator
+ * ([#123](https://github.com/NobuData/ouroboros/issues/123)) and cannot answer one yet, so a
+ * `202` reaching this schema would fail to parse and become a `502` — the right answer for a
+ * response this service does not yet know how to follow. The poll arrives with the estimator
+ * that needs it, as a second schema beside this one; nothing about this one changes.
+ */
+export const estimateSchema = z
+  .object({
+    effort: z.enum(ESTIMATE_EFFORTS),
+    confidence: z.number(),
+    suggested_workflow: z.string(),
+    routed_model: z.string(),
+    breakdown: estimateBreakdownSchema,
+    risk: z.enum(ESTIMATE_RISKS),
+    risk_note: z.string(),
+    trace: estimateTraceSchema,
+  })
+  .transform((body): Estimate => ({
+    effort: body.effort,
+    confidence: body.confidence,
+    suggestedWorkflow: body.suggested_workflow,
+    routedModel: body.routed_model,
+    breakdown: body.breakdown,
+    risk: body.risk,
+    riskNote: body.risk_note,
+    trace: body.trace,
+  }));
+
+/**
+ * A sizing request, as the engine's request body.
+ *
+ * The counterpart of {@link estimateSchema} and the other half of this file's one rule about
+ * naming: `camelCase` above this line, `snake_case` below it, and the translation nowhere
+ * else.
+ *
+ * @param request - The issue to size and the vocabularies an answer may use.
+ * @returns The body to serialise.
+ */
+export function estimateRequestBody(request: EstimateRequest): Record<string, unknown> {
+  return {
+    issue: {
+      number: request.issue.number,
+      title: request.issue.title,
+      body: request.issue.body,
+      labels: request.issue.labels,
+      repo: request.issue.repo,
+    },
+    context: {
+      workflow_tags: request.context.workflowTags,
+      model_defaults: request.context.modelDefaults,
+    },
+  };
+}
