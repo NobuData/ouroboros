@@ -17,11 +17,12 @@ committed file this module loads rather than a document FastAPI derives from the
 
 from fastapi import FastAPI
 
-from ouroboros_engine.api import health, root, status, tasks
+from ouroboros_engine.api import estimate, health, root, status, tasks
 from ouroboros_engine.core.errors import register_error_handlers
 from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
 from ouroboros_engine.core.uptime import Uptime
+from ouroboros_engine.estimation.estimator import ContractStub
 from ouroboros_engine.openapi import document
 from ouroboros_engine.settings import Settings, load_settings
 
@@ -44,8 +45,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     Returns:
         A configured :class:`fastapi.FastAPI` whose ``state.settings`` holds the
         settings it was built with, so a route or a middleware can reach them without
-        re-reading the environment, and whose ``state.uptime`` is the stopwatch
-        ``/v0/status`` reports from.
+        re-reading the environment, whose ``state.uptime`` is the stopwatch
+        ``/v0/status`` reports from, and whose ``state.estimator`` is the implementation
+        ``POST /v0/estimate`` calls.
 
     Raises:
         ouroboros_engine.settings.SettingsError: If ``settings`` was omitted and the
@@ -94,6 +96,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     app.state.uptime = Uptime()
 
+    # Which estimator answers `POST /v0/estimate` is a property of the application rather
+    # than of the route, so replacing it — the heuristic (#106), then the LLM estimator
+    # (#123) — is this line and nothing else, and a test installs its own by assigning to
+    # the same attribute. `ContractStub` is a placeholder that says so in every field it
+    # fills; see `ouroboros_engine.estimation.estimator`.
+    app.state.estimator = ContractStub()
+
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that
     # is added later, and an unauthenticated request never reaches routing at all.
@@ -113,6 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(root.router)
     app.include_router(status.router)
     app.include_router(tasks.router)
+    app.include_router(estimate.router)
     return app
 
 

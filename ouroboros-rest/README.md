@@ -2449,6 +2449,28 @@ an internal service would be the "engine is internal" invariant
 capability arrives as a named operation with its own contract in `openapi.yaml`, and the
 next one is another entry beside this one.
 
+**Sizing an issue is the second thing the client can ask for, and it has no route yet.**
+`EngineClient.estimate()` calls `POST /v0/estimate`
+([#105](https://github.com/NobuData/ouroboros/issues/105)) with the issue and *the
+vocabularies this installation has* — the workflow tags and the model defaults that exist —
+because the engine holds neither and must not invent one (roadmap decisions **K5**, **K6**).
+What comes back is one version of an `issue_estimates` row, so the orchestration that
+persists it ([#107](https://github.com/NobuData/ouroboros/issues/107)) writes an answer
+rather than translating one. There is deliberately no controller beside `engine/status` for
+it: the callers are the sync pipeline and the re-estimation endpoints
+([#108](https://github.com/NobuData/ouroboros/issues/108)), and a route added before them
+would be a generic proxy under another name.
+
+Two things about that call are worth knowing before writing against it. **What answers it
+changes and the shape does not** — today the engine's estimator is a placeholder reporting
+`contract-stub-v0` with confidence `0`, replaced by the heuristic
+([#106](https://github.com/NobuData/ouroboros/issues/106)) and then by an LLM estimator
+([#123](https://github.com/NobuData/ouroboros/issues/123)) — so a caller reads
+`trace.estimator` and `confidence` and never branches on which engine build answered. And
+**a `202` is a `502` here, for now**: the engine specifies a `202`-plus-poll escalation for
+the slower estimator and cannot yet send one, so this client refuses a response it does not
+know how to follow rather than guessing. The poll arrives with the estimator that needs it.
+
 `EngineClient` is what those operations call, and it is the only place in the service that
 knows the engine exists. It mirrors the engine's `/v0` contract in `engine.contract.ts` —
 routes, request and response shapes — and four rules hold for every call it makes:

@@ -64,7 +64,7 @@ Surveyed 2026-08-08.
 | Existing work | Disposition under this roadmap |
 |---|---|
 | Scaffolding #22 `ouroboros-db: [3.4] GitHub org & repo enablement` (amended by BA-B.3) | **Consumed** — sync targets only enabled repos. No change. |
-| Scaffolding #35 `[4.9] Engine gateway` / #52 `[6.3] Internal API contract v0` | **Extended** by L.1/L.3 — the estimation contract is the first real engine capability beyond echo. |
+| Scaffolding #35 `[4.9] Engine gateway` / #52 `[6.3] Internal API contract v0` | ✅ **Extended** by L.1 (#105) — `POST /v0/estimate` is the first real engine capability beyond echo, mirrored in the gateway's typed client as `EngineClient.estimate()`. L.3 is the caller that puts it to work. |
 | Scaffolding #49 placeholder routes (v2) | **Superseded for `/issues`** — this roadmap builds the real screen; other placeholders unchanged. |
 | Dashboard roadmap (`ROADMAP_MOCKUP_02_DASHBOARD.md`, validation gate) — `queue_items` (DASH-F.2), queue endpoint (DASH-G.4), run read-model (DASH-F.1) | **Consumed & extended** — M.3's queue action writes `queue_items`; queue write semantics (deliberately out of DASH-G.4's scope) land **here**. The dashboard's "⟳ Pull next issue" button gains a real target. |
 | BetterAuth roadmap (validation gate) — tenant context (BA-C.3), enabled repos (BA-C.4), auth client (BA-D.1) | **Prerequisite** — all backlog queries are org-scoped; the filter bar's repo select reads enabled repos. |
@@ -462,7 +462,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| L.1 | #105 | 🟡 Open | ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`) | Request/response schema for sizing an issue; extends the #52 contract | mvp, intake, engine, rest | N (after #52) | Y | M | ouroboros-engine, ouroboros-rest |
+| L.1 | #105 | 🟢 Done | ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`) | Request/response schema for sizing an issue; extends the #52 contract | mvp, intake, engine, rest | N (after #52) | Y | M | ouroboros-engine, ouroboros-rest |
 | L.2 | #106 | 🟡 Open | ouroboros-engine: [L.2] Heuristic estimator v0 | Deterministic sizing from labels/title/body signals, honest provenance | mvp, intake, engine | N (after L.1) | Y | M | ouroboros-engine |
 | L.3 | #107 | 🟡 Open | ouroboros-rest: [L.3] Estimation orchestration & persistence | Dispatch, status transitions, versioned persistence, failure → needs_human | mvp, intake, rest | N (after L.1, K.2, K.4) | Y | L | ouroboros-rest |
 | L.4 | #108 | 🟡 Open | ouroboros-rest: [L.4] Re-estimation endpoints (single & all) | `POST /backlog/:id/estimate`, `POST /backlog/estimate-all` with guards | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
@@ -470,7 +470,78 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 
 ### Issue L.1 — ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`)
 
-> **GitHub issue:** #105 · **Status:** 🟡 Open · **Parent epic:** #95
+> **GitHub issue:** #105 · **Status:** 🟢 Done · **Parent epic:** #95
+
+> **Shipped 2026-09-08. Epic L is open.**
+> [`POST /v0/estimate`](../ouroboros-engine/src/ouroboros_engine/api/estimate.py) over
+> [`estimation/contract.py`](../ouroboros-engine/src/ouroboros_engine/estimation/contract.py)
+> (the shapes) and
+> [`estimation/estimator.py`](../ouroboros-engine/src/ouroboros_engine/estimation/estimator.py)
+> (the seam), described in
+> [`openapi.yaml`](../ouroboros-engine/openapi.yaml) and mirrored on the other side of the
+> gateway as `EngineClient.estimate()`
+> ([`engine.contract.ts`](../ouroboros-rest/src/modules/engine/engine.contract.ts)).
+> `ouroboros-engine` 0.5.1, `ouroboros-rest` 0.30.18; **109 new tests** in the engine's
+> suite (322 → 431) and **30** in the gateway's (69 → 99).
+>
+> **The response is one version of K.2's row, and a test holds that mapping as data.**
+> [`test_estimation_contract.py`](../ouroboros-engine/tests/test_estimation_contract.py)
+> lists every column and jsonb key of `issue_estimates` beside the response field that
+> carries it, and fails on a drift in either direction — a field added that no column
+> stores, a column the estimator owns that nothing answers with. Five columns are mapped to
+> nothing on purpose: `id`, `github_issue_id`, `version`, `created_at` and `trace.sized_at`
+> are the row writer's, because an estimator does not know which row it was called for,
+> cannot know which version its answer will become, and must not own the clock — a timestamp
+> in a response body is one two services can disagree about.
+>
+> **K.2 has not landed, so that table is its specification rather than a reading of it** —
+> and the join is already written. The test looks for the migration that creates
+> `issue_estimates` and, the day one exists, asserts every name it was written against
+> appears in it; until then it asserts the contract against the table. So a migration that
+> renames `est_minutes` is a red build on the day it lands rather than a discovery L.3 makes.
+> **What K.2 is being held to:** `effort`, `confidence`, `suggested_workflow`,
+> `routed_model`, `breakdown` (`files`, `est_tokens`, `cycle_min`, `cycle_max`,
+> `est_minutes`), `risk`, `risk_note`, `trace` (`estimator`, `sized_at`, `tokens_used`,
+> `signals`) — and the two CHECK vocabularies, `xs|s|m|l|xl` and `low|medium|high`, which the
+> contract enumerates on both sides of the boundary.
+>
+> **Decisions K5 and K6 are structural rather than remembered.** The request's `context`
+> block carries the workflow tags and the model defaults that exist, the engine holds neither
+> list, and `honours_context` refuses an answer naming anything outside the offer — a `500`
+> and a log line rather than a value that reaches a row. That check is deliberately on the
+> engine's side of the gateway: a tag that reached the caller has already been logged,
+> measured and very nearly persisted by the time anyone there could reject it. A request
+> offering no tags at all is a `422`, because `suggested_workflow` is required and there is
+> nothing this service may put in it.
+>
+> **Decision K10 is enforced at the contract and not only at the column.** `trace.estimator`
+> is required and non-empty in the engine's model *and* in the gateway's zod schema, one and
+> two hops before the `not null` would catch it.
+>
+> **There is no estimator yet, and the placeholder says so in every field.** L.2 (#106) is
+> the heuristic; until it lands `create_app` installs a `ContractStub` that answers
+> `estimator: "contract-stub-v0"` — not `heuristic-v0`, which would be exactly the
+> masquerade K10 exists to prevent — with `confidence: 0`, a breakdown of zeros, no files,
+> `risk: high` and a note that names the issue replacing it. Confidence `0` is below any
+> floor L.3 could set, so an issue "sized" this way becomes `needs_human` rather than
+> `sized`. That is what makes the gateway leg, the specification and L.3's persistence
+> buildable before any estimator exists, and swapping in the real one is one line in the
+> factory: the estimator is reached through `app.state`, not imported.
+>
+> **The 202 escalation is specified as an extension rather than promised as a response.**
+> `x-async-escalation` on the operation names the status, the accepted body, the
+> `Retry-After` header and the poll route (`/v0/estimate/{estimation_id}`), and the route
+> module holds the same four values as constants with a test asserting the two agree — so it
+> is checked rather than merely written. It is *not* a documented `202` under `responses`,
+> because this build cannot answer one and a `responses` entry is a promise a caller may hold
+> it to. The gateway's client is written to match: a `202` fails to parse and becomes a
+> `502`, which is the honest answer to a response it does not yet know how to follow, and the
+> spec beside it pins where the poll support has to arrive.
+>
+> **No REST route was added, deliberately.** `EngineClient.estimate()` is a client method
+> with no controller beside `engine/status`: the callers are L.3's orchestration and L.4's
+> re-estimation endpoints, and a pass-through added before them would be the generic proxy
+> the gateway's whole design refuses.
 
 - **Problem Statement:** REST↔engine has only `echo` (#52). Sizing needs a real
   versioned contract carrying enough issue context in and a full estimate out —
@@ -1249,3 +1320,22 @@ runs against a database migrated from empty.
 **#100 ([K.2] Issue estimates schema) is unblocked**, and #101 ([K.3] GitHub credentials &
 API client) remains the other parallelizable entry point of Phase 1 — #102's sync service
 needs both.
+
+**Epic L opened on 2026-09-08.** **L.1 (#105) shipped**: `POST /v0/estimate` is the
+REST↔engine contract for sizing one issue, and the shape it answers is one version of K.2's
+row — so L.3 will persist an answer rather than translate one. There is no estimator behind
+it yet; the placeholder reports `contract-stub-v0` with confidence `0`, which is L.2's
+(#106) to replace and is honest in the meantime.
+
+> The thing L.1 leaves for **K.2 (#100)**: the contract's shipped test lists every column
+> and jsonb key the response was written against and starts comparing them to the migration
+> the moment one exists. If K.2 names a column differently — `estimated_minutes` for
+> `est_minutes`, `workflow` for `suggested_workflow` — the engine's suite goes red on the day
+> that migration lands, which is the earliest anyone can be told. The names are in the L.1
+> entry above.
+>
+> And for **L.3 (#107)**: `honours_context` means the orchestration must send the workflow
+> tags and the model defaults it has on *every* call, because the engine holds no list of
+> either and will refuse to answer out of one it was not given. A `202` from the engine is
+> currently a `502` at the gateway — nothing sends one yet, and following it is O.2's (#123)
+> change rather than L.3's.

@@ -11,7 +11,9 @@ import {
 } from "./engine.client";
 import { ENGINE_ERRORS, ENGINE_UNAVAILABLE_MESSAGE } from "./engine.errors";
 import {
+  ENGINE_ESTIMATE_BODY,
   ENGINE_STATUS_BODY,
+  ESTIMATE_REQUEST,
   alwaysAnswering,
   alwaysFailing,
   connectFailure,
@@ -187,6 +189,104 @@ describe("echoing a task", () => {
 
     await expect(clientWith(engine).echo({ taskKind: "echo", payload: {} })).rejects.toMatchObject({
       status: HttpStatus.BAD_GATEWAY,
+    });
+  });
+});
+
+describe("sizing an issue", () => {
+  /** What the engine answers a well-formed sizing request with. */
+  function estimated(): Response {
+    return jsonResponse(ENGINE_ESTIMATE_BODY);
+  }
+
+  it("posts the issue to the engine's estimate route", async () => {
+    const engine = alwaysAnswering(estimated);
+
+    await clientWith(engine).estimate(ESTIMATE_REQUEST);
+
+    expect(engine.calls[0].url).toBe(`${ENGINE_URL}/v0/estimate`);
+    expect(engine.calls[0].method).toBe("POST");
+  });
+
+  it("sends the issue and the vocabularies, in the engine's `snake_case`", async () => {
+    const engine = alwaysAnswering(estimated);
+
+    await clientWith(engine).estimate(ESTIMATE_REQUEST);
+
+    expect(JSON.parse(engine.calls[0].body ?? "")).toEqual({
+      issue: {
+        number: 485,
+        title: "I2C bus lockup after IMU sleep/wake cycle",
+        body: "After entering low-power sleep and waking the BMI270, the I2C bus locks up.",
+        labels: ["bug", "i2c", "watchdog"],
+        repo: "acme-robotics/helios-firmware",
+      },
+      context: {
+        workflow_tags: ["standard-fix", "docs-loop"],
+        model_defaults: { default: "claude-fable-5", docs: "claude-haiku-4-5" },
+      },
+    });
+  });
+
+  it("still carries the shared secret", async () => {
+    const engine = alwaysAnswering(estimated);
+
+    await clientWith(engine).estimate(ESTIMATE_REQUEST);
+
+    expect(headerOf(engine, "X-Ouro-Internal-Key")).toBe(SHARED_SECRET);
+  });
+
+  it("reads the estimate back in this service's names", async () => {
+    const engine = alwaysAnswering(estimated);
+
+    await expect(clientWith(engine).estimate(ESTIMATE_REQUEST)).resolves.toMatchObject({
+      effort: "m",
+      confidence: 92,
+      suggestedWorkflow: "standard-fix",
+      routedModel: "claude-fable-5",
+      breakdown: { estTokens: 180_000, cycleMin: 12, cycleMax: 18, estMinutes: 23 },
+      riskNote: "Isolated to the I²C driver path; full HIL coverage exists for bus recovery.",
+      trace: { estimator: "heuristic-v0", tokensUsed: 41_000 },
+    });
+  });
+
+  it("answers 502 when the engine refused the request", async () => {
+    // A 422 means this service sent a body the engine's own contract does not describe,
+    // which is a bug here rather than something a caller can act on.
+    const engine = alwaysAnswering(() =>
+      engineError(HttpStatus.UNPROCESSABLE_ENTITY, "validation_failed"),
+    );
+
+    await expect(clientWith(engine).estimate(ESTIMATE_REQUEST)).rejects.toMatchObject({
+      code: ENGINE_ERRORS.unavailable,
+    });
+  });
+
+  it("answers 502 when the engine escalates to the 202 it does not yet send", async () => {
+    // The engine specifies a `202`-plus-poll path for the LLM estimator (#123) and cannot
+    // answer one today. A 202 is a 2xx, so it reaches the schema and fails to parse — which
+    // is the honest answer for a response this service does not know how to follow, and the
+    // assertion that pins where the poll support has to arrive.
+    const engine = alwaysAnswering(
+      () =>
+        new Response(JSON.stringify({ estimation_id: "5f2c", status: "accepted" }), {
+          status: HttpStatus.ACCEPTED,
+          headers: { "content-type": "application/json", "retry-after": "5" },
+        }),
+    );
+
+    await expect(clientWith(engine).estimate(ESTIMATE_REQUEST)).rejects.toMatchObject({
+      code: ENGINE_ERRORS.unavailable,
+    });
+  });
+
+  it("answers 502 for an estimate outside the vocabularies the row can store", async () => {
+    // The wire is parsed rather than asserted. An effort `issue_estimates` would refuse is
+    // stopped here, at the boundary, instead of at the insert several layers later.
+    const engine = alwaysAnswering(() => jsonResponse({ ...ENGINE_ESTIMATE_BODY, effort: "xxl" }));
+
+    await expect(clientWith(engine).estimate(ESTIMATE_REQUEST)).rejects.toMatchObject({
+      code: ENGINE_ERRORS.unavailable,
     });
   });
 });

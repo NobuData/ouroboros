@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.5.0
+  version: 0.5.1
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -121,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.5.0
+                version: 0.5.1
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.5.0
+                version: 0.5.1
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -195,7 +195,132 @@ paths:
                   task_kind: echo
                   payload:
                     note: hello from ouroboros-rest
-                engine_version: 0.5.0
+                engine_version: 0.5.1
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /v0/estimate:
+    post:
+      tags: [v0]
+      summary: Estimate the work in one issue
+      description: |-
+        Size one issue: how much work it is, how sure the estimator is, which workflow
+        should run it, which model it should run on, what the work is expected to cost, and
+        what any of that was reached from.
+
+        **The response is one version of `issue_estimates`**
+        ([#100](https://github.com/NobuData/ouroboros/issues/100)) field for field, so the
+        caller persists an answer rather than translating one. The five columns with no
+        field here are the persister's: the row's id, the issue it belongs to, its version,
+        when it was written, and `trace.sized_at`. An estimator does not know which issue
+        row it was called for, cannot know which version its answer will become, and must
+        not be the thing that decides when the answer was written.
+
+        **The caller supplies the vocabularies.** `context.workflow_tags` and
+        `context.model_defaults` are what the installation has, and `suggested_workflow`
+        and `routed_model` are always drawn from them — roadmap decisions **K5** and
+        **K6**. This service holds no list of workflow tags and no list of models, so it
+        cannot invent one; an estimator that names something outside the offer is a `500`
+        here rather than a value that reaches a row.
+
+        **`trace.estimator` is required** — decision **K10**, enforced at this boundary and
+        not only by the database's `not null`. Provenance checked at the last hop is
+        provenance the hops before it can lose.
+
+        **The estimator behind this contract is replaced twice and the contract is not.**
+        Today it is a placeholder that reports `contract-stub-v0`, confidence `0` and a
+        breakdown of zeros — a well-formed answer that says in every field that nothing
+        estimated it, which is what lets the gateway leg and the persistence be built
+        before an estimator exists. The heuristic
+        ([#106](https://github.com/NobuData/ouroboros/issues/106)) and then the LLM
+        estimator ([#123](https://github.com/NobuData/ouroboros/issues/123)) answer this
+        same shape.
+
+        **v0 answers synchronously.** A rule engine has nothing to wait for. The
+        `202`-plus-poll escalation an LLM estimator will need is specified in
+        `x-async-escalation` below rather than left to be invented then: it adds a status
+        and a route and changes no field, so a caller written against this operation today
+        needs only to treat `202` as possible.
+      operationId: estimateIssue
+      # Specified, not served. O.2's estimator calls a model through the control plane, and
+      # a model call is not something to hold a gateway's socket open for — so the shape of
+      # that escalation is written down now, while there is nothing depending on it, rather
+      # than when rewriting it would ripple through L.3, M.1 and N.3.
+      #
+      # An extension rather than a documented `202` response, deliberately: this service
+      # cannot answer 202 today, and a `responses` entry is a promise a caller may hold it
+      # to. `src/ouroboros_engine/api/estimate.py` holds the same four values as constants
+      # and `tests/test_api_estimate.py` asserts the two agree, so this block is checked
+      # rather than merely written.
+      x-async-escalation:
+        status: 202
+        accepted-body: "{estimation_id, status: \"accepted\"}"
+        retry-after-header: Retry-After
+        poll: /v0/estimate/{estimation_id}
+        description: |-
+          When an estimator cannot answer inside the caller's deadline, this operation
+          answers `202` with `{estimation_id, status: "accepted"}` and a `Retry-After`
+          header. The caller then polls `GET /v0/estimate/{estimation_id}`, which answers
+          `202` again while the estimate is in flight and **the same `Estimate` body,
+          unchanged**, when it is done. An estimate that failed is the error envelope on
+          the poll route, never a `200` carrying half an answer. Adding a status and a
+          route to `/v0` takes nothing away, so it is compatible with the version rule
+          rather than a `/v1`.
+        introduced-by: https://github.com/NobuData/ouroboros/issues/123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EstimateRequest"
+            example:
+              issue:
+                number: 485
+                title: I2C bus lockup after IMU sleep/wake cycle
+                body: |-
+                  After entering low-power sleep and waking the BMI270, the I2C bus
+                  intermittently locks up. Recovery requires a full bus reset.
+                labels: [bug, i2c, watchdog]
+                repo: acme-robotics/helios-firmware
+              context:
+                workflow_tags: [standard-fix, docs-loop, feature-loop, deps-refresh]
+                model_defaults:
+                  default: claude-fable-5
+                  docs: claude-haiku-4-5
+      responses:
+        "200":
+          description: |-
+            The estimate — one version of K.2's row, as the *AI Work Breakdown* panel
+            renders it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+              example:
+                effort: m
+                confidence: 92
+                suggested_workflow: standard-fix
+                routed_model: claude-fable-5
+                breakdown:
+                  files:
+                    - drivers/i2c_recovery.c
+                    - drivers/imu_bmi270.c
+                    - tests/unit/test_i2c_lockup.c
+                  est_tokens: 180000
+                  cycle_min: 12
+                  cycle_max: 18
+                  est_minutes: 23
+                risk: low
+                risk_note: Isolated to the I²C driver path; full HIL coverage exists for bus recovery.
+                trace:
+                  estimator: heuristic-v0
+                  tokens_used: 41000
+                  signals:
+                    - 3 similar closed issues
+                    - driver map
+                    - HIL test index
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -373,6 +498,310 @@ components:
             the gateway logs a round trip it made, and the build that served it belongs in
             that line without a second call.
           examples: ["0.3.0"]
+
+    IssueContext:
+      type: object
+      title: IssueContext
+      description: |-
+        The issue being sized, as much of it as an estimator reads. Mirrors K.1's
+        `github_issues` row ([#99](https://github.com/NobuData/ouroboros/issues/99)) for the
+        five fields sizing depends on and nothing else from it — an estimator has no
+        business with `sizing_status` or the row's identifiers, and a field it cannot use is
+        a field the gateway would have to keep sending.
+      additionalProperties: false
+      required: [number, title, body, labels, repo]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          description: |-
+            The issue's number within its repository — GitHub's number and the mockup's,
+            not a database id, so a payload can be read against the page it came from.
+          examples: [485]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: The issue title, as GitHub holds it.
+          examples: [I2C bus lockup after IMU sleep/wake cycle]
+        body:
+          type: [string, "null"]
+          maxLength: 65536
+          description: |-
+            The issue description in full, or `null` for an issue opened without one.
+            Nullable rather than defaulted to `""` because K.1's column is nullable for the
+            same reason: GitHub makes no distinction between an empty description and no
+            description, and this contract does not invent one. Required rather than
+            optional, so "this issue has no body" is something the caller states rather
+            than something a missing key implies.
+          examples:
+            - After entering low-power sleep and waking the BMI270, the I2C bus intermittently locks up.
+        labels:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+          description: |-
+            GitHub's label *names*, the way K.1 stores them. The heuristic estimator's
+            strongest signal, and empty for most issues.
+          examples: [[bug, i2c, watchdog]]
+        repo:
+          type: string
+          pattern: "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"
+          maxLength: 140
+          description: |-
+            `owner/name` — GitHub's own `full_name`, and what the mockup's head shows. The
+            pattern is there so a caller that sent only the repository name is refused
+            rather than having an estimator read an owner out of nothing.
+          examples: [acme-robotics/helios-firmware]
+
+    EstimationContext:
+      type: object
+      title: EstimationContext
+      description: |-
+        The vocabularies that exist, told to the engine rather than assumed by it — roadmap
+        decisions **K5** and **K6**. A workflow tag and a routed model are opaque strings
+        this service ascribes no meaning to, and the set of them belongs to the
+        installation, so the caller sends them and an answer naming anything outside them is
+        refused before it leaves the engine.
+
+        Both are required and non-empty. A request offering no tags has no answer this
+        contract can give — `suggested_workflow` is required — so it is a `422` rather than
+        an estimate carrying a field the caller cannot use.
+      additionalProperties: false
+      required: [workflow_tags, model_defaults]
+      properties:
+        workflow_tags:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+          description: |-
+            Every workflow tag the installation has, as the mockup's tag chip shows one.
+            Opaque, so only their number and length are constrained — a bound is not a
+            meaning.
+          examples: [[standard-fix, docs-loop, feature-loop, deps-refresh]]
+        model_defaults:
+          type: object
+          minProperties: 1
+          maxProperties: 64
+          propertyNames:
+            minLength: 1
+            maxLength: 64
+          additionalProperties:
+            type: string
+            minLength: 1
+            maxLength: 128
+          description: |-
+            The models an estimate may route to, keyed by the caller's own name for the
+            class of work each is the default for. A map rather than a list because that is
+            what the caller has, and its *values* are what `routed_model` must be one of.
+          examples: [{ default: claude-fable-5, docs: claude-haiku-4-5 }]
+
+    EstimateRequest:
+      type: object
+      title: EstimateRequest
+      description: |-
+        The body of a `POST /v0/estimate` request. Two blocks, and the split is the
+        contract's argument about who knows what: the issue is the *problem*, and the
+        context is what the installation happens to be configured with. An estimator reads
+        both and invents neither. Closed — a property not listed here is refused rather than
+        dropped.
+      additionalProperties: false
+      required: [issue, context]
+      properties:
+        issue:
+          $ref: "#/components/schemas/IssueContext"
+          description: The issue to size.
+        context:
+          $ref: "#/components/schemas/EstimationContext"
+          description: The vocabularies an answer may use.
+
+    Breakdown:
+      type: object
+      title: Breakdown
+      description: |-
+        The *AI Work Breakdown* panel as data — K.2's `breakdown` jsonb exactly, five keys
+        and no more. The panel renders four of them; the fifth, `est_minutes`, is what M.3's
+        queue write reads, which is why it is a stored number rather than something a reader
+        recomputes from the cycle range.
+      additionalProperties: false
+      required: [files, est_tokens, cycle_min, cycle_max, est_minutes]
+      properties:
+        files:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+            minLength: 1
+            maxLength: 4096
+          description: |-
+            The paths an estimator believes the work touches, as the panel's *Estimated
+            files touched* list. **Empty is a real answer**: the heuristic v0 cannot know
+            files and the mockup renders their absence rather than guessing, so this is a
+            list that may have nothing in it — never a promise.
+          examples: [[drivers/i2c_recovery.c, tests/unit/test_i2c_lockup.c]]
+        est_tokens:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+          description: |-
+            How many model tokens the *work* is expected to cost. Not what the estimate
+            cost — that is `trace.tokens_used`, and confusing the two makes a sizing look a
+            thousand times more expensive than it was.
+          examples: [180000]
+        cycle_min:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          description: The optimistic end of the wall-clock range, in minutes.
+          examples: [12]
+        cycle_max:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          description: The pessimistic end of the wall-clock range, in minutes. Never below `cycle_min`.
+          examples: [18]
+        est_minutes:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          description: |-
+            The single number the queue plans with, in minutes. Deliberately *not*
+            constrained to the cycle range: K.2's own example carries a 12–18 minute cycle
+            beside 23 estimated minutes, because a job's wall clock includes what happens
+            either side of the model's part of it.
+          examples: [23]
+
+    Trace:
+      type: object
+      title: Trace
+      description: |-
+        Where the estimate came from — K.2's `trace` jsonb, minus its clock. The collapsible
+        *Estimation trace* under the panel, and the reason re-estimation is auditable at
+        all: an estimate that cannot say what produced it is one nobody can compare against
+        the next.
+
+        `sized_at` is K.2's and not this contract's. The estimator does not own the clock —
+        the row's writer does — and a timestamp in a response body is one two services can
+        disagree about.
+      additionalProperties: false
+      required: [estimator, tokens_used, signals]
+      properties:
+        estimator:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |-
+            What produced this — `heuristic-v0` for the rule engine, a model identifier for
+            the LLM estimator, `contract-stub-v0` for the placeholder that is installed
+            until the first of those lands. **Decision K10**: required and non-empty here as
+            well as `not null` there, so provenance cannot be lost on the way to the row.
+          examples: [heuristic-v0]
+        tokens_used:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+          description: |-
+            What producing *this estimate* cost, in model tokens. `0` for an estimator that
+            called no model, which is the honest answer for a rule engine rather than a
+            missing field.
+          examples: [41000]
+        signals:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            minLength: 1
+            maxLength: 256
+          description: |-
+            What the answer was reached from, one line each — a rule name for the heuristic,
+            a retrieved neighbour for the LLM estimator. Empty rather than absent when an
+            estimator has nothing to show.
+          examples: [[3 similar closed issues, driver map, HIL test index]]
+
+    Estimate:
+      type: object
+      title: Estimate
+      description: |-
+        The body of a `POST /v0/estimate` response — one version of K.2's `issue_estimates`
+        row. Every field is a column or a jsonb key of that table; the five columns with no
+        field here belong to whoever writes the row. Closed, so an estimator cannot smuggle
+        a field this document does not describe: `/v0` allows a field to be *added* to a
+        response, and adding one is an edit to this document and to the model together.
+      additionalProperties: false
+      required:
+        [
+          effort,
+          confidence,
+          suggested_workflow,
+          routed_model,
+          breakdown,
+          risk,
+          risk_note,
+          trace,
+        ]
+      properties:
+        effort:
+          type: string
+          enum: [xs, s, m, l, xl]
+          description: |-
+            How much work this is — the mockup's *Effort* column and K.2's CHECK
+            constraint, lower case because it is a stored value and a filter key. The
+            table's `XS` is a presentation decision the UI makes.
+          examples: [m]
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: |-
+            How much the estimator trusts its own answer. The caller reads it against a
+            floor and routes a low one to `needs_human`, so a hedge is expressed here
+            rather than by refusing to answer.
+          examples: [92]
+        suggested_workflow:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |-
+            Which workflow tag should run it — always one of the request's
+            `context.workflow_tags` (decision **K5**).
+          examples: [standard-fix]
+        routed_model:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: |-
+            Which model it should run on — always one of the request's
+            `context.model_defaults` values (decision **K6**).
+          examples: [claude-fable-5]
+        breakdown:
+          $ref: "#/components/schemas/Breakdown"
+          description: The *AI Work Breakdown* panel's numbers.
+        risk:
+          type: string
+          enum: [low, medium, high]
+          description: |-
+            How likely the change is to break something — the regression-risk meter's
+            level, and K.2's other CHECK constraint.
+          examples: [low]
+        risk_note:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: |-
+            The sentence under the meter, saying why. Required and non-empty: a risk level
+            with no rationale is a colour nobody can argue with, and this is the field a
+            reviewer reads before overriding an estimate.
+          examples: [Isolated to the I²C driver path; full HIL coverage exists for bus recovery.]
+        trace:
+          $ref: "#/components/schemas/Trace"
+          description: What produced the estimate, and from what.
 
     Error:
       type: object

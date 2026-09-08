@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**94 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**95 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (1/23) | **6** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (2/23) | **7** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | 🟡 5/8 | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | — 0/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 2/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -121,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **91/454** | **454** | **1,404** | |
+| | **Total** | **93/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **22 issues** · 65 complexity points · order **#143–#165**, less `145` · 12 dependency waves
+> **21 issues** · 62 complexity points · order **#143–#165**, less `143` and `145` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 1 of 23 issues closed
+> **Status:** 🟡 **In progress** — 2 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -738,9 +738,36 @@ that roadmap's "Existing issues affected" section.
 > and `K.3` (`#101`) is unblocked independently, which is the pair Phase 1 of the intake
 > roadmap starts from.
 
+> **`L.1` · [`#105`](https://github.com/NobuData/ouroboros/issues/105) has shipped, and row
+> `143` has left the table below** — which is why its order numbers now start at `144`.
+>
+> [`POST /v0/estimate`](../ouroboros-engine/src/ouroboros_engine/api/estimate.py) is the
+> REST↔engine contract for sizing one issue: `{issue, context}` in, and out a response that
+> is **one version of `K.2`'s `issue_estimates` row** — effort, confidence, workflow, model,
+> the breakdown jsonb, risk and the trace — so `L.3` will persist an answer rather than
+> translate one. Decisions `K5` and `K6` are what the `context` block is for: the caller
+> sends the workflow tags and the model defaults that exist, this service holds neither list,
+> and an estimator naming anything outside the offer is refused inside the engine rather than
+> at the row. Decision `K10` is enforced at the contract as well as at the column —
+> `trace.estimator` is required and non-empty in the engine's model and in the gateway's
+> parser, one and two hops before the `not null` would see it.
+>
+> **`K.2` has not landed, so the contract's test carries `issue_estimates`' column and jsonb
+> names as data and starts comparing them to the migration the moment one exists.** A column
+> named differently there is a red build on the day it lands. The `202`-plus-poll escalation
+> `O.2` will need is specified now, as a checked `x-async-escalation` block rather than a
+> `202` this build cannot answer.
+>
+> **There is no estimator behind it yet**, and the placeholder says so in every field it
+> fills: `contract-stub-v0`, confidence `0`, a breakdown of zeros. That is `L.2`'s
+> ([`#106`](https://github.com/NobuData/ouroboros/issues/106)) to replace, and it is what
+> makes the gateway leg and `L.3`'s persistence buildable before any estimator exists.
+>
+> **`L.2` is now the next engine row**, and it is the only row this unblocks: `L.3` still
+> needs `K.2` and `K.4`.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 143 | **L.1** | [#105](https://github.com/NobuData/ouroboros/issues/105) | Estimation contract (`/v0/estimate`) | ouroboros-engine, ouroboros-rest | M | 6.3 |
 | 144 | **L.2** | [#106](https://github.com/NobuData/ouroboros/issues/106) | Heuristic estimator v0 | ouroboros-engine | M | L.1 |
 | 146 | **K.2** | [#100](https://github.com/NobuData/ouroboros/issues/100) | Issue estimates schema | ouroboros-db | M | K.1 |
 | 147 | **K.3** | [#101](https://github.com/NobuData/ouroboros/issues/101) | GitHub credentials & API client | ouroboros-rest | M | 4.2, C.3 |

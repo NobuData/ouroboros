@@ -151,6 +151,55 @@ export const ENGINE_STATUS_BODY = {
 };
 
 /**
+ * What the engine's `POST /v0/estimate` really answers — the mockup's own estimate.
+ *
+ * Every number is the *AI Work Breakdown* panel's (`docs/mockups/03-issues.html`), so a spec
+ * that fails prints a body a reader can compare against the design it came from. `snake_case`
+ * throughout, because this is the wire and not this service's names.
+ */
+export const ENGINE_ESTIMATE_BODY = {
+  effort: "m",
+  confidence: 92,
+  suggested_workflow: "standard-fix",
+  routed_model: "claude-fable-5",
+  breakdown: {
+    files: ["drivers/i2c_recovery.c", "drivers/imu_bmi270.c", "tests/unit/test_i2c_lockup.c"],
+    est_tokens: 180_000,
+    cycle_min: 12,
+    cycle_max: 18,
+    est_minutes: 23,
+  },
+  risk: "low",
+  risk_note: "Isolated to the I²C driver path; full HIL coverage exists for bus recovery.",
+  trace: {
+    estimator: "heuristic-v0",
+    tokens_used: 41_000,
+    signals: ["3 similar closed issues", "driver map", "HIL test index"],
+  },
+};
+
+/**
+ * A sizing request, in this service's names — the mockup's `#485`.
+ *
+ * The context is what makes decisions **K5** and **K6** honest: the tags and the models are
+ * this installation's, and the engine answers out of them rather than out of a list of its
+ * own.
+ */
+export const ESTIMATE_REQUEST = {
+  issue: {
+    number: 485,
+    title: "I2C bus lockup after IMU sleep/wake cycle",
+    body: "After entering low-power sleep and waking the BMI270, the I2C bus locks up.",
+    labels: ["bug", "i2c", "watchdog"],
+    repo: "acme-robotics/helios-firmware",
+  },
+  context: {
+    workflowTags: ["standard-fix", "docs-loop"],
+    modelDefaults: { default: "claude-fable-5", docs: "claude-haiku-4-5" },
+  },
+};
+
+/**
  * A `200` carrying a JSON body, as the engine sends one.
  *
  * @param body - What to answer with. Defaults to a well-formed status.

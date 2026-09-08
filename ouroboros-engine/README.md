@@ -84,6 +84,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `GET /` | yes | The service name and its installed version |
 | `GET /v0/status` | yes | Version and uptime — what `ouroboros-rest`'s readiness probe reads |
 | `POST /v0/tasks/echo` | yes | The contract exemplar: `{task_kind, payload}` back as `{accepted, echo, engine_version}` |
+| `POST /v0/estimate` | yes | Size one issue: `{issue, context}` in, one version of K.2's estimate row out |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
 ```console
@@ -94,13 +95,13 @@ $ curl -s localhost:8000/v0/status && echo
 {"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.5.0","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.5.1","uptime_seconds":42.5}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
     -d '{"task_kind":"echo","payload":{"note":"hello"}}' \
     localhost:8000/v0/tasks/echo && echo
-{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.4.0"}
+{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.5.1"}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
@@ -145,6 +146,54 @@ parses one shape rather than one per layer. Two rules hold for what it may say:
 inside of this process and belongs in a log; and **a refusal never echoes what was
 refused**, which is why FastAPI's own `422` (it returns the rejected input under
 `detail[].input`) is replaced rather than reshaped.
+
+### Sizing an issue
+
+`POST /v0/estimate` is the first operation that does work rather than demonstrating the
+shape of it ([#105](https://github.com/NobuData/ouroboros/issues/105)). It takes the issue
+and the vocabularies the installation has, and answers with **one version of K.2's
+`issue_estimates` row** ([#100](https://github.com/NobuData/ouroboros/issues/100)) — so the
+caller persists the answer rather than translating it.
+
+```console
+$ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
+    -H 'content-type: application/json' \
+    -d '{"issue":{"number":485,"title":"I2C bus lockup","body":null,"labels":["bug"],
+         "repo":"acme-robotics/helios-firmware"},
+         "context":{"workflow_tags":["standard-fix"],
+                    "model_defaults":{"default":"claude-fable-5"}}}' \
+    localhost:8000/v0/estimate && echo
+{"effort":"m","confidence":0,"suggested_workflow":"standard-fix","routed_model":"claude-fable-5","breakdown":{"files":[],"est_tokens":0,"cycle_min":0,"cycle_max":0,"est_minutes":0},"risk":"high","risk_note":"No estimator is installed yet, …","trace":{"estimator":"contract-stub-v0","tokens_used":0,"signals":["no-estimator-installed"]}}
+```
+
+Three things about that answer are the contract rather than this build's behaviour.
+
+**The caller supplies the vocabularies.** `context.workflow_tags` and
+`context.model_defaults` are what the installation has, and `suggested_workflow` and
+`routed_model` are always drawn from them — roadmap decisions **K5** and **K6**. This
+service holds no list of workflow tags and no list of models, so it cannot invent one, and
+an estimator that names something outside the offer is a `500` here rather than a value
+that reaches a row.
+
+**`trace.estimator` is required** — decision **K10**, enforced at this boundary and not
+only by the column's `not null`. Provenance checked at the last hop is provenance the hops
+before it can lose. Which is why the answer above says `contract-stub-v0` and `confidence:
+0`: no estimator is installed yet. The placeholder produces a well-formed estimate that
+says in every field that nothing estimated it — a confidence below any floor the caller
+could set, a breakdown of zeros, and a note that names the issue that replaces it. The
+heuristic ([#106](https://github.com/NobuData/ouroboros/issues/106)) and then the LLM
+estimator ([#123](https://github.com/NobuData/ouroboros/issues/123)) answer the same shape,
+and swapping one for another is a single line in `create_app`.
+
+**v0 answers synchronously, and the escalation for when that stops being possible is
+already written down.** An LLM estimator is not something to hold a gateway's socket open
+for, so the operation's `x-async-escalation` block specifies the `202`-plus-poll path now:
+`202` with `{estimation_id, status: "accepted"}` and a `Retry-After` header, then
+`GET /v0/estimate/{estimation_id}`, which answers `202` while the estimate is in flight and
+**the same `Estimate` body, unchanged** when it is done. It is an extension rather than a
+documented `202` response because this build cannot answer one, and a `responses` entry is
+a promise a caller may hold it to. Specifying it now is what keeps O.2 from rewriting a
+contract that L.3, M.1 and N.3 are built on.
 
 ## The API specification
 
@@ -362,6 +411,7 @@ ouroboros-engine/
 │   │   ├── root.py     #   GET /
 │   │   ├── status.py   #   GET /v0/status
 │   │   ├── tasks.py    #   POST /v0/tasks/echo — the contract exemplar
+│   │   ├── estimate.py #   POST /v0/estimate — size one issue                   · #105
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
@@ -371,6 +421,9 @@ ouroboros-engine/
 │   ├── control_plane/  # what this service may ask ouroboros-rest for        · #224
 │   │   ├── contract.py #   ouroboros-rest's internal OpenAPI document, mirrored
 │   │   └── client.py   #   builds the requests, reads the answers — no transport yet
+│   ├── estimation/     # sizing an issue — the contract, and what is behind it · #105
+│   │   ├── contract.py #   the shapes; one version of K.2's issue_estimates row
+│   │   └── estimator.py#   the seam L.2 and O.2 plug into, and today's placeholder
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
@@ -435,6 +488,14 @@ mirror is checked rather than asserted. The naming convention changes in that on
 control plane writes `camelCase` and this service writes `snake_case`, so nothing beneath it
 carries `runCtx` or `ttlSeconds`.
 
+`estimation/` is the first thing under `api/` that is not a router
+([#105](https://github.com/NobuData/ouroboros/issues/105)), and the split inside it is the
+design: `contract.py` is what `ouroboros-rest` is written against and is not allowed to
+change, `estimator.py` is what produces an answer and is expected to be replaced twice. The
+route reaches the estimator through `app.state` rather than importing one, so installing a
+different estimator is a line in `create_app` and a test installs its own without patching a
+module. See [Sizing an issue](#sizing-an-issue) above.
+
 `Dockerfile` and `.dockerignore` are the production image — see [Container](#container)
 above. They are read by `docker build` and by
 [`tests/test_container.py`](tests/test_container.py), and by nothing else in this module.
@@ -446,6 +507,7 @@ internal auth [#51](https://github.com/NobuData/ouroboros/issues/51) ·
 API contract [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#53](https://github.com/NobuData/ouroboros/issues/53) ·
 task execution [#54](https://github.com/NobuData/ouroboros/issues/54) ·
+estimation contract [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 

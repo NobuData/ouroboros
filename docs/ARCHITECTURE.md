@@ -540,14 +540,16 @@ is composed while a Server Component renders, where `localStorage` does not exis
 **Running** ([#51](https://github.com/NobuData/ouroboros/issues/51) landed liveness and
 status, [#52](https://github.com/NobuData/ouroboros/issues/52) the versioned contract and
 the error envelope, [#35](https://github.com/NobuData/ouroboros/issues/35) the typed client
-that mirrors it). The engine publishes a versioned contract under `/v0/`, and REST mirrors
-it in a typed client:
+that mirrors it, [#105](https://github.com/NobuData/ouroboros/issues/105) the first
+capability beyond the exemplar). The engine publishes a versioned contract under `/v0/`, and
+REST mirrors it in a typed client:
 
 | Route | Auth | Purpose | State |
 |---|---|---|---|
 | `GET /healthz` | open | Liveness, for the container healthcheck and REST's readiness probe | **Running** (#51) |
 | `GET /v0/status` | `X-Ouro-Internal-Key` | Version and uptime | **Running** (#51) |
 | `POST /v0/tasks/echo` | `X-Ouro-Internal-Key` | The contract exemplar: `{task_kind, payload}` → `{accepted, echo, engine_version}` | **Running** (#52) |
+| `POST /v0/estimate` | `X-Ouro-Internal-Key` | Size one issue: `{issue, context}` → one version of an `issue_estimates` row | **Running** (#105); no estimator behind it until [#106](https://github.com/NobuData/ouroboros/issues/106) |
 
 The version lives in the path (`/v0`), so a breaking change to the internal contract is a
 new prefix served alongside the old one rather than a flag day. What that means in
@@ -556,6 +558,18 @@ route may be added to the prefix, and a field that disappears, changes type or c
 meaning is a `/v1`. `OURO_ENGINE_SHARED_SECRET` must carry the same value on both sides;
 the engine compares it in constant time, and a mismatch is logged there and surfaced by
 REST as a 502 as described in [§3.2](#32-an-engine-call).
+
+`POST /v0/estimate` is where that rule stops being theoretical. The estimator behind it is
+expected to be replaced twice — a rule engine ([#106](https://github.com/NobuData/ouroboros/issues/106)),
+then a model ([#123](https://github.com/NobuData/ouroboros/issues/123)) — so the response is
+written for the second of them and the caller reads `trace.estimator` rather than branching
+on which build answered. Two consequences are worth reading as architecture rather than as
+detail. The request carries the **workflow tags and model defaults that exist** because the
+engine holds no such list and may not invent one, and an answer naming anything outside that
+offer fails inside the engine rather than at the row. And the `202`-plus-poll escalation the
+slower estimator will need is *specified* on the operation now (`x-async-escalation`) rather
+than answered — adding a status and a route to `/v0` takes nothing away, which is what keeps
+it inside the version rule above instead of forcing a `/v1` later.
 
 REST's half of it is `src/modules/engine/`: the contract mirrored in one file, a client
 that adds the shared secret, a five-second deadline and a single retry — taken only for a

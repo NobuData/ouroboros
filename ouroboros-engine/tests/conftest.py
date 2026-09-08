@@ -10,6 +10,12 @@ carries the internal key on every request and is what a test of a route uses;
 ``anonymous_client`` carries nothing and is what a test of the boundary uses. Neither
 is a default the other has to opt out of — a test says which side of the boundary it is
 standing on by which fixture it asks for.
+
+The estimation fixtures at the bottom are here rather than in one of the suites because
+three of them read the same two values: the route's tests, the contract's tests and the
+estimator's. Both are the mockup's own issue and the mockup's own estimate — ``#485`` and
+the *AI Work Breakdown* panel beside it (``docs/mockups/03-issues.html``) — so a test that
+fails prints a body a reader can compare against the design it came from.
 """
 
 import os
@@ -20,6 +26,14 @@ from fastapi.testclient import TestClient
 
 from ouroboros_engine import settings as settings_module
 from ouroboros_engine.core.security import INTERNAL_KEY_HEADER
+from ouroboros_engine.estimation.contract import (
+    Breakdown,
+    Estimate,
+    EstimateRequest,
+    EstimationContext,
+    IssueContext,
+    Trace,
+)
 from ouroboros_engine.settings import Settings
 
 #: Every environment variable ouroboros_engine.settings declares an alias for. This is
@@ -149,3 +163,107 @@ def client(settings: Settings) -> Iterator[TestClient]:
         request.
     """
     yield from _serve(settings, headers={INTERNAL_KEY_HEADER: INTERNAL_KEY})
+
+
+# ---------------------------------------------------------------------------
+# Estimation — the mockup's issue, and the mockup's estimate
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def estimation_context() -> EstimationContext:
+    """The vocabularies a caller offers: the roadmap's four workflow tags and two models.
+
+    Returns:
+        An :class:`ouroboros_engine.estimation.contract.EstimationContext` holding the
+        tags L.2's label map produces and a model per class of work. The first entry of
+        each is what the placeholder estimator answers with, so a test can assert an
+        answer came from the offer rather than from a constant in this service.
+    """
+    return EstimationContext(
+        workflow_tags=["standard-fix", "docs-loop", "feature-loop", "deps-refresh"],
+        model_defaults={"default": "claude-fable-5", "docs": "claude-haiku-4-5"},
+    )
+
+
+@pytest.fixture
+def estimate_request(estimation_context: EstimationContext) -> EstimateRequest:
+    """A request to size the mockup's ``#485``.
+
+    Args:
+        estimation_context: The vocabularies to offer.
+
+    Returns:
+        A valid :class:`ouroboros_engine.estimation.contract.EstimateRequest`.
+    """
+    return EstimateRequest(
+        issue=IssueContext(
+            number=485,
+            title="I2C bus lockup after IMU sleep/wake cycle",
+            body=(
+                "After entering low-power sleep and waking the BMI270, the I2C bus "
+                "intermittently locks up. Recovery requires a full bus reset."
+            ),
+            labels=["bug", "i2c", "watchdog"],
+            repo="acme-robotics/helios-firmware",
+        ),
+        context=estimation_context,
+    )
+
+
+@pytest.fixture
+def estimate_body(estimate_request: EstimateRequest) -> dict:
+    """The same request as the JSON a caller sends.
+
+    Built from the model rather than typed a second time, so a field renamed in the
+    contract cannot leave a stale literal behind in the suite. A test that needs an
+    invalid body edits a copy of this one, which is what makes it a test of *one* refused
+    field rather than of whatever else the literal happened to get wrong.
+
+    Args:
+        estimate_request: The request to serialise.
+
+    Returns:
+        The body, ready to hand to :meth:`TestClient.post` as ``json``.
+    """
+    return estimate_request.model_dump(mode="json")
+
+
+@pytest.fixture
+def mockup_estimate() -> Estimate:
+    """The estimate the mockup's *AI Work Breakdown* panel shows, as the response model.
+
+    Every number is the panel's: three files, ~180k tokens, a 12-18 minute cycle beside
+    23 estimated minutes, effort M at 92%, low risk with its sentence, and the trace's own
+    two lines. So a test asserting the contract can carry the design is asserting it
+    against the design rather than against a shape invented to fit the model.
+
+    Returns:
+        A complete :class:`ouroboros_engine.estimation.contract.Estimate`.
+    """
+    return Estimate(
+        effort="m",
+        confidence=92,
+        suggested_workflow="standard-fix",
+        routed_model="claude-fable-5",
+        breakdown=Breakdown(
+            files=[
+                "drivers/i2c_recovery.c",
+                "drivers/imu_bmi270.c",
+                "tests/unit/test_i2c_lockup.c",
+            ],
+            est_tokens=180_000,
+            cycle_min=12,
+            cycle_max=18,
+            est_minutes=23,
+        ),
+        risk="low",
+        risk_note=(
+            "Isolated to the I²C driver path; full HIL coverage exists for bus recovery."
+        ),
+        trace=Trace(
+            estimator="heuristic-v0",
+            tokens_used=41_000,
+            signals=["3 similar closed issues", "driver map", "HIL test index"],
+        ),
+    )

@@ -5,13 +5,19 @@ import { parse } from "yaml";
 
 import {
   ENGINE_ECHO_ROUTE,
+  ENGINE_ESTIMATE_ROUTE,
   ENGINE_STATUS_ROUTE,
+  ESTIMATE_EFFORTS,
+  ESTIMATE_RISKS,
   INTERNAL_KEY_HEADER,
   echoRequestBody,
   echoResultSchema,
   engineRouteUrl,
   engineStatusSchema,
+  estimateRequestBody,
+  estimateSchema,
 } from "./engine.contract";
+import { ENGINE_ESTIMATE_BODY, ESTIMATE_REQUEST } from "./engine.fixture";
 
 /**
  * The mirror, and whether it still reflects.
@@ -29,7 +35,13 @@ interface EngineSpecification {
   paths: Record<string, unknown>;
   components: {
     securitySchemes: Record<string, { name: string; in: string }>;
-    schemas: Record<string, { required: string[]; properties: Record<string, { $ref?: string }> }>;
+    schemas: Record<
+      string,
+      {
+        required: string[];
+        properties: Record<string, { $ref?: string; enum?: string[] }>;
+      }
+    >;
   };
 }
 
@@ -159,6 +171,134 @@ describe("echoRequestBody", () => {
   });
 });
 
+describe("the estimate schema", () => {
+  it("renames every field, at every depth", () => {
+    expect(estimateSchema.parse(ENGINE_ESTIMATE_BODY)).toEqual({
+      effort: "m",
+      confidence: 92,
+      suggestedWorkflow: "standard-fix",
+      routedModel: "claude-fable-5",
+      breakdown: {
+        files: ["drivers/i2c_recovery.c", "drivers/imu_bmi270.c", "tests/unit/test_i2c_lockup.c"],
+        estTokens: 180_000,
+        cycleMin: 12,
+        cycleMax: 18,
+        estMinutes: 23,
+      },
+      risk: "low",
+      riskNote: "Isolated to the I²C driver path; full HIL coverage exists for bus recovery.",
+      trace: {
+        estimator: "heuristic-v0",
+        tokensUsed: 41_000,
+        signals: ["3 similar closed issues", "driver map", "HIL test index"],
+      },
+    });
+  });
+
+  it("keeps the estimate the placeholder estimator produces", () => {
+    // Until #106 lands the engine answers `contract-stub-v0` with confidence 0 and a
+    // breakdown of zeros. That is a *valid* estimate and this client must read it, because
+    // the decision it drives — route the issue to needs_human — is the orchestration's and
+    // not the parser's.
+    const stub = {
+      ...ENGINE_ESTIMATE_BODY,
+      confidence: 0,
+      breakdown: { files: [], est_tokens: 0, cycle_min: 0, cycle_max: 0, est_minutes: 0 },
+      risk: "high",
+      trace: { estimator: "contract-stub-v0", tokens_used: 0, signals: ["no-estimator-installed"] },
+    };
+
+    const parsed = estimateSchema.parse(stub);
+
+    expect(parsed.trace.estimator).toBe("contract-stub-v0");
+    expect(parsed.confidence).toBe(0);
+    expect(parsed.breakdown.files).toEqual([]);
+  });
+
+  it("ignores a field the engine added", () => {
+    const parsed = estimateSchema.parse({
+      ...ENGINE_ESTIMATE_BODY,
+      sized_at: "2026-01-01T00:00:00Z",
+    });
+
+    expect(parsed).not.toHaveProperty("sized_at");
+  });
+
+  it("refuses an estimate that cannot say what produced it", () => {
+    // Roadmap decision **K10**. `issue_estimates.trace->>'estimator'` is `not null`, and an
+    // empty string would satisfy that column while meaning nothing — so it is refused a hop
+    // earlier, here, where the answer is a `502` instead of a row nobody can audit.
+    const anonymous = {
+      ...ENGINE_ESTIMATE_BODY,
+      trace: { ...ENGINE_ESTIMATE_BODY.trace, estimator: "" },
+    };
+
+    expect(estimateSchema.safeParse(anonymous).success).toBe(false);
+  });
+
+  it.each([
+    ["an effort outside the vocabulary", { effort: "xxl" }],
+    ["an effort in the wrong case", { effort: "M" }],
+    ["a risk outside the vocabulary", { risk: "critical" }],
+    ["a missing breakdown", { breakdown: undefined }],
+    ["a missing trace", { trace: undefined }],
+    ["a confidence that is not a number", { confidence: "92%" }],
+  ])("refuses %s", (_description, override) => {
+    expect(estimateSchema.safeParse({ ...ENGINE_ESTIMATE_BODY, ...override }).success).toBe(false);
+  });
+
+  it("refuses a breakdown missing the number the queue plans with", () => {
+    // `est_minutes` is what the queue write reads without recomputation, so a breakdown
+    // without it is an estimate this service cannot act on.
+    const { est_minutes: _dropped, ...rest } = ENGINE_ESTIMATE_BODY.breakdown;
+
+    expect(estimateSchema.safeParse({ ...ENGINE_ESTIMATE_BODY, breakdown: rest }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("estimateRequestBody", () => {
+  it("writes the engine's `snake_case`, at both depths", () => {
+    expect(estimateRequestBody(ESTIMATE_REQUEST)).toEqual({
+      issue: {
+        number: 485,
+        title: "I2C bus lockup after IMU sleep/wake cycle",
+        body: "After entering low-power sleep and waking the BMI270, the I2C bus locks up.",
+        labels: ["bug", "i2c", "watchdog"],
+        repo: "acme-robotics/helios-firmware",
+      },
+      context: {
+        workflow_tags: ["standard-fix", "docs-loop"],
+        model_defaults: { default: "claude-fable-5", docs: "claude-haiku-4-5" },
+      },
+    });
+  });
+
+  it("sends an absent description as the null the engine's contract declares", () => {
+    // GitHub's body is nullable and the issue cache mirrors that, so `null` is a value the
+    // caller states rather than a field it omits — the engine refuses a body with the key
+    // missing.
+    const body = estimateRequestBody({
+      ...ESTIMATE_REQUEST,
+      issue: { ...ESTIMATE_REQUEST.issue, body: null },
+    }) as { issue: { body: string | null } };
+
+    expect(body.issue).toHaveProperty("body", null);
+  });
+
+  it("sends the vocabularies this installation has and no others", () => {
+    // Decisions **K5** and **K6**: the engine holds no list of workflow tags and no list of
+    // models, so a tag missing from this body is a tag the engine cannot answer with.
+    const body = estimateRequestBody(ESTIMATE_REQUEST) as {
+      context: { workflow_tags: string[]; model_defaults: Record<string, string> };
+    };
+
+    expect(body.context.workflow_tags).toEqual(ESTIMATE_REQUEST.context.workflowTags);
+    expect(body.context.model_defaults).toEqual(ESTIMATE_REQUEST.context.modelDefaults);
+  });
+});
+
 describe("the engine's own specification", () => {
   it("serves the status route this client calls", () => {
     expect(engineDocument().paths).toHaveProperty(`/${ENGINE_STATUS_ROUTE}`);
@@ -175,10 +315,32 @@ describe("the engine's own specification", () => {
     expect(scheme.in).toBe("header");
   });
 
+  it("serves the estimate route this client calls", () => {
+    expect(engineDocument().paths).toHaveProperty(`/${ENGINE_ESTIMATE_ROUTE}`);
+  });
+
   it.each([
     ["ServiceStatus", ["service", "version", "uptime_seconds"]],
     ["EchoRequest", ["task_kind", "payload"]],
     ["EchoResponse", ["accepted", "echo", "engine_version"]],
+    ["IssueContext", ["number", "title", "body", "labels", "repo"]],
+    ["EstimationContext", ["workflow_tags", "model_defaults"]],
+    ["EstimateRequest", ["issue", "context"]],
+    ["Breakdown", ["files", "est_tokens", "cycle_min", "cycle_max", "est_minutes"]],
+    ["Trace", ["estimator", "tokens_used", "signals"]],
+    [
+      "Estimate",
+      [
+        "effort",
+        "confidence",
+        "suggested_workflow",
+        "routed_model",
+        "breakdown",
+        "risk",
+        "risk_note",
+        "trace",
+      ],
+    ],
   ])("describes %s with the fields this client reads", (name, fields) => {
     // The schemas above ignore what they do not know about, which is the compatibility rule
     // working — and is also what would let a *removed* field go unnoticed until a call
@@ -195,5 +357,17 @@ describe("the engine's own specification", () => {
     const schema = engineDocument().components.schemas.EchoResponse;
 
     expect(schema.properties.echo.$ref).toBe("#/components/schemas/EchoRequest");
+  });
+
+  it.each([
+    ["effort", ESTIMATE_EFFORTS],
+    ["risk", ESTIMATE_RISKS],
+  ])("closes %s over the same vocabulary this client enumerates", (field, vocabulary) => {
+    // The one place a mirrored *value* set can rot rather than a field name. The engine's
+    // `enum`, this file's `as const`, and `issue_estimates`' CHECK all say the same five (or
+    // three) words, and widening one alone is what this catches.
+    const schema = engineDocument().components.schemas.Estimate;
+
+    expect(schema.properties[field].enum).toEqual([...vocabulary]);
   });
 });
