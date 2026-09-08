@@ -152,3 +152,33 @@ begin
   end loop;
 end;
 $$;
+
+-- Asserts a query's plan does *not* contain a named fragment.
+--
+-- The general form of must_not_scan, and its complement: that one asks whether a relation
+-- has a usable index, this one asks whether the plan still has to do something the index was
+-- supposed to make unnecessary. The case it was added for is an `order by … desc limit 1`
+-- over a b-tree — an index scan that also sorts is reading every row of a group to answer a
+-- question about its last one, and it passes must_use_index unchanged.
+--
+-- must_not_scan is deliberately left as its own function rather than rewritten in terms of
+-- this one: its failure message names the diagnosis ("has no usable index") rather than the
+-- string that was looked for, and that message is the useful part.
+--
+-- Read it with the caller's `set local enable_seqscan = off`, as the two above are read.
+--
+--   query    — the SQL whose plan is inspected
+--   fragment — text that must not appear in the plan, e.g. 'Sort'
+--   what     — description used in the failure message
+create function pg_temp.must_not_plan(query text, fragment text, what text)
+returns void language plpgsql as $$
+declare
+  line text;
+begin
+  for line in execute 'explain ' || query loop
+    if line like '%' || fragment || '%' then
+      raise exception 'FAILED: % — plan contains "%"', what, btrim(line);
+    end if;
+  end loop;
+end;
+$$;

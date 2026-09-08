@@ -38,7 +38,8 @@
 -- AD.4 landed early (V022, #225), and `alias_references`, the one answer to *"what
 -- references this alias?"* (V023, #581), and `resolution_snapshots`, what a run's
 -- resolution decided, kept (V024, #582), and `alias_revisions`, the record every
--- registry write leaves (V025, #584).
+-- registry write leaves (V025, #584), and `issue_estimates`, the AI Work Breakdown as
+-- versioned latest-wins rows (V026, #100).
 --
 -- The last two sections belong to no migration. Y.5 (#193) names the routing invariants
 -- Z.1's resolution is written against and asks the catalogue for each of them **by name** — a
@@ -62,9 +63,10 @@
 
 begin;
 
--- The assertion helpers, shared with seed.sql: must_hold, must_reject and
--- must_use_index, created in pg_temp so they disappear with the session. See
--- lib/assert.sql for what each one asserts and why it is not plpgsql's `assert`.
+-- The assertion helpers, shared with seed.sql: must_hold, must_reject, must_raise,
+-- must_use_index, must_not_scan and must_not_plan, created in pg_temp so they disappear
+-- with the session. See lib/assert.sql for what each one asserts and why it is not
+-- plpgsql's `assert`.
 \ir lib/assert.sql
 
 -- ---------------------------------------------------------------------------
@@ -7548,6 +7550,789 @@ delete from ouroboros.organization where "id" = 'org-aliases';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.alias_revisions),
   'a workspace''s registry history goes with the workspace');
+
+
+-- ===========================================================================
+-- V026 — issue_estimates, the AI Work Breakdown as versioned rows (#100)
+-- ===========================================================================
+--
+-- The second table of the intake read-model, and the one mockup 03's *Effort*,
+-- *Suggested workflow* and *Routed model* columns, its *AI Work Breakdown* panel, its
+-- regression-risk meter and its collapsible trace are all rendered from. Nothing writes it
+-- yet — L.3 (#107) persists estimates, K.5 (#103) seeds them — so, as with every read-model
+-- table before it, every rule a reader depends on is a constraint here rather than an
+-- application invariant.
+--
+-- Decision **K4** is what most of this section is about: an estimate is a row and
+-- re-estimation is the next one. So the assertions fall in three groups — that two versions
+-- of one issue coexist and the latest is found by one indexed read, that a version cannot be
+-- written which would make *latest* mean the older answer, and that a row already written
+-- cannot be changed afterwards.
+--
+-- The bounds are checked against the **estimation contract** rather than invented: L.1
+-- (#105) shipped `POST /v0/estimate` before this table existed, and its response is one
+-- version of this row. Every assertion below that names a limit names the contract's, and
+-- the two cases where the column is deliberately *looser* — `est_minutes` past the queue's
+-- window, and a whole-job estimate outside its own cycle range — are asserted as accepted,
+-- because a column that refused a legal estimate would leave L.3 holding an answer it
+-- cannot store.
+--
+-- Its own fixtures: the V025 section deleted `org-aliases`, and every workspace above it
+-- has gone the same way. One workspace, one repository, and two mirrored issues — the
+-- mockup's `#485`, which gets a history, and `#491`, which stays unsized so the rules that
+-- only fire on an issue's *first* estimate can be reached.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-sizing', 'Sizing Works', 'sizing-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('f7000000-0000-0000-0000-00000000000a', 'org-sizing', 'sizing-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('f7100000-0000-0000-0000-00000000000a', 'f7000000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.github_issues
+    (id, organization_id, github_repo_id, number, title, state,
+     gh_created_at, gh_updated_at, gh_url)
+  values
+    ('f7200000-0000-0000-0000-000000000485', 'org-sizing',
+     'f7100000-0000-0000-0000-00000000000a', 485, 'Watchdog reset on I²C bus lockup',
+     'open', now() - interval '2 days', now() - interval '3 hours',
+     'https://github.com/nobudata/helios-firmware/issues/485'),
+    ('f7200000-0000-0000-0000-000000000491', 'org-sizing',
+     'f7100000-0000-0000-0000-00000000000a', 491, 'Add CRC32 to config persistence layer',
+     'open', now() - interval '5 days', now() - interval '5 days',
+     'https://github.com/nobudata/helios-firmware/issues/491');
+
+-- --- two estimates of one issue, and the latest is the one in force ------------
+--
+-- Acceptance criterion. The first is the mockup's own panel — effort `m`, 92% confidence,
+-- `standard-fix`, `claude-fable-5`, three files, 180k tokens, a 12-18 minute cycle beside
+-- 23 estimated minutes, low risk with its sentence, and a trace naming `heuristic-v0`.
+insert into ouroboros.issue_estimates
+    (id, github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+     breakdown, risk, risk_note, trace)
+  values
+    ('f7300000-0000-0000-0000-000000000001', 'f7200000-0000-0000-0000-000000000485', 1,
+     'm', 92, 'standard-fix', 'claude-fable-5',
+     '{"files": ["drivers/i2c_recovery.c", "drivers/i2c.h", "tests/unit/test_i2c_lockup.c"],
+       "est_tokens": 180000, "cycle_min": 12, "cycle_max": 18, "est_minutes": 23}'::jsonb,
+     'low', 'Isolated to the I²C driver path; full HIL coverage exists for bus recovery.',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T12:00:00.123Z",
+       "tokens_used": 0, "signals": ["label:bug", "title:reset"]}'::jsonb);
+
+-- The re-estimate. A different answer in every field that matters, so *latest wins* is
+-- observable rather than a tie.
+insert into ouroboros.issue_estimates
+    (id, github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+     breakdown, risk, risk_note, trace)
+  values
+    ('f7300000-0000-0000-0000-000000000002', 'f7200000-0000-0000-0000-000000000485', 2,
+     'l', 61, 'feature-loop', 'claude-sonnet-5',
+     '{"files": [], "est_tokens": 240000, "cycle_min": 30, "cycle_max": 45,
+       "est_minutes": 52}'::jsonb,
+     'high', 'The recovery path is shared with the bootloader''s bus init.',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T13:00:00+00:00",
+       "tokens_used": 0, "signals": ["needs-human: confidence 61 is below the floor of 70"]}'::jsonb);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000485'),
+  'two estimates of one issue coexist — re-estimation is a new row, not an edit (decision K4)');
+
+select pg_temp.must_hold(
+  (select effort = 'l' and confidence = 61
+     from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000485'
+    order by version desc limit 1),
+  'the highest version is the estimate in force');
+
+select pg_temp.must_hold(
+  (select effort = 'm' and confidence = 92
+     from ouroboros.issue_estimates
+    where id = 'f7300000-0000-0000-0000-000000000001'),
+  'and the one it replaced is still exactly as it was written — which is what makes the trace worth reading');
+
+-- The panel renders `12-18 min` beside `23 min` — the ticket's own example, and the one
+-- shape a well-meaning constraint would have refused. Asserted as *accepted*, because a
+-- job's wall clock includes what happens either side of the model's part of it.
+select pg_temp.must_hold(
+  (select (breakdown->>'est_minutes')::int > (breakdown->>'cycle_max')::int
+     from ouroboros.issue_estimates
+    where id = 'f7300000-0000-0000-0000-000000000001'),
+  'the whole-job estimate is not confined to the cycle range');
+
+-- --- versions ascend within an issue ------------------------------------------
+--
+-- Acceptance criterion: `version` is monotonic per issue. Unique alone would accept 3 then
+-- 2 — two distinct rows, both legal — and *latest wins* would then return the older answer,
+-- which is a wrong estimate rather than a missing one.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000485', 1, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'an estimate cannot be written at a version the issue has already passed',
+  'issue_estimates_version_monotonic');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000485', 2, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'nor at the version it is already on',
+  'issue_estimates_version_monotonic');
+
+-- Monotonic, not dense. Nothing counts these numbers — unlike `route_hops.position`, where
+-- a gap makes `floor_hop_index` mean nothing — and the only question asked of them is which
+-- is largest.
+insert into ouroboros.issue_estimates
+    (id, github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+     breakdown, risk, risk_note, trace)
+  values
+    ('f7300000-0000-0000-0000-000000000009', 'f7200000-0000-0000-0000-000000000485', 9,
+     's', 88, 'standard-fix', 'claude-fable-5',
+     '{"files": [], "est_tokens": 90000, "cycle_min": 8, "cycle_max": 12, "est_minutes": 14}'::jsonb,
+     'low', 'Re-read after the bootloader change landed.',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T15:00:00Z", "tokens_used": 0, "signals": []}'::jsonb);
+
+select pg_temp.must_hold(
+  (select version = 9 from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000485'
+    order by version desc limit 1),
+  'a gap is legal — versions are compared, not counted');
+
+-- There is no version 0, and the check that says so is reachable only on an issue's *first*
+-- estimate: a BEFORE trigger runs ahead of every CHECK, so on an issue with a history the
+-- monotonicity rule refuses a zero first. `#491` is the unsized issue that lets this rule
+-- be asked directly.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 0, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'there is no version 0 — a version below 1 would sort as the latest of nothing',
+  'issue_estimates_version_positive');
+
+-- --- the unique key underneath the trigger ------------------------------------
+--
+-- Acceptance criterion: `version` is unique with the issue. The trigger above is friendlier
+-- and fires first, which means a single session can never see this key refuse anything —
+-- and the case it exists for is two concurrent writers that both computed `max(version) + 1`,
+-- which one session cannot stage at all. So it is asked of the catalogue by name and by
+-- shape, and then asked behaviourally with the friendlier rule stood down for one statement.
+select pg_temp.must_hold(
+  (select array_agg(a.attname::text order by a.attnum) = array['github_issue_id', 'version']
+     from pg_constraint c
+     join unnest(c.conkey) as k(attnum) on true
+     join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
+    where c.conrelid = 'ouroboros.issue_estimates'::regclass
+      and c.conname = 'issue_estimates_issue_version_key'
+      and c.contype = 'u'),
+  'issue_estimates_issue_version_key: one version of an issue''s estimate, once');
+
+alter table ouroboros.issue_estimates disable trigger issue_estimates_version_monotonic;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000485', 9, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and with the trigger stood down the key underneath still refuses a duplicate version',
+  'issue_estimates_issue_version_key');
+
+alter table ouroboros.issue_estimates enable trigger issue_estimates_version_monotonic;
+
+-- --- the vocabularies are closed ----------------------------------------------
+--
+-- Acceptance criterion: both match the mockup exactly. Both are partitions something
+-- renders — the effort chip and the risk meter's three colours — so a value outside either
+-- set is a row that renders as nothing rather than as wrong.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 1, 'XL', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'effort rejects a value outside the five sizes — including the mockup''s own upper-case rendering of one',
+  'issue_estimates_effort');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 1, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'critical', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'risk rejects a fourth level the meter has no colour for',
+  'issue_estimates_risk');
+
+-- --- confidence is a percentage -----------------------------------------------
+--
+-- Acceptance criterion: the bounds are enforced. Both ends are real answers — 0 is an
+-- estimator saying it has nothing, 100 is one that is certain — so the assertion is that
+-- the whole range is storable and that nothing outside it is.
+insert into ouroboros.issue_estimates
+    (id, github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+     breakdown, risk, risk_note, trace)
+  values
+    ('f7300000-0000-0000-0000-00000000000a', 'f7200000-0000-0000-0000-000000000491', 1,
+     'xs', 0, 'docs-loop', 'claude-haiku-4-5',
+     '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}'::jsonb,
+     'low', 'Nothing in the description to size from.',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T16:00:00Z", "tokens_used": 0, "signals": []}'::jsonb);
+
+update ouroboros.github_issues set sizing_status = 'needs_human'
+  where id = 'f7200000-0000-0000-0000-000000000491';
+
+-- The pairing this schema deliberately does *not* constrain: an issue can carry an estimate
+-- **and** be waiting for a person, which is exactly what a confidence under L.2's published
+-- floor of 70 produces. The estimate table stores results; the issue row stores state.
+select pg_temp.must_hold(
+  (select i.sizing_status = 'needs_human' and e.confidence = 0
+     from ouroboros.github_issues i
+     join ouroboros.issue_estimates e on e.github_issue_id = i.id
+    where i.id = 'f7200000-0000-0000-0000-000000000491'),
+  'an issue may be needs_human and estimated at once — the two columns answer different questions');
+
+-- And the issue row itself stays freely updatable, which is the other half of that split:
+-- L.3 moves `sizing_status` on every transition, and the append-only rule below is about
+-- the estimate rows, not about the issue they hang off.
+update ouroboros.github_issues set sizing_status = 'sized'
+  where id = 'f7200000-0000-0000-0000-000000000491';
+
+select pg_temp.must_hold(
+  (select sizing_status = 'sized' from ouroboros.github_issues
+    where id = 'f7200000-0000-0000-0000-000000000491'),
+  'the issue row still moves through the pipeline — only the estimates are frozen');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 2, 'm', 101, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'confidence past 100 is a fraction that was multiplied twice',
+  'issue_estimates_confidence_bounds');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 2, 'm', -1, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and below 0 there is nothing a meter could draw',
+  'issue_estimates_confidence_bounds');
+
+-- --- the opaque strings are still strings --------------------------------------
+--
+-- Decisions K5 and K6: no vocabulary for either, because mockup 04 turns the fixed four
+-- tags into workspace-defined workflow entities and a routed model is a name this schema
+-- does not own. A shape all the same — `runs.workflow_tag` and `runs.model`'s, deliberately,
+-- since M.3 copies the tag from here into `queue_items`, which shares them.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 2, 'm', 50, '   ', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'a blank workflow tag is a chip with no text',
+  'issue_estimates_suggested_workflow_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 2, 'm', 50, 'standard-fix', '',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and a blank routed model is a pill with nothing in it',
+  'issue_estimates_routed_model_present');
+
+-- A tag a workspace has not defined is *not* refused here, and that is the decision rather
+-- than an omission: the vocabulary is the caller's, the engine already refuses an answer
+-- naming anything outside the offer it was given, and a CHECK here would make defining a
+-- workflow a database migration.
+insert into ouroboros.issue_estimates
+    (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+     breakdown, risk, risk_note, trace)
+  values ('f7200000-0000-0000-0000-000000000491', 2, 'm', 75, 'nightly-sweep',
+          'ollama/qwen3-coder',
+          '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}'::jsonb,
+          'low', 'n',
+          '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T17:00:00Z", "tokens_used": 0, "signals": []}'::jsonb);
+
+select pg_temp.must_hold(
+  (select suggested_workflow = 'nightly-sweep' and routed_model = 'ollama/qwen3-coder'
+     from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000491'
+    order by version desc limit 1),
+  'a workflow tag and a model this schema has never heard of are stored as given (K5, K6)');
+
+-- --- the sentence under the meter -----------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'high', '   ',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'a risk level with no rationale is a colour nobody can argue with',
+  'issue_estimates_risk_note_present');
+
+-- --- the breakdown has a grammar --------------------------------------------------
+--
+-- Five keys and no more, every count whole and non-negative, and a cycle range that runs
+-- forwards. `jsonb` alone accepts every one of the documents below, and each would break a
+-- different part of the panel — silently, since a renderer reading a missing key gets null.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'a breakdown without est_minutes is refused — M.3''s queue write reads it, and a missing key reads as null',
+  'issue_estimates_breakdown_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0, "est_days": 1}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and a sixth key is refused too — a key nothing renders renders nowhere',
+  'issue_estimates_breakdown_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": [{"path": "drivers/i2c.c"}], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'files must be paths, not objects — the shape one .map() away from GitHub''s own label payload',
+  'issue_estimates_breakdown_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": ["drivers/i2c.c", ""], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'nor an empty path, which renders as a bullet with no file beside it',
+  'issue_estimates_breakdown_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": -1, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'a negative token estimate is a subtraction that went the wrong way',
+  'issue_estimates_breakdown_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 1.5}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and a fractional minute is not a minute — jsonb calls 1.5 a number, which is why the rule is a regex',
+  'issue_estimates_breakdown_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 18, "cycle_max": 12, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'a cycle range that runs backwards renders as 18-12 min and no schedule can be built from it',
+  'issue_estimates_breakdown_shape');
+
+-- A count that is a *string* is the shape that would reach a cast if the rules were an
+-- `and` rather than a `case`: it must fail as an integrity violation here, not as a data
+-- exception three hops away. `must_reject` is what says so — it accepts class 23 and
+-- nothing else.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": "12", "cycle_max": 18, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'a quoted number is refused as a constraint violation rather than raised as a bad cast',
+  'issue_estimates_breakdown_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 3, 'm', 50, 'standard-fix', 'm',
+            '"m"',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and a bare string where the document belongs is refused before any key is looked for',
+  'issue_estimates_breakdown_shape');
+
+-- The bound is the estimation contract's, not the queue's: `queue_items.est_minutes`
+-- (V009) refuses zero and anything past a fortnight, and this column deliberately does not,
+-- because a column that refused a legal estimate would leave L.3 holding an answer it
+-- cannot store. Reconciling the two is M.3's (#112), at the statement that copies one into
+-- the other.
+insert into ouroboros.issue_estimates
+    (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+     breakdown, risk, risk_note, trace)
+  values ('f7200000-0000-0000-0000-000000000491', 3, 'xl', 40, 'feature-loop', 'm',
+          '{"files": [], "est_tokens": 100000000, "cycle_min": 0, "cycle_max": 100000,
+            "est_minutes": 100000}'::jsonb,
+          'high', 'A rewrite of the persistence layer.',
+          '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T18:00:00Z", "tokens_used": 0, "signals": []}'::jsonb);
+
+select pg_temp.must_hold(
+  (select (breakdown->>'est_minutes')::int = 100000
+     from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000491'
+    order by version desc limit 1),
+  'the contract''s ceilings are storable — this column is never stricter than the answer it has to hold');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 100001}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and one minute past them is a unit slip — seconds written where minutes were meant',
+  'issue_estimates_breakdown_shape');
+
+-- --- the trace has a grammar, and decision K10 has a constraint ---------------------
+--
+-- Acceptance criterion, and the one rule in this file that is a *decision* rather than a
+-- shape: `trace->>'estimator'` is non-null, enforced at the database level. It is its own
+-- constraint so that a rejected write names K10 rather than a document rule, and the three
+-- ways provenance can be absent are each asked separately, because `->>` cannot tell them
+-- apart on its own.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": null, "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'decision K10: an estimate whose trace names no estimator does not get to exist',
+  'issue_estimates_provenance');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "   ", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'nor one whose provenance is whitespace',
+  'issue_estimates_provenance');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": 3, "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'nor one that names an estimator called 3 — which is what ->> alone would have accepted',
+  'issue_estimates_provenance');
+
+-- The key missing altogether is refused by both rules at once, and either name is a correct
+-- answer, so this one is deliberately asked without naming one.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and a trace with no estimator key at all is refused by the shape rule and by K10 together');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0}')$$,
+  'a trace without signals is refused — empty rather than absent is how an estimator says it has nothing to show',
+  'issue_estimates_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": [], "sized_by": "someone"}')$$,
+  'and a fifth key is refused — the contract is closed on its side, so a field it cannot answer with has nowhere to arrive from',
+  'issue_estimates_trace_shape');
+
+-- `sized_at` is an instant with an offset. A local time is one two readers disagree about,
+-- and the rule is a regex rather than a cast because `timestamptz` input reads the session's
+-- TimeZone and is therefore not immutable — a CHECK may not use it.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08 14:00:00", "tokens_used": 0, "signals": []}')$$,
+  'a sized_at with no zone is an instant two readers disagree about',
+  'issue_estimates_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": 1757340000, "tokens_used": 0, "signals": []}')$$,
+  'nor an epoch number, which is the other thing a writer reaches for',
+  'issue_estimates_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": -1, "signals": []}')$$,
+  'a negative token cost is not what sizing cost',
+  'issue_estimates_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": [{"rule": "label:bug"}]}')$$,
+  'and a signal must be a line the trace can print, not an object',
+  'issue_estimates_trace_shape');
+
+-- Blankness is the one thing this side refuses that the estimation contract does not: a
+-- whitespace-only line satisfies pydantic's `min_length=1` and renders as a bullet with
+-- nothing beside it, which is `risk_note`'s argument applied to a list.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+      (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+       breakdown, risk, risk_note, trace)
+    values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+            '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+            'low', 'n',
+            '{"estimator": "heuristic-v0", "sized_at": "2026-09-08T14:00:00Z", "tokens_used": 0, "signals": ["   "]}')$$,
+  'nor a blank one',
+  'issue_estimates_trace_shape');
+
+-- Both offset spellings are accepted, because both are what a writer produces:
+-- `toISOString()` gives `Z`, and a client that formats with an offset gives `+00:00`.
+insert into ouroboros.issue_estimates
+    (github_issue_id, version, effort, confidence, suggested_workflow, routed_model,
+     breakdown, risk, risk_note, trace)
+  values ('f7200000-0000-0000-0000-000000000491', 4, 'm', 50, 'standard-fix', 'm',
+          '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}'::jsonb,
+          'low', 'n',
+          '{"estimator": "claude-fable-5", "sized_at": "2026-09-08T14:00:00.123456-06:00",
+            "tokens_used": 41000, "signals": ["3 similar closed issues", "driver map"]}'::jsonb);
+
+select pg_temp.must_hold(
+  (select trace->>'estimator' = 'claude-fable-5' and (trace->>'tokens_used')::int = 41000
+     from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000491'
+    order by version desc limit 1),
+  'an offset, a sub-second fraction and a model estimator''s own token cost are all storable — this table outlives heuristic-v0');
+
+-- --- append-only ------------------------------------------------------------------
+--
+-- Decision K4 made structural. `restrict_violation` (23001) rather than a constraint name,
+-- for V022's and V024's reason: the refusal is a trigger's and a trigger has none.
+select pg_temp.must_raise(
+  $$update ouroboros.issue_estimates set confidence = 99
+     where id = 'f7300000-0000-0000-0000-000000000001'$$,
+  '23001',
+  'an estimate cannot be revised, by any role including the owner of this database');
+
+select pg_temp.must_raise(
+  $$update ouroboros.issue_estimates set trace = jsonb_set(trace, '{estimator}', '"claude-fable-5"')
+     where id = 'f7300000-0000-0000-0000-000000000001'$$,
+  '23001',
+  'and provenance least of all — an estimate that could be re-attributed afterwards would make K10 decorative');
+
+select pg_temp.must_raise(
+  $$update ouroboros.issue_estimates set version = 3
+     where github_issue_id = 'f7200000-0000-0000-0000-000000000485'$$,
+  '23001',
+  'not in bulk either, and not the version — BI.4 grades a loop against the estimate in force when it was queued, which is a lookup that must not move under it');
+
+-- One trigger refusing updates, one holding versions monotonic, both enabled, and nothing
+-- refusing a delete — for V022's reason: the foreign key cascades, and a delete-refusing
+-- trigger would make removing an issue impossible rather than protecting the history.
+select pg_temp.must_hold(
+  (select array_agg(tgname::text order by tgname) =
+            array['issue_estimates_no_update', 'issue_estimates_version_monotonic']
+     from pg_trigger
+    where tgrelid = 'ouroboros.issue_estimates'::regclass
+      and not tgisinternal
+      and tgenabled <> 'D')
+  and (select count(*) = 0 from pg_trigger
+        where tgrelid = 'ouroboros.issue_estimates'::regclass
+          and not tgisinternal
+          and tgtype & 8 = 8),
+  'issue_estimates carries the update refusal and the monotonic rule, both enabled, and nothing that refuses a delete');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros'
+      and table_name = 'issue_estimates'
+      and column_name = 'updated_at'),
+  'and no updated_at — a record that can be edited is not one, so there is nothing for a touch trigger to move');
+
+-- --- latest-wins is one indexed query --------------------------------------------
+--
+-- Acceptance criterion, and the claim the migration's header makes: the unique key read
+-- backwards *is* the descending index, so no second one was created. Sequential scans are
+-- off for the reason every other plan assertion in this file gives — a handful of fixture
+-- rows is genuinely cheaper to scan, and what is asserted is that a usable index exists at
+-- production size.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select effort, confidence, breakdown, trace from ouroboros.issue_estimates
+     where github_issue_id = 'f7200000-0000-0000-0000-000000000485'
+     order by version desc limit 1$$,
+  'issue_estimates_issue_version_key');
+
+-- No sort, either: an `order by … desc limit 1` served by a b-tree read backwards is one
+-- index probe, and a plan that had to sort would be reading every estimate the issue ever
+-- had to answer a question about its newest.
+select pg_temp.must_not_plan(
+  $$select effort from ouroboros.issue_estimates
+     where github_issue_id = 'f7200000-0000-0000-0000-000000000485'
+     order by version desc limit 1$$,
+  'Sort',
+  'and it sorts nothing — the index is already in the order the question asks for, so the read is one probe rather than a group read and a sort');
+
+-- The read the backlog table actually makes: a page of issues, each with the estimate in
+-- force. `must_not_scan` rather than `must_use_index`, because naming one index proves one
+-- relation was entered through it and says nothing about the other — which is exactly what
+-- an "is this one indexed query" criterion is asking about.
+select pg_temp.must_not_scan(
+  $$select i.number, i.title, e.effort, e.suggested_workflow, e.routed_model
+      from ouroboros.github_issues i
+      join lateral (select effort, suggested_workflow, routed_model
+                      from ouroboros.issue_estimates e
+                     where e.github_issue_id = i.id
+                     order by e.version desc limit 1) e on true
+     where i.organization_id = 'org-sizing'
+       and i.github_repo_id = 'f7100000-0000-0000-0000-00000000000a'
+       and i.state = 'open'$$);
+
+-- The panel's history read — every version of one issue, newest first — enters through the
+-- same index, which is why no second one exists for it.
+select pg_temp.must_use_index(
+  $$select version, trace from ouroboros.issue_estimates
+     where github_issue_id = 'f7200000-0000-0000-0000-000000000485'
+     order by version desc$$,
+  'issue_estimates_issue_version_key');
+
+-- And not a read path: the cascade's. The unique key leads with `github_issue_id`, which is
+-- why no separate index on it was created — the same argument V014 gave for the mirror.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.issue_estimates
+     where github_issue_id = 'f7200000-0000-0000-0000-000000000485'$$,
+  'issue_estimates_issue_version_key');
+
+set local enable_seqscan = on;
+
+-- --- the cascades ------------------------------------------------------------------
+--
+-- An estimate of an issue that is gone cannot be rendered and cannot be graded. Deleting a
+-- single estimate row is *not* refused, which is the deliberate other half of the
+-- append-only posture: what is forbidden is rewriting history, and a delete-refusing trigger
+-- would make removing an issue or a workspace fail rather than protect anything.
+delete from ouroboros.issue_estimates
+  where id = 'f7300000-0000-0000-0000-000000000009';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000485'),
+  'an estimate row can be deleted — append-only forbids rewriting history, not removing it');
+
+delete from ouroboros.github_issues where id = 'f7200000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000485'),
+  'deleting a mirrored issue takes every version of its estimate with it');
+
+-- And the whole way down — organization → github_orgs → github_repos → github_issues →
+-- issue_estimates, one statement and every hop. This is also the reason the table needs no
+-- organization_id of its own: its tenancy is its issue's, and the chain reaches it.
+select pg_temp.must_hold(
+  (select count(*) > 0 from ouroboros.issue_estimates
+    where github_issue_id = 'f7200000-0000-0000-0000-000000000491'),
+  'the second issue still has its estimates before the workspace goes');
+
+delete from ouroboros.organization where "id" = 'org-sizing';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.issue_estimates),
+  'deleting the workspace reaches the estimates through four cascades — which is why this table needs no organization_id of its own');
 
 -- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)

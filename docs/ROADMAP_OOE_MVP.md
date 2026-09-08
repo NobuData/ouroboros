@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**95 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**97 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (2/23) | **7** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (4/23) | **9** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | 🟡 5/8 | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 2/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 4/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -121,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **93/454** | **454** | **1,404** | |
+| | **Total** | **95/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **21 issues** · 62 complexity points · order **#143–#165**, less `143` and `145` · 12 dependency waves
+> **19 issues** · 56 complexity points · order **#143–#165**, less `143`, `144`, `145` and `146` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 2 of 23 issues closed
+> **Status:** 🟡 **In progress** — 4 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -713,8 +713,7 @@ that roadmap's "Existing issues affected" section.
 **Done when.** Synced issues show truthful freshness with a manual re-sync; every issue reaches `sized` or `needs human` through the real pipeline; `/issues` reproduces mockup 03 in both themes with URL-reflected filters and all four status states; the detail panel shows honest `heuristic-v0` provenance.
 
 > **`K.1` · [`#99`](https://github.com/NobuData/ouroboros/issues/99) has shipped, and row
-> `145` has left the table below** — which is why its order numbers step from `144`
-> straight to `146`.
+> `145` has left the table below** — the first of this phase's order numbers to go.
 >
 > [`#99`](https://github.com/NobuData/ouroboros/issues/99)'s blockers were both already met, and one of them under another roadmap's name:
 > `3.1` is the Flyway scaffold ([`#19`](https://github.com/NobuData/ouroboros/issues/19)), and `B.3` — the organization and repo tables — is
@@ -734,12 +733,12 @@ that roadmap's "Existing issues affected" section.
 > section in `tests/constraints.sql`, run by `ci/db` against a database migrated from
 > empty.
 >
-> **`K.2` (`#100`) is the next row of this phase that can move** — it needs only `K.1` —
-> and `K.3` (`#101`) is unblocked independently, which is the pair Phase 1 of the intake
+> **`K.2` (`#100`) was the next row of this phase that could move** — it needed only `K.1`
+> — and `K.3` (`#101`) was unblocked independently, which is the pair Phase 1 of the intake
 > roadmap starts from.
 
 > **`L.1` · [`#105`](https://github.com/NobuData/ouroboros/issues/105) has shipped, and row
-> `143` has left the table below** — which is why its order numbers now start at `144`.
+> `143` has left the table below**, followed by `144` when `L.2` shipped the same day.
 >
 > [`POST /v0/estimate`](../ouroboros-engine/src/ouroboros_engine/api/estimate.py) is the
 > REST↔engine contract for sizing one issue: `{issue, context}` in, and out a response that
@@ -767,11 +766,46 @@ that roadmap's "Existing issues affected" section.
 > carries a `needs-human:` line for `L.3` to act on. Swapping the placeholder for it was one
 > line in `create_app`, which is what the seam was for.
 >
-> **`L.3` is what Epic L waits on now**, and it still needs `K.2` and `K.4`.
+> **`L.3` is what Epic L waits on now**, and since `K.2` has landed it needs only `K.4`.
+
+> **`K.2` · [`#100`](https://github.com/NobuData/ouroboros/issues/100) has shipped, and row
+> `146` has left the table below** — so this phase's order numbers now start at `147`.
+>
+> [`V026__issue_estimates.sql`](../ouroboros-db/migrations/V026__issue_estimates.sql) is
+> `issue_estimates`, everything mockup 03 calls **AI Work Breakdown** as *versioned
+> latest-wins rows* — effort, confidence, the workflow tag and routed model, the breakdown and
+> trace documents, and the regression risk with the sentence under it. Decision `K4` is why it
+> is a table of versions rather than columns on the issue: the mockup offers three separate
+> ways to re-estimate, and an estimate that overwrote its predecessor would take the trace's
+> meaning and `O.2`'s audit trail with it. Three of its rules are worth knowing.
+> **Latest-wins needed no index of its own** — the unique key `(github_issue_id, version)`
+> read *backwards* is the descending index the ticket asks for, so the second one was measured
+> and not created, and `tests/constraints.sql` asserts that plan, its lack of a `Sort`, and the
+> backlog table's lateral join reaching both relations through an index. **Versions ascend by
+> trigger**, because unique alone accepts 3 then 2 and *latest* would then mean the older
+> answer. And it is **append-only** — no `updated_at`, and a revision refused from any role —
+> because `BI.4` ([`#435`](https://github.com/NobuData/ouroboros/issues/435)) grades a merged
+> loop against the estimate in force when the work was queued, a join that only means anything
+> while that row cannot change underneath it. Decision `K10` gets a constraint of its own, so a
+> write with no provenance is refused naming the decision rather than a document rule.
+>
+> **`L.1`'s drift check is live and green.** The engine's contract test carried this table's
+> column and jsonb names as data and started comparing them to the migration the moment one
+> existed; every name matches, so `L.3` will persist a parsed response rather than translate
+> one.
+>
+> **`K.5` (`#103`), `K.6` (`#104`) and `L.3` (`#107`) are what this unblocks**, and `K.3`
+> (`#101`) remains the other entry point of the intake roadmap's Phase 1 — `#102`'s sync
+> service needs both.
+>
+> **This phase's counts are corrected here rather than only incremented.** `L.2`'s landing
+> removed row `144` from the table below without moving the tallies with it, so the header,
+> the phase summary and the *Progress* section had been one issue behind since. They now count
+> four closed — `K.1`, `L.1`, `L.2` and `K.2` — and the *less* list names all four order
+> numbers that have left.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 146 | **K.2** | [#100](https://github.com/NobuData/ouroboros/issues/100) | Issue estimates schema | ouroboros-db | M | K.1 |
 | 147 | **K.3** | [#101](https://github.com/NobuData/ouroboros/issues/101) | GitHub credentials & API client | ouroboros-rest | M | 4.2, C.3 |
 | 148 | **K.4** | [#102](https://github.com/NobuData/ouroboros/issues/102) | Backlog sync service | ouroboros-rest | L | K.1, K.3 |
 | 149 | **K.5** | [#103](https://github.com/NobuData/ouroboros/issues/103) | Intake dev seeds — mockup-03 parity | ouroboros-db | S | K.2 |
