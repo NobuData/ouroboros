@@ -174,7 +174,7 @@ existing set (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) plus ne
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | K.1 | #99 | 🟢 Done | ouroboros-db: [K.1] GitHub issue cache schema | `github_issues` mirror table + labels + sync cursors | mvp, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| K.2 | #100 | 🟡 Open | ouroboros-db: [K.2] Issue estimates schema | Versioned `issue_estimates` + sizing status + breakdown/trace jsonb | mvp, intake, db | N (after K.1) | Y | M | ouroboros-db |
+| K.2 | #100 | 🟢 Done | ouroboros-db: [K.2] Issue estimates schema | Versioned `issue_estimates` + sizing status + breakdown/trace jsonb | mvp, intake, db | N (after K.1) | Y | M | ouroboros-db |
 | K.3 | #101 | 🟡 Open | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
 | K.4 | #102 | 🟡 Open | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
 | K.5 | #103 | 🟡 Open | ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity | Seeded issues/estimates reproducing the mockup's nine rows | mvp, intake, db | N (after K.2) | Y | S | ouroboros-db |
@@ -305,7 +305,101 @@ erDiagram
 
 ### Issue K.2 — ouroboros-db: [K.2] Issue estimates schema
 
-> **GitHub issue:** #100 · **Status:** 🟡 Open · **Parent epic:** #94
+> **GitHub issue:** #100 · **Status:** 🟢 Done · **Parent epic:** #94
+
+> **Shipped 2026-09-08.**
+> [`V026__issue_estimates.sql`](../ouroboros-db/migrations/V026__issue_estimates.sql) creates
+> `ouroboros.issue_estimates` with the column set below, its two jsonb grammars, its rules as
+> named CHECK constraints and two triggers; the assertions are a new section in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql), so `ci/db` runs them
+> against a database migrated from empty on every pull request. The version is `V026` —
+> `V025` is #584's `alias_revisions`. No other module changed.
+>
+> **The contract's drift check went live on the day this landed, and it is green.**
+> [`test_estimation_contract.py`](../ouroboros-engine/tests/test_estimation_contract.py) was
+> written to find the migration that creates `issue_estimates` and then assert every column
+> and jsonb key it carries as data appears in it. It now finds `V026`, and every name matches
+> — `effort`, `confidence`, `suggested_workflow`, `routed_model`, `breakdown` (`files`,
+> `est_tokens`, `cycle_min`, `cycle_max`, `est_minutes`), `risk`, `risk_note` and `trace`
+> (`estimator`, `sized_at`, `tokens_used`, `signals`) — so L.3 persists a parsed response
+> without translating one.
+>
+> **Latest-wins needed no index, and that was measured rather than assumed.** The ticket
+> offers a partial unique index on an `is_latest` flag or a covering index on
+> `(github_issue_id, version desc)`; the answer is neither, because the unique key
+> `(github_issue_id, version)` **read backwards is** that descending index — same tree, same
+> entries, and a second copy would be maintained on every insert for a plan the planner
+> already has. `constraints.sql` asserts the plan by name, asserts it contains no `Sort`, and
+> asserts the lateral join the backlog table makes over a page of issues reaches *both*
+> relations through an index. The flag was also rejected on its own merits: it is derived
+> state a writer has to maintain, a partial unique index on it can enforce *at most one*
+> latest and nothing about *at least one*, and its failure mode is an issue whose estimates
+> all read `false` and whose panel says never sized. `max(version)` cannot desynchronise from
+> the rows it is computed over.
+>
+> **Monotonic is a trigger, because unique alone is not enough.** `unique (github_issue_id,
+> version)` accepts 3 and then 2 — two legal rows — and *latest wins* would then return the
+> older answer, which is a wrong estimate rather than a missing one.
+> `issue_estimate_version_monotonic()` refuses a version that is not above every version the
+> issue already has, and the unique key underneath it is what makes that safe under
+> concurrency: two writers that both computed `max + 1` cannot both commit. It **enforces
+> rather than assigns** — a default would hide the one case a writer must handle. Monotonic,
+> not dense: nothing counts these numbers.
+>
+> **Append-only, on `V024`'s posture and for one reason of its own.** `issue_estimates_no_update`
+> refuses a revision from any role including the owner, there is no `updated_at` and no touch
+> trigger. The reason of its own is the #435 amendment: BI.4 grades a merged loop against the
+> estimate **in force when the work was queued**, and that join only means anything while a
+> historical row cannot change underneath it. There is no delete counterpart, for `V022`'s
+> reason — the one foreign key cascades, so a delete-refusing trigger would make removing an
+> issue fail rather than protect anything.
+>
+> **Decision K10 is a constraint of its own, not a clause in a shape rule.**
+> `issue_estimates_provenance` requires `trace->>'estimator'` to be a non-blank **string**, so
+> a rejected write names the decision — and the type check is what separates *no estimator*
+> from an estimator called `3`, which `->>` alone would have accepted. It is the third hop
+> rather than the only one: the engine's model and the gateway's parser both require it.
+>
+> **Every bound is the estimation contract's, and never stricter.** A column that refused a
+> legal estimate would leave L.3 holding an answer it cannot write and an issue stuck
+> mid-pipeline for a reason no log would explain — so `est_minutes` runs to the contract's
+> 100 000 even though `queue_items.est_minutes` (`V009`) refuses zero and anything past a
+> fortnight, and reconciling the two is M.3's (#112), at the statement that copies one into
+> the other. Two things the contract does not say are not added either: `est_minutes` is not
+> confined to the cycle range (the ticket's own example is a 12–18 minute cycle beside 23
+> estimated minutes), and `est_tokens` — what the *work* will cost — is unrelated to
+> `trace.tokens_used`, what *sizing* cost.
+>
+> **Both jsonb documents are closed grammars**, CHECKed by
+> `ouroboros.issue_estimate_breakdown_valid()` and `…_trace_valid()`: exactly five keys and
+> exactly four, every count whole and non-negative by regex (jsonb calls `-1` and `1.5`
+> numbers too), a cycle range that runs forwards, and a `sized_at` that is an ISO-8601 instant
+> **with an offset** — by regex rather than by cast, because `timestamptz` input reads the
+> session's `TimeZone` and is not immutable. Underneath them,
+> `ouroboros.jsonb_string_list_valid()` and `ouroboros.jsonb_whole_number_valid()` are the two
+> shapes both documents share, written once rather than six times.
+>
+> **Decisions K5 and K6 are structural here too, and M1 is not breached.**
+> `suggested_workflow` and `routed_model` get `runs.workflow_tag` and `runs.model`'s treatment
+> under **F8** — bounded, non-blank, no vocabulary and no foreign key. M1 says
+> `model_aliases.model_id` is the only column where a raw provider model string may live; that
+> is a rule about **configuration**, and this column is a **record of a resolution that already
+> happened**, which must survive the rename or retirement of what it names.
+>
+> **The row's tenancy is its issue's.** There is no `organization_id`, as `provider_models`
+> (`V017`) has none: an estimate has no meaning apart from an issue, every read enters through
+> one, and a second parent would buy a shorter join in exchange for a
+> `repo_in_organization`-style trigger that can be got wrong. The workspace cascade reaches it
+> through four hops, and a test asserts exactly that.
+>
+> **What is deliberately not here:** no `draft_id` — that is AK.1's (#272) column and its
+> migration, per decision **N3**, and the header names it so a later reader does not read its
+> absence as an oversight; no writer of any kind (L.3, #107); no seed rows (K.5, #103); and no
+> mutations in `verify-constraint-probes.sh`, which is K.6's (#104) intake half of `ci/db`.
+> There is also no constraint tying an estimate's existence to `github_issues.sizing_status`:
+> a CHECK cannot see another row, and the pairing is not even one-directional — an issue that
+> is `needs_human` because its confidence came in under L.2's floor of 70 has an estimate
+> *and* is waiting for a person.
 
 - **Problem Statement:** Everything the mockup calls "AI Work Breakdown" — effort,
   confidence, workflow, model, files, tokens, cycle range, risk, trace — needs a
@@ -494,16 +588,16 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 > cannot know which version its answer will become, and must not own the clock — a timestamp
 > in a response body is one two services can disagree about.
 >
-> **K.2 has not landed, so that table is its specification rather than a reading of it** —
-> and the join is already written. The test looks for the migration that creates
-> `issue_estimates` and, the day one exists, asserts every name it was written against
-> appears in it; until then it asserts the contract against the table. So a migration that
-> renames `est_minutes` is a red build on the day it lands rather than a discovery L.3 makes.
-> **What K.2 is being held to:** `effort`, `confidence`, `suggested_workflow`,
-> `routed_model`, `breakdown` (`files`, `est_tokens`, `cycle_min`, `cycle_max`,
-> `est_minutes`), `risk`, `risk_note`, `trace` (`estimator`, `sized_at`, `tokens_used`,
-> `signals`) — and the two CHECK vocabularies, `xs|s|m|l|xl` and `low|medium|high`, which the
-> contract enumerates on both sides of the boundary.
+> **That table was K.2's specification until K.2 landed, and the join was already written.**
+> The test looks for the migration that creates `issue_estimates` and asserts every name it
+> was written against appears in it; before one existed it asserted the contract against the
+> table instead, so a migration renaming `est_minutes` would have been a red build on the day
+> it landed rather than a discovery L.3 made. **K.2 (#100) landed on 2026-09-08 and the
+> comparison is live and green** — `V026` names every one of them: `effort`, `confidence`,
+> `suggested_workflow`, `routed_model`, `breakdown` (`files`, `est_tokens`, `cycle_min`,
+> `cycle_max`, `est_minutes`), `risk`, `risk_note`, `trace` (`estimator`, `sized_at`,
+> `tokens_used`, `signals`) — and the two CHECK vocabularies, `xs|s|m|l|xl` and
+> `low|medium|high`, which the contract enumerates on both sides of the boundary.
 >
 > **Decisions K5 and K6 are structural rather than remembered.** The request's `context`
 > block carries the workflow tags and the model defaults that exist, the engine holds neither
@@ -1383,9 +1477,28 @@ runs against a database migrated from empty.
 > `github_issues_labels_shape`, `github_issues_url_https` and
 > `github_repos_issues_cursor_after_sync`.
 
-**#100 ([K.2] Issue estimates schema) is unblocked**, and #101 ([K.3] GitHub credentials &
-API client) remains the other parallelizable entry point of Phase 1 — #102's sync service
-needs both.
+**K.2 (#100) shipped on 2026-09-08.**
+[`V026__issue_estimates.sql`](../ouroboros-db/migrations/V026__issue_estimates.sql) is the
+*AI Work Breakdown* as versioned latest-wins rows — effort, confidence, the workflow tag and
+routed model, two closed jsonb grammars, and the regression risk with the sentence under it.
+Re-estimation is the next row rather than an edit (decision **K4**), versions ascend by
+trigger because unique alone would let *latest* mean the older answer, and the table is
+**append-only** so that a trace stays comparable and BI.4's calibration stays honest.
+Latest-wins needed no index of its own: the unique key read backwards **is** the descending
+index the ticket asks for, and `constraints.sql` asserts that plan, its lack of a `Sort`, and
+the backlog table's lateral join reaching both relations through an index. Decision **K10**
+has a constraint of its own. **Epic K's Phase 1 now waits on #101** ([K.3] GitHub credentials
+& API client), which has always been the other parallelizable entry point — #102's sync
+service needs both — and **#103** (K.5's seeds) and **#107** (L.3's persistence) are both
+unblocked by this.
+
+> The question K.2 leaves for **K.6 (#104)**, beside K.1's: the estimate rules have no
+> load-bearing proof yet either, and the *"estimate versioning checks"* bullet now has
+> concrete names to aim at — `issue_estimates_effort`, `issue_estimates_risk`,
+> `issue_estimates_confidence_bounds`, `issue_estimates_provenance`,
+> `issue_estimates_breakdown_shape`, `issue_estimates_trace_shape`,
+> `issue_estimates_issue_version_key` and the two triggers,
+> `issue_estimates_version_monotonic` and `issue_estimates_no_update`.
 
 **Epic L opened on 2026-09-08.** **L.1 (#105) shipped**: `POST /v0/estimate` is the
 REST↔engine contract for sizing one issue, and the shape it answers is one version of K.2's
@@ -1396,12 +1509,11 @@ that produced it — for every issue, without an AI stack. `files[]` is empty an
 `tokens_used` is `0`, and a confidence under the published floor of 70 carries a
 `needs-human:` line for L.3 to act on.
 
-> The thing L.1 leaves for **K.2 (#100)**: the contract's shipped test lists every column
-> and jsonb key the response was written against and starts comparing them to the migration
-> the moment one exists. If K.2 names a column differently — `estimated_minutes` for
-> `est_minutes`, `workflow` for `suggested_workflow` — the engine's suite goes red on the day
-> that migration lands, which is the earliest anyone can be told. The names are in the L.1
-> entry above.
+> The thing L.1 left for **K.2 (#100)** has been collected: the contract's shipped test lists
+> every column and jsonb key the response was written against and compares them to the
+> migration. `V026` landed the same day and the comparison is **live and green** — every name
+> matches, so L.3 persists a parsed response rather than translating one, and a later rename
+> on either side is a red build in the engine's suite.
 >
 > And for **L.3 (#107)**: `honours_context` means the orchestration must send the workflow
 > tags and the model defaults it has on *every* call, because the engine holds no list of

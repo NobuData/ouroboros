@@ -264,6 +264,25 @@
 > migration owes it is a shape the promotion can copy — which is why the columns are
 > `audit_events`' nouns. Append-only by construction, as `route_revisions` is: no `updated_at`,
 > no touch trigger, and nothing updates it.
+> `V026` ([#100](https://github.com/NobuData/ouroboros/issues/100)) adds
+> [`issue_estimates`](migrations/V026__issue_estimates.sql) — everything mockup 03 calls
+> *AI Work Breakdown*, as **versioned latest-wins rows**: effort, confidence, the workflow
+> tag and routed model, the breakdown and trace jsonb, and the regression risk with the
+> sentence under it. `V014` mirrors the issues; this is what sizing says about them, and
+> decision **K4** is why it is a table of versions rather than columns on the issue — the
+> mockup offers three separate ways to re-estimate, and an estimate that overwrote its
+> predecessor would take the trace's meaning and O.2's audit trail with it. Three things in
+> it are worth knowing before reading it. **Latest-wins needs no index of its own**: the
+> unique key `(github_issue_id, version)` read *backwards* is the descending index the
+> ticket asks for, so the second one was measured and not created — and
+> [`tests/constraints.sql`](tests/constraints.sql) asserts that plan, and that it sorts
+> nothing. **Versions ascend by trigger**, because unique alone accepts 3 then 2 and
+> *latest* would then be the older answer. And it is **append-only** — `V024`'s posture,
+> for `V024`'s reason and one of its own: BI.4 ([#435](https://github.com/NobuData/ouroboros/issues/435))
+> grades a merged loop against the estimate that was in force when the work was queued, a
+> join that only means anything while that row cannot change underneath it. Decision **K10**
+> gets a constraint of its own — `trace->>'estimator'` is a non-blank string, always — so a
+> rejected write names the decision rather than a document rule.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -1194,6 +1213,7 @@ ouroboros-db/
 │   ├── V023__alias_reference_index.sql  # alias_references — what references an alias, and the delete/rename guard — #581
 │   ├── V024__resolution_snapshots.sql   # resolution_snapshots — what a run's resolution decided, kept; append-only — #582
 │   ├── V025__alias_revisions.sql        # alias_revisions — who changed an alias, when, and what moved — #584
+│   ├── V026__issue_estimates.sql        # issue_estimates — the AI Work Breakdown, versioned latest-wins; append-only — #100
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -1256,6 +1276,7 @@ outside this module alters it.
 | `audit_events` | `V022` | Who did what to which credential, from where, and when — the platform audit trail ([#225](https://github.com/NobuData/ouroboros/issues/225)), in the shape [#26](https://github.com/NobuData/ouroboros/issues/26) specified and landed early because decision **P5** puts credential auditing in the MVP. `ouroboros-rest`'s audit module is the only writer; `GET /api/v1/providers/audit` is the only reader, and mockup 07's **Audit log** sheet is what it draws | **Append-only, enforced twice**: `ouroboros_app` — a role this migration creates `nologin` — holds `select` and `insert` and nothing else, and `audit_events_no_update` refuses a revision from *any* role including the owner, because a superuser bypasses every grant and a rule that is true only in production is a rule nobody can test. Both foreign keys shape that trigger: `organization_id` **cascades**, which is why the trigger covers `update` and not `delete` — a delete-refusing trigger would make removing a workspace impossible rather than protecting the trail — and `actor_id`'s `on delete set null` **is** an update, so exactly that one statement is permitted and nothing beside it (*what happened cannot be rewritten; who did it can be forgotten*). `actor_id` is nullable because a `credential.lease_granted` has no person behind it; the **subject** is `subject_type` + `subject_id` with deliberately **no** foreign key, because `provider.deleted` is exactly the row one would make unwritable; `action` and `subject_type` are CHECKed to an identifier *grammar* and not to a vocabulary, so adding an event is an application release while a misspelled one is still refused; `ip` is `inet`, which refuses a string that is not an address; `detail` must be an **object** so the secrecy grep can enumerate its keys — that it holds no secret material is enforced by the writer and by that grep, because a CHECK could only match the credential shapes somebody thought of. There is **no `updated_at`**, and one index — `(organization_id, occurred_at desc, id desc)` — which is the only read this table has; #26's BRIN is deliberately not created until something sweeps by time |
 | `resolution_snapshots` | `V024` | What a run's routing resolution decided, **kept** — the stored truth behind mockup 21's *RESOLUTION CHAIN* card and the run console's transcript ([#582](https://github.com/NobuData/ouroboros/issues/582), decision **R9**), in the versioned shape CH.6 ([#589](https://github.com/NobuData/ouroboros/issues/589)) contracts and AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) writes at execution time; until invocation exists, `R__dev_seed_routing.sql` writes run #482's. Landed here because a fixture needs a table, on `V022`'s reasoning; #589 inherits it and adds the read path | One row per resolution. The **run** is the one foreign key — **cascading**, because a transcript of a deleted run is a transcript of nothing, and held to the snapshot's workspace by `resolution_snapshots_run_in_organization`, a trigger on `V008`'s precedent rather than a composite key, so `runs` gains no second index for it; `task_kind` and `route_tag` are **names** with no foreign key (`V020`'s decision **F8** — a transcript survives a rename); `outcome` is `resolved\|fail_run`, held to the chain by `resolution_snapshots_outcome_coherent` (resolved exactly when a hop was kept); `duration_ms` is nullable and never defaulted (null is *nobody timed it*, `0` is a measurement — decision **M8**); `chain` and `rules` are jsonb whose grammar three `immutable` validators CHECK clause by clause — every hop with its `index` (dense from 1), alias, model, params, the provider *as the health snapshot then saw it*, the masked `key_suffix` (at most sixteen alphanumerics, a shape no credential fits), `kept`/`dropped`, Z.1's `code` and sentence, and a timing only on a hop that was tried; `shape_version` is CHECKed to exactly the versions the validators can read, so a writer ahead of the schema is refused rather than stored unreadably. **Append-only**: no `updated_at`, and `resolution_snapshots_no_update` refuses a revision from any role, with no exception because both foreign keys cascade. Three indexes — latest-first per workspace, per run, and a `jsonb_path_ops` GIN on `chain` for the card's `chain @> '[{"alias": …}]'` read. No read path: the endpoint is #589's |
 | `alias_revisions` | `V025` | Who changed a model alias, when, and what moved — the lightweight revision record every write of the registry's lifecycle API ([#584](https://github.com/NobuData/ouroboros/issues/584), CH.1) leaves behind; `V021`'s table for the registry. Promoted into `audit_events` by CJ.2 ([#599](https://github.com/NobuData/ouroboros/issues/599)), whose nouns its columns are | One row per write. `alias_id` references `model_aliases` and **sets null**, so a `deleted` revision outlives the row it describes; `alias` is the name as it read after the write, text with no foreign key, kept for exactly that case; `actor` references `"user"` and **sets null**; `action` is one of `created\|renamed\|rebound\|enabled\|disabled\|edited\|duplicated\|deleted` (a `PATCH` that did several records the most consequential — the service ranks them — and its diff carries the rest); `diff` is `{<column>: {from, to}}`, at least one entry, every value a pair, every key a column name or `duplicate_of`, CHECKed by `ouroboros.alias_revision_diff_valid()` so a no-op is unstorable. **Append-only by construction**: no `updated_at`, no touch trigger. Two indexes — a workspace's history newest first, and one alias's (also the referencing side of the set-null key) |
+| `issue_estimates` | `V026` | Everything mockup 03 calls **AI Work Breakdown**, as versioned latest-wins rows ([#100](https://github.com/NobuData/ouroboros/issues/100), decision **K4**) — effort, confidence, the workflow tag and routed model, the breakdown and trace documents, and the regression risk with the sentence under it. `V014` mirrors the issues; this is what sizing says about them, and re-estimation is the next row rather than an edit, because the mockup offers three ways to ask for one and a trace is only worth reading beside the answer it replaced. Written by L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)), seeded by K.5 ([#103](https://github.com/NobuData/ouroboros/issues/103)) | `(github_issue_id, version)` unique — and, **read backwards, the descending index latest-wins needs**, which is why no second one was created; `version` is held *ascending* within an issue by `issue_estimate_version_monotonic()`, because unique alone accepts 3 then 2 and *latest* would then be the older answer. `effort` is `xs\|s\|m\|l\|xl` and `risk` `low\|medium\|high` — the mockup's two vocabularies; `confidence` is 0-100 with both ends real answers. `suggested_workflow` and `routed_model` are **opaque** (decisions **K5**, **K6**), shaped and bounded as `runs.workflow_tag` and `runs.model` are under **F8** — no vocabulary, because mockup 04 turns the fixed four tags into workspace-defined entities, and no foreign key, because this records a resolution that happened rather than configures one (which is why it is no breach of **M1**). `breakdown` and `trace` are **closed** jsonb grammars CHECKed by `ouroboros.issue_estimate_breakdown_valid()` and `…_trace_valid()` — exactly `files[]`, `est_tokens`, `cycle_min`, `cycle_max`, `est_minutes`, and exactly `estimator`, `sized_at`, `tokens_used`, `signals[]` — with `sized_at` an ISO-8601 instant *with an offset*, checked by regex because a `timestamptz` cast reads the session's `TimeZone` and is not immutable. Decision **K10** is `issue_estimates_provenance`, its own constraint so a rejected write names the decision: `trace->>'estimator'` is a non-blank **string**, always. Every bound is the estimation contract's ([#105](https://github.com/NobuData/ouroboros/issues/105)) and never stricter — a column that refused a legal estimate would leave L.3 holding an answer it cannot store. **Append-only**: no `updated_at`, and `issue_estimates_no_update` refuses a revision from any role, with no exception because the one foreign key cascades. There is deliberately **no `organization_id`** — the issue is the whole of its tenancy, as `provider_models`' connection is |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in
@@ -1323,6 +1344,22 @@ this schema cannot declare: the task kind and alias a rule names live inside a j
 document, so a **deferred** constraint trigger on `escalation_rules`, `task_kinds` and
 `model_aliases` holds all three sides — writing a rule that names neither, and retiring the
 kind or alias a rule already names, are both refused.
+
+Four more **functions**, `V026`'s, and two of them are deliberately general.
+**`ouroboros.issue_estimate_breakdown_valid(breakdown)`** and
+**`ouroboros.issue_estimate_trace_valid(trace)`** are the two closed grammars
+`issue_estimates` stores its documents under — exactly five keys and exactly four, every
+count whole and non-negative, a cycle range that runs forwards, and a `sized_at` that
+carries an offset. Underneath them,
+**`ouroboros.jsonb_string_list_valid(value, max_items, max_length)`** and
+**`ouroboros.jsonb_whole_number_valid(value, ceiling)`** are the two shapes both documents
+share — `files[]` and `signals[]`, and the four counts between them — written once because
+six inline copies of the same three clauses drift one at a time. All four are `immutable`
+and table-free, which is what lets them sit in a `CHECK`: a `CHECK` may not contain the
+subquery `jsonb_array_elements` needs, and inside a function body that subquery is ordinary
+SQL. `V014`'s `labels` predates them and answers the same problem with `jsonb_path_exists`;
+it is not rewritten to use them, because a versioned migration that has been applied is
+never edited.
 
 Three **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
 UTC day and provider — the read behind mockup 02's *Token spend · today*. It is a plain
@@ -1478,6 +1515,8 @@ tenancy cut-over [#708](https://github.com/NobuData/ouroboros/issues/708) *(done
 model pricing catalog [#580](https://github.com/NobuData/ouroboros/issues/580) *(done)* ·
 provider connections & aliases [#189](https://github.com/NobuData/ouroboros/issues/189) *(done)* ·
 provider schema extensions, discovered models & seeds [#221](https://github.com/NobuData/ouroboros/issues/221) *(done)* ·
+GitHub issue cache schema [#99](https://github.com/NobuData/ouroboros/issues/99) *(done)* ·
+issue estimates schema [#100](https://github.com/NobuData/ouroboros/issues/100) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
