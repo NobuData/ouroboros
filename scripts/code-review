@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#
+# Convenience to code-review
+
+claude "/code-review ${1}"
+

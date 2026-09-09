@@ -143,3 +143,5 @@ Switch back to `main`:
 git checkout main
 ```
 
+- Report the link back to the output so it can be used with other skills.
+
