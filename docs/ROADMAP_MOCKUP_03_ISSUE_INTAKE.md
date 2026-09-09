@@ -177,7 +177,7 @@ existing set (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) plus ne
 | K.2 | #100 | 🟢 Done | ouroboros-db: [K.2] Issue estimates schema | Versioned `issue_estimates` + sizing status + breakdown/trace jsonb | mvp, intake, db | N (after K.1) | Y | M | ouroboros-db |
 | K.3 | #101 | 🟢 Done | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
 | K.4 | #102 | 🟢 Done | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
-| K.5 | #103 | 🟡 Open | ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity | Seeded issues/estimates reproducing the mockup's nine rows | mvp, intake, db | N (after K.2) | Y | S | ouroboros-db |
+| K.5 | #103 | 🟢 Done | ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity | Seeded issues/estimates reproducing the mockup's nine rows | mvp, intake, db | N (after K.2) | Y | S | ouroboros-db |
 | K.6 | #104 | 🟡 Open | ouroboros-db: [K.6] Intake constraints in ci/db | Status vocabularies, cursor invariants, estimate versioning checks | mvp, intake, db, ci | N (after K.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue K.1 — ouroboros-db: [K.1] GitHub issue cache schema
@@ -501,7 +501,76 @@ sequenceDiagram
 
 ### Issue K.5 — ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity
 
-> **GitHub issue:** #103 · **Status:** 🟡 Open · **Parent epic:** #94
+> **GitHub issue:** #103 · **Status:** 🟢 Done · **Parent epic:** #94
+
+> **Shipped.** [`R__dev_seed_intake.sql`](../ouroboros-db/migrations/R__dev_seed_intake.sql)
+> is the sixth development seed: the nine mockup-03 issues `#483`–`#491` in
+> `acme-robotics / helios-firmware` and the nine `issue_estimates` that size eight of them,
+> behind the same `${ouro_dev_seed}` guard every other seed carries. The head counts
+> compute to **"9 open issues. 7 already sized."**; `#485` is the detail panel field for
+> field — four labels, `field-support`, the body it excerpts, three files, `~180k` tokens,
+> a `12–18 min` cycle and `low` risk with the mockup's sentence; `#483` is `estimating`
+> with no estimate row and `#490` is `needs_human` at XL/61%. `kensuenobu` gets **zero
+> rows**, which is N.6's empty state as data rather than as a screenshot.
+> [`tests/seed.sql`](../ouroboros-db/tests/seed.sql) asserts all of it and
+> [`tests/seed.test.sh`](../ouroboros-db/tests/seed.test.sh) asserts the file's structure,
+> both extended for a sixth seed rather than forked.
+>
+> **Two things the mockup shows are deliberately not in the database**, because seeding
+> them would make a screen render a claim no component produced. `trace.estimator` is
+> `heuristic-v0` on every row (decision **K10**) with `tokens_used` `0` and `signals` `[]`
+> — the mockup's *"sized by claude-sonnet-5 · 2m ago · 41k tokens"* over three retrieved
+> signals describes a knowledge layer that does not exist yet, and those lines are **O.4**'s
+> to supply. And the head's *42 open / 38 sized* stays design copy: the counts are
+> aggregates M.1 computes, so nine rows honestly count to nine.
+>
+> **The two mockups disagree about which issues are queued, and the seed follows the rows
+> that exist.** `queued` is not a `sizing_status` — it is a presentation over
+> `queue_items`, and DASH-F.5 (#68) owns all twelve of those. Six are in this repository
+> (`#485`, `#486`, `#488`, `#490`, `#491`, `#494`), so the seeded backlog presents `#485`,
+> `#490` and `#491` as queued where mockup 03 draws `#486`, `#488` and `#489` — mockup 02's
+> queue card puts `#485` at position 1 while mockup 03's table calls it `sized`, and one
+> database cannot make both true. A thirteenth queue row written from the intake seed would
+> break *Queued issues* and its `est. 9h 40m` to decorate the backlog, so the ticket's
+> *cross-referenced, not duplicated* rule is followed literally and the disagreement is
+> written down in the migration's header for **M.1 (#110)** and **N.2 (#118)** to read
+> before assuming their query is wrong. Where an issue *is* queued in this repository, its
+> estimate's `est_minutes` is the queue row's number, because M.3 (#112) copies one into
+> the other.
+>
+> **Three smaller decisions**, each of them the fixture covering a path it would otherwise
+> leave dark — DASH-F.5's argument for its one unestimated queue item. `#487` carries **two
+> estimate versions**, an `s`/55% superseded by the mockup's `l`/71%, because against a
+> fixture where every issue has exactly one estimate a latest-wins join, a `min(version)`
+> join and an arbitrary-row join all pass. `#488`'s breakdown names **no files**, which
+> `V026` makes valid on purpose and which the panel has to render. And `#490` is opened by
+> **`renovate[bot]`**, so the rule `V028` had just widened is exercised by the data every
+> UI test reads rather than only by `tests/constraints.sql`.
+>
+> **`#483` gets no estimate row**, which is what `estimating` means: `issue_estimates` has
+> no partial row, since `effort` and `confidence` are `not null` and an estimate is one
+> answer rather than four fields that arrive separately. The mockup draws `standard-fix`
+> and `claude-sonnet-5` in that row's workflow and model cells beside a `sizing…` effort;
+> those two cells are not storable, and N.2 renders a mid-flight row from what exists.
+>
+> **The estimates carry a second guard, and it is load-bearing.**
+> `issue_estimate_version_monotonic` (`V026`) is a BEFORE INSERT trigger, so it raises
+> *before* `on conflict do nothing` can skip a row — a second application of the file would
+> fail the migration outright rather than write nothing. Both estimate statements therefore
+> carry a `not exists` that is the trigger's own rule evaluated a step earlier, which is
+> also what makes the seed *decline* rather than fail on a database somebody has estimated
+> by hand. Verified: re-applying the file writes zero rows and raises nothing; re-applying
+> it without the guard raises `issue_estimate_version_monotonic`.
+>
+> **The ticket's own diagram does not add up, and the acceptance criterion is what was
+> built.** It reads *"6 sized · 1 estimating · 1 needs_human · (3 queued via DASH seeds)"*,
+> which is eleven rows for nine issues however the parenthesis is read. The criterion below
+> it — *"9 open issues. 7 already sized."* — is unambiguous and agrees with the mockup: the
+> three issues the mockup presents as *queued* are `sized` in the database and queued in
+> `queue_items`, so the sized count is seven and the nine partition as **7 sized · 1
+> estimating · 1 needs_human**. Noted here rather than silently reconciled, because a
+> reader who counts the seeded rows against that diagram should find the arithmetic
+> explained instead of assuming the seed is short two rows.
 
 - **Problem Statement:** Design review and e2e need the exact mockup rows without a
   live GitHub token; the seeds are the fixture (same rule as dashboard F.5).
@@ -1626,3 +1695,40 @@ budget belongs to the token. Five of those six words are K.3's taxonomy, unchang
 > `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in
 > `issue.mapping.ts` — so the provider-neutral scheduler inherits a seam rather than having to
 > cut one. Every criterion re-asserted through the SPI is asserted here first.
+
+**K.5 (#103) shipped on 2026-09-09, and mockup 03 has a fixture.**
+[`R__dev_seed_intake.sql`](../ouroboros-db/migrations/R__dev_seed_intake.sql) is the sixth
+development seed: nine mirrored issues and nine estimates in
+`acme-robotics / helios-firmware`, so design review, every intake screen and the #121 e2e
+leg have the mockup's table without a live GitHub token. The head counts are the seed's own
+truth — **"9 open issues. 7 already sized."** — because they are aggregates M.1 computes,
+and `kensuenobu` gets zero rows, which is N.6's empty state as data rather than as a
+screenshot.
+
+The seed's job turned out to be as much about what it **declines** to write. Decision
+**K10** costs the mockup its whole trace line: `estimator` is `heuristic-v0`, `tokens_used`
+is `0`, and `signals` is `[]`, because seeding *"3 similar closed issues · driver map · HIL
+test index"* would be a screen rendering a provenance no component produced — those are
+**O.4**'s. The queue rows stay DASH-F.5's for an arithmetic reason: mockup 02's *Queued
+issues* `12` and its `est. 9h 40m` are aggregates over exactly twelve rows, six of them in
+this repository, so a thirteenth written from here would break one mockup to decorate
+another. The consequence is a disagreement the two mockups already had — mockup 02 queues
+`#485` at position 1, mockup 03 calls it `sized` — and the seed follows the rows that exist
+and writes the disagreement down.
+
+> What K.5 leaves for **M.1 (#110)** and **N.2 (#118)**: the `queued` pill is a join, not a
+> column, and the rows that carry it are not the rows the mockup draws it on — the
+> migration's header names them. The sort is safe to build a parity test on: no two seeded
+> issues share an `(effort, confidence)` pair, so `sort=effort` is total over the fixture
+> and cannot flake on a tie the planner broke. The mockup's own row order is not any of the
+> four documented sorts, which is a page laid out by hand rather than a fifth ordering to
+> implement. And `meta.syncedAt` has one honest source today —
+> `max(github_issues.synced_at)`, one instant across all nine — because
+> `github_repos.issues_synced_at` is K.4's to stamp and a seeded poll is a poll that never
+> ran.
+>
+> And for **K.6 (#104)**: the seeded rows are now a second population the intake probes run
+> beside their own fixtures — nine issues across all four `sizing_status` transitions it
+> asserts, nine estimates across all five efforts and all three risk levels, and one issue
+> with two versions for the monotonicity and latest-wins rules to be proved load-bearing
+> against.
