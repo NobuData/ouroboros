@@ -178,7 +178,7 @@ existing set (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) plus ne
 | K.3 | #101 | 🟢 Done | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
 | K.4 | #102 | 🟢 Done | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
 | K.5 | #103 | 🟢 Done | ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity | Seeded issues/estimates reproducing the mockup's nine rows | mvp, intake, db | N (after K.2) | Y | S | ouroboros-db |
-| K.6 | #104 | 🟡 Open | ouroboros-db: [K.6] Intake constraints in ci/db | Status vocabularies, cursor invariants, estimate versioning checks | mvp, intake, db, ci | N (after K.5, #24) | Y | XS | ouroboros-db, .github |
+| K.6 | #104 | 🟢 Done | ouroboros-db: [K.6] Intake constraints in ci/db | Status vocabularies, cursor invariants, estimate versioning checks | mvp, intake, db, ci | N (after K.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue K.1 — ouroboros-db: [K.1] GitHub issue cache schema
 
@@ -602,7 +602,60 @@ seeds: 9 issues (#483–#491) ─▶ 6 sized · 1 estimating · 1 needs_human ·
 
 ### Issue K.6 — ouroboros-db: [K.6] Intake constraints in ci/db
 
-> **GitHub issue:** #104 · **Status:** 🟡 Open · **Parent epic:** #94
+> **GitHub issue:** #104 · **Status:** 🟢 Done · **Parent epic:** #94
+
+> **Shipped 2026-09-09. Epic K is complete.**
+> Seven mutations in
+> [`tests/verify-constraint-probes.sh`](../ouroboros-db/tests/verify-constraint-probes.sh),
+> run by `ci/db`'s *Assert those assertions are load-bearing* step, with their names held
+> against the migrations by
+> [`tests/constraint-probes.test.sh`](../ouroboros-db/tests/constraint-probes.test.sh)
+> (111 → 132 checks). The probe run goes 63 → **77 checks**; no migration changed, and
+> `ouroboros-db` carries no version to bump — the schema is versioned by its migrations.
+>
+> **The scope bullets were already written, and that is the finding.** Every probe this
+> ticket asks for was in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) before it started: K.1
+> (#99) wrote the `sizing_status` vocabulary, the `(github_repo_id, number)` key and the
+> five `labels` shape probes into its own section, and K.2 (#100) wrote version
+> monotonicity, the unique key beneath it and decision **K10**'s provenance rule into
+> its. Both tickets said so at the time and both named the gap they were leaving — *"the
+> intake assertions have no such proof yet"* — so what K.6 owed was never a second copy of
+> those assertions. It was the half `ci/db` could not answer about itself: a green
+> `constraints.sql` proves the schema satisfies its assertions, and a file that asserted
+> nothing at all would be exactly as green. This ticket is the *"red when any invariant is
+> dropped"* criterion, mechanised for every run rather than spot-verified once.
+>
+> **Two of the seven are not plain drops, and both say why in place.**
+> `issue_estimates_version_monotonic` is a **trigger** — V026 enforces ascent in plpgsql
+> because a CHECK cannot see the other rows of its own table — so it is dropped with `drop
+> trigger`, and once it is gone the version it refused is refused by the unique key
+> underneath instead. That is the weaker rule and the whole reason the trigger exists:
+> unique alone accepts 3 then 2, and *latest wins* then returns the estimate that was
+> replaced. So that probe's marker is `must_reject`'s *rejected by … rather than …*
+> message, as the bundled-price probe's already was. And
+> `issue_estimates_issue_version_key` is caught by the **catalogue** assertion rather than
+> a behavioural one, because no single session can watch that key refuse anything — the
+> race it exists for is two writers that both computed `max(version) + 1`.
+>
+> **The cursor invariant is here even though the scope list does not name it.** The
+> problem statement does — *"status vocabularies, estimate versioning and cursor
+> invariants are trusted by the UI"* — and it is the one intake rule whose loss nothing
+> else would report: a watermark that precedes the sync that produced it is a `since` the
+> poller hands GitHub for a repository it has never read, and what comes back is a backlog
+> with a hole in it.
+>
+> **Runtime: 3.7s added**, measured on the `postgres:17-alpine` image `ci/db` uses — two
+> runs each of 20.8s with the intake block against 17.1s without. The criterion is *< 5s*.
+> Each mutation is one more copy of a template database and one more run of a suite that
+> takes about half a second.
+>
+> **What is deferred:** the seeded rows K.5 (#103) added are still a population these
+> probes do not run against. `ci/db` points `constraints.sql` at a database migrated from
+> empty and `registry-invariants.sql` at the seeded one; an intake suite for the seeded
+> database would be the same argument CG.5 made, and it belongs to whichever ticket first
+> needs an intake read asserted against real rows rather than fixtures — M.1 (#110) is the
+> candidate.
 
 - **Problem Statement:** Status vocabularies, estimate versioning, and cursor
   invariants are UI-trusted contracts needing PR-time enforcement.
@@ -1732,3 +1785,32 @@ and writes the disagreement down.
 > asserts, nine estimates across all five efforts and all three risk levels, and one issue
 > with two versions for the monotonicity and latest-wins rules to be proved load-bearing
 > against.
+>
+> *(K.6 corrected that last sentence when it landed: they are not a second population yet.
+> `ci/db` points `constraints.sql` at a database migrated from empty — that is what makes
+> its absolute counts mean anything — and the seeded database gets `seed.sql` and
+> `registry-invariants.sql` instead. An intake suite for the seeded rows is a ticket
+> nobody has filed; see K.6's own note.)*
+
+**K.6 (#104) shipped on 2026-09-09, and Epic K is complete.**
+[`tests/verify-constraint-probes.sh`](../ouroboros-db/tests/verify-constraint-probes.sh)
+now drops seven intake rules one at a time — the `sizing_status` vocabulary, the
+`(github_repo_id, number)` key K.4's upsert conflicts on, the `labels` array-of-names
+shape, the sync cursor that cannot precede its own sync, the estimate-version trigger and
+the unique key beneath it, and decision **K10**'s mandatory trace provenance — and requires
+`constraints.sql` to go red **naming the assertion that caught it**. 63 → 77 checks in the
+probe run, 111 → 132 in the static test that holds those names against the migrations, and
+**3.7s** added to a `ci/db` step that took seventeen.
+
+> The question K.1 and K.2 left is answered, and it turned out to be the only thing K.6
+> owed: every probe this ticket's scope names was already in `constraints.sql`, written by
+> the migration that created the rule. What was missing was the proof that any of them is
+> load-bearing — a file that asserted nothing would be exactly as green — which is the
+> criterion this mechanises for every run rather than spot-verifying once.
+>
+> What K.6 leaves for **M.1 (#110)**, if it wants it: the seeded intake rows have no live
+> suite of their own. CG.5 (#583) made the argument for one on the registry side and
+> `registry-invariants.sql` is the shape it took — a fragment included by `constraints.sql`
+> *and* pointed at the seeded database on its own — so an intake equivalent is a known
+> pattern rather than a design question, and the ticket that first asserts an intake read
+> against real rows is the one that should carry it.

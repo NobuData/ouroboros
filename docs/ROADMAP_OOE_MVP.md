@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**99 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**101 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (6/23) | **11** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (8/23) | **13** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **17 issues** · 48 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147` and `148` · 12 dependency waves
+> **15 issues** · 45 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149` and `150` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 6 of 23 issues closed
+> **Status:** 🟡 **In progress** — 8 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -882,10 +882,38 @@ that roadmap's "Existing issues affected" section.
 > `L.3` to replace — and `BacklogSyncService.lastCycle()` plus the two stored columns are the two
 > halves of the status `M.4` renders. `M.1` (`#110`) now has rows to list.
 
+> **`K.5` · [`#103`](https://github.com/NobuData/ouroboros/issues/103) and `K.6` ·
+> [`#104`](https://github.com/NobuData/ouroboros/issues/104) have shipped, and rows `149`
+> and `150` have left the table below** — so this phase's order numbers now start at `151`,
+> and **Epic K is complete**. Two rows in one block because `K.5`'s landing did not edit
+> this file: the counters above were a ticket behind, and they are corrected here rather
+> than incremented — 15 rows summing to 45 points, `S` (2) and `XS` (1) less than the 17
+> and 48 they carried, and 8 of this phase's 23 issues closed rather than 7.
+>
+> [`R__dev_seed_intake.sql`](../ouroboros-db/migrations/R__dev_seed_intake.sql) is `K.5`:
+> mockup 03's nine backlog issues and the nine estimates that size eight of them, behind
+> the same `${ouro_dev_seed}` guard every other seed carries, so a developer running
+> `flyway.seed.toml` gets the page the mockup draws instead of an empty state.
+>
+> `K.6` is the half `ci/db` could not answer about itself, and the finding is that its
+> scope had already been written. Every probe it asks for was in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) already — `K.1` (`#99`)
+> wrote the `sizing_status` vocabulary, the `(github_repo_id, number)` key and the `labels`
+> shape rules, `K.2` (`#100`) wrote version monotonicity, the key beneath it and decision
+> **K10**'s provenance — and both tickets named the gap they were leaving. A green
+> `constraints.sql` proves the schema satisfies its assertions and says nothing about
+> whether those assertions are load-bearing; a file asserting nothing at all would be
+> exactly as green. So
+> [`tests/verify-constraint-probes.sh`](../ouroboros-db/tests/verify-constraint-probes.sh)
+> now drops each of the seven intake rules in turn and requires the suite to go red
+> *naming the assertion that caught it* — the same criterion `#69`, `#221`, `#193` and
+> `#583` are held to, for **3.7s** more of a step that took seventeen.
+>
+> **`L.3` (`#107`) is what this unblocks**, and it was already unblocked by `K.2` and
+> `K.4`; nothing in Epic K is now in front of it.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 149 | **K.5** | [#103](https://github.com/NobuData/ouroboros/issues/103) | Intake dev seeds — mockup-03 parity | ouroboros-db | S | K.2 |
-| 150 | **K.6** | [#104](https://github.com/NobuData/ouroboros/issues/104) | Intake constraints in ci/db | ouroboros-db, .github | XS | 3.6, K.5 |
 | 151 | **L.3** | [#107](https://github.com/NobuData/ouroboros/issues/107) | Estimation orchestration & persistence | ouroboros-rest | L | K.2, K.4, L.1 |
 | 152 | **M.4** | [#113](https://github.com/NobuData/ouroboros/issues/113) | Sync status & manual re-sync | ouroboros-rest | S | K.4 |
 | 153 | **L.4** | [#108](https://github.com/NobuData/ouroboros/issues/108) | Re-estimation endpoints (single & all) | ouroboros-rest | S | L.3 |

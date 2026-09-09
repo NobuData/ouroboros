@@ -4,9 +4,9 @@
 #
 # The script itself needs a migrated PostgreSQL, so what it does to a schema is asserted
 # where a database exists: the `ci/db` step that runs it. Its scope is #69's dashboard
-# read-model, #221's provider tables, #193's routing invariants and #583's registry rules,
-# and every constraint any of the four names is checked below against the migrations that
-# create it. What is asserted here is everything it decides *before* it connects — the
+# read-model, #221's provider tables, #193's routing invariants, #583's registry rules and
+# #104's intake schema, and every constraint any of the five names is checked below against
+# the migrations that create it. What is asserted here is everything it decides *before* it connects — the
 # arguments it accepts,
 # the ones it refuses, and its refusal to reach for a database with no password in the
 # environment — so the module's suite keeps covering it without a daemon or a network.
@@ -107,7 +107,13 @@ for probe_constraint in \
   model_prices_metered_amounts_absent \
   model_prices_source_matches_owner \
   model_prices_match_key \
-  alias_reference_kind_known
+  alias_reference_kind_known \
+  github_issues_sizing_status \
+  github_issues_repo_number_key \
+  github_issues_labels_shape \
+  github_repos_issues_cursor_after_sync \
+  issue_estimates_issue_version_key \
+  issue_estimates_provenance
 do
   check_contains "$PROBES" "drop constraint $probe_constraint" \
     "the suite mutates $probe_constraint"
@@ -219,6 +225,21 @@ check_contains "$MODULE_DIR/migrations/V012__model_prices.sql" \
   'unique nulls not distinct \(organization_id, match_provider_kind, match_model, source\)' \
   'and V012 declares it with nulls not distinct'
 
+# `issue_estimates_version_monotonic` is a **trigger** rather than a constraint, so the loop
+# above cannot find it by the statement that has to drop it: V026 enforces ascent in plpgsql
+# because a CHECK cannot see the other rows of its own table. `alter table … drop constraint`
+# on a trigger is an error, and a mutation that cannot be applied reports as a probe that
+# caught nothing.
+if grep -q 'drop trigger issue_estimates_version_monotonic on ouroboros.issue_estimates' \
+     "$PROBES"; then
+  pass 'version monotonicity is dropped with drop trigger, which is what it lives on'
+else
+  fail 'version monotonicity is dropped with drop trigger, which is what it lives on (it is not)'
+fi
+check_contains "$MODULE_DIR/migrations/V026__issue_estimates.sql" \
+  'create trigger issue_estimates_version_monotonic' \
+  'and V026 is where that trigger is created'
+
 # And the half of #193 that lives in constraints.sql: the invariants named there have to be
 # the invariants the mutations above drop, or the two halves are watching different rules.
 CONSTRAINTS="$TEST_DIR/constraints.sql"
@@ -261,6 +282,24 @@ for registry_invariant in \
 do
   check_contains "$REGISTRY" "$registry_invariant" \
     "the registry probes name $registry_invariant"
+done
+
+# And the half of #104 that lives in constraints.sql. The intake mutations are the only ones
+# in the script aimed at two sections of that file at once — `github_issues` and its cursor
+# are V014's, the estimates are V026's — so a probe that drifted off one of them would still
+# be caught by the other's assertions and read as a probe doing its job. Each name is
+# therefore required in the file the mutations are run against.
+for intake_invariant in \
+  github_issues_sizing_status \
+  github_issues_repo_number_key \
+  github_issues_labels_shape \
+  github_repos_issues_cursor_after_sync \
+  issue_estimates_version_monotonic \
+  issue_estimates_issue_version_key \
+  issue_estimates_provenance
+do
+  check_contains "$CONSTRAINTS" "$intake_invariant" \
+    "constraints.sql names $intake_invariant among the intake invariants"
 done
 
 # Both ways in. Included, it is CG.5's section of constraints.sql and every runner that file

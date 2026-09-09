@@ -2,8 +2,9 @@
 #
 # verify-constraint-probes.sh — issue #69's second acceptance criterion, as a script, with
 # issue #221's *"CI probes verified red when a constraint is dropped"*, issue #193's
-# *"dropping any single routing invariant turns it red"* and issue #583's
-# *"removing any one of the registry constraints turns it red"* beside it.
+# *"dropping any single routing invariant turns it red"*, issue #583's
+# *"removing any one of the registry constraints turns it red"* and issue #104's
+# *"red when any invariant is dropped"* beside it.
 #
 # tests/constraints.sql asserts what the schema refuses. A green run of it does not prove
 # those assertions are load-bearing: a file that asserted nothing at all would be exactly
@@ -14,8 +15,9 @@
 #
 # So for each row of the tables below this breaks one rule — of the dashboard read-model, of
 # the provider tables mockup 07's cards are drawn from, of the routing invariants mockup
-# 06's resolution is written against, or of the registry rules mockup 21's table and price
-# column stand on — runs the whole of
+# 06's resolution is written against, of the registry rules mockup 21's table and price
+# column stand on, or of the intake schema behind mockup 03's backlog table and its work
+# breakdown — runs the whole of
 # constraints.sql against the mutated schema, requires it to **fail**, and
 # requires the failure to name the assertion that was supposed to catch it — not merely to
 # carry a non-zero status. A probe that goes red for the wrong reason is a probe that is
@@ -125,6 +127,31 @@
 # `alter domain` rather than `alter table`. It is the vocabulary the whole `Used by` column
 # is shaped by: two of its four kinds have no storage yet, and the reason a fifth is a
 # migration rather than a typo is that this refuses one.
+#
+# #104 (K.6) adds the intake half, and its argument is the same one a mockup down. K.4's
+# sync (#102) upserts on `(github_repo_id, number)` and L.3's persistence (#107) computes
+# `max(version) + 1`; neither re-checks the rule it is written against, and mockup 03 renders
+# a status pill, a label chip set and a trace line straight out of columns whose vocabulary
+# and shape are CHECKs and nothing else. One mutation per rule that ticket's scope names:
+#
+#   K.6 scope bullet                             mutation
+#   ------------------------------------------   ------------------------------------------
+#   sizing-status vocabulary                     drop github_issues_sizing_status
+#   (github_repo_id, number) uniqueness          drop github_issues_repo_number_key
+#   labels jsonb shape                           drop github_issues_labels_shape
+#   the cursor cannot precede its sync           drop github_repos_issues_cursor_after_sync
+#   estimate version monotonicity                drop trigger issue_estimates_version_monotonic
+#   estimate latest-uniqueness                   drop issue_estimates_issue_version_key
+#   mandatory trace provenance (K10)             drop issue_estimates_provenance
+#
+# `issue_estimates_version_monotonic` is a **trigger**, so it is dropped with `drop trigger`
+# rather than `alter table … drop constraint`: V026 enforces ascent in plpgsql because a
+# CHECK cannot see the other rows of its own table, and the trigger raises class 23 naming
+# itself so that a rejected write still reports a constraint name. Dropped, the version it
+# refused is refused by the unique key underneath instead — which is the *weaker* rule, and
+# the whole reason the trigger exists: unique alone accepts 3 then 2, and *latest wins* then
+# returns the older estimate. So this probe's marker is must_reject's wrong-rule-fired
+# message rather than its accepted-row one, as the bundled-price probe's above is.
 #
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
@@ -282,7 +309,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -647,6 +674,74 @@ expect_red 'two bundled rows may price one model' \
 expect_red 'the reference-kind vocabulary accepts anything' \
   'a fifth reference kind is a migration rather than a string somebody typed into the union .*alias_reference_kind_known did not fire' \
   'alter domain ouroboros.alias_reference_kind drop constraint alias_reference_kind_known;'
+
+# ---------------------------------------------------------------------------
+# The intake rules (#104: the sizing-status vocabulary, estimate version monotonicity and
+# latest-uniqueness, repo-and-number uniqueness, mandatory trace provenance, the labels
+# shape — and the cursor invariant its problem statement names beside them).
+#
+# The same argument as the three blocks above, one mockup across. Every one of these fails
+# *quietly* rather than loudly if its rule goes, and each failure is a page that is wrong
+# rather than a page that is missing: a widened `sizing_status` is an issue that appears
+# under no pill and in no sized count, a lost `(repo, number)` key is a poll that re-imports
+# the whole backlog on every tick instead of updating it, a version written below the highest
+# makes *latest wins* return the estimate that was replaced, a trace with no estimator is a
+# number nobody can say the origin of — decision **K10**, which is a decision precisely
+# because it cannot be recovered afterwards — and a `labels` document that is not an array of
+# names is a tag row that renders nothing and a GIN index M.1's chip filter reads through.
+#
+# The cursor is here for the reason the ledger's arithmetic is in #69's block: it is the one
+# intake rule whose loss nothing would report at all. A watermark that precedes the sync that
+# produced it is a `since` the poller sends to GitHub on a repository it has never read, and
+# what comes back is a backlog with a hole in it.
+#
+# Every marker below is the whole of the assertion's failure line, constraint name included,
+# for the reason the routing and registry markers are: it is what proves each probe is
+# watching the object its label names rather than a rule that happens to read the same way.
+# ---------------------------------------------------------------------------
+expect_red 'github_issues.sizing_status accepts anything' \
+  'github_issues\.sizing_status rejects a value outside the four K4 names .*github_issues_sizing_status did not fire' \
+  'alter table ouroboros.github_issues drop constraint github_issues_sizing_status;'
+
+expect_red 'one repository may mirror an issue number twice' \
+  'the same issue number cannot be mirrored twice for one repository .*github_issues_repo_number_key did not fire' \
+  'alter table ouroboros.github_issues drop constraint github_issues_repo_number_key;'
+
+# The first of five shape probes is the one that fires, and it is the one worth naming:
+# GitHub's own payload is a list of label *objects*, so `[{"name": "bug"}]` is the shape a
+# mapping bug actually produces and `["bug"]` is the shape the chip set is written against.
+expect_red 'labels may hold any json at all' \
+  'labels rejects GitHub.s label objects .*github_issues_labels_shape did not fire' \
+  'alter table ouroboros.github_issues drop constraint github_issues_labels_shape;'
+
+expect_red 'a sync cursor may precede the sync that produced it' \
+  'a since watermark cannot exist before the sync that produced it .*github_repos_issues_cursor_after_sync did not fire' \
+  'alter table ouroboros.github_repos drop constraint github_repos_issues_cursor_after_sync;'
+
+# A trigger rather than a constraint, and dropped rather than rewritten — see the header. The
+# marker is must_reject's wrong-rule-fired message because the unique key underneath is what
+# refuses the row once the trigger is gone: it is a real refusal of *that* statement and no
+# refusal at all of the one this rule exists for, which is a version written below the
+# highest rather than at it.
+expect_red 'an estimate may be written at a version already passed' \
+  'an estimate cannot be written at a version the issue has already passed .*rather than issue_estimates_version_monotonic' \
+  'drop trigger issue_estimates_version_monotonic on ouroboros.issue_estimates;'
+
+# The key underneath that trigger, which no single session can see refuse anything — the race
+# it exists for is two writers that both computed `max(version) + 1`, and one session cannot
+# stage that. So constraints.sql asks the catalogue for it by name and by shape, and that is
+# the assertion this probe reads: dropped, the question has no answer rather than a wrong one.
+expect_red 'an issue may hold one estimate version twice' \
+  'issue_estimates_issue_version_key: one version of an issue.s estimate, once' \
+  'alter table ouroboros.issue_estimates drop constraint issue_estimates_issue_version_key;'
+
+# Decision K10, which has a constraint of its own precisely so that a rejected write names the
+# decision rather than the shape rule beside it. `issue_estimates_trace_shape` asserts only
+# that the key is *present*, so with this dropped a trace naming a null estimator is stored —
+# the state the decision exists to make unreachable.
+expect_red 'an estimate may name no estimator' \
+  'decision K10: an estimate whose trace names no estimator does not get to exist .*issue_estimates_provenance did not fire' \
+  'alter table ouroboros.issue_estimates drop constraint issue_estimates_provenance;'
 
 printf '\n'
 if check_summary; then

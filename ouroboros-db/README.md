@@ -924,20 +924,33 @@ right probe goes red for the right reason.
 [`tests/verify-constraint-probes.sh`](tests/verify-constraint-probes.sh) is that check for
 the dashboard read-model ([#69](https://github.com/NobuData/ouroboros/issues/69)), the
 provider cards ([#221](https://github.com/NobuData/ouroboros/issues/221)), the routing
-invariants ([#193](https://github.com/NobuData/ouroboros/issues/193)) and the registry rules
-([#583](https://github.com/NobuData/ouroboros/issues/583)). It drops one rule at
+invariants ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry rules
+([#583](https://github.com/NobuData/ouroboros/issues/583)) and the intake schema
+([#104](https://github.com/NobuData/ouroboros/issues/104)). It drops one rule at
 a time — the `runs.status` and `queue_items.effort` vocabularies, the terminal-run rule, the
 queue's position and issue keys, the `workspace_settings` primary key; the monthly cap's
 floor, the discovered catalog's uniqueness, the `enabled` switch's `not null` and the health
 vocabulary beside it, the `added_by` reference; the hop position key, the
 one-route-per-task-kind key, the rule `then` grammar and the provider `kind` vocabulary; the
 unbound-alias switch, the params and restrictions vocabularies, alias uniqueness, the three
-price-coherence rules, price provenance and the reference-kind vocabulary —
+price-coherence rules, price provenance and the reference-kind vocabulary; the
+`sizing_status` vocabulary, the `(github_repo_id, number)` key the backlog sync upserts on,
+the `labels` array-of-names shape, the sync cursor that cannot precede its own sync, the
+estimate-version trigger and the unique key beneath it, and decision **K10**'s mandatory
+trace provenance —
 and rewrites the expressions a rule lives in where no drop can falsify it: the two
 `token_usage_daily` computes its sums from, and the two tests inside `route_chain_intact()`
 that hold a chain dense from 1 and its floor inside it. For each, it requires the suite to
 fail **and** to name the assertion that caught it: a bare non-zero status would also be
 produced by a mutation that broke on its own statement.
+
+`issue_estimates_version_monotonic` is the one mutation that is a `drop trigger`. Versions
+ascend within an issue by trigger rather than by CHECK, because a CHECK cannot see the other
+rows of its own table; dropped, the version it refused is refused by the unique key beneath
+it instead — which is the weaker rule and the whole reason the trigger exists, since unique
+alone accepts 3 then 2 and *latest wins* then returns the estimate that was replaced. So that
+probe reads `must_reject`'s *wrong rule fired* message rather than its *statement was
+accepted* one, and both are the probe noticing.
 
 Three mutations are *relaxations* rather than drops, and they are the ones worth
 understanding. `route_hops_alias_fk` and `model_aliases_provider_fk` are re-added as
@@ -1067,7 +1080,7 @@ before a database is waited on.
 | `scripts/migrate` | Every migration applies, in order, to a database that has never seen them | yes |
 | `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
-| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)) and the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)) included | yes (copies of its own) |
+| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)) and intake ([#104](https://github.com/NobuData/ouroboros/issues/104)) included | yes (copies of its own) |
 | `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
@@ -1331,7 +1344,7 @@ ouroboros-db/
     ├── betterauth-schema.test.sh     # the drift check's contract, without a database — #710
     ├── price-catalog.test.sh         # the price transform, its provenance and --check — #580
     ├── constraint-probes.test.sh     # the probe verifier's usage and refusals — #69
-    ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69, #221, #193
+    ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69, #221, #193, #583, #104
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
 ```
