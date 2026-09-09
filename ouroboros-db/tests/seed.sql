@@ -7,14 +7,18 @@
 -- every e2e test written against it, expects to find — mockup 01 Step 2's three
 -- organizations and mockup 02's dashboard, number for number.
 --
--- Five migrations, one suite, because they describe one database: R__dev_seed.sql (#23)
+-- Six migrations, one suite, because they describe one database: R__dev_seed.sql (#23)
 -- is *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
+-- R__dev_seed_intake.sql (#103) is *what it has an opinion about next*,
 -- R__dev_seed_providers.sql (#221) is *what it is allowed to call*,
 -- R__dev_seed_routing.sql (#192) is *where the calls go*, and R__dev_seed_audit.sql (#225)
 -- is *who touched the keys* — and a dashboard assertion that could not name `acme-robotics`
 -- would be asserting nothing. Two of them share a table: a provider card's monthly meter is
 -- the dashboard seed's spend of today plus the providers seed's spend of earlier this month,
--- so the figures below are asserted over the sum rather than over either file's rows.
+-- so the figures below are asserted over the sum rather than over either file's rows. Two
+-- more share a *fact*: the intake seed's estimates and the dashboard seed's queue rows have
+-- to agree about how long the same issue takes, and the assertion that they do is the
+-- intake block's rather than either seed's.
 --
 -- Run it against a database migrated **with the seed enabled** — the compose stack, or
 -- `scripts/migrate --config flyway.seed.toml`:
@@ -38,9 +42,10 @@
 -- auth-aware demo set — three organizations, password sign-in — by #709; extended with
 -- the dashboard read-model — mockup 02, number for number — by #68, with mockup 07's
 -- five provider cards by #221, with the credential trail behind that page's **Audit
--- log** button by #225, and with mockup 21's registry over the routing rows — eight
+-- log** button by #225, with mockup 21's registry over the routing rows — eight
 -- aliases with their params, a price override and run #482's resolution snapshot — by
--- #582.
+-- #582, and with mockup 03's backlog — nine mirrored issues and the estimates behind
+-- their chips — by #103.
 
 \set ON_ERROR_STOP on
 
@@ -1824,6 +1829,366 @@ select pg_temp.must_hold(
   (select count(*) = 14 from ouroboros.audit_events
     where id::text like '5eed0015-0000-4000-8000-%'),
   'the audit seed created its fourteen prefixed rows and no fifteenth');
+
+-- ===========================================================================
+-- R__dev_seed_intake.sql — mockup 03's backlog, row for row.
+--
+-- The sixth seed's rows: nine `github_issues` (`5eed0018…`) in
+-- `acme-robotics / helios-firmware`, and the nine `issue_estimates` (`5eed0019…`) that
+-- size eight of them. Scoped to those ids and to that repository, for the reason every
+-- other seed's assertions are scoped: a developer who mirrored a repository of their own
+-- must not fail this suite.
+--
+-- The counts are exact, so this is the intake seed's idempotency test as well — and it is
+-- a sharper one than the others', because `issue_estimates` carries a BEFORE INSERT
+-- trigger that would *raise* on a second application rather than quietly duplicate. A
+-- second `migrate` that reached it at all would fail the run before it reached this file.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- The nine issues, and the page head's two counts.
+--
+-- *"9 open issues. 7 already sized."* — the acceptance criterion, and the whole of what
+-- M.1's `meta` computes. The mockup prints 42/38; those are design copy over a backlog
+-- forty-two issues deep, and the seed's truth is nine (the migration's header says why at
+-- length). Asserted as counts rather than as a stored figure, because counting them is
+-- exactly what the endpoint does.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 9
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos  repo on repo.id = issue.github_repo_id
+     join ouroboros.github_orgs   gh   on gh.id = repo.org_id
+     join ouroboros.organization  org  on org."id" = issue.organization_id
+    where org."slug" = 'acme-robotics'
+      and gh.login = 'acme-robotics'
+      and repo.name = 'helios-firmware'),
+  'the nine mockup-03 issues are mirrored into acme-robotics/helios-firmware, exactly once');
+
+select pg_temp.must_hold(
+  (select array_agg(issue.number order by issue.number) = array[483, 484, 485, 486, 487, 488, 489, 490, 491]
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+    where repo.name = 'helios-firmware'),
+  'they are #483 through #491, with no tenth and no gap');
+
+select pg_temp.must_hold(
+  (select count(*) = 9 and count(*) filter (where issue.sizing_status = 'sized') = 7
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+    where repo.name = 'helios-firmware'
+      and issue.state = 'open'),
+  'the page head computes to "9 open issues. 7 already sized." over the seeded rows');
+
+-- The other two of the nine, and they are the two the status pill has a colour for:
+-- `#483` is mid-flight and `#490` came back for a human.
+select pg_temp.must_hold(
+  (select count(*) = 2
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+    where repo.name = 'helios-firmware'
+      and (issue.number, issue.sizing_status) in ((483, 'estimating'), (490, 'needs_human'))),
+  '#483 is estimating and #490 needs a human — the two rows that are not sized');
+
+-- One poll confirmed all nine at once, which is what `synced_at` records and what makes
+-- `max(synced_at)` over the mirror the freshness tag mockup 03 prints. The repository's
+-- own watermark stays null: it is the sync's record of itself, and K.4 is what stamps it.
+select pg_temp.must_hold(
+  (select count(distinct issue.synced_at) = 1
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+    where repo.name = 'helios-firmware'),
+  'all nine carry the same synced_at, because one poll is what would have confirmed them');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.github_repos
+    where name = 'helios-firmware'
+      and issues_synced_at is null
+      and issues_sync_cursor is null),
+  'the seed stamps no sync watermark on the repository — that is K.4''s to write, not a fixture''s');
+
+-- The authors, including the one the panel names and the one V028 exists for.
+select pg_temp.must_hold(
+  (select count(*) = 9 and count(*) filter (where issue.author_login = 'renovate[bot]') = 1
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+    where repo.name = 'helios-firmware'
+      and issue.author_login is not null),
+  'every mirrored issue has an author, and exactly one of them is a GitHub App (V028''s [bot] suffix)');
+
+-- `#488` was opened with a title and no description, which is a null body rather than an
+-- empty one — V014 makes the column nullable so the panel can render the absence.
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+    where repo.name = 'helios-firmware'
+      and issue.body is null
+      and issue.number = 488),
+  '#488 alone has no body — the issue opened with a title and nothing else');
+
+-- ---------------------------------------------------------------------------
+-- `#485`, field for field — the detail panel's fixture.
+--
+-- Acceptance criterion: *the detail panel for #485 matches the mockup content field for
+-- field*. Everything the panel prints is below — the meta line's author, the heading, the
+-- four tags (the table cell draws three of them; the row has one label set), the body it
+-- excerpts, and the href behind *Open on GitHub ↗*.
+--
+-- `opened 2d ago` is asserted as a window rather than as an instant, because the seed's
+-- clock is `now()` and the assertion runs some seconds after the insert did.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+    where repo.name = 'helios-firmware'
+      and issue.id = '5eed0018-0000-4000-8000-000000000485'
+      and issue.number = 485
+      and issue.title = 'Watchdog reset on I²C bus lockup'
+      and issue.state = 'open'
+      and issue.sizing_status = 'sized'
+      and issue.author_login = 'field-support'
+      and issue.labels = '["bug", "i2c", "watchdog", "priority-high"]'::jsonb
+      and issue.gh_url = 'https://github.com/acme-robotics/helios-firmware/issues/485'
+      and issue.gh_created_at between now() - interval '49 hours' and now() - interval '47 hours'),
+  '#485 is the panel''s issue: its title, its four tags, field-support, its link, and opened 2d ago');
+
+select pg_temp.must_hold(
+  (select issue.body = 'Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show '
+                    || 'the IMU holding SDA low after a burst read; the bus never recovers '
+                    || 'and the hardware watchdog fires ~2 s later. We need a bus-recovery '
+                    || 'sequence (9 clock pulses + re-init) before the watchdog trips.'
+     from ouroboros.github_issues issue
+    where issue.id = '5eed0018-0000-4000-8000-000000000485'),
+  '#485''s body is the text the panel excerpts, without the quotation marks the blockquote adds');
+
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.issue_estimates est
+    where est.github_issue_id = '5eed0018-0000-4000-8000-000000000485'
+      and est.version = 1
+      and est.effort = 'm'
+      and est.confidence = 92
+      and est.suggested_workflow = 'standard-fix'
+      and est.routed_model = 'claude-fable-5'
+      and est.risk = 'low'
+      and est.risk_note = 'Isolated to the I²C driver path; full HIL coverage exists for bus recovery.'
+      and est.breakdown->'files' = '["drivers/i2c_recovery.c", "drivers/imu_bmi270.c", "tests/unit/test_i2c_lockup.c"]'::jsonb
+      and est.breakdown->>'est_tokens' = '180000'
+      and est.breakdown->>'cycle_min' = '12'
+      and est.breakdown->>'cycle_max' = '18'
+      and est.breakdown->>'est_minutes' = '45'),
+  '#485''s AI Work Breakdown is the mockup''s: M at 92%, three files, ~180k tokens, a 12-18 min cycle, low risk');
+
+-- ---------------------------------------------------------------------------
+-- The table's other seven sized rows.
+--
+-- The *Effort*, *Suggested workflow* and *Routed model* columns of mockup 03, asserted as
+-- one set: a row is its chip, its confidence, its tag and its pill, and asserting them
+-- separately would let a seed that paired the right values with the wrong issue pass.
+-- `#487`'s is the estimate **in force**, which is version 2 — see the latest-wins block
+-- below.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 8
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+     join lateral (select est.*
+                     from ouroboros.issue_estimates est
+                    where est.github_issue_id = issue.id
+                    order by est.version desc
+                    limit 1) latest on true
+    where repo.name = 'helios-firmware'
+      and (issue.number, latest.effort, latest.confidence,
+           latest.suggested_workflow, latest.routed_model) in (
+        (484, 'm',  88, 'standard-fix', 'cursor/composer-2'),
+        (485, 'm',  92, 'standard-fix', 'claude-fable-5'),
+        (486, 'l',  84, 'feature-loop', 'claude-sonnet-5'),
+        (487, 'l',  71, 'feature-loop', 'claude-fable-5'),
+        (488, 'xs', 98, 'docs-loop',    'ollama/qwen3-coder'),
+        (489, 'm',  78, 'standard-fix', 'claude-sonnet-5'),
+        (490, 'xl', 61, 'deps-refresh', 'claude-fable-5'),
+        (491, 's',  95, 'standard-fix', 'copilot/gpt-5-codex'))),
+  'the eight sized rows carry the mockup''s effort, confidence, workflow and model, issue by issue');
+
+-- `#483` has no estimate at all, which is what `estimating` means: `issue_estimates` has
+-- no partial row, because effort and confidence are not null and an estimate is one
+-- answer rather than four fields that arrive separately.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.issue_estimates
+    where github_issue_id = '5eed0018-0000-4000-8000-000000000483'),
+  '#483 is mid-flight, so it has no estimate row rather than an empty one');
+
+-- The sort M.1 documents is **total** over these rows: no two issues share an
+-- (effort, confidence) pair, so `effort` ascending with `confidence` descending has
+-- exactly one answer and a parity test cannot flake on a tie the planner broke.
+select pg_temp.must_hold(
+  (select count(*) = count(distinct (latest.effort, latest.confidence))
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+     join lateral (select est.effort, est.confidence
+                     from ouroboros.issue_estimates est
+                    where est.github_issue_id = issue.id
+                    order by est.version desc
+                    limit 1) latest on true
+    where repo.name = 'helios-firmware'),
+  'no two issues share an effort and a confidence, so sort=effort is total over the fixture');
+
+-- All five effort chips and all three risk levels appear, which is what makes the CHECKs
+-- on both columns something the fixture exercises rather than something only
+-- tests/constraints.sql has ever seen.
+select pg_temp.must_hold(
+  (select array_agg(distinct effort order by effort) = array['l', 'm', 's', 'xl', 'xs']
+      and array_agg(distinct risk   order by risk)   = array['high', 'low', 'medium']
+     from ouroboros.issue_estimates
+    where id::text like '5eed0019-0000-4000-8000-%'),
+  'the seeded estimates exercise all five efforts and all three risk levels');
+
+-- ---------------------------------------------------------------------------
+-- Latest wins — `#487`, the one issue estimated twice.
+--
+-- Decision K4: re-estimation is a new row and the highest version is in force. Against a
+-- fixture where every issue has exactly one estimate, a latest-wins join, a min(version)
+-- join and a join that takes an arbitrary row all pass; this is the row that separates
+-- them, and every visible field differs between the two versions so the failure is
+-- legible rather than subtle.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.issue_estimates
+    where github_issue_id = '5eed0018-0000-4000-8000-000000000487'),
+  '#487 carries two estimates, which is what makes latest-wins observable');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.issue_estimates
+    where github_issue_id = '5eed0018-0000-4000-8000-000000000487'
+      and version = 1
+      and effort = 's'
+      and confidence = 55
+      and suggested_workflow = 'standard-fix'
+      and routed_model = 'ollama/qwen3-coder'
+      and risk = 'low'),
+  'the superseded estimate differs from the one in force in every field a screen renders');
+
+-- ---------------------------------------------------------------------------
+-- Decision K10 — every estimate says what produced it, and says nothing it cannot.
+--
+-- `heuristic-v0` on all nine, `tokens_used` 0 because a rule engine called no model, and
+-- `signals` empty because there is no knowledge layer yet to have retrieved anything. The
+-- mockup's trace line — *sized by claude-sonnet-5 · 2m ago · 41k tokens*, over three
+-- named signals — is design copy for a component O.4 will write, and seeding it would be
+-- a screen showing a provenance nothing produced.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 9
+     from ouroboros.issue_estimates
+    where id::text like '5eed0019-0000-4000-8000-%'
+      and trace->>'estimator' = 'heuristic-v0'
+      and trace->>'tokens_used' = '0'
+      and trace->'signals' = '[]'::jsonb),
+  'every seeded estimate is heuristic-v0''s, cost no tokens, and claims no signal (decision K10)');
+
+-- `sized_at` is the estimator's clock and `created_at` is the row's, and for a synchronous
+-- estimator they are the same instant — which is what makes them worth asserting together:
+-- a seed that let them drift would make the panel's "2m ago" disagree with the row.
+select pg_temp.must_hold(
+  (select count(*) = 9
+     from ouroboros.issue_estimates
+    where id::text like '5eed0019-0000-4000-8000-%'
+      and date_trunc('second', (trace->>'sized_at')::timestamptz)
+            = date_trunc('second', created_at)),
+  'sized_at and created_at name the same instant, as they do for a synchronous estimator');
+
+-- `#488`'s breakdown names no files, and that is an answer rather than a gap — the panel
+-- renders the absence instead of guessing, and a fixture where every estimate happened to
+-- name files would leave that path unexercised.
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.issue_estimates
+    where id::text like '5eed0019-0000-4000-8000-%'
+      and breakdown->'files' = '[]'::jsonb),
+  'exactly one seeded estimate names no files, which is the empty-list path V026 makes valid');
+
+-- ---------------------------------------------------------------------------
+-- The queue rows are DASH-F.5's, and this seed added none.
+--
+-- Acceptance criterion: *consistent with DASH-F.5 queue seeds (no double-queued rows)*.
+-- Two halves. The count is still twelve — a thirteenth written from here would break
+-- mockup 02's *Queued issues* stat and its `est. 9h 40m` — and where an issue is queued in
+-- the same repository, its estimate's `est_minutes` is the number the queue row carries,
+-- because M.3 copies one into the other and the two must not disagree about the same work.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 12 from ouroboros.queue_items
+    where id::text like '5eed000a-0000-4000-8000-%'),
+  'the queue still holds the dashboard seed''s twelve items and no thirteenth');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.queue_items
+    where id::text like '5eed0018-0000-4000-8000-%'
+       or id::text like '5eed0019-0000-4000-8000-%'),
+  'the intake seed writes no queue item — the queue rows are cross-referenced, not duplicated');
+
+select pg_temp.must_hold(
+  (select count(*) = 5 and bool_and((latest.breakdown->>'est_minutes')::integer = item.est_minutes)
+     from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+     join ouroboros.queue_items item on item.github_repo_id = repo.id
+                                    and item.issue_number = issue.number
+     join lateral (select est.breakdown
+                     from ouroboros.issue_estimates est
+                    where est.github_issue_id = issue.id
+                    order by est.version desc
+                    limit 1) latest on true
+    where repo.name = 'helios-firmware'),
+  'where a seeded issue is already queued, its estimate and its queue row agree about est_minutes');
+
+-- ---------------------------------------------------------------------------
+-- The empty-state fixture, for the backlog this time.
+--
+-- Acceptance criterion: *the personal org yields zero backlog rows*. N.6 (#120) renders
+-- its empty state against `kensuenobu`, which has two enabled repositories and no
+-- mirrored issue in either — the absence itself, in the same database as the presence,
+-- rather than a screenshot of one.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.github_issues issue
+     join ouroboros.organization org on org."id" = issue.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'neither the personal workspace nor acme-labs has a mirrored issue');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.issue_estimates est
+     join ouroboros.github_issues issue on issue.id = est.github_issue_id
+     join ouroboros.organization org on org."id" = issue.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'and therefore neither has an estimate');
+
+-- The other three enabled repositories of acme-robotics are empty too: the backlog screen
+-- is scoped to one repository, and a fixture that spread rows across four would make the
+-- *Repository* select untestable.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.github_issues issue
+     join ouroboros.github_repos repo on repo.id = issue.github_repo_id
+    where repo.name in ('helios-console', 'helios-telemetry', 'atlas-scheduler')),
+  'the mirror holds helios-firmware and nothing else, so the Repository select has an empty side');
+
+-- ---------------------------------------------------------------------------
+-- The id convention, for the intake seed's own rows.
+--
+-- Eighteen rows under two prefixes — `5eed0018…` a mirrored issue, `5eed0019…` an
+-- estimate of one — so the two are told apart on sight in a log or a URL, and a row added
+-- later with a generated id is caught here rather than by nobody.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 18 from (
+     select id from ouroboros.github_issues   where id::text like '5eed0018-0000-4000-8000-%'
+     union all
+     select id from ouroboros.issue_estimates where id::text like '5eed0019-0000-4000-8000-%'
+   ) as seeded),
+  'the intake seed created its eighteen prefixed rows and no nineteenth');
+
 
 \o
 \echo 'seed.sql: all assertions passed'

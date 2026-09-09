@@ -310,6 +310,28 @@
 > mapping bug the constraint exists to catch — with the bound raised from 39 to 44, which is
 > GitHub's login cap plus the five characters of `[bot]`. `github_orgs.login` is deliberately
 > left alone: an organisation is never a bot.
+> [#103](https://github.com/NobuData/ouroboros/issues/103) added the **sixth seed** —
+> [`migrations/R__dev_seed_intake.sql`](migrations/R__dev_seed_intake.sql), mockup 03's
+> backlog as rows: the nine issues `#483`–`#491` in `acme-robotics / helios-firmware` and
+> the estimates behind their effort chips, so design review, the intake screens and the e2e
+> leg have the mockup's table without a live GitHub token. Four of its decisions are worth
+> knowing before reading it, and each is the seed declining to make the product remember
+> something it should compute. **The head counts are nine and seven**, not the mockup's
+> 42/38 — *"9 open issues. 7 already sized."* is two aggregates over these rows, and padding
+> the mirror with thirty-three issues nothing draws would buy the mockup's arithmetic at the
+> price of a backlog no test can name. **Every trace says `heuristic-v0`** (decision
+> **K10**), spent `0` tokens and names **no signals**: the mockup's *"sized by
+> claude-sonnet-5 · 41k tokens"* over three retrieved signals describes a knowledge layer
+> that does not exist yet, and seeding it would be a screen showing a provenance nothing
+> produced — those lines are O.4's to supply. **The queue rows stay DASH-F.5's**: `queued`
+> is a presentation over `queue_items` rather than a `sizing_status`, the twelve already
+> seeded include six in this repository, and a thirteenth written from here would break
+> mockup 02's *Queued issues* stat to decorate mockup 03 — so the two mockups' disagreement
+> about which issues are queued is recorded in the header rather than resolved by inventing
+> a row. And **the estimates carry a second guard**, a `not exists` mirroring
+> `issue_estimate_version_monotonic`, because that trigger fires *before* `on conflict do
+> nothing` can skip a row: without it a second application would fail the migration instead
+> of writing nothing.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -470,21 +492,23 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **five migrations**, because they answer five questions and change on different
+It is **six migrations**, because they answer six questions and change on different
 days:
 
 | File | Holds | Issue |
 |---|---|---|
 | [`R__dev_seed.sql`](migrations/R__dev_seed.sql) | *Who exists* — the workspaces, the people, and where the loop may run | [#23](https://github.com/NobuData/ouroboros/issues/23) |
 | [`R__dev_seed_dashboard.sql`](migrations/R__dev_seed_dashboard.sql) | *What the loop has done* — runs, queue, spend, and the auto-merge switch | [#68](https://github.com/NobuData/ouroboros/issues/68) |
+| [`R__dev_seed_intake.sql`](migrations/R__dev_seed_intake.sql) | *What it has an opinion about next* — mockup 03's nine mirrored issues and the estimates behind their effort chips | [#103](https://github.com/NobuData/ouroboros/issues/103) |
 | [`R__dev_seed_providers.sql`](migrations/R__dev_seed_providers.sql) | *What it is allowed to call* — mockup 07's five provider cards, their discovered models, and the spend behind their meters | [#221](https://github.com/NobuData/ouroboros/issues/221) |
 | [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from — and, since [#582](https://github.com/NobuData/ouroboros/issues/582), *what the registry says about the same names*: mockup 21's eighth (unbound) alias, the params behind every chip, the one price override, and run #482's resolution snapshot | [#192](https://github.com/NobuData/ouroboros/issues/192), [#582](https://github.com/NobuData/ouroboros/issues/582) |
 | [`R__dev_seed_audit.sql`](migrations/R__dev_seed_audit.sql) | *Who touched the keys* — the credential trail mockup 07's **Audit log** sheet opens, including a failed rotation and a lease grant with no actor | [#225](https://github.com/NobuData/ouroboros/issues/225) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
 > their *descriptions*, and every row the later seeds write finds its parent by natural key —
-> so `dev_seed_audit`, `dev_seed_dashboard`, `dev_seed_providers` and `dev_seed_routing` all
-> have to sort after `dev_seed`, and `dev_seed_routing` after `dev_seed_providers` besides,
+> so `dev_seed_audit`, `dev_seed_dashboard`, `dev_seed_intake`, `dev_seed_providers` and
+> `dev_seed_routing` all have to sort after `dev_seed`, and `dev_seed_routing` after
+> `dev_seed_providers` besides,
 > since every alias binds to a connection by kind and name. They do. `tests/seed.test.sh`
 > asserts the whole order, because the failure mode is silent: applied in the wrong order,
 > every join finds nothing, every insert inserts nothing, and a second `migrate` does not put
@@ -534,6 +558,49 @@ days against **19** the week before — the `▲ 8`.
 > interventions make the trailing week's merge rate 93.1%, and no integer count of closed
 > runs divides 27 into 92%. The seed makes 92% exact over the population it can — the whole
 > fourteen days it spans, 46 of 50 — and states both figures.
+
+#### What it has an opinion about next
+
+Mockup 03's backlog, all of it in one repository — `acme-robotics / helios-firmware`,
+which is the repository that page's breadcrumb names. Every instant is relative to
+`now()`, so *opened 2d ago* and the trace's *2m ago* stay true however long after the seed
+was written the stack is brought up.
+
+| Table | Rows | What mockup 03 renders from them |
+|---|---|---|
+| `github_issues` | 9 | The table's nine rows, `#483`–`#491` — titles, GitHub's own labels, authors, and the `#485` body the detail panel excerpts. Seven `sized`, `#483` `estimating`, `#490` `needs_human`; all nine `open` |
+| `issue_estimates` | 9 | The *Effort* chip and its confidence, the *Suggested workflow* tag and the *Routed model* pill for eight of them — and `#485`'s *AI Work Breakdown* field for field: three files, `~180k` tokens, a `12–18 min` cycle, `low` risk and the sentence under the meter |
+
+The page head is an aggregate over those rows and computes to **"9 open issues. 7 already
+sized."** The mockup prints 42/38, which is design copy over a backlog forty-two issues
+deep; the seed's truth is nine, and the migration's header says why at length.
+
+> **Three things on that page are deliberately not in the database**, because writing them
+> down would make the product remember what it is supposed to compute — or claim a
+> provenance nothing produced:
+>
+> * **the trace line.** `trace.estimator` is `heuristic-v0` on every row (decision **K10**),
+>   `tokens_used` is `0` — a rule engine called no model — and `signals` is `[]`. The
+>   mockup's *"sized by claude-sonnet-5 · 2m ago · 41k tokens"* over three retrieved signals
+>   describes a knowledge layer that does not exist yet; those lines are **O.4**'s seeds to
+>   supply honestly.
+> * **the queue rows.** `queued` is not a `sizing_status` — it is a presentation over
+>   `queue_items`, which DASH-F.5 already seeds. Six of its twelve are in this repository,
+>   so the seeded backlog presents `#485`, `#490` and `#491` as queued where mockup 03 draws
+>   `#486`, `#488` and `#489`. The two mockups disagree — mockup 02's queue card draws
+>   `#485` at position 1 while mockup 03 calls it `sized` — and a thirteenth queue row
+>   written from the intake seed would break *Queued issues* to decorate the backlog.
+> * **the sync watermark.** `github_repos.issues_synced_at` and `issues_sync_cursor` stay
+>   null: they are K.4's record of its own poll, and a seeded cursor would hand the first
+>   real poll a watermark no poll produced. What the fixture can honestly say is per-row,
+>   and `max(github_issues.synced_at)` is the freshness tag computed from it.
+>
+> Two rows are there for coverage rather than for the mockup, and both are the argument
+> DASH-F.5 made for its one unestimated queue item. **`#487` is estimated twice** — a
+> superseded `s`/55% under the mockup's `l`/71% — because against a fixture where every
+> issue has one estimate, a latest-wins join and a `min(version)` join both pass.
+> **`#488`'s breakdown names no files**, which `V026` makes valid on purpose: an estimator
+> that cannot say which paths a change touches says so, and the panel renders the absence.
 
 #### What it may call
 
@@ -780,9 +847,10 @@ as the shell suites share [`../scripts/lib/checks.sh`](../scripts/lib/checks.sh)
 every uniqueness rule, check constraint, cascade, trigger and index the migrations claim
 — because `validate` compares checksums rather than behaviour, and a `unique` on the
 wrong columns passes it. [`tests/seed.sql`](tests/seed.sql) asserts the opposite side:
-what the three `R__dev_seed*.sql` migrations actually put in a development database, one
-assertion per row — the workspaces, mockup 02's dashboard number for number, and mockup
-07's five provider cards with the meters their two seeds add up to.
+what the six `R__dev_seed*.sql` migrations actually put in a development database, one
+assertion per row — the workspaces, mockup 02's dashboard number for number, mockup 03's
+backlog and the estimates behind its chips, and mockup 07's five provider cards with the
+meters their two seeds add up to.
 [`tests/registry-invariants.sql`](tests/registry-invariants.sql) is the third, and it is a
 second way into a file rather than a third body of assertions:
 [`tests/lib/registry-invariants.sql`](tests/lib/registry-invariants.sql) is CG.5's
@@ -1025,7 +1093,7 @@ Two details are the reason the job is worth its minute:
   `docker compose up` and a hand-run `scripts/migrate` do, so there is no configuration
   that only CI applies and none it can miss.
 - **The seed gets a database of its own.** The first one has to go on proving what a
-  production migration does — apply both `R__dev_seed*.sql` migrations and insert
+  production migration does — apply every `R__dev_seed*.sql` migration and insert
   nothing, because `${ouro_dev_seed}` is `false` in `flyway.toml` — so the overlay is
   layered onto a second database instead. Migrating it twice before asserting is the idempotency
   criterion, since every assertion in `seed.sql` says *exactly one*.
@@ -1246,6 +1314,7 @@ ouroboros-db/
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
+│   ├── R__dev_seed_intake.sql        # mockup 03's backlog and its estimates, dev only — #103 (sorts after the above)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
 │   ├── R__dev_seed_routing.sql       # mockup 06 as rows, and mockup 21's registry over them, dev only — #192, #582 (sorts after the above)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)

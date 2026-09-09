@@ -2,8 +2,9 @@
 #
 # seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
 # migrations/R__dev_seed_audit.sql, migrations/R__dev_seed_dashboard.sql,
-# migrations/R__dev_seed_providers.sql, migrations/R__dev_seed_routing.sql, and the
-# configuration that decides whether they do anything.
+# migrations/R__dev_seed_intake.sql, migrations/R__dev_seed_providers.sql,
+# migrations/R__dev_seed_routing.sql, and the configuration that decides whether they do
+# anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
 # so the properties worth testing are the ones that keep those two apart: that a
@@ -11,12 +12,13 @@
 # deliberate `--config` resolve it to `true`, and that every statement in either file is
 # behind that guard and can be applied twice.
 #
-# There are five files because they answer different questions — R__dev_seed.sql (#23) is
+# There are six files because they answer different questions — R__dev_seed.sql (#23) is
 # *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
+# R__dev_seed_intake.sql (#103) is *what it has an opinion about next*,
 # R__dev_seed_providers.sql (#221) is *what it is allowed to call*,
 # R__dev_seed_routing.sql (#192) is *how it decides which one to call*, and
 # R__dev_seed_audit.sql (#225) is *who touched the keys* — and the structural rules below
-# are asserted over all of them, in a loop, so that a sixth seed inherits them by being
+# are asserted over all of them, in a loop, so that a seventh seed inherits them by being
 # added to one list.
 #
 # All of it is a file read plus the stubbed runners tests/lib/fixture.sh provides, so
@@ -56,6 +58,7 @@ BIN="$base/ouroboros-db/scripts"
 
 SEED="$MODULE_DIR/migrations/R__dev_seed.sql"
 DASHBOARD_SEED="$MODULE_DIR/migrations/R__dev_seed_dashboard.sql"
+INTAKE_SEED="$MODULE_DIR/migrations/R__dev_seed_intake.sql"
 PROVIDERS_SEED="$MODULE_DIR/migrations/R__dev_seed_providers.sql"
 ROUTING_SEED="$MODULE_DIR/migrations/R__dev_seed_routing.sql"
 AUDIT_SEED="$MODULE_DIR/migrations/R__dev_seed_audit.sql"
@@ -87,11 +90,13 @@ seed_body() {
 
 BODY="$work/seed-body.sql"
 DASHBOARD_BODY="$work/seed-body-dashboard.sql"
+INTAKE_BODY="$work/seed-body-intake.sql"
 PROVIDERS_BODY="$work/seed-body-providers.sql"
 ROUTING_BODY="$work/seed-body-routing.sql"
 AUDIT_BODY="$work/seed-body-audit.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
+seed_body "$INTAKE_SEED" "$INTAKE_BODY"
 seed_body "$PROVIDERS_SEED" "$PROVIDERS_BODY"
 seed_body "$ROUTING_SEED" "$ROUTING_BODY"
 seed_body "$AUDIT_SEED" "$AUDIT_BODY"
@@ -113,13 +118,15 @@ printf 'The migrations\n'
 
 check_exists "$SEED" 'migrations/R__dev_seed.sql exists'
 check_exists "$DASHBOARD_SEED" 'migrations/R__dev_seed_dashboard.sql exists'
+check_exists "$INTAKE_SEED" 'migrations/R__dev_seed_intake.sql exists'
 check_exists "$PROVIDERS_SEED" 'migrations/R__dev_seed_providers.sql exists'
 check_exists "$ROUTING_SEED" 'migrations/R__dev_seed_routing.sql exists'
 check_exists "$AUDIT_SEED" 'migrations/R__dev_seed_audit.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
-for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED" "$ROUTING_SEED"; do
+for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
+                 "$PROVIDERS_SEED" "$ROUTING_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -139,6 +146,8 @@ base_description=$(basename -- "$SEED" .sql)
 base_description=${base_description#R__}
 dashboard_description=$(basename -- "$DASHBOARD_SEED" .sql)
 dashboard_description=${dashboard_description#R__}
+intake_description=$(basename -- "$INTAKE_SEED" .sql)
+intake_description=${intake_description#R__}
 providers_description=$(basename -- "$PROVIDERS_SEED" .sql)
 providers_description=${providers_description#R__}
 routing_description=$(basename -- "$ROUTING_SEED" .sql)
@@ -148,18 +157,21 @@ audit_description=${audit_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
-# connection by kind and name. So the whole order is asserted rather than the first pair of
-# it, and a rename that reshuffled any of the five fails here.
+# connection by kind and name. The intake seed hangs off the first as well, for its
+# repository, and its own second statement hangs off its first — the estimates find their
+# issue by number in the repository the same file mirrored a moment earlier. So the whole
+# order is asserted rather than the first pair of it, and a rename that reshuffled any of
+# the six fails here.
 #
 # The audit seed sorts second, before the providers one it writes events *about*, and that
 # is the one place in this list where the order does not matter: `audit_events.subject_id`
 # is deliberately non-referential, so that seed names its connections by literal uuid and
 # has nothing to join to. It is still asserted, because a seed added later between them
 # would inherit the position without inheriting the argument.
-check_equals "$(printf '%s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$providers_description" "$routing_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$providers_description" "$routing_description" |
+check_equals "$(printf '%s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the five seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the six seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -169,11 +181,13 @@ check_equals "$(printf '%s %s %s %s %s' "$base_description" "$audit_description"
 # carries a deferrable unique key, and PostgreSQL refuses a targetless `on conflict` on
 # such a table outright. Naming the primary key is what that statement does instead, and it
 # is still the "applied twice writes nothing" rule this check exists for.
-for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED" "$ROUTING_SEED"; do
+for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
+                 "$PROVIDERS_SEED" "$ROUTING_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
   [ "$seed_file" = "$DASHBOARD_SEED" ] && body=$DASHBOARD_BODY
+  [ "$seed_file" = "$INTAKE_SEED" ] && body=$INTAKE_BODY
   [ "$seed_file" = "$PROVIDERS_SEED" ] && body=$PROVIDERS_BODY
   [ "$seed_file" = "$ROUTING_SEED" ] && body=$ROUTING_BODY
 
@@ -270,6 +284,80 @@ check_absent "$DASHBOARD_BODY" '5eed0001-0000-4000-8000' \
 # and would fall out of the seven-day window the week after.
 check_absent "$DASHBOARD_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
   'the dashboard seed carries no literal date — every window is relative to now()'
+
+# ---------------------------------------------------------------------------
+# R__dev_seed_intake.sql — mockup 03's backlog
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_intake.sql — the backlog\n'
+
+# Two prefixes, one per table: a mirrored issue and an estimate of it are told apart on
+# sight. Both are computed from the prefix and the issue's own number, which is why the
+# prefix is what gets asserted.
+for prefix in '5eed0018' '5eed0019'; do
+  check_contains "$INTAKE_BODY" "'$prefix-0000-4000-8000-'" \
+    "the intake seed builds its ids from the $prefix… prefix"
+done
+
+# The two tables mockup 03 is drawn from, and no third. `queue_items` in particular is
+# **not** here, and that is the acceptance criterion rather than tidiness: DASH-F.5 (#68)
+# owns the twelve queue rows and its *Queued issues* stat counts them, so a thirteenth
+# written from this file would break mockup 02 to decorate mockup 03. The queued pill is a
+# presentation over rows that already exist — cross-referenced, not duplicated.
+intake_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$INTAKE_BODY" |
+  sed 's/^insert into ouroboros\.//' | sort -u | tr '\n' ' ')
+check_equals 'github_issues issue_estimates ' "$intake_tables" \
+  'the intake seed writes the mirrored issues and their estimates, and nothing else'
+
+# Parents by natural key, exactly as the other later seeds do — the workspace by slug, the
+# repository by name, and an issue by its number within that repository.
+for foreign_prefix in '5eed0001-0000-4000-8000' '5eed0005-0000-4000-8000' \
+                      '5eed0006-0000-4000-8000' '5eed000a-0000-4000-8000'; do
+  check_absent "$INTAKE_BODY" "$foreign_prefix" \
+    "the intake seed names no $foreign_prefix… id from another seed — it joins by natural key"
+done
+
+# Every instant is relative to `now()`, which is what keeps the panel's *opened 2d ago* and
+# the trace's *2m ago* true however long after this file was written the stack is brought
+# up. A literal date would be right on the day it was typed and wrong on every day after.
+check_absent "$INTAKE_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the intake seed carries no literal date — every instant is relative to now()'
+
+# **Decision K10, as a property of the file.** The provenance is `heuristic-v0` on every
+# estimate and the trace claims nothing else: `tokens_used` is a rule engine's zero, and
+# `signals` is empty because no knowledge layer has retrieved anything yet. The mockup's
+# trace line names another estimator, a token count and three signals, and seeding any of
+# them would be a screen showing a provenance no component produced — which is precisely
+# what K10 forbids and what O.4's seeds will be able to supply honestly.
+check_contains "$INTAKE_BODY" "'estimator',   'heuristic-v0'" \
+  'every seeded estimate names heuristic-v0 as its estimator (decision K10)'
+check_contains "$INTAKE_BODY" "'signals',     '\[\]'::jsonb" \
+  'and claims no signal, because there is no knowledge layer to have produced one'
+for fabricated in '41k' 'claude-sonnet-5 · ' 'similar closed issues' 'driver map' \
+                  'test index'; do
+  check_absent "$INTAKE_BODY" "$fabricated" \
+    "the intake seed fabricates no trace copy — $fabricated is the mockup's, not a row's"
+done
+
+# **The head counts are computed, so the file may not contain them.** "9 open issues. 7
+# already sized." is two aggregates over these rows, and the mockup's own 42/38 is a
+# backlog forty-two deep that this fixture is not. A literal of either would be a number
+# the product remembered rather than counted, and M.1's meta would then be untested
+# against it.
+for rendered in '42 open' '38 already' '9 open issues' '7 already sized'; do
+  check_absent "$INTAKE_BODY" "$rendered" \
+    "the intake seed stores no head count — $rendered is computed by M.1"
+done
+
+# The estimates cannot lean on `on conflict do nothing` alone, and the file must say so in
+# SQL rather than only in prose: `issue_estimates` carries a BEFORE INSERT trigger
+# (`issue_estimate_version_monotonic`, V026) that raises before any conflict is resolved,
+# so a second application would fail the migration outright. The `not exists` predicate is
+# the trigger's own rule evaluated a step earlier — and it is what makes the seed decline,
+# rather than fail, on a database somebody has estimated by hand.
+intake_version_guards=$(count_lines 'prior\.version >= seed\.version' "$INTAKE_BODY")
+check_equals 2 "$(printf '%s' "$intake_version_guards" | tr -d ' ')" \
+  'both estimate statements guard the monotonicity trigger, which fires before on conflict can skip a row'
 
 # ---------------------------------------------------------------------------
 # R__dev_seed_providers.sql — mockup 07's five cards
@@ -478,6 +566,7 @@ printf '\nDocumentation\n'
 README="$MODULE_DIR/README.md"
 check_contains "$README" 'R__dev_seed\.sql' 'README.md documents the seed migration'
 check_contains "$README" 'R__dev_seed_dashboard\.sql' 'README.md documents the dashboard seed'
+check_contains "$README" 'R__dev_seed_intake\.sql' 'README.md documents the intake seed'
 check_contains "$README" 'R__dev_seed_providers\.sql' 'README.md documents the providers seed'
 check_contains "$README" 'R__dev_seed_routing\.sql' 'README.md documents the routing seed'
 check_contains "$README" 'R__dev_seed_audit\.sql' 'README.md documents the audit seed'
