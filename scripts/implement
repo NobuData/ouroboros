@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# 
-# Convenience script to run the /implement script
-
-claude "/implement ${1}"
-

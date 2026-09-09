@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-#
-# Fixes the code for a PR
-
-claude "/fix-code ${1}"
