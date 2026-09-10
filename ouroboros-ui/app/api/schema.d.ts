@@ -797,6 +797,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backlog/estimate-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-estimate the whole backlog
+         * @description Mockup 03's head action **Re-estimate all**
+         *     ([#108](https://github.com/NobuData/ouroboros/issues/108)). Every issue this workspace
+         *     mirrors that is not already being estimated is moved into `estimating` and queued
+         *     through the estimation pipeline; each one gets a **new version** rather than an edit to
+         *     the estimate in force, because an estimate that overwrote its predecessor would take
+         *     the trace's meaning with it.
+         *
+         *     **`admin` or `owner`, and the reason is what it costs.** A fan-out spends the
+         *     workspace's engine quota in one press — and real money once a model is behind the
+         *     estimator rather than a rule engine
+         *     ([#123](https://github.com/NobuData/ouroboros/issues/123)). Re-estimating a *single*
+         *     issue is `member+`; this is the one action on the screen that is not.
+         *
+         *     **The confirmation contract.** A dialog says *"this re-estimates N issues"* from the
+         *     backlog listing's own count, and this answers how many it actually took: `enqueued`
+         *     is what it claimed and queued, `skipped` is everything it left alone — in practice the
+         *     rows already in flight — and `total` is how many the workspace mirrors. `enqueued` can
+         *     be smaller than the N a dialog promised, and that is the honest shape of a second press
+         *     while the first is still running.
+         *
+         *     **Scope and claim are one statement**, so *only non-`estimating` rows are touched* is a
+         *     property of the write rather than of a loop that reads and then writes: two
+         *     administrators pressing together cannot claim the same issue twice.
+         *
+         *     **`202`, because the work outlives the response.** Each issue is an engine call and a
+         *     versioned write; a request that waited for a backlog of them would be a timeout. What a
+         *     client watches for is the issues' `sizingStatus` moving on.
+         *
+         *     **A second press while the first is running is a `409`**, not a `202` reporting zero:
+         *     *accepted* would be a claim about work this request started, and it started none. A
+         *     workspace that mirrors **no** issues is different and answers `202` with zeros — *empty*
+         *     and *busy* are not the same state, and a dialog should be able to say which.
+         */
+        post: operations["estimateBacklog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backlog/{id}/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-estimate one issue
+         * @description Mockup 03's detail-panel action **Re-estimate**
+         *     ([#108](https://github.com/NobuData/ouroboros/issues/108)). The issue is moved into
+         *     `estimating` and queued through the estimation pipeline, which writes a **new version**
+         *     of its estimate — `v+1` — rather than editing the one in force.
+         *
+         *     **`{id}` is `github_issues.id`, not GitHub's issue number.** A number cannot address an
+         *     issue here: `github_issues` is unique on `(repository, number)`, so a workspace watching
+         *     two repositories has two issue `#485`s and a path carrying `485` would name neither.
+         *
+         *     **`member`, `admin` or `owner`.** Re-estimating something you are working on is work; a
+         *     `viewer` may read the backlog and not spend the workspace's engine quota.
+         *
+         *     **`202`, and the status it answers with is already true.** The row is moved into
+         *     `estimating` before the work is queued, so a client that re-reads the issue sees the
+         *     same word this answer carries — and a second press is refused from the *database*
+         *     rather than from one process's memory, which is what makes the refusal the same on
+         *     every replica.
+         *
+         *     **An issue already being estimated is a `409`, not a duplicate.** The estimate in
+         *     flight will finish and write its version; queueing a second would spend an engine call
+         *     to write the same answer twice.
+         *
+         *     **An issue in another workspace is a `404`**, exactly as one that does not exist — a
+         *     `403` would confirm that the id names a real issue somewhere.
+         */
+        post: operations["estimateIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/auto-merge": {
         parameters: {
             query?: never;
@@ -7340,6 +7434,63 @@ export interface components {
             capped: boolean;
         };
         /**
+         * EstimationAccepted
+         * @description One issue accepted for re-estimation
+         *     ([#108](https://github.com/NobuData/ouroboros/issues/108)). Enough for the panel to
+         *     redraw its pill and its title bar without a second request.
+         */
+        EstimationAccepted: {
+            /**
+             * Format: uuid
+             * @description `github_issues.id` — the row the new version will hang off.
+             * @example 5eed0018-0000-4000-8000-000000000485
+             */
+            issueId: string;
+            /**
+             * @description GitHub's own number, which is what the panel's title bar reads.
+             * @example 485
+             */
+            number: number;
+            /**
+             * @description `owner/name`, as GitHub spells it.
+             * @example acme-robotics/helios-firmware
+             */
+            repository: string;
+            /**
+             * @description What the issue is now — always `estimating`. True when it is answered rather than
+             *     aspirational: the row is moved before the work is queued, so a client that re-reads
+             *     the issue sees this same word.
+             * @example estimating
+             * @enum {string}
+             */
+            status: "unsized" | "estimating" | "sized" | "needs_human";
+        };
+        /**
+         * EstimationFanout
+         * @description What one **Re-estimate all** took
+         *     ([#108](https://github.com/NobuData/ouroboros/issues/108)) — the answer half of the
+         *     confirmation contract, so a dialog that said *"this re-estimates N issues"* can report
+         *     what was actually started.
+         */
+        EstimationFanout: {
+            /**
+             * @description Issues this request moved into `estimating` and queued.
+             * @example 7
+             */
+            enqueued: number;
+            /**
+             * @description Issues it did not touch — `total` less `enqueued`, so the three numbers cannot
+             *     disagree. In practice the rows that were already `estimating` when it arrived.
+             * @example 2
+             */
+            skipped: number;
+            /**
+             * @description How many issues the workspace mirrors, as this request read it.
+             * @example 9
+             */
+            total: number;
+        };
+        /**
          * ModelPull
          * @description One tracked pull ([#230](https://github.com/NobuData/ouroboros/issues/230) over
          *     [#219](https://github.com/NobuData/ouroboros/issues/219)) — the server-side record a
@@ -9395,6 +9546,357 @@ export interface operations {
              *     than 30 seconds ago, and `details.retryAfterSeconds` says how long to wait.
              */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    estimateBacklog: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Accepted — the issues named by `enqueued` are queued. A workspace with nothing
+             *     mirrored answers zeros, which is a state to render rather than a failure.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstimationFanout"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Re-estimating the whole backlog is `owner` or `admin`; a `member` may
+             *     re-estimate one issue at a time.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `backlog_already_estimating` — every issue in this backlog is already being
+             *     estimated, so this request claimed nothing. `details.estimating` says how many are
+             *     in flight.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "backlog_already_estimating",
+                     *       "message": "Every issue in this backlog is already being estimated.",
+                     *       "details": {
+                     *         "estimating": 9
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `estimation_rate_limited` — this **workspace** has asked for more than 30 estimates
+             *     in the last minute, whoever asked. `details.retryAfterSeconds` says how long until
+             *     the window has room, and it is never zero.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "estimation_rate_limited",
+                     *       "message": "This workspace has asked for too many estimates. Wait before trying again.",
+                     *       "details": {
+                     *         "retryAfterSeconds": 24
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    estimateIssue: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description `github_issues.id` — the row, not GitHub's issue number. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted — the issue is `estimating` and queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "issueId": "5eed0018-0000-4000-8000-000000000485",
+                     *       "number": 485,
+                     *       "repository": "acme-robotics/helios-firmware",
+                     *       "status": "estimating"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["EstimationAccepted"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Re-estimating an issue is `owner`, `admin` or `member`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `issue_not_found` — this workspace has no issue with that id, or it belongs to
+             *     another workspace; the two are deliberately one answer. Or `tenant_not_found`, when
+             *     the `X-Ouro-Tenant` header names no workspace you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "issue_not_found",
+                     *       "message": "No such issue in this workspace.",
+                     *       "details": {
+                     *         "issueId": "5eed0018-0000-4000-8000-000000000485"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `issue_already_estimating` — an estimate for that issue is already in flight.
+             *     `details.status` carries the issue's current status, which is what the panel's pill
+             *     renders.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "issue_already_estimating",
+                     *       "message": "That issue is already being estimated. The estimate in flight will finish on its own.",
+                     *       "details": {
+                     *         "status": "estimating"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `id` is not a uuid. `details.fields` carries one entry per
+             *     field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `estimation_rate_limited` — this **workspace** has asked for more than 30 estimates
+             *     in the last minute, whoever asked, and `details.retryAfterSeconds` says how long
+             *     until the window has room. Every request that reaches this operation counts,
+             *     including the ones refused `409`: a caller pressing the same button repeatedly is
+             *     collecting conflicts, and a limit that only counted accepted work would not see
+             *     them.
+             */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

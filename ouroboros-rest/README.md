@@ -2090,12 +2090,58 @@ loop in this service and the only one that knocks on nothing outside this deploy
 whose every row was already in flight says so, because that means the threshold is set below how
 long an estimate legitimately takes.
 
-**There are no routes here either.** `POST /api/v1/backlog/:id/estimate` and `POST
-/api/v1/backlog/estimate-all` are L.4's
-([#108](https://github.com/NobuData/ouroboros/issues/108)); this module owns the pipeline they
-will call, which is why `EstimationOrchestrator` is exported — `enqueue()` is what a route does,
-and `estimating()` is the `409` a double-fire answers with, read from the work queue rather than
-from a column that may have moved since.
+**The two routes are here, under the backlog's prefix.**
+`POST /api/v1/backlog/{id}/estimate` and `POST /api/v1/backlog/estimate-all`
+([#108](https://github.com/NobuData/ouroboros/issues/108)) are the pipeline's only external
+trigger — mockup 03's panel button and its head action — and they live in this module because
+everything they touch is this module's: the queue, the claim and the limiter.
+[The backlog surface](#the-backlog-surface) owns the prefix; `AuditModule` serves
+`GET /api/v1/providers/audit` on the same argument.
+
+```
+POST /api/v1/backlog/{id}/estimate   member+   ─▶ 202 {issueId, number, repository, status}
+                                               ─▶ 404 issue_not_found        (cross-org too)
+                                               ─▶ 409 issue_already_estimating {status}
+POST /api/v1/backlog/estimate-all    admin+    ─▶ 202 {enqueued, skipped, total}
+                                               ─▶ 409 backlog_already_estimating
+both                                           ─▶ 429 estimation_rate_limited {retryAfterSeconds}
+```
+
+**`{id}` is `github_issues.id`, not GitHub's number.** The ticket's own diagram writes
+`POST /backlog/485/estimate`, and that is the issue rather than the path: `github_issues` is
+unique on `(repository, number)`, so a workspace watching two repositories has two issue
+`#485`s and a path carrying `485` would name neither. A path that is not a uuid is a `422`
+before a statement is issued.
+
+**The row is claimed before the work is queued**, which is what makes the `202`'s
+`status: "estimating"` true when it is sent rather than a promise about a row that still says
+`sized` — and it makes the double-fire `409` a fact any replica can read instead of one
+process's memory. The orchestrator claims again when the work starts, unconditionally and
+idempotently, and a process that dies in between leaves a row the recovery sweep is built to
+find.
+
+**Scope and claim are one statement for the fan-out.** `update … where organization_id = $1
+and sizing_status != 'estimating' returning id` is the whole of *touches only non-`estimating`
+rows*: two administrators pressing together cannot claim the same issue twice, and the count it
+returns is a fact rather than an estimate of one. A second press while the first is running
+finds nothing to take and is a `409` — `202 {enqueued: 0}` would report *accepted* for a
+request that started nothing. A workspace that mirrors **no** issues is different and answers
+`202` with zeros: *empty* and *busy* are not the same state.
+
+**Two role gates, because the two cost different things.** One issue is `member+` —
+re-estimating something you are working on is work. The whole backlog is `admin+`, because a
+fan-out spends the workspace's engine quota in one press and real money once
+[#123](https://github.com/NobuData/ouroboros/issues/123) puts a model behind the estimator.
+
+**The rate limit is per workspace, thirty a minute, sliding.** The quota being protected is the
+workspace's rather than any caller's, so three members share one window and one member acting in
+two workspaces is limited in each. **Every request that reaches the operation counts, including
+the ones refused `409`** — the hammering caller the ticket names is *mostly* collecting
+conflicts, because their second click lands on an issue their first one moved into `estimating`,
+and a limiter that only counted accepted work would never see them. It is a `429` where
+[the backlog surface](#the-backlog-surface)'s re-sync guard is a `409`, and the difference is
+real: that one protects a shared background loop the caller does not own, and this one counts
+what this workspace asked for.
 
 ## BetterAuth
 
@@ -2744,8 +2790,9 @@ What comes back is one version of an `issue_estimates` row, so the orchestration
 persists it ([#107](https://github.com/NobuData/ouroboros/issues/107)) writes an answer
 rather than translating one. There is deliberately no controller beside `engine/status` for
 it: the callers are the sync pipeline and the re-estimation endpoints
-([#108](https://github.com/NobuData/ouroboros/issues/108)), and a route added before them
-would be a generic proxy under another name.
+([#108](https://github.com/NobuData/ouroboros/issues/108)), which reach it through the
+orchestrator rather than around it, and a route beside `engine/status` would be a generic
+proxy under another name.
 
 Two things about that call are worth knowing before writing against it. **What answers it
 changes and the shape does not** — today the engine's estimator is the deterministic rule
@@ -3032,7 +3079,8 @@ ouroboros-rest/
 │       │                   #   no loop — the cycle it drives is backlog-sync/'s
 │       ├── estimation/     # unsized -> estimating -> sized | needs_human   · #107
 │       │                   #   bounded queue · versioned writes · recovery sweep
-│       │                   #   no controller — the re-estimate routes are L.4's (#108)
+│       │                   #   POST /backlog/{id}/estimate · /backlog/estimate-all (#108)
+│       │                   #   member+ · admin+ · 30/min per workspace, sliding
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
@@ -3154,6 +3202,7 @@ the GitHub token and API client [#101](https://github.com/NobuData/ouroboros/iss
 the backlog sync [#102](https://github.com/NobuData/ouroboros/issues/102) ·
 the sync status and manual re-sync [#113](https://github.com/NobuData/ouroboros/issues/113) ·
 the estimation pipeline [#107](https://github.com/NobuData/ouroboros/issues/107) ·
+the re-estimation endpoints [#108](https://github.com/NobuData/ouroboros/issues/108) ·
 the estimation contract it calls [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·

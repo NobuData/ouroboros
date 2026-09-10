@@ -170,7 +170,14 @@ import { AppService } from "./app.service";
  * appeared as somebody else's import would make *"does this process size issues"* a question
  * you answer by reading a second file. It brings the third periodic loop, and unlike the other
  * two that loop knocks on nothing outside this deployment: it is one indexed query looking for
- * rows a restart stranded mid-estimate.
+ * rows a restart stranded mid-estimate. Since L.4
+ * ([#108](https://github.com/NobuData/ouroboros/issues/108)) it also declares two routes, and
+ * they are under **`BacklogModule`'s** prefix: `POST /api/v1/backlog/{id}/estimate` and
+ * `POST /api/v1/backlog/estimate-all` are the pipeline's only external trigger, so they live
+ * with the pipeline and answer where a client looks for them — `AuditModule` and
+ * `ProviderConnectionsModule` share a prefix on the same argument. Unlike that pair this one
+ * carries **no ordering rule**: all four paths under `/backlog` are distinguished before any
+ * parameter is reached, and `estimation.controller.ts` records why.
  *
  * `BacklogModule` ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the intake
  * screen's HTTP surface, and it is the sync's two modules read the other way round: it
@@ -273,8 +280,10 @@ export class AppModule {
         // way, and listing it here is what makes "a process with this module in it estimates
         // issues" answerable from this list rather than from a transitive import three files
         // down. It is the third module here to run periodic work — a recovery sweep, against
-        // this deployment's own database — and, like the sync, declares no route at all: the
-        // re-estimation endpoints are L.4's (#108).
+        // this deployment's own database — and since L.4 (#108) it declares two routes of its
+        // own, under `BacklogModule`'s `/backlog` prefix. Its position relative to that module
+        // carries no routing rule: `estimate-all` and `sync` are distinct literal segments, and
+        // `{id}/estimate` is a segment longer than either. See `estimation.controller.ts`.
         EstimationModule,
         // M.4 ([#113](https://github.com/NobuData/ouroboros/issues/113)) — the intake screen's
         // API surface, and the first routes over anything the sync wrote. After the two

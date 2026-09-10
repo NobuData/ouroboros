@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.31.1"
+  version: "0.31.2"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -2057,6 +2057,260 @@ paths:
                       The backlog was synced less than 30 seconds ago. Try again shortly.
                     details:
                       retryAfterSeconds: 22
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/backlog/estimate-all:
+    post:
+      tags: [backlog]
+      summary: Re-estimate the whole backlog
+      description: |-
+        Mockup 03's head action **Re-estimate all**
+        ([#108](https://github.com/NobuData/ouroboros/issues/108)). Every issue this workspace
+        mirrors that is not already being estimated is moved into `estimating` and queued
+        through the estimation pipeline; each one gets a **new version** rather than an edit to
+        the estimate in force, because an estimate that overwrote its predecessor would take
+        the trace's meaning with it.
+
+        **`admin` or `owner`, and the reason is what it costs.** A fan-out spends the
+        workspace's engine quota in one press — and real money once a model is behind the
+        estimator rather than a rule engine
+        ([#123](https://github.com/NobuData/ouroboros/issues/123)). Re-estimating a *single*
+        issue is `member+`; this is the one action on the screen that is not.
+
+        **The confirmation contract.** A dialog says *"this re-estimates N issues"* from the
+        backlog listing's own count, and this answers how many it actually took: `enqueued`
+        is what it claimed and queued, `skipped` is everything it left alone — in practice the
+        rows already in flight — and `total` is how many the workspace mirrors. `enqueued` can
+        be smaller than the N a dialog promised, and that is the honest shape of a second press
+        while the first is still running.
+
+        **Scope and claim are one statement**, so *only non-`estimating` rows are touched* is a
+        property of the write rather than of a loop that reads and then writes: two
+        administrators pressing together cannot claim the same issue twice.
+
+        **`202`, because the work outlives the response.** Each issue is an engine call and a
+        versioned write; a request that waited for a backlog of them would be a timeout. What a
+        client watches for is the issues' `sizingStatus` moving on.
+
+        **A second press while the first is running is a `409`**, not a `202` reporting zero:
+        *accepted* would be a claim about work this request started, and it started none. A
+        workspace that mirrors **no** issues is different and answers `202` with zeros — *empty*
+        and *busy* are not the same state, and a dialog should be able to say which.
+      operationId: estimateBacklog
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "202":
+          description: |-
+            Accepted — the issues named by `enqueued` are queued. A workspace with nothing
+            mirrored answers zeros, which is a state to render rather than a failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimationFanout"
+              examples:
+                queued:
+                  summary: Seven queued, two already in flight
+                  value: { enqueued: 7, skipped: 2, total: 9 }
+                empty:
+                  summary: A workspace that mirrors nothing yet
+                  value: { enqueued: 0, skipped: 0, total: 0 }
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Re-estimating the whole backlog is `owner` or `admin`; a `member` may
+            re-estimate one issue at a time.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `backlog_already_estimating` — every issue in this backlog is already being
+            estimated, so this request claimed nothing. `details.estimating` says how many are
+            in flight.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: backlog_already_estimating
+                message: Every issue in this backlog is already being estimated.
+                details: { estimating: 9 }
+        "429":
+          description: |-
+            `estimation_rate_limited` — this **workspace** has asked for more than 30 estimates
+            in the last minute, whoever asked. `details.retryAfterSeconds` says how long until
+            the window has room, and it is never zero.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: estimation_rate_limited
+                message: This workspace has asked for too many estimates. Wait before trying again.
+                details: { retryAfterSeconds: 24 }
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/backlog/{id}/estimate:
+    post:
+      tags: [backlog]
+      summary: Re-estimate one issue
+      description: |-
+        Mockup 03's detail-panel action **Re-estimate**
+        ([#108](https://github.com/NobuData/ouroboros/issues/108)). The issue is moved into
+        `estimating` and queued through the estimation pipeline, which writes a **new version**
+        of its estimate — `v+1` — rather than editing the one in force.
+
+        **`{id}` is `github_issues.id`, not GitHub's issue number.** A number cannot address an
+        issue here: `github_issues` is unique on `(repository, number)`, so a workspace watching
+        two repositories has two issue `#485`s and a path carrying `485` would name neither.
+
+        **`member`, `admin` or `owner`.** Re-estimating something you are working on is work; a
+        `viewer` may read the backlog and not spend the workspace's engine quota.
+
+        **`202`, and the status it answers with is already true.** The row is moved into
+        `estimating` before the work is queued, so a client that re-reads the issue sees the
+        same word this answer carries — and a second press is refused from the *database*
+        rather than from one process's memory, which is what makes the refusal the same on
+        every replica.
+
+        **An issue already being estimated is a `409`, not a duplicate.** The estimate in
+        flight will finish and write its version; queueing a second would spend an engine call
+        to write the same answer twice.
+
+        **An issue in another workspace is a `404`**, exactly as one that does not exist — a
+        `403` would confirm that the id names a real issue somewhere.
+      operationId: estimateIssue
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: "`github_issues.id` — the row, not GitHub's issue number."
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "202":
+          description: Accepted — the issue is `estimating` and queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimationAccepted"
+              example:
+                issueId: 5eed0018-0000-4000-8000-000000000485
+                number: 485
+                repository: acme-robotics/helios-firmware
+                status: estimating
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Re-estimating an issue is `owner`, `admin` or `member`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `issue_not_found` — this workspace has no issue with that id, or it belongs to
+            another workspace; the two are deliberately one answer. Or `tenant_not_found`, when
+            the `X-Ouro-Tenant` header names no workspace you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: issue_not_found
+                message: No such issue in this workspace.
+                details: { issueId: 5eed0018-0000-4000-8000-000000000485 }
+        "409":
+          description: |-
+            `issue_already_estimating` — an estimate for that issue is already in flight.
+            `details.status` carries the issue's current status, which is what the panel's pill
+            renders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: issue_already_estimating
+                message: That issue is already being estimated. The estimate in flight will finish on its own.
+                details: { status: estimating }
+        "422":
+          description: |-
+            `validation_failed` — `id` is not a uuid. `details.fields` carries one entry per
+            field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: |-
+            `estimation_rate_limited` — this **workspace** has asked for more than 30 estimates
+            in the last minute, whoever asked, and `details.retryAfterSeconds` says how long
+            until the window has room. Every request that reaches this operation counts,
+            including the ones refused `409`: a caller pressing the same button repeatedly is
+            collecting conflicts, and a limit that only counted accepted work would not see
+            them.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           description: |-
             `internal_error` — the service itself failed. The message is a constant and
@@ -14510,6 +14764,68 @@ components:
             truncation — the next cycle continues from the watermark a second later — but a
             client showing *synced* over a cold import should be able to tell that more is
             still arriving.
+
+    EstimationAccepted:
+      type: object
+      title: EstimationAccepted
+      description: |-
+        One issue accepted for re-estimation
+        ([#108](https://github.com/NobuData/ouroboros/issues/108)). Enough for the panel to
+        redraw its pill and its title bar without a second request.
+      additionalProperties: false
+      required: [issueId, number, repository, status]
+      properties:
+        issueId:
+          type: string
+          format: uuid
+          description: "`github_issues.id` — the row the new version will hang off."
+          examples: [5eed0018-0000-4000-8000-000000000485]
+        number:
+          type: integer
+          minimum: 1
+          description: GitHub's own number, which is what the panel's title bar reads.
+          examples: [485]
+        repository:
+          type: string
+          description: "`owner/name`, as GitHub spells it."
+          examples: [acme-robotics/helios-firmware]
+        status:
+          type: string
+          enum: [unsized, estimating, sized, needs_human]
+          description: |-
+            What the issue is now — always `estimating`. True when it is answered rather than
+            aspirational: the row is moved before the work is queued, so a client that re-reads
+            the issue sees this same word.
+          examples: [estimating]
+
+    EstimationFanout:
+      type: object
+      title: EstimationFanout
+      description: |-
+        What one **Re-estimate all** took
+        ([#108](https://github.com/NobuData/ouroboros/issues/108)) — the answer half of the
+        confirmation contract, so a dialog that said *"this re-estimates N issues"* can report
+        what was actually started.
+      additionalProperties: false
+      required: [enqueued, skipped, total]
+      properties:
+        enqueued:
+          type: integer
+          minimum: 0
+          description: Issues this request moved into `estimating` and queued.
+          examples: [7]
+        skipped:
+          type: integer
+          minimum: 0
+          description: |-
+            Issues it did not touch — `total` less `enqueued`, so the three numbers cannot
+            disagree. In practice the rows that were already `estimating` when it arrived.
+          examples: [2]
+        total:
+          type: integer
+          minimum: 0
+          description: How many issues the workspace mirrors, as this request read it.
+          examples: [9]
 
     ModelPull:
       type: object

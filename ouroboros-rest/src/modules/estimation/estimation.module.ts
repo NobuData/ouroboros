@@ -9,15 +9,22 @@
  * estimation.repository.ts     the claim, the versioned write, the stale read
  * estimation.orchestrator.ts   the state machine, and the only place a failure is decided
  * estimation.sweeper.ts        what makes the recovery sweep periodic
+ * estimation.limiter.ts        how often one workspace may ask — L.4's per-org counter
+ * estimation.errors.ts         404 · 409 · 429, and why each is the status it is
+ * estimation.resources.ts      what an accepted press answers with
+ * estimation.trigger.service.ts  the four guards between a press and an engine call
+ * estimation.controller.ts     `POST /backlog/{id}/estimate` · `POST /backlog/estimate-all`
  * ```
  *
- * **It has no controller, and that is deliberate.** The re-estimation endpoints — the panel's
- * button and the head's *Re-estimate all* — are L.4's
- * ([#108](https://github.com/NobuData/ouroboros/issues/108)); this ticket owns the pipeline
- * those routes will call. {@link EstimationOrchestrator} is exported for exactly that:
- * `enqueue()` is what a `POST /backlog/:id/estimate` does, and `estimating()` is the `409` that
- * ticket answers a double-fire with, read from the queue rather than from a second look at a
- * column that may have moved.
+ * **It has a controller, and it serves `BacklogModule`'s prefix.** The re-estimation endpoints
+ * — the panel's button and the head's *Re-estimate all* — are L.4's
+ * ([#108](https://github.com/NobuData/ouroboros/issues/108)), and they landed here rather than
+ * in `backlog/` because what they *do* is estimation: everything they touch is this module's
+ * queue, this module's claim and this module's limiter. What they are *about* is an issue in
+ * the backlog, which is where a client looks for them — so the path is `/api/v1/backlog/…` and
+ * the module is this one, exactly as `AuditModule` serves `GET /api/v1/providers/audit`.
+ * {@link EstimationOrchestrator}'s `enqueue()` and `estimating()` are what L.3 left public for
+ * it, and both are still the only way in.
  *
  * **`RoutingModule` is imported, and what it contributes is the Z.4 amendment.** Its one export
  * is `ResolutionService` — the same method `POST /api/v1/routing/simulate` serves — and
@@ -41,24 +48,32 @@ import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
 import { RoutingModule } from "../routing/routing.module";
 import { EstimationContextService } from "./estimation.context";
+import { EstimationController } from "./estimation.controller";
+import { EstimationLimiter } from "./estimation.limiter";
 import { EstimationOrchestrator } from "./estimation.orchestrator";
 import { EstimationRepository } from "./estimation.repository";
 import { EstimationSweeper } from "./estimation.sweeper";
+import { EstimationTriggerService } from "./estimation.trigger.service";
 
 @Module({
   imports: [DbModule, EngineModule, RoutingModule, ScheduleModule.forRoot()],
+  controllers: [EstimationController],
   providers: [
     EstimationOrchestrator,
     EstimationRepository,
     EstimationContextService,
     EstimationSweeper,
+    EstimationTriggerService,
+    // One limiter per process, for the reason `GithubRateLimiter` is one: a second instance
+    // would be a second counter, and a limit of thirty enforced twice is a limit of sixty.
+    EstimationLimiter,
   ],
-  // The orchestrator alone. `BacklogSyncModule` binds `ESTIMATION_INTAKE` to it, and L.4 will
-  // call `enqueue()` and `estimating()` on it. The repository stays private for the reason
-  // every repository in this service does — a consumer reaching past the orchestrator would be
-  // a consumer that can claim a row without owning what happens to it next — and the sweeper
-  // stays private because it is a timer, and a module that could inject it could run somebody
-  // else's recovery.
+  // The orchestrator alone, still. `BacklogSyncModule` binds `ESTIMATION_INTAKE` to it, and
+  // L.4's trigger calls `enqueue()` and `estimating()` on it from inside this module. The
+  // repository stays private for the reason every repository in this service does — a consumer
+  // reaching past the orchestrator would be a consumer that can claim a row without owning
+  // what happens to it next — the sweeper stays private because it is a timer, and the limiter
+  // stays private because a counter another module could spend is not a limit.
   exports: [EstimationOrchestrator],
 })
 export class EstimationModule {}
