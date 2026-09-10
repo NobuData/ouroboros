@@ -203,6 +203,123 @@ export const MIN_BACKLOG_SYNC_INTERVAL_SECONDS = 60;
 export const MAX_BACKLOG_SYNC_INTERVAL_SECONDS = 86400;
 
 /**
+ * How many issues the estimation pipeline may have in flight at once when
+ * `OURO_ESTIMATION_CONCURRENCY` is not set — four.
+ *
+ * L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107))'s bound, and the acceptance
+ * criterion *"a large backlog does not open one engine connection per issue"* as a number. It
+ * is a bound on **outbound calls to `ouroboros-engine`**, so it is chosen against what the
+ * engine is: one process, in this deployment, sizing an issue with a rule engine in
+ * microseconds. Four keeps that process busy over a network hop without turning a cold import
+ * of five thousand issues into five thousand simultaneous sockets — which is the shape that
+ * takes an engine down rather than the shape that keeps it fed.
+ */
+export const DEFAULT_ESTIMATION_CONCURRENCY = 4;
+
+/**
+ * Fewest issues that may be estimated at once — one.
+ *
+ * Zero is not a slower pipeline, it is a stopped one, and a stopped pipeline is the state this
+ * ticket exists to make impossible. An operator who wants estimation off turns the engine off.
+ */
+export const MIN_ESTIMATION_CONCURRENCY = 1;
+
+/**
+ * Most issues that may be estimated at once — thirty-two.
+ *
+ * A ceiling rather than a preference, and it is about the *database* as much as the engine:
+ * every in-flight estimate holds a pool connection for its claim and another for its write,
+ * and `pool.ts` hands out ten. A value far above that would queue on the pool instead of on
+ * this bound, which would make the number an operator set mean nothing.
+ */
+export const MAX_ESTIMATION_CONCURRENCY = 32;
+
+/**
+ * Below what confidence an estimate routes an issue to `needs_human` when
+ * `OURO_ESTIMATION_CONFIDENCE_FLOOR` is not set — seventy.
+ *
+ * **The engine's own published number, restated here because the policy is this service's.**
+ * `ouroboros-engine`'s `NEEDS_HUMAN_CONFIDENCE_FLOOR` is the value `heuristic-v0`'s tables were
+ * calibrated against, and the L.1 contract deliberately has no `needs_human` field: an
+ * estimator says how sure it is, and the orchestrator decides what that means. Defaulting to
+ * the engine's number is what keeps the two from drifting apart in silence; making it settable
+ * is what lets an installation disagree without a release.
+ *
+ * The mockup's own table puts the boundary here too — its `#490` sits at 61 and needs a human,
+ * its `#487` at 71 and does not.
+ */
+export const DEFAULT_ESTIMATION_CONFIDENCE_FLOOR = 70;
+
+/**
+ * Lowest floor an operator may set — zero, which accepts every estimate.
+ *
+ * A real setting rather than a degenerate one: an installation running the LLM estimator
+ * ([#123](https://github.com/NobuData/ouroboros/issues/123)) with a reviewer on every queue
+ * item may genuinely want no automatic hand-off, and saying so with a number beats saying it
+ * by never looking at the column.
+ */
+export const MIN_ESTIMATION_CONFIDENCE_FLOOR = 0;
+
+/**
+ * Highest floor an operator may set — one hundred, which sends every issue to a person.
+ *
+ * The other end of the same argument, and reachable on purpose: `heuristic-v0`'s ceiling is 98,
+ * so a hundred is how an installation says *size everything, trust nothing yet* while still
+ * getting the estimate and its trace.
+ */
+export const MAX_ESTIMATION_CONFIDENCE_FLOOR = 100;
+
+/**
+ * How long an issue may sit in `estimating` before the sweep re-queues it, when
+ * `OURO_ESTIMATION_STALE_SECONDS` is not set — ten minutes.
+ *
+ * The *N minutes* of L.3's *"no stuck rows"*. It is not a timeout on an estimate — the engine
+ * client's own five seconds is that, twice — it is how long a row may claim to be estimating
+ * with nothing estimating it, which is what a process killed mid-flight leaves behind. Ten
+ * minutes is comfortably longer than any legitimate attempt and short enough that a restart
+ * does not leave a `estimating…` pill on the page for an afternoon.
+ */
+export const DEFAULT_ESTIMATION_STALE_SECONDS = 600;
+
+/**
+ * Shortest staleness an operator may set — sixty seconds.
+ *
+ * A floor rather than a preference: an estimate legitimately takes two engine attempts of five
+ * seconds each plus a write, and a threshold near that would re-queue work that is still
+ * running. The in-process queue would de-duplicate the second copy, so the cost is a wasted
+ * read rather than a double estimate — but a sweep that fires on healthy work is a sweep whose
+ * log nobody can read.
+ */
+export const MIN_ESTIMATION_STALE_SECONDS = 60;
+
+/** Longest staleness may be set to — one day, as every other cadence here is. */
+export const MAX_ESTIMATION_STALE_SECONDS = 86400;
+
+/**
+ * Seconds between stale-estimate sweeps when `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS` is not
+ * set — two minutes.
+ *
+ * Faster than the backlog sync, and the reason is what each one knocks on: a sync cycle is a
+ * paginated walk of github.com, and a sweep is one indexed query against this deployment's own
+ * database that usually returns nothing. What the cadence buys is how quickly a row stranded by
+ * a restart comes back — at most this plus {@link DEFAULT_ESTIMATION_STALE_SECONDS}.
+ *
+ * The actual delay is jittered by ±25% (`scheduling/cadence.ts`), like every other loop here.
+ */
+export const DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS = 120;
+
+/**
+ * Shortest sweep interval an operator may set — ten seconds.
+ *
+ * The provider-health sweep's floor rather than the backlog sync's minute, because this query
+ * goes to the operator's own PostgreSQL and not to anybody else's API.
+ */
+export const MIN_ESTIMATION_SWEEP_INTERVAL_SECONDS = 10;
+
+/** Longest the sweep interval may be set to — one day. */
+export const MAX_ESTIMATION_SWEEP_INTERVAL_SECONDS = 86400;
+
+/**
  * The service's validated configuration.
  *
  * Every field is derived from exactly one environment variable — {@link VARIABLES} is the
@@ -366,6 +483,39 @@ export interface Configuration {
    */
   readonly backlogSyncIntervalSeconds: number;
   /**
+   * How many issues the estimation pipeline may size at once. From
+   * `OURO_ESTIMATION_CONCURRENCY`, {@link DEFAULT_ESTIMATION_CONCURRENCY} when unset.
+   *
+   * A bound on outbound calls to `ouroboros-engine` and on the pool connections their writes
+   * hold, which is L.3's ([#107](https://github.com/NobuData/ouroboros/issues/107)) acceptance
+   * criterion that a large backlog does not open one engine connection per issue.
+   */
+  readonly estimationConcurrency: number;
+  /**
+   * Below what confidence an estimate sends its issue to `needs_human`. From
+   * `OURO_ESTIMATION_CONFIDENCE_FLOOR`, {@link DEFAULT_ESTIMATION_CONFIDENCE_FLOOR} when unset.
+   *
+   * The transition is this service's and not the estimator's — see the default's own note. An
+   * estimate below the floor is still **persisted in full**, trace and all: it is a real answer
+   * the panel renders beside a `needs human` pill, not a failure.
+   */
+  readonly estimationConfidenceFloor: number;
+  /**
+   * How long an issue may sit in `estimating` before the sweep re-queues it. From
+   * `OURO_ESTIMATION_STALE_SECONDS`, {@link DEFAULT_ESTIMATION_STALE_SECONDS} when unset.
+   *
+   * There is no value that turns the sweep off, for the reason every cadence here gives: a row
+   * stranded by a restart is invisible rather than wrong, and invisible is worse.
+   */
+  readonly estimationStaleSeconds: number;
+  /**
+   * Seconds between stale-estimate sweeps. From `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS`,
+   * {@link DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS} when unset.
+   *
+   * The nominal interval; `src/modules/estimation/` jitters it by ±25%, as every loop here does.
+   */
+  readonly estimationSweepIntervalSeconds: number;
+  /**
    * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
    *
    * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
@@ -416,6 +566,10 @@ export const VARIABLES = {
   providerHealthIntervalSeconds: "OURO_PROVIDER_HEALTH_INTERVAL_SECONDS",
   providerHealthKeyCheckSeconds: "OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS",
   backlogSyncIntervalSeconds: "OURO_BACKLOG_SYNC_INTERVAL_SECONDS",
+  estimationConcurrency: "OURO_ESTIMATION_CONCURRENCY",
+  estimationConfidenceFloor: "OURO_ESTIMATION_CONFIDENCE_FLOOR",
+  estimationStaleSeconds: "OURO_ESTIMATION_STALE_SECONDS",
+  estimationSweepIntervalSeconds: "OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
 } as const satisfies Record<keyof Configuration, string>;
 
@@ -599,24 +753,27 @@ const secret = z
   .min(MINIMUM_SECRET_LENGTH, `expected at least ${MINIMUM_SECRET_LENGTH} characters`);
 
 /**
- * One background cadence — a whole number of seconds inside a range.
+ * One whole number inside a range, with a default.
  *
- * A factory rather than three near-identical schemas, because they differ only in their floor,
- * their ceiling and their default, and the *rules* are the same ones `PORT` and
- * `OURO_DASHBOARD_POLL_SECONDS` are read by: anchored digits, then a range. Writing them out
- * each time would be three places for "a cadence is a whole number of seconds" to drift.
+ * A factory rather than a schema written out per variable, because they differ only in their
+ * floor, their ceiling, their default and the noun their message ends with — and the *rules*
+ * are the ones `PORT` and `OURO_DASHBOARD_POLL_SECONDS` are read by: anchored digits, then a
+ * range. Writing them out each time would be several places for "a bounded whole number" to
+ * drift.
  *
- * Two of the three are provider health's (#196); the third is the backlog sync's
- * ([#102](https://github.com/NobuData/ouroboros/issues/102)), which is what made the ceiling a
- * parameter rather than a constant this function closed over.
+ * The `unit` is what keeps the message true as the callers stopped all being cadences. L.3
+ * ([#107](https://github.com/NobuData/ouroboros/issues/107)) reads a concurrency and a
+ * percentage through it, and *"expected between 1 and 32 seconds"* for a count of concurrent
+ * estimates is a message that sends whoever set it looking in the wrong place.
  *
  * @param minimum - The floor. See `Configuration` for why each has one.
  * @param fallback - The value when the variable is unset.
  * @param maximum - The ceiling.
+ * @param unit - What the number counts, as the range message ends. Omitted for a bare count.
  * @returns The schema.
  */
-function cadenceSeconds(minimum: number, fallback: number, maximum: number) {
-  const range = `expected between ${minimum} and ${maximum} seconds`;
+function boundedWhole(minimum: number, fallback: number, maximum: number, unit = "") {
+  const range = `expected between ${minimum} and ${maximum}${unit === "" ? "" : ` ${unit}`}`;
 
   return z
     .string()
@@ -624,6 +781,21 @@ function cadenceSeconds(minimum: number, fallback: number, maximum: number) {
     .transform(Number)
     .refine((value) => value >= minimum && value <= maximum, range)
     .default(fallback);
+}
+
+/**
+ * One background cadence — a whole number of seconds inside a range.
+ *
+ * {@link boundedWhole} with the unit filled in, so every cadence in this file reads the same
+ * and none of them repeats the word.
+ *
+ * @param minimum - The floor.
+ * @param fallback - The value when the variable is unset.
+ * @param maximum - The ceiling.
+ * @returns The schema.
+ */
+function cadenceSeconds(minimum: number, fallback: number, maximum: number) {
+  return boundedWhole(minimum, fallback, maximum, "seconds");
 }
 
 /**
@@ -762,6 +934,38 @@ const environmentSchema = z.object({
     MAX_BACKLOG_SYNC_INTERVAL_SECONDS,
   ),
 
+  // The estimation pipeline's four knobs (#107). Two of them are cadences by the rules above;
+  // the other two are a count and a percentage, which is why `boundedWhole` exists — the range
+  // message has to name what it is bounding.
+  //
+  // None of the four turns estimation off, and that is the same decision the three cadences
+  // above make: an installation that does not want issues sized stops the engine, and a
+  // pipeline that could be silently disabled by a number is one whose `unsized` column means
+  // two different things.
+  OURO_ESTIMATION_CONCURRENCY: boundedWhole(
+    MIN_ESTIMATION_CONCURRENCY,
+    DEFAULT_ESTIMATION_CONCURRENCY,
+    MAX_ESTIMATION_CONCURRENCY,
+  ),
+
+  OURO_ESTIMATION_CONFIDENCE_FLOOR: boundedWhole(
+    MIN_ESTIMATION_CONFIDENCE_FLOOR,
+    DEFAULT_ESTIMATION_CONFIDENCE_FLOOR,
+    MAX_ESTIMATION_CONFIDENCE_FLOOR,
+  ),
+
+  OURO_ESTIMATION_STALE_SECONDS: cadenceSeconds(
+    MIN_ESTIMATION_STALE_SECONDS,
+    DEFAULT_ESTIMATION_STALE_SECONDS,
+    MAX_ESTIMATION_STALE_SECONDS,
+  ),
+
+  OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS: cadenceSeconds(
+    MIN_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+    DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+    MAX_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+  ),
+
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
   // pairs, comma-separated. Optional, and its default is *no local providers*: an
   // installation that runs none is the normal one, and a default address would be this
@@ -874,6 +1078,10 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     providerHealthIntervalSeconds: values.OURO_PROVIDER_HEALTH_INTERVAL_SECONDS,
     providerHealthKeyCheckSeconds: values.OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     backlogSyncIntervalSeconds: values.OURO_BACKLOG_SYNC_INTERVAL_SECONDS,
+    estimationConcurrency: values.OURO_ESTIMATION_CONCURRENCY,
+    estimationConfidenceFloor: values.OURO_ESTIMATION_CONFIDENCE_FLOOR,
+    estimationStaleSeconds: values.OURO_ESTIMATION_STALE_SECONDS,
+    estimationSweepIntervalSeconds: values.OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
   });
 }

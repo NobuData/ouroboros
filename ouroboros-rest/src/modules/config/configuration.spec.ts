@@ -2,6 +2,10 @@ import {
   ALL_INTERFACES_HOST,
   ConfigurationError,
   DEFAULT_BACKLOG_SYNC_INTERVAL_SECONDS,
+  DEFAULT_ESTIMATION_CONCURRENCY,
+  DEFAULT_ESTIMATION_CONFIDENCE_FLOOR,
+  DEFAULT_ESTIMATION_STALE_SECONDS,
+  DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
   DEFAULT_DASHBOARD_POLL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
@@ -86,6 +90,13 @@ describe("the development defaults", () => {
       providerHealthKeyCheckSeconds: DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
       // K.4's (#102) cadence, written out in the template for the same reason.
       backlogSyncIntervalSeconds: DEFAULT_BACKLOG_SYNC_INTERVAL_SECONDS,
+      // L.3's (#107) four, and the same argument a fourth time: the template writes each of
+      // them out at its default, so a change to a default that did not reach `.env.example`
+      // is a difference here rather than a surprise on somebody's next checkout.
+      estimationConcurrency: DEFAULT_ESTIMATION_CONCURRENCY,
+      estimationConfidenceFloor: DEFAULT_ESTIMATION_CONFIDENCE_FLOOR,
+      estimationStaleSeconds: DEFAULT_ESTIMATION_STALE_SECONDS,
+      estimationSweepIntervalSeconds: DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
     });
   });
 });

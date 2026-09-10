@@ -532,6 +532,165 @@ export interface GithubIssuesTable {
 }
 
 /**
+ * `issue_estimates.effort` — how much work an issue is (V026, decision **F9**).
+ *
+ * The `issue_estimates_effort` CHECK, mirrored the way this file's header says a CHECK becomes
+ * a type, and the *Effort* column's chip. The same five sizes {@link QueueEffort} holds, and
+ * deliberately a separate type from it: the two columns are checked against each other by
+ * `ouroboros-db/tests/constraints.sql` rather than by sharing a declaration here, because a
+ * shared type would make widening one of them silently widen the other.
+ */
+export type EstimateEffort = "xs" | "s" | "m" | "l" | "xl";
+
+/** The five, in the order the CHECK declares them — smallest first, so an index is a rank. */
+export const ISSUE_ESTIMATE_EFFORTS = [
+  "xs",
+  "s",
+  "m",
+  "l",
+  "xl",
+] as const satisfies readonly EstimateEffort[];
+
+/**
+ * `issue_estimates.risk` — how likely the change is to break something (V026).
+ *
+ * The `issue_estimates_risk` CHECK, and the regression-risk meter's three colours.
+ */
+export type EstimateRisk = "low" | "medium" | "high";
+
+/** The three, in the order the CHECK declares them — least severe first. */
+export const ISSUE_ESTIMATE_RISKS = [
+  "low",
+  "medium",
+  "high",
+] as const satisfies readonly EstimateRisk[];
+
+/**
+ * `issue_estimates.breakdown` — the *AI Work Breakdown* panel as one document (V026).
+ *
+ * Named in the **database's** `snake_case` rather than this service's `camelCase`, and that is
+ * this file's naming rule reaching one level into a `jsonb` column: the keys are stored bytes
+ * that `ouroboros.issue_estimate_breakdown_valid()` checks by name, so a mirror that renamed
+ * them would be a mapping nobody can grep for. `estimation/estimation.outcome.ts` is where the
+ * engine's `camelCase` becomes this, once.
+ *
+ * Closed on both sides — the CHECK counts the keys — so an added key is an edit here, in
+ * V026 and in the engine's contract, together.
+ */
+export interface EstimateBreakdownDocument {
+  /** Paths the work is believed to touch. `[]` is a real answer; `heuristic-v0` always sends it. */
+  files: string[];
+  /** What the *work* is expected to cost in model tokens — not what the estimate cost. */
+  est_tokens: number;
+  /** The optimistic end of the wall-clock range, in minutes. Never above {@link cycle_max}. */
+  cycle_min: number;
+  /** The pessimistic end, in minutes. */
+  cycle_max: number;
+  /** The single number M.3's queue write plans with, in minutes. Not confined to the range. */
+  est_minutes: number;
+}
+
+/**
+ * `issue_estimates.trace` — where the estimate came from (V026, decision **K10**).
+ *
+ * `snake_case` for {@link EstimateBreakdownDocument}'s reason, and one key more than the
+ * engine's `EstimateTrace` sends: {@link sized_at} is the writer's, because the engine does not
+ * own the clock and a timestamp in a response body is one two services can disagree about.
+ */
+export interface EstimateTraceDocument {
+  /**
+   * What produced it — `heuristic-v0` today. Non-blank by `issue_estimates_provenance`, which
+   * is decision **K10** as a constraint: an estimate that cannot say what produced it does not
+   * get to exist.
+   */
+  estimator: string;
+  /**
+   * When the estimate was produced, as an ISO-8601 instant **with an offset**.
+   *
+   * Checked by regex rather than by cast — see V026 — so `new Date().toISOString()` is the
+   * shape that satisfies it and a local time with no zone does not. The same instant as
+   * {@link IssueEstimatesTable.created_at} for L.3's synchronous call, and deliberately
+   * earlier for O.2's ([#123](https://github.com/NobuData/ouroboros/issues/123)) escalate-and-poll.
+   */
+  sized_at: string;
+  /** What producing the estimate cost in model tokens. `0` for a rule engine. */
+  tokens_used: number;
+  /** What the answer was reached from, one line each. Empty rather than absent. */
+  signals: string[];
+}
+
+/**
+ * `ouroboros.issue_estimates` — versioned, latest-wins estimates for a mirrored issue (V026,
+ * [#100](https://github.com/NobuData/ouroboros/issues/100)), written by L.3
+ * ([#107](https://github.com/NobuData/ouroboros/issues/107)).
+ *
+ * Everything mockup 03 calls *AI Work Breakdown*. **Decision K4: an estimate is a row, and
+ * re-estimation is the next one** — there is no update path and no `updated_at`, because the
+ * trace is only worth reading beside the answer it replaced.
+ *
+ * **`version` is computed by the writer and checked by the database.** V026 refuses a version
+ * that is not above every version the issue already has, and
+ * `issue_estimates_issue_version_key` refuses two writers who computed the same one. So
+ * `estimation.repository.ts` asks for `max(version) + 1`, and a second writer that got there
+ * first is a unique violation it retries rather than a corruption anybody has to detect.
+ * That is the acceptance criterion *"concurrent estimation of the same issue produces
+ * sequential versions"*, and it is the database's guarantee rather than this service's.
+ *
+ * **Was deliberately absent from this file until L.3**, for the reason {@link GithubIssuesTable}
+ * gives: V026 landed the table with no writer, and a mirrored table nothing reads or writes is
+ * drift waiting to happen.
+ */
+export interface IssueEstimatesTable {
+  id: Generated<string>;
+  /** The issue this sizes — the row's only parent and the whole of its tenancy. Cascades. */
+  github_issue_id: string;
+  /**
+   * Which estimate of this issue this is; 1 for the first.
+   *
+   * Monotonic within the issue by trigger and unique with it by key. Gaps are legal —
+   * monotonic is not dense — and the only question asked of these numbers is which is largest.
+   */
+  version: number;
+  /** The *Effort* column's chip. */
+  effort: EstimateEffort;
+  /**
+   * How much the estimator trusts its own answer, 0-100.
+   *
+   * Read against a floor by `estimation/estimation.outcome.ts`: below it the issue goes to
+   * `needs_human` rather than `sized`. The floor is *this* service's policy — the engine
+   * publishes the value its tables were calibrated against and deliberately has no
+   * `needs_human` field.
+   */
+  confidence: number;
+  /** Which workflow should run it — opaque (decision **K5**), one of the tags the request offered. */
+  suggested_workflow: string;
+  /** Which model it should run on — opaque (decision **K6**), resolved and never invoked. */
+  routed_model: string;
+  /**
+   * The *AI Work Breakdown* panel's numbers.
+   *
+   * `ColumnType` for {@link GithubIssuesTable.labels}' reason: `pg` hands a `jsonb` column back
+   * parsed, and Kysely wants the value *written* to be the string a driver will send — so
+   * every write goes through `JSON.stringify`.
+   */
+  breakdown: ColumnType<EstimateBreakdownDocument, string, string>;
+  /** The regression-risk meter. */
+  risk: EstimateRisk;
+  /** The sentence under the meter, saying why. Non-blank by constraint. */
+  risk_note: string;
+  /** Where the estimate came from. `ColumnType` for {@link breakdown}'s reason. */
+  trace: ColumnType<EstimateTraceDocument, string, string>;
+  /**
+   * When the row was written.
+   *
+   * `Generated` rather than {@link Stamped}: the table is append-only, so there is no
+   * `touch_updated_at` trigger to protect a written value from, and V026 defaults it to
+   * `now()`. Distinct from `trace.sized_at` — see {@link EstimateTraceDocument.sized_at}.
+   */
+  created_at: Generated<Date>;
+}
+
+/**
  * `runs.status` — where one run of the loop is in its life (V008,
  * [#64](https://github.com/NobuData/ouroboros/issues/64)).
  *
@@ -2034,6 +2193,14 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * and a mirrored table with no reader is drift waiting to happen. It is the first table here
  * whose rows are **somebody else's** — see {@link GithubIssuesTable} on decision K3.
  *
+ * **`issue_estimates` (V026, [#100](https://github.com/NobuData/ouroboros/issues/100)) is the
+ * twenty-ninth**, and it arrived a release late for the same reason and by the same rule: the
+ * table landed with K.2 and nothing here wrote a row of it until L.3
+ * ([#107](https://github.com/NobuData/ouroboros/issues/107)) landed the orchestration that
+ * fills it. It is the second table in this list that is **append-only in the database** rather
+ * than by convention — `audit_events` is the first — and, like it, has no `Updateable`
+ * counterpart to its {@link NewIssueEstimate}.
+ *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
  * ([#714](https://github.com/NobuData/ouroboros/issues/714)) — a mirror that still declared
@@ -2050,6 +2217,7 @@ export interface Database {
   github_repos: GithubReposTable;
   github_credentials: GithubCredentialsTable;
   github_issues: GithubIssuesTable;
+  issue_estimates: IssueEstimatesTable;
   user_preferences: UserPreferencesTable;
   runs: RunsTable;
   queue_items: QueueItemsTable;
@@ -2126,6 +2294,20 @@ export const TABLE_COLUMNS = {
     "sizing_status",
     "created_at",
     "updated_at",
+  ],
+  issue_estimates: [
+    "id",
+    "github_issue_id",
+    "version",
+    "effort",
+    "confidence",
+    "suggested_workflow",
+    "routed_model",
+    "breakdown",
+    "risk",
+    "risk_note",
+    "trace",
+    "created_at",
   ],
   user_preferences: ["user_id", "font_scale", "created_at", "updated_at"],
   runs: [
@@ -2387,6 +2569,18 @@ export type NewGithubCredentials = Insertable<GithubCredentialsTable>;
 export type GithubIssue = Selectable<GithubIssuesTable>;
 /** The columns an `insert` into `ouroboros.github_issues` may carry. */
 export type NewGithubIssue = Insertable<GithubIssuesTable>;
+
+/** A row of `ouroboros.issue_estimates`, as a `select` returns it — one version of an estimate. */
+export type IssueEstimate = Selectable<IssueEstimatesTable>;
+/**
+ * The columns an `insert` into `ouroboros.issue_estimates` may carry.
+ *
+ * There is no `Updateable` counterpart, and it is not merely a convention this service keeps:
+ * `issue_estimates_no_update` refuses a revision in the database, for every role. Decision
+ * **K4** — re-estimation is the next row, never an edit — and the absence of the type is the
+ * compiler's half of the same rule.
+ */
+export type NewIssueEstimate = Insertable<IssueEstimatesTable>;
 
 /** A row of `ouroboros.user_preferences`, as a `select` returns it. */
 export type UserPreferences = Selectable<UserPreferencesTable>;

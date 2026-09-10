@@ -169,6 +169,49 @@ export class AppConfigService {
   }
 
   /**
+   * How many issues the estimation pipeline may size at once — `OURO_ESTIMATION_CONCURRENCY`.
+   *
+   * The bound `src/modules/estimation/`'s work queue admits against, and therefore the most
+   * outbound calls to `ouroboros-engine` this process makes for sizing at any moment.
+   */
+  get estimationConcurrency(): number {
+    return this.config.getOrThrow<number>("estimationConcurrency");
+  }
+
+  /**
+   * Below what confidence an estimate routes its issue to `needs_human` —
+   * `OURO_ESTIMATION_CONFIDENCE_FLOOR`.
+   *
+   * This service's policy, not the estimator's: the L.1 contract has no `needs_human` field on
+   * purpose. Defaults to the engine's own published floor so the two cannot drift in silence.
+   */
+  get estimationConfidenceFloor(): number {
+    return this.config.getOrThrow<number>("estimationConfidenceFloor");
+  }
+
+  /**
+   * How long an issue may sit in `estimating` before the sweep re-queues it —
+   * `OURO_ESTIMATION_STALE_SECONDS`.
+   *
+   * Not a timeout on an estimate — `EngineClient`'s own deadline is that — but how long a row
+   * may claim to be estimating with nothing estimating it, which is what a process killed
+   * mid-flight leaves behind.
+   */
+  get estimationStaleSeconds(): number {
+    return this.config.getOrThrow<number>("estimationStaleSeconds");
+  }
+
+  /**
+   * Seconds between stale-estimate sweeps — `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS`.
+   *
+   * The nominal interval; `src/modules/estimation/` jitters every delay by ±25% around it, as
+   * every background loop in this service does.
+   */
+  get estimationSweepIntervalSeconds(): number {
+    return this.config.getOrThrow<number>("estimationSweepIntervalSeconds");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -216,6 +259,10 @@ export class AppConfigService {
       providerHealthIntervalSeconds: this.providerHealthIntervalSeconds,
       providerHealthKeyCheckSeconds: this.providerHealthKeyCheckSeconds,
       backlogSyncIntervalSeconds: this.backlogSyncIntervalSeconds,
+      estimationConcurrency: this.estimationConcurrency,
+      estimationConfidenceFloor: this.estimationConfidenceFloor,
+      estimationStaleSeconds: this.estimationStaleSeconds,
+      estimationSweepIntervalSeconds: this.estimationSweepIntervalSeconds,
       localProviderUrls: this.localProviderUrls,
     };
   }
