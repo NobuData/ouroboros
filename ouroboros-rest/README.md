@@ -2007,11 +2007,70 @@ looking is what the role is for — and may not spend the workspace's GitHub bud
 trigger carries `@Roles(...CONTRIBUTORS)`: owner, admin or member. That list is deliberately not
 `ADMINISTRATORS`; a re-sync is work rather than administration.
 
-**The rest of Epic M lands here.** `GET /api/v1/backlog` and the issue detail
-([#110](https://github.com/NobuData/ouroboros/issues/110),
-[#111](https://github.com/NobuData/ouroboros/issues/111)) are this module's controllers to add,
-and M.1's `meta.syncedAt` is this module's `syncedAt` — one number, so the tag beside a listing
-and the tag from this endpoint cannot disagree.
+**The rest of Epic M lands here.** The issue detail
+([#111](https://github.com/NobuData/ouroboros/issues/111)) and the bulk queue action
+([#112](https://github.com/NobuData/ouroboros/issues/112)) are still this module's controllers to
+add.
+
+### The listing
+
+**The filter bar is a query string**
+([#110](https://github.com/NobuData/ouroboros/issues/110), decision **K8**). Every control on
+mockup 03's `.filter-bar` card writes one parameter, so a filtered view is a URL somebody pastes
+to a colleague and a backlog larger than a page is still shareable — which is the whole reason
+filtering, sorting and searching are server-side rather than an array filter over a fetched page.
+
+```
+GET /api/v1/backlog?repo=&labels=&state=&sort=&q=&limit=&offset=      any member
+  ─▶ items[]      one row per issue: number, title, labels, state, sizingStatus,
+                  repository, and estimate{effort, confidence, workflow, model} | null
+     total        how many rows the filter matched
+     meta         { openCount, sizedCount, syncedAt }   the page head and the freshness tag
+     labelFacets  every label in scope, ascending       the chip set
+```
+
+**The head describes the backlog; the table describes the filter.** `openCount` and `sizedCount`
+are scoped by the workspace and by `repo` and by nothing else — that head sits *above* the filter
+bar, and counts that moved as chips were toggled would make *"38 already sized"* a statement
+about the filter. `total` beside them is the filtered count, so a client has both numbers and
+neither has to be inferred. `sizedCount` counts the open issues that are `sized`: one sentence
+about one set.
+
+**`labelFacets` is not narrowed by the chips either**, and that one is load-bearing rather than
+tidy: `labels=bug` ANDed into the facets would leave only the labels that co-occur with `bug`, so
+selecting a first chip would delete most of the set it was selected from and a second chip could
+never be chosen.
+
+**`meta.syncedAt` is this module's own `syncedAt`** — `SyncStatusService`'s, lifted rather than
+re-derived, so the tag beside the listing and the tag from `/backlog/sync-status` are one number.
+A second `max(synced_at)` here would have answered a different question: that column moves when a
+row is *written*, and the tag is about when a poll *ran*.
+
+**Four filters, three indexes, one lateral.**
+
+| The parameter          | The predicate                                | What answers it                              |
+| ---------------------- | -------------------------------------------- | -------------------------------------------- |
+| `repo`, `state`        | `organization_id`, `github_repo_id`, `state` | `github_issues_organization_repo_state_idx`  |
+| `labels` (AND)         | `labels @> '["bug","tech-debt"]'`            | `github_issues_labels_idx` — GIN, one probe  |
+| `q` — title            | `title ilike '%watchdog%'`                   | `github_issues_title_trgm_idx` — GIN trigram |
+| `q` — label, `#number` | `labels ? 'watchdog'`, `number = 485`        | the GIN index; the scope                     |
+
+Label filtering is **AND** — turning on a second chip narrows what is on screen, which is the
+only reading under which a chip set is a filter — and it is one containment against the whole
+selection rather than a chain of them. `q`'s label half is a **name** rather than a substring,
+because one disjunct no index can answer makes the whole search a scan; a label name is a short
+token out of the set `labelFacets` just handed back.
+
+The estimate is a `left join lateral (… order by version desc limit 1)`. Decision **K4** is that
+re-estimation writes a new row and the highest version wins, so a plain join would render a
+twice-estimated issue as two rows — and it is `left` because `unsized` and `estimating` are two of
+the four pills the table draws.
+
+**`sort=effort` is the chip order with the unsized last**, which is one clause: `array_position`
+over the five sizes — declared smallest-first in `schema.ts` so an index into it is a rank — and
+`nulls last`, because an issue with no estimate has no position. `confidence` is
+most-certain-first, `updated` and `number` are newest-first, and every ordering ends on the row id
+so a page boundary cannot show one row twice and another never.
 
 ## The estimation pipeline
 

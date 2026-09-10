@@ -101,10 +101,13 @@ describe("the backlog controller", () => {
     expect(Reflect.getMetadata(METHOD_METADATA, controller.sync)).toBe(1);
   });
 
-  it("offers no listing — `GET /api/v1/backlog` is M.1's", () => {
-    // The scope boundary. A listing here would be a second opinion about what the backlog is.
+  it("offers no listing of its own — `GET /api/v1/backlog` is `BacklogListingController`'s", () => {
+    // The scope boundary this controller was written to hold. M.1 (#110) has since landed the
+    // listing, and it landed as a second controller under the same prefix rather than as a
+    // route here: one controller is about the *sync* and one is about the *backlog*, and only
+    // the second grows filters.
     expect(controller).not.toHaveProperty("list");
-    expect(document().paths["/api/v1/backlog"]).toBeUndefined();
+    expect(Object.keys(document().paths["/api/v1/backlog"] ?? {})).toEqual(["get"]);
   });
 
   it("publishes the read and the trigger, and says what each one costs", () => {

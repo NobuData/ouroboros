@@ -9,6 +9,9 @@ import { DatabaseService } from "../db/db.service";
 import { GithubRateLimiter } from "../github/github.rate-limit";
 import { BacklogController } from "./backlog.controller";
 import { BacklogModule } from "./backlog.module";
+import { BacklogListingController } from "./listing.controller";
+import { BacklogListingRepository } from "./listing.repository";
+import { BacklogListingService } from "./listing.service";
 import { SyncStatusService } from "./sync-status.service";
 import { SyncTriggerService } from "./sync-trigger.service";
 
@@ -85,11 +88,30 @@ describe("the backlog module", () => {
   it("runs no loop of its own", () => {
     // The division with `BacklogSyncModule`: that module owns a cycle and declares no route,
     // and this one declares routes and owns no cycle. A scheduler here would be a second
-    // poller nobody asked for.
+    // poller nobody asked for. The list grew by M.1's two and by nothing that ticks.
     const providers = (Reflect.getMetadata("providers", BacklogModule) as unknown[]).map(
       (provider) => (provider as { name?: string }).name,
     );
 
-    expect(providers).toEqual(["SyncStatusService", "SyncTriggerService"]);
+    expect(providers).toEqual([
+      "SyncStatusService",
+      "SyncTriggerService",
+      "BacklogListingRepository",
+      "BacklogListingService",
+    ]);
+    expect(providers).not.toContain("BacklogSyncScheduler");
+  });
+
+  it("resolves the listing, and reads the database through a repository of its own", async () => {
+    // M.1's read enters through `listing.repository.ts` rather than through the sync's or the
+    // estimation module's: those two own *writers* — a poll and a versioned insert — and a
+    // screen's read has no business entering through either.
+    const module = await build();
+
+    expect(module.get(BacklogListingController)).toBeInstanceOf(BacklogListingController);
+    expect(module.get(BacklogListingService)).toBeInstanceOf(BacklogListingService);
+    expect(module.get(BacklogListingRepository)).toBeInstanceOf(BacklogListingRepository);
+
+    await module.close();
   });
 });

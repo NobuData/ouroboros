@@ -702,6 +702,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backlog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's backlog, filtered, sorted and searched
+         * @description Mockup 03's `BACKLOG · AS OUROBOROS SEES IT` table, its page head and its chip set —
+         *     one request ([#110](https://github.com/NobuData/ouroboros/issues/110)).
+         *
+         *     **The filter bar is a query string** (decision K8). Every control on that card writes
+         *     one parameter here, so a filtered view is a URL somebody can paste to a colleague and
+         *     a backlog larger than a page is still shareable. Filtering, sorting and searching are
+         *     all server-side for the same reason: a client-side filter over one fetched page would
+         *     describe the page rather than the backlog.
+         *
+         *     **`meta` and `labelFacets` come from the same request as the rows**, which is what
+         *     makes the head and the table incapable of disagreeing. A screen that fetched
+         *     `42 open issues. 38 already sized.` separately would eventually render a head that
+         *     counted a sync the table had not seen.
+         *
+         *     **The head's counts describe the backlog; `total` describes the filter.** `openCount`
+         *     and `sizedCount` are scoped by the workspace and by `repo` and by **nothing else** —
+         *     not the chip set, not `state`, not `q` — because that head sits above the filter bar
+         *     and says how much work there is, not how much of it is on screen. `total` beside them
+         *     is the filtered count. `sizedCount` counts the open issues that are `sized`, so the
+         *     two figures are one sentence about one set.
+         *
+         *     **`labelFacets` is the chip set, and it is not narrowed by the chips.** Selecting
+         *     `bug` would otherwise leave only the labels that co-occur with `bug`, so a second chip
+         *     could never be chosen. It is the distinct label set of the workspace — or of the
+         *     repository, when one is named — ascending by name.
+         *
+         *     **Label filtering is AND.** `labels=bug,tech-debt` means both, served in one
+         *     containment probe by the GIN index `github_issues_labels_idx`. Both spellings are
+         *     accepted: comma-separated, and the parameter repeated.
+         *
+         *     **`sort=effort` is the chip order XS→XL with the unsized last**, then the most
+         *     confident estimate first within a size. It is the mockup's default and the one sort
+         *     that is about the estimate rather than the issue. `confidence` is most-certain-first
+         *     with the unestimated last; `updated` and `number` are newest-first. Every ordering
+         *     ends on the issue's row id, so a row cannot appear on two pages of one listing.
+         *
+         *     **`q` is the one box the placeholder promises** — *"Filter by title, #number, or
+         *     label…"* — and it matches all three: a substring of the title (through the trigram
+         *     index), a label the issue carries by name (through the GIN one), and the issue number
+         *     when the text is one, with or without the `#`. Wildcards a person types are matched
+         *     literally.
+         *
+         *     The label half is a **name**, not a substring, and both halves being indexable is why:
+         *     one disjunct no index can answer makes the whole search a scan. A label name is a short
+         *     token out of the set `labelFacets` hands back, so there is little a substring would find
+         *     that the name does not.
+         *
+         *     **A row is the table's cells and no more.** The body, the author and the GitHub URL
+         *     are the side panel's and are served by `GET /api/v1/backlog/{id}`
+         *     ([#111](https://github.com/NobuData/ouroboros/issues/111)) for the one issue that is
+         *     open, rather than for every row of a page nobody has clicked.
+         *
+         *     **The workspace is the session's**, exactly as every other operation here: no
+         *     workspace in this path, the session's active organization or `X-Ouro-Tenant` decides,
+         *     and membership is checked before this operation runs. Another workspace's issues are
+         *     unreachable regardless of parameters — including a `repo` that names a repository
+         *     somebody else enabled, which narrows to an empty page rather than reaching anything.
+         *
+         *     Reading the backlog is every member's, `viewer` included. It spends nothing.
+         */
+        get: operations["listBacklog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/backlog/sync-status": {
         parameters: {
             query?: never;
@@ -7491,6 +7569,189 @@ export interface components {
             total: number;
         };
         /**
+         * BacklogListing
+         * @description The intake screen in one answer
+         *     ([#110](https://github.com/NobuData/ouroboros/issues/110)) — the #31 pagination
+         *     convention over `BacklogRow`, plus the page head's counts and the chip set the filter
+         *     bar renders from. Three shapes together because mockup 03 draws three things from one
+         *     query, and reading them separately is how a head comes to disagree with the table
+         *     under it.
+         */
+        BacklogListing: {
+            /** @description The rows, in the order `sort` documents. */
+            items: components["schemas"]["BacklogRow"][];
+            /**
+             * @description How many issues match the **whole** filter — state, chip set and search included.
+             *     The page-count number. `meta.openCount` is the different question the head asks.
+             * @example 9
+             */
+            total: number;
+            /** @example 25 */
+            limit: number;
+            /** @example 0 */
+            offset: number;
+            meta: components["schemas"]["BacklogMeta"];
+            /**
+             * @description Every distinct label in scope — the workspace's, or the repository's when `repo`
+             *     names one — ascending by name. The set the chip set is built from, and deliberately
+             *     **not** narrowed by the chips already on: a facet list that shrank as chips were
+             *     selected would make a second chip unselectable. Sorted by name rather than by
+             *     frequency, because a person scans it for a name they already have in mind.
+             * @example [
+             *       "bug",
+             *       "enhancement",
+             *       "good-first-issue",
+             *       "tech-debt"
+             *     ]
+             */
+            labelFacets: string[];
+        };
+        /**
+         * BacklogRow
+         * @description One row of mockup 03's backlog table — the issue as GitHub has it (decision K3: a
+         *     mirror, never edited here), where it is in *our* sizing pipeline (decision K4), and the
+         *     estimate in force.
+         *
+         *     It is the table's cells and no more. The body, the author and the GitHub URL belong to
+         *     the side panel and are served by `GET /api/v1/backlog/{id}`; there is no timestamp
+         *     either, including under `sort=updated`, because the ordering is the answer that sort
+         *     gives and the table has no such column to print.
+         */
+        BacklogRow: {
+            /**
+             * Format: uuid
+             * @description The row's identity on this API — what the selection model collects, what the side
+             *     panel is addressed by, and what the bulk queue action sends back. Not the issue
+             *     number, which is GitHub's and is unique only inside its repository.
+             * @example 5eed0018-0000-4000-8000-000000000485
+             */
+            id: string;
+            /**
+             * @description The number GitHub assigned — the `#485` the cell prints.
+             * @example 485
+             */
+            number: number;
+            /**
+             * @description The title as GitHub currently has it.
+             * @example Watchdog reset on I²C bus lockup
+             */
+            title: string;
+            /**
+             * @description GitHub's label names, in the order they are stored — the tags under the title.
+             *     Re-sorting them here would be this service editing a mirrored value.
+             * @example [
+             *       "bug",
+             *       "i2c",
+             *       "watchdog"
+             *     ]
+             */
+            labels: string[];
+            /**
+             * @description GitHub's own two. Present on every row because a listing may be asked for `closed`
+             *     or `all`.
+             * @example open
+             * @enum {string}
+             */
+            state: "open" | "closed";
+            /**
+             * @description The *Status* pill — where the issue is in this product's sizing pipeline, which is
+             *     the one column of the mirror this product owns. Deliberately a separate answer from
+             *     `estimate`: an issue can be `needs_human` and still carry the estimate that sent it
+             *     there, and one that is `estimating` carries none at all.
+             * @example sized
+             * @enum {string}
+             */
+            sizingStatus: "unsized" | "estimating" | "sized" | "needs_human";
+            /**
+             * Format: uuid
+             * @description The repository's id — what `repo` takes, so a row can narrow the listing it came from.
+             */
+            githubRepoId: string;
+            /**
+             * @description `owner/name`, as GitHub spells it. Carried because `(repository, number)` is what
+             *     makes an issue unique: every repository has its own `#489`, so in a listing that
+             *     names no `repo` the number alone does not identify a row.
+             * @example acme-robotics/helios-firmware
+             */
+            repository: string;
+            /**
+             * @description The estimate in force, or `null` for an issue that has none — `unsized`, or
+             *     `estimating` before the first answer lands.
+             *
+             *     One nullable object rather than four nullable fields, because the four are null
+             *     *together*: `issue_estimates` makes every one of them `not null`, so there is no
+             *     row with an effort and no confidence. Re-estimation writes a new version and the
+             *     highest wins (decision K4); this is that one.
+             */
+            estimate: components["schemas"]["BacklogEstimate"] | null;
+        };
+        /**
+         * BacklogEstimate
+         * @description The latest estimate of one issue, as the *Effort*, *Suggested workflow* and *Routed
+         *     model* cells read it — the summary, not the panel. The breakdown, the risk and the
+         *     provenance are `GET /api/v1/backlog/{id}`'s
+         *     ([#111](https://github.com/NobuData/ouroboros/issues/111)).
+         */
+        BacklogEstimate: {
+            /**
+             * @description The *Effort* chip, lower-case as the column holds it.
+             * @example m
+             * @enum {string}
+             */
+            effort: "xs" | "s" | "m" | "l" | "xl";
+            /**
+             * @description How much the estimator trusts its own answer — the percentage beside the chip. Read
+             *     against a floor when the estimate was written: below it the issue went to
+             *     `needs_human` rather than `sized`.
+             * @example 92
+             */
+            confidence: number;
+            /**
+             * @description The *Suggested workflow* tag. Opaque (decision K5) — one of the tags the estimation
+             *     request offered, and this service holds no catalogue of them.
+             * @example standard-fix
+             */
+            suggestedWorkflow: string;
+            /**
+             * @description The *Routed model* pill. Opaque (decision K6), and **resolved rather than
+             *     invoked**: sizing this issue called no model.
+             * @example claude-fable-5
+             */
+            routedModel: string;
+        };
+        /**
+         * BacklogMeta
+         * @description The page head — *"42 open issues. 38 already sized."* — and the freshness tag beside
+         *     the table, answered from the same request as the rows so the three can never disagree.
+         */
+        BacklogMeta: {
+            /**
+             * @description Open issues in scope — the workspace's, or the repository's when `repo` names one.
+             *     Not narrowed by the chip set, the search or `state`: the head says how much work
+             *     there is, and the table says how much of it is on screen.
+             * @example 9
+             */
+            openCount: number;
+            /**
+             * @description How many of those `openCount` issues are `sized`. One sentence about one set: an
+             *     issue that was sized and then closed is in neither figure.
+             * @example 7
+             */
+            sizedCount: number;
+            /**
+             * Format: date-time
+             * @description The freshness tag's instant, and the same number `GET /api/v1/backlog/sync-status`
+             *     answers with — one service computes it, so the tag beside a listing and the tag on
+             *     the sync endpoint cannot disagree. The **oldest** successful poll among the enabled
+             *     repositories, and `null` while any of them has never been polled.
+             *
+             *     A stored column every time, never this request's clock: a request timestamp would
+             *     read as *"synced just now"* on a sync that last ran yesterday.
+             * @example 2026-09-10T15:41:12.000Z
+             */
+            syncedAt: string | null;
+        };
+        /**
          * ModelPull
          * @description One tracked pull ([#230](https://github.com/NobuData/ouroboros/issues/230) over
          *     [#219](https://github.com/NobuData/ouroboros/issues/219)) — the server-side record a
@@ -9272,6 +9533,233 @@ export interface operations {
             /**
              * @description `validation_failed` — `repo` not a uuid, or the window out of range. `details`
              *     carries one entry per field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listBacklog: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Narrow to one repository, by `github_repos.id` — the *Repository* select's value.
+                 *     The id rather than the name, because a name is unique only within its GitHub
+                 *     organisation and a workspace may enable two that both own a `tools`.
+                 */
+                repo?: string;
+                /**
+                 * @description The chip set, ANDed. `labels=bug,tech-debt` and `labels=bug&labels=tech-debt` are
+                 *     the same request; an empty value is no filter rather than a filter no issue can
+                 *     satisfy. Names are matched exactly — they are the ones `labelFacets` handed out.
+                 * @example [
+                 *       "bug",
+                 *       "tech-debt"
+                 *     ]
+                 */
+                labels?: string[];
+                /** @description The *State* select. Defaults to `open`, which is what that select opens on. */
+                state?: "open" | "closed" | "all";
+                /** @description Which ordering — see the operation description for what each one means. */
+                sort?: "effort" | "confidence" | "updated" | "number";
+                /**
+                 * @description The search box: a substring of the title, a label name in full, or the issue number
+                 *     with or without the `#`. Trimmed, and an empty search is no search — a person who
+                 *     clears the box is asking to see everything.
+                 * @example watchdog
+                 */
+                q?: string;
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The page, the page head's counts, the freshness stamp and the chip set. A
+             *     workspace that mirrors nothing answers an empty page with zeros and no chips,
+             *     which is a state to render and not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "5eed0018-0000-4000-8000-000000000485",
+                     *           "number": 485,
+                     *           "title": "Watchdog reset on I²C bus lockup",
+                     *           "labels": [
+                     *             "bug",
+                     *             "i2c",
+                     *             "watchdog",
+                     *             "priority-high"
+                     *           ],
+                     *           "state": "open",
+                     *           "sizingStatus": "sized",
+                     *           "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
+                     *           "repository": "acme-robotics/helios-firmware",
+                     *           "estimate": {
+                     *             "effort": "m",
+                     *             "confidence": 92,
+                     *             "suggestedWorkflow": "standard-fix",
+                     *             "routedModel": "claude-fable-5"
+                     *           }
+                     *         },
+                     *         {
+                     *           "id": "5eed0018-0000-4000-8000-000000000483",
+                     *           "number": 483,
+                     *           "title": "Telemetry frame drops when BLE and CAN both saturated",
+                     *           "labels": [
+                     *             "bug",
+                     *             "telemetry"
+                     *           ],
+                     *           "state": "open",
+                     *           "sizingStatus": "estimating",
+                     *           "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
+                     *           "repository": "acme-robotics/helios-firmware",
+                     *           "estimate": null
+                     *         }
+                     *       ],
+                     *       "total": 9,
+                     *       "limit": 25,
+                     *       "offset": 0,
+                     *       "meta": {
+                     *         "openCount": 9,
+                     *         "sizedCount": 7,
+                     *         "syncedAt": "2026-09-10T15:41:12.000Z"
+                     *       },
+                     *       "labelFacets": [
+                     *         "ble",
+                     *         "bug",
+                     *         "can-bus",
+                     *         "docs",
+                     *         "enhancement",
+                     *         "good-first-issue",
+                     *         "i2c",
+                     *         "motor-control",
+                     *         "ota",
+                     *         "priority-high",
+                     *         "tech-debt",
+                     *         "telemetry",
+                     *         "watchdog",
+                     *         "zephyr"
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["BacklogListing"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` not a uuid, `state` or `sort` naming something this
+             *     operation does not serve, a search longer than the box, more labels than an issue
+             *     may carry, or the window out of range. `details` carries one entry per field.
              */
             422: {
                 headers: {

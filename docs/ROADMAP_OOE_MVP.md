@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (11/23) | **16** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (12/23) | **17** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | 🟡 5/8 | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 11/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 12/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **12 issues** · 36 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152` and `153` · 12 dependency waves
+> **11 issues** · 33 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153` and `154` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 11 of 23 issues closed
+> **Status:** 🟡 **In progress** — 12 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -998,9 +998,42 @@ that roadmap's "Existing issues affected" section.
 > a second workspace, three roles, a stranded row and a full rate-limit window are already
 > arranged there.
 
+> **`M.1` · [`#110`](https://github.com/NobuData/ouroboros/issues/110) has shipped, and row
+> `154` has left the table below** — so this phase's order numbers now start at `155`, 11 rows
+> summing to 33 points, and 12 of this phase's 23 issues are closed.
+>
+> [`ouroboros-rest/src/modules/backlog/listing.*`](../ouroboros-rest/src/modules/backlog/) is
+> `GET /api/v1/backlog`: mockup 03's table, its page head and its chip set in one request, under
+> the filter bar decision `K8` makes a query string — repository, an ANDed chip set, state, one of
+> four sorts, a search box, and the `#31` window. Every member may read it, `viewer` included: a
+> listing spends nothing, which is the contrast with the two `POST`s beside it.
+>
+> **The head does not move when the filter bar does.** `meta.openCount` and `meta.sizedCount` are
+> scoped by the workspace and by `?repo=` and by nothing else, because the mockup puts them *above*
+> the filter card: the head says how much work is in the backlog and the table says which of it you
+> are looking at. `total` beside them is the filtered count. The same argument settles
+> `labelFacets`, and there it is load-bearing — facets narrowed by the chips already on would leave
+> only the labels that co-occur with `bug`, so a second chip could never be chosen.
+>
+> **`meta.syncedAt` is `M.4`'s number rather than a second query**, which is the handoff that
+> ticket wrote down: one service computes the freshness stamp, so the tag beside the listing and
+> the tag from `/backlog/sync-status` cannot disagree.
+>
+> **The estimate is a `left join lateral`**, because decision `K4` makes re-estimation a new row
+> and the highest version the winner — a plain join renders the seeded `#487` twice, and `left` is
+> what keeps `unsized` and `estimating` rows on a table that draws four pills.
+>
+> **The plans are `EXPLAIN`ed against the statements the service compiles**, not against SQL
+> retyped in a test: the suite builds each read through the same recording driver the unit specs
+> use and explains that exact statement against a workspace holding nine thousand issues. `q`'s
+> label half became an exact name for the same reason — one disjunct no index can answer makes the
+> whole search a scan.
+>
+> **`M.5` (`#114`) and `N.1` (`#115`) are what this unblocks**, and `N.1`–`N.3` now have their
+> three surfaces from one request.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 154 | **M.1** | [#110](https://github.com/NobuData/ouroboros/issues/110) | Backlog list endpoint with filters | ouroboros-rest | M | K.4, L.3 |
 | 155 | **M.2** | [#111](https://github.com/NobuData/ouroboros/issues/111) | Issue detail endpoint | ouroboros-rest | S | L.3 |
 | 156 | **M.3** | [#112](https://github.com/NobuData/ouroboros/issues/112) | Bulk queue action | ouroboros-rest | M | F.2, L.3 |
 | 157 | **L.5** | [#109](https://github.com/NobuData/ouroboros/issues/109) | Pipeline integration tests | ouroboros-rest | M | L.4 |
