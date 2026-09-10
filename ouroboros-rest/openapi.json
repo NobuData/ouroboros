@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.31.4",
+    "version": "0.31.5",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -1577,6 +1577,7 @@
                       ],
                       "state": "open",
                       "sizingStatus": "sized",
+                      "queued": false,
                       "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                       "repository": "acme-robotics/helios-firmware",
                       "estimate": {
@@ -1596,6 +1597,7 @@
                       ],
                       "state": "open",
                       "sizingStatus": "estimating",
+                      "queued": false,
                       "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                       "repository": "acme-robotics/helios-firmware",
                       "estimate": null
@@ -1726,6 +1728,7 @@
                     ],
                     "state": "open",
                     "sizingStatus": "sized",
+                    "queued": false,
                     "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                     "repository": "acme-robotics/helios-firmware",
                     "body": "Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the IMU holding SDA low after a burst read; the bus never recovers and the hardware watchdog fires ~2 s later.",
@@ -1813,6 +1816,195 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backlog/queue": {
+      "post": {
+        "tags": [
+          "backlog"
+        ],
+        "summary": "Queue a selection of issues for the loop",
+        "description": "Mockup 03's three queue affordances, as one write\n([#112](https://github.com/NobuData/ouroboros/issues/112)): **Queue 3 selected ⟳** in\nthe page head, **Queue → standard-fix** on the selection action bar, and **Queue for\nloop** in the detail panel. All three send a set of issues and, optionally, the workflow\nto run them under; the single-issue button is a selection of one rather than a route of\nits own.\n\nThis is the write side the dashboard roadmap deliberately left out (decision K9).\n`GET /api/v1/queue` reads the rows back, and the *Up next in queue* card on mockup 02\ndraws them — the items below are byte-identical to that endpoint's, because one mapper\npublishes both.\n\n**`issueIds` are `github_issues.id`, not GitHub's numbers.** `github_issues` is unique\non `(repository, number)`, so a workspace watching two repositories has two issue\n`#485`s and a numeric body would name neither. They are the ids `GET /api/v1/backlog`\npublishes, in the order to append them: positions are handed out down the list, so the\nqueue reads the way the person built the selection.\n\n**`workflow` is one of the fixed set** — `standard-fix`, `docs-loop`, `feature-loop`,\n`deps-refresh` (decision K5) — and applies to every issue in the request. Omit it and\neach issue is queued under the workflow **its own estimate suggested**, which is the\ndifference between *Queue 3 selected* and *Queue → standard-fix*.\n\n**Only `sized` issues can be queued.** A queue row copies an effort, a workflow tag and\nan `est_minutes` off the estimate in force, and there is nothing honest to write for an\nissue nobody has sized. `estimating` is refused rather than waited for: a request that\nblocked on an engine call would be a timeout, and the button can be pressed again when\nthe pill changes.\n\n**`est_minutes` is copied from the estimate's breakdown, never recomputed.** The chip is\na size and the estimate is minutes something measured, and deriving one from the other\nwould make the *Queued issues* stat a restatement of the chips. An estimate outside what\nthe queue column will hold — zero, or past a fortnight of continuous work — is stored as\n`null`, which is that column's word for *not estimated*: clamping would publish a number\nno estimator produced.\n\n**The write is all-or-nothing, and that was chosen deliberately.** Every check runs\nagainst one read of the selection and the inserts are one transaction, so a request is\neither applied whole or refused whole. A partly-applied bulk queue is far worse to reason\nabout than a rejected one — the person pressed *Queue 3 selected* and would be left\nguessing which of the three took.\n\n**Every refusal names its offenders, one entry per issue.** `details.issues` carries the\nid the caller sent, a code for what is wrong with *that* issue, and the number and status\nwhere this workspace's own row supplied them — so the action bar can say *\"#483 is still\nbeing sized\"* instead of *\"something went wrong\"*. The three refusals are ordered: ids\nthis workspace cannot see are a `404` first, then the issues that are not `sized`, then\nthe ones the queue already holds. One press is refused for one reason at a time.\n\n**A duplicate enqueue is a `409`, from the constraint rather than from a check alone.**\n`queue_items` is unique on `(organization_id, issue_number)`: a workspace's queue holds\neach issue once, and each *number* once — deliberately over-reaching across repositories,\nso two repositories' `#485` cannot both be queued and a selection containing both is\nrefused before either is written.\n\n**The workspace is the session's**, exactly as every other operation here: no workspace\nin this path, the session's active organization or `X-Ouro-Tenant` decides, and\nmembership is checked before this operation runs. An id belonging to another workspace is\na `404`, exactly as one that does not exist.\n\n**`member`, `admin` or `owner`.** Queueing is work — it commits the workspace's loop to a\nlist of issues — so a `viewer` may read the backlog and may not fill the queue. It is\ndeliberately not `admin+` like `POST /api/v1/backlog/estimate-all`: that one fans out\nover the whole backlog in a single press, and this one queues exactly what was selected.",
+        "operationId": "queueBacklogIssues",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueSelection"
+              },
+              "example": {
+                "issueIds": [
+                  "5eed0018-0000-4000-8000-000000000485",
+                  "5eed0018-0000-4000-8000-000000000484",
+                  "5eed0018-0000-4000-8000-000000000491"
+                ],
+                "workflow": "standard-fix"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The rows that were created, in queue order, and their combined estimate — the\n*\"est. 2h 5m combined autonomous work\"* the selection action bar renders.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedSelection"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "7a1c0b90-0000-4000-8000-000000000001",
+                      "issueNumber": 485,
+                      "issueTitle": "Watchdog reset on I²C bus lockup",
+                      "effort": "m",
+                      "workflowTag": "standard-fix",
+                      "position": 4,
+                      "estMinutes": 45,
+                      "enqueuedAt": "2026-09-10T15:41:12.000Z"
+                    },
+                    {
+                      "id": "7a1c0b90-0000-4000-8000-000000000002",
+                      "issueNumber": 484,
+                      "issueTitle": "Motor PID integral windup on wheel stall",
+                      "effort": "m",
+                      "workflowTag": "standard-fix",
+                      "position": 5,
+                      "estMinutes": 50,
+                      "enqueuedAt": "2026-09-10T15:41:12.000Z"
+                    },
+                    {
+                      "id": "7a1c0b90-0000-4000-8000-000000000003",
+                      "issueNumber": 491,
+                      "issueTitle": "Add CRC32 to config persistence layer",
+                      "effort": "s",
+                      "workflowTag": "standard-fix",
+                      "position": 6,
+                      "estMinutes": 30,
+                      "enqueuedAt": "2026-09-10T15:41:12.000Z"
+                    }
+                  ],
+                  "estMinutes": 125
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit this.\nQueueing issues is `owner`, `admin` or `member`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`queue_issues_not_found` — one or more ids name no issue in this workspace, or name\none in another; the two are deliberately one answer, because a `403` would confirm\nthat a guessed id is a real issue somewhere. `details.issues` names each one, and\ncarries nothing but the id the caller sent. Or `tenant_not_found`, when the\n`X-Ouro-Tenant` header names no workspace you are a member of.\n\nNothing is written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "queue_issues_not_found",
+                  "message": "Some of those issues are not in this workspace.",
+                  "details": {
+                    "issues": [
+                      {
+                        "issueId": "5eed0018-0000-4000-8000-000000000484",
+                        "code": "issue_not_found"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`queue_issues_conflict` — the queue already speaks for one or more of the selection.\n`issue_already_queued` is a row the queue holds; `issue_number_taken` is two issues\n*in this request* carrying one GitHub number, which a workspace watching two\nrepositories can produce and which `queue_items_organization_issue_key` refuses.\n\nNothing is written — including the issues that had no conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "queue_issues_conflict",
+                  "message": "Some of those issues are already in the queue.",
+                  "details": {
+                    "issues": [
+                      {
+                        "issueId": "5eed0018-0000-4000-8000-000000000484",
+                        "code": "issue_already_queued",
+                        "issueNumber": 484
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`queue_issues_not_queueable` — one or more issues are not ready. `issue_not_sized`\ncarries the status the issue is actually in — `unsized`, `estimating` or\n`needs_human` — and `issue_estimate_missing` is a `sized` issue whose estimate row\nhas gone, which is answerable rather than a failure of this service.\n\nOr `validation_failed`, when the *body* is wrong rather than the backlog: an id that\nis not a uuid, an empty or duplicated selection, more than 100 issues, or a\n`workflow` outside the fixed set. `details` carries one entry per field.\n\nNothing is written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "queue_issues_not_queueable",
+                  "message": "Some of those issues have not been sized yet. Only sized issues can be queued.",
+                  "details": {
+                    "issues": [
+                      {
+                        "issueId": "5eed0018-0000-4000-8000-000000000483",
+                        "code": "issue_not_sized",
+                        "issueNumber": 483,
+                        "sizingStatus": "estimating"
+                      }
+                    ]
+                  }
                 }
               }
             }
@@ -16645,6 +16837,74 @@
           }
         }
       },
+      "QueueSelection": {
+        "type": "object",
+        "title": "QueueSelection",
+        "description": "A selection of issues to queue, and the workflow to run them under\n([#112](https://github.com/NobuData/ouroboros/issues/112)) — what mockup 03's three\nqueue buttons all send.",
+        "additionalProperties": false,
+        "required": [
+          "issueIds"
+        ],
+        "properties": {
+          "issueIds": {
+            "type": "array",
+            "description": "The issues to queue, by `github_issues.id` — the `id` a backlog row carries, not\nGitHub's number, which is unique only inside its repository.\n\n**In the order to append them**: positions are handed out down this list, so the\nqueue reads the way the person built the selection.\n\nIds must be distinct. The same id twice is refused rather than de-duplicated: a\nselection model that counted one row twice is already rendering a combined estimate\nthat is wrong. At most 100, which is a page of the backlog table and therefore every\nrow a person can have selected at once — the batch is one transaction, and a\ntransaction whose size a client chooses is a lock somebody else waits behind.",
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "examples": [
+              [
+                "5eed0018-0000-4000-8000-000000000485",
+                "5eed0018-0000-4000-8000-000000000484"
+              ]
+            ]
+          },
+          "workflow": {
+            "type": "string",
+            "enum": [
+              "standard-fix",
+              "docs-loop",
+              "feature-loop",
+              "deps-refresh"
+            ],
+            "description": "The workflow every issue in this request is queued under — *Queue → standard-fix*.\n\nOmit it for *Queue 3 selected ⟳*, where each issue is queued under the workflow\n**its own estimate suggested**. Absent is therefore not the same as `standard-fix`.\n\nHeld to the fixed set (decision K5) here and nowhere else: `queue_items.workflow_tag`\nis deliberately unconstrained text (decision F8) so a queued issue still renders\nunder a renamed workflow, which means the database will not catch a tag nothing runs.",
+            "examples": [
+              "standard-fix"
+            ]
+          }
+        }
+      },
+      "QueuedSelection": {
+        "type": "object",
+        "title": "QueuedSelection",
+        "description": "What one press of a queue button answers with\n([#112](https://github.com/NobuData/ouroboros/issues/112)): the rows that were created,\nand the one number the selection action bar renders beside them.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "estMinutes"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "The created rows, in queue order — the first appended first.\n\n`QueueItemSummary`, which is what `GET /api/v1/queue` publishes and what mockup 02's\n*Up next in queue* card draws: one mapper, one shape for a queued issue everywhere,\nso a client may render these into the queue card it already has without re-fetching.",
+            "items": {
+              "$ref": "#/components/schemas/QueueItemSummary"
+            }
+          },
+          "estMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The combined estimate of what was just queued, in minutes — *\"est. 2h 5m combined\nautonomous work\"*.\n\nThe **sum** of what was written, skipping items carrying no estimate rather than\ncounting them as zero — the same sentence `QueuePage.totalEstMinutes` and the\ndashboard's `stats.queued.estMinutes` are, so this number and the queue card's total\ncannot disagree about these rows. `items` may therefore speak for more issues than\nthis number does.",
+            "examples": [
+              125
+            ]
+          }
+        }
+      },
       "BacklogListing": {
         "type": "object",
         "title": "BacklogListing",
@@ -16721,6 +16981,7 @@
           "labels",
           "state",
           "sizingStatus",
+          "queued",
           "githubRepoId",
           "repository",
           "estimate"
@@ -16785,6 +17046,13 @@
             "description": "The *Status* pill — where the issue is in this product's sizing pipeline, which is\nthe one column of the mirror this product owns. Deliberately a separate answer from\n`estimate`: an issue can be `needs_human` and still carry the estimate that sent it\nthere, and one that is `estimating` carries none at all.",
             "examples": [
               "sized"
+            ]
+          },
+          "queued": {
+            "type": "boolean",
+            "description": "Whether the run queue holds this issue — the `queued` pill\n([#112](https://github.com/NobuData/ouroboros/issues/112)).\n\n**A field of its own rather than a fifth `sizingStatus`**, because the two are\nindependent facts: an issue can be `needs_human` *and* queued, and one pill field\nwould have to drop one of them. A client rendering a single pill renders this one in\npreference — where the loop will pick the issue up is the more recent fact about it.\n\nDecided against `queue_items` as it stands at this instant rather than copied onto\nthe issue, so it cannot go stale. `POST /api/v1/backlog/queue` is what makes it true,\nand `GET /api/v1/queue` is where the queue row itself is read.",
+            "examples": [
+              false
             ]
           },
           "githubRepoId": {
@@ -16949,6 +17217,7 @@
           "labels",
           "state",
           "sizingStatus",
+          "queued",
           "githubRepoId",
           "repository",
           "body",
@@ -17017,6 +17286,13 @@
             "description": "The pill in the panel's card head — where the issue is in this product's sizing\npipeline, which is the one column of the mirror this product owns. Deliberately a\nseparate answer from `estimate`: an issue can be `needs_human` and still carry the\nestimate that sent it there.",
             "examples": [
               "sized"
+            ]
+          },
+          "queued": {
+            "type": "boolean",
+            "description": "Whether the run queue holds this issue — the same field the table's row carries, and\nwhat **Queue for loop** in this panel reads before offering to queue it again\n([#112](https://github.com/NobuData/ouroboros/issues/112)).",
+            "examples": [
+              false
             ]
           },
           "githubRepoId": {

@@ -374,6 +374,22 @@ export const MOCKUP_03 = {
   ],
   /** The issues carrying `bug`, in effort order — the mockup's own `bug ✓` chip. */
   bugIssues: [491, 485, 484, 489, 483],
+  /**
+   * The three rows the mockup draws with their checkbox ticked, in the order it draws them —
+   * what *"3 issues selected"* and **Queue → standard-fix** act on (M.3,
+   * [#112](https://github.com/NobuData/ouroboros/issues/112)).
+   */
+  selection: [485, 484, 491],
+  /**
+   * What queueing those three costs, in minutes: 45 + 50 + 30, from the estimates above.
+   *
+   * **Not the mockup's own `est. 1h 10m`**, which is design copy over a backlog of nine exactly
+   * as its *"42 open issues. 38 already sized."* is — this file's header makes the same point
+   * about the page head, and {@link MOCKUP_03.openCount} is the same substitution. What the
+   * criterion is really about is that the number is the *sum of the estimates the queue rows
+   * were written with*, and that is what it is asserted as.
+   */
+  selectionEstMinutes: 125,
 } as const;
 
 /**

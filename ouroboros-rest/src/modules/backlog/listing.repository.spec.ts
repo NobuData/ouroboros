@@ -4,7 +4,7 @@ import { BACKLOG_SORTS } from "./listing.dto";
 import { BacklogListingRepository, type BacklogFilter } from "./listing.repository";
 
 /**
- * The three statements, and the properties the endpoint rests on.
+ * The four statements, and the properties the endpoint rests on.
  *
  * Real Kysely over a recording driver, per `runs.repository.spec.ts`' argument: this layer holds
  * statements rather than rules, so what is asserted is the SQL PostgreSQL would receive. Four
@@ -62,6 +62,7 @@ describe("the backlog listing repository", () => {
         },
       ],
       ["labelFacets", (repository) => repository.labelFacets(WORKSPACE)],
+      ["queuedIssues", (repository) => repository.queuedIssues(WORKSPACE)],
     ];
 
     it.each(everyRead)("%s is scoped to the workspace", async (_name, read) => {
@@ -88,6 +89,7 @@ describe("the backlog listing repository", () => {
         },
       ],
       ["labelFacets", (repository) => repository.labelFacets(WORKSPACE, REPO)],
+      ["queuedIssues", (repository) => repository.queuedIssues(WORKSPACE, REPO)],
     ];
 
     it.each(everyNarrowedRead)(
@@ -408,6 +410,46 @@ describe("the backlog listing repository", () => {
       database.answers({ rows: [{ label: "bug" }, { label: "i2c" }, { label: "watchdog" }] });
 
       expect(await backlog.labelFacets(WORKSPACE)).toEqual(["bug", "i2c", "watchdog"]);
+    });
+  });
+
+  describe("the queued issues", () => {
+    it("reads the queue rather than joining it onto the rows", async () => {
+      // A read of its own, which is what keeps M.1's three plan-asserted statements the ones
+      // that ticket pinned — and a queue is tens of rows, so it costs less than a subquery
+      // evaluated per row and runs concurrently with the other four.
+      await backlog.queuedIssues(WORKSPACE);
+
+      const [{ sql }] = database.statements;
+
+      expect(sql).toContain('from "ouroboros"."queue_items"');
+      expect(sql).not.toContain("github_issues");
+    });
+
+    it("reads the repository as well as the number, so a pill names one row", async () => {
+      // `queue_items` is unique on `(organization_id, issue_number)` and so holds one `#485`
+      // per workspace however many repositories number one. V009 says `github_repo_id` is what
+      // disambiguates them **for display**, which is exactly what this read is for.
+      await backlog.queuedIssues(WORKSPACE);
+
+      const [{ sql }] = database.statements;
+
+      expect(sql).toContain("github_repo_id");
+      expect(sql).toContain("issue_number");
+    });
+
+    it("answers the keys, as the mapping asks about them", async () => {
+      database.answers({
+        rows: [{ githubRepoId: REPO, number: 485 }],
+      });
+
+      await expect(backlog.queuedIssues(WORKSPACE)).resolves.toEqual([
+        { githubRepoId: REPO, number: 485 },
+      ]);
+    });
+
+    it("answers nothing for a workspace that has queued nothing", async () => {
+      await expect(backlog.queuedIssues(WORKSPACE)).resolves.toEqual([]);
     });
   });
 });

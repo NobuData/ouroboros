@@ -33,6 +33,7 @@ const ROW: IssueDetailRow = {
   labels: ["bug", "i2c", "watchdog", "priority-high"],
   state: "open",
   sizingStatus: "sized",
+  queued: false,
   githubRepoId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
   repository: "acme-robotics/helios-firmware",
   body: "Unit 07 in the Fremont pilot rebooted 14 times overnight.",

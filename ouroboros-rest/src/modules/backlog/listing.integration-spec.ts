@@ -137,6 +137,9 @@ describe("the backlog listing, against a migrated database", () => {
         labels: ["bug", "i2c", "watchdog", "priority-high"],
         state: "open",
         sizingStatus: "sized",
+        // M.3 (#112) added the pill, and it is `false` here because nothing has queued this
+        // issue — a presentation over `queue_items`, not a fifth sizing status.
+        queued: false,
         githubRepoId: workspace.repoId,
         repository: `${workspace.slug}/helios-firmware`,
         estimate: {

@@ -15,6 +15,9 @@ import { BacklogDetailService } from "./detail.service";
 import { BacklogListingController } from "./listing.controller";
 import { BacklogListingRepository } from "./listing.repository";
 import { BacklogListingService } from "./listing.service";
+import { BacklogQueueController } from "./queue.controller";
+import { BacklogQueueRepository } from "./queue.repository";
+import { BacklogQueueService } from "./queue.service";
 import { SyncStatusService } from "./sync-status.service";
 import { SyncTriggerService } from "./sync-trigger.service";
 
@@ -91,8 +94,8 @@ describe("the backlog module", () => {
   it("runs no loop of its own", () => {
     // The division with `BacklogSyncModule`: that module owns a cycle and declares no route,
     // and this one declares routes and owns no cycle. A scheduler here would be a second
-    // poller nobody asked for. The list grew by M.1's two and M.2's two, and by nothing that
-    // ticks.
+    // poller nobody asked for. The list grew by M.1's two, M.2's two and M.3's two, and by
+    // nothing that ticks.
     const providers = (Reflect.getMetadata("providers", BacklogModule) as unknown[]).map(
       (provider) => (provider as { name?: string }).name,
     );
@@ -104,6 +107,8 @@ describe("the backlog module", () => {
       "BacklogListingService",
       "BacklogDetailRepository",
       "BacklogDetailService",
+      "BacklogQueueRepository",
+      "BacklogQueueService",
     ]);
     expect(providers).not.toContain("BacklogSyncScheduler");
   });
@@ -146,7 +151,21 @@ describe("the backlog module", () => {
     expect(controllers).toEqual([
       "BacklogController",
       "BacklogListingController",
+      "BacklogQueueController",
       "BacklogDetailController",
     ]);
+  });
+
+  it("resolves the queue write, through a repository of its own", async () => {
+    // M.3's write is `queue.repository.ts` — this module's first write to a table it does not
+    // own, and the one `queue/queue.module.ts` said it was leaving for the issues screen. That
+    // module exports nothing, so there is nothing to enter through in any case.
+    const module = await build();
+
+    expect(module.get(BacklogQueueController)).toBeInstanceOf(BacklogQueueController);
+    expect(module.get(BacklogQueueService)).toBeInstanceOf(BacklogQueueService);
+    expect(module.get(BacklogQueueRepository)).toBeInstanceOf(BacklogQueueRepository);
+
+    await module.close();
   });
 });

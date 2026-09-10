@@ -5,8 +5,9 @@ import { BacklogListingService, filterOf } from "./listing.service";
 import type { SyncStatusService } from "./sync-status.service";
 
 /**
- * The three rules of the listing surface: **the defaults are the mockup's**, **the four reads
- * are one answer**, and **`syncedAt` is lifted rather than re-derived**.
+ * The four rules of the listing surface: **the defaults are the mockup's**, **the five reads
+ * are one answer**, **`queued` is matched against the queue rather than carried on the row**,
+ * and **`syncedAt` is lifted rather than re-derived**.
  *
  * The third is the one that needs a suite of its own. M.4
  * ([#113](https://github.com/NobuData/ouroboros/issues/113)) left this ticket a computed
@@ -55,6 +56,7 @@ describe("the backlog listing service", () => {
       list: jest.fn().mockResolvedValue([ROW]),
       counts: jest.fn().mockResolvedValue({ total: 9, openCount: 9, sizedCount: 7 }),
       labelFacets: jest.fn().mockResolvedValue(["bug", "i2c"]),
+      queuedIssues: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<BacklogListingRepository>;
     sync = {
       status: jest.fn().mockResolvedValue(STATUS),
@@ -110,12 +112,13 @@ describe("the backlog listing service", () => {
   });
 
   describe("the one answer", () => {
-    it("reads rows, counts, facets and freshness together", async () => {
+    it("reads rows, counts, facets, the queue and freshness together", async () => {
       await listing.list(WORKSPACE, {});
 
       expect(backlog.list).toHaveBeenCalledTimes(1);
       expect(backlog.counts).toHaveBeenCalledTimes(1);
       expect(backlog.labelFacets).toHaveBeenCalledTimes(1);
+      expect(backlog.queuedIssues).toHaveBeenCalledTimes(1);
       expect(sync.status).toHaveBeenCalledWith(WORKSPACE);
     });
 
@@ -146,6 +149,21 @@ describe("the backlog listing service", () => {
       );
     });
 
+    it("reads the queue under the same repository the rows were read under", async () => {
+      // A listing narrowed to one repository must not draw its pills from another's queue —
+      // and, filtered or not, the queue read is the whole workspace's rather than the page's,
+      // so a row on page 3 is decided by the same set page 1 was.
+      await listing.list(WORKSPACE, {
+        repo: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+        offset: 50,
+      });
+
+      expect(backlog.queuedIssues).toHaveBeenCalledWith(
+        WORKSPACE,
+        "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+      );
+    });
+
     it("assembles the page, the head and the chips into one body", async () => {
       expect(await listing.list(WORKSPACE, {})).toEqual({
         items: [expect.objectContaining({ number: 485 })],
@@ -166,6 +184,38 @@ describe("the backlog listing service", () => {
 
       expect(answer.total).toBe(1);
       expect(answer.meta.openCount).toBe(9);
+    });
+  });
+
+  describe("the queued pill", () => {
+    it("is false for an issue the queue does not hold", async () => {
+      const [row] = (await listing.list(WORKSPACE, {})).items;
+
+      expect(row.queued).toBe(false);
+    });
+
+    it("is true for one it does, without touching the sizing status", async () => {
+      backlog.queuedIssues.mockResolvedValue([
+        { githubRepoId: ROW.githubRepoId, number: ROW.number },
+      ]);
+
+      const [row] = (await listing.list(WORKSPACE, {})).items;
+
+      expect(row.queued).toBe(true);
+      expect(row.sizingStatus).toBe("sized");
+    });
+
+    it("does not draw the pill on another repository's issue of the same number", async () => {
+      // `queue_items` is unique on `(organization_id, issue_number)` and so holds one `#485`
+      // per workspace however many repositories number one — V009's deliberate over-reach. For
+      // display that key is too wide, which is why the match carries the repository too.
+      backlog.queuedIssues.mockResolvedValue([
+        { githubRepoId: "0f0f0f0f-0000-4000-8000-000000000001", number: ROW.number },
+      ]);
+
+      const [row] = (await listing.list(WORKSPACE, {})).items;
+
+      expect(row.queued).toBe(false);
     });
   });
 
@@ -190,6 +240,7 @@ describe("the backlog listing service", () => {
       backlog.list.mockResolvedValue([]);
       backlog.counts.mockResolvedValue({ total: 0, openCount: 0, sizedCount: 0 });
       backlog.labelFacets.mockResolvedValue([]);
+      backlog.queuedIssues.mockResolvedValue([]);
 
       const answer = await listing.list(WORKSPACE, {});
 

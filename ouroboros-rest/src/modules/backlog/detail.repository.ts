@@ -54,13 +54,14 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import type {
-  EstimateBreakdownDocument,
-  EstimateEffort,
-  EstimateRisk,
-  EstimateTraceDocument,
-  GithubIssueState,
-  SizingStatus,
+import {
+  SCHEMA_NAME,
+  type EstimateBreakdownDocument,
+  type EstimateEffort,
+  type EstimateRisk,
+  type EstimateTraceDocument,
+  type GithubIssueState,
+  type SizingStatus,
 } from "../db/schema";
 
 /** One mirrored issue and its repository, as the panel's statement returns them. */
@@ -73,6 +74,8 @@ export interface IssueDetailRow {
   readonly labels: string[];
   readonly state: GithubIssueState;
   readonly sizingStatus: SizingStatus;
+  /** Whether the run queue holds this issue — the `queued` pill (M.3, #112). */
+  readonly queued: boolean;
   readonly githubRepoId: string;
   /** `owner/name`, assembled in the statement from `github_orgs.login` and `github_repos.name`. */
   readonly repository: string;
@@ -143,6 +146,21 @@ export class BacklogDetailRepository {
         sql<string>`${sql.ref("github_orgs.login")} || '/' || ${sql.ref("github_repos.name")}`.as(
           "repository",
         ),
+        // The `queued` pill, added by M.3 (#112). An `exists` inside this statement rather than
+        // a read of its own, which is the opposite of what `listing.repository.ts` does and for
+        // a reason that only holds here: this statement answers **one** row by primary key, so
+        // the semi-join is a single index probe on `queue_items_organization_issue_key` and
+        // there is no page of rows for a separate read to run concurrently with.
+        //
+        // Matched on the repository as well as the number, exactly as the listing does — see
+        // that file on why the queue's own key is too wide to draw a pill with.
+        sql<boolean>`exists (
+          select 1
+            from ${sql.id(SCHEMA_NAME)}.queue_items q
+           where q.organization_id = ${sql.ref("github_issues.organization_id")}
+             and q.github_repo_id  = ${sql.ref("github_issues.github_repo_id")}
+             and q.issue_number    = ${sql.ref("github_issues.number")}
+        )`.as("queued"),
       ])
       .executeTakeFirst();
   }

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.31.4"
+  version: "0.31.5"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1917,6 +1917,7 @@ paths:
                     labels: [bug, i2c, watchdog, priority-high]
                     state: open
                     sizingStatus: sized
+                    queued: false
                     githubRepoId: dfff0000-0000-0000-0000-00000000000a
                     repository: acme-robotics/helios-firmware
                     estimate:
@@ -1930,6 +1931,7 @@ paths:
                     labels: [bug, telemetry]
                     state: open
                     sizingStatus: estimating
+                    queued: false
                     githubRepoId: dfff0000-0000-0000-0000-00000000000a
                     repository: acme-robotics/helios-firmware
                     estimate: null
@@ -2077,6 +2079,7 @@ paths:
                   labels: [bug, i2c, watchdog, priority-high]
                   state: open
                   sizingStatus: sized
+                  queued: false
                   githubRepoId: dfff0000-0000-0000-0000-00000000000a
                   repository: acme-robotics/helios-firmware
                   body: "Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the
@@ -2147,6 +2150,227 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/backlog/queue:
+    post:
+      tags: [backlog]
+      summary: Queue a selection of issues for the loop
+      description: |-
+        Mockup 03's three queue affordances, as one write
+        ([#112](https://github.com/NobuData/ouroboros/issues/112)): **Queue 3 selected ⟳** in
+        the page head, **Queue → standard-fix** on the selection action bar, and **Queue for
+        loop** in the detail panel. All three send a set of issues and, optionally, the workflow
+        to run them under; the single-issue button is a selection of one rather than a route of
+        its own.
+
+        This is the write side the dashboard roadmap deliberately left out (decision K9).
+        `GET /api/v1/queue` reads the rows back, and the *Up next in queue* card on mockup 02
+        draws them — the items below are byte-identical to that endpoint's, because one mapper
+        publishes both.
+
+        **`issueIds` are `github_issues.id`, not GitHub's numbers.** `github_issues` is unique
+        on `(repository, number)`, so a workspace watching two repositories has two issue
+        `#485`s and a numeric body would name neither. They are the ids `GET /api/v1/backlog`
+        publishes, in the order to append them: positions are handed out down the list, so the
+        queue reads the way the person built the selection.
+
+        **`workflow` is one of the fixed set** — `standard-fix`, `docs-loop`, `feature-loop`,
+        `deps-refresh` (decision K5) — and applies to every issue in the request. Omit it and
+        each issue is queued under the workflow **its own estimate suggested**, which is the
+        difference between *Queue 3 selected* and *Queue → standard-fix*.
+
+        **Only `sized` issues can be queued.** A queue row copies an effort, a workflow tag and
+        an `est_minutes` off the estimate in force, and there is nothing honest to write for an
+        issue nobody has sized. `estimating` is refused rather than waited for: a request that
+        blocked on an engine call would be a timeout, and the button can be pressed again when
+        the pill changes.
+
+        **`est_minutes` is copied from the estimate's breakdown, never recomputed.** The chip is
+        a size and the estimate is minutes something measured, and deriving one from the other
+        would make the *Queued issues* stat a restatement of the chips. An estimate outside what
+        the queue column will hold — zero, or past a fortnight of continuous work — is stored as
+        `null`, which is that column's word for *not estimated*: clamping would publish a number
+        no estimator produced.
+
+        **The write is all-or-nothing, and that was chosen deliberately.** Every check runs
+        against one read of the selection and the inserts are one transaction, so a request is
+        either applied whole or refused whole. A partly-applied bulk queue is far worse to reason
+        about than a rejected one — the person pressed *Queue 3 selected* and would be left
+        guessing which of the three took.
+
+        **Every refusal names its offenders, one entry per issue.** `details.issues` carries the
+        id the caller sent, a code for what is wrong with *that* issue, and the number and status
+        where this workspace's own row supplied them — so the action bar can say *"#483 is still
+        being sized"* instead of *"something went wrong"*. The three refusals are ordered: ids
+        this workspace cannot see are a `404` first, then the issues that are not `sized`, then
+        the ones the queue already holds. One press is refused for one reason at a time.
+
+        **A duplicate enqueue is a `409`, from the constraint rather than from a check alone.**
+        `queue_items` is unique on `(organization_id, issue_number)`: a workspace's queue holds
+        each issue once, and each *number* once — deliberately over-reaching across repositories,
+        so two repositories' `#485` cannot both be queued and a selection containing both is
+        refused before either is written.
+
+        **The workspace is the session's**, exactly as every other operation here: no workspace
+        in this path, the session's active organization or `X-Ouro-Tenant` decides, and
+        membership is checked before this operation runs. An id belonging to another workspace is
+        a `404`, exactly as one that does not exist.
+
+        **`member`, `admin` or `owner`.** Queueing is work — it commits the workspace's loop to a
+        list of issues — so a `viewer` may read the backlog and may not fill the queue. It is
+        deliberately not `admin+` like `POST /api/v1/backlog/estimate-all`: that one fans out
+        over the whole backlog in a single press, and this one queues exactly what was selected.
+      operationId: queueBacklogIssues
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueueSelection"
+            example:
+              issueIds:
+                [
+                  5eed0018-0000-4000-8000-000000000485,
+                  5eed0018-0000-4000-8000-000000000484,
+                  5eed0018-0000-4000-8000-000000000491,
+                ]
+              workflow: standard-fix
+      responses:
+        "201":
+          description: |-
+            The rows that were created, in queue order, and their combined estimate — the
+            *"est. 2h 5m combined autonomous work"* the selection action bar renders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueuedSelection"
+              example:
+                items:
+                  - id: 7a1c0b90-0000-4000-8000-000000000001
+                    issueNumber: 485
+                    issueTitle: Watchdog reset on I²C bus lockup
+                    effort: m
+                    workflowTag: standard-fix
+                    position: 4
+                    estMinutes: 45
+                    enqueuedAt: "2026-09-10T15:41:12.000Z"
+                  - id: 7a1c0b90-0000-4000-8000-000000000002
+                    issueNumber: 484
+                    issueTitle: Motor PID integral windup on wheel stall
+                    effort: m
+                    workflowTag: standard-fix
+                    position: 5
+                    estMinutes: 50
+                    enqueuedAt: "2026-09-10T15:41:12.000Z"
+                  - id: 7a1c0b90-0000-4000-8000-000000000003
+                    issueNumber: 491
+                    issueTitle: Add CRC32 to config persistence layer
+                    effort: s
+                    workflowTag: standard-fix
+                    position: 6
+                    estMinutes: 30
+                    enqueuedAt: "2026-09-10T15:41:12.000Z"
+                estMinutes: 125
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit this.
+            Queueing issues is `owner`, `admin` or `member`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `queue_issues_not_found` — one or more ids name no issue in this workspace, or name
+            one in another; the two are deliberately one answer, because a `403` would confirm
+            that a guessed id is a real issue somewhere. `details.issues` names each one, and
+            carries nothing but the id the caller sent. Or `tenant_not_found`, when the
+            `X-Ouro-Tenant` header names no workspace you are a member of.
+
+            Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: queue_issues_not_found
+                message: Some of those issues are not in this workspace.
+                details:
+                  issues:
+                    - issueId: 5eed0018-0000-4000-8000-000000000484
+                      code: issue_not_found
+        "409":
+          description: |-
+            `queue_issues_conflict` — the queue already speaks for one or more of the selection.
+            `issue_already_queued` is a row the queue holds; `issue_number_taken` is two issues
+            *in this request* carrying one GitHub number, which a workspace watching two
+            repositories can produce and which `queue_items_organization_issue_key` refuses.
+
+            Nothing is written — including the issues that had no conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: queue_issues_conflict
+                message: Some of those issues are already in the queue.
+                details:
+                  issues:
+                    - issueId: 5eed0018-0000-4000-8000-000000000484
+                      code: issue_already_queued
+                      issueNumber: 484
+        "422":
+          description: |-
+            `queue_issues_not_queueable` — one or more issues are not ready. `issue_not_sized`
+            carries the status the issue is actually in — `unsized`, `estimating` or
+            `needs_human` — and `issue_estimate_missing` is a `sized` issue whose estimate row
+            has gone, which is answerable rather than a failure of this service.
+
+            Or `validation_failed`, when the *body* is wrong rather than the backlog: an id that
+            is not a uuid, an empty or duplicated selection, more than 100 issues, or a
+            `workflow` outside the fixed set. `details` carries one entry per field.
+
+            Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: queue_issues_not_queueable
+                message: Some of those issues have not been sized yet. Only sized issues can be queued.
+                details:
+                  issues:
+                    - issueId: 5eed0018-0000-4000-8000-000000000483
+                      code: issue_not_sized
+                      issueNumber: 483
+                      sizingStatus: estimating
         "500":
           description: |-
             `internal_error` — the service itself failed. The message is a constant and
@@ -15217,6 +15441,85 @@ components:
           description: How many issues the workspace mirrors, as this request read it.
           examples: [9]
 
+    QueueSelection:
+      type: object
+      title: QueueSelection
+      description: |-
+        A selection of issues to queue, and the workflow to run them under
+        ([#112](https://github.com/NobuData/ouroboros/issues/112)) — what mockup 03's three
+        queue buttons all send.
+      additionalProperties: false
+      required: [issueIds]
+      properties:
+        issueIds:
+          type: array
+          description: |-
+            The issues to queue, by `github_issues.id` — the `id` a backlog row carries, not
+            GitHub's number, which is unique only inside its repository.
+
+            **In the order to append them**: positions are handed out down this list, so the
+            queue reads the way the person built the selection.
+
+            Ids must be distinct. The same id twice is refused rather than de-duplicated: a
+            selection model that counted one row twice is already rendering a combined estimate
+            that is wrong. At most 100, which is a page of the backlog table and therefore every
+            row a person can have selected at once — the batch is one transaction, and a
+            transaction whose size a client chooses is a lock somebody else waits behind.
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+          examples: [[5eed0018-0000-4000-8000-000000000485, 5eed0018-0000-4000-8000-000000000484]]
+        workflow:
+          type: string
+          enum: [standard-fix, docs-loop, feature-loop, deps-refresh]
+          description: |-
+            The workflow every issue in this request is queued under — *Queue → standard-fix*.
+
+            Omit it for *Queue 3 selected ⟳*, where each issue is queued under the workflow
+            **its own estimate suggested**. Absent is therefore not the same as `standard-fix`.
+
+            Held to the fixed set (decision K5) here and nowhere else: `queue_items.workflow_tag`
+            is deliberately unconstrained text (decision F8) so a queued issue still renders
+            under a renamed workflow, which means the database will not catch a tag nothing runs.
+          examples: [standard-fix]
+
+    QueuedSelection:
+      type: object
+      title: QueuedSelection
+      description: |-
+        What one press of a queue button answers with
+        ([#112](https://github.com/NobuData/ouroboros/issues/112)): the rows that were created,
+        and the one number the selection action bar renders beside them.
+      additionalProperties: false
+      required: [items, estMinutes]
+      properties:
+        items:
+          type: array
+          description: |-
+            The created rows, in queue order — the first appended first.
+
+            `QueueItemSummary`, which is what `GET /api/v1/queue` publishes and what mockup 02's
+            *Up next in queue* card draws: one mapper, one shape for a queued issue everywhere,
+            so a client may render these into the queue card it already has without re-fetching.
+          items:
+            $ref: "#/components/schemas/QueueItemSummary"
+        estMinutes:
+          type: integer
+          minimum: 0
+          description: |-
+            The combined estimate of what was just queued, in minutes — *"est. 2h 5m combined
+            autonomous work"*.
+
+            The **sum** of what was written, skipping items carrying no estimate rather than
+            counting them as zero — the same sentence `QueuePage.totalEstMinutes` and the
+            dashboard's `stats.queued.estMinutes` are, so this number and the queue card's total
+            cannot disagree about these rows. `items` may therefore speak for more issues than
+            this number does.
+          examples: [125]
+
     BacklogListing:
       type: object
       title: BacklogListing
@@ -15278,7 +15581,8 @@ components:
         either, including under `sort=updated`, because the ordering is the answer that sort
         gives and the table has no such column to print.
       additionalProperties: false
-      required: [id, number, title, labels, state, sizingStatus, githubRepoId, repository, estimate]
+      required:
+        [id, number, title, labels, state, sizingStatus, queued, githubRepoId, repository, estimate]
       properties:
         id:
           type: string
@@ -15321,6 +15625,21 @@ components:
             `estimate`: an issue can be `needs_human` and still carry the estimate that sent it
             there, and one that is `estimating` carries none at all.
           examples: [sized]
+        queued:
+          type: boolean
+          description: |-
+            Whether the run queue holds this issue — the `queued` pill
+            ([#112](https://github.com/NobuData/ouroboros/issues/112)).
+
+            **A field of its own rather than a fifth `sizingStatus`**, because the two are
+            independent facts: an issue can be `needs_human` *and* queued, and one pill field
+            would have to drop one of them. A client rendering a single pill renders this one in
+            preference — where the loop will pick the issue up is the more recent fact about it.
+
+            Decided against `queue_items` as it stands at this instant rather than copied onto
+            the issue, so it cannot go stale. `POST /api/v1/backlog/queue` is what makes it true,
+            and `GET /api/v1/queue` is where the queue row itself is read.
+          examples: [false]
         githubRepoId:
           type: string
           format: uuid
@@ -15479,6 +15798,7 @@ components:
           labels,
           state,
           sizingStatus,
+          queued,
           githubRepoId,
           repository,
           body,
@@ -15521,6 +15841,13 @@ components:
             separate answer from `estimate`: an issue can be `needs_human` and still carry the
             estimate that sent it there.
           examples: [sized]
+        queued:
+          type: boolean
+          description: |-
+            Whether the run queue holds this issue — the same field the table's row carries, and
+            what **Queue for loop** in this panel reads before offering to queue it again
+            ([#112](https://github.com/NobuData/ouroboros/issues/112)).
+          examples: [false]
         githubRepoId:
           type: string
           format: uuid
