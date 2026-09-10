@@ -122,6 +122,52 @@ describe("the backlog sync repository", () => {
     });
   });
 
+  describe("which repositories one workspace's status is about", () => {
+    it("scopes the read to the workspace, and keeps both enablement flags", async () => {
+      // M.4's durable half (#113). Scoped, because this one answers a request under a tenant
+      // context rather than a cycle over the whole installation — and still *enabled*, so a
+      // status page cannot report on repositories nothing polls.
+      database.answers({ rows: [] });
+
+      await repository.enabledRepositoriesFor(FIXTURE_WORKSPACE);
+
+      const [sql] = database.sql();
+
+      expect(sql).toContain('"ouroboros"."github_orgs"."organization_id" = $3');
+      expect(sql).toContain('"ouroboros"."github_repos"."enabled" = $1');
+      expect(sql).toContain('"ouroboros"."github_orgs"."enabled" = $2');
+      expect(database.statements[0].parameters).toEqual([true, true, FIXTURE_WORKSPACE]);
+    });
+
+    it("selects the freshness stamp and the watermark, which are the answer", async () => {
+      database.answers({ rows: [] });
+
+      await repository.enabledRepositoriesFor(FIXTURE_WORKSPACE);
+
+      expect(database.sql()[0]).toContain('"ouroboros"."github_repos"."issues_synced_at"');
+      expect(database.sql()[0]).toContain('"ouroboros"."github_repos"."issues_sync_cursor"');
+    });
+
+    it("orders by `owner/name` rather than by freshness", async () => {
+      // A person is reading this one. The cycle's oldest-poll-first order is a scheduling
+      // decision, and reusing it here would reshuffle the page every time something synced.
+      database.answers({ rows: [] });
+
+      await repository.enabledRepositoriesFor(FIXTURE_WORKSPACE);
+
+      expect(database.sql()[0]).toContain(
+        'order by "ouroboros"."github_orgs"."login" asc, "ouroboros"."github_repos"."name" asc',
+      );
+    });
+
+    it("answers with what it read", async () => {
+      const row = target();
+      database.answers({ rows: [row] });
+
+      await expect(repository.enabledRepositoriesFor(FIXTURE_WORKSPACE)).resolves.toEqual([row]);
+    });
+  });
+
   describe("one poll, one transaction", () => {
     it("wraps every write, including the freshness stamp", async () => {
       database.answers({ rows: [] }, { rows: [{ id: ROW_ID }] }, { rows: [] });

@@ -13,11 +13,13 @@
  * ```
  *
  * **It has no controller, and that is deliberate.** The manual re-sync trigger and the sync
- * status endpoint are M.4's ([#113](https://github.com/NobuData/ouroboros/issues/113)); this
- * ticket owns the cycle those routes will call. {@link BacklogSyncService} and
- * {@link BacklogSyncScheduler} are exported for exactly that — the service so a status endpoint
- * can read the last cycle's pause reasons beside the stored cursors, and the scheduler so a
- * trigger can drive one cycle without reaching into the private timer.
+ * status endpoint are M.4's ([#113](https://github.com/NobuData/ouroboros/issues/113)), and
+ * they landed in `backlog/` rather than here; this module owns the cycle those routes call.
+ * Its three exports are exactly what they needed — {@link BacklogSyncService} for the last
+ * cycle's pause reasons, {@link BacklogSyncRepository} for the stored cursors and freshness
+ * stamps beside them, and {@link BacklogSyncScheduler} so a trigger can drive one cycle
+ * without reaching into the private timer. Keeping the routes out is what preserves this
+ * module's one property: nothing an HTTP request does can reach inside a cycle.
  *
  * **`GithubModule` is imported, and what it contributes is a client and a question.**
  * `GithubClientFactory` opens the workspace's token per call and never caches it, which is what
@@ -64,6 +66,6 @@ import { ESTIMATION_INTAKE } from "./estimation.intake";
       useExisting: EstimationOrchestrator,
     },
   ],
-  exports: [BacklogSyncService, BacklogSyncScheduler],
+  exports: [BacklogSyncService, BacklogSyncRepository, BacklogSyncScheduler],
 })
 export class BacklogSyncModule {}

@@ -2,6 +2,7 @@ import { Module, type DynamicModule } from "@nestjs/common";
 
 import { BetterAuthModule } from "../../auth/auth.module";
 import { AuditModule } from "../audit/audit.module";
+import { BacklogModule } from "../backlog/backlog.module";
 import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
 import { AuthModule } from "../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
@@ -154,8 +155,9 @@ import { AppService } from "./app.service";
  * `GithubModule`, and it is the **second** module here to run periodic work — the first since
  * `ProviderHealthModule` brought `@nestjs/schedule` in. It has no controller: the manual
  * re-sync and the sync-status endpoint are M.4's
- * ([#113](https://github.com/NobuData/ouroboros/issues/113)), and what this ticket contributes
- * is the cycle those routes will call. Its position is about its imports rather than about
+ * ([#113](https://github.com/NobuData/ouroboros/issues/113)) and live in `BacklogModule`
+ * below, and what this ticket contributes is the cycle they call. Its position is about its
+ * imports rather than about
  * middleware — it needs `GithubModule`'s client factory and credentials service, so it cannot
  * precede it — and the consequence of listing it at all is the same one `ProviderHealthModule`
  * carries: a process with this module in it makes outbound requests to github.com that nobody
@@ -169,6 +171,16 @@ import { AppService } from "./app.service";
  * you answer by reading a second file. It brings the third periodic loop, and unlike the other
  * two that loop knocks on nothing outside this deployment: it is one indexed query looking for
  * rows a restart stranded mid-estimate.
+ *
+ * `BacklogModule` ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the intake
+ * screen's HTTP surface, and it is the sync's two modules read the other way round: it
+ * declares routes and no loop, exactly as `BacklogSyncModule` declares a loop and no routes.
+ * It is listed after both of the modules it imports — the sync, for the report and the
+ * scheduler its status and trigger read, and `GithubModule`, for whether a workspace has a
+ * token and for the rate guard. Its prefix is `/api/v1/backlog`, which M.1's listing
+ * ([#110](https://github.com/NobuData/ouroboros/issues/110)) will share: two controllers under
+ * one prefix is ordinary, and no path here can be shadowed by one — `sync-status` and `sync`
+ * are literal segments, so a later `{number}` route matches neither.
  *
  * `InternalModule` ([#224](https://github.com/NobuData/ouroboros/issues/224)) is last, and
  * its position is the only one it could have. It registers a global guard, and Nest runs
@@ -264,6 +276,10 @@ export class AppModule {
         // this deployment's own database — and, like the sync, declares no route at all: the
         // re-estimation endpoints are L.4's (#108).
         EstimationModule,
+        // M.4 ([#113](https://github.com/NobuData/ouroboros/issues/113)) — the intake screen's
+        // API surface, and the first routes over anything the sync wrote. After the two
+        // modules it imports; the rest of Epic M's controllers land in it.
+        BacklogModule,
         InternalModule,
       ],
     };
