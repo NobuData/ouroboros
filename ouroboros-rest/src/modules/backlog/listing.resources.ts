@@ -20,6 +20,14 @@
  * ([#117](https://github.com/NobuData/ouroboros/issues/117))'s unsized row is one branch on one
  * field.
  *
+ * ## The status pill is two facts, not one
+ *
+ * M.3 ([#112](https://github.com/NobuData/ouroboros/issues/112)) added {@link BacklogRow.queued}
+ * beside {@link BacklogRow.sizingStatus} rather than a fifth value inside it. `queued` is a
+ * presentation over `queue_items` — the intake roadmap says so in as many words — and the two
+ * facts are independent: the seeded `#490` is `needs_human` *and* queued, so one field would
+ * have to drop one of them. The mockup draws one pill because in its population no row is both.
+ *
  * ## What a row deliberately does not carry
  *
  * The ticket's scope is *"exactly what the table's cells need, no more"*, and the table's cells
@@ -76,6 +84,19 @@ export interface BacklogRow {
   readonly state: GithubIssueState;
   /** The *Status* pill: where the issue is in *our* sizing pipeline (decision **K4**). */
   readonly sizingStatus: SizingStatus;
+  /**
+   * Whether this issue is in the run queue — the `queued` pill, added by M.3
+   * ([#112](https://github.com/NobuData/ouroboros/issues/112)).
+   *
+   * **A field of its own rather than a fifth `sizingStatus`**, because `queued` is not a
+   * sizing status and the intake roadmap says so: it is a *presentation* over `queue_items`,
+   * and the two facts are independent. The seeded `#490` is the pair that proves it —
+   * `needs_human` *and* queued — so a single pill field would have to drop one of them.
+   *
+   * A client that renders one pill renders this one in preference: *where the loop will pick
+   * it up* is the more recent fact about an issue that has been both sized and queued.
+   */
+  readonly queued: boolean;
   /** `github_repos.id` — what `?repo=` takes, so a row can narrow the listing it came from. */
   readonly githubRepoId: string;
   /** `owner/name`, as GitHub spells it. See this file's header on why a row carries it. */
@@ -161,9 +182,12 @@ export interface BacklogListing extends Page<BacklogRow> {
  * an estimate or it has none"* is asserted in a single place.
  *
  * @param row - The joined issue and its latest estimate, or four nulls where there is none.
+ * @param queued - Whether the run queue holds this issue, decided by `listing.service.ts` from
+ *   a read of `queue_items` rather than from anything on the row — the queue is a different
+ *   table, and a column here would be a copy of it that goes stale.
  * @returns The row, JSON-safe.
  */
-export function backlogRow(row: BacklogListRow): BacklogRow {
+export function backlogRow(row: BacklogListRow, queued: boolean): BacklogRow {
   return {
     id: row.id,
     number: row.number,
@@ -171,6 +195,7 @@ export function backlogRow(row: BacklogListRow): BacklogRow {
     labels: row.labels,
     state: row.state,
     sizingStatus: row.sizingStatus,
+    queued,
     githubRepoId: row.githubRepoId,
     repository: row.repository,
     estimate: estimateOf(row),

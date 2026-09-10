@@ -1,7 +1,8 @@
 /**
- * The three statements behind `GET /api/v1/backlog`
- * (M.1, [#110](https://github.com/NobuData/ouroboros/issues/110)) — the rows, the counts, and
- * the chip set.
+ * The four statements behind `GET /api/v1/backlog`
+ * (M.1, [#110](https://github.com/NobuData/ouroboros/issues/110)) — the rows, the counts, the
+ * chip set, and, since M.3 ([#112](https://github.com/NobuData/ouroboros/issues/112)), the
+ * queued issues the `queued` pill is drawn from.
  *
  * ## Every one of them is scoped to one workspace, in the statement
  *
@@ -48,6 +49,10 @@
  * Defaults, mapping and the freshness stamp are `listing.service.ts`'s and
  * `listing.resources.ts`'s. This holds statements, which is what lets its spec assert the SQL
  * PostgreSQL would receive — where a missing `where` shows up — without a server.
+ *
+ * The fourth statement is the odd one and says so at its own definition: it reads `queue_items`
+ * rather than `github_issues`, and it is a separate read rather than a join precisely so the
+ * three plan-asserted statements above are the ones M.1 pinned.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -96,6 +101,14 @@ export interface BacklogListRow {
   readonly confidence: number | null;
   readonly suggestedWorkflow: string | null;
   readonly routedModel: string | null;
+}
+
+/** One issue the run queue holds, as the `queued` pill needs to recognise it. */
+export interface QueuedIssueKey {
+  /** `queue_items.github_repo_id`. */
+  readonly githubRepoId: string;
+  /** `queue_items.issue_number` — GitHub's, not a row id: the queue stores the number. */
+  readonly number: number;
 }
 
 /** The page head's two figures, and how many rows the filter actually matched. */
@@ -235,6 +248,43 @@ export class BacklogListingRepository {
       openCount: asCount(row.openCount),
       sizedCount: asCount(row.sizedCount),
     };
+  }
+
+  /**
+   * Every issue of this workspace the run queue holds — the `queued` pill's own read
+   * (M.3, [#112](https://github.com/NobuData/ouroboros/issues/112)).
+   *
+   * **A read of its own rather than a join onto the listing**, and there are two reasons.
+   * A queue is *small* — tens of rows, bounded by what a workspace has committed the loop to —
+   * so fetching all of its keys costs less than a correlated subquery evaluated per row, and it
+   * runs concurrently with the other four reads instead of inside one of them. And the listing's
+   * three statements were plan-asserted at volume by M.1
+   * ([#110](https://github.com/NobuData/ouroboros/issues/110)); a subquery threaded into them
+   * would change the plans that ticket's suite pins, to buy nothing a reader can see.
+   *
+   * **Matched on the repository as well as the number, deliberately.** `queue_items` is keyed
+   * `(organization_id, issue_number)` and so holds one `#485` per workspace however many
+   * repositories number one — V009's own over-reach, argued there. For *display* that key is
+   * too wide: it would draw the pill on a second repository's `#485` that is not in the queue
+   * and could not be. V009 says as much — *"`github_repo_id` disambiguates them for display"* —
+   * so the pill uses the repository and the queue write's `409` uses the constraint's own key.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param repoId - The repository, or `undefined` for the whole workspace. The same narrowing
+   *   the rows get, so a filtered listing does not read a queue it cannot draw.
+   * @returns One key per queued issue. Empty for a workspace that has queued nothing.
+   */
+  async queuedIssues(organizationId: string, repoId?: string): Promise<QueuedIssueKey[]> {
+    let query = this.database.db
+      .selectFrom("queue_items")
+      .select(["github_repo_id as githubRepoId", "issue_number as number"])
+      .where("organization_id", "=", organizationId);
+
+    if (repoId !== undefined) {
+      query = query.where("github_repo_id", "=", repoId);
+    }
+
+    return query.execute();
   }
 
   /**

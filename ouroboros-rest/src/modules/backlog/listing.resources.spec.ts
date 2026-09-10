@@ -41,13 +41,14 @@ describe("a backlog row", () => {
   it("is the mockup's cells and no more", () => {
     // The table's six columns: the checkbox's id, the issue, effort with its confidence, the
     // workflow, the model and the status pill.
-    expect(backlogRow(row())).toEqual({
+    expect(backlogRow(row(), false)).toEqual({
       id: "5eed0018-0000-4000-8000-000000000485",
       number: 485,
       title: "Watchdog reset on I²C bus lockup",
       labels: ["bug", "i2c", "watchdog", "priority-high"],
       state: "open",
       sizingStatus: "sized",
+      queued: false,
       githubRepoId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
       repository: "acme-robotics/helios-firmware",
       estimate: {
@@ -60,7 +61,7 @@ describe("a backlog row", () => {
   });
 
   it("carries no body, author or URL — those are the side panel's", () => {
-    const published = Object.keys(backlogRow(row()));
+    const published = Object.keys(backlogRow(row(), false));
 
     expect(published).not.toContain("body");
     expect(published).not.toContain("authorLogin");
@@ -79,6 +80,7 @@ describe("a backlog row", () => {
         suggestedWorkflow: null,
         routedModel: null,
       }),
+      false,
     );
 
     expect(mapped.estimate).toBeNull();
@@ -90,9 +92,14 @@ describe("a backlog row", () => {
     // estimate say different things, and a row that derived one from the other would lose that.
     const mapped = backlogRow(
       row({ number: 490, sizingStatus: "needs_human", effort: "xl", confidence: 61 }),
+      true,
     );
 
     expect(mapped.sizingStatus).toBe("needs_human");
+    // And queued on top of both, which is the third independent fact: `queued` is a
+    // presentation over `queue_items`, not a fifth sizing status, so `#490` is `needs_human`
+    // *and* in the queue. One pill field could not say that.
+    expect(mapped.queued).toBe(true);
     expect(mapped.estimate).toEqual({
       effort: "xl",
       confidence: 61,
@@ -102,12 +109,15 @@ describe("a backlog row", () => {
   });
 
   it("carries a closed issue's state, because a listing may be asked for one", () => {
-    expect(backlogRow(row({ state: "closed" })).state).toBe("closed");
+    expect(backlogRow(row({ state: "closed" }), false).state).toBe("closed");
   });
 
   it("keeps the labels in the order they are stored", () => {
     // The tags under the title are GitHub's set as GitHub ordered it; re-sorting them here would
     // be this service editing a mirrored value, which decision K3 forbids.
-    expect(backlogRow(row({ labels: ["watchdog", "bug"] })).labels).toEqual(["watchdog", "bug"]);
+    expect(backlogRow(row({ labels: ["watchdog", "bug"] }), false).labels).toEqual([
+      "watchdog",
+      "bug",
+    ]);
   });
 });

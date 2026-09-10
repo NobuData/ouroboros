@@ -1106,7 +1106,7 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | M.1 | #110 | 🟢 Done | ouroboros-rest: [M.1] Backlog list endpoint with filters | Org-scoped list: repo/labels/state/sort/search, paging, head counts | mvp, intake, rest | N (after K.4, L.3) | Y | M | ouroboros-rest |
 | M.2 | #111 | 🟢 Done | ouroboros-rest: [M.2] Issue detail endpoint | Full issue + latest estimate + trace for the side panel | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
-| M.3 | #112 | 🟡 Open | ouroboros-rest: [M.3] Bulk queue action | Selection → `queue_items` with workflow tag + combined estimate | mvp, intake, rest | N (after L.3, DASH-F.2) | Y | M | ouroboros-rest |
+| M.3 | #112 | 🟢 Done | ouroboros-rest: [M.3] Bulk queue action | Selection → `queue_items` with workflow tag + combined estimate | mvp, intake, rest | N (after L.3, DASH-F.2) | Y | M | ouroboros-rest |
 | M.4 | #113 | 🟢 Done | ouroboros-rest: [M.4] Sync status & manual re-sync | Freshness data + `POST /backlog/sync` trigger with guards | mvp, intake, rest | N (after K.4) | Y | S | ouroboros-rest |
 | M.5 | #114 | 🟡 Open | ouroboros-rest: [M.5] Backlog API integration tests | Filter matrix, queue writes, isolation, sync trigger | mvp, intake, rest, ci | N (after M.1–M.4) | Y | M | ouroboros-rest |
 
@@ -1302,7 +1302,106 @@ GET /backlog/:id ─▶ {issue{body, author, gh_url}, estimate{breakdown, risk, 
 
 ### Issue M.3 — ouroboros-rest: [M.3] Bulk queue action
 
-> **GitHub issue:** #112 · **Status:** 🟡 Open · **Parent epic:** #96
+> **GitHub issue:** #112 · **Status:** 🟢 Done · **Parent epic:** #96
+
+> **Shipped 2026-09-10, the same day as M.4, L.4, M.1 and M.2.** Epic M has its integration suite
+> M.5 (#114) left, and nothing else.
+>
+> [`ouroboros-rest/src/modules/backlog/queue.*`](../ouroboros-rest/src/modules/backlog/) is
+> `POST /api/v1/backlog/queue` — six files beside M.2's five, 88 new unit tests and a 24-case
+> integration suite over mockup 03's own rows. `ouroboros-rest` 0.31.5 — a patch, because the
+> contract gained one operation and two schemas and added one field to two others, and changed
+> nothing.
+>
+> **A fourth controller under the same prefix, and the write side `queue/queue.module.ts` asked
+> for.** That module says it in as many words — *"reorder, remove and enqueue are deliberately not
+> here: the queue's writes belong to the issues screen (mockup 03)"* — and it exports nothing, so
+> this module reaches `queue_items` through a repository of its own exactly as the listing reaches
+> `github_issues` through one. It is this module's first *write* to a table it does not own, which
+> is the one V009 said it was waiting for. Registration order is not a question here: `queue` is a
+> literal segment and `GET /backlog/{id}` is a different method, so M.2's routing rule does not
+> reach this route.
+>
+> **All-or-nothing, and the OpenAPI description says so.** The ticket asked for the decision to be
+> *stated* rather than merely implemented, and the reason is worth keeping: a partly-applied bulk
+> queue is far worse to reason about than a rejected one — the person pressed *Queue 3 selected*
+> and would otherwise be left guessing which of the three took. Every check runs against one read
+> of the selection and the inserts are one multi-row statement inside one transaction.
+> `queue.integration-spec.ts` proves it the only way it can be proved: by re-parenting a second
+> repository onto another workspace's GitHub organisation — the one hole V009's header documents,
+> where the shared `repo_in_organization` trigger refuses the next row written against a repo
+> while leaving the issues already mirrored under it in place — so the third row of three is
+> refused after the first two are written, and neither survives.
+>
+> **The refusals are ordered, and every one of them is per-issue.** `404` for ids this workspace
+> cannot see, then `422` for the issues that are not `sized`, then `409` for the ones the queue
+> already holds; one press is refused for one reason at a time, with every offender of *that*
+> reason named. `details.issues` carries the id the caller sent, a code for what is wrong with
+> that row, and its number and status where this workspace's own row supplied them — a `404`
+> deliberately carries neither, because an issue this workspace cannot see has no number this
+> request is entitled to learn. That is the ticket's *"so N.4 can name them instead of showing a
+> generic failure"*, as a shape rather than as an intention.
+>
+> **`409` is asked twice, and the second time is the point.** The check before the write is what
+> makes the answer per-issue; `queue_items_organization_issue_key` is what makes it *true*.
+> `constraints.ts` had already written the argument down — a service that asks whether something
+> is taken and then inserts it has a window between the two, and the loser of that race gets a
+> `500` with PostgreSQL's own text in it — so a unique violation on that key is caught, the queue
+> is re-read, and the same `409` is answered with the row that won.
+>
+> **The two migrations finally meet, which is what this ticket was left holding.** The intake
+> roadmap said reconciling `V026`'s bounds with `V009`'s is M.3's *"at the statement that copies
+> one into the other"*, and there turned out to be exactly one real mismatch: titles and workflow
+> tags are bounded identically in both tables, the effort scales are the same five values (kept as
+> two types on purpose, and mapped here through a `Record` that is exhaustive on both sides, so
+> widening either is a compile error at the copy), and `est_minutes` is the one that differs —
+> `V026` runs to 100 000 and `V009` refuses zero and anything past a fortnight. Out of range is
+> written as `null`, which is that column's own word for *not estimated*; clamping would publish a
+> number no estimator produced and would make the *Queued issues* stat wrong in the direction that
+> looks fine.
+>
+> **`queued` is a field beside `sizingStatus`, not a fifth value inside it** — DASH-F.5 said it
+> first, *"`queued` is not a `sizing_status`, it is a presentation over `queue_items`"*, and the
+> seeded `#490` is why it matters: `needs_human` **and** queued, so one pill field would have to
+> drop one of them. The listing decides it from a fifth concurrent read rather than a subquery
+> threaded into M.1's three, which is what keeps the plans that ticket pinned at nine thousand
+> issues; the panel decides it inside its own single-row statement, where a semi-join is one index
+> probe and there is no page for a separate read to run beside. Both match on the **repository as
+> well as the number**, because `queue_items` is keyed `(organization_id, issue_number)` and would
+> otherwise draw the pill on a second repository's `#485` that is not queued and could not be —
+> V009's own instruction, *"`github_repo_id` disambiguates them for display"*. The queue write's
+> `409` uses the constraint's own key instead, and refuses a selection containing both.
+>
+> **Positions are appended, and the retry is V009's design being used rather than worked around.**
+> `max(position) + 1` is read inside the transaction, positions are handed out down the request's
+> own list so the queue reads the way the person built the selection, and a duplicate position —
+> raised at `commit`, because that key is deferrable — is retried, exactly as
+> `estimation.repository.ts` retries a version collision. A duplicate *issue number* is not
+> retried: that is the caller's request rather than a race, and it would fail identically forever.
+>
+> **What the mockup's numbers become.** Queueing the three selected rows answers `estMinutes: 125`
+> — 45 + 50 + 30 from the seeded estimates — where the action bar draws *est. 1h 10m*, which is
+> design copy over a backlog of nine exactly as its *"42 open issues. 38 already sized."* is. The
+> integration suite reads the result back through `GET /api/v1/queue` **and** the dashboard
+> aggregate and requires all three to agree, which is the cross-roadmap verification against #85:
+> the dashboard module exports no provider, so its stat and the queue listing's total are two
+> independently-stated sentences, and this ticket adds the third — the one that wrote them.
+>
+> **What is deferred, and to whom.** The amendments on the ticket are recorded and not
+> implemented, which is what they say of themselves: #143's trigger evaluation will fill the
+> default workflow by predicate and pin a `workflow_version` on each queue item, with an explicit
+> `workflow` still winning; #135 turns the fixed tag set into a real registry; #407/#415 add a
+> nullable `playbook_id`. All three are compositions over this endpoint rather than changes to it.
+> **N.4 (#118)** is what this unblocks, and **M.5 (#114)** inherits an endpoint with one leg
+> already in the integration matrix.
+>
+> *(Two corrections to the scope below, both narrower than they look. "Flips issue rows to
+> `queued` presentation state" is not a write: nothing on `github_issues` moves, and `queued` is
+> computed against `queue_items` on every read — a stored flag would be a copy of the queue that
+> goes stale the moment a row is dequeued, and DASH-F.5 had already said `queued` is a
+> presentation rather than a status. And the `409` is described as "per DASH-F.2's unique
+> constraint": it is, and it is also a check before the write — the constraint alone can only say
+> that *something* collided, and the per-issue answer the criterion asks for needs the read.)*
 
 - **Problem Statement:** "Queue 3 selected ⟳" / "Queue → standard-fix" / "Queue
   for loop" all write the run queue — the write side the dashboard roadmap

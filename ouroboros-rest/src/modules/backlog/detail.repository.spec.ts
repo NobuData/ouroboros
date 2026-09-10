@@ -96,6 +96,27 @@ describe("the backlog detail repository", () => {
 
       expect(await detail.issue(WORKSPACE, ISSUE)).toBeUndefined();
     });
+
+    it("decides the queued pill inside the same statement", async () => {
+      // The opposite of what the listing does, and for a reason that only holds here: this
+      // statement answers one row by primary key, so the semi-join is a single index probe and
+      // there is no page for a separate read to run concurrently with.
+      await detail.issue(WORKSPACE, ISSUE);
+
+      const [{ sql }] = database.statements;
+
+      expect(sql).toContain("exists (");
+      expect(sql).toContain('"ouroboros".queue_items');
+      expect(sql).toContain("q.issue_number");
+    });
+
+    it("matches the queue on the repository as well as the number", async () => {
+      // `queue_items` holds one `#485` per workspace however many repositories number one —
+      // V009's deliberate over-reach. For display that key is too wide.
+      await detail.issue(WORKSPACE, ISSUE);
+
+      expect(database.statements[0].sql).toContain("q.github_repo_id");
+    });
   });
 
   describe("the estimates", () => {

@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**152 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**153 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (13/23) | **18** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (14/23) | **19** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **10 issues** · 31 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154` and `155` · 12 dependency waves
+> **9 issues** · 28 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155` and `156` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 13 of 23 issues closed
+> **Status:** 🟡 **In progress** — 14 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1068,9 +1068,53 @@ that roadmap's "Existing issues affected" section.
 >
 > **`N.5` (`#119`) is what this unblocks**, and `M.3` (`#112`) is the last of Epic M's endpoints.
 
+> **`M.3` · [`#112`](https://github.com/NobuData/ouroboros/issues/112) has shipped, and row
+> `156` has left the table below** — so this phase's order numbers now start at `157`, 9 rows
+> summing to 28 points, and 14 of this phase's 23 issues are closed. Epic M has one ticket left,
+> and it is its integration suite.
+>
+> [`ouroboros-rest/src/modules/backlog/queue.*`](../ouroboros-rest/src/modules/backlog/) is
+> `POST /api/v1/backlog/queue`: mockup 03's three queue affordances — **Queue 3 selected ⟳**,
+> **Queue → standard-fix** and **Queue for loop** — as one write. It is the write side the
+> dashboard roadmap deliberately left out (decision `K9`), and the thing
+> [`#73`](https://github.com/NobuData/ouroboros/issues/73)'s queue module said it was leaving for
+> the issues screen in as many words.
+>
+> **All-or-nothing, chosen deliberately and stated in the contract.** Every check runs against one
+> read of the selection and the inserts are one transaction, so a request is applied whole or
+> refused whole. A partly-applied bulk queue is far worse to reason about than a rejected one: the
+> person pressed *Queue 3 selected* and would otherwise be left guessing which of the three took.
+> The integration suite proves it the only way it can be proved — by arranging the one refusal
+> `V009`'s header says can happen, a repository re-parented onto another workspace, so the third
+> row of three is refused after the first two are written.
+>
+> **Every refusal names its offenders, one entry per issue.** `details.issues` carries the id the
+> caller sent, a code for what is wrong with *that* row, and its number and status where this
+> workspace's own row supplied them — which is what `N.4` ([`#118`](https://github.com/NobuData/ouroboros/issues/118))
+> renders instead of a generic failure. The three are ordered: ids this workspace cannot see are a
+> `404` first, then the issues that are not `sized`, then the ones the queue already holds. One
+> press is refused for one reason at a time.
+>
+> **The queue row is copied from the estimate in force, never recomputed** — the effort chip, the
+> workflow tag when the request names none, and `est_minutes` from `breakdown.est_minutes`. That
+> copy is where `V026` and `V009` finally meet, which the intake roadmap left to this ticket *"at
+> the statement that copies one into the other"*: the effort scales are two types on purpose and
+> the map between them is exhaustive on both sides, and an `est_minutes` outside what the queue's
+> column holds is stored as `null` rather than clamped, because clamping would publish a number no
+> estimator produced.
+>
+> **`queued` became a field rather than a fifth `sizing_status`.** It is a presentation over
+> `queue_items` — `DASH-F.5` said so — and the two facts are independent: the seeded `#490` is
+> `needs_human` *and* queued, so one pill field would have to drop one of them. The listing reads
+> it as a fifth concurrent statement rather than a subquery threaded into `M.1`'s three, which
+> keeps the plans that ticket pinned; the panel decides it inside its own single-row statement,
+> where a semi-join is one index probe.
+>
+> **`N.4` (`#118`) is what this unblocks**, and `M.5` (`#114`) inherits an endpoint that already
+> has a 24-case integration leg rather than a blank sheet.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 156 | **M.3** | [#112](https://github.com/NobuData/ouroboros/issues/112) | Bulk queue action | ouroboros-rest | M | F.2, L.3 |
 | 157 | **L.5** | [#109](https://github.com/NobuData/ouroboros/issues/109) | Pipeline integration tests | ouroboros-rest | M | L.4 |
 | 158 | **M.5** | [#114](https://github.com/NobuData/ouroboros/issues/114) | Backlog API integration tests | ouroboros-rest | M | M.1, M.4 |
 | 159 | **N.1** | [#115](https://github.com/NobuData/ouroboros/issues/115) | Issues route, page head & counts | ouroboros-ui | S | 5.3, D.5, M.1 |

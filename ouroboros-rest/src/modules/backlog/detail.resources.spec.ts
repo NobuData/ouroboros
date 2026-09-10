@@ -35,6 +35,7 @@ function issue(overrides: Partial<IssueDetailRow> = {}): IssueDetailRow {
     labels: ["bug", "i2c", "watchdog", "priority-high"],
     state: "open",
     sizingStatus: "sized",
+    queued: false,
     githubRepoId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
     repository: "acme-robotics/helios-firmware",
     body: "Unit 07 in the Fremont pilot rebooted 14 times overnight.",
@@ -87,6 +88,7 @@ describe("the issue half of the panel", () => {
       labels: ["bug", "i2c", "watchdog", "priority-high"],
       state: "open",
       sizingStatus: "sized",
+      queued: false,
       githubRepoId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
       repository: "acme-robotics/helios-firmware",
       body: "Unit 07 in the Fremont pilot rebooted 14 times overnight.",
@@ -94,6 +96,13 @@ describe("the issue half of the panel", () => {
       ghCreatedAt: "2026-09-08T15:41:12.000Z",
       ghUrl: "https://github.com/acme-robotics/helios-firmware/issues/485",
     });
+  });
+
+  it("carries the queued pill the table's row carries, since the panel queues too", () => {
+    // M.3 added `queued` to `BacklogRow` and this shape inherits it — which is the point the
+    // extension is making: **Queue for loop** is one of the three buttons that write the queue,
+    // and the panel needs to know whether it already has.
+    expect(issueDetail(issue({ queued: true }), []).issue.queued).toBe(true);
   });
 
   it("publishes the body raw, because the client is what truncates it", () => {

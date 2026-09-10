@@ -844,6 +844,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backlog/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue a selection of issues for the loop
+         * @description Mockup 03's three queue affordances, as one write
+         *     ([#112](https://github.com/NobuData/ouroboros/issues/112)): **Queue 3 selected ⟳** in
+         *     the page head, **Queue → standard-fix** on the selection action bar, and **Queue for
+         *     loop** in the detail panel. All three send a set of issues and, optionally, the workflow
+         *     to run them under; the single-issue button is a selection of one rather than a route of
+         *     its own.
+         *
+         *     This is the write side the dashboard roadmap deliberately left out (decision K9).
+         *     `GET /api/v1/queue` reads the rows back, and the *Up next in queue* card on mockup 02
+         *     draws them — the items below are byte-identical to that endpoint's, because one mapper
+         *     publishes both.
+         *
+         *     **`issueIds` are `github_issues.id`, not GitHub's numbers.** `github_issues` is unique
+         *     on `(repository, number)`, so a workspace watching two repositories has two issue
+         *     `#485`s and a numeric body would name neither. They are the ids `GET /api/v1/backlog`
+         *     publishes, in the order to append them: positions are handed out down the list, so the
+         *     queue reads the way the person built the selection.
+         *
+         *     **`workflow` is one of the fixed set** — `standard-fix`, `docs-loop`, `feature-loop`,
+         *     `deps-refresh` (decision K5) — and applies to every issue in the request. Omit it and
+         *     each issue is queued under the workflow **its own estimate suggested**, which is the
+         *     difference between *Queue 3 selected* and *Queue → standard-fix*.
+         *
+         *     **Only `sized` issues can be queued.** A queue row copies an effort, a workflow tag and
+         *     an `est_minutes` off the estimate in force, and there is nothing honest to write for an
+         *     issue nobody has sized. `estimating` is refused rather than waited for: a request that
+         *     blocked on an engine call would be a timeout, and the button can be pressed again when
+         *     the pill changes.
+         *
+         *     **`est_minutes` is copied from the estimate's breakdown, never recomputed.** The chip is
+         *     a size and the estimate is minutes something measured, and deriving one from the other
+         *     would make the *Queued issues* stat a restatement of the chips. An estimate outside what
+         *     the queue column will hold — zero, or past a fortnight of continuous work — is stored as
+         *     `null`, which is that column's word for *not estimated*: clamping would publish a number
+         *     no estimator produced.
+         *
+         *     **The write is all-or-nothing, and that was chosen deliberately.** Every check runs
+         *     against one read of the selection and the inserts are one transaction, so a request is
+         *     either applied whole or refused whole. A partly-applied bulk queue is far worse to reason
+         *     about than a rejected one — the person pressed *Queue 3 selected* and would be left
+         *     guessing which of the three took.
+         *
+         *     **Every refusal names its offenders, one entry per issue.** `details.issues` carries the
+         *     id the caller sent, a code for what is wrong with *that* issue, and the number and status
+         *     where this workspace's own row supplied them — so the action bar can say *"#483 is still
+         *     being sized"* instead of *"something went wrong"*. The three refusals are ordered: ids
+         *     this workspace cannot see are a `404` first, then the issues that are not `sized`, then
+         *     the ones the queue already holds. One press is refused for one reason at a time.
+         *
+         *     **A duplicate enqueue is a `409`, from the constraint rather than from a check alone.**
+         *     `queue_items` is unique on `(organization_id, issue_number)`: a workspace's queue holds
+         *     each issue once, and each *number* once — deliberately over-reaching across repositories,
+         *     so two repositories' `#485` cannot both be queued and a selection containing both is
+         *     refused before either is written.
+         *
+         *     **The workspace is the session's**, exactly as every other operation here: no workspace
+         *     in this path, the session's active organization or `X-Ouro-Tenant` decides, and
+         *     membership is checked before this operation runs. An id belonging to another workspace is
+         *     a `404`, exactly as one that does not exist.
+         *
+         *     **`member`, `admin` or `owner`.** Queueing is work — it commits the workspace's loop to a
+         *     list of issues — so a `viewer` may read the backlog and may not fill the queue. It is
+         *     deliberately not `admin+` like `POST /api/v1/backlog/estimate-all`: that one fans out
+         *     over the whole backlog in a single press, and this one queues exactly what was selected.
+         */
+        post: operations["queueBacklogIssues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/backlog/sync-status": {
         parameters: {
             query?: never;
@@ -7633,6 +7716,73 @@ export interface components {
             total: number;
         };
         /**
+         * QueueSelection
+         * @description A selection of issues to queue, and the workflow to run them under
+         *     ([#112](https://github.com/NobuData/ouroboros/issues/112)) — what mockup 03's three
+         *     queue buttons all send.
+         */
+        QueueSelection: {
+            /**
+             * @description The issues to queue, by `github_issues.id` — the `id` a backlog row carries, not
+             *     GitHub's number, which is unique only inside its repository.
+             *
+             *     **In the order to append them**: positions are handed out down this list, so the
+             *     queue reads the way the person built the selection.
+             *
+             *     Ids must be distinct. The same id twice is refused rather than de-duplicated: a
+             *     selection model that counted one row twice is already rendering a combined estimate
+             *     that is wrong. At most 100, which is a page of the backlog table and therefore every
+             *     row a person can have selected at once — the batch is one transaction, and a
+             *     transaction whose size a client chooses is a lock somebody else waits behind.
+             * @example [
+             *       "5eed0018-0000-4000-8000-000000000485",
+             *       "5eed0018-0000-4000-8000-000000000484"
+             *     ]
+             */
+            issueIds: string[];
+            /**
+             * @description The workflow every issue in this request is queued under — *Queue → standard-fix*.
+             *
+             *     Omit it for *Queue 3 selected ⟳*, where each issue is queued under the workflow
+             *     **its own estimate suggested**. Absent is therefore not the same as `standard-fix`.
+             *
+             *     Held to the fixed set (decision K5) here and nowhere else: `queue_items.workflow_tag`
+             *     is deliberately unconstrained text (decision F8) so a queued issue still renders
+             *     under a renamed workflow, which means the database will not catch a tag nothing runs.
+             * @example standard-fix
+             * @enum {string}
+             */
+            workflow?: "standard-fix" | "docs-loop" | "feature-loop" | "deps-refresh";
+        };
+        /**
+         * QueuedSelection
+         * @description What one press of a queue button answers with
+         *     ([#112](https://github.com/NobuData/ouroboros/issues/112)): the rows that were created,
+         *     and the one number the selection action bar renders beside them.
+         */
+        QueuedSelection: {
+            /**
+             * @description The created rows, in queue order — the first appended first.
+             *
+             *     `QueueItemSummary`, which is what `GET /api/v1/queue` publishes and what mockup 02's
+             *     *Up next in queue* card draws: one mapper, one shape for a queued issue everywhere,
+             *     so a client may render these into the queue card it already has without re-fetching.
+             */
+            items: components["schemas"]["QueueItemSummary"][];
+            /**
+             * @description The combined estimate of what was just queued, in minutes — *"est. 2h 5m combined
+             *     autonomous work"*.
+             *
+             *     The **sum** of what was written, skipping items carrying no estimate rather than
+             *     counting them as zero — the same sentence `QueuePage.totalEstMinutes` and the
+             *     dashboard's `stats.queued.estMinutes` are, so this number and the queue card's total
+             *     cannot disagree about these rows. `items` may therefore speak for more issues than
+             *     this number does.
+             * @example 125
+             */
+            estMinutes: number;
+        };
+        /**
          * BacklogListing
          * @description The intake screen in one answer
          *     ([#110](https://github.com/NobuData/ouroboros/issues/110)) — the #31 pagination
@@ -7726,6 +7876,21 @@ export interface components {
              * @enum {string}
              */
             sizingStatus: "unsized" | "estimating" | "sized" | "needs_human";
+            /**
+             * @description Whether the run queue holds this issue — the `queued` pill
+             *     ([#112](https://github.com/NobuData/ouroboros/issues/112)).
+             *
+             *     **A field of its own rather than a fifth `sizingStatus`**, because the two are
+             *     independent facts: an issue can be `needs_human` *and* queued, and one pill field
+             *     would have to drop one of them. A client rendering a single pill renders this one in
+             *     preference — where the loop will pick the issue up is the more recent fact about it.
+             *
+             *     Decided against `queue_items` as it stands at this instant rather than copied onto
+             *     the issue, so it cannot go stale. `POST /api/v1/backlog/queue` is what makes it true,
+             *     and `GET /api/v1/queue` is where the queue row itself is read.
+             * @example false
+             */
+            queued: boolean;
             /**
              * Format: uuid
              * @description The repository's id — what `repo` takes, so a row can narrow the listing it came from.
@@ -7898,6 +8063,13 @@ export interface components {
              * @enum {string}
              */
             sizingStatus: "unsized" | "estimating" | "sized" | "needs_human";
+            /**
+             * @description Whether the run queue holds this issue — the same field the table's row carries, and
+             *     what **Queue for loop** in this panel reads before offering to queue it again
+             *     ([#112](https://github.com/NobuData/ouroboros/issues/112)).
+             * @example false
+             */
+            queued: boolean;
             /**
              * Format: uuid
              * @description The repository's id — what `GET /api/v1/backlog`'s `repo` parameter takes.
@@ -10006,6 +10178,7 @@ export interface operations {
                      *           ],
                      *           "state": "open",
                      *           "sizingStatus": "sized",
+                     *           "queued": false,
                      *           "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                      *           "repository": "acme-robotics/helios-firmware",
                      *           "estimate": {
@@ -10025,6 +10198,7 @@ export interface operations {
                      *           ],
                      *           "state": "open",
                      *           "sizingStatus": "estimating",
+                     *           "queued": false,
                      *           "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                      *           "repository": "acme-robotics/helios-firmware",
                      *           "estimate": null
@@ -10194,6 +10368,7 @@ export interface operations {
                      *         ],
                      *         "state": "open",
                      *         "sizingStatus": "sized",
+                     *         "queued": false,
                      *         "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                      *         "repository": "acme-robotics/helios-firmware",
                      *         "body": "Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the IMU holding SDA low after a burst read; the bus never recovers and the hardware watchdog fires ~2 s later.",
@@ -10295,6 +10470,263 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    queueBacklogIssues: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "issueIds": [
+                 *         "5eed0018-0000-4000-8000-000000000485",
+                 *         "5eed0018-0000-4000-8000-000000000484",
+                 *         "5eed0018-0000-4000-8000-000000000491"
+                 *       ],
+                 *       "workflow": "standard-fix"
+                 *     }
+                 */
+                "application/json": components["schemas"]["QueueSelection"];
+            };
+        };
+        responses: {
+            /**
+             * @description The rows that were created, in queue order, and their combined estimate — the
+             *     *"est. 2h 5m combined autonomous work"* the selection action bar renders.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "7a1c0b90-0000-4000-8000-000000000001",
+                     *           "issueNumber": 485,
+                     *           "issueTitle": "Watchdog reset on I²C bus lockup",
+                     *           "effort": "m",
+                     *           "workflowTag": "standard-fix",
+                     *           "position": 4,
+                     *           "estMinutes": 45,
+                     *           "enqueuedAt": "2026-09-10T15:41:12.000Z"
+                     *         },
+                     *         {
+                     *           "id": "7a1c0b90-0000-4000-8000-000000000002",
+                     *           "issueNumber": 484,
+                     *           "issueTitle": "Motor PID integral windup on wheel stall",
+                     *           "effort": "m",
+                     *           "workflowTag": "standard-fix",
+                     *           "position": 5,
+                     *           "estMinutes": 50,
+                     *           "enqueuedAt": "2026-09-10T15:41:12.000Z"
+                     *         },
+                     *         {
+                     *           "id": "7a1c0b90-0000-4000-8000-000000000003",
+                     *           "issueNumber": 491,
+                     *           "issueTitle": "Add CRC32 to config persistence layer",
+                     *           "effort": "s",
+                     *           "workflowTag": "standard-fix",
+                     *           "position": 6,
+                     *           "estMinutes": 30,
+                     *           "enqueuedAt": "2026-09-10T15:41:12.000Z"
+                     *         }
+                     *       ],
+                     *       "estMinutes": 125
+                     *     }
+                     */
+                    "application/json": components["schemas"]["QueuedSelection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit this.
+             *     Queueing issues is `owner`, `admin` or `member`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `queue_issues_not_found` — one or more ids name no issue in this workspace, or name
+             *     one in another; the two are deliberately one answer, because a `403` would confirm
+             *     that a guessed id is a real issue somewhere. `details.issues` names each one, and
+             *     carries nothing but the id the caller sent. Or `tenant_not_found`, when the
+             *     `X-Ouro-Tenant` header names no workspace you are a member of.
+             *
+             *     Nothing is written.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "queue_issues_not_found",
+                     *       "message": "Some of those issues are not in this workspace.",
+                     *       "details": {
+                     *         "issues": [
+                     *           {
+                     *             "issueId": "5eed0018-0000-4000-8000-000000000484",
+                     *             "code": "issue_not_found"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `queue_issues_conflict` — the queue already speaks for one or more of the selection.
+             *     `issue_already_queued` is a row the queue holds; `issue_number_taken` is two issues
+             *     *in this request* carrying one GitHub number, which a workspace watching two
+             *     repositories can produce and which `queue_items_organization_issue_key` refuses.
+             *
+             *     Nothing is written — including the issues that had no conflict.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "queue_issues_conflict",
+                     *       "message": "Some of those issues are already in the queue.",
+                     *       "details": {
+                     *         "issues": [
+                     *           {
+                     *             "issueId": "5eed0018-0000-4000-8000-000000000484",
+                     *             "code": "issue_already_queued",
+                     *             "issueNumber": 484
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `queue_issues_not_queueable` — one or more issues are not ready. `issue_not_sized`
+             *     carries the status the issue is actually in — `unsized`, `estimating` or
+             *     `needs_human` — and `issue_estimate_missing` is a `sized` issue whose estimate row
+             *     has gone, which is answerable rather than a failure of this service.
+             *
+             *     Or `validation_failed`, when the *body* is wrong rather than the backlog: an id that
+             *     is not a uuid, an empty or duplicated selection, more than 100 issues, or a
+             *     `workflow` outside the fixed set. `details` carries one entry per field.
+             *
+             *     Nothing is written.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "queue_issues_not_queueable",
+                     *       "message": "Some of those issues have not been sized yet. Only sized issues can be queued.",
+                     *       "details": {
+                     *         "issues": [
+                     *           {
+                     *             "issueId": "5eed0018-0000-4000-8000-000000000483",
+                     *             "code": "issue_not_sized",
+                     *             "issueNumber": 483,
+                     *             "sizingStatus": "estimating"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["Error"];
                 };
             };

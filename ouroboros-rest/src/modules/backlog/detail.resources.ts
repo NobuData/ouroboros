@@ -16,13 +16,18 @@
  * other side of that sentence. The listing pays for nine rows of cells; this pays, once, for
  * the panel a person actually opened.
  *
- * ## The panel's head and the table's row are the same eight fields, by construction
+ * ## The panel's head and the table's row are the same nine fields, by construction
  *
  * {@link BacklogIssueDetail} extends `BacklogRow` minus its estimate rather than restating it,
  * so `#485`'s number, title, labels, state and status mean here exactly what they mean in the
  * row the panel was opened from. A field spelled twice is a field that can be spelled
  * differently, and a panel head disagreeing with the row behind it is the bug that would
  * follow.
+ *
+ * The ninth arrived that way and is the point being made: M.3
+ * ([#112](https://github.com/NobuData/ouroboros/issues/112)) added `queued` to the row, and the
+ * panel — whose **Queue for loop** button is one of the three that call that endpoint — got it
+ * without this file being asked to.
  *
  * Its own four additions are exactly the ticket's: {@link BacklogIssueDetail.body} for the
  * `.panel-body-excerpt`, {@link BacklogIssueDetail.authorLogin} and
@@ -301,6 +306,7 @@ function detailIssue(row: IssueDetailRow): BacklogIssueDetail {
     labels: row.labels,
     state: row.state,
     sizingStatus: row.sizingStatus,
+    queued: row.queued,
     githubRepoId: row.githubRepoId,
     repository: row.repository,
     body: row.body,
