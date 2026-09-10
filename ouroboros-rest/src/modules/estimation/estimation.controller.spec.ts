@@ -128,10 +128,17 @@ describe("the estimation controller", () => {
     );
   });
 
-  it("offers no read — the issue detail is M.2's", () => {
-    // The scope boundary: `GET /api/v1/backlog/{id}` is #111's, and a read here would be a
-    // second opinion about what an issue is.
+  it("offers no read — the issue detail is M.2's, and M.2 landed it", () => {
+    // The scope boundary, which held: `GET /api/v1/backlog/{id}` is
+    // [#111](https://github.com/NobuData/ouroboros/issues/111)'s and it is served by
+    // `backlog/detail.controller.ts`, not by anything here. A read on *this* controller would be
+    // a second opinion about what an issue is.
+    //
+    // Asserted as *somebody else serves it* rather than as *nobody does*, which is what this
+    // check said while the path was unbuilt. The two are the same boundary read before and after
+    // the ticket beside it shipped.
     expect(controller).not.toHaveProperty("read");
-    expect(document().paths["/api/v1/backlog/{id}"]).toBeUndefined();
+    expect(EstimationController.prototype).not.toHaveProperty("detailOf");
+    expect(Object.keys(document().paths["/api/v1/backlog/{id}"] ?? {})).toEqual(["get"]);
   });
 });

@@ -15,6 +15,11 @@
  * listing.repository.ts   the three statements: rows, counts, facets
  * listing.service.ts      the defaults, and the four concurrent reads
  * listing.controller.ts   `GET /backlog`
+ * detail.dto.ts           the path parameter, and why it is a uuid
+ * detail.resources.ts     the panel — issue, estimate in full, version list
+ * detail.repository.ts    the two statements: the issue, and every estimate of it
+ * detail.service.ts       the two concurrent reads, and the 404
+ * detail.controller.ts    `GET /backlog/{id}`
  * ```
  *
  * **A module of its own rather than a controller inside `BacklogSyncModule`**, and the reason
@@ -28,16 +33,25 @@
  * `GET /api/v1/backlog` is `BacklogListingController`, a second controller under the same
  * prefix rather than a second route on the first, because the two answer different questions —
  * one is about the *sync* and one is about the *backlog*, and only the second one grows filters.
- * The issue detail (M.2, [#111](https://github.com/NobuData/ouroboros/issues/111)) and the bulk
- * queue action (M.3, [#112](https://github.com/NobuData/ouroboros/issues/112)) are still this
- * module's controllers to add, which is why the module is named for the surface rather than for
- * any one ticket.
+ * M.2 ([#111](https://github.com/NobuData/ouroboros/issues/111)) is the third, `GET
+ * /backlog/{id}`, and the bulk queue action (M.3,
+ * [#112](https://github.com/NobuData/ouroboros/issues/112)) is still this module's controller to
+ * add — which is why the module is named for the surface rather than for any one ticket.
+ *
+ * **The order of `controllers` below is a routing rule, and M.2 is what made it one.**
+ * `GET /backlog/{id}` is the first path here that is a bare parameter, and Express matches in
+ * registration order: with `BacklogDetailController` ahead of `BacklogController`, every
+ * `GET /backlog/sync-status` would become a request for an issue whose id is the word
+ * *sync-status*. The literal-segment controller is listed first for that reason, and
+ * `detail.integration-spec.ts` asserts the consequence rather than this list — which is what
+ * keeps the guarantee when somebody sorts it.
  *
  * **`DbModule` joined the imports with M.1**, because the listing reads `github_issues`
- * and `issue_estimates` directly. It reads them through a repository of this module's own
- * rather than through `BacklogSyncModule` or `EstimationModule`: those two own *writers* — a
- * poll and a versioned insert — and a screen's read has no business entering through either. The
- * tables are the shared surface, and `listing.repository.ts` is this module's view of them.
+ * and `issue_estimates` directly — as, since M.2, does the panel. Both read them through
+ * repositories of this module's own rather than through `BacklogSyncModule` or
+ * `EstimationModule`: those two own *writers* — a poll and a versioned insert — and a screen's
+ * read has no business entering through either. The tables are the shared surface, and
+ * `listing.repository.ts` and `detail.repository.ts` are this module's view of them.
  *
  * **What it imports is what a status is made of.** `BacklogSyncModule` for the cycle's report,
  * its loop and its statements — all three of that module's exports, and it has no others — and
@@ -56,6 +70,9 @@ import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
 import { DbModule } from "../db/db.module";
 import { GithubModule } from "../github/github.module";
 import { BacklogController } from "./backlog.controller";
+import { BacklogDetailController } from "./detail.controller";
+import { BacklogDetailRepository } from "./detail.repository";
+import { BacklogDetailService } from "./detail.service";
 import { BacklogListingController } from "./listing.controller";
 import { BacklogListingRepository } from "./listing.repository";
 import { BacklogListingService } from "./listing.service";
@@ -64,12 +81,16 @@ import { SyncTriggerService } from "./sync-trigger.service";
 
 @Module({
   imports: [BacklogSyncModule, DbModule, GithubModule],
-  controllers: [BacklogController, BacklogListingController],
+  // `BacklogController` first, and that is a rule: see this file's header on `GET
+  // /backlog/{id}` being the first bare-parameter path under this prefix.
+  controllers: [BacklogController, BacklogListingController, BacklogDetailController],
   providers: [
     SyncStatusService,
     SyncTriggerService,
     BacklogListingRepository,
     BacklogListingService,
+    BacklogDetailRepository,
+    BacklogDetailService,
   ],
 })
 export class BacklogModule {}

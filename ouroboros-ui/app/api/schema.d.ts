@@ -780,6 +780,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backlog/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One issue, in full — everything the detail panel shows
+         * @description Mockup 03's `ISSUE DETAIL` panel, top to bottom
+         *     ([#111](https://github.com/NobuData/ouroboros/issues/111)): the meta line, the title,
+         *     the tags and the body excerpt; the *AI Work Breakdown*, the regression-risk meter, the
+         *     suggested workflow and routed model; and the collapsible *Estimation trace*.
+         *
+         *     **This is the half `GET /api/v1/backlog` deliberately does not carry.** The listing
+         *     returns what the table's cells need and no more, because the body, the author, the
+         *     breakdown, the risk rationale and the trace are the panel's — and fetching them for
+         *     every row would make the list pay for a panel most rows never open. This endpoint pays
+         *     for it once, for the issue somebody actually clicked.
+         *
+         *     **`{id}` is `github_issues.id`, not GitHub's issue number.** It is the `id` a
+         *     `BacklogRow` carries. A number cannot address an issue here: `github_issues` is unique
+         *     on `(repository, number)`, so a workspace watching two repositories has two issue
+         *     `#485`s and a path carrying `485` would name neither.
+         *
+         *     **`body` is raw and untruncated**, and the client cuts it for the
+         *     `.panel-body-excerpt` treatment. A server-side truncation would be deciding a line
+         *     count for a panel whose width it cannot see, and would make *read more* a second
+         *     request. It is Markdown as GitHub stores it, unrendered.
+         *
+         *     **An unsized issue answers the issue-only shape**, not a `404` and not an estimate
+         *     object full of nulls: `estimate` is `null`, `history` is `[]`, and everything else is
+         *     still there to draw. That is the panel's no-estimate state, and it is what an issue
+         *     that is `unsized` — or `estimating`, before its first answer lands — looks like.
+         *
+         *     **`estimate` and `history` come from the same read**, so they cannot disagree. An
+         *     `estimate` fetched separately from the version list would eventually answer a trace
+         *     naming version 3 over a history that ends at 2, because a re-estimation landed between
+         *     the two statements.
+         *
+         *     **`history` is oldest first**, so the entry in force is the last one — the same version
+         *     `estimate.version` names. It is the version list a future history view renders, and
+         *     including it here is what makes that view a UI-only change.
+         *
+         *     **An issue in another workspace is a `404`**, exactly as one that does not exist. A
+         *     `403` would confirm that the id names a real issue somewhere, which is what cross-tenant
+         *     probing is looking for.
+         *
+         *     **The workspace is the session's**, exactly as every other operation here: no workspace
+         *     in this path, the session's active organization or `X-Ouro-Tenant` decides, and
+         *     membership is checked before this operation runs.
+         *
+         *     Reading an issue is every member's, `viewer` included. It spends nothing — the panel's
+         *     buttons are separate operations with their own role gates.
+         */
+        get: operations["getBacklogIssue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/backlog/sync-status": {
         parameters: {
             query?: never;
@@ -7752,6 +7816,282 @@ export interface components {
             syncedAt: string | null;
         };
         /**
+         * IssueDetail
+         * @description Mockup 03's `ISSUE DETAIL` panel in one answer
+         *     ([#111](https://github.com/NobuData/ouroboros/issues/111)) — the issue as GitHub has it,
+         *     the estimate in force, and every version the issue has been estimated at.
+         *
+         *     The three arrive together because the panel draws them together, and because `estimate`
+         *     and `history` are built from the **same** rows: read separately, they would eventually
+         *     answer a trace naming version 3 over a history that ends at 2.
+         */
+        IssueDetail: {
+            issue: components["schemas"]["BacklogIssueDetail"];
+            /**
+             * @description The estimate in force — the highest version, decision K4's latest-wins — or `null`
+             *     for an issue that has none. `null` is a state the panel renders rather than a
+             *     failure: it is what `unsized` means, and what `estimating` means before the first
+             *     answer lands.
+             */
+            estimate: components["schemas"]["IssueEstimateDetail"] | null;
+            /**
+             * @description Every estimate this issue has had, **oldest first** — so the entry in force is the
+             *     last one, and it is the version `estimate.version` names. `[]` for an issue that has
+             *     never been sized, which is the same fact `estimate: null` states.
+             *
+             *     A summary rather than the estimates themselves: the version, what produced it, and
+             *     when the row was written. That is what makes it cheap enough to include on every
+             *     panel open, and what makes a future history view a UI-only change.
+             */
+            history: components["schemas"]["EstimateVersion"][];
+        };
+        /**
+         * BacklogIssueDetail
+         * @description The issue as the panel's meta line, title, tags and excerpt read it — a `BacklogRow`
+         *     without its summary estimate, plus the four fields the panel draws and the table does
+         *     not.
+         *
+         *     The shared eight mean here exactly what they mean in the row the panel was opened from;
+         *     a panel head that disagreed with the row behind it is the bug that shape prevents. There
+         *     is no `ghUpdatedAt`, for the same reason a row carries no timestamp: the panel has
+         *     nowhere to print one.
+         */
+        BacklogIssueDetail: {
+            /**
+             * Format: uuid
+             * @description The row's identity on this API — the `id` this operation is addressed by.
+             * @example 5eed0018-0000-4000-8000-000000000485
+             */
+            id: string;
+            /**
+             * @description The number GitHub assigned — the `#485` on the meta line.
+             * @example 485
+             */
+            number: number;
+            /**
+             * @description The title as GitHub currently has it — decision K3: a mirror, never edited here.
+             * @example Watchdog reset on I²C bus lockup
+             */
+            title: string;
+            /**
+             * @description GitHub's label names, in the order they are stored — the tags under the title.
+             * @example [
+             *       "bug",
+             *       "i2c",
+             *       "watchdog",
+             *       "priority-high"
+             *     ]
+             */
+            labels: string[];
+            /**
+             * @description GitHub's own two.
+             * @example open
+             * @enum {string}
+             */
+            state: "open" | "closed";
+            /**
+             * @description The pill in the panel's card head — where the issue is in this product's sizing
+             *     pipeline, which is the one column of the mirror this product owns. Deliberately a
+             *     separate answer from `estimate`: an issue can be `needs_human` and still carry the
+             *     estimate that sent it there.
+             * @example sized
+             * @enum {string}
+             */
+            sizingStatus: "unsized" | "estimating" | "sized" | "needs_human";
+            /**
+             * Format: uuid
+             * @description The repository's id — what `GET /api/v1/backlog`'s `repo` parameter takes.
+             */
+            githubRepoId: string;
+            /**
+             * @description `owner/name`, as GitHub spells it.
+             * @example acme-robotics/helios-firmware
+             */
+            repository: string;
+            /**
+             * @description GitHub's description, **raw and in full** — the `.panel-body-excerpt`. Untruncated
+             *     and unrendered: the client cuts it to the panel's width, and this is Markdown as
+             *     GitHub stores it. `null` for an issue opened with no description at all.
+             * @example Unit 07 in the Fremont pilot rebooted 14 times overnight.
+             */
+            body: string | null;
+            /**
+             * @description Who opened it — the `by field-support` of the meta line. GitHub's login in the case
+             *     GitHub returns it, unfolded. `null` when GitHub's author is, which is what an issue
+             *     whose author deleted their account comes back as.
+             * @example field-support
+             */
+            authorLogin: string | null;
+            /**
+             * Format: date-time
+             * @description When GitHub says the issue was opened — what *"opened 2d ago"* counts from. The
+             *     instant rather than the phrase, because the phrase is wrong one minute after it was
+             *     sent.
+             * @example 2026-09-08T15:41:12.000Z
+             */
+            ghCreatedAt: string;
+            /**
+             * Format: uri
+             * @description The issue on GitHub — the href behind **Open on GitHub ↗**. Always `https`.
+             * @example https://github.com/acme-robotics/helios-firmware/issues/485
+             */
+            ghUrl: string;
+        };
+        /**
+         * IssueEstimateDetail
+         * @description The estimate in force, in full — everything the panel draws below the excerpt, where
+         *     `BacklogEstimate` on a listing row is the four-field summary the table's cells need.
+         *
+         *     Re-estimation writes a new version and the highest wins (decision K4); this is that one,
+         *     and `version` says which.
+         */
+        IssueEstimateDetail: {
+            /**
+             * @description Which estimate of this issue this is — the highest version. Carried so a client can
+             *     say which entry of `history` it is looking at without inferring it from the order.
+             * @example 1
+             */
+            version: number;
+            /**
+             * @description The *Effort* chip, lower-case as the column holds it.
+             * @example m
+             * @enum {string}
+             */
+            effort: "xs" | "s" | "m" | "l" | "xl";
+            /**
+             * @description The `conf 92%` beside the chip. Read against a floor when the estimate was written:
+             *     below it the issue went to `needs_human` rather than `sized`.
+             * @example 92
+             */
+            confidence: number;
+            /**
+             * @description The *Suggested workflow* tag. Opaque (decision K5).
+             * @example standard-fix
+             */
+            suggestedWorkflow: string;
+            /**
+             * @description The *Routed model* pill. Opaque (decision K6), and **resolved rather than invoked**:
+             *     sizing this issue called no model.
+             * @example claude-fable-5
+             */
+            routedModel: string;
+            breakdown: components["schemas"]["IssueEstimateBreakdown"];
+            /**
+             * @description The regression-risk meter's three colours.
+             * @example low
+             * @enum {string}
+             */
+            risk: "low" | "medium" | "high";
+            /**
+             * @description The sentence under the meter, saying why. Never blank, by constraint.
+             * @example Isolated to the I²C driver path; full HIL coverage exists for bus recovery.
+             */
+            riskNote: string;
+            trace: components["schemas"]["IssueEstimateTrace"];
+        };
+        /**
+         * IssueEstimateBreakdown
+         * @description The *AI Work Breakdown* panel's numbers — `issue_estimates.breakdown`, in this API's
+         *     names. The column stores the database's `snake_case` because a CHECK function looks the
+         *     keys up by name; the translation happens once, at this boundary.
+         */
+        IssueEstimateBreakdown: {
+            /**
+             * @description Paths the work is believed to touch — the panel's `.file-list`. Empty is a real
+             *     answer rather than a gap: a documentation sweep whose estimator named no file
+             *     answers `[]`.
+             * @example [
+             *       "drivers/i2c_recovery.c",
+             *       "tests/unit/test_i2c_lockup.c"
+             *     ]
+             */
+            files: string[];
+            /**
+             * @description What the **work** is expected to cost in model tokens — the `Est. tokens` row. Not
+             *     what sizing cost, which is `trace.tokensUsed`.
+             * @example 180000
+             */
+            estTokens: number;
+            /**
+             * @description The optimistic end of `Est. cycle time`, in minutes. Never above `cycleMax`.
+             * @example 12
+             */
+            cycleMin: number;
+            /**
+             * @description The pessimistic end, in minutes.
+             * @example 18
+             */
+            cycleMax: number;
+            /**
+             * @description The single number the queue plans with, in minutes. Deliberately **not** confined to
+             *     the range above: the range is how long one loop takes, and this is what the whole
+             *     issue costs.
+             * @example 45
+             */
+            estMinutes: number;
+        };
+        /**
+         * IssueEstimateTrace
+         * @description Where the estimate came from — the panel's collapsible *Estimation trace*, and decision
+         *     K10 as a shape: an estimate that cannot say what produced it does not get to exist.
+         */
+        IssueEstimateTrace: {
+            /**
+             * @description What produced it — `heuristic-v0` for every estimate the rule engine writes, and a
+             *     model id once one sizes anything. Never blank, by constraint.
+             * @example heuristic-v0
+             */
+            estimator: string;
+            /**
+             * Format: date-time
+             * @description When the estimate was **produced** — the trace line's *2m ago*. The estimator's
+             *     instant rather than the row's: they are the same only for a synchronous estimate,
+             *     and `history[].createdAt` is the other one.
+             * @example 2026-09-10T15:39:12.000Z
+             */
+            sizedAt: string;
+            /**
+             * @description What producing the estimate cost in model tokens — the trace line's *41k tokens*.
+             *     `0` for a rule engine, which is the honest answer rather than an absent field.
+             * @example 0
+             */
+            tokensUsed: number;
+            /**
+             * @description What the answer was reached from, one line each — the trace's *signals:* line. Empty
+             *     rather than absent, and empty is what a rule engine answers: a signal nothing
+             *     produced would be a provenance this service made up.
+             * @example []
+             */
+            signals: string[];
+        };
+        /**
+         * EstimateVersion
+         * @description One entry of the version list — the *estimate history summary*. Three fields and no
+         *     more: a summary carrying every superseded breakdown would not be cheap enough to include
+         *     on every panel open.
+         */
+        EstimateVersion: {
+            /**
+             * @description Which estimate of the issue this was. Monotonic within the issue and unique with it;
+             *     gaps are legal, because monotonic is not dense.
+             * @example 1
+             */
+            version: number;
+            /**
+             * @description What produced it — the same value that version's `trace.estimator` carries.
+             * @example heuristic-v0
+             */
+            estimator: string;
+            /**
+             * Format: date-time
+             * @description When the **row** was written — `issue_estimates.created_at`, which is not
+             *     `trace.sizedAt`. This is the instant this service observed the estimate, rather than
+             *     the instant an estimator claims to have produced it.
+             * @example 2026-09-10T15:39:12.000Z
+             */
+            createdAt: string;
+        };
+        /**
          * ModelPull
          * @description One tracked pull ([#230](https://github.com/NobuData/ouroboros/issues/230) over
          *     [#219](https://github.com/NobuData/ouroboros/issues/219)) — the server-side record a
@@ -9760,6 +10100,195 @@ export interface operations {
              * @description `validation_failed` — `repo` not a uuid, `state` or `sort` naming something this
              *     operation does not serve, a search longer than the box, more labels than an issue
              *     may carry, or the window out of range. `details` carries one entry per field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getBacklogIssue: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description `github_issues.id` — the row, not GitHub's issue number. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The panel: the issue, the estimate in force or `null`, and every version the issue
+             *     has been estimated at.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "issue": {
+                     *         "id": "5eed0018-0000-4000-8000-000000000485",
+                     *         "number": 485,
+                     *         "title": "Watchdog reset on I²C bus lockup",
+                     *         "labels": [
+                     *           "bug",
+                     *           "i2c",
+                     *           "watchdog",
+                     *           "priority-high"
+                     *         ],
+                     *         "state": "open",
+                     *         "sizingStatus": "sized",
+                     *         "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
+                     *         "repository": "acme-robotics/helios-firmware",
+                     *         "body": "Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the IMU holding SDA low after a burst read; the bus never recovers and the hardware watchdog fires ~2 s later.",
+                     *         "authorLogin": "field-support",
+                     *         "ghCreatedAt": "2026-09-08T15:41:12.000Z",
+                     *         "ghUrl": "https://github.com/acme-robotics/helios-firmware/issues/485"
+                     *       },
+                     *       "estimate": {
+                     *         "version": 1,
+                     *         "effort": "m",
+                     *         "confidence": 92,
+                     *         "suggestedWorkflow": "standard-fix",
+                     *         "routedModel": "claude-fable-5",
+                     *         "breakdown": {
+                     *           "files": [
+                     *             "drivers/i2c_recovery.c",
+                     *             "drivers/imu_bmi270.c",
+                     *             "tests/unit/test_i2c_lockup.c"
+                     *           ],
+                     *           "estTokens": 180000,
+                     *           "cycleMin": 12,
+                     *           "cycleMax": 18,
+                     *           "estMinutes": 45
+                     *         },
+                     *         "risk": "low",
+                     *         "riskNote": "Isolated to the I²C driver path; full HIL coverage exists for bus recovery.",
+                     *         "trace": {
+                     *           "estimator": "heuristic-v0",
+                     *           "sizedAt": "2026-09-10T15:39:12.000Z",
+                     *           "tokensUsed": 0,
+                     *           "signals": []
+                     *         }
+                     *       },
+                     *       "history": [
+                     *         {
+                     *           "version": 1,
+                     *           "estimator": "heuristic-v0",
+                     *           "createdAt": "2026-09-10T15:39:12.000Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["IssueDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `issue_not_found` — this workspace has no issue with that id, or it belongs to
+             *     another workspace; the two are deliberately one answer. Or `tenant_not_found`, when
+             *     the `X-Ouro-Tenant` header names no workspace you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "issue_not_found",
+                     *       "message": "No such issue in this workspace.",
+                     *       "details": {
+                     *         "issueId": "5eed0018-0000-4000-8000-000000000485"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `id` is not a uuid. `details.fields` carries one entry per
+             *     field.
              */
             422: {
                 headers: {

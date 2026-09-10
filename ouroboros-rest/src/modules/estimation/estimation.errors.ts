@@ -6,6 +6,14 @@
  * where the two are published together — the document is the registry a client reads.
  * `estimation.errors.spec.ts` holds this file to it in both directions.
  *
+ * **{@link issueNotFound} has a second caller since M.2**
+ * ([#111](https://github.com/NobuData/ouroboros/issues/111)): `backlog/detail.service.ts` refuses
+ * `GET /api/v1/backlog/{id}` with it. That is reuse rather than a leak of this module's
+ * vocabulary — *this workspace has no issue with that id* is one condition with one status, one
+ * message and one `details.issueId`, and a second definition of it would be two sentences a
+ * client renders for the same fact, drifting on the day one of them is reworded. Rewording this
+ * one therefore rewords both, which is the point.
+ *
  * ---------------------------------------------------------------------------
  * **Three refusals, three statuses, and the differences are the design.**
  *

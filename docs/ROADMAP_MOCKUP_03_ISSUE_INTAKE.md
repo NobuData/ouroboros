@@ -1105,7 +1105,7 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | M.1 | #110 | 🟢 Done | ouroboros-rest: [M.1] Backlog list endpoint with filters | Org-scoped list: repo/labels/state/sort/search, paging, head counts | mvp, intake, rest | N (after K.4, L.3) | Y | M | ouroboros-rest |
-| M.2 | #111 | 🟡 Open | ouroboros-rest: [M.2] Issue detail endpoint | Full issue + latest estimate + trace for the side panel | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
+| M.2 | #111 | 🟢 Done | ouroboros-rest: [M.2] Issue detail endpoint | Full issue + latest estimate + trace for the side panel | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
 | M.3 | #112 | 🟡 Open | ouroboros-rest: [M.3] Bulk queue action | Selection → `queue_items` with workflow tag + combined estimate | mvp, intake, rest | N (after L.3, DASH-F.2) | Y | M | ouroboros-rest |
 | M.4 | #113 | 🟢 Done | ouroboros-rest: [M.4] Sync status & manual re-sync | Freshness data + `POST /backlog/sync` trigger with guards | mvp, intake, rest | N (after K.4) | Y | S | ouroboros-rest |
 | M.5 | #114 | 🟡 Open | ouroboros-rest: [M.5] Backlog API integration tests | Filter matrix, queue writes, isolation, sync trigger | mvp, intake, rest, ci | N (after M.1–M.4) | Y | M | ouroboros-rest |
@@ -1220,7 +1220,67 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 
 ### Issue M.2 — ouroboros-rest: [M.2] Issue detail endpoint
 
-> **GitHub issue:** #111 · **Status:** 🟡 Open · **Parent epic:** #96
+> **GitHub issue:** #111 · **Status:** 🟢 Done · **Parent epic:** #96
+
+> **Shipped 2026-09-10, the same day as M.4, L.4 and M.1.** Epic M has M.3 (#112) and its
+> integration suite M.5 (#114) left.
+>
+> [`ouroboros-rest/src/modules/backlog/detail.*`](../ouroboros-rest/src/modules/backlog/) is
+> `GET /api/v1/backlog/{id}` — five files beside M.1's six, 55 new unit tests and a 19-case
+> integration suite over mockup 03's own rows. `ouroboros-rest` 0.31.4 — a patch, because the
+> contract gained one operation and six schemas and changed none.
+>
+> **This ticket and M.1 are two halves of one decision, and M.1's header already wrote it down**:
+> a listing row is *"the table's cells and no more"* because the body, the author and the GitHub
+> URL are the panel's, and fetching them for every row would make the list pay for a panel most
+> rows never open. This pays for it once, for the issue somebody clicked. The panel's issue is
+> `BacklogRow` **minus its summary estimate, plus the four fields the panel draws** — an extension
+> rather than a restatement, so a field cannot be spelled two ways and a panel head cannot
+> disagree with the row it was opened from.
+>
+> **The estimate and the history come from the same rows**, which is M.1's argument about the page
+> head one shape smaller. One statement reads every version of the issue; the estimate in force is
+> the highest and the history is all of them, oldest first. Two reads — one for the latest and one
+> for the list — would eventually answer a trace naming version 3 over a history that ends at 2,
+> because a re-estimation landed between them. It costs one small `jsonb` column per superseded
+> version, and no more than that: `trace` has to be read for every version anyway, since that is
+> where each history entry's `estimator` lives.
+>
+> **Latest-wins is computed rather than taken from the statement's order.** Decision **K4** is
+> stated once, in `detail.resources.ts`, so a reversed `order by` would break the *history* and not
+> silently publish the superseded estimate. The seeded `#487` — two versions whose every visible
+> field differs — is the fixture that tells the two readings apart.
+>
+> **Both statements carry `organization_id`, and the estimates one reaches it through a join**
+> because `issue_estimates` has no such column of its own: an issue is its whole tenancy. That is
+> deliberately not left to the issue read having found a row first — the two run concurrently, so
+> there is no *first*, and a statement whose safety depends on another statement's result is safe
+> only while the call order stays what it is today. A cross-workspace id is `404` with the
+> caller's own id echoed back, never `403`.
+>
+> **The refusal is L.4's, not a second definition of one code.** `issue_not_found` already means
+> exactly this on `POST /backlog/{id}/estimate`, with the same status, the same `details.issueId`
+> and the same argument about `403`; two definitions would be two messages a client renders for one
+> condition, drifting on the day one of them is reworded.
+>
+> **This is the first path under `/backlog` that is a bare parameter**, which turns the order
+> `backlog.module.ts` lists its controllers in into a routing rule rather than a preference:
+> Express matches in registration order, so `BacklogDetailController` ahead of `BacklogController`
+> would turn every `GET /backlog/sync-status` into a request for an issue whose id is the word
+> *sync-status*. The controller holding the literal segments is listed first, and
+> `detail.integration-spec.ts` asserts the consequence over a real router rather than over the
+> list — which is what keeps the guarantee when somebody sorts it.
+>
+> **Two additions to the ticket's diagram, and one deliberate omission.** The diagram writes
+> `trace{estimator, tokensUsed, signals[]}`, and `sizedAt` is published beside them because it is
+> the trace line's *2m ago* and it is already in the stored document; `estimate.version` is
+> published because it is what lets a client say which history entry it is looking at without
+> inferring it from the list's order. The omission is `ghUpdatedAt`: the panel has nowhere to print
+> one, and M.1 already refused a timestamp for the same reason.
+>
+> **`N.5` (#119) is what this unblocks** — and it inherits the no-estimate state as a shape rather
+> than as a rule to remember, because an unsized issue answers `estimate: null` and `history: []`
+> with every other field still there to draw.
 
 - **Problem Statement:** The side panel needs everything about one issue: GitHub
   content for the excerpt, the full latest estimate, and the trace.
