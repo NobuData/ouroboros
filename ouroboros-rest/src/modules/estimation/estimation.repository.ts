@@ -112,6 +112,112 @@ export class EstimationRepository {
    *   repository that left scope in between takes its issues with it (`on delete cascade`).
    */
   async issue(issueId: string): Promise<EstimableIssueRow | undefined> {
+    return this.estimable().where("github_issues.id", "=", issueId).executeTakeFirst();
+  }
+
+  /**
+   * Read one issue **in this workspace**, and everything an estimation request needs.
+   *
+   * L.4 ([#108](https://github.com/NobuData/ouroboros/issues/108))'s read. The workspace is a
+   * predicate in the statement rather than a comparison the caller makes afterwards, which is
+   * this service's rule for every tenant-scoped read: an id belonging to another workspace
+   * returns nothing here, and *nothing* is what the caller answers `404` to — never a `403`,
+   * which would confirm that the id names a real issue somewhere.
+   *
+   * Unscoped {@link issue} stays beside it and is the pipeline's own: the orchestrator is
+   * driven by a queue, a sweep and a committed transaction — none of which has a workspace to
+   * be scoped to — and re-reading the row when the work starts is what makes a minute in the
+   * queue safe.
+   *
+   * @param organizationId - The workspace, established by the tenant guard.
+   * @param issueId - `github_issues.id`.
+   * @returns The issue, or `undefined` when this workspace has no such row.
+   */
+  async issueIn(organizationId: string, issueId: string): Promise<EstimableIssueRow | undefined> {
+    return this.estimable()
+      .where("github_issues.id", "=", issueId)
+      .where("github_issues.organization_id", "=", organizationId)
+      .executeTakeFirst();
+  }
+
+  /**
+   * How many issues this workspace mirrors, and how many are already being estimated.
+   *
+   * What L.4's *Re-estimate all* reports its scope from, read **before** the claim below so
+   * the two numbers describe the backlog the caller asked about rather than the one their own
+   * request has just changed.
+   *
+   * @param organizationId - The workspace.
+   * @returns The totals. A workspace that mirrors nothing answers zeros, which is a state to
+   *   render rather than a failure.
+   */
+  async backlogCounts(organizationId: string): Promise<{ total: number; estimating: number }> {
+    const row = await this.database.db
+      .selectFrom("github_issues")
+      .select(({ fn, eb }) => [
+        fn.countAll<string>().as("total"),
+        // `count(*) filter (where …)` in one pass rather than a second statement: the two
+        // numbers have to describe the same instant, and two reads cannot promise that.
+        fn
+          .countAll<string>()
+          .filterWhere(eb("sizing_status", "=", "estimating"))
+          .as("estimating"),
+      ])
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+
+    // `count()` comes back as a string from `pg` — bigint is wider than a JS number, and the
+    // driver refuses to lose that quietly. A backlog is not, so the cast is safe and stated.
+    return { total: Number(row?.total ?? 0), estimating: Number(row?.estimating ?? 0) };
+  }
+
+  /**
+   * Move every issue in this workspace that is **not** already `estimating` into `estimating`.
+   *
+   * L.4's fan-out, and the whole of its *"touches only non-`estimating` rows"* criterion: the
+   * scope and the claim are **one statement**, so no row can be read as eligible and then
+   * claimed by somebody else's request a moment later. `returning id` is what makes the count
+   * a fact rather than an estimate of one.
+   *
+   * Deliberately *not* {@link claim} in a loop. A loop would be one round trip per issue and,
+   * worse, a window between each read and its write in which a second *Re-estimate all* could
+   * claim the same rows — which is the duplicate work this endpoint is guarded against.
+   *
+   * **Every mirrored issue, `closed` ones included**, which is L.4's scope as written — *only
+   * non-`estimating` rows* and no other predicate. It is worth knowing rather than assuming:
+   * `github_issues` keeps an issue that closed after it was mirrored, so a long-lived workspace
+   * re-estimates some rows nobody is going to work on. Narrowing to `state = 'open'` would be
+   * this file inventing a scope the ticket did not ask for, and it would take the estimate a
+   * *reopened* issue arrives with; if the cost ever matters, the place to decide it is the
+   * confirmation dialog's own count (N.1, [#115](https://github.com/NobuData/ouroboros/issues/115)),
+   * which is what tells somebody how many issues they are about to size.
+   *
+   * @param organizationId - The workspace.
+   * @returns The ids it claimed, which the caller then queues. Empty when everything is
+   *   already in flight, which is the answer that makes a double-fire a `409` rather than a
+   *   second fan-out.
+   */
+  async claimBacklog(organizationId: string): Promise<string[]> {
+    const rows = await this.database.db
+      .updateTable("github_issues")
+      .set({ sizing_status: "estimating" })
+      .where("organization_id", "=", organizationId)
+      .where("sizing_status", "!=", "estimating")
+      .returning("id")
+      .execute();
+
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * The issue read every estimation request is built from, without a `where` yet.
+   *
+   * The shared half of {@link issue} and {@link issueIn}, so *what an estimate is built from*
+   * is answered in one place and the two reads cannot drift into disagreeing about it.
+   *
+   * @returns The select, ready for the predicate that scopes it.
+   */
+  private estimable() {
     return this.database.db
       .selectFrom("github_issues")
       .innerJoin("github_repos", "github_repos.id", "github_issues.github_repo_id")
@@ -130,9 +236,7 @@ export class EstimationRepository {
         sql<string>`${sql.ref("github_orgs.login")} || '/' || ${sql.ref("github_repos.name")}`.as(
           "repo",
         ),
-      ])
-      .where("github_issues.id", "=", issueId)
-      .executeTakeFirst();
+      ]);
   }
 
   /**

@@ -68,6 +68,107 @@ describe("EstimationRepository", () => {
     });
   });
 
+  describe("reading one issue in a workspace", () => {
+    it("scopes the read in the statement rather than comparing afterwards", async () => {
+      // L.4 (#108)'s *cross-org id → 404*. A predicate rather than a comparison the caller
+      // makes on the row it got back: an id belonging to another workspace has to come back as
+      // *nothing*, because nothing is what a `404` is honest about.
+      database.answers({ rows: [ROW] });
+
+      await repository.issueIn(FIXTURE_WORKSPACE, FIXTURE_ISSUE_ID);
+
+      const [sql] = database.sql();
+
+      expect(sql).toContain('"ouroboros"."github_issues"."id" = $1');
+      expect(sql).toContain('"ouroboros"."github_issues"."organization_id" = $2');
+      expect(database.statements[0]?.parameters).toEqual([FIXTURE_ISSUE_ID, FIXTURE_WORKSPACE]);
+    });
+
+    it("reads exactly what the unscoped one does, and one predicate more", async () => {
+      // The two share a builder so *what an estimate is built from* has one answer. Compared
+      // rather than described, because a select that drifted would be a re-estimate that sent
+      // the engine a different request from the sync's.
+      database.answers({ rows: [ROW] }, { rows: [ROW] });
+
+      await repository.issue(FIXTURE_ISSUE_ID);
+      await repository.issueIn(FIXTURE_WORKSPACE, FIXTURE_ISSUE_ID);
+
+      const [unscoped, scoped] = database.sql();
+
+      expect(scoped).toContain(unscoped.slice(0, unscoped.indexOf(" where ")));
+    });
+
+    it("answers undefined for another workspace's issue", async () => {
+      await expect(
+        repository.issueIn(FIXTURE_WORKSPACE, FIXTURE_ISSUE_ID),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe("counting a workspace's backlog", () => {
+    it("takes both numbers in one pass, so they describe one instant", async () => {
+      database.answers({ rows: [{ total: "9", estimating: "2" }] });
+
+      await expect(repository.backlogCounts(FIXTURE_WORKSPACE)).resolves.toEqual({
+        total: 9,
+        estimating: 2,
+      });
+
+      const [sql] = database.sql();
+
+      expect(sql).toContain("filter");
+      expect(database.sql()).toHaveLength(1);
+      expect(database.statements[0]?.parameters).toEqual(["estimating", FIXTURE_WORKSPACE]);
+    });
+
+    it("reads zeros for a workspace that mirrors nothing", async () => {
+      // `count()` over no rows is a row holding zeros, and a workspace with an empty backlog is
+      // a state to render rather than a failure.
+      database.answers({ rows: [{ total: "0", estimating: "0" }] });
+
+      await expect(repository.backlogCounts(FIXTURE_WORKSPACE)).resolves.toEqual({
+        total: 0,
+        estimating: 0,
+      });
+    });
+
+    it("scopes to the workspace", async () => {
+      database.answers({ rows: [{ total: "0", estimating: "0" }] });
+
+      await repository.backlogCounts(FIXTURE_WORKSPACE);
+
+      expect(database.sql()[0]).toContain('"organization_id" = $2');
+    });
+  });
+
+  describe("claiming a whole backlog", () => {
+    it("scopes and claims in one statement, and returns what it took", async () => {
+      // The whole of L.4's *touches only non-`estimating` rows*: with the scope and the write
+      // in one statement, no row can be read as eligible and claimed by somebody else's
+      // request a moment later — and `returning id` makes the count a fact rather than an
+      // estimate of one.
+      database.answers({ rows: [{ id: FIXTURE_ISSUE_ID }] });
+
+      await expect(repository.claimBacklog(FIXTURE_WORKSPACE)).resolves.toEqual([FIXTURE_ISSUE_ID]);
+
+      expect(database.sql()).toHaveLength(1);
+      expect(database.statements[0]?.sql).toBe(
+        'update "ouroboros"."github_issues" set "sizing_status" = $1 ' +
+          'where "organization_id" = $2 and "sizing_status" != $3 returning "id"',
+      );
+      expect(database.statements[0]?.parameters).toEqual([
+        "estimating",
+        FIXTURE_WORKSPACE,
+        "estimating",
+      ]);
+    });
+
+    it("answers an empty list when everything is already in flight", async () => {
+      // Which is what makes a double-fire a 409 rather than a second fan-out.
+      await expect(repository.claimBacklog(FIXTURE_WORKSPACE)).resolves.toEqual([]);
+    });
+  });
+
   describe("claiming", () => {
     it("writes `estimating` against the issue, unconditionally", async () => {
       // Unconditional on purpose: the recovery sweep's whole job is to re-claim rows that are

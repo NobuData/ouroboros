@@ -681,7 +681,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 | L.1 | #105 | 🟢 Done | ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`) | Request/response schema for sizing an issue; extends the #52 contract | mvp, intake, engine, rest | N (after #52) | Y | M | ouroboros-engine, ouroboros-rest |
 | L.2 | #106 | 🟢 Done | ouroboros-engine: [L.2] Heuristic estimator v0 | Deterministic sizing from labels/title/body signals, honest provenance | mvp, intake, engine | N (after L.1) | Y | M | ouroboros-engine |
 | L.3 | #107 | 🟢 Done | ouroboros-rest: [L.3] Estimation orchestration & persistence | Dispatch, status transitions, versioned persistence, failure → needs_human | mvp, intake, rest | N (after L.1, K.2, K.4) | Y | L | ouroboros-rest |
-| L.4 | #108 | 🟡 Open | ouroboros-rest: [L.4] Re-estimation endpoints (single & all) | `POST /backlog/:id/estimate`, `POST /backlog/estimate-all` with guards | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
+| L.4 | #108 | 🟢 Done | ouroboros-rest: [L.4] Re-estimation endpoints (single & all) | `POST /backlog/:id/estimate`, `POST /backlog/estimate-all` with guards | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
 | L.5 | #109 | 🟡 Open | ouroboros-rest: [L.5] Pipeline integration tests | Lifecycle, failure paths, concurrency, provenance assertions | mvp, intake, rest, ci | N (after L.4) | Y | M | ouroboros-rest |
 
 ### Issue L.1 — ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`)
@@ -991,7 +991,72 @@ stateDiagram-v2
 
 ### Issue L.4 — ouroboros-rest: [L.4] Re-estimation endpoints (single & all)
 
-> **GitHub issue:** #108 · **Status:** 🟡 Open · **Parent epic:** #95
+> **GitHub issue:** #108 · **Status:** 🟢 Done · **Parent epic:** #95
+
+> **Shipped 2026-09-10. Epic L has one issue left.**
+>
+> The estimation pipeline has external triggers: `POST /api/v1/backlog/{id}/estimate` (member+)
+> and `POST /api/v1/backlog/estimate-all` (admin+), in
+> [`ouroboros-rest/src/modules/estimation/`](../ouroboros-rest/src/modules/estimation/) —
+> six new files, 66 unit tests across six new suites — plus cases added to the repository's
+> and the module's — and twelve integration cases added to L.3's suite.
+> `ouroboros-rest` 0.31.2, a patch: the contract gained two operations and two schemas and
+> changed none.
+>
+> **They landed in `estimation/` rather than in `backlog/`**, which is where the path says they
+> are. What they *do* is estimation — everything they touch is that module's queue, claim and
+> limiter — and what they are *about* is an issue in the backlog, which is where a client looks
+> for them; `AuditModule` serves `GET /api/v1/providers/audit` under `ProviderConnectionsModule`'s
+> prefix on exactly that argument. Unlike that pair this one carries **no ordering rule**: all
+> four paths under `/backlog` are distinguished before any parameter is reached.
+>
+> **The row is claimed before the work is queued, and that is the ticket's one design
+> correction.** L.3's orchestrator claims when the work *starts*, which may be several estimates
+> later — so an endpoint that only queued would answer `status: "estimating"` while a client
+> re-reading the issue still saw `sized`, and its double-fire `409` would come from one process's
+> memory rather than from a column. Claiming at the boundary makes the `202` true when it is sent
+> and the refusal a fact any replica can read. The orchestrator's own claim is unconditional and
+> idempotent, so doing it twice costs one `UPDATE`, and a process that dies in between leaves a
+> row the recovery sweep already exists to find.
+>
+> **The fan-out's scope and claim are one statement.** `update … where organization_id = $1 and
+> sizing_status != 'estimating' returning id` *is* the *"touches only non-`estimating` rows"*
+> criterion: two administrators pressing together cannot claim the same issue twice, and the
+> count it returns is a fact rather than an estimate of one. A second press finds nothing to take
+> and is a `409` — `202 {enqueued: 0}` would report *accepted* for a request that started
+> nothing — while a workspace that mirrors **no** issues answers `202` with zeros, because
+> *empty* and *busy* are different states and N.1's dialog should be able to say which.
+>
+> **`{id}` is `github_issues.id`, and the issue's own diagram is where the confusion would come
+> from.** It writes `POST /backlog/485/estimate`, where `485` is the issue the mockup draws
+> rather than a path segment this service could accept: `github_issues` is unique on
+> `(github_repo_id, number)`, so a workspace watching two repositories has two issue `#485`s and
+> a number would name neither. A path that is not a uuid is a `422` before a statement is issued,
+> and `estimation.dto.spec.ts` holds that case by name.
+>
+> **The rate limit is a `429` where M.4's re-sync guard (#113) is a `409`, and the difference is
+> real rather than a matter of taste.** That guard protects a *shared background loop* the caller
+> does not own and refuses somebody who has clicked nothing; this one counts what *this
+> workspace* asked for and becomes a `202` by waiting exactly as long as
+> `details.retryAfterSeconds` says. Thirty a minute, sliding, per workspace — the quota is the
+> workspace's rather than any caller's, so three members share one window. **Every request that
+> reaches the operation counts, including the ones refused `409`**, because the hammering caller
+> the criterion names is *mostly* collecting conflicts: their second click lands on an issue
+> their first one moved into `estimating`.
+>
+> **Every acceptance criterion is asserted where only that level can see it.** *A new version
+> (v+1)* is over the wire against a migrated database and a listening engine — the estimate the
+> press produced lands as `v2` beside `v1` rather than over it. So are the role gates, which no
+> unit spec can see because none of them goes through the router that reads `@Roles()`, and the
+> cross-org `404` against a real row in a second workspace. L.5 (#109) keeps the pipeline's own
+> matrix; what this added is the leg that proves the buttons are wired to it.
+>
+> **What is deferred, and to whom.** N.1 (#115) and N.5 (#119) are the presses: the head's
+> *Re-estimate all* has a confirmation contract to render — the dialog's N comes from M.1's
+> count, and the answer says how many it actually took — and the panel's *Re-estimate* has a
+> `409` carrying the pill it should redraw. Nothing here reserves a budget: full accounting is
+> the provider roadmap's (mockup 07), and this counter is deliberately the *simple* one the
+> ticket asked for.
 
 - **Problem Statement:** The mockup offers re-estimation in three places (panel
   button, head "Re-estimate all", implicit on stale data); the pipeline needs
@@ -1999,3 +2064,25 @@ to the question K.4 left open.
 > *paused* without knowing every reason this service can give. `running` is what makes a busy
 > trigger renderable rather than a click that is about to be refused, and
 > `retryAfterSeconds` is the countdown for the one pause that ends by itself.
+
+**L.4 (#108) shipped the same day, and Epic L has one issue left.** The pipeline has external
+triggers: `POST /api/v1/backlog/{id}/estimate` for the panel's button and
+`POST /api/v1/backlog/estimate-all` for the head's, member+ and admin+ respectively, because a
+fan-out spends the workspace's engine quota in one press. Both answer `202` and both are
+guarded four ways — a per-workspace rate limit, a workspace-scoped read, a `409` for an issue
+already in flight, and a claim that happens *before* the work is queued so the status the answer
+carries is true when it is sent. The fan-out's scope and its claim are one statement, which is
+the whole of *touches only non-`estimating` rows*.
+
+> What L.4 leaves for **L.5 (#109)**: the pipeline's matrix is still its own, and the harness it
+> extends now has twelve HTTP cases in it as well as sixteen driven from the injector — a second
+> workspace, three roles, a stranded row and a rate limit are all arranged in
+> `estimation.integration-spec.ts` rather than waiting to be invented. What that file does *not*
+> cover is the engine-down and stale-sweep matrix seen from the endpoints, which is where a
+> re-estimate that fails differs from a poll's that does: a person is watching.
+>
+> And for **N.1 (#115)** and **N.5 (#119)**: the confirmation contract is two halves. The dialog
+> says *"this re-estimates N issues"* from M.1's own count, and the `202` says how many it
+> actually took — `enqueued` can be smaller, and that is the honest shape of a second press. The
+> panel's button has a `409` carrying `details.status`, which is the pill to redraw rather than a
+> failure to report.

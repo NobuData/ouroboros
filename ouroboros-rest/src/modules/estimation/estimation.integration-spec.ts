@@ -1,10 +1,15 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { ApiHarness } from "../../testing/harness.fixture";
+import { ApiHarness, type Person } from "../../testing/harness.fixture";
+import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME, type NewIssueEstimate } from "../db/schema";
 import { ENGINE_ESTIMATE_BODY } from "../engine/engine.fixture";
+import type { ErrorEnvelope } from "../errors/error.envelope";
 import { seedRoutingBench, type RoutingBench } from "../routing/workspace.fixture";
+import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import { ESTIMATION_ERRORS } from "./estimation.errors";
+import { ESTIMATION_ATTEMPTS_PER_WINDOW } from "./estimation.limiter";
 import { EstimationOrchestrator } from "./estimation.orchestrator";
 import { EstimationRepository } from "./estimation.repository";
 import { EstimationSweeper } from "./estimation.sweeper";
@@ -30,6 +35,14 @@ import { EstimationSweeper } from "./estimation.sweeper";
  *     and V026's monotonicity trigger doing their jobs while two transactions race, and the
  *     harness has to be a real one.
  *   * *Every persisted estimate carries non-null trace provenance.*
+ *
+ * **L.4 ([#108](https://github.com/NobuData/ouroboros/issues/108)) added a describe block at
+ * the foot**, and it is the same argument one level up: its two routes are the pipeline's only
+ * external trigger, and three of its acceptance criteria are claims about what PostgreSQL holds
+ * afterwards — *a new version (v+1)*, *`estimate-all` touches only non-`estimating` rows*, and
+ * the role gates, which no unit spec can see because none of them goes through the router that
+ * reads `@Roles()`. L.5 ([#109](https://github.com/NobuData/ouroboros/issues/109)) keeps the
+ * pipeline's own matrix; this is the leg that proves the buttons are wired to it.
  *
  * ---------------------------------------------------------------------------
  * **The engine is a listening HTTP server rather than a stubbed client.** `EngineClient` takes
@@ -186,6 +199,37 @@ describe("the estimation pipeline, against a migrated database", () => {
     );
 
     return { bench, issueId: issues[0].id };
+  }
+
+  /**
+   * A second issue in a workspace that already has one, `unsized`.
+   *
+   * L.4's fan-out needs a backlog rather than a row: *touches only non-`estimating` rows* is
+   * not a claim any single-issue fixture can be held to. It finds the repository rather than
+   * being handed one, because {@link mirroredIssue} creates exactly one and nothing else does.
+   *
+   * @param bench - The workspace, from {@link mirroredIssue}.
+   * @param number - The issue number, unique within the repository.
+   * @returns The new issue's row id.
+   */
+  async function addIssue(bench: RoutingBench, number: number): Promise<string> {
+    const { rows } = await api.sql.query<{ id: string }>(
+      `insert into ${SCHEMA_NAME}.github_issues
+              (organization_id, github_repo_id, number, title, body, state, labels,
+               gh_created_at, gh_updated_at, gh_url, sizing_status)
+       select $1, repos.id, $2::int, 'Expose battery health over BLE GATT', 'A second issue.',
+              'open', '["feature"]'::jsonb, now(), now(),
+              'https://github.com/acme-robotics/helios-firmware/issues/' || $2::int::text,
+              'unsized'
+         from ${SCHEMA_NAME}.github_repos repos
+         join ${SCHEMA_NAME}.github_orgs orgs on orgs.id = repos.org_id
+        where orgs.organization_id = $1
+        limit 1
+       returning id`,
+      [bench.id, number],
+    );
+
+    return rows[0].id;
   }
 
   /**
@@ -558,6 +602,227 @@ describe("the estimation pipeline, against a migrated database", () => {
       expect(await statusOf(issueId)).toBe("unsized");
       expect(engine.requests).toHaveLength(0);
       expect(await estimatesOf(issueId)).toHaveLength(0);
+    });
+  });
+
+  describe("the re-estimation endpoints", () => {
+    const SINGLE = (issueId: string): string => `/api/v1/backlog/${issueId}/estimate`;
+    const ALL = "/api/v1/backlog/estimate-all";
+
+    /**
+     * A workspace with routing, one sized issue, and somebody in every role.
+     *
+     * The issue is driven to `sized` through the real pipeline first, because *re*-estimation
+     * is what these routes do: a `v+1` asserted against an issue that had no `v1` would be an
+     * insert dressed up as the criterion.
+     *
+     * @param number - The issue number, for a test that wants a second one.
+     * @returns The workspace, the issue, and one member of each role.
+     */
+    async function sizedIssue(number = 485): Promise<{
+      bench: RoutingBench;
+      issueId: string;
+      owner: Person;
+      member: Person;
+      viewer: Person;
+    }> {
+      const { bench, issueId } = await mirroredIssue(number);
+
+      orchestrator.enqueue(issueId);
+      await orchestrator.settled();
+
+      const owner = await api.signIn({ email: `owner-${String(number)}@ouroboros.invalid` });
+      const member = await api.signIn({ email: `member-${String(number)}@ouroboros.invalid` });
+      const viewer = await api.signIn({ email: `viewer-${String(number)}@ouroboros.invalid` });
+
+      await api.join(bench.id, owner, "owner");
+      await api.join(bench.id, member, "member");
+      await api.join(bench.id, viewer, "viewer");
+
+      return { bench, issueId, owner, member, viewer };
+    }
+
+    it("versions the estimate rather than editing the one in force", async () => {
+      // The ticket's first acceptance criterion, end to end: a member presses the panel's
+      // button, and what lands is `v+1` beside `v1` rather than over it.
+      const { bench, issueId, member } = await sizedIssue();
+
+      expect(await estimatesOf(issueId)).toHaveLength(1);
+
+      const accepted = await api
+        .as(member)("post", SINGLE(issueId))
+        .set(TENANT_HEADER, bench.slug)
+        .expect(202);
+
+      expect(bodyOf(accepted)).toEqual({
+        issueId,
+        number: 485,
+        repository: "acme-robotics/helios-firmware",
+        status: "estimating",
+      });
+
+      // The status it answered with is already true — the row is claimed before the work is
+      // queued, so a client that re-reads the issue sees the same word.
+      expect(await statusOf(issueId)).toBe("estimating");
+
+      await orchestrator.settled();
+
+      const versions = (await estimatesOf(issueId)).map((estimate) => estimate.version);
+
+      expect(versions).toEqual([1, 2]);
+      expect(await statusOf(issueId)).toBe("sized");
+    });
+
+    it("refuses a double-fire with the current status, and queues nothing twice", async () => {
+      const { bench, issueId, member } = await sizedIssue();
+
+      await api.as(member)("post", SINGLE(issueId)).set(TENANT_HEADER, bench.slug).expect(202);
+
+      const refused = await api
+        .as(member)("post", SINGLE(issueId))
+        .set(TENANT_HEADER, bench.slug)
+        .expect(409);
+      const envelope = bodyOf<ErrorEnvelope>(refused);
+
+      expect(envelope.code).toBe(ESTIMATION_ERRORS.alreadyEstimating);
+      expect(envelope.details).toEqual({ status: "estimating" });
+
+      await orchestrator.settled();
+
+      // One press, one version. A duplicate would have spent a second engine call to write the
+      // same answer again.
+      expect(await estimatesOf(issueId)).toHaveLength(2);
+    });
+
+    it("answers 404 for an issue in another workspace", async () => {
+      // Cross-org id → 404, the criterion that has to be true against a real row: the issue
+      // exists, and it is not this caller's to see.
+      const theirs = await sizedIssue(485);
+      const mine = await sizedIssue(486);
+
+      await api
+        .as(mine.member)("post", SINGLE(theirs.issueId))
+        .set(TENANT_HEADER, mine.bench.slug)
+        .expect(404);
+
+      // And it was left entirely alone.
+      expect(await statusOf(theirs.issueId)).toBe("sized");
+    });
+
+    it("answers 404 for an id that names nothing", async () => {
+      const { bench, member } = await sizedIssue();
+
+      const refused = await api
+        .as(member)("post", SINGLE("5eed0018-0000-4000-8000-000000000999"))
+        .set(TENANT_HEADER, bench.slug)
+        .expect(404);
+
+      expect(bodyOf<ErrorEnvelope>(refused).code).toBe(ESTIMATION_ERRORS.issueNotFound);
+    });
+
+    it("answers 422 for a path carrying GitHub's issue number", async () => {
+      // The ticket's own diagram writes `POST /backlog/485/estimate`, and a reader could
+      // transcribe that into a path. It is refused before a statement is issued.
+      const { bench, member } = await sizedIssue();
+
+      await api.as(member)("post", SINGLE("485")).set(TENANT_HEADER, bench.slug).expect(422);
+    });
+
+    it("lets a member re-estimate one issue and refuses them the whole backlog", async () => {
+      // The role split, through the router that reads `@Roles()` — which is the only place it
+      // is visible. Delete either decorator and every unit spec in this module still passes.
+      const { bench, issueId, member } = await sizedIssue();
+
+      await api.as(member)("post", SINGLE(issueId)).set(TENANT_HEADER, bench.slug).expect(202);
+
+      const refused = await api.as(member)("post", ALL).set(TENANT_HEADER, bench.slug).expect(403);
+
+      expect(bodyOf<ErrorEnvelope>(refused).code).toBe("forbidden");
+
+      await orchestrator.settled();
+    });
+
+    it("refuses a viewer both, and a stranger the way a missing workspace is refused", async () => {
+      const { bench, issueId, viewer } = await sizedIssue();
+      const stranger = await api.signIn({ email: "stranger@ouroboros.invalid" });
+
+      await api.as(viewer)("post", SINGLE(issueId)).set(TENANT_HEADER, bench.slug).expect(403);
+      await api.as(viewer)("post", ALL).set(TENANT_HEADER, bench.slug).expect(403);
+
+      // A stranger is told nothing about whether the workspace exists.
+      await api.as(stranger)("post", ALL).set(TENANT_HEADER, bench.slug).expect(404);
+    });
+
+    it("answers 401 to a browser with no session", async () => {
+      await api.anonymous("post", ALL).expect(401);
+      await api.anonymous("post", SINGLE("5eed0018-0000-4000-8000-000000000485")).expect(401);
+    });
+
+    it("fans out over the backlog, touching only rows that are not already estimating", async () => {
+      // The second acceptance criterion, against three real rows: one sized, one stranded
+      // `estimating`, one unsized. Only the two eligible ones move, and the count says so.
+      const { bench, issueId, owner } = await sizedIssue();
+      const second = await addIssue(bench, 486);
+      const third = await addIssue(bench, 487);
+
+      await strand(third);
+
+      const accepted = await api.as(owner)("post", ALL).set(TENANT_HEADER, bench.slug).expect(202);
+
+      expect(bodyOf(accepted)).toEqual({ enqueued: 2, skipped: 1, total: 3 });
+
+      await orchestrator.settled();
+
+      expect(await estimatesOf(issueId)).toHaveLength(2);
+      expect(await estimatesOf(second)).toHaveLength(1);
+    });
+
+    it("refuses a second fan-out while the first is running", async () => {
+      const { bench, owner } = await sizedIssue();
+
+      await api.as(owner)("post", ALL).set(TENANT_HEADER, bench.slug).expect(202);
+
+      const refused = await api.as(owner)("post", ALL).set(TENANT_HEADER, bench.slug).expect(409);
+      const envelope = bodyOf<ErrorEnvelope>(refused);
+
+      expect(envelope.code).toBe(ESTIMATION_ERRORS.backlogEstimating);
+      expect(envelope.details).toEqual({ estimating: 1 });
+
+      await orchestrator.settled();
+    });
+
+    it("answers zeros for a workspace that mirrors nothing", async () => {
+      // *Empty* and *busy* are different states, and only one of them is a 409.
+      const owner = await api.signIn();
+      const workspace = await api.workspace(owner);
+
+      const accepted = await api
+        .as(owner)("post", ALL)
+        .set(TENANT_HEADER, workspace.slug)
+        .expect(202);
+
+      expect(bodyOf(accepted)).toEqual({ enqueued: 0, skipped: 0, total: 0 });
+    });
+
+    it("rate-limits a hammering caller, and says how long to wait", async () => {
+      // The fifth criterion. Every request that reaches the operation counts, which is what
+      // makes a caller collecting `409`s visible to the limit at all.
+      const { bench, issueId, member } = await sizedIssue();
+
+      for (let attempt = 0; attempt < ESTIMATION_ATTEMPTS_PER_WINDOW; attempt += 1) {
+        await api.as(member)("post", SINGLE(issueId)).set(TENANT_HEADER, bench.slug);
+      }
+
+      const refused = await api
+        .as(member)("post", SINGLE(issueId))
+        .set(TENANT_HEADER, bench.slug)
+        .expect(429);
+      const envelope = bodyOf<ErrorEnvelope>(refused);
+
+      expect(envelope.code).toBe(ESTIMATION_ERRORS.rateLimited);
+      expect(envelope.details.retryAfterSeconds).toBeGreaterThan(0);
+
+      await orchestrator.settled();
     });
   });
 });
