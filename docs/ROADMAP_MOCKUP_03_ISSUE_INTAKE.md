@@ -1104,7 +1104,7 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| M.1 | #110 | 🟡 Open | ouroboros-rest: [M.1] Backlog list endpoint with filters | Org-scoped list: repo/labels/state/sort/search, paging, head counts | mvp, intake, rest | N (after K.4, L.3) | Y | M | ouroboros-rest |
+| M.1 | #110 | 🟢 Done | ouroboros-rest: [M.1] Backlog list endpoint with filters | Org-scoped list: repo/labels/state/sort/search, paging, head counts | mvp, intake, rest | N (after K.4, L.3) | Y | M | ouroboros-rest |
 | M.2 | #111 | 🟡 Open | ouroboros-rest: [M.2] Issue detail endpoint | Full issue + latest estimate + trace for the side panel | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
 | M.3 | #112 | 🟡 Open | ouroboros-rest: [M.3] Bulk queue action | Selection → `queue_items` with workflow tag + combined estimate | mvp, intake, rest | N (after L.3, DASH-F.2) | Y | M | ouroboros-rest |
 | M.4 | #113 | 🟢 Done | ouroboros-rest: [M.4] Sync status & manual re-sync | Freshness data + `POST /backlog/sync` trigger with guards | mvp, intake, rest | N (after K.4) | Y | S | ouroboros-rest |
@@ -1112,7 +1112,87 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 
 ### Issue M.1 — ouroboros-rest: [M.1] Backlog list endpoint with filters
 
-> **GitHub issue:** #110 · **Status:** 🟡 Open · **Parent epic:** #96
+> **GitHub issue:** #110 · **Status:** 🟢 Done · **Parent epic:** #96
+
+> **Shipped 2026-09-10, the same day as M.4 and L.4.** Epic M has two tickets left.
+>
+> [`ouroboros-rest/src/modules/backlog/listing.*`](../ouroboros-rest/src/modules/backlog/) is
+> `GET /api/v1/backlog` — six files beside M.4's seven, 88 new unit tests and a 45-case
+> integration suite over mockup 03's own nine rows. `ouroboros-rest` 0.31.3 — a patch, because
+> the contract gained one operation and four schemas and changed none.
+>
+> **A second controller under the same prefix**, which is what `backlog.module.ts` said it was
+> leaving a name for: one controller is about the *sync* and one is about the *backlog*, and only
+> the second grows filters. The listing reads `github_issues` and `issue_estimates` through a
+> repository of this module's own rather than through `BacklogSyncModule` or `EstimationModule` —
+> those two own *writers*, a poll and a versioned insert, and a screen's read has no business
+> entering through either.
+>
+> **The page head does not move when the filter bar does**, and that is the ticket's one design
+> decision that the wording left open. `meta.openCount` and `meta.sizedCount` are scoped by the
+> workspace and by `?repo=` and by nothing else, because mockup 03 puts them *above* the
+> `.filter-bar` card: the head says how much work is in the backlog and the table says which of it
+> you are looking at. Counts that moved as chips were toggled would make *"38 already sized"* a
+> statement about the filter, and `state=closed` would leave the head reading *"0 open issues"*
+> over a full table. `total` beside them is the filtered count, so a client has both numbers. The
+> same argument settles `labelFacets`, and there it is load-bearing rather than tidy: narrowing
+> the facets by the chips already on would leave only the labels that co-occur with `bug`, so
+> selecting a first chip would delete most of the set it was selected from and a second could
+> never be chosen.
+>
+> **`meta.syncedAt` is M.4's number, lifted rather than re-derived** — exactly the handoff that
+> ticket wrote down. A second `max(github_issues.synced_at)` here would have compiled, passed
+> every assertion about content, and answered a different question: that column moves when a row
+> is *written*, and the tag is about when a poll *ran*.
+>
+> **`q`'s label half matches a name rather than a substring, and the reason is the plan.** One
+> disjunct no index can answer makes the *whole* search a sequential scan, and
+> `jsonb_array_elements_text(labels) ilike '%…%'` is a per-row subquery nothing can serve;
+> `labels ? 'watchdog'` is the operator V014 chose `jsonb_ops` for. A label name is a short token
+> out of the set `labelFacets` just handed the client, so the substring form buys very little and
+> costs the query its index.
+>
+> **The plans are asserted against the statements the service compiles, not against SQL retyped in
+> a test.** `listing.integration-spec.ts` builds each read through the recording driver
+> `listing.repository.spec.ts` uses, then `EXPLAIN`s that exact statement against a workspace
+> holding nine thousand issues — so a plan assertion cannot drift from the query it is about. At
+> that volume the repository-scoped listing, the head's counts, the facets and a `#485` search all
+> enter through `github_issues_organization_repo_state_idx`, and the chip set enters through the
+> GIN index. The one combination PostgreSQL declines to index there is the whole-workspace text
+> search: a bitmap over two GIN indexes has a startup cost nine thousand rows do not repay, so it
+> reads that workspace's own issues and filters them — the right plan at nine thousand and the
+> wrong one at fifty, which is why the suite also asks the question `constraints.sql`'s way, with
+> sequential scans off.
+>
+> **The row is the table's cells and no more** — the ticket's own scope. No body, no author, no
+> `gh_url`; those are M.2's, for the one issue somebody clicked rather than for every row of a
+> page nobody has. Two fields are carried that no cell prints and both earn it:
+> `(github_repo_id, number)` is what makes an issue unique — every repository has its own `#489` —
+> so in a listing that names no `repo` the number alone does not identify a row.
+>
+> `src/testing/intake.fixture.ts` is `R__dev_seed_intake.sql` as a fixture, for
+> `dashboard.fixture.ts`'s reason: the development seed is deliberately not applied to the
+> integration database, and `truncate` would take it between tests anyway. Nine issues, nine
+> estimates and `#487`'s two versions — the smallest population that can tell a latest-wins lateral
+> apart from a join that takes an arbitrary row.
+>
+> What M.1 leaves for **N.1 (#115)**, **N.2 (#116)** and **N.3 (#117)**: the three surfaces they
+> render come from one request, so a head that disagreed with its own table would have to be the
+> client's doing. `labelFacets` is the chip set as data, `meta` is the head and the freshness tag,
+> and `sizingStatus` and `estimate` are deliberately separate answers — `#490` is `needs_human`
+> *with* an estimate and `#483` is `estimating` *without* one, which is the pair that stops either
+> being derived from the other.
+>
+> And for **M.5 (#114)**: the filter matrix this ticket's own suite covers is the listing's;
+> what M.5 adds beside it is the queue writes and the cross-endpoint agreement, over a fixture
+> that now exists.
+>
+> *(Two corrections to the scope below, both made deliberately and both narrower than they look.
+> The paging parameter is `limit`/`offset` rather than the `&page=` written there: this API has one
+> pagination convention (#31) and five endpoints already speak it, `page` is recoverable from the
+> two at any time, and two dialects in one API are not. And `q` over a **label** is a label name in
+> full rather than a substring of one, for the index reason above — the chip set is where a name
+> comes from, and the title half is still a substring.)*
 
 - **Problem Statement:** The filter bar and table are a server query
   (decision K8); the page head's counts ("42 open issues. 38 already sized.")
