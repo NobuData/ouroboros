@@ -26,9 +26,12 @@
  * from a workspace with no enabled repository. No credential is read here, and this module
  * cannot reach one: `github.credentials.service.ts` is the only thing that opens an envelope.
  *
- * **The estimation intake is bound by token**, and the binding is the seam. L.3 replaces this
- * one line with its orchestrator and changes nothing else in this module — see
- * `estimation.intake.ts` for why the placeholder logs rather than pretends.
+ * **The estimation intake is bound by token**, and the binding is the seam. L.3
+ * ([#107](https://github.com/NobuData/ouroboros/issues/107)) landed and did exactly what
+ * `estimation.intake.ts` said it would: the token now resolves to `EstimationOrchestrator`, the
+ * placeholder that logged is gone, and nothing else in this module moved. The sync still hands
+ * over new and reopened issues after its transaction commits and still knows nothing about what
+ * happens to them next — which is what the port was for.
  *
  * `ScheduleModule.forRoot()` is imported for `SchedulerRegistry`, as `ProviderHealthModule`
  * does; the call is idempotent, so two modules asking for it is one registry.
@@ -38,23 +41,27 @@ import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 
 import { DbModule } from "../db/db.module";
+import { EstimationModule } from "../estimation/estimation.module";
+import { EstimationOrchestrator } from "../estimation/estimation.orchestrator";
 import { GithubModule } from "../github/github.module";
 import { BacklogSyncRepository } from "./backlog-sync.repository";
 import { BacklogSyncScheduler } from "./backlog-sync.scheduler";
 import { BacklogSyncService } from "./backlog-sync.service";
-import { ESTIMATION_INTAKE, LoggingEstimationIntake } from "./estimation.intake";
+import { ESTIMATION_INTAKE } from "./estimation.intake";
 
 @Module({
-  imports: [DbModule, GithubModule, ScheduleModule.forRoot()],
+  imports: [DbModule, EstimationModule, GithubModule, ScheduleModule.forRoot()],
   providers: [
     BacklogSyncService,
     BacklogSyncRepository,
     BacklogSyncScheduler,
     {
       provide: ESTIMATION_INTAKE,
-      // `useClass` rather than `useValue`: the placeholder is a `@Injectable()` with a logger of
-      // its own, and L.3's replacement will want its own dependencies injected the same way.
-      useClass: LoggingEstimationIntake,
+      // `useExisting` rather than `useClass`: L.3's orchestrator is `EstimationModule`'s
+      // provider and holds the process's one work queue, and `useClass` would construct a
+      // *second* instance here — a second queue, with its own bound and its own dedupe set,
+      // which is precisely the "one sizer, not two" the estimation roadmap keeps insisting on.
+      useExisting: EstimationOrchestrator,
     },
   ],
   exports: [BacklogSyncService, BacklogSyncScheduler],

@@ -680,7 +680,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | L.1 | #105 | 🟢 Done | ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`) | Request/response schema for sizing an issue; extends the #52 contract | mvp, intake, engine, rest | N (after #52) | Y | M | ouroboros-engine, ouroboros-rest |
 | L.2 | #106 | 🟢 Done | ouroboros-engine: [L.2] Heuristic estimator v0 | Deterministic sizing from labels/title/body signals, honest provenance | mvp, intake, engine | N (after L.1) | Y | M | ouroboros-engine |
-| L.3 | #107 | 🟡 Open | ouroboros-rest: [L.3] Estimation orchestration & persistence | Dispatch, status transitions, versioned persistence, failure → needs_human | mvp, intake, rest | N (after L.1, K.2, K.4) | Y | L | ouroboros-rest |
+| L.3 | #107 | 🟢 Done | ouroboros-rest: [L.3] Estimation orchestration & persistence | Dispatch, status transitions, versioned persistence, failure → needs_human | mvp, intake, rest | N (after L.1, K.2, K.4) | Y | L | ouroboros-rest |
 | L.4 | #108 | 🟡 Open | ouroboros-rest: [L.4] Re-estimation endpoints (single & all) | `POST /backlog/:id/estimate`, `POST /backlog/estimate-all` with guards | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
 | L.5 | #109 | 🟡 Open | ouroboros-rest: [L.5] Pipeline integration tests | Lifecycle, failure paths, concurrency, provenance assertions | mvp, intake, rest, ci | N (after L.4) | Y | M | ouroboros-rest |
 
@@ -884,7 +884,78 @@ conf < floor ─▶ needs_human          trace: {estimator: heuristic-v0, signal
 
 ### Issue L.3 — ouroboros-rest: [L.3] Estimation orchestration & persistence
 
-> **GitHub issue:** #107 · **Status:** 🟡 Open · **Parent epic:** #95
+> **GitHub issue:** #107 · **Status:** 🟢 Done · **Parent epic:** #95
+
+> **Shipped 2026-09-10. Epic L is open.**
+>
+> An issue the sync mirrors now reaches `sized` on its own. `ouroboros-rest` 0.31.0;
+> `src/modules/estimation/` is six files and 95 new unit tests beside a 16-case integration
+> suite that drives the whole leg — a listening engine, the real `POST /v0/estimate` parse,
+> and V026's two document grammars — because every acceptance criterion this ticket has is a
+> claim about what PostgreSQL holds afterwards.
+>
+> **K.4's seam was exactly the right size.** `estimation.intake.ts` said *"L.3 replaces the
+> binding in `backlog-sync.module.ts` and changes nothing else"*, and that is the whole of the
+> change to that module: one `useExisting` in place of one `useClass`, and the placeholder that
+> logged is deleted. The sync still hands over new and reopened issues after its transaction
+> commits and still knows nothing about what happens next — which means K.4's fourth acceptance
+> criterion, *"a new issue automatically enters the estimation pipeline"*, marked *(verified
+> together with #107)*, is now verified.
+>
+> **The Z.4 amendment's remaining half landed with it** (#197, decision **M6**). `model_defaults`
+> is filled from `ResolutionService` — the same method `POST /api/v1/routing/simulate` serves —
+> rather than from configuration, and the value is the resolved chain's **first kept hop**: the
+> model an executor would actually try, not hop 1 blindly, because a dropped hop carries its
+> explanation and naming one would point an estimate at a model that is not going to run. Two
+> keys are offered, `default` → `implement` and `docs` → `docs`, which is what the engine's own
+> per-tag lookup falls through. Nothing in `ouroboros-engine` changed: the map was always the
+> caller's.
+>
+> **Two failure decisions are worth reading before the code.** First: **a failed estimate
+> persists no row.** `issue_estimates` has no nullable effort and no *unknown*, so a row
+> invented for an engine that could not answer would put an effort chip on the backlog table
+> for an issue nothing sized, and a `trace.estimator` on a record of nothing — decision **K10**
+> read backwards. The issue goes to `needs_human` and the failure is named in the service log,
+> with the repository, the issue number, both attempts and the reason. Second: **a workspace
+> whose routing resolves no model is not dispatched at all.** `routed_model` is `not null`, so
+> an installation with no route genuinely has no estimate to store; its issues stay `unsized`,
+> which is what they already are, rather than being burned to `needs_human` for a reason that
+> has nothing to do with any of them. Seeding default routes still has no service (#205), so
+> that is a real state and not a hypothetical one.
+>
+> **The version is guessed and the database checks it**, exactly as V026 asked for: the write
+> computes `max(version) + 1` inside its transaction, and a second writer that got there first
+> is a `23505` on `issue_estimates_issue_version_key` that the repository retries with a fresh
+> number. No `select … for update` — locking the issue row would serialise the engine call
+> behind whoever got there first and would put a lock across a network hop, which is how a
+> deadlock is built rather than avoided. The integration suite drives two writes at once and
+> asserts both landed, on versions 1 and 2.
+>
+> **Three loops now, and this one knocks on nothing outside the deployment.** The recovery
+> sweep is one indexed query for rows that have been `estimating` longer than
+> `OURO_ESTIMATION_STALE_SECONDS`, jittered like the other two, and it exists for `SIGKILL`
+> rather than for bugs: every path out of the orchestrator already writes a terminal status,
+> including the one where the write itself failed. It is also the one place a misconfiguration
+> is reported — a sweep whose every row was already in flight says so, because that means the
+> threshold is set below how long an estimate legitimately takes.
+>
+> **Four new variables**, each with a floor and a ceiling and none with an off value:
+> `OURO_ESTIMATION_CONCURRENCY` (4), `OURO_ESTIMATION_CONFIDENCE_FLOOR` (70 — the engine's own
+> published number, restated here because the policy is this service's),
+> `OURO_ESTIMATION_STALE_SECONDS` (600) and `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS` (120).
+> `issue_estimates` is the twenty-ninth table in `db/schema.ts`, mirrored a release late for
+> `github_issues`' reason: K.2 landed the table with no writer, and this is the first thing
+> here that writes one.
+>
+> **What is still ahead of it.** L.4 (#108) is the re-estimation endpoints, and the orchestrator
+> is exported with the two methods that ticket needs — `enqueue()` and `estimating()`, the
+> latter being the `409` a double-fire answers with, read from the queue rather than from a
+> column that may have moved. The workflow tags are a constant in `estimation.context.ts`
+> because workflow entities are mockup 04's and no table declares one yet; when that catalog
+> lands it replaces the constant and nothing else in the module changes. The planning roadmap's
+> amendment (decision **N9**) is satisfied by the same export: AL.5's nightly backlog-health job
+> (#281) and the generator's *Auto-size with estimator* toggle (#280) both enqueue **through
+> this orchestrator**, so there is one sizer and one queue rather than two.
 
 - **Problem Statement:** Someone must move issues through
   `unsized → estimating → sized|needs_human` — dispatching to the engine,

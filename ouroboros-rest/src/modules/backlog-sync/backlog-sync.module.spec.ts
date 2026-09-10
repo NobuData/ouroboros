@@ -8,20 +8,18 @@ import { BacklogSyncModule } from "./backlog-sync.module";
 import { BacklogSyncRepository } from "./backlog-sync.repository";
 import { BacklogSyncScheduler } from "./backlog-sync.scheduler";
 import { BacklogSyncService } from "./backlog-sync.service";
-import {
-  ESTIMATION_INTAKE,
-  LoggingEstimationIntake,
-  type EstimationIntake,
-} from "./estimation.intake";
+import { EstimationOrchestrator } from "../estimation/estimation.orchestrator";
+import { ESTIMATION_INTAKE, type EstimationIntake } from "./estimation.intake";
 
 /**
  * The wiring, which is where this module's one replaceable decision lives.
  *
  * `ESTIMATION_INTAKE` is the seam L.3
- * ([#107](https://github.com/NobuData/ouroboros/issues/107)) plugs into: it replaces one
- * binding and changes nothing else here. Until it does, the placeholder is what is bound —
- * and asserting that here is what makes *"a new issue enters the estimation pipeline"* a
- * criterion with a visible, checkable, current answer rather than an implied one.
+ * ([#107](https://github.com/NobuData/ouroboros/issues/107)) plugged into: it replaced one
+ * binding and changed nothing else here. What is bound now is the orchestrator, and asserting
+ * that is what makes *"a new issue enters the estimation pipeline"* a criterion with a visible,
+ * checkable answer rather than an implied one — including the part that is easy to get wrong,
+ * which is that the sync and the sweep share **one** orchestrator and therefore one work queue.
  *
  * Built with a stand-in `DatabaseService`, because constructing the real one opens a pool —
  * which is precisely what a suite that starts nothing must not do.
@@ -62,10 +60,22 @@ describe("the backlog sync module", () => {
     expect(module.get(BacklogSyncService)).toBeInstanceOf(BacklogSyncService);
   });
 
-  it("binds the placeholder intake until L.3 replaces it", async () => {
+  it("binds the intake to L.3's orchestrator", async () => {
     const module = await build();
 
-    expect(module.get<EstimationIntake>(ESTIMATION_INTAKE)).toBeInstanceOf(LoggingEstimationIntake);
+    expect(module.get<EstimationIntake>(ESTIMATION_INTAKE)).toBeInstanceOf(EstimationOrchestrator);
+  });
+
+  it("binds the *same* orchestrator the estimation module provides, not a second one", async () => {
+    const module = await build();
+
+    // `useExisting`, not `useClass`. A second instance would be a second work queue with its
+    // own bound and its own dedupe set: the sync's issues and the recovery sweep's would stop
+    // being able to see each other, and `OURO_ESTIMATION_CONCURRENCY` would silently mean twice
+    // what it says. Identity is the only way to assert that from outside.
+    expect(module.get<EstimationIntake>(ESTIMATION_INTAKE)).toBe(
+      module.get(EstimationOrchestrator),
+    );
   });
 
   it("resolves the intake into the service through the token", async () => {

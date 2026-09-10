@@ -237,6 +237,10 @@ service never starts half-configured.
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
 | `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` | Seconds before a cloud provider's key validation is redone — deliberately much slower, because it asks a vendor rather than the operator's own machine |     no — 900      | a whole number of seconds, 60–86400 |
 | `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` | Seconds between [backlog sync](#the-backlog-sync) cycles ([#102](https://github.com/NobuData/ouroboros/issues/102)) — jittered ±25%, and what the intake page's freshness tag counts from |     no — 300      | a whole number of seconds, 60–86400 |
+| `OURO_ESTIMATION_CONCURRENCY` | How many issues the [estimation pipeline](#the-estimation-pipeline) sizes at once ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the bound on outbound engine calls for sizing |      no — 4       | a whole number, 1–32 |
+| `OURO_ESTIMATION_CONFIDENCE_FLOOR` | Below what confidence an estimate sends its issue to `needs_human` — this service's policy, defaulted to the engine's own published floor |      no — 70      | a whole number, 0–100 |
+| `OURO_ESTIMATION_STALE_SECONDS` | How long an issue may sit in `estimating` before the recovery sweep re-queues it — a restart mid-flight is the case it exists for |     no — 600      | a whole number of seconds, 60–86400 |
+| `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS` | Seconds between recovery sweeps — jittered ±25%, and one indexed query against this deployment's own database |     no — 120      | a whole number of seconds, 10–86400 |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -1931,15 +1935,98 @@ a full interval. A cold import of a large backlog is therefore several quick cyc
 an afternoon, and it says so in its report and its log.
 
 **The estimation handoff is a seam, not a queue.** New and reopened issues are handed to
-`EstimationIntake` after the transaction commits. L.3
-([#107](https://github.com/NobuData/ouroboros/issues/107)) owns the orchestrator that will
-consume them; until it lands, the bound implementation records the handoff and says once, in
-the log, that nothing is estimating — the rows are `unsized`, which is what `sizing_status`
-already says about them, so the placeholder makes no claim that is not true.
+`EstimationIntake` after the transaction commits, and the sync knows nothing about what happens
+next. [The estimation pipeline](#the-estimation-pipeline)
+([#107](https://github.com/NobuData/ouroboros/issues/107)) is what is bound to that token; the
+seam is one line in `backlog-sync.module.ts`, which is the whole reason it exists.
 
 **There are no routes here.** `POST /api/v1/backlog/sync` and `GET
 /api/v1/backlog/sync-status` are M.4's; this module owns the cycle they will call, which is why
 `BacklogSyncService` and `BacklogSyncScheduler` are exported and no controller is declared.
+
+## The estimation pipeline
+
+**An issue the sync mirrored reaches `sized` on its own**
+([#107](https://github.com/NobuData/ouroboros/issues/107), decision **K7**).
+`src/modules/estimation/` is the second half of mockup 03's subline — the *"continuously
+estimates effort, risk, and routing"* half — and it is the state machine the four status pills
+render.
+
+```
+unsized ──▶ estimating ──▶ sized          engine answered, confidence ≥ floor
+                       └─▶ needs_human    confidence < floor, or two failed attempts
+sized | needs_human ──▶ estimating        re-estimate (L.4)
+```
+
+```
+accept(issues)    from the backlog sync — new & reopened
+sweep()           rows estimating longer than OURO_ESTIMATION_STALE_SECONDS
+enqueue(issueId)  L.4's re-estimation endpoints
+   └─▶ EstimationQueue: OURO_ESTIMATION_CONCURRENCY at once, one entry per issue
+         └─▶ resolve the workspace's tags & models
+             claim ─▶ POST /v0/estimate (one retry) ─▶ one transaction:
+               insert issue_estimates v(max+1)  ─▶  github_issues.sizing_status
+```
+
+**Decision K7: estimation runs *through the engine*, even though the estimator is a rule
+engine.** That pipeline shape is the product architecture, and swapping `heuristic-v0` for the
+LLM estimator ([#123](https://github.com/NobuData/ouroboros/issues/123)) is an engine-internal
+change nothing here sees. What a caller reads is `trace.estimator` to know what sized an issue
+and `confidence` to know whether to trust it — never which engine build answered.
+
+**The `needs_human` transition is this service's, and it is one comparison.** The L.1 contract
+has no `needs_human` field on purpose: an estimator says how sure it is, and what that means is
+an installation's policy. `ouroboros-engine` publishes the floor its tables were *calibrated*
+against and `OURO_ESTIMATION_CONFIDENCE_FLOOR` defaults to it, so the two cannot drift apart in
+silence. **An estimate under the floor is still stored in full** — mockup 03's own `#490` is
+that row, `XL` at 61% with a `needs human` pill beside all of it, and refusing to store it would
+throw away the thing a person is being asked to look at.
+
+**The models come from routing, not from configuration** (Z.4,
+[#197](https://github.com/NobuData/ouroboros/issues/197), decision **M6**). `model_defaults` is
+filled by [`ResolutionService`](#route-resolution) — the same method `POST
+/api/v1/routing/simulate` serves — and each value is the resolved chain's first **kept** hop,
+which is the model an executor would actually try. Two keys are offered, `default` (through the
+`implement` route) and `docs` (through `docs`), which is what the engine's own per-tag lookup
+falls through. **Resolved, never invoked:** nothing here calls a model, and the engine's trace
+says so in those words.
+
+**A workspace whose routing resolves nothing is not dispatched at all.**
+`issue_estimates.routed_model` is `not null` and non-blank, so an installation with no route
+genuinely has no estimate to store. Its issues stay `unsized` — which is what they already are —
+and one log line says why. Deliberately not `needs_human`: that status means *this issue wants a
+person to size it*, and burning a backlog into it for a reason that has nothing to do with any
+of the issues would be the page telling a story about the wrong thing.
+
+**A failure writes no estimate, and is not silent.** An engine error or timeout is retried once
+and then the issue is moved to `needs_human`, with the repository, the issue number, both
+attempts and the reason in the service log. There is no fabricated row behind it:
+`issue_estimates` has no nullable effort and no *unknown*, so a failure row would put an effort
+chip on the backlog table for an issue nothing sized, and a `trace.estimator` on a record of
+nothing — which is decision **K10** read backwards.
+
+**The version is computed by the writer and checked by the database.** The write asks for
+`max(version) + 1` inside its transaction, and a second writer that got there first is a unique
+violation on `issue_estimates_issue_version_key` that is retried with a fresh number. There is
+no `select … for update`: locking the issue row would serialise the engine call behind whoever
+got there first and would put a lock across a network hop, which is how a deadlock is built
+rather than avoided.
+
+**No row is ever stuck.** Every path out of an estimate writes a terminal status, including the
+one where the write itself failed. What that cannot cover is a process that stops existing
+between the claim and the write, and the recovery sweep is what covers it: every
+`OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS`, jittered ±25%, one indexed query re-queues rows that
+have been `estimating` longer than `OURO_ESTIMATION_STALE_SECONDS`. It is the third background
+loop in this service and the only one that knocks on nothing outside this deployment. A sweep
+whose every row was already in flight says so, because that means the threshold is set below how
+long an estimate legitimately takes.
+
+**There are no routes here either.** `POST /api/v1/backlog/:id/estimate` and `POST
+/api/v1/backlog/estimate-all` are L.4's
+([#108](https://github.com/NobuData/ouroboros/issues/108)); this module owns the pipeline they
+will call, which is why `EstimationOrchestrator` is exported — `enqueue()` is what a route does,
+and `estimating()` is the `409` a double-fire answers with, read from the work queue rather than
+from a column that may have moved since.
 
 ## BetterAuth
 
@@ -2869,6 +2956,11 @@ ouroboros-rest/
 │       ├── github/         # the workspace's GitHub token + the API client   · #101
 │       │                   #   PUT/DELETE/GET /settings/github-token — owner & admin only
 │       │                   #   github.octokit.ts is the only file that may import @octokit/*
+│       ├── backlog-sync/   # the poller that fills github_issues            · #102
+│       │                   #   no controller — the sync routes are M.4's (#113)
+│       ├── estimation/     # unsized -> estimating -> sized | needs_human   · #107
+│       │                   #   bounded queue · versioned writes · recovery sweep
+│       │                   #   no controller — the re-estimate routes are L.4's (#108)
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
@@ -2987,6 +3079,9 @@ the Copilot & Cursor adapters [#220](https://github.com/NobuData/ouroboros/issue
 the credential lifecycle [#223](https://github.com/NobuData/ouroboros/issues/223) ·
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 the GitHub token and API client [#101](https://github.com/NobuData/ouroboros/issues/101) ·
+the backlog sync [#102](https://github.com/NobuData/ouroboros/issues/102) ·
+the estimation pipeline [#107](https://github.com/NobuData/ouroboros/issues/107) ·
+the estimation contract it calls [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

@@ -11,6 +11,7 @@ import { QueueModule } from "../queue/queue.module";
 import { RunsModule } from "../runs/runs.module";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
+import { EstimationModule } from "../estimation/estimation.module";
 import { GithubModule } from "../github/github.module";
 import { HealthModule } from "../health/health.module";
 import { InternalModule } from "../internal/internal.module";
@@ -160,6 +161,15 @@ import { AppService } from "./app.service";
  * carries: a process with this module in it makes outbound requests to github.com that nobody
  * asked for, on a jittered timer, as soon as a workspace has a token and an enabled repository.
  *
+ * `EstimationModule` ([#107](https://github.com/NobuData/ouroboros/issues/107)) follows it,
+ * and the two are one pipeline read in order: the sync mirrors an issue as `unsized` and hands
+ * it over, and this is what moves it to `sized` or `needs_human`. It is listed after the module
+ * that imports it, which is redundant to Nest and deliberate here — a module that only ever
+ * appeared as somebody else's import would make *"does this process size issues"* a question
+ * you answer by reading a second file. It brings the third periodic loop, and unlike the other
+ * two that loop knocks on nothing outside this deployment: it is one indexed query looking for
+ * rows a restart stranded mid-estimate.
+ *
  * `InternalModule` ([#224](https://github.com/NobuData/ouroboros/issues/224)) is last, and
  * its position is the only one it could have. It registers a global guard, and Nest runs
  * global guards in the order their modules are initialised — so being listed after
@@ -245,6 +255,15 @@ export class AppModule {
         // for the *which workspaces have a token* question; it declares no route at all, so
         // its position says nothing about middleware and everything about what it depends on.
         BacklogSyncModule,
+        // L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the pipeline that
+        // sizes what the sync mirrored. **After `BacklogSyncModule`, which imports it**, so
+        // this entry is a statement rather than a requirement: Nest resolves the graph either
+        // way, and listing it here is what makes "a process with this module in it estimates
+        // issues" answerable from this list rather than from a transitive import three files
+        // down. It is the third module here to run periodic work — a recovery sweep, against
+        // this deployment's own database — and, like the sync, declares no route at all: the
+        // re-estimation endpoints are L.4's (#108).
+        EstimationModule,
         InternalModule,
       ],
     };
