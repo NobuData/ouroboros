@@ -682,7 +682,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 | L.2 | #106 | 🟢 Done | ouroboros-engine: [L.2] Heuristic estimator v0 | Deterministic sizing from labels/title/body signals, honest provenance | mvp, intake, engine | N (after L.1) | Y | M | ouroboros-engine |
 | L.3 | #107 | 🟢 Done | ouroboros-rest: [L.3] Estimation orchestration & persistence | Dispatch, status transitions, versioned persistence, failure → needs_human | mvp, intake, rest | N (after L.1, K.2, K.4) | Y | L | ouroboros-rest |
 | L.4 | #108 | 🟢 Done | ouroboros-rest: [L.4] Re-estimation endpoints (single & all) | `POST /backlog/:id/estimate`, `POST /backlog/estimate-all` with guards | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
-| L.5 | #109 | 🟡 Open | ouroboros-rest: [L.5] Pipeline integration tests | Lifecycle, failure paths, concurrency, provenance assertions | mvp, intake, rest, ci | N (after L.4) | Y | M | ouroboros-rest |
+| L.5 | #109 | 🟢 Done | ouroboros-rest: [L.5] Pipeline integration tests | Lifecycle, failure paths, concurrency, provenance assertions | mvp, intake, rest, ci | N (after L.4) | Y | M | ouroboros-rest |
 
 ### Issue L.1 — ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`)
 
@@ -1080,7 +1080,71 @@ head [Re-estimate all] ─▶ POST /backlog/estimate-all (admin) ─▶ fan-out 
 
 ### Issue L.5 — ouroboros-rest: [L.5] Pipeline integration tests
 
-> **GitHub issue:** #109 · **Status:** 🟡 Open · **Parent epic:** #95
+> **GitHub issue:** #109 · **Status:** 🟢 Done · **Parent epic:** #95
+
+> **Shipped 2026-09-10, the same day as L.4, M.1, M.2, M.3 and M.4 — and it closes Epic L.** The
+> contract (L.1), the estimator (L.2), the pipeline (L.3), its triggers (L.4) and now its matrix.
+>
+> [`ouroboros-rest/src/testing/engine.stub.fixture.ts`](../ouroboros-rest/src/testing/engine.stub.fixture.ts)
+> is the ticket's substance and
+> [`estimation.integration-spec.ts`](../ouroboros-rest/src/modules/estimation/estimation.integration-spec.ts)
+> is where it is put to work: 21 new unit cases for the stub itself and nine added to the
+> pipeline suite, which is 37 where L.4 left 28. `ouroboros-rest` 0.31.6 — a patch, and the
+> contract is untouched: this ticket ships no route, no schema and no line of production code.
+>
+> **"Contract-faithful" turned out to be the whole ticket.** The stub the pipeline had was a
+> listening server that answered whatever a test typed, and that is a hole with a name: *the fake
+> was free to be wrong in the same direction as the code*. A body carrying a field `/v0` does not
+> publish, or missing one it requires, sailed through a suite that only ever compared it against
+> itself — and the first real engine build would have failed in production against a green
+> pipeline. So the stub now reads `ouroboros-engine/openapi.yaml`, the same document
+> `engine.contract.spec.ts` reads and the one the engine serves verbatim rather than generates,
+> and holds itself to it **in both directions**: `Estimate` on the way out, `Error` for a
+> failure, `EstimateRequest` on the way in. A test that means to answer off-contract says so;
+> one that did not gets a `500` and a line in `violations`, which the suite asserts empty in
+> `afterEach` — once, for every case at the same time.
+>
+> **The acceptance criterion is a mechanism rather than a habit.** *The stub validates its own
+> responses against the committed L.1 schema* is checked before a socket exists:
+> `startEngineStub()` validates the body it is about to serve and **refuses to start** when it no
+> longer satisfies the document. Add a required field to `Estimate` and the pipeline suite does
+> not fail twenty assertions — it fails to come up, naming the field. The request half is the
+> mirror image and catches the failure this boundary actually has: `estimateRequestBody` is the
+> only place `camelCase` becomes `snake_case`, and a key that stopped being translated is a `422`
+> here with the field named.
+>
+> **What the new matrix block adds is the statements no single ticket could own.** L.3 asserted
+> provenance on the happy path, because that is the row L.3 wrote. The criterion is *every
+> persisted estimate*, and the only honest way to hold a pipeline to that is to drive every path
+> that writes one — a first sizing, a re-estimate, an answer under the confidence floor, and a row
+> the recovery sweep picked up — and then read `issue_estimates` with **no `where` clause**, in
+> the assertion and again as a `count(*)` the server answers. The same argument gives the
+> failure log its own case: `issue_estimates` deliberately holds no row for a failure, so the log
+> *is* the trace the ticket asks to be honest, and a pipeline that failed silently would satisfy
+> every other assertion in the file. Concurrency gets the two shapes a person can produce — two
+> presses arriving together on one issue, which must leave one estimate rather than two, and a
+> five-issue fan-out against a four-deep pipeline — beside a four-way race on one row where L.3
+> had a two-way one.
+>
+> **The two deletions were performed, not promised.** *Removing the stale sweep turns tests red;
+> removing the retry turns tests red — verified once, deliberately* is the one criterion that is
+> not a test, and the results are recorded in the suite's own header rather than left as a claim:
+> neutering `sweep()` reddens **five** cases, and reducing `MAX_ENGINE_ATTEMPTS` to `1` reddens
+> exactly **two** while leaving every recovery case green. That last clause is the one worth
+> having. A suite where any deletion reddens everything cannot tell one mechanism from another,
+> and a reader learns nothing from its failures. It is also why the attempt counts in that case
+> are written as literals: reading `MAX_ENGINE_ATTEMPTS` into the expectation would have made the
+> test agree with whatever the constant said, including the `1` it exists to catch.
+>
+> **Added runtime: 1.5 seconds**, against a budget of sixty — 6.5 s where L.4 left 5.1 s, on a
+> container the whole suite already shares. The stub's own 21 cases need no database and live in
+> the unit suite, so a developer running `yarn test` on save finds out there that a contract
+> changed rather than twenty seconds into a container start.
+>
+> **What this unblocks.** Nothing was waiting on it — L.5 is the epic's proof rather than its
+> prerequisite — but M.5 (#114) inherits the stub, and O.2 (#123) inherits the thing that
+> matters: when the LLM estimator replaces `heuristic-v0` behind the same contract, the pipeline's
+> suite is already written against the *document* rather than against the rule engine's answers.
 
 - **Problem Statement:** Lifecycle transitions, failure fallbacks, and version
   monotonicity are concurrency-sensitive — exactly what the Testcontainers

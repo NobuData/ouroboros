@@ -2248,6 +2248,48 @@ and a limiter that only counted accepted work would never see them. It is a `429
 real: that one protects a shared background loop the caller does not own, and this one counts
 what this workspace asked for.
 
+### How the pipeline is proved
+
+**The suite runs against a real engine, and the engine holds itself to its own contract**
+([#109](https://github.com/NobuData/ouroboros/issues/109)).
+`src/testing/engine.stub.fixture.ts` is an `ouroboros-engine` on a loopback port:
+`OURO_ENGINE_URL` points at it, the shared secret is checked on it, and the body that reaches
+`issue_estimates` is one that went over a socket and back through the real zod parse. What that
+catches is a `snake_case` key nobody translated, which is the failure this boundary actually
+has.
+
+**Every answer it serves is validated against `ouroboros-engine/openapi.yaml`, and every
+request it receives with it** — `Estimate` for a `200`, `Error` for a failure,
+`EstimateRequest` on the way in. The document is the engine's own, committed and served
+verbatim rather than generated, and reading it here is what closes the hole an ad-hoc fake
+leaves open: a stub that answers whatever a test typed is free to be wrong in the same
+direction as the code, so a body carrying a field `/v0` does not publish would pass a suite
+that only ever compared it against itself. A test that means to answer off-contract says so;
+one that did not gets a `500`, and the violation is asserted away in `afterEach`.
+
+```ts
+const engine = await startEngineStub();
+const api = await ApiHarness.start({ OURO_ENGINE_URL: engine.url });
+
+engine.respond(() => engineFailure()); // 503, in the engine's own envelope
+engine.respond(() => estimateAnswer({ confidence: 61 })); // under the floor
+engine.respond(() => offContractAnswer()); // outside /v0, deliberately
+```
+
+**A contract change breaks the stub before it breaks a test.** `startEngineStub()` validates
+the body it is about to serve and refuses to start when it no longer satisfies the document, so
+adding a required field to `Estimate` fails with the field named rather than as twenty
+assertion diffs. Its own 21 cases need no database and run in the fast suite, which is where a
+developer should learn that the engine's contract moved.
+
+**The pipeline's matrix is `estimation.integration-spec.ts`** — the lifecycle, the engine-down
+fallback and its recovery, the stale sweep, concurrent re-estimates, provenance, `estimate-all`
+scope and the role gates. Two of those are held to a standard a passing suite cannot show on
+its own, so the deletions were performed by hand and the results recorded in the file's header:
+neutering `sweep()` reddens five cases, and cutting the retry reddens exactly two while leaving
+every recovery case green. A suite where any deletion reddens everything cannot tell one
+mechanism from another.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -3248,8 +3290,8 @@ the code is where a dependency that answers, one that refuses and one that never
 are defined.
 
 `src/testing/` is the exception to *beside the code it covers*, because what it covers is
-the run rather than a module ([#37](https://github.com/NobuData/ouroboros/issues/37)). Six
-files, each of them a `*.fixture.ts` and therefore excluded from the build alongside the
+the run rather than a module ([#37](https://github.com/NobuData/ouroboros/issues/37)). Its
+run-level pieces, each a `*.fixture.ts` and therefore excluded from the build alongside the
 specs:
 
 | File                          | What it is                                                       |
@@ -3261,6 +3303,7 @@ specs:
 | `global.state.fixture.ts`     | the one value the two hooks share, which cannot be a module variable |
 | `harness.fixture.ts`          | `ApiHarness` — the application on a random port, sessions, roles, truncation |
 | `integration.fixture.ts`      | the small shared pieces: the database guard, typed bodies, unique names |
+| `engine.stub.fixture.ts`      | `ouroboros-engine` on a loopback port, holding itself to the engine's published contract |
 
 `ApiHarness` is what a suite uses:
 
