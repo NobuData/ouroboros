@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**150 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**152 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (12/23) | **17** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (13/23) | **18** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | 🟡 5/8 | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 12/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 13/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **11 issues** · 33 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153` and `154` · 12 dependency waves
+> **10 issues** · 31 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154` and `155` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 12 of 23 issues closed
+> **Status:** 🟡 **In progress** — 13 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1032,9 +1032,44 @@ that roadmap's "Existing issues affected" section.
 > **`M.5` (`#114`) and `N.1` (`#115`) are what this unblocks**, and `N.1`–`N.3` now have their
 > three surfaces from one request.
 
+> **`M.2` · [`#111`](https://github.com/NobuData/ouroboros/issues/111) has shipped, and row
+> `155` has left the table below** — so this phase's order numbers now start at `156`, 10 rows
+> summing to 31 points, and 13 of this phase's 23 issues are closed. The progress line at the top
+> of this document catches up by two rather than one: `M.1` moved the status table and left the
+> prose behind it, and the two are one number.
+>
+> [`ouroboros-rest/src/modules/backlog/detail.*`](../ouroboros-rest/src/modules/backlog/) is
+> `GET /api/v1/backlog/{id}`: mockup 03's `ISSUE DETAIL` panel in one answer — the issue with its
+> body, author, opening instant and GitHub URL; the estimate in force in full, breakdown, risk
+> sentence and trace; and the version list a future history view renders. Every member may read
+> it, `viewer` included, for `M.1`'s reason: opening a panel spends nothing.
+>
+> **`M.1` and this are two halves of one decision.** The listing returns what the table's cells
+> need and no more, because fetching a body, a breakdown and a trace for every row would make the
+> list pay for a panel most rows never open; this pays for it once, for the issue somebody
+> clicked. The panel's issue *is* the listing's row minus its summary estimate, plus the four
+> fields the panel draws — an extension rather than a restatement, so a panel head cannot disagree
+> with the row behind it.
+>
+> **An unsized issue answers the issue-only shape**, which the ticket asked for in as many words:
+> `estimate: null`, `history: []`, and everything else still there to draw. That is `N.5`'s
+> no-estimate state, and it is what the seeded `#483` — `estimating`, with no `issue_estimates` row
+> at all — looks like.
+>
+> **The estimate and the history are the same rows.** One statement reads every version; the
+> estimate is the highest and the history is all of them, oldest first. Read separately they would
+> eventually answer a trace naming version 3 over a history that ends at 2, because a
+> re-estimation landed in between — the argument `M.1` made about the page head, one shape smaller.
+>
+> **`GET /backlog/{id}` is the first bare-parameter path under this prefix**, which turns the
+> order `backlog.module.ts` lists its controllers in into a routing rule: Express matches in
+> registration order, so the controller holding `sync-status` and `sync` is listed first and the
+> integration suite asserts the consequence over a real router rather than over the list.
+>
+> **`N.5` (`#119`) is what this unblocks**, and `M.3` (`#112`) is the last of Epic M's endpoints.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 155 | **M.2** | [#111](https://github.com/NobuData/ouroboros/issues/111) | Issue detail endpoint | ouroboros-rest | S | L.3 |
 | 156 | **M.3** | [#112](https://github.com/NobuData/ouroboros/issues/112) | Bulk queue action | ouroboros-rest | M | F.2, L.3 |
 | 157 | **L.5** | [#109](https://github.com/NobuData/ouroboros/issues/109) | Pipeline integration tests | ouroboros-rest | M | L.4 |
 | 158 | **M.5** | [#114](https://github.com/NobuData/ouroboros/issues/114) | Backlog API integration tests | ouroboros-rest | M | M.1, M.4 |

@@ -2007,10 +2007,15 @@ looking is what the role is for — and may not spend the workspace's GitHub bud
 trigger carries `@Roles(...CONTRIBUTORS)`: owner, admin or member. That list is deliberately not
 `ADMINISTRATORS`; a re-sync is work rather than administration.
 
-**The rest of Epic M lands here.** The issue detail
-([#111](https://github.com/NobuData/ouroboros/issues/111)) and the bulk queue action
-([#112](https://github.com/NobuData/ouroboros/issues/112)) are still this module's controllers to
+**The rest of Epic M lands here.** The bulk queue action
+([#112](https://github.com/NobuData/ouroboros/issues/112)) is still this module's controller to
 add.
+
+**The order the module lists its controllers in is a routing rule**, and the panel is what made
+it one: `GET /api/v1/backlog/{id}` is the first path under this prefix that is a bare parameter,
+and Express matches in registration order. `BacklogController` — which holds the two literal
+segments — is listed first, so a freshness poll cannot become a request for an issue whose id is
+the word *sync-status*.
 
 ### The listing
 
@@ -2071,6 +2076,47 @@ over the five sizes — declared smallest-first in `schema.ts` so an index into 
 `nulls last`, because an issue with no estimate has no position. `confidence` is
 most-certain-first, `updated` and `number` are newest-first, and every ordering ends on the row id
 so a page boundary cannot show one row twice and another never.
+
+### The detail panel
+
+**The listing is the table's cells and this is everything else**
+([#111](https://github.com/NobuData/ouroboros/issues/111)). Mockup 03's `ISSUE DETAIL` card wants
+the body, the author, the opening instant, the GitHub URL, the whole breakdown, the risk sentence
+and the trace — and fetching all of that per row would make the list pay for a panel most rows
+never open. This pays for it once, for the issue somebody clicked.
+
+```
+GET /api/v1/backlog/{id}                                             any member
+  ─▶ issue     the row's cells + body, authorLogin, ghCreatedAt, ghUrl
+     estimate  { version, effort, confidence, suggestedWorkflow, routedModel,
+                 breakdown{files, estTokens, cycleMin, cycleMax, estMinutes},
+                 risk, riskNote, trace{estimator, sizedAt, tokensUsed, signals} } | null
+     history   [ {version, estimator, createdAt}, … ]  oldest first
+  ─▶ 404  issue_not_found  no such issue here — including one that is somebody else's
+```
+
+**`{id}` is `github_issues.id`, not GitHub's number**, exactly as on `POST {id}/estimate`: the
+mirror is unique on `(github_repo_id, number)`, so a workspace watching two repositories has two
+issue `#485`s and a numeric path would name neither.
+
+**`body` is raw and untruncated.** The client cuts it to the panel's width; a server that cut it
+would be choosing a line count for a layout it cannot see, and *read more* would become a second
+request. It is Markdown as GitHub stores it, unrendered.
+
+**An unsized issue answers the issue-only shape** — `estimate: null`, `history: []`, and every
+other field still there to draw — rather than a `404` or an estimate object of nulls. That is
+what `unsized` means, and what `estimating` means before the first answer lands.
+
+**`estimate` and `history` are the same rows.** One statement reads every version of the issue;
+the panel's estimate is the highest and the history is all of them. Read separately they would
+eventually answer a trace naming version 3 over a history that ends at 2, because a re-estimation
+landed in between. It costs one small `jsonb` column per superseded version — `trace` has to be
+read for all of them anyway, since that is where each entry's `estimator` lives.
+
+**Both statements carry `organization_id`,** and the estimates one reaches it through a join
+because `issue_estimates` has no such column of its own. An issue in another workspace is a `404`
+with the caller's own id echoed back, never a `403`: a `403` would confirm that a guessed id
+names a real issue somewhere.
 
 ## The estimation pipeline
 
