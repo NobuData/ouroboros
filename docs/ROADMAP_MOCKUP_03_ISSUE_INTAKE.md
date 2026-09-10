@@ -1042,7 +1042,7 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 | M.1 | #110 | 🟡 Open | ouroboros-rest: [M.1] Backlog list endpoint with filters | Org-scoped list: repo/labels/state/sort/search, paging, head counts | mvp, intake, rest | N (after K.4, L.3) | Y | M | ouroboros-rest |
 | M.2 | #111 | 🟡 Open | ouroboros-rest: [M.2] Issue detail endpoint | Full issue + latest estimate + trace for the side panel | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
 | M.3 | #112 | 🟡 Open | ouroboros-rest: [M.3] Bulk queue action | Selection → `queue_items` with workflow tag + combined estimate | mvp, intake, rest | N (after L.3, DASH-F.2) | Y | M | ouroboros-rest |
-| M.4 | #113 | 🟡 Open | ouroboros-rest: [M.4] Sync status & manual re-sync | Freshness data + `POST /backlog/sync` trigger with guards | mvp, intake, rest | N (after K.4) | Y | S | ouroboros-rest |
+| M.4 | #113 | 🟢 Done | ouroboros-rest: [M.4] Sync status & manual re-sync | Freshness data + `POST /backlog/sync` trigger with guards | mvp, intake, rest | N (after K.4) | Y | S | ouroboros-rest |
 | M.5 | #114 | 🟡 Open | ouroboros-rest: [M.5] Backlog API integration tests | Filter matrix, queue writes, isolation, sync trigger | mvp, intake, rest, ci | N (after M.1–M.4) | Y | M | ouroboros-rest |
 
 ### Issue M.1 — ouroboros-rest: [M.1] Backlog list endpoint with filters
@@ -1128,7 +1128,89 @@ POST /backlog/queue {ids:[485,484,491], workflow:"standard-fix"}
 
 ### Issue M.4 — ouroboros-rest: [M.4] Sync status & manual re-sync
 
-> **GitHub issue:** #113 · **Status:** 🟡 Open · **Parent epic:** #96
+> **GitHub issue:** #113 · **Status:** 🟢 Done · **Parent epic:** #96
+
+> **Shipped 2026-09-10. Epic M is open, and this is its first landed ticket.**
+>
+> [`ouroboros-rest/src/modules/backlog/`](../ouroboros-rest/src/modules/backlog/) is the
+> intake screen's first API surface: `GET /api/v1/backlog/sync-status` and
+> `POST /api/v1/backlog/sync` — seven files, 85 new unit tests, and an 8-case integration suite
+> that drives both routes over the whole pipeline against a migrated database.
+> `ouroboros-rest` 0.31.1 — a patch, because the contract gained two operations and three
+> schemas and changed none, which is AGENTS.md's rule for an addition.
+>
+> **A module of its own rather than a controller in `backlog-sync/`**, which is what that
+> module's header asked for: it owns a background loop and exported `BacklogSyncService` and
+> `BacklogSyncScheduler` *for this*. `BacklogSyncRepository` joins them as a third export, for
+> the stored cursors the status reads. The division is now legible from either side —
+> `backlog-sync/` owns a cycle and declares no route, `backlog/` declares routes and owns no
+> cycle — and it is where M.1–M.3's controllers land.
+>
+> **Three sources, and none of them is a status column** — which is the first acceptance
+> criterion, *pause reasons derived from actual state, never guessed*, read as a statement
+> about provenance. `syncedAt` and `cursor` are columns a poll wrote; `not_configured` is
+> whether `github_credentials` has a row; `no_repositories` is how many repositories are
+> enabled; `rate_limited` is read from **the same `GithubRateLimiter` the client enforces**,
+> which is why K.3 exported it; `unauthorized`, `not_found` and `upstream_error` come from
+> `BacklogSyncService.lastCycle()`. There is deliberately no `sync_state` column: a stored
+> status is a status that goes stale, and this one changes without anybody writing anything.
+>
+> **So the question K.4 left open — *whether a pause reason should outlive a restart* — is
+> answered no.** A fresh process has attempted nothing and therefore knows nothing about
+> `unauthorized`; the two reasons a reader can act on immediately are read from tables and are
+> right the moment the service is up. Claiming the others from a stored value would be
+> reporting a failure this process never saw, which is guessing by another name.
+>
+> **The freshness tag is the *oldest* poll, not the newest**, and `null` while any enabled
+> repository has never been polled. The tag sits over the whole backlog — *"BACKLOG · AS
+> OUROBOROS SEES IT"* — so what it may honestly claim is the freshness of the stalest thing in
+> it; taking the newest would let one repository that synced a second ago speak for nine that
+> failed an hour ago, which is K.4's one-transaction-per-poll rule broken one level up. Each
+> repository carries its own stamp, watermark, reason and last result, so N.3 can be more
+> precise than the tag when it wants to be.
+>
+> **The debounce is two guards, and neither is a `429`.** A cycle in flight is
+> `409 backlog_sync_running`, carrying **no** `retryAfterSeconds` — how long a cycle takes is
+> not knowable in advance, and `github.errors.ts`' rule is to omit rather than guess; what a
+> client watches instead is `running` on the status endpoint. A cycle that started within
+> thirty seconds is `409 backlog_sync_too_soon` with the wait in `details.retryAfterSeconds`.
+> `429` was rejected for both: it means *you* have done this too often, and this is a guard on
+> a loop the caller does not own.
+>
+> **The minimum interval is measured from the last cycle's start, whoever caused it, and it is
+> process-wide** — which is a consequence of the shape K.4 gives us rather than a preference.
+> A cycle polls **every** configured workspace, so this is *sync now* rather than *sync mine
+> now*, and a per-workspace guard would let ten workspaces start ten whole-installation cycles
+> inside one interval. Thirty seconds is a constant rather than a setting, for
+> `RATE_LIMIT_FLOOR`'s reason: it bounds a person leaning on the tag to 120 cycles an hour
+> against a budget of 5,000, and it is short enough that somebody who has just filed an issue
+> is not sent back to waiting out the poll interval. **Narrowing a cycle to one workspace is
+> the follow-up**, and it belongs to Q.3 (#140), where the cycle stops being one loop.
+>
+> **`BacklogSyncScheduler` now enforces non-overlap rather than implying it.** *"A cycle never
+> overlaps itself"* was true while the timer was the only caller; with a second caller it is a
+> held promise — `tick()` joins a cycle already running, and `runNow()` hands out the right to
+> start in one synchronous step, which is what makes *concurrent trigger → 409* a property
+> rather than a timing that usually holds.
+>
+> **Member+ needed a list that did not exist.** `roles.guard.ts` had `ADMINISTRATORS` and the
+> guard's own default of *any member, viewer included*; `CONTRIBUTORS` (owner, admin, member)
+> is the third, and the trigger is its first use. Reading the status stays every member's — a
+> viewer is a role that exists to be able to look — and starting a cycle is not, because it
+> spends the workspace's hourly GitHub budget.
+>
+> **Every acceptance criterion is asserted where only that level can see it.**
+> `backlog.integration-spec.ts` drives both routes over the whole pipeline against a migrated
+> database and the real Octokit: the trigger runs a cycle and `synced_at` **advances**, a
+> member is allowed and a `viewer` is refused `403` on the trigger while still reading the
+> status, a stranger gets the same `404` a missing workspace gets, and the immediate repeat
+> comes back `409 backlog_sync_too_soon` with its hint. A role gate deleted from the controller
+> leaves every unit spec in the module green, which is why it is asserted through the router.
+>
+> **What is deferred, and to whom.** M.5 (#114) keeps the backlog API's integration matrix,
+> and it inherits a trigger that already has one leg there rather than a blank sheet. M.1
+> (#110) folds this endpoint's `syncedAt` into its `meta` — one number, from one service — and
+> N.3 (#117) and N.6 (#120) render the vocabulary.
 
 - **Problem Statement:** The freshness tag needs data, and users need a manual
   nudge when they just filed an issue on GitHub.
@@ -1885,3 +1967,35 @@ probe run, 111 → 132 in the static test that holds those names against the mig
 > *and* pointed at the seeded database on its own — so an intake equivalent is a known
 > pattern rather than a design question, and the ticket that first asserts an intake read
 > against real rows is the one that should carry it.
+
+**Epic M opened on 2026-09-10, and it opened out of order.** **M.4 (#113) shipped** —
+[`ouroboros-rest/src/modules/backlog/`](../ouroboros-rest/src/modules/backlog/) is the intake
+screen's first API surface, and it is the one ticket in Epic M that needed only K.4 rather than
+M.1's listing or L.3's estimates. `GET /api/v1/backlog/sync-status` answers *how fresh* and,
+when there is no such number, *why not*; `POST /api/v1/backlog/sync` (owner, admin or member)
+drives one cycle at once, refusing a concurrent one and a repeat inside thirty seconds, each
+with its own `409` and its own next move. Nothing about the state is stored: the freshness
+stamp and watermark are columns a poll wrote, *no token* and *no enabled repository* are read
+from tables, the rate limit is read from the guard the client enforces, and the rest is the
+last cycle's report — so a pause reason does not survive a restart, which is the honest answer
+to the question K.4 left open.
+
+> What M.4 leaves for **M.1 (#110)**: `SyncStatusService.status()` already computes the number
+> the freshness tag renders, so `meta.syncedAt` is a field lifted from one service rather than
+> a second query over `github_repos` — and the tag beside the listing and the tag from
+> `/backlog/sync-status` then cannot disagree. `BacklogModule` is where M.1's controller goes;
+> the routes it adds share the prefix and shadow nothing, because `sync-status` and `sync` are
+> literal segments.
+>
+> And for **M.5 (#114)**: the backlog API's integration matrix is still its own, and it
+> inherits one leg of it rather than a blank sheet. `backlog.integration-spec.ts` already
+> drives both routes against a migrated database — freshness advancing after a trigger, the
+> role gate through the router, the debounce as a `409` off the wire — so what M.5 adds is the
+> filter matrix, the queue writes and the isolation cases, beside a file that shows how a
+> process-wide in-memory guard is arranged for rather than waited out.
+>
+> And for **N.3 (#117)** and **N.6 (#120)**: the vocabulary they render is
+> `sync.report.ts`'s six words, unchanged, plus `state`/`pause` split so a card can say
+> *paused* without knowing every reason this service can give. `running` is what makes a busy
+> trigger renderable rather than a click that is about to be refused, and
+> `retryAfterSeconds` is the countdown for the one pause that ends by itself.

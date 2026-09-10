@@ -702,6 +702,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backlog/sync-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How fresh the backlog is, and why it is not fresher
+         * @description The data behind mockup 03's `synced 40s ago` tag
+         *     ([#113](https://github.com/NobuData/ouroboros/issues/113)), and the sentence that has
+         *     to appear when there is no such number: a sync that is paused must say **which** kind
+         *     of paused it is, because each kind is fixed somewhere else.
+         *
+         *     **`syncedAt` is the oldest poll among the enabled repositories, not the newest**, and
+         *     `null` while any of them has never been polled. The tag sits over the whole backlog,
+         *     so what it may honestly claim is the freshness of the stalest thing in it: one
+         *     repository that synced a second ago must not speak for nine that failed an hour ago.
+         *     A repository that is stale because it is paused says so in its own row.
+         *
+         *     **Every field is derived from state that is actually true**, never from a stored
+         *     status. `syncedAt` and `cursor` are columns a poll wrote; `not_configured` is whether
+         *     a token exists; `no_repositories` is how many repositories are enabled;
+         *     `rate_limited` is read from the same rate guard the GitHub client enforces, so a
+         *     countdown here and a refusal there cannot disagree. There is no `sync_state` column,
+         *     deliberately — a stored status is a status that goes stale, and this one changes
+         *     without anybody writing anything.
+         *
+         *     **So `pause` does not survive a restart, and that is honest rather than lossy.** A
+         *     process that has attempted nothing knows nothing about `unauthorized` or
+         *     `upstream_error`; the two reasons a reader can act on immediately — no token, no
+         *     enabled repository — are read from tables and are right the moment the service is up.
+         *
+         *     **The workspace is the session's**, exactly as the dashboard's: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+         *     checked before this operation runs. Every member may read it, `viewer` included.
+         */
+        get: operations["readBacklogSyncStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backlog/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync the backlog now
+         * @description The freshness tag, made clickable ([#113](https://github.com/NobuData/ouroboros/issues/113)).
+         *     Somebody who has just filed an issue on GitHub should not have to wait out a poll
+         *     interval they cannot see, wondering whether the integration is broken.
+         *
+         *     **`202`, and the body is the status as it stood at acceptance.** The cycle outlives
+         *     this response — a poll of a large backlog is several seconds of somebody else's
+         *     network — so `running` is `true` and `syncedAt` is still the *previous* cycle's. What
+         *     a client watches for is `syncedAt` advancing on the status endpoint; claiming it here
+         *     would be the tag lying by one cycle.
+         *
+         *     **Two refusals, both `409`, and the difference is what the reader should do next.**
+         *     `backlog_sync_running` means the thing you asked for is happening: watch it, and
+         *     `sync-status`'s `running` is the signal. `backlog_sync_too_soon` means a cycle ran
+         *     within the last 30 seconds and another one would spend the same GitHub requests for
+         *     the same answer: wait `details.retryAfterSeconds`. The interval is measured from the
+         *     last cycle's start whoever caused it — a scheduled tick, or another member's click —
+         *     because what it protects is the token's hourly budget rather than any one caller's
+         *     fairness.
+         *
+         *     **Neither refusal is a `429`.** That status means *you* have done this too often; this
+         *     is a guard on a loop the caller does not own, and the same refusal is given to
+         *     somebody who has clicked nothing.
+         *
+         *     **A cycle polls every workspace this deployment has a token for**, which is the shape
+         *     of the poller behind it ([#102](https://github.com/NobuData/ouroboros/issues/102)) —
+         *     so this is *sync now*, not *sync mine now*, and the minimum interval is process-wide
+         *     for the same reason.
+         *
+         *     **`owner`, `admin` or `member`.** A `viewer` may read the status and may not start a
+         *     cycle: reading is looking, and this spends the workspace's GitHub budget.
+         */
+        post: operations["triggerBacklogSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/auto-merge": {
         parameters: {
             query?: never;
@@ -7102,6 +7197,149 @@ export interface components {
             modelId: string;
         };
         /**
+         * SyncStatus
+         * @description The backlog sync as an intake screen renders it
+         *     ([#113](https://github.com/NobuData/ouroboros/issues/113)): one freshness instant, one
+         *     state, and a row per enabled repository.
+         *
+         *     `state` and `pause` are split so a client can render *paused* without knowing every
+         *     reason this service can give — the set grew by one when the sync landed and will grow
+         *     again when a second ticket source does.
+         */
+        SyncStatus: {
+            /**
+             * Format: date-time
+             * @description The freshness tag's instant — the **oldest** successful poll among the enabled
+             *     repositories — or `null` when any of them has never been polled, and when there are
+             *     none. The oldest rather than the newest, so the tag cannot claim a freshness the
+             *     backlog does not have.
+             * @example 2026-09-10T14:07:20.000Z
+             */
+            syncedAt: string | null;
+            /**
+             * @description Whether the loop is running for this workspace.
+             * @example ok
+             * @enum {string}
+             */
+            state: "ok" | "paused";
+            /**
+             * @description Why it is not, or `null` when `state` is `ok`. `not_configured` is *no token* and
+             *     `no_repositories` is *a token pointed at nothing* — deliberately two words, because
+             *     they are fixed on two different screens. The other four are the GitHub client's own
+             *     taxonomy.
+             * @example rate_limited
+             * @enum {string|null}
+             */
+            pause: "not_configured" | "unauthorized" | "not_found" | "rate_limited" | "upstream_error" | "no_repositories" | null;
+            /** @description One sentence for whoever is reading, or `null` when nothing is wrong. */
+            message: string | null;
+            /**
+             * @description Seconds until GitHub will answer this workspace's token again. Only ever set beside
+             *     `rate_limited`, and `null` when the wait is not known — an invented countdown is
+             *     worse than none.
+             * @example 1180
+             */
+            retryAfterSeconds: number | null;
+            /**
+             * @description Whether a cycle is in flight right now. What makes `POST /api/v1/backlog/sync`'s
+             *     `backlog_sync_running` predictable: a client can render the trigger as busy rather
+             *     than offer a click that is going to be refused.
+             */
+            running: boolean;
+            /**
+             * @description Every enabled repository, `owner/name` ascending. Empty is the `no_repositories`
+             *     pause seen as data.
+             */
+            repositories: components["schemas"]["RepositorySyncStatus"][];
+        };
+        /**
+         * RepositorySyncStatus
+         * @description One enabled repository, and what is known about its sync.
+         */
+        RepositorySyncStatus: {
+            /**
+             * Format: uuid
+             * @description `github_repos.id` — what a per-repository control would address.
+             */
+            githubRepoId: string;
+            /**
+             * @description `owner/name`, as GitHub spells it.
+             * @example acme-robotics/helios-firmware
+             */
+            repository: string;
+            /**
+             * Format: date-time
+             * @description When this repository was last polled successfully, or `null` if it never has been. A
+             *     failed poll writes nothing, so this goes on saying when the last good one was.
+             */
+            syncedAt: string | null;
+            /**
+             * Format: date-time
+             * @description The `since` watermark the next poll will send — GitHub's own timeline rather than
+             *     this host's clock, so it says how far the mirror has actually got independently of
+             *     when the attempt was made. `null` on a repository never polled.
+             */
+            cursor: string | null;
+            /**
+             * @description Whether this repository is being polled.
+             * @enum {string}
+             */
+            state: "ok" | "paused";
+            /**
+             * @description Why it is not, or `null`. A repository with no reason of its own inherits the
+             *     workspace's: repositories that were not polled because there is no token report
+             *     `not_configured` rather than `ok`.
+             * @example not_found
+             * @enum {string|null}
+             */
+            pause: "not_configured" | "unauthorized" | "not_found" | "rate_limited" | "upstream_error" | "no_repositories" | null;
+            /** @description One sentence for whoever is reading, or `null` when nothing is wrong. */
+            message: string | null;
+            /**
+             * @description What the last cycle's poll of this repository did, or `null` when this process has
+             *     polled it none — after a restart, and for a repository that was paused. These are
+             *     counts *of a poll*, so a process that has not polled has none; what earlier polls
+             *     left behind is in `syncedAt` and `cursor`, which are columns.
+             */
+            lastResult: components["schemas"]["RepositorySyncResult"] | null;
+        };
+        /**
+         * RepositorySyncResult
+         * @description The counts one poll of one repository produced. In memory, so they describe this
+         *     process's last cycle and nothing before it.
+         */
+        RepositorySyncResult: {
+            /** @description Issues this mirror had never seen. */
+            imported: number;
+            /** @description Rows rewritten because something GitHub owns had changed. */
+            updated: number;
+            /**
+             * @description Rows GitHub returned identical to what was stored, and were therefore **not**
+             *     written. Normally the bulk of an incremental poll: `since` is inclusive, so every
+             *     poll re-reads the issue sitting exactly on the watermark.
+             */
+            unchanged: number;
+            /** @description Issues handed to the estimation pipeline — new ones, and ones that reopened. */
+            enqueued: number;
+            /**
+             * @description Pull requests dropped before a row was built. GitHub's issues endpoint returns both,
+             *     and nothing here can store one.
+             */
+            pullRequests: number;
+            /**
+             * @description Payloads that could not be turned into a row, each already logged with its reason.
+             *     Normally zero, and a number worth seeing when it is not.
+             */
+            unusable: number;
+            /**
+             * @description Whether the poll stopped at its five-hundred-issue cap with more to read. Not a
+             *     truncation — the next cycle continues from the watermark a second later — but a
+             *     client showing *synced* over a cold import should be able to tell that more is
+             *     still arriving.
+             */
+            capped: boolean;
+        };
+        /**
          * ModelPull
          * @description One tracked pull ([#230](https://github.com/NobuData/ouroboros/issues/230) over
          *     [#219](https://github.com/NobuData/ouroboros/issues/219)) — the server-side record a
@@ -8885,6 +9123,278 @@ export interface operations {
              *     carries one entry per field.
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readBacklogSyncStatus: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The status. Never a `404` and never empty: a workspace that has configured nothing
+             *     is in a state, and naming that state is what this operation is for.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncStatus"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    triggerBacklogSync: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Accepted — a cycle has started. The body is the status at that moment, with
+             *     `running: true` and freshness the cycle has not yet moved.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "syncedAt": "2026-09-10T14:07:20.000Z",
+                     *       "state": "ok",
+                     *       "pause": null,
+                     *       "message": null,
+                     *       "retryAfterSeconds": null,
+                     *       "running": true,
+                     *       "repositories": [
+                     *         {
+                     *           "githubRepoId": "5eed000b-0000-4000-8000-000000000001",
+                     *           "repository": "acme-robotics/helios-firmware",
+                     *           "syncedAt": "2026-09-10T14:07:20.000Z",
+                     *           "cursor": "2026-09-10T13:59:04.000Z",
+                     *           "state": "ok",
+                     *           "pause": null,
+                     *           "message": null,
+                     *           "lastResult": {
+                     *             "imported": 2,
+                     *             "updated": 1,
+                     *             "unchanged": 6,
+                     *             "enqueued": 2,
+                     *             "pullRequests": 3,
+                     *             "unusable": 0,
+                     *             "capped": false
+                     *           }
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SyncStatus"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Starting a sync is `owner`, `admin` or `member`; a `viewer` may read the
+             *     status instead.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `backlog_sync_running` — a cycle is already in flight; it carries no
+             *     `retryAfterSeconds`, because how long a cycle takes is not knowable in advance and
+             *     a made-up countdown is worse than none. Or `backlog_sync_too_soon` — one ran less
+             *     than 30 seconds ago, and `details.retryAfterSeconds` says how long to wait.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

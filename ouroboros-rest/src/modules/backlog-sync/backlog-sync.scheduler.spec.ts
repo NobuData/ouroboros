@@ -269,4 +269,115 @@ describe("the backlog sync loop", () => {
       expect(registry.doesExist("timeout", SYNC_TIMEOUT)).toBe(true);
     });
   });
+  describe("being driven by hand", () => {
+    /**
+     * A cycle that settles only when the test says so.
+     *
+     * @returns The stand-in sync, and the release.
+     */
+    function held(): { sync: { cycle: jest.Mock }; settle: () => void } {
+      let settle: () => void = () => undefined;
+      const sync = {
+        cycle: jest.fn().mockReturnValue(
+          new Promise<SyncCycleReport>((resolve) => {
+            settle = () => {
+              resolve(QUIET);
+            };
+          }),
+        ),
+      };
+
+      return { sync, settle };
+    }
+
+    it("starts a cycle at once rather than waiting for the timer", async () => {
+      // M.4's whole point (#113): somebody who has just filed an issue on GitHub should not
+      // have to wait out an interval they cannot see.
+      const sync = syncing();
+      const loop = scheduler(sync);
+      loop.onApplicationBootstrap();
+
+      await loop.runNow();
+
+      expect(sync.cycle).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses to start a second cycle while one is running", async () => {
+      // The `409` the trigger answers with, as a property of the loop rather than of the
+      // endpoint: two cycles walk the same repositories twice and race each other's upserts.
+      const { sync, settle } = held();
+      const loop = scheduler(sync);
+
+      const first = loop.runNow();
+
+      expect(loop.running()).toBe(true);
+      expect(loop.runNow()).toBeUndefined();
+
+      settle();
+      await first;
+
+      expect(sync.cycle).toHaveBeenCalledTimes(1);
+    });
+
+    it("lets the next one start once the first has settled", async () => {
+      const { sync, settle } = held();
+      const loop = scheduler(sync);
+
+      const first = loop.runNow();
+      settle();
+      await first;
+
+      expect(loop.running()).toBe(false);
+      expect(loop.runNow()).toBeDefined();
+    });
+
+    it("has the timer join a cycle already in flight rather than overlap it", async () => {
+      // The other direction, and the one that only exists because there are two callers now:
+      // a booked tick that fires mid-trigger must not become a second walk.
+      const { sync, settle } = held();
+      const loop = scheduler(sync);
+
+      const triggered = loop.runNow();
+      const ticked = loop.tick();
+
+      settle();
+      await Promise.all([triggered, ticked]);
+
+      expect(sync.cycle).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports nothing running before the first cycle and after a failed one", async () => {
+      const sync = { cycle: jest.fn().mockRejectedValue(new Error("the database is down")) };
+      const loop = scheduler(sync);
+
+      expect(loop.running()).toBe(false);
+
+      await loop.runNow();
+
+      // A cycle that threw is a cycle that finished: leaving the flag set would refuse every
+      // trigger from here to the next restart.
+      expect(loop.running()).toBe(false);
+    });
+
+    it("books the next tick after a manual cycle, exactly as the timer's does", async () => {
+      const sync = syncing();
+      const loop = scheduler(sync);
+
+      await loop.runNow();
+
+      expect(registry.getTimeouts()).toEqual([SYNC_TIMEOUT]);
+    });
+
+    it("leaves no second timer behind when it pre-empts a booked one", async () => {
+      // A trigger runs *between* ticks, so the booked timeout is still registered when it
+      // starts. Two timers under one name is the invariant that would break.
+      const loop = scheduler(syncing());
+      loop.onApplicationBootstrap();
+
+      await loop.runNow();
+
+      expect(registry.getTimeouts()).toEqual([SYNC_TIMEOUT]);
+      expect(jest.getTimerCount()).toBe(1);
+    });
+  });
 });

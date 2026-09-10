@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.31.0"
+  version: "0.31.1"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -431,6 +431,23 @@ tags:
       through setting itself up. A domain is globally unique — it names exactly one workspace,
       which is what makes `POST /api/v1/auth/discover` possible — so a second workspace
       claiming it is a `409` with `code: "domain_taken"`.
+
+  - name: backlog
+    description: |-
+      **The intake screen's own surface** (mockup 03,
+      [#113](https://github.com/NobuData/ouroboros/issues/113)) — the backlog Ouroboros
+      mirrors from GitHub, how fresh it is, and the one control that refreshes it now.
+
+      What fills it is a poller
+      ([#102](https://github.com/NobuData/ouroboros/issues/102)) rather than anything a client
+      calls: a jittered cycle walks every enabled repository of every workspace that has a
+      token and writes the rows, the watermark and the freshness stamp in one transaction. So
+      the operations here are a *read* of that loop's state and a *nudge* to it, and neither
+      one writes an issue.
+
+      Reading the status is every member's, `viewer` included. Starting a cycle is `owner`,
+      `admin` or `member`, because it spends the workspace's hourly GitHub budget — the one
+      thing in this family that costs anything.
 
   - name: github
     description: |-
@@ -1750,6 +1767,296 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/backlog/sync-status:
+    get:
+      tags: [backlog]
+      summary: How fresh the backlog is, and why it is not fresher
+      description: |-
+        The data behind mockup 03's `synced 40s ago` tag
+        ([#113](https://github.com/NobuData/ouroboros/issues/113)), and the sentence that has
+        to appear when there is no such number: a sync that is paused must say **which** kind
+        of paused it is, because each kind is fixed somewhere else.
+
+        **`syncedAt` is the oldest poll among the enabled repositories, not the newest**, and
+        `null` while any of them has never been polled. The tag sits over the whole backlog,
+        so what it may honestly claim is the freshness of the stalest thing in it: one
+        repository that synced a second ago must not speak for nine that failed an hour ago.
+        A repository that is stale because it is paused says so in its own row.
+
+        **Every field is derived from state that is actually true**, never from a stored
+        status. `syncedAt` and `cursor` are columns a poll wrote; `not_configured` is whether
+        a token exists; `no_repositories` is how many repositories are enabled;
+        `rate_limited` is read from the same rate guard the GitHub client enforces, so a
+        countdown here and a refusal there cannot disagree. There is no `sync_state` column,
+        deliberately — a stored status is a status that goes stale, and this one changes
+        without anybody writing anything.
+
+        **So `pause` does not survive a restart, and that is honest rather than lossy.** A
+        process that has attempted nothing knows nothing about `unauthorized` or
+        `upstream_error`; the two reasons a reader can act on immediately — no token, no
+        enabled repository — are read from tables and are right the moment the service is up.
+
+        **The workspace is the session's**, exactly as the dashboard's: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+        checked before this operation runs. Every member may read it, `viewer` included.
+      operationId: readBacklogSyncStatus
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The status. Never a `404` and never empty: a workspace that has configured nothing
+            is in a state, and naming that state is what this operation is for.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncStatus"
+              examples:
+                synced:
+                  summary: Two repositories, both polled, nothing wrong
+                  value:
+                    syncedAt: "2026-09-10T14:07:20.000Z"
+                    state: ok
+                    pause: null
+                    message: null
+                    retryAfterSeconds: null
+                    running: false
+                    repositories:
+                      - githubRepoId: 5eed000b-0000-4000-8000-000000000001
+                        repository: acme-robotics/helios-firmware
+                        syncedAt: "2026-09-10T14:07:20.000Z"
+                        cursor: "2026-09-10T13:59:04.000Z"
+                        state: ok
+                        pause: null
+                        message: null
+                        lastResult:
+                          imported: 2
+                          updated: 1
+                          unchanged: 6
+                          enqueued: 2
+                          pullRequests: 3
+                          unusable: 0
+                          capped: false
+                      - githubRepoId: 5eed000b-0000-4000-8000-000000000002
+                        repository: acme-robotics/helios-ground
+                        syncedAt: "2026-09-10T14:08:00.000Z"
+                        cursor: "2026-09-09T22:14:51.000Z"
+                        state: ok
+                        pause: null
+                        message: null
+                        lastResult:
+                          imported: 0
+                          updated: 0
+                          unchanged: 4
+                          enqueued: 0
+                          pullRequests: 0
+                          unusable: 0
+                          capped: false
+                no_token:
+                  summary: Paused because the workspace has no GitHub token
+                  value:
+                    syncedAt: null
+                    state: paused
+                    pause: not_configured
+                    message: >-
+                      This workspace has no GitHub token. Add one in settings to let Ouroboros
+                      read the backlog.
+                    retryAfterSeconds: null
+                    running: false
+                    repositories: []
+                rate_limited:
+                  summary: Paused because the token's hourly budget is spent
+                  value:
+                    syncedAt: "2026-09-10T13:41:02.000Z"
+                    state: paused
+                    pause: rate_limited
+                    message: >-
+                      GitHub's rate limit for this workspace's token is spent. Syncing resumes
+                      when it resets.
+                    retryAfterSeconds: 1180
+                    running: false
+                    repositories:
+                      - githubRepoId: 5eed000b-0000-4000-8000-000000000001
+                        repository: acme-robotics/helios-firmware
+                        syncedAt: "2026-09-10T13:41:02.000Z"
+                        cursor: "2026-09-10T13:38:55.000Z"
+                        state: paused
+                        pause: rate_limited
+                        message: >-
+                          GitHub's rate limit for this workspace's token is spent. Syncing
+                          resumes when it resets.
+                        lastResult: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/backlog/sync:
+    post:
+      tags: [backlog]
+      summary: Sync the backlog now
+      description: |-
+        The freshness tag, made clickable ([#113](https://github.com/NobuData/ouroboros/issues/113)).
+        Somebody who has just filed an issue on GitHub should not have to wait out a poll
+        interval they cannot see, wondering whether the integration is broken.
+
+        **`202`, and the body is the status as it stood at acceptance.** The cycle outlives
+        this response — a poll of a large backlog is several seconds of somebody else's
+        network — so `running` is `true` and `syncedAt` is still the *previous* cycle's. What
+        a client watches for is `syncedAt` advancing on the status endpoint; claiming it here
+        would be the tag lying by one cycle.
+
+        **Two refusals, both `409`, and the difference is what the reader should do next.**
+        `backlog_sync_running` means the thing you asked for is happening: watch it, and
+        `sync-status`'s `running` is the signal. `backlog_sync_too_soon` means a cycle ran
+        within the last 30 seconds and another one would spend the same GitHub requests for
+        the same answer: wait `details.retryAfterSeconds`. The interval is measured from the
+        last cycle's start whoever caused it — a scheduled tick, or another member's click —
+        because what it protects is the token's hourly budget rather than any one caller's
+        fairness.
+
+        **Neither refusal is a `429`.** That status means *you* have done this too often; this
+        is a guard on a loop the caller does not own, and the same refusal is given to
+        somebody who has clicked nothing.
+
+        **A cycle polls every workspace this deployment has a token for**, which is the shape
+        of the poller behind it ([#102](https://github.com/NobuData/ouroboros/issues/102)) —
+        so this is *sync now*, not *sync mine now*, and the minimum interval is process-wide
+        for the same reason.
+
+        **`owner`, `admin` or `member`.** A `viewer` may read the status and may not start a
+        cycle: reading is looking, and this spends the workspace's GitHub budget.
+      operationId: triggerBacklogSync
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "202":
+          description: |-
+            Accepted — a cycle has started. The body is the status at that moment, with
+            `running: true` and freshness the cycle has not yet moved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncStatus"
+              example:
+                syncedAt: "2026-09-10T14:07:20.000Z"
+                state: ok
+                pause: null
+                message: null
+                retryAfterSeconds: null
+                running: true
+                repositories:
+                  - githubRepoId: 5eed000b-0000-4000-8000-000000000001
+                    repository: acme-robotics/helios-firmware
+                    syncedAt: "2026-09-10T14:07:20.000Z"
+                    cursor: "2026-09-10T13:59:04.000Z"
+                    state: ok
+                    pause: null
+                    message: null
+                    lastResult:
+                      imported: 2
+                      updated: 1
+                      unchanged: 6
+                      enqueued: 2
+                      pullRequests: 3
+                      unusable: 0
+                      capped: false
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Starting a sync is `owner`, `admin` or `member`; a `viewer` may read the
+            status instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `backlog_sync_running` — a cycle is already in flight; it carries no
+            `retryAfterSeconds`, because how long a cycle takes is not knowable in advance and
+            a made-up countdown is worse than none. Or `backlog_sync_too_soon` — one ran less
+            than 30 seconds ago, and `details.retryAfterSeconds` says how long to wait.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                running:
+                  summary: A cycle is in flight
+                  value:
+                    code: backlog_sync_running
+                    message: A backlog sync is already running. It will finish on its own.
+                    details: {}
+                too_soon:
+                  summary: One ran a moment ago
+                  value:
+                    code: backlog_sync_too_soon
+                    message: >-
+                      The backlog was synced less than 30 seconds ago. Try again shortly.
+                    details:
+                      retryAfterSeconds: 22
         "500":
           description: |-
             `internal_error` — the service itself failed. The message is a constant and
@@ -14038,6 +14345,171 @@ components:
           maxLength: 200
           description: The model to pull, in the daemon's own spelling. Trimmed.
           examples: [llama4:scout]
+
+    SyncStatus:
+      type: object
+      title: SyncStatus
+      description: |-
+        The backlog sync as an intake screen renders it
+        ([#113](https://github.com/NobuData/ouroboros/issues/113)): one freshness instant, one
+        state, and a row per enabled repository.
+
+        `state` and `pause` are split so a client can render *paused* without knowing every
+        reason this service can give — the set grew by one when the sync landed and will grow
+        again when a second ticket source does.
+      additionalProperties: false
+      required: [syncedAt, state, pause, message, retryAfterSeconds, running, repositories]
+      properties:
+        syncedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            The freshness tag's instant — the **oldest** successful poll among the enabled
+            repositories — or `null` when any of them has never been polled, and when there are
+            none. The oldest rather than the newest, so the tag cannot claim a freshness the
+            backlog does not have.
+          examples: ["2026-09-10T14:07:20.000Z"]
+        state:
+          type: string
+          enum: [ok, paused]
+          description: Whether the loop is running for this workspace.
+          examples: [ok]
+        pause:
+          type: [string, "null"]
+          enum:
+            [not_configured, unauthorized, not_found, rate_limited, upstream_error, no_repositories, null]
+          description: |-
+            Why it is not, or `null` when `state` is `ok`. `not_configured` is *no token* and
+            `no_repositories` is *a token pointed at nothing* — deliberately two words, because
+            they are fixed on two different screens. The other four are the GitHub client's own
+            taxonomy.
+          examples: [rate_limited]
+        message:
+          type: [string, "null"]
+          description: One sentence for whoever is reading, or `null` when nothing is wrong.
+        retryAfterSeconds:
+          type: [integer, "null"]
+          minimum: 1
+          description: |-
+            Seconds until GitHub will answer this workspace's token again. Only ever set beside
+            `rate_limited`, and `null` when the wait is not known — an invented countdown is
+            worse than none.
+          examples: [1180]
+        running:
+          type: boolean
+          description: |-
+            Whether a cycle is in flight right now. What makes `POST /api/v1/backlog/sync`'s
+            `backlog_sync_running` predictable: a client can render the trigger as busy rather
+            than offer a click that is going to be refused.
+        repositories:
+          type: array
+          description: |-
+            Every enabled repository, `owner/name` ascending. Empty is the `no_repositories`
+            pause seen as data.
+          items:
+            $ref: "#/components/schemas/RepositorySyncStatus"
+
+    RepositorySyncStatus:
+      type: object
+      title: RepositorySyncStatus
+      description: One enabled repository, and what is known about its sync.
+      additionalProperties: false
+      required: [githubRepoId, repository, syncedAt, cursor, state, pause, message, lastResult]
+      properties:
+        githubRepoId:
+          type: string
+          format: uuid
+          description: "`github_repos.id` — what a per-repository control would address."
+        repository:
+          type: string
+          description: "`owner/name`, as GitHub spells it."
+          examples: [acme-robotics/helios-firmware]
+        syncedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            When this repository was last polled successfully, or `null` if it never has been. A
+            failed poll writes nothing, so this goes on saying when the last good one was.
+        cursor:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            The `since` watermark the next poll will send — GitHub's own timeline rather than
+            this host's clock, so it says how far the mirror has actually got independently of
+            when the attempt was made. `null` on a repository never polled.
+        state:
+          type: string
+          enum: [ok, paused]
+          description: Whether this repository is being polled.
+        pause:
+          type: [string, "null"]
+          enum:
+            [not_configured, unauthorized, not_found, rate_limited, upstream_error, no_repositories, null]
+          description: |-
+            Why it is not, or `null`. A repository with no reason of its own inherits the
+            workspace's: repositories that were not polled because there is no token report
+            `not_configured` rather than `ok`.
+          examples: [not_found]
+        message:
+          type: [string, "null"]
+          description: One sentence for whoever is reading, or `null` when nothing is wrong.
+        lastResult:
+          oneOf:
+            - $ref: "#/components/schemas/RepositorySyncResult"
+            - type: "null"
+          description: |-
+            What the last cycle's poll of this repository did, or `null` when this process has
+            polled it none — after a restart, and for a repository that was paused. These are
+            counts *of a poll*, so a process that has not polled has none; what earlier polls
+            left behind is in `syncedAt` and `cursor`, which are columns.
+
+    RepositorySyncResult:
+      type: object
+      title: RepositorySyncResult
+      description: |-
+        The counts one poll of one repository produced. In memory, so they describe this
+        process's last cycle and nothing before it.
+      additionalProperties: false
+      required: [imported, updated, unchanged, enqueued, pullRequests, unusable, capped]
+      properties:
+        imported:
+          type: integer
+          minimum: 0
+          description: Issues this mirror had never seen.
+        updated:
+          type: integer
+          minimum: 0
+          description: Rows rewritten because something GitHub owns had changed.
+        unchanged:
+          type: integer
+          minimum: 0
+          description: |-
+            Rows GitHub returned identical to what was stored, and were therefore **not**
+            written. Normally the bulk of an incremental poll: `since` is inclusive, so every
+            poll re-reads the issue sitting exactly on the watermark.
+        enqueued:
+          type: integer
+          minimum: 0
+          description: Issues handed to the estimation pipeline — new ones, and ones that reopened.
+        pullRequests:
+          type: integer
+          minimum: 0
+          description: |-
+            Pull requests dropped before a row was built. GitHub's issues endpoint returns both,
+            and nothing here can store one.
+        unusable:
+          type: integer
+          minimum: 0
+          description: |-
+            Payloads that could not be turned into a row, each already logged with its reason.
+            Normally zero, and a number worth seeing when it is not.
+        capped:
+          type: boolean
+          description: |-
+            Whether the poll stopped at its five-hundred-issue cap with more to read. Not a
+            truncation — the next cycle continues from the watermark a second later — but a
+            client showing *synced* over a cold import should be able to tell that more is
+            still arriving.
 
     ModelPull:
       type: object

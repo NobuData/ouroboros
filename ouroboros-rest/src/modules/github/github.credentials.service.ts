@@ -201,6 +201,27 @@ export class GithubCredentialsService {
   }
 
   /**
+   * Does this one workspace have a token?
+   *
+   * The same question {@link configuredOrganizations} answers for the whole installation,
+   * asked about one workspace — which is what a request under a tenant context needs. M.4's
+   * status endpoint ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the caller:
+   * *no token* is the first thing a paused sync has to be able to say, and deriving it from
+   * the set of every configured workspace would be a table scan to answer a question about
+   * one row.
+   *
+   * **No credential is loaded**, for {@link configuredOrganizations}' reason: the statement
+   * selects the key column, so this method cannot leak what it does not fetch.
+   *
+   * @param organizationId - The workspace.
+   * @returns Whether a token is stored for it. Says nothing about whether GitHub still
+   *   accepts it — that is `unauthorized`, and only a call to GitHub can establish it.
+   */
+  async isConfigured(organizationId: string): Promise<boolean> {
+    return this.credentials.exists(organizationId);
+  }
+
+  /**
    * The workspace's token, opened, for one call to GitHub.
    *
    * The one method that answers with a live credential, and it is not reachable over HTTP:

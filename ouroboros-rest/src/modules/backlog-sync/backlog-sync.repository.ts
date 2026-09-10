@@ -136,27 +136,67 @@ export class BacklogSyncRepository {
    *   already up to date.
    */
   async enabledRepositories(): Promise<SyncTarget[]> {
-    const rows = await this.database.db
-      .selectFrom("github_repos")
-      .innerJoin("github_orgs", "github_orgs.id", "github_repos.org_id")
-      .select([
-        "github_repos.id as githubRepoId",
-        "github_orgs.organization_id as organizationId",
-        "github_orgs.login as owner",
-        "github_repos.name as name",
-        "github_repos.issues_synced_at as syncedAt",
-        "github_repos.issues_sync_cursor as cursor",
-      ])
-      // Both flags, because a repository is in scope only when the workspace has said yes
-      // twice — see this file's header.
-      .where("github_repos.enabled", "=", true)
-      .where("github_orgs.enabled", "=", true)
+    const rows = await this.enabled()
       // Nulls first: a repository nobody has ever polled is the one with nothing on the page.
       .orderBy("github_repos.issues_synced_at", (order) => order.asc().nullsFirst())
       .orderBy("github_repos.id", "asc")
       .execute();
 
     return rows;
+  }
+
+  /**
+   * One workspace's enabled repositories, with what the last poll of each left behind.
+   *
+   * M.4's durable half ([#113](https://github.com/NobuData/ouroboros/issues/113)): the
+   * freshness stamp and the watermark are columns, so they survive a restart and describe the
+   * last poll that actually happened rather than the last one this process attempted.
+   *
+   * @param organizationId - The workspace, from the tenant context. A workspace that has
+   *   enabled nothing answers `[]`, which is the `no_repositories` pause seen from here — this
+   *   method reports the absence and does not name it.
+   * @returns Its targets, ordered `owner/name` so the listing a person reads is stable
+   *   between requests. Deliberately not {@link enabledRepositories}' oldest-poll-first
+   *   order: that one is a scheduling decision, and reusing it here would make a status page
+   *   reshuffle itself every time something synced.
+   */
+  async enabledRepositoriesFor(organizationId: string): Promise<SyncTarget[]> {
+    const rows = await this.enabled()
+      .where("github_orgs.organization_id", "=", organizationId)
+      .orderBy("github_orgs.login", "asc")
+      .orderBy("github_repos.name", "asc")
+      .execute();
+
+    return rows;
+  }
+
+  /**
+   * The repositories Ouroboros may poll at all, as a query still open to an order.
+   *
+   * The shared half of the two reads above, so *what counts as enabled* is answered in one
+   * place: a cycle and a status page disagreeing about that would be a page reporting on
+   * repositories nothing polls.
+   *
+   * @returns The select, with both enablement flags applied and no ordering.
+   */
+  private enabled() {
+    return (
+      this.database.db
+        .selectFrom("github_repos")
+        .innerJoin("github_orgs", "github_orgs.id", "github_repos.org_id")
+        .select([
+          "github_repos.id as githubRepoId",
+          "github_orgs.organization_id as organizationId",
+          "github_orgs.login as owner",
+          "github_repos.name as name",
+          "github_repos.issues_synced_at as syncedAt",
+          "github_repos.issues_sync_cursor as cursor",
+        ])
+        // Both flags, because a repository is in scope only when the workspace has said yes
+        // twice — see this file's header.
+        .where("github_repos.enabled", "=", true)
+        .where("github_orgs.enabled", "=", true)
+    );
   }
 
   /**

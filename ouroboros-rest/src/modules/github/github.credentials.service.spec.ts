@@ -246,6 +246,23 @@ describe("the GitHub credentials service", () => {
       expect(repository.find).not.toHaveBeenCalled();
     });
 
+    it("answers the same question about one workspace, for M.4's status (#113)", async () => {
+      // Asked under a tenant context rather than over the whole installation, and it is the
+      // first thing a paused sync has to be able to say: *no token*. Derived from the row
+      // rather than from a failure, which is what makes it right on a process that has polled
+      // nothing yet.
+      await expect(service.isConfigured(FIXTURE_WORKSPACE)).resolves.toBe(false);
+
+      await service.set(fixtureActor(), FIXTURE_TOKEN);
+
+      await expect(service.isConfigured(FIXTURE_WORKSPACE)).resolves.toBe(true);
+
+      // Asked about the workspace it was given, and about no other.
+      expect(repository.exists).toHaveBeenLastCalledWith(FIXTURE_WORKSPACE);
+      // No envelope was opened for the question — `find` is what loads one.
+      expect(repository.find).not.toHaveBeenCalled();
+    });
+
     it("cannot be tricked into opening another workspace's token", async () => {
       await service.set(fixtureActor(), FIXTURE_TOKEN);
       const sealed = stored ?? "";

@@ -8,7 +8,7 @@ import { GithubOrgsController } from "./github-orgs.controller";
 import { membershipIn } from "./organization.fixture";
 import { OrgsController } from "./orgs.controller";
 import { ReposController } from "./repos.controller";
-import { ADMINISTRATORS, REQUIRED_ROLES, Roles, RolesGuard } from "./roles.guard";
+import { ADMINISTRATORS, CONTRIBUTORS, REQUIRED_ROLES, Roles, RolesGuard } from "./roles.guard";
 import { runWithTenantContext, setTenantContext } from "./tenant.context";
 import { TENANCY_ERRORS } from "./tenancy.errors";
 
@@ -41,6 +41,13 @@ class Guarded {
 class WhollyGuarded {
   @Patch()
   handler(): void {}
+}
+
+@Controller()
+class Contributed {
+  @Roles(...CONTRIBUTORS)
+  @Post()
+  work(): void {}
 }
 
 const reflector = new Reflector();
@@ -263,5 +270,35 @@ describe("the tenancy API's own mutations", () => {
 
   it("names the administrators once, so widening them is one edit", () => {
     expect([...ADMINISTRATORS]).toEqual(["owner", "admin"]);
+  });
+});
+
+describe("who may make the product do something", () => {
+  /**
+   * `CONTRIBUTORS` is `ADMINISTRATORS` plus `member`, and the widening is the whole meaning:
+   * a member works here, and a viewer is allowed to watch. M.4's manual re-sync
+   * ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the first route to use it,
+   * and it uses it because starting a cycle spends the workspace's hourly GitHub budget.
+   */
+  it("is the administrators plus a member", () => {
+    expect([...CONTRIBUTORS]).toEqual(["owner", "admin", "member"]);
+  });
+
+  it("lets a member through where an administrator's list would not", () => {
+    expect(asRole("member", contextFor(Contributed, Contributed.prototype.work))).toBe(true);
+    expect(() => asRole("member", contextFor(Guarded, Guarded.prototype.administer))).toThrow();
+  });
+
+  it("still blocks a viewer, which is the point of naming roles at all", () => {
+    // Not the same as leaving `@Roles()` off: a bare route is open to every member including
+    // a viewer, and a viewer clicking a freshness tag would spend a budget somebody else's
+    // poll depends on.
+    expect(() => asRole("viewer", contextFor(Contributed, Contributed.prototype.work))).toThrow();
+  });
+
+  it("lets an owner and an admin through too", () => {
+    for (const role of ADMINISTRATORS) {
+      expect(asRole(role, contextFor(Contributed, Contributed.prototype.work))).toBe(true);
+    }
   });
 });

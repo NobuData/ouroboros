@@ -50,14 +50,29 @@ describe("the backlog sync module", () => {
     expect(module.get(BacklogSyncScheduler)).toBeInstanceOf(BacklogSyncScheduler);
   });
 
-  it("declares no controller — the sync routes are M.4's", async () => {
+  it("declares no controller — the sync routes live in `backlog/`", async () => {
     const module = await build();
 
-    // `POST /backlog/sync` and `GET /backlog/sync-status` are #113's; this ticket owns the
-    // cycle they will call, which is why the service is exported and no route is mounted.
-    // Asserted over the decorator's metadata, which is what Nest itself reads.
+    // `POST /backlog/sync` and `GET /backlog/sync-status` landed in `BacklogModule` (#113);
+    // this module owns the cycle they call. Keeping the routes out is what preserves its one
+    // property: nothing an HTTP request does can reach inside a cycle. Asserted over the
+    // decorator's metadata, which is what Nest itself reads.
     expect(Reflect.getMetadata("controllers", BacklogSyncModule)).toBeUndefined();
     expect(module.get(BacklogSyncService)).toBeInstanceOf(BacklogSyncService);
+  });
+
+  it("exports the three things M.4's surface reads, and nothing else", () => {
+    // The service for the last cycle's pause reasons, the repository for the stored cursors
+    // and freshness stamps beside them, and the scheduler so a trigger can drive one cycle
+    // without reaching into the private timer. A fourth export would be this module's
+    // internals becoming somebody else's dependency.
+    const exports = Reflect.getMetadata("exports", BacklogSyncModule) as { name: string }[];
+
+    expect(exports.map((exported) => exported.name)).toEqual([
+      "BacklogSyncService",
+      "BacklogSyncRepository",
+      "BacklogSyncScheduler",
+    ]);
   });
 
   it("binds the intake to L.3's orchestrator", async () => {

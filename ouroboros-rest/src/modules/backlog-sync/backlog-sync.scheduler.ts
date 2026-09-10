@@ -13,7 +13,10 @@
  *   * **A cycle never overlaps itself.** The next delay is computed once the previous cycle has
  *     settled. Two cycles in flight would walk the same repositories twice, spend the token's
  *     budget twice for one answer, and race each other's upserts — and the second one would
- *     write the older read.
+ *     write the older read. Since M.4
+ *     ([#113](https://github.com/NobuData/ouroboros/issues/113)) the timer is not the only
+ *     caller, so this is enforced by a held promise rather than implied by there being one
+ *     loop: a `tick()` that arrives mid-cycle joins the cycle already running.
  *   * **A failed cycle is logged and the loop continues.** A database that is briefly down
  *     should cost a cycle, not the poller. Anything GitHub did is already a *pause* rather than
  *     a throw (see `sync.report.ts`), so what reaches the `catch` here is this deployment's own
@@ -70,6 +73,22 @@ export class BacklogSyncScheduler implements OnApplicationBootstrap, OnApplicati
   private stopped = false;
 
   /**
+   * The cycle in flight, or `undefined` when none is.
+   *
+   * The timer was the only caller until M.4
+   * ([#113](https://github.com/NobuData/ouroboros/issues/113)) added a manual re-sync, and
+   * *"a cycle never overlaps itself"* was true then because there was one loop. With a second
+   * caller it has to be **enforced** rather than merely arranged: a manual trigger landing
+   * mid-cycle would walk the same repositories twice, spend one token's budget twice for one
+   * answer, and race the first cycle's upserts.
+   *
+   * Held as the promise rather than as a boolean so a caller can *join* the cycle already
+   * running instead of starting a second one, and so {@link runNow} can hand a trigger the
+   * thing to await.
+   */
+  private cycle?: Promise<void>;
+
+  /**
    * @param sync - The cycle.
    * @param config - The base interval, from the environment.
    * @param scheduler - Nest's registry. The timer is registered rather than merely held, so
@@ -114,11 +133,73 @@ export class BacklogSyncScheduler implements OnApplicationBootstrap, OnApplicati
    * ([#113](https://github.com/NobuData/ouroboros/issues/113)) has something to call that is not
    * the private scheduling machinery.
    *
+   * **A call made while a cycle is running joins it rather than starting a second one.** The
+   * caller still waits for a cycle and still gets a settled one; what it does not get is a
+   * second walk of the same repositories. See {@link cycle}.
+   *
    * @returns When the cycle has settled and the next tick is booked.
    */
   async tick(): Promise<void> {
+    const running = this.cycle;
+
+    if (running !== undefined) {
+      await running;
+      return;
+    }
+
+    const started = this.run();
+
+    // Assigned before the first `await` of this method, so a caller checking {@link running}
+    // synchronously after driving one — which is what the trigger's 409 does — sees it.
+    this.cycle = started;
+
+    try {
+      await started;
+    } finally {
+      this.cycle = undefined;
+    }
+  }
+
+  /**
+   * Start a cycle now, ahead of the booked one, unless one is already running.
+   *
+   * M.4's trigger. The check and the start are one synchronous step, which is what makes
+   * *"concurrent trigger → 409"* a property rather than a race: two requests arriving in the
+   * same tick of the event loop cannot both be the one that started a cycle.
+   *
+   * @returns The cycle, for a caller that wants to await it — a test, or a trigger that
+   *   reports what it did — or `undefined` when one was already running, which is the
+   *   caller's `409`. The promise never rejects; {@link tick} logs a failed cycle and books
+   *   the next one.
+   */
+  runNow(): Promise<void> | undefined {
+    if (this.cycle !== undefined) {
+      return undefined;
+    }
+
+    return this.tick();
+  }
+
+  /**
+   * Whether a cycle is in flight.
+   *
+   * @returns `true` while one is running, the timer's or a trigger's alike.
+   */
+  running(): boolean {
+    return this.cycle !== undefined;
+  }
+
+  /**
+   * One cycle, and the next tick booked whatever this one did.
+   *
+   * @returns When the cycle has settled. Never rejects — see this file's header on what can
+   *   reach the `catch` at all.
+   */
+  private async run(): Promise<void> {
     // The registry still holds the entry for the timer that just fired; dropping it before the
     // work starts keeps the invariant that at most one cycle timeout exists under this name.
+    // It is also what stops a manual trigger from leaving the *booked* tick behind to fire on
+    // top of the cycle it just ran.
     if (this.scheduler.doesExist("timeout", SYNC_TIMEOUT)) {
       this.scheduler.deleteTimeout(SYNC_TIMEOUT);
     }

@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**101 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**149 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (8/23) | **13** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (10/23) | **15** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | 🟡 5/8 | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 4/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 10/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -121,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **95/454** | **454** | **1,404** | |
+| | **Total** | **149/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **15 issues** · 45 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149` and `150` · 12 dependency waves
+> **13 issues** · 38 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151` and `152` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 8 of 23 issues closed
+> **Status:** 🟡 **In progress** — 10 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -912,10 +912,53 @@ that roadmap's "Existing issues affected" section.
 > **`L.3` (`#107`) is what this unblocks**, and it was already unblocked by `K.2` and
 > `K.4`; nothing in Epic K is now in front of it.
 
+> **`L.3` · [`#107`](https://github.com/NobuData/ouroboros/issues/107) and `M.4` ·
+> [`#113`](https://github.com/NobuData/ouroboros/issues/113) have shipped, and rows `151`
+> and `152` have left the table below** — so this phase's order numbers now start at `153`.
+> Two rows in one block because `L.3`'s landing did not edit this file: the counters above
+> were a ticket behind, and they are corrected here rather than incremented — 13 rows summing
+> to 38 points, `L` (5) and `S` (2) less than the 15 and 45 they carried, and 10 of this
+> phase's 23 issues closed rather than 8. **The *Progress* section is corrected further than
+> that**: its sentence said `101 of 454` while its own table said 134 complete plus 13 in
+> flight, which is 147; the two now agree at **149**, which is also what the *at a glance*
+> table's `Done` column adds up to.
+>
+> `L.3` is [`ouroboros-rest/src/modules/estimation/`](../ouroboros-rest/src/modules/estimation/):
+> an issue the sync mirrors now reaches `sized` on its own, through the real `POST /v0/estimate`
+> contract, with a versioned `issue_estimates` row per answer and no row at all for a failure —
+> `issue_estimates` has no nullable effort and no *unknown*, so a fabricated row would put an
+> effort chip on an issue nothing sized. `K.4`'s `ESTIMATION_INTAKE` seam took one `useExisting`
+> in place of one `useClass`, and nothing else in `backlog-sync/` moved, which is what that port
+> existed for.
+>
+> `M.4` is [`ouroboros-rest/src/modules/backlog/`](../ouroboros-rest/src/modules/backlog/), and
+> it is Epic M's first landed ticket — out of order, because it is the one that needed only
+> `K.4`. `GET /api/v1/backlog/sync-status` answers *how fresh the backlog is* and, when there
+> is no such number, *why not*: the freshness stamp and the watermark are columns a poll wrote,
+> *no token* and *no enabled repository* are read from tables, `rate_limited` is read from the
+> **same rate guard the GitHub client enforces** — which is why `K.3` exported it — and the
+> rest is the last cycle's report. Nothing about the state is stored, so a pause reason does
+> not survive a restart, which is the honest answer to the question `K.4` left open.
+>
+> **The tag is the oldest poll, not the newest**, and `null` while any enabled repository has
+> never been polled: it sits over the whole backlog, so one repository that synced a second ago
+> must not speak for nine that failed an hour ago. **The trigger is debounced twice** —
+> `409 backlog_sync_running` for a cycle in flight, carrying no countdown because none is
+> knowable, and `409 backlog_sync_too_soon` for a repeat within thirty seconds, carrying the
+> wait. Neither is a `429`: that means *you* have done this too often, and this is a guard on a
+> loop the caller does not own. The interval is process-wide because a cycle is — it polls every
+> configured workspace — so **narrowing a cycle to one workspace is `Q.3`'s (`#140`)**, where
+> the poller stops being one loop.
+>
+> **`M.1` (`#110`) is what this unblocks**, and its `meta.syncedAt` is a field lifted from
+> `M.4`'s service rather than a second query. `M.5` (`#114`) keeps the backlog API's
+> integration matrix and inherits one leg of it: `M.4` shipped its own suite against a migrated
+> database, where the trigger runs a cycle and `synced_at` actually advances, a `viewer` is
+> refused the trigger through the router, and the debounce is a `409` read off the wire.
+> `L.4` (`#108`) is next in Epic L and needs nothing that has not landed.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 151 | **L.3** | [#107](https://github.com/NobuData/ouroboros/issues/107) | Estimation orchestration & persistence | ouroboros-rest | L | K.2, K.4, L.1 |
-| 152 | **M.4** | [#113](https://github.com/NobuData/ouroboros/issues/113) | Sync status & manual re-sync | ouroboros-rest | S | K.4 |
 | 153 | **L.4** | [#108](https://github.com/NobuData/ouroboros/issues/108) | Re-estimation endpoints (single & all) | ouroboros-rest | S | L.3 |
 | 154 | **M.1** | [#110](https://github.com/NobuData/ouroboros/issues/110) | Backlog list endpoint with filters | ouroboros-rest | M | K.4, L.3 |
 | 155 | **M.2** | [#111](https://github.com/NobuData/ouroboros/issues/111) | Issue detail endpoint | ouroboros-rest | S | L.3 |

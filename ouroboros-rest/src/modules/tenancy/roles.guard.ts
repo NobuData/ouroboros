@@ -48,6 +48,23 @@ export const REQUIRED_ROLES = "ouroboros:tenancy:roles";
 export const ADMINISTRATORS: readonly OrganizationRole[] = ["owner", "admin"];
 
 /**
+ * The roles that may make the product *do* something, as opposed to look at it.
+ *
+ * `ADMINISTRATORS` widened by one, and the widening is the whole meaning: a `member` is
+ * somebody who works here, and a `viewer` is somebody who is allowed to watch. So this is the
+ * list for an operation that spends a resource or starts work — M.4's manual re-sync
+ * ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the first, and it spends the
+ * workspace's GitHub budget — while `ADMINISTRATORS` stays the list for changing what the
+ * workspace *is*.
+ *
+ * It is deliberately **not** the same as the roles guard's own default. A route with no
+ * `@Roles()` is open to every member including a `viewer`, which is the right default for a
+ * read and the wrong one here: a viewer clicking a freshness tag would be a viewer spending an
+ * hourly budget somebody else's poll depends on.
+ */
+export const CONTRIBUTORS: readonly OrganizationRole[] = [...ADMINISTRATORS, "member"];
+
+/**
  * Require one of these roles in the active workspace.
  *
  * @param roles - The roles that suffice. Holding *any* of them is enough; there is no

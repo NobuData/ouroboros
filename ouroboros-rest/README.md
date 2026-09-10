@@ -1941,8 +1941,77 @@ next. [The estimation pipeline](#the-estimation-pipeline)
 seam is one line in `backlog-sync.module.ts`, which is the whole reason it exists.
 
 **There are no routes here.** `POST /api/v1/backlog/sync` and `GET
-/api/v1/backlog/sync-status` are M.4's; this module owns the cycle they will call, which is why
-`BacklogSyncService` and `BacklogSyncScheduler` are exported and no controller is declared.
+/api/v1/backlog/sync-status` are [the backlog surface](#the-backlog-surface)'s, in
+`src/modules/backlog/`; this module owns the cycle they call, which is why
+`BacklogSyncService`, `BacklogSyncRepository` and `BacklogSyncScheduler` are exported and no
+controller is declared. Keeping the routes out is what preserves the one property the module is
+written around: nothing an HTTP request does can reach inside a cycle.
+
+## The backlog surface
+
+**The freshness tag has data, and it is clickable**
+([#113](https://github.com/NobuData/ouroboros/issues/113)). `src/modules/backlog/` is mockup
+03's `synced 40s ago` and the two things it has to be able to say — *how fresh* and, when there
+is no such number, *why not*.
+
+```
+GET  /api/v1/backlog/sync-status   any member
+  ─▶ { syncedAt, state, pause, message, retryAfterSeconds, running, repositories[] }
+
+POST /api/v1/backlog/sync          owner · admin · member
+  ─▶ 202  the status at acceptance — running: true, freshness not yet moved
+  ─▶ 409  backlog_sync_running   a cycle is in flight
+  ─▶ 409  backlog_sync_too_soon  one ran < 30s ago — details.retryAfterSeconds
+```
+
+**Three sources, and none of them is a status column.** `syncedAt` and `cursor` are columns a
+poll wrote; `not_configured` is whether `github_credentials` has a row; `no_repositories` is how
+many repositories are enabled; `rate_limited` is read from [the same rate
+guard](#the-github-token) the client enforces, so a countdown on the card and a refusal in the
+client cannot disagree; and `unauthorized`, `not_found` and `upstream_error` come from the last
+cycle's report. There is no `sync_state` column deliberately — a stored status is a status that
+goes stale, and this one changes without anybody writing anything.
+
+**So a pause reason does not survive a restart, and that is the honest answer to the question
+the sync left open.** A fresh process has attempted nothing and therefore *knows* nothing about
+`unauthorized`; the two reasons a reader can act on immediately — no token, no enabled
+repository — are read from tables and are right the moment the service is up.
+
+**Freshness is the oldest poll, not the newest**, and `null` while any enabled repository has
+never been polled. The tag sits over the whole backlog, so what it may honestly claim is the
+freshness of the stalest thing in it: one repository that synced a second ago must not speak for
+nine that failed an hour ago. Each repository carries its own stamp, watermark and reason, so a
+client can be more precise than the tag.
+
+**Two guards on the trigger, and both are properties of the endpoint rather than of the cycle.**
+A cycle already in flight is `409 backlog_sync_running` — two cycles walk the same repositories
+twice, spend one token's budget twice for one answer, and race each other's upserts. A cycle
+that ran within thirty seconds is `409 backlog_sync_too_soon` carrying how long to wait; the
+interval is measured from the last cycle's *start*, whoever caused it, because what it protects
+is the token's hourly budget rather than any one caller's fairness. Neither is a `429`: that
+status means *you* have done this too often, and this is a guard on a loop the caller does not
+own.
+
+**`202`, because the cycle outlives the response.** A poll of a large backlog is several seconds
+of somebody else's network, and a request that waited for it would turn a click into a timeout.
+The body is the status at acceptance — `running: true`, and a `syncedAt` the cycle has not moved
+yet — and what a client watches for is that instant advancing.
+
+**A cycle polls every workspace this deployment has a token for**, which is the shape of the
+poller behind it: this is *sync now*, not *sync mine now*, and it is why the minimum interval is
+process-wide too. Narrowing a cycle to one workspace is a change to the sync service rather than
+to this surface, and the place for it is [#140](https://github.com/NobuData/ouroboros/issues/140).
+
+**Reading is every member's; starting a cycle is not.** A `viewer` may look at the status —
+looking is what the role is for — and may not spend the workspace's GitHub budget, so the
+trigger carries `@Roles(...CONTRIBUTORS)`: owner, admin or member. That list is deliberately not
+`ADMINISTRATORS`; a re-sync is work rather than administration.
+
+**The rest of Epic M lands here.** `GET /api/v1/backlog` and the issue detail
+([#110](https://github.com/NobuData/ouroboros/issues/110),
+[#111](https://github.com/NobuData/ouroboros/issues/111)) are this module's controllers to add,
+and M.1's `meta.syncedAt` is this module's `syncedAt` — one number, so the tag beside a listing
+and the tag from this endpoint cannot disagree.
 
 ## The estimation pipeline
 
@@ -2957,7 +3026,10 @@ ouroboros-rest/
 │       │                   #   PUT/DELETE/GET /settings/github-token — owner & admin only
 │       │                   #   github.octokit.ts is the only file that may import @octokit/*
 │       ├── backlog-sync/   # the poller that fills github_issues            · #102
-│       │                   #   no controller — the sync routes are M.4's (#113)
+│       │                   #   no controller — the routes are backlog/'s (#113)
+│       ├── backlog/        # GET /backlog/sync-status · POST /backlog/sync   · #113
+│       │                   #   the freshness tag's data, and the debounced trigger
+│       │                   #   no loop — the cycle it drives is backlog-sync/'s
 │       ├── estimation/     # unsized -> estimating -> sized | needs_human   · #107
 │       │                   #   bounded queue · versioned writes · recovery sweep
 │       │                   #   no controller — the re-estimate routes are L.4's (#108)
@@ -3080,6 +3152,7 @@ the credential lifecycle [#223](https://github.com/NobuData/ouroboros/issues/223
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 the GitHub token and API client [#101](https://github.com/NobuData/ouroboros/issues/101) ·
 the backlog sync [#102](https://github.com/NobuData/ouroboros/issues/102) ·
+the sync status and manual re-sync [#113](https://github.com/NobuData/ouroboros/issues/113) ·
 the estimation pipeline [#107](https://github.com/NobuData/ouroboros/issues/107) ·
 the estimation contract it calls [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
