@@ -2118,6 +2118,32 @@ because `issue_estimates` has no such column of its own. An issue in another wor
 with the caller's own id echoed back, never a `403`: a `403` would confirm that a guessed id
 names a real issue somewhere.
 
+### The backlog API's matrix suite
+
+**The regressions here are the ones nine rows cannot show**
+([#114](https://github.com/NobuData/ouroboros/issues/114)). Each route above has an integration
+suite of its own against mockup 03's nine issues — `listing.`, `detail.`, `queue.` and
+`backlog.integration-spec.ts` — and each answers *does this endpoint reproduce the screen*. The
+suite below answers the other question: *does every combination of five parameters answer
+correctly, and does any of them leak*, over 160 generated issues in two repositories with a
+second workspace holding an identical backlog beside it.
+
+| Where                               | What it holds                                                                       |
+| ----------------------------------- | ----------------------------------------------------------------------------------- |
+| `backlog-api.integration-spec.ts`   | the filter/sort/search matrix, the queue write's four outcomes, both panel shapes, both sync guards |
+| `src/testing/volume.fixture.ts`     | the generated population, and the restatement of these rules the matrix derives its expectations from |
+
+**Every filter case is an isolation case.** The two workspaces are seeded with the *same*
+numbers, titles and labels, so a row's `github_issues.id` is the only thing that says whose it
+is — which is what every case checks alongside the rows, the counts and the chip set. Written as
+two suites, the isolation half would quietly stop covering the parameters the day a case was
+added to one and not the other.
+
+**No expectation was recorded from a run.** The fixture carries the population *and* a plain
+array-filter restatement of the rules above, and each case derives its answer by running it. One
+side is SQL over a GIN index and a lateral; the other is `Array.prototype.filter`. The two
+agreeing is the test.
+
 ## The estimation pipeline
 
 **An issue the sync mirrored reaches `sized` on its own**

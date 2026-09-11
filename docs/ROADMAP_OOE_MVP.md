@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **8 issues** · 25 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156` and `157` · 12 dependency waves
+> **7 issues** · 22 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157` and `158` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 15 of 23 issues closed
+> **Status:** 🟡 **In progress** — 16 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1149,9 +1149,34 @@ that roadmap's "Existing issues affected" section.
 > seven UI tickets. Added runtime is **1.5 s** against a 60-second budget: 37 cases where there
 > were 28, and the run is 6.5 s.
 
+> **`M.5` · [`#114`](https://github.com/NobuData/ouroboros/issues/114) has shipped, and row
+> `158` leaves the table. Epic M is complete, and P6's remaining work is Epic N's seven UI
+> tickets.** Two files and 54 cases in `ouroboros-rest`, 3.8 s added against a sixty-second
+> budget; `0.31.7`, a patch, because nothing under `src/modules` changed.
+>
+> **The filter matrix and the isolation sweep are one set of cases, not two.** The arrangement
+> seeds two workspaces with the *identical* generated population — same numbers, same titles,
+> same labels — so every one of the thirty-odd parameter combinations asserts the rows and their
+> order, the head counts, the chip set, **and** that every row id returned belongs to the
+> workspace that asked. Identical seeds are what make that last check sharp: a number cannot
+> tell one backlog's `#1005` from the other's and a count cannot catch a swap, so
+> `github_issues.id` is what the sweep is written against.
+>
+> **No expectation in the suite was recorded from a run.** `volume.fixture.ts` holds the
+> generated population *and* a plain array-filter restatement of the endpoint's rules, and each
+> case derives its answer by running it — so a failing cell cannot be "fixed" by pasting in what
+> the endpoint returned, and one row added to the fixture reaches every expectation at once. The
+> agreement is worth something because one side is SQL over a GIN index and a lateral and the
+> other is `Array.prototype.filter`.
+>
+> **Both deletions the ticket asks for were performed rather than promised.** Dropping the org
+> predicate from `BacklogListingRepository.scope` reddens **32 of the 54**; replacing the queue's
+> single transaction with per-row inserts leaves **20 orphaned rows** and reddens the rollback
+> case *and only that case* — which is the clause worth having, since a suite where every
+> deletion reddens everything cannot tell one mechanism from another. Neither is in the tree.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 158 | **M.5** | [#114](https://github.com/NobuData/ouroboros/issues/114) | Backlog API integration tests | ouroboros-rest | M | M.1, M.4 |
 | 159 | **N.1** | [#115](https://github.com/NobuData/ouroboros/issues/115) | Issues route, page head & counts | ouroboros-ui | S | 5.3, D.5, M.1 |
 | 160 | **N.2** | [#116](https://github.com/NobuData/ouroboros/issues/116) | Filter bar (URL-reflected) | ouroboros-ui | M | N.1 |
 | 161 | **N.3** | [#117](https://github.com/NobuData/ouroboros/issues/117) | Backlog table with selection model | ouroboros-ui | L | N.1 |
