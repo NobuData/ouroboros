@@ -1157,11 +1157,13 @@ is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page 
 
 `/issues` ([#115](https://github.com/NobuData/ouroboros/issues/115)) is
 [`docs/mockups/03-issues.html`](../docs/mockups/03-issues.html)'s **frame**: the page head, its
-live counts and its two actions. It retires the `/issues` placeholder #49 was to build — never
-built, so nothing was deleted — and the sidebar's **Issues** entry became a link on the same
-commit. The filter bar, the backlog table, the selection bar, the detail panel and the designed
-states arrive with [#116](https://github.com/NobuData/ouroboros/issues/116)–[#120](https://github.com/NobuData/ouroboros/issues/120)
-and mount below the head, inside the same selection provider.
+live counts and its two actions — and, since
+[#116](https://github.com/NobuData/ouroboros/issues/116), the filter bar under them. It retires
+the `/issues` placeholder #49 was to build — never built, so nothing was deleted — and the
+sidebar's **Issues** entry became a link on the same commit. The backlog table, the selection bar,
+the detail panel and the designed states arrive with
+[#117](https://github.com/NobuData/ouroboros/issues/117)–[#120](https://github.com/NobuData/ouroboros/issues/120)
+and mount below the bar, inside the same selection provider.
 
 ```
 ISSUE INTAKE
@@ -1170,6 +1172,11 @@ Ouroboros watches the GitHub backlog and            owner/admin only    inert un
 continuously estimates effort, risk, and routing    → confirms "This    (#117) selects issues;
 for every open issue — before you ever ask it       re-estimates 9      a viewer's is inert
 to work.                                            issues."            for the role
+┌────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [helios-firmware ▾] (bug ✓)(enhancement)(good-first-issue)(tech-debt) [Open ▾]             │
+│ [Sort: estimated effort ▾] [Filter by title, #number, or label…          ] [Clear all]      │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+        └──────────── every control lives in ?repo=&labels=&state=&sort=&q= ────────────┘
 ```
 
 ### The sentence is the mockup's; the numbers are the service's
@@ -1215,6 +1222,53 @@ Both actions report under their own button through one line,
 `alert` for a refusal. Their Server Actions, [`app/issues/head-actions.ts`](app/issues/head-actions.ts),
 refuse a forged selection that is not a list of ids before anything is sent; every other gate is the
 service's.
+
+### The filter bar is a query-string editor
+
+The card under the head ([#116](https://github.com/NobuData/ouroboros/issues/116)) is the mockup's
+`.filter-bar`, and **every control in it lives in the address** — decision K8's
+`?repo=&labels=&state=&sort=&q=`. [`app/issues/filter.ts`](app/issues/filter.ts) reads a query string
+into a filter and writes one back; the route reads it on the server, so the first paint is already
+the filtered view; [`app/issues/filter-bar.tsx`](app/issues/filter-bar.tsx) writes the next address
+with `router.replace` and the Server Components re-query M.1. Pasting the address into a new tab
+reproduces the view, **Back** means *the page I came from* rather than *one chip ago*, and a filter
+kept in React that could quietly disagree with the table under it does not exist. Defaults are never
+written, so the default view has one address: `/issues`.
+
+- **The repository select** is filled from the enablement list (`enabledRepos`, both flags), and it
+  **is the header's focus repository seen from the page** ([#77](https://github.com/NobuData/ouroboros/issues/77)):
+  choosing here publishes to the store the tenant chip draws from, a choice made in the chip is
+  followed into the address, and on arrival the address decides — a pasted `?repo=` wins and is
+  published, a bare `/issues` adopts the header's choice and says so in the address, and a stored
+  choice the workspace no longer enables is dropped, as the chip's own menu drops it
+  (`focusArrival`).
+- **The chips** are M.1's `labelFacets` — every label in scope, ascending by name, not narrowed by
+  the chips already on — drawn as the design system's tag on a `<button aria-pressed>`; the
+  mockup's `chip-on` treatment is keyed on that attribute, in the token sheet's accent triple, so
+  both palettes are the sheet's and the treatment cannot disagree with what a screen reader hears.
+  Toggling ANDs, as the contract does. A label the address names and the facets do not is drawn
+  pressed and last, so it can be pressed off.
+- **The state and sort selects** are the ticket's — Open (default) / Closed / All, and estimated
+  effort (default, per the mockup) / confidence / updated / number.
+- **The search box** waits 300 ms after the last keystroke, then writes `q` trimmed — M.1's
+  semantics: a substring of the title, a label name in full, or `#485`. Every other control flushes
+  it, so a chip pressed mid-word asks for the word too; the text is reset from the address only
+  when the address moved by another hand.
+- **Clear all** is drawn whenever anything differs from the default view — the sort included, since
+  a table sorted by number is not the default view — and goes to `/issues`, clearing the header's
+  focus with it.
+
+**The head's counts follow the repository, and the confirmation does not.** The contract scopes
+`meta.openCount` and `meta.sizedCount` by `repo` and by nothing else in the bar, so
+[`app/issues/data.ts`](app/issues/data.ts) now reads twice: the **view** — M.1 asked with the bar's
+query, one row long, which is the head's sentence and the chip set — and the **scope** — `state=all`
+and nothing else — whose `total` is every issue the workspace mirrors, the set L.4's claim acts on
+whatever the bar says. The enablement list is the third read, beside them. Each degrades alone: a
+chip set that could not be read says so under the row, with the service's reason, and the bar still
+draws the address's own chips.
+
+The bar scrolls with the page, as the mockup draws it. The page's one sticky slot
+(`app/ui/chrome.ts`) is the selection bar's, [#118](https://github.com/NobuData/ouroboros/issues/118).
 
 ## Model routing
 

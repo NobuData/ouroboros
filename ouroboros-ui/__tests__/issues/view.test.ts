@@ -130,18 +130,21 @@ describe("the headline", () => {
 });
 
 describe("backlogCounts", () => {
-  it("takes the head's two figures from meta", () => {
-    expect(backlogCounts(backlogListing())).toEqual({
-      openCount: 9,
-      sizedCount: 7,
+  it("takes the head's two figures from the view's meta, which the contract scopes by repository", () => {
+    // A repository selected in the bar: the view counts three, the workspace still mirrors nine.
+    expect(
+      backlogCounts(backlogListing({ openCount: 3, sizedCount: 2, total: 3 }), backlogListing()),
+    ).toEqual({
+      openCount: 3,
+      sizedCount: 2,
       mirroredCount: 9,
     });
   });
 
-  it("takes the mirrored count from total, which differs from the open count once one closes", () => {
-    // The listing is asked for `state=all`, so `total` is every mirrored issue — the set
-    // `estimate-all` claims from — while `meta.openCount` stays the open ones.
-    expect(backlogCounts(backlogListing({ openCount: 9, total: 12 }))).toEqual({
+  it("takes the mirrored count from the scope's total, which differs from the open count once one closes", () => {
+    // The scope listing is asked for `state=all`, so its `total` is every mirrored issue — the
+    // set `estimate-all` claims from — while `meta.openCount` stays the open ones.
+    expect(backlogCounts(backlogListing(), backlogListing({ openCount: 9, total: 12 }))).toEqual({
       openCount: 9,
       sizedCount: 7,
       mirroredCount: 12,

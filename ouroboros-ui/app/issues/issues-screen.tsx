@@ -1,5 +1,7 @@
 import { Eyebrow } from "@/app/ui";
 
+import type { BacklogFilter } from "./filter";
+import { FilterBar } from "./filter-bar";
 import { QueueSelectedButton } from "./queue-selected";
 import { ReestimateAllButton } from "./reestimate-all";
 import { IssueSelectionProvider } from "./selection";
@@ -9,7 +11,8 @@ import "./issues.css";
 
 /**
  * Issue intake ([#115](https://github.com/NobuData/ouroboros/issues/115)) —
- * `docs/mockups/03-issues.html` from its page head.
+ * `docs/mockups/03-issues.html` from its page head, with the filter bar under it
+ * ([#116](https://github.com/NobuData/ouroboros/issues/116)).
  *
  * It renders **inside the app shell**, so it starts at its page head and contributes no chrome of
  * its own (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 2): the shell's content pane is the scroll container,
@@ -28,11 +31,22 @@ import "./issues.css";
  * ([#117](https://github.com/NobuData/ouroboros/issues/117)); until it lands, the count is zero and
  * the button says what it is waiting for.
  *
- * The filter bar, the table, the selection bar and the detail panel are N.2–N.5
- * ([#116](https://github.com/NobuData/ouroboros/issues/116)–[#119](https://github.com/NobuData/ouroboros/issues/119))
- * and mount below the head, inside the same provider.
+ * ### The filter bar is a query-string editor
+ *
+ * The card under the head is the mockup's `.filter-bar`, and every control in it lives in the
+ * address (decision K8): the bar writes the next `?repo=&labels=&state=&sort=&q=`, this screen is
+ * rendered again from it, and the head's counts follow the repository the bar selected — the
+ * contract scopes them that way, and by nothing else in the bar. It scrolls with the page, as the
+ * mockup draws it; the page's one sticky slot is the selection bar's, N.4's
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)).
+ *
+ * The table, the selection bar and the detail panel are N.3–N.5
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)–[#119](https://github.com/NobuData/ouroboros/issues/119))
+ * and mount below the bar, inside the same provider.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
+ * @param props.filter The filter the address carries — what the readings were read for.
+ * @param props.organizationId The workspace, for the bar's focus-repository sync.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles
  *   **Re-estimate all** is drawn for.
  * @param props.mayContribute Whether this reader may queue issues — every role but `viewer`.
@@ -40,10 +54,18 @@ import "./issues.css";
  */
 export function IssuesScreen({
   readings,
+  filter,
+  organizationId,
   mayAdminister,
   mayContribute,
-}: Readonly<{ readings: IssuesReadings; mayAdminister: boolean; mayContribute: boolean }>) {
-  const { counts } = readings;
+}: Readonly<{
+  readings: IssuesReadings;
+  filter: BacklogFilter;
+  organizationId: string;
+  mayAdminister: boolean;
+  mayContribute: boolean;
+}>) {
+  const { counts, facets, repos } = readings;
 
   return (
     <IssueSelectionProvider>
@@ -64,6 +86,7 @@ export function IssuesScreen({
             <QueueSelectedButton mayContribute={mayContribute} />
           </div>
         </div>
+        <FilterBar facets={facets} filter={filter} organizationId={organizationId} repos={repos} />
       </main>
     </IssueSelectionProvider>
   );

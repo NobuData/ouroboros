@@ -79,6 +79,20 @@ describe("both themes and every font scale", () => {
     expect(rule("\\.issues__outcome--err")).toContain("var(--err)");
     expect(rule("\\.issues__outcome")).toContain("var(--ink-mut)");
     expect(rule("\\.issues__unread")).toContain("var(--err)");
+    expect(rule("\\.issues-filter__unread")).toContain("var(--err)");
+  });
+
+  it("draws a pressed chip in the token sheet's accent triple, off the attribute actually set (#116)", () => {
+    // The mockup's `.tag.chip-on`: accent ink, a 35% accent hairline, the accent tint. Keyed on
+    // `aria-pressed` rather than on a second class, so the treatment cannot disagree with what a
+    // screen reader is told — and the same declarations under both palettes, since the three are
+    // tokens the sheet redefines per palette.
+    const pressed = rule('\\.issues-filter__chip\\[aria-pressed="true"\\]');
+
+    expect(pressed).toContain("color: var(--accent)");
+    expect(pressed).toContain("border-color: var(--accent-line)");
+    expect(pressed).toContain("background: var(--accent-tint)");
+    expect(CODE).not.toMatch(/issues-filter__chip--on/);
   });
 });
 

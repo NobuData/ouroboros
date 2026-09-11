@@ -18,6 +18,7 @@
  */
 
 import type { BacklogListing, EstimationFanout, QueuedSelection } from "@/app/api/backlog";
+import type { EnabledRepo } from "@/app/api/enablement";
 import type { Reading } from "@/app/api/reading";
 
 /** The caption over the head, as the mockup writes it. */
@@ -30,13 +31,16 @@ export const ISSUES_SUBLINE =
 
 /** The three figures the page head is drawn from. */
 export interface BacklogCounts {
-  /** Open issues in the workspace — the head's first figure. */
+  /**
+   * Open issues in scope — the workspace's, or the selected repository's — the head's first
+   * figure. The contract scopes it by `repo` and by nothing else in the filter bar.
+   */
   readonly openCount: number;
   /** How many of those open issues are `sized` — the head's second. */
   readonly sizedCount: number;
   /**
-   * Every issue the workspace mirrors, open and closed. It is what **Re-estimate all** claims
-   * from, and therefore the number its confirmation states.
+   * Every issue the **workspace** mirrors, open and closed, whatever the filter bar says. It is
+   * what **Re-estimate all** claims from, and therefore the number its confirmation states.
    */
   readonly mirroredCount: number;
 }
@@ -45,6 +49,13 @@ export interface BacklogCounts {
 export interface IssuesReadings {
   /** The head's counts, or why the backlog could not be counted. */
   readonly counts: Reading<BacklogCounts>;
+  /**
+   * The chip set ([#116](https://github.com/NobuData/ouroboros/issues/116)) — every label in
+   * scope, ascending by name — or why it could not be read.
+   */
+  readonly facets: Reading<readonly string[]>;
+  /** The repository select's options — the workspace's enabled repositories — or why not. */
+  readonly repos: Reading<readonly EnabledRepo[]>;
 }
 
 /** What a press of either head action came back as. */
@@ -80,21 +91,24 @@ export function issueCount(count: number): string {
 }
 
 /**
- * The page head's three figures, out of one listing.
+ * The page head's three figures, out of the page's two listings.
  *
- * `total` stands for the **mirrored** count only because of the query `app/issues/data.ts` asks
- * with — `state=all` and no other filter — since `total` describes the filter while the two head
- * counts describe the backlog. Taking all three from one answer is what stops the confirmation
- * promising fewer issues than the head above it counts as open.
+ * The two head counts come from the **view** — the listing asked with the filter bar's query —
+ * because the contract scopes `meta` by `repo` and by nothing else: choose a repository and the
+ * head counts that repository's backlog; press a chip and it does not move. The mirrored count
+ * comes from the **scope** listing — `state=all` and no other filter — because `total` describes
+ * the filter, and only under that query is it every issue the workspace mirrors, which is the set
+ * **Re-estimate all** claims from whatever the bar says (`app/issues/data.ts` argues both).
  *
- * @param listing The listing, read with `state=all` and no other filter.
+ * @param view The listing read with the filter bar's query.
+ * @param scope The listing read with `state=all` and no other filter.
  * @returns The three figures.
  */
-export function backlogCounts(listing: BacklogListing): BacklogCounts {
+export function backlogCounts(view: BacklogListing, scope: BacklogListing): BacklogCounts {
   return {
-    openCount: listing.meta.openCount,
-    sizedCount: listing.meta.sizedCount,
-    mirroredCount: listing.total,
+    openCount: view.meta.openCount,
+    sizedCount: view.meta.sizedCount,
+    mirroredCount: scope.total,
   };
 }
 
