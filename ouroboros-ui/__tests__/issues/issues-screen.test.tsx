@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_FILTER, FILTER_BAR_LABEL, REPO_LABEL } from "@/app/issues/filter";
+import { TABLE_CAPTION } from "@/app/issues/table";
 import {
   COUNTS_UNREAD,
   ISSUES_EYEBROW,
@@ -18,18 +19,28 @@ import { TENANT_ID } from "../helpers/login";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 /**
- * The intake screen's page head (#115) and the filter bar under it (#116), as a component.
+ * The intake screen's page head (#115), the filter bar under it (#116) and the backlog table under
+ * that (#117), as a component.
  *
  * The issue's criteria that are visible without a route are all here: the counts are the read's
  * rather than the mockup's, the head carries the mockup's eyebrow, subline and two actions, a
  * backlog that could not be counted says so rather than drawing zeros, the two actions gate by role,
- * the bar mounts under the head drawing what the address asked for, and the markup does not depend
- * on the palette. What each action does when pressed, and what the bar writes, are their own
- * suites'; the actions' server hops are replaced here.
+ * the bar mounts under the head drawing what the address asked for, the table mounts under the bar
+ * drawing the page that was read, and the markup does not depend on the palette. What each action
+ * does when pressed, what the bar writes and what the table does are their own suites'; the
+ * actions' server hops are replaced here, and the table's poll is left asking a `fetch` that never
+ * answers.
  */
 
-vi.mock("@/app/issues/head-actions", () => ({ queueSelected: vi.fn(), reestimateAll: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }) }));
+vi.mock("@/app/issues/head-actions", () => ({
+  queueSelected: vi.fn(),
+  reestimateAll: vi.fn(),
+  syncBacklog: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
+}));
+vi.stubGlobal("fetch", () => new Promise<Response>(() => {}));
 
 const { IssuesScreen } = await import("@/app/issues/issues-screen");
 const { resetFocusRepos } = await import("@/app/shell/focus-repo");
@@ -134,6 +145,36 @@ describe("the filter bar", () => {
     expect(screen.getByRole("combobox", { name: REPO_LABEL })).toHaveValue(HELIOS.id);
     expect(screen.getByRole("button", { name: "bug", pressed: true })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("closed");
+  });
+});
+
+describe("the backlog table (#117)", () => {
+  it("mounts under the bar, inside the main landmark, drawing the page that was read", () => {
+    const { container } = render(screenFor());
+
+    const grid = screen.getByRole("grid", { name: TABLE_CAPTION });
+    const bar = screen.getByRole("region", { name: FILTER_BAR_LABEL });
+
+    expect(screen.getByRole("main")).toContainElement(grid);
+    expect(bar.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(grid).getAllByRole("row")).toHaveLength(10);
+    expect(container.querySelector("[data-swapped]")).toBeNull();
+  });
+
+  it("writes the selection the head reads", () => {
+    render(screenFor());
+
+    within(screen.getByRole("grid", { name: TABLE_CAPTION }))
+      .getByRole("checkbox", { name: "Select #485" })
+      .click();
+
+    expect(screen.getByRole("button", { name: queueLabel(1) })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("inerts the freshness tag for a viewer, beside the queue button", () => {
+    render(screenFor({ mayAdminister: false, mayContribute: false }));
+
+    expect(screen.getByRole("button", { name: /synced/ })).toHaveAttribute("aria-disabled", "true");
   });
 });
 

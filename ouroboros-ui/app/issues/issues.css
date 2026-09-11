@@ -2,9 +2,9 @@
  * Issue intake — `/issues` (#115), from `docs/mockups/03-issues.html`.
  *
  * What is here is the page head — the page's gutter rhythm, the heading column, the two actions with
- * what a press of either reports under it, and the confirmation's column — and, since #116, the
- * filter bar under it. The table, the selection bar and the detail panel arrive with #117–#119 and
- * add their rules below.
+ * what a press of either reports under it, and the confirmation's column — since #116 the filter
+ * bar under it, and since #117 the backlog table under that. The selection bar and the detail panel
+ * arrive with #118 and #119 and add their rules below.
  *
  * Every length is a token or `rem`, so the font-size preference scales the head with the rest of the
  * product (design system § 3.2), and every hue is a token, so both palettes are the token sheet's.
@@ -171,4 +171,176 @@
   color: var(--err);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+/* ------------------------------------------------------------------ the backlog table (#117) */
+
+/*
+ * The mockup's `c-8` card: `BACKLOG · AS OUROBOROS SEES IT`, the freshness tag at its trailing
+ * edge, the table inside its own horizontal scroll wrapper (the primitive's, `app/ui/table.tsx`),
+ * and the pagination footer under it. What is here is what the primitive cannot know: the
+ * checkbox column, the issue cell's three parts, the effort pair, the placeholders, the pill
+ * swap, and the footer's row.
+ */
+
+/* The mockup's `<th style="width:34px">`, in rem so it follows the font-size preference. */
+.issues-table__check {
+  width: 2.125rem;
+}
+
+/*
+ * The mockup's `.ckbox`, as a native checkbox: `appearance: none` so the box is the sheet's — a
+ * 1rem square on the inset well with the strong hairline — and the accent fill with the mark
+ * once checked. A native input rather than a styled span, because *checked* is then a fact a
+ * screen reader hears and `Space` toggles for free; the hairline is a rem so the sheet's
+ * no-pixels rule holds and the box scales with the row it sits in.
+ */
+.issues-table__ckbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  margin: 0;
+  border: 0.0625rem solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  font-size: var(--t-2xs);
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: pointer;
+  appearance: none;
+}
+
+.issues-table__ckbox:checked,
+.issues-table__ckbox:indeterminate {
+  border-color: var(--accent-deep);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* The mark is drawn, not typed: the input's own value carries the state. */
+.issues-table__ckbox:checked::after {
+  content: "✓";
+}
+
+.issues-table__ckbox:indeterminate::after {
+  content: "–";
+}
+
+/* The issue column holds a title measure, so the five columns after it keep their place. */
+.issues-table__issue {
+  min-width: 18rem;
+}
+
+/* The mockup's `.mono` number, then the title in the row's own type. */
+.issues-table__number {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.issues-table__title {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/*
+ * The row whose detail is open — a state the mockup never draws alone, since its `#485` is
+ * checked as well. A quiet mark on the number, distinct from the check glow the row may or may
+ * not also wear.
+ */
+.issues-table__row--inspected .issues-table__number {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The mockup's `.issue-cell .tags`. */
+.issues-table__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+
+/* The effort chip and its mono confidence, on one line. */
+.issues-table__effort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* The mockup's `.conf`: mono, faint. */
+.issues-table__conf,
+.issues-table__sizing {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The em dash where a workflow or a model would be, on an issue with no estimate. */
+.issues-table__none {
+  color: var(--ink-faint);
+}
+
+/*
+ * The status pill's seat. A pill whose row has been seen to change status carries the attribute,
+ * and the change is a remount — so the entry below plays exactly on a transition, never on the
+ * first paint of a page, and only for a reader who has not asked for less motion.
+ */
+.issues-table__status {
+  display: inline-flex;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .issues-table__status[data-swapped] {
+    animation: issues-pill-swap 400ms ease-out;
+  }
+}
+
+@keyframes issues-pill-swap {
+  from {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The freshness tag is the design system's tag on a button; inert for a viewer, with a reason. */
+.issues-table__sync {
+  cursor: pointer;
+}
+
+.issues-table__sync[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* What the poll could not do, under the rows it left in place. */
+.issues-table__unread {
+  margin: var(--sp-4) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The pagination footer: the range, then the controls at the trailing edge. */
+.issues-table__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-6);
+}
+
+.issues-table__range {
+  flex: 1;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
 }

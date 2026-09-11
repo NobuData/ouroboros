@@ -1023,10 +1023,9 @@ footer appears only when the count exceeds the rows and says exactly the remaind
 its arithmetic with the loops table's `+N more`, so two footers on one page cannot disagree.
 
 **Neither `Manage queue →` nor the footer navigates yet.** The [issues screen](#issue-intake)
-has been a route since #115 and is where the queue is filled, but what fills it from a
-selection — the backlog table and its selection bar — arrives with
-[#117](https://github.com/NobuData/ouroboros/issues/117) and
-[#118](https://github.com/NobuData/ouroboros/issues/118). Both are inert buttons carrying one
+has been a route since #115 and its backlog table selects issues since #117, but the bar that
+queues a selection under a chosen workflow — the surface a *manage the queue* control would land
+on — arrives with [#118](https://github.com/NobuData/ouroboros/issues/118). Both are inert buttons carrying one
 reason, `QUEUEING_SOON` in [`app/dashboard/view.ts`](app/dashboard/view.ts), which keeps the
 explanation in the tab order; the page head's *⟳ Pull next issue* carries the same sentence,
 because three controls waiting on one thing should not describe it three ways.
@@ -1119,7 +1118,7 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 - **Both page-head actions are inert**, as are the active-loops card's two, and each says why
   in a tooltip naming the issue it waits for. *Edit workflows* waits for the workflow builder,
   whose route [#49](https://github.com/NobuData/ouroboros/issues/49) still holds; *Pull next
-  issue* waits for the issues screen's selection (#117, #118), and a control that appeared to
+  issue* waits for the issues screen's selection bar (#118), and a control that appeared to
   pull an issue would be the one dishonest thing on the screen. Linking either to a route that
   cannot yet do what its label offers would break #49's own first criterion, *no dead nav
   links*. `aria-disabled` rather than `disabled`, so the explanation keeps its place in the tab
@@ -1156,27 +1155,35 @@ is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page 
 ## Issue intake
 
 `/issues` ([#115](https://github.com/NobuData/ouroboros/issues/115)) is
-[`docs/mockups/03-issues.html`](../docs/mockups/03-issues.html)'s **frame**: the page head, its
-live counts and its two actions — and, since
-[#116](https://github.com/NobuData/ouroboros/issues/116), the filter bar under them. It retires
-the `/issues` placeholder #49 was to build — never built, so nothing was deleted — and the
-sidebar's **Issues** entry became a link on the same commit. The backlog table, the selection bar,
-the detail panel and the designed states arrive with
-[#117](https://github.com/NobuData/ouroboros/issues/117)–[#120](https://github.com/NobuData/ouroboros/issues/120)
-and mount below the bar, inside the same selection provider.
+[`docs/mockups/03-issues.html`](../docs/mockups/03-issues.html): the page head, its live counts
+and its two actions; since [#116](https://github.com/NobuData/ouroboros/issues/116) the filter
+bar under them; and since [#117](https://github.com/NobuData/ouroboros/issues/117) the backlog
+table under that — the page's core, polled so its statuses are live. It retires the `/issues`
+placeholder #49 was to build — never built, so nothing was deleted — and the sidebar's **Issues**
+entry became a link on the same commit. The selection bar, the detail panel and the designed
+states arrive with [#118](https://github.com/NobuData/ouroboros/issues/118)–[#120](https://github.com/NobuData/ouroboros/issues/120)
+and mount beside the table, inside the same selection provider.
 
 ```
 ISSUE INTAKE
-9 open issues. 7 already sized.                   [ Re-estimate all ] [ Queue 0 selected ⟳ ]
-Ouroboros watches the GitHub backlog and            owner/admin only    inert until the table
-continuously estimates effort, risk, and routing    → confirms "This    (#117) selects issues;
-for every open issue — before you ever ask it       re-estimates 9      a viewer's is inert
-to work.                                            issues."            for the role
+9 open issues. 7 already sized.                   [ Re-estimate all ] [ Queue 2 selected ⟳ ]
+Ouroboros watches the GitHub backlog and            owner/admin only    the table's selection;
+continuously estimates effort, risk, and routing    → confirms "This    inert at zero and for
+for every open issue — before you ever ask it       re-estimates 9      a viewer
+to work.                                            issues."
 ┌────────────────────────────────────────────────────────────────────────────────────────────┐
 │ [helios-firmware ▾] (bug ✓)(enhancement)(good-first-issue)(tech-debt) [Open ▾]             │
 │ [Sort: estimated effort ▾] [Filter by title, #number, or label…          ] [Clear all]      │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
-        └──────────── every control lives in ?repo=&labels=&state=&sort=&q= ────────────┘
+        └──────────── every control lives in ?repo=&labels=&state=&sort=&q=&page= ──────────┘
+┌─ BACKLOG · AS OUROBOROS SEES IT ────────────────────────────────────── (synced 40s ago) ─┐
+│ [–] Issue                          Effort   Suggested workflow  Routed model     Status   │
+│ [✓] #485 Watchdog reset on I²C…    M  92%   standard-fix        claude-fable-5   queued   │
+│ [ ] #484 Motor PID integral…       M  88%   standard-fix        cursor/composer-2  sized  │
+│ [ ] #483 Telemetry frame drops…    sizing…  —                   —              estimating…│
+│ [✓] #490 Migrate build to Zephyr…  XL 61%   deps-refresh        claude-fable-5   queued   │
+│                                                            1–25 of 42  [← Previous] [Next →] │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### The sentence is the mockup's; the numbers are the service's
@@ -1205,14 +1212,14 @@ press does the moment one issue closed. The answer says how many actually starte
 skipped. With nothing counted, or nothing mirrored, the button is inert with the reason and no
 dialog opens.
 
-### Queue N selected ⟳ reads a selection the table will write
+### Queue N selected ⟳ reads the selection the table writes
 
 The label is the live count of [`app/issues/selection.tsx`](app/issues/selection.tsx)'s store — a
 provider around the screen, ordered the way the selection was built, because
 `POST /api/v1/backlog/queue` ([#112](https://github.com/NobuData/ouroboros/issues/112)) hands out
-queue positions down the list it is sent. The backlog table that writes into it is
-[#117](https://github.com/NobuData/ouroboros/issues/117); until then the count is zero and the
-button is inert, naming #117. A viewer's button is inert whatever is selected. A press sends the ids
+queue positions down the list it is sent. The backlog table's checkboxes write into it
+([#117](https://github.com/NobuData/ouroboros/issues/117)); at zero the button is inert and says
+where a selection is made. A viewer's button is inert whatever is selected. A press sends the ids
 with no workflow — *each issue under the workflow its own estimate suggested* — and a press that took
 clears the selection and re-reads the route, while a refusal keeps it, because the write is all or
 nothing.
@@ -1269,6 +1276,61 @@ draws the address's own chips.
 
 The bar scrolls with the page, as the mockup draws it. The page's one sticky slot
 (`app/ui/chrome.ts`) is the selection bar's, [#118](https://github.com/NobuData/ouroboros/issues/118).
+
+### The backlog table is the address's page, kept fresh
+
+The card under the bar ([#117](https://github.com/NobuData/ouroboros/issues/117)) is the
+mockup's `BACKLOG · AS OUROBOROS SEES IT`: the route reads one page of M.1's listing —
+`limit`/`offset` from `&page=`, which rides beside the bar's five controls
+([`app/issues/paging.ts`](app/issues/paging.ts)) and is reset by every one of them, since the bar
+navigates with the filter alone — and
+[`app/issues/backlog-table.tsx`](app/issues/backlog-table.tsx) draws it over
+[`app/issues/table.ts`](app/issues/table.ts)'s decisions. Every treatment is the mockup's: the
+mono number, the tag row, the effort chip with its mono confidence, the suggested workflow as a
+tag and the routed model as a pill — both opaque strings, drawn as given — and the status pill in
+the ticket's map (`sized`/neutral, `queued`/accent, `estimating…`/warn, `needs human`/err, plus
+M.1's fifth state `unsized`, neutral under its own word). An issue with no estimate prints
+`sizing…` in the effort cell and an em dash where a workflow and a model would be: the mockup's
+`#483` names both, and an estimate is one answer rather than four fields that arrive separately.
+
+**The statuses are live.** Once mounted, the table polls `GET /api/backlog`
+([`app/api/backlog/route.ts`](app/api/backlog/route.ts)) — a second route handler on this origin,
+asked with the same query string the page was rendered from and parsed with the same two functions,
+so nothing from the address reaches the service but the five controls and the page — on the
+[polling store](#the-polling-store)'s cadence, through the same loop made generic
+([`app/poll.ts`](app/poll.ts)). What the table draws is the latest listing there is: the poll's once
+it has one, the server's until then; a poll that fails leaves the rows in place under a line saying
+so. The poll is keyed on the address ([`use-backlog-poll.ts`](app/issues/use-backlog-poll.ts)) —
+a chip press or a page turn is a new loop — and hears the workspace switch through the same signal
+the dashboard's store does. A pill whose row has been seen to change status is keyed on the status
+and carries the attribute the sheet animates, under the reduced-motion guard, so `estimating…`
+becomes `sized` within one poll of the pipeline finishing and says so with a movement — and a fresh
+page never fades in at once.
+
+**Two selections, one store.** The checkboxes write the selection the head reads — `toggle` per
+row, `select`/`deselect` over the page for the header's box, which reports the *page's* coverage
+and is indeterminate when some of it is selected — and the store sits above everything the route
+re-renders, so a filter change or a page turn keeps what was selected, ids off the page included.
+Checked rows wear the mockup's `tr.sel` through the Table primitive's accent selection. A row's
+click, or `Enter` on it, is the other state: it opens the issue's detail (`inspect` on the same
+store, N.5's panel to draw), and the inspected row lights its number in the accent — a quiet mark,
+distinct from the check glow, since the mockup's `#485` is both and nothing in it draws the second
+state alone. The keyboard keeps the three verbs apart: the arrows, `Home` and `End` move the tab
+stop, `Space` checks, `Enter` opens — the Table primitive's checkable shape (`TableMultiSelection`).
+
+**The freshness tag is a control.** `synced 40s ago` is `meta.syncedAt` — M.4's stored stamp, the
+*oldest* enabled repository's — against the reader's own clock, ticking on `app/shell/clock.ts`'s one
+interval, with the server's reading as the first paint. It is the design system's tag on a button:
+a press is `POST /api/v1/backlog/sync` through [`head-actions.ts`](app/issues/head-actions.ts),
+which reports *syncing now* and asks the poll at once, reports a cycle already in flight as the
+thing asked for happening, and says how long to wait when the last cycle was too recent. A viewer's
+tag is inert with the role as its reason.
+
+The table scrolls inside its own wrapper, as the acceptance criterion asks; the sticky header the
+same line asks for is the wrapper's opposite in the primitive's recipe, and the wrapper won. The
+pagination footer is drawn for a backlog beyond a page — `1–25 of 42`, **← Previous** and
+**Next →** as `next/link`s that keep the filter and the selection, inert with a reason at either
+end — and for an address that has run past the end, with the way back to the first page.
 
 ## Model routing
 
@@ -2216,14 +2278,20 @@ const { data, updatedAt, error } = useDashboardSummary();
 | `updatedAt` | when `data` was last *confirmed current*, epoch ms. A `304` moves it as surely as a `200` does: *nothing has changed* is a fresh statement about the payload already held |
 | `error` | why the last attempt failed, as a sentence for a person, or `null`. Cleared by the next success, so it describes the current state rather than the worst thing that ever happened to the page |
 
-The loop itself is [`app/dashboard/summary-poll.ts`](app/dashboard/summary-poll.ts) and is
-framework-free, so every clause of the contract is a unit test against mocked timers rather
-than a rendered page: fifteen seconds while visible, **nothing at all** while hidden and an
+The loop itself is [`app/poll.ts`](app/poll.ts) — generic over what it polls since
+[#117](https://github.com/NobuData/ouroboros/issues/117), when the backlog table needed the same
+thing over a different payload — and
+[`app/dashboard/summary-poll.ts`](app/dashboard/summary-poll.ts) is the dashboard's reader over
+it. It is framework-free, so every clause of the contract is a unit test against mocked timers
+rather than a rendered page: fifteen seconds while visible, **nothing at all** while hidden and an
 immediate ask on return, the `ETag` echoed as `If-None-Match` and replaced by each answer,
 and `X-Ouro-Poll-After` as the effective interval — which is how an operator raising
 `OURO_DASHBOARD_POLL_SECONDS` slows every open dashboard within one poll cycle, with nothing
 shipped to a browser. Requests never overlap: an ask that overtakes another wins, and the
-overtaken answer is dropped on arrival rather than raced into the store.
+overtaken answer is dropped on arrival rather than raced into the store. The route handlers
+that answer a poll on this origin share one translation from an answer to HTTP,
+[`app/api/poll-response.ts`](app/api/poll-response.ts): a `304` with no body, a `401` said
+plainly rather than redirected, a failure under this hop's own code with the service's sentence.
 
 **Two moments do not wait out the interval**, and both say so through
 [`summary-refresh.ts`](app/dashboard/summary-refresh.ts) rather than by holding the poll: a
@@ -2506,7 +2574,7 @@ import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 | `Card` / `CardHead` | The raised plane a panel is drawn on, on three surfaces, and the head that names one | `.card` / `.card-head` |
 | `Chip` / `EffortChip` | A small marker carrying a state in its hue, optionally with a dot; and the square XS–XL estimate | `.pill` / `.effort` |
 | `Tag` / `Badge` | Metadata with no state; and a count attached to something else | `.tag` / `.nav-badge` |
-| `Table` | Columns and rows, inside their own horizontal scroll container | `.tbl` |
+| `Table` | Columns and rows, inside their own horizontal scroll container; rows selectable one at a time, or checkable any number at a time | `.tbl` |
 | `Meter` | A proportion drawn as a bar — a stage, a rate, a budget | `.meter` |
 | `TextField` / `SelectField` / `Toggle` | A labelled field, a native select, and a switch | `.field` / `.input` / `.switch` |
 | `EmptyState` | A surface that is not ready, labelled rather than blank | — |

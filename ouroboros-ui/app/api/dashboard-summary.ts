@@ -183,6 +183,6 @@ async function readAnswer(response: Response): Promise<SummaryAnswer> {
   }
 
   return isDashboardSummary(body)
-    ? { state: "fresh", summary: body, etag, pollAfterSeconds }
+    ? { state: "fresh", payload: body, etag, pollAfterSeconds }
     : { state: "failed", reason: UNREADABLE_SUMMARY, pollAfterSeconds };
 }

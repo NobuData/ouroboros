@@ -1686,7 +1686,7 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | N.1 | #115 | 🟢 Done | ouroboros-ui: [N.1] Issues route, page head & counts | `(app)/issues`: head with live counts, Re-estimate all, Queue button | mvp, intake, ui, design | N (after #41, M.1, BA-D.5) | Y | S | ouroboros-ui |
 | N.2 | #116 | 🟢 Done | ouroboros-ui: [N.2] Filter bar (URL-reflected) | Repo select, label chips, state, sort, search — server-driven | mvp, intake, ui, design | N (after N.1) | Y | M | ouroboros-ui |
-| N.3 | #117 | 🟡 Open | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
+| N.3 | #117 | 🟢 Done | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
 | N.4 | #118 | 🟡 Open | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
 | N.5 | #119 | 🟡 Open | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
 | N.6 | #120 | 🟡 Open | ouroboros-ui: [N.6] Intake empty, loading & guidance states | No-token, no-repos, syncing, unsized, empty-filter states | mvp, intake, ui, design | N (after N.2–N.5) | Y | M | ouroboros-ui |
@@ -1870,7 +1870,91 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 
 ### Issue N.3 — ouroboros-ui: [N.3] Backlog table with selection model
 
-> **GitHub issue:** #117 · **Status:** 🟡 Open · **Parent epic:** #97
+> **GitHub issue:** #117 · **Status:** 🟢 Done · **Parent epic:** #97
+
+> **Shipped 2026-09-11.** [`app/issues/backlog-table.tsx`](../ouroboros-ui/app/issues/backlog-table.tsx)
+> draws mockup 03's `BACKLOG · AS OUROBOROS SEES IT` card under the filter bar, over
+> [`app/issues/table.ts`](../ouroboros-ui/app/issues/table.ts)'s decisions and
+> [`app/issues/paging.ts`](../ouroboros-ui/app/issues/paging.ts)'s page; the route reads one page
+> (`limit`/`offset` from `&page=`, beside K8's five controls) and the table then polls
+> `GET /api/backlog` — a second route handler on this origin,
+> [`app/api/backlog/route.ts`](../ouroboros-ui/app/api/backlog/route.ts) — on the DASH-I.8 cadence.
+> `ouroboros-ui` 0.54.0.
+>
+> **The poll is #87's loop, made generic.** *"`estimating…` must actually become `sized` when the
+> pipeline finishes, not on a timer"* is the dashboard's poll pointed at a different payload, and the
+> interesting code is the loop — the sequence check, the hidden tab, the backoff — not the payload.
+> So the loop moved to [`app/poll.ts`](../ouroboros-ui/app/poll.ts) as `createPoll<T>` and the
+> answer-to-response translation to
+> [`app/api/poll-response.ts`](../ouroboros-ui/app/api/poll-response.ts); the dashboard's three
+> modules delegate to both under their old names, and `summary-poll.test.ts` still holds every
+> clause. The table's own poll is keyed on the address ([`use-backlog-poll.ts`](../ouroboros-ui/app/issues/use-backlog-poll.ts)):
+> a chip press or a page turn is a new loop, and between the address moving and its first answer
+> the table draws what the server rendered for the new address. A workspace switch is the same
+> signal the dashboard's store hears. The pill that changed is keyed on its status, so a change is
+> a remount, and only a row that has been *seen* to change carries the attribute the sheet animates
+> under the reduced-motion guard — a fresh page never fades in at once.
+>
+> **Two selections, one store.** `app/issues/selection.tsx` gained `select`/`deselect` for the
+> header's box — the *replace* N.1's handoff said the store lacked — and, beside the checked set,
+> `detail`/`inspect` for the row whose panel is open: the ticket's *selected-for-detail ≠
+> checkbox-selected*, mirrored from the mockup where `#485` is both. The checked rows wear the
+> mockup's `tr.sel` through the primitive's own accent selection; the inspected row lights its number
+> in the accent, a quiet mark the mockup never draws alone. The header's box reports the *page's*
+> coverage — indeterminate when some of it is selected — and the selection outlives filter and page
+> changes, ids off the page included, which is what *survives filter changes* means.
+>
+> **The #46 Table grew a second shape.** `TableMultiSelection` (`kind: "multi"`) makes the grid
+> `aria-multiselectable`, reads `aria-selected` as *checked*, and keeps the keyboard's three verbs
+> apart the way the grid pattern does: the arrows, `Home` and `End` move the tab stop (`onCurrent`),
+> `Space` checks (`onToggle`), `Enter` and a click that is not on a control activate (`onActivate`).
+> A click on the row's own checkbox is the checkbox's, which is the one new rule; the single-select
+> shape the registry and the routing matrix use is untouched, and its suite is unchanged.
+>
+> **Three corrections to the ticket, each narrower than it looks.** The mockup's `#483` shows
+> `standard-fix` and `claude-sonnet-5` beside `sizing…`; an issue with no estimate has neither to
+> name (`issue_estimates` is one answer, not four fields — the seed's own header says the same), so
+> those two cells print the design system's em dash and the effort cell prints the mockup's word.
+> M.1's row carries a fifth state the ticket's map of four does not, `unsized`; it is drawn neutral
+> under its own word rather than folded into `sized`. And the shell-compliance line asks for both a
+> scrolling wrapper and a sticky header, which `app/ui/table.tsx`'s recipe makes exclusive; the
+> acceptance criterion names the wrapper, so the wrapper it is.
+>
+> **The freshness tag is M.4's `POST /api/v1/backlog/sync`, pressed.** `synced 40s ago` is
+> `meta.syncedAt` against `app/shell/clock.ts`'s one interval — the reader's clock, ticking, with the
+> server's reading as the first paint — and a press is a fourth Server Action in
+> `head-actions.ts`: `202` reports *syncing now* and asks the poll at once; `409 running` is reported
+> as the thing asked for happening; `409 too soon` says how long to wait; a viewer's tag is inert with
+> the role as its reason. `backlog.sync` joined `app/api/backlog.ts` with the two `409` codes, held to
+> `openapi.yaml`.
+>
+> **What the seed cannot make true, said rather than hidden.** The seeded table is the mockup's nine
+> rows, but under `sort=effort` — the seed's own note: the mockup's order is hand-laid — and with the
+> queue rows DASH-F.5 wrote (`#485`, `#490`, `#491` queued where the mockup draws `sized` and `needs
+> human`; `#489` not queued where the mockup draws it so). `table.test.ts` reads the mockup's rows
+> and holds the fixture to them one by one, with those two divergences named. The dashboard's
+> `QUEUEING_SOON` stopped naming #117 and names #118 alone, and the head's inert-at-zero reason now
+> says where a selection is made rather than which ticket builds the table.
+>
+> Proved by **7 new suites and 9 extended** — `paging.test.ts`, `table.test.ts` (the copy against
+> the mockup, the seeded rows against the mockup's, the pill map, the tag, the sync outcomes),
+> `backlog-poll.test.ts`, `backlog-table.test.tsx` (row for row, select all/none/one with the count
+> in the head, the selection surviving a filter change, the three keyboard verbs, the tag ticking and
+> pressable, the flip to `sized` within one poll with the pill marked, a failed poll keeping the rows,
+> the three empty states, the footer, both palettes), `poll.test.ts`, `api/backlog-page.test.ts`,
+> `api/backlog-route.test.ts` — with the table primitive's, the selection's, the reader's, the route's,
+> the screen's, the actions', the resource file's and the stylesheet's suites extended. The module
+> runs 4,589 cases over 238 files, green. The flip was also watched on the composed stack, through
+> the request the browser's poll makes: the seeded `#483` sits in `estimating` with no queue holding
+> it, L.4's stale sweep re-queues it about ten minutes after boot, `heuristic-v0` sizes it, and the
+> UI's own `GET /api/backlog` — asked with a session every twenty seconds — answered `sized` on the
+> ask after the pipeline finished. What the page does with that answer is the unit suite's, over a
+> stubbed reader; the browser leg that watches the pill itself is N.7's.
+>
+> **What is deferred, and to whom.** The selection bar over this selection is N.4's (#118); the panel
+> `inspect` opens is N.5's (#119); the guidance behind *no issues yet* — no token, no enabled
+> repository, a paused sync — and a pending state while the address moves are N.6's (#120); the
+> composed round trip as a leg, with the flip asserted in Playwright, is N.7's (#121).
 
 - **Problem Statement:** The table is the page's core: dense rows with the
   mockup's exact treatments (selected-row glow, effort+confidence pairing,
@@ -2614,3 +2698,30 @@ the chip set; the scope, `state=all`, for the confirmation's mirrored count.
 > while the address moves, and the failed chip set and repository list are a sentence under the row
 > rather than the DASH-I.7 banner. An over-narrowed filter's *no issues match* state has nowhere to
 > draw until the table exists, and belongs beside it.
+
+**N.3 (#117) shipped on 2026-09-11.** The backlog table is the page's core: the seeded nine drawn
+under `sort=effort` with the mockup's treatments, a checkbox column writing the selection store the
+head reads, the freshness tag pressing M.4's sync, a pagination footer riding `&page=` beside K8's
+five controls, and a poll — #87's loop made generic, over a second route handler on this origin —
+that turns `estimating…` into `sized` when the pipeline does, watched on the composed stack.
+
+> What N.3 leaves for **N.4 (#118)**: `useIssueSelection()` now carries `select`, `deselect` and
+> `clear` beside `toggle`, and the rows on screen are the table's — the combined estimate the bar sums
+> needs `est_minutes`, which M.1's row does not carry (`BacklogEstimate` is the four cells), so the
+> bar either reads it from M.2 per selected issue or asks M.1 for a fifth field. The page's one
+> `StickyBar` slot is still the bar's.
+>
+> And for **N.5 (#119)**: `inspect(id)` and `detail` are on the same store — a row's click or `Enter`
+> sets it, and the table lights the inspected row's number; the panel reads `detail` and asks M.2.
+> The mockup's `c-4` column beside the table is not laid out yet: the card is full-width under the bar,
+> and the grid that splits it is the panel's to add.
+>
+> And for **N.6 (#120)**: *no issues yet* is one sentence over a workspace that mirrors nothing, and a
+> failed page is `EmptyState` plus the service's reason; the poll's failure is a line under the rows
+> it left in place. The tag reads *never synced* over a `null` stamp with nothing about why.
+>
+> And for **N.7 (#121)**: the flip is asserted in the unit suite over a stubbed reader and was
+> watched by hand on the composed stack through `GET /api/backlog` — the sweep re-queues the seeded
+> `#483` about ten minutes after boot, past the suite's budget — so a leg that wants the pill itself
+> to move inside the budget triggers `POST /api/v1/backlog/{id}/estimate` on a sized row and watches
+> it go round, knowing that re-estimate rewrites the seed's parity for the rest of the stack's life.

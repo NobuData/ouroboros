@@ -11,15 +11,23 @@ import {
   REESTIMATE_ROLE_REASON,
 } from "@/app/issues/view";
 
-import { SELECTED_TRIO, fanout, queuedSelection } from "../helpers/issues";
+import {
+  SYNC_FAILED,
+  SYNC_ROLE_REASON,
+  SYNC_RUNNING,
+  SYNC_STARTED,
+  syncTooSoon,
+} from "@/app/issues/table";
+
+import { SELECTED_TRIO, fanout, queuedSelection, syncStatus } from "../helpers/issues";
 
 /**
- * The intake page head's two server hops (#115).
+ * The intake page's server hops — the head's two (#115) and the freshness tag's (#117).
  *
- * A Server Action is a POST endpoint anybody can reach, so the security cases come first: neither
+ * A Server Action is a POST endpoint anybody can reach, so the security cases come first: no
  * action takes a workspace or a person, the role gates are the service's, and `queueSelected`
  * refuses a selection that is not a list of ids before anything is sent. The rest is the posture
- * every action here keeps — a refusal is a sentence the head can draw, and the redirect signal is
+ * every action here keeps — a refusal is a sentence the page can draw, and the redirect signal is
  * the one throw that travels.
  */
 
@@ -28,6 +36,9 @@ const estimateAll = vi.fn();
 
 /** What the queue write answers, per case. */
 const queue = vi.fn();
+
+/** What the sync trigger answers, per case. */
+const sync = vi.fn();
 
 vi.mock("@/app/api/backlog", async () => {
   const actual = await vi.importActual<typeof import("@/app/api/backlog")>("@/app/api/backlog");
@@ -40,6 +51,7 @@ vi.mock("@/app/api/backlog", async () => {
       ...actual.backlog,
       estimateAll: () => estimateAll(),
       queue: (selection: unknown) => queue(selection),
+      sync: () => sync(),
     },
   };
 });
@@ -50,11 +62,61 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { queueSelected, reestimateAll } = await import("@/app/issues/head-actions");
+const { queueSelected, reestimateAll, syncBacklog } = await import("@/app/issues/head-actions");
 
 beforeEach(() => {
   estimateAll.mockReset().mockResolvedValue(fanout());
   queue.mockReset().mockResolvedValue(queuedSelection());
+  sync.mockReset().mockResolvedValue(syncStatus());
+});
+
+describe("syncBacklog (#117)", () => {
+  it("asks for a cycle with nothing but the session, and says one started", async () => {
+    expect(await syncBacklog()).toEqual({ ok: true, message: SYNC_STARTED });
+    expect(sync).toHaveBeenCalledExactlyOnceWith();
+  });
+
+  it("carries the service's sentence when the loop is paused and the press could move nothing", async () => {
+    sync.mockResolvedValue(
+      syncStatus({ state: "paused", pause: "not_configured", message: "No GitHub token is configured." }),
+    );
+
+    expect(await syncBacklog()).toEqual({ ok: false, reason: "No GitHub token is configured." });
+  });
+
+  it("answers a viewer with the tag's own sentence, not the API's", async () => {
+    sync.mockRejectedValue(new ApiError(403, "forbidden", "Your role does not permit this."));
+
+    expect(await syncBacklog()).toEqual({ ok: false, reason: SYNC_ROLE_REASON });
+  });
+
+  it("reports a cycle already in flight as the thing asked for happening", async () => {
+    sync.mockRejectedValue(new ApiError(409, "backlog_sync_running", "A cycle is running."));
+
+    expect(await syncBacklog()).toEqual({ ok: true, message: SYNC_RUNNING });
+  });
+
+  it("says how long to wait when the last cycle was too recent", async () => {
+    sync.mockRejectedValue(
+      new ApiError(409, "backlog_sync_too_soon", "Too soon.", { retryAfterSeconds: 12 }),
+    );
+
+    expect(await syncBacklog()).toEqual({ ok: false, reason: syncTooSoon(12) });
+  });
+
+  it("carries any other refusal's sentence, with a fallback for an empty one", async () => {
+    sync.mockRejectedValue(new ApiError(503, "unavailable", "GitHub is not answering."));
+    expect(await syncBacklog()).toEqual({ ok: false, reason: "GitHub is not answering." });
+
+    sync.mockRejectedValue(new ApiError(500, "internal_error", ""));
+    expect(await syncBacklog()).toEqual({ ok: false, reason: SYNC_FAILED });
+  });
+
+  it("lets the redirect signal through", async () => {
+    sync.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(syncBacklog()).rejects.toThrow("NEXT_REDIRECT /login");
+  });
 });
 
 describe("reestimateAll", () => {

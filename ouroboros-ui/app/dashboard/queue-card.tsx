@@ -23,14 +23,15 @@ import { QUEUEING_SOON, type QueuedIssue, type Reading, moreQueued, queueRows } 
  * ### What it will not do yet
  *
  * **Neither `Manage queue →` nor the `+N queued` footer navigates.** The issues screen
- * (mockup 03) became a route with [#115](https://github.com/NobuData/ouroboros/issues/115), and
- * it is where the queue is filled — but what fills it from a selection, the backlog table and
- * its selection bar, arrives with [#117](https://github.com/NobuData/ouroboros/issues/117) and
+ * (mockup 03) became a route with [#115](https://github.com/NobuData/ouroboros/issues/115) and
+ * its backlog table selects issues since
+ * [#117](https://github.com/NobuData/ouroboros/issues/117) — but the bar that queues a selection
+ * under a chosen workflow, the surface a *manage the queue* control would land on, arrives with
  * [#118](https://github.com/NobuData/ouroboros/issues/118). A link today would land a reader who
  * asked to manage the queue on a screen with nothing yet to manage it with, which the design
  * system's honesty rule (§ 3.5) treats as a dead end. Both are therefore inert {@link Button}s
  * carrying the one reason ({@link QUEUEING_SOON}) — which keeps the explanation in the tab order
- * where a dropped link would take it out — and both become an `href` when those land.
+ * where a dropped link would take it out — and both become an `href` when it lands.
  *
  * @param props.aggregate The dashboard aggregate, or why it could not be read.
  * @returns The card.

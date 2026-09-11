@@ -4,8 +4,9 @@ import type { Workspace } from "@/app/api/access";
 import type { BacklogQuery } from "@/app/api/backlog";
 import { ApiError } from "@/app/api/errors";
 import { DEFAULT_FILTER } from "@/app/issues/filter";
+import { PAGE_SIZE } from "@/app/issues/paging";
 
-import { ATLAS, HELIOS, SEEDED_FACETS, backlogListing } from "../helpers/issues";
+import { ATLAS, HELIOS, READ_AT, SEEDED_FACETS, backlogListing } from "../helpers/issues";
 import { TENANT_ID, enablement, membership, org, repo, sessionUser } from "../helpers/login";
 
 /**
@@ -81,7 +82,7 @@ beforeEach(() => {
 });
 
 describe("what is asked", () => {
-  it("asks the view with the bar's query, one row long", async () => {
+  it("asks the view with the bar's query, one page long, from the first page", async () => {
     await readIssues(ACCESS, { ...DEFAULT_FILTER, repo: HELIOS.id, labels: ["bug"], q: "bus" });
 
     expect(list).toHaveBeenCalledWith({
@@ -90,7 +91,19 @@ describe("what is asked", () => {
       state: "open",
       sort: "effort",
       q: "bus",
-      limit: 1,
+      limit: PAGE_SIZE,
+      offset: 0,
+    });
+  });
+
+  it("turns the address's page into the view's offset (#117)", async () => {
+    await readIssues(ACCESS, DEFAULT_FILTER, 3);
+
+    expect(list).toHaveBeenCalledWith({
+      state: "open",
+      sort: "effort",
+      limit: PAGE_SIZE,
+      offset: PAGE_SIZE * 2,
     });
   });
 
@@ -109,12 +122,26 @@ describe("what is asked", () => {
 });
 
 describe("reading the seeded workspace", () => {
-  it("reads nine open, seven sized, nine mirrored, the four labels and the two enabled repositories", async () => {
-    expect(await readIssues(ACCESS, DEFAULT_FILTER)).toEqual({
+  it("reads nine open, seven sized, nine mirrored, the four labels, the two enabled repositories and the page", async () => {
+    expect(await readIssues(ACCESS, DEFAULT_FILTER, 1, () => READ_AT)).toEqual({
       counts: { ok: true, value: { openCount: 9, sizedCount: 7, mirroredCount: 9 } },
       facets: { ok: true, value: SEEDED_FACETS },
       repos: { ok: true, value: [HELIOS, ATLAS] },
+      listing: { ok: true, value: backlogListing() },
+      readAt: READ_AT,
     });
+  });
+
+  it("reads the clock once, beside the reads, so the freshness tag has one instant to measure from", async () => {
+    let ticks = 0;
+
+    const { readAt } = await readIssues(ACCESS, DEFAULT_FILTER, 1, () => {
+      ticks += 1;
+      return READ_AT + ticks;
+    });
+
+    expect(ticks).toBe(1);
+    expect(readAt).toBe(READ_AT + 1);
   });
 
   it("takes the head's counts from the view and the mirrored count from the scope", async () => {
@@ -133,7 +160,7 @@ describe("reading the seeded workspace", () => {
 });
 
 describe("one read failing", () => {
-  it("keeps a refused view as the reason for both the counts and the chip set", async () => {
+  it("keeps a refused view as the reason for the counts, the chip set and the page", async () => {
     answer(
       Promise.reject(new ApiError(400, "organization_required", "Choose a workspace.")),
       backlogListing(),
@@ -143,16 +170,18 @@ describe("one read failing", () => {
 
     expect(readings.counts).toEqual({ ok: false, reason: "Choose a workspace." });
     expect(readings.facets).toEqual({ ok: false, reason: "Choose a workspace." });
+    expect(readings.listing).toEqual({ ok: false, reason: "Choose a workspace." });
     expect(readings.repos).toEqual({ ok: true, value: [HELIOS, ATLAS] });
   });
 
-  it("keeps a refused scope as the counts' reason, and still draws the chip set", async () => {
+  it("keeps a refused scope as the counts' reason, and still draws the chip set and the page", async () => {
     answer(backlogListing(), Promise.reject(new ApiError(503, "unavailable", "Not now.")));
 
     const readings = await readIssues(ACCESS, DEFAULT_FILTER);
 
     expect(readings.counts).toEqual({ ok: false, reason: "Not now." });
     expect(readings.facets).toEqual({ ok: true, value: SEEDED_FACETS });
+    expect(readings.listing).toEqual({ ok: true, value: backlogListing() });
   });
 
   it("keeps a refused enablement list as the select's reason, and still counts", async () => {

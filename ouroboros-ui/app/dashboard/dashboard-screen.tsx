@@ -128,9 +128,9 @@ interface Action {
  * placeholders, and neither destination can yet do what its label offers.** *Edit workflows*
  * waits for the workflow builder (mockup 04), whose route #49 still holds. *Pull next issue* is
  * an action rather than a destination: the issues screen became a route with
- * [#115](https://github.com/NobuData/ouroboros/issues/115), but what puts issues in front of the
- * loop from it — the backlog table's selection and the bar that queues it — arrives with
- * [#117](https://github.com/NobuData/ouroboros/issues/117) and
+ * [#115](https://github.com/NobuData/ouroboros/issues/115) and its backlog table selects issues
+ * since [#117](https://github.com/NobuData/ouroboros/issues/117), but the bar that queues a
+ * selection under a chosen workflow arrives with
  * [#118](https://github.com/NobuData/ouroboros/issues/118), so it carries the queue card's
  * reason ({@link QUEUEING_SOON}) rather than linking to a screen with nothing yet to press. Both
  * render *labelled* rather than absent or linked to a `404`, which is what the sidebar does for a

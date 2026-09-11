@@ -2,23 +2,25 @@
  * The backlog — what mockup 03's `/issues` reads from `ouroboros-rest`, and the two writes its
  * page head makes.
  *
- * Three operations of the `backlog` tag in one module, for the reason `app/api/routing.ts` is one
+ * Four operations of the `backlog` tag in one module, for the reason `app/api/routing.ts` is one
  * module: they are one screen's calls. `GET /api/v1/backlog`
- * ([#110](https://github.com/NobuData/ouroboros/issues/110)) is the listing the head's counts —
- * and, as they land, the filter bar and the table — are drawn from;
+ * ([#110](https://github.com/NobuData/ouroboros/issues/110)) is the listing the head's counts,
+ * the filter bar and the table are drawn from;
  * `POST /api/v1/backlog/estimate-all` ([#108](https://github.com/NobuData/ouroboros/issues/108))
- * is **Re-estimate all**; and `POST /api/v1/backlog/queue`
+ * is **Re-estimate all**; `POST /api/v1/backlog/queue`
  * ([#112](https://github.com/NobuData/ouroboros/issues/112)) is **Queue N selected ⟳** — and the
  * selection bar's and the detail panel's queue buttons after it, because the contract makes all
- * three one write.
+ * three one write; and `POST /api/v1/backlog/sync`
+ * ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the table's freshness tag, pressed
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)).
  *
  * ### The role gates are the service's
  *
- * Reading is every member's, `viewer` included. Queueing is `owner`, `admin` or `member`;
- * re-estimating the whole backlog is `owner` or `admin`, because one press spends the workspace's
- * engine quota. This module enforces neither: a check made in the browser is a check anybody can
- * skip, so what the screen does with a role is presentation, and {@link FORBIDDEN_CODE} is what a
- * press that went around it is answered with.
+ * Reading is every member's, `viewer` included. Queueing and syncing are `owner`, `admin` or
+ * `member`; re-estimating the whole backlog is `owner` or `admin`, because one press spends the
+ * workspace's engine quota. This module enforces neither: a check made in the browser is a check
+ * anybody can skip, so what the screen does with a role is presentation, and {@link FORBIDDEN_CODE}
+ * is what a press that went around it is answered with.
  *
  * ### The workspace is the session's
  *
@@ -41,6 +43,18 @@ import { api } from "@/app/api/server";
  */
 export type BacklogListing = components["schemas"]["BacklogListing"];
 
+/**
+ * One row of the listing: the issue as GitHub has it, where it is in the sizing pipeline, whether
+ * the queue holds it, and the estimate in force — the table's cells and no more.
+ */
+export type BacklogRow = components["schemas"]["BacklogRow"];
+
+/**
+ * The estimate in force on one row — the *Effort*, *Suggested workflow* and *Routed model* cells.
+ * `null` on the row for an issue that has none.
+ */
+export type BacklogEstimate = components["schemas"]["BacklogEstimate"];
+
 /** The query the listing accepts: every control the filter bar draws, plus the page. */
 export type BacklogQuery = NonNullable<operations["listBacklog"]["parameters"]["query"]>;
 
@@ -57,8 +71,27 @@ export type QueueSelection = components["schemas"]["QueueSelection"];
 /** What one press of a queue button answers: the rows created, and their combined estimate. */
 export type QueuedSelection = components["schemas"]["QueuedSelection"];
 
+/**
+ * What a sync press answers: the freshness instant, whether the loop is paused and why, whether a
+ * cycle is in flight, and a row per enabled repository.
+ */
+export type SyncStatus = components["schemas"]["SyncStatus"];
+
 /** The code a role that may read the backlog, but not do what it pressed, is answered with. */
 export const FORBIDDEN_CODE = "forbidden";
+
+/**
+ * The code a sync press is answered with while a cycle is already in flight. It carries no
+ * `retryAfterSeconds` — how long a cycle takes is not knowable in advance — and the thing asked
+ * for is happening, so the honest response is to watch the tag rather than press again.
+ */
+export const BACKLOG_SYNC_RUNNING_CODE = "backlog_sync_running";
+
+/**
+ * The code a sync press is answered with when a cycle ran less than the minimum interval ago.
+ * `details.retryAfterSeconds` says how long until another may start.
+ */
+export const BACKLOG_SYNC_TOO_SOON_CODE = "backlog_sync_too_soon";
 
 /**
  * The code a second **Re-estimate all** is answered with while the first is still running: every
@@ -82,11 +115,33 @@ export const backlog = {
    *   defaults are `state=open`, `sort=effort` and `limit=25`.
    * @param client The client to call through. Defaults to the server-side one; tests pass one
    *   over a stub `fetch`.
+   * @param signal A way to give up on the read. The route handler that answers the table's poll
+   *   passes a timeout (`app/api/backlog-page.ts`), because a poll never overlaps itself and a read
+   *   that never resolved would stop the loop rather than merely slow it; a render passes none.
    * @returns The listing: rows, filtered total, the head's counts and the chip set.
    * @throws {ApiError} What the service answered.
    */
-  async list(query: BacklogQuery = {}, client: ApiClient = api()): Promise<BacklogListing> {
-    return unwrap(await client.GET("/api/v1/backlog", { params: { query } }));
+  async list(
+    query: BacklogQuery = {},
+    client: ApiClient = api(),
+    signal?: AbortSignal,
+  ): Promise<BacklogListing> {
+    return unwrap(await client.GET("/api/v1/backlog", { params: { query }, signal }));
+  },
+
+  /**
+   * Sync the backlog from GitHub now, rather than waiting for the next scheduled cycle.
+   *
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The sync's status at the moment the cycle started — `running: true`, with freshness
+   *   the cycle has not yet moved. The tag moves when the cycle finishes and the listing's `meta`
+   *   says so.
+   * @throws {ApiError} What the service answered — {@link FORBIDDEN_CODE} for a `viewer`,
+   *   {@link BACKLOG_SYNC_RUNNING_CODE} while a cycle is in flight, and
+   *   {@link BACKLOG_SYNC_TOO_SOON_CODE} within the minimum interval of the last one.
+   */
+  async sync(client: ApiClient = api()): Promise<SyncStatus> {
+    return unwrap(await client.POST("/api/v1/backlog/sync", {}));
   },
 
   /**

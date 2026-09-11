@@ -1,7 +1,9 @@
 import { Eyebrow } from "@/app/ui";
 
+import { BacklogTable } from "./backlog-table";
 import type { BacklogFilter } from "./filter";
 import { FilterBar } from "./filter-bar";
+import { FIRST_PAGE } from "./paging";
 import { QueueSelectedButton } from "./queue-selected";
 import { ReestimateAllButton } from "./reestimate-all";
 import { IssueSelectionProvider } from "./selection";
@@ -12,7 +14,8 @@ import "./issues.css";
 /**
  * Issue intake ([#115](https://github.com/NobuData/ouroboros/issues/115)) —
  * `docs/mockups/03-issues.html` from its page head, with the filter bar under it
- * ([#116](https://github.com/NobuData/ouroboros/issues/116)).
+ * ([#116](https://github.com/NobuData/ouroboros/issues/116)) and the backlog table under that
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)).
  *
  * It renders **inside the app shell**, so it starts at its page head and contributes no chrome of
  * its own (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 2): the shell's content pane is the scroll container,
@@ -27,9 +30,9 @@ import "./issues.css";
  * backlog that could not be counted says so, with the service's reason, rather than drawing zeros.
  *
  * *The selection reaches outside the table*: **Queue N selected ⟳** reads the selection the
- * {@link IssueSelectionProvider} around this screen holds. The table that writes into it is N.3's
- * ([#117](https://github.com/NobuData/ouroboros/issues/117)); until it lands, the count is zero and
- * the button says what it is waiting for.
+ * {@link IssueSelectionProvider} around this screen holds, and the table's checkboxes write it.
+ * The provider is above everything the route re-renders, which is what lets a selection survive
+ * a chip press and a page turn.
  *
  * ### The filter bar is a query-string editor
  *
@@ -40,32 +43,41 @@ import "./issues.css";
  * mockup draws it; the page's one sticky slot is the selection bar's, N.4's
  * ([#118](https://github.com/NobuData/ouroboros/issues/118)).
  *
- * The table, the selection bar and the detail panel are N.3–N.5
- * ([#117](https://github.com/NobuData/ouroboros/issues/117)–[#119](https://github.com/NobuData/ouroboros/issues/119))
- * and mount below the bar, inside the same provider.
+ * ### The table is the address's page, kept fresh
+ *
+ * The card under the bar draws the page the route read for this address and then polls for it,
+ * so a status the pipeline moves is a pill that moves. Its page is the address's `&page=`, beside
+ * the bar's five controls and reset by every one of them. The selection bar and the detail panel
+ * are N.4's and N.5's ([#118](https://github.com/NobuData/ouroboros/issues/118),
+ * [#119](https://github.com/NobuData/ouroboros/issues/119)) and mount beside it, inside the same
+ * provider.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.filter The filter the address carries — what the readings were read for.
+ * @param props.page The page the address carries. Defaults to the first.
  * @param props.organizationId The workspace, for the bar's focus-repository sync.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles
  *   **Re-estimate all** is drawn for.
- * @param props.mayContribute Whether this reader may queue issues — every role but `viewer`.
+ * @param props.mayContribute Whether this reader may queue issues and sync the backlog — every
+ *   role but `viewer`.
  * @returns The screen.
  */
 export function IssuesScreen({
   readings,
   filter,
+  page = FIRST_PAGE,
   organizationId,
   mayAdminister,
   mayContribute,
 }: Readonly<{
   readings: IssuesReadings;
   filter: BacklogFilter;
+  page?: number;
   organizationId: string;
   mayAdminister: boolean;
   mayContribute: boolean;
 }>) {
-  const { counts, facets, repos } = readings;
+  const { counts, facets, repos, listing, readAt } = readings;
 
   return (
     <IssueSelectionProvider>
@@ -87,6 +99,13 @@ export function IssuesScreen({
           </div>
         </div>
         <FilterBar facets={facets} filter={filter} organizationId={organizationId} repos={repos} />
+        <BacklogTable
+          filter={filter}
+          listing={listing}
+          mayContribute={mayContribute}
+          page={page}
+          readAt={readAt}
+        />
       </main>
     </IssueSelectionProvider>
   );

@@ -171,9 +171,11 @@ describe("Queue N selected ⟳", () => {
     expect(queueReason(3, true)).toBeUndefined();
   });
 
-  it("is inert at zero, and names the issue that builds the table a selection is made in", () => {
+  it("is inert at zero, and says where a selection is made", () => {
+    // It named #117 until the table landed; now it names the table and the two ways to check a row.
     expect(queueReason(0, true)).toBe(QUEUE_NOTHING_SELECTED);
-    expect(QUEUE_NOTHING_SELECTED).toMatch(/#117/);
+    expect(QUEUE_NOTHING_SELECTED).toMatch(/backlog table/);
+    expect(QUEUE_NOTHING_SELECTED).toMatch(/Space/);
   });
 
   it("is inert for a viewer whatever is selected, and says so before anything about selecting", () => {

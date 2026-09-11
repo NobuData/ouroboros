@@ -64,7 +64,7 @@ describe("the dashboard poll endpoint", () => {
   });
 
   it("asks unconditionally for a browser holding nothing", async () => {
-    answer = { state: "fresh", summary: summary(), etag: TAG, pollAfterSeconds: 15 };
+    answer = { state: "fresh", payload: summary(), etag: TAG, pollAfterSeconds: 15 };
 
     await GET(poll());
 
@@ -73,7 +73,7 @@ describe("the dashboard poll endpoint", () => {
 
   it("answers a changed dashboard with the payload, its tag and the cadence", async () => {
     const payload = summary();
-    answer = { state: "fresh", summary: payload, etag: TAG, pollAfterSeconds: 15 };
+    answer = { state: "fresh", payload, etag: TAG, pollAfterSeconds: 15 };
 
     const response = await GET(poll());
 
@@ -132,7 +132,7 @@ describe("the dashboard poll endpoint", () => {
   it("omits the cadence hint rather than inventing one", async () => {
     // The browser already knows the contract's default; a hint made up here would be this
     // origin's opinion wearing the service's header.
-    answer = { state: "fresh", summary: summary(), etag: TAG, pollAfterSeconds: null };
+    answer = { state: "fresh", payload: summary(), etag: TAG, pollAfterSeconds: null };
 
     const response = await GET(poll());
 
@@ -140,7 +140,7 @@ describe("the dashboard poll endpoint", () => {
   });
 
   it("lets no shared cache hold one workspace's numbers", async () => {
-    answer = { state: "fresh", summary: summary(), etag: TAG, pollAfterSeconds: 15 };
+    answer = { state: "fresh", payload: summary(), etag: TAG, pollAfterSeconds: 15 };
 
     const response = await GET(poll());
 

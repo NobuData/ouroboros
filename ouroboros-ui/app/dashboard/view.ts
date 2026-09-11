@@ -412,15 +412,14 @@ export const UNSIZED_QUEUE = "None of them has been sized yet.";
  * queue card, and the page head's *⟳ Pull next issue*.
  *
  * One sentence for all three, because all three wait on the same thing. The issues screen has
- * been a route since [#115](https://github.com/NobuData/ouroboros/issues/115), and what queues work
- * from it — the backlog table's selection and the bar that queues it — arrives with
- * [#117](https://github.com/NobuData/ouroboros/issues/117) and
- * [#118](https://github.com/NobuData/ouroboros/issues/118). Controls waiting on one thing should
- * not describe it three ways.
+ * been a route since [#115](https://github.com/NobuData/ouroboros/issues/115) and its backlog
+ * table selects issues since [#117](https://github.com/NobuData/ouroboros/issues/117); the bar
+ * that queues a selection under a chosen workflow — the surface a *manage the queue* control
+ * would land on — arrives with [#118](https://github.com/NobuData/ouroboros/issues/118).
+ * Controls waiting on one thing should not describe it three ways.
  */
 export const QUEUEING_SOON =
-  "Queueing issues from the issues screen arrives with its backlog table and selection bar " +
-  "(#117, #118).";
+  "Queueing issues from the issues screen arrives with its selection bar (#118).";
 
 /**
  * *Queued issues* — how many are waiting, and how long they are expected to take.
