@@ -132,8 +132,10 @@ export const STATUS_TONE: Record<BacklogStatus, ChipTone> = {
 /**
  * What each of the contract's sizes is called on the chip — the whole of the difference
  * between the column and the mockup, as `app/dashboard/view.ts` keeps it for the queue card.
+ * The detail panel's *Effort* row ([#119](https://github.com/NobuData/ouroboros/issues/119))
+ * reads the same map, so the chip in the panel is the chip in the row.
  */
-const EFFORT_LABEL: Record<BacklogEstimate["effort"], Effort> = {
+export const EFFORT_LABEL: Record<BacklogEstimate["effort"], Effort> = {
   xs: "XS",
   s: "S",
   m: "M",

@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_FILTER, FILTER_BAR_LABEL, REPO_LABEL } from "@/app/issues/filter";
+import { CLOSE_PANEL_LABEL, NO_ISSUE_OPEN, PANEL_TITLE, READING_ISSUE } from "@/app/issues/panel";
 import { TABLE_CAPTION } from "@/app/issues/table";
 import {
   COUNTS_UNREAD,
@@ -14,21 +15,23 @@ import {
   queueLabel,
 } from "@/app/issues/view";
 
-import { HELIOS, UNCOUNTED, UNCOUNTED_REASON, issuesReadings } from "../helpers/issues";
+import { HELIOS, UNCOUNTED, UNCOUNTED_REASON, issueId, issuesReadings } from "../helpers/issues";
 import { TENANT_ID } from "../helpers/login";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 /**
  * The intake screen's page head (#115), the filter bar under it (#116), the backlog table under
- * that (#117) and the selection bar under the table (#118), as a component.
+ * that (#117), the selection bar under the table (#118) and the detail panel beside them (#119),
+ * as a component.
  *
  * The issue's criteria that are visible without a route are all here: the counts are the read's
  * rather than the mockup's, the head carries the mockup's eyebrow, subline and two actions, a
  * backlog that could not be counted says so rather than drawing zeros, the two actions gate by role,
  * the bar mounts under the head drawing what the address asked for, the table mounts under the bar
- * drawing the page that was read, and the markup does not depend on the palette. What each action
- * does when pressed, what the bar writes and what the table does are their own suites'; the
- * actions' server hops are replaced here, and the table's poll is left asking a `fetch` that never
+ * drawing the page that was read, the panel holds its seat beside the table and opens from a row's
+ * keyboard, and the markup does not depend on the palette. What each action does when pressed,
+ * what the bar writes, what the table does and what the panel draws are their own suites'; the
+ * actions' server hops are replaced here, and both polls are left asking a `fetch` that never
  * answers.
  */
 
@@ -36,6 +39,7 @@ vi.mock("@/app/issues/head-actions", () => ({
   queueSelected: vi.fn(),
   queueUnder: vi.fn(),
   reestimateAll: vi.fn(),
+  reestimateIssue: vi.fn(),
   syncBacklog: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
@@ -219,6 +223,52 @@ describe("the selection bar (#118)", () => {
     box(485).click();
 
     expect(screen.getByRole("button", { name: /^Queue → / })).toHaveAttribute("title", QUEUE_ROLE_REASON);
+  });
+});
+
+describe("the detail panel (#119)", () => {
+  /** A body row, by its issue number. */
+  function row(number: number): HTMLElement {
+    const grid = screen.getByRole("grid", { name: TABLE_CAPTION });
+    const found = within(grid)
+      .getAllByRole("row")
+      .find((candidate) => candidate.dataset.rowKey === issueId(number));
+    if (found === undefined) throw new Error(`no row for #${number}`);
+    return found;
+  }
+
+  it("holds its seat beside the table, in the grid's other column, with nothing open", () => {
+    const { container } = render(screenFor());
+
+    const panel = screen.getByRole("region", { name: PANEL_TITLE });
+    const grid = container.querySelector(".issues__grid") as HTMLElement;
+
+    expect(grid).toContainElement(panel);
+    expect(grid).toContainElement(screen.getByRole("grid", { name: TABLE_CAPTION }));
+    expect(panel.closest(".issues__aside")).not.toBeNull();
+    expect(screen.getByRole("grid", { name: TABLE_CAPTION }).closest(".issues__main")).not.toBeNull();
+    expect(within(panel).getByText(NO_ISSUE_OPEN)).toBeInTheDocument();
+  });
+
+  it("opens from a row's Enter, drawing the row's own facts before the detail lands, and is reachable after it", () => {
+    render(screenFor());
+
+    fireEvent.keyDown(row(485), { key: "Enter" });
+
+    const panel = screen.getByRole("region", { name: PANEL_TITLE });
+
+    expect(within(panel).getByRole("heading", { level: 3 })).toHaveTextContent("Watchdog reset on I²C bus lockup");
+    expect(within(panel).getByText("#485")).toBeInTheDocument();
+    expect(within(panel).getByRole("status")).toHaveTextContent(READING_ISSUE);
+    expect(row(485)).toHaveClass("issues-table__row--inspected");
+
+    // The panel follows the table in the document, so Tab from the row reaches it; its one control
+    // before the detail lands is the close, which returns the seat to its empty state.
+    expect(row(485).compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: CLOSE_PANEL_LABEL }));
+
+    expect(within(panel).getByText(NO_ISSUE_OPEN)).toBeInTheDocument();
+    expect(row(485)).not.toHaveClass("issues-table__row--inspected");
   });
 });
 

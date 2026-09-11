@@ -5,7 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 
 import { clientAnswering } from "../helpers/api";
-import { SELECTED_TRIO, backlogListing, fanout, queuedSelection, syncStatus } from "../helpers/issues";
+import {
+  SELECTED_TRIO,
+  backlogListing,
+  estimationAccepted,
+  fanout,
+  issueDetail,
+  issueId,
+  queuedSelection,
+  syncStatus,
+} from "../helpers/issues";
 
 // The resource file sits on the server-side client, so importing it pulls in the three
 // server-only modules every server-side suite answers. Every case passes its own client.
@@ -21,6 +30,8 @@ const {
   BACKLOG_SYNC_TOO_SOON_CODE,
   ESTIMATION_RATE_LIMITED_CODE,
   FORBIDDEN_CODE,
+  ISSUE_ALREADY_ESTIMATING_CODE,
+  ISSUE_NOT_FOUND_CODE,
   QUEUE_ISSUES_CONFLICT_CODE,
   QUEUE_ISSUES_NOT_FOUND_CODE,
   QUEUE_ISSUES_NOT_QUEUEABLE_CODE,
@@ -28,7 +39,8 @@ const {
 } = await import("@/app/api/backlog");
 
 /**
- * The backlog resource file (#115, #117) — the four `backlog` operations the intake page calls.
+ * The backlog resource file (#115, #117, #119) — the six `backlog` operations the intake page
+ * calls.
  *
  * Held to what every resource file here is held to: the right path, the right verb, the body
  * returned rather than the envelope around it, and a refusal that arrives as an `ApiError`
@@ -80,6 +92,64 @@ describe("backlog.list", () => {
       status: 400,
       code: "organization_required",
       message: "Choose a workspace.",
+    });
+  });
+});
+
+describe("backlog.detail (#119)", () => {
+  it("GETs the one issue by its id, and returns the answer itself", async () => {
+    const { client, requests } = clientAnswering(issueDetail());
+
+    const detail = await backlog.detail(issueId(485), client);
+
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/backlog/${issueId(485)}`);
+    expect(detail).toEqual(issueDetail());
+  });
+
+  it("hands the request the signal it was given, so the panel's poll has a deadline", async () => {
+    const { client, requests } = clientAnswering(issueDetail());
+
+    await backlog.detail(issueId(485), client, AbortSignal.abort());
+
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  it("rejects with the service's refusal for an id this workspace cannot see", async () => {
+    const { client } = clientAnswering(
+      { code: ISSUE_NOT_FOUND_CODE, message: "No issue with that id.", details: { issueId: issueId(999) } },
+      404,
+    );
+
+    await expect(backlog.detail(issueId(999), client)).rejects.toMatchObject({
+      status: 404,
+      code: ISSUE_NOT_FOUND_CODE,
+      details: { issueId: issueId(999) },
+    });
+  });
+});
+
+describe("backlog.estimate (#119)", () => {
+  it("POSTs to the one issue's estimate with no body, and returns the acceptance", async () => {
+    const { client, requests } = clientAnswering(estimationAccepted(), 202);
+
+    const answer = await backlog.estimate(issueId(485), client);
+
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/backlog/${issueId(485)}/estimate`);
+    expect(await requests[0]?.text()).toBe("");
+    expect(answer).toEqual(estimationAccepted());
+  });
+
+  it("hands an in-flight refusal through, code and all", async () => {
+    const { client } = clientAnswering(
+      { code: ISSUE_ALREADY_ESTIMATING_CODE, message: "Already estimating.", details: { issueId: issueId(485) } },
+      409,
+    );
+
+    await expect(backlog.estimate(issueId(485), client)).rejects.toMatchObject({
+      status: 409,
+      code: ISSUE_ALREADY_ESTIMATING_CODE,
     });
   });
 });
@@ -186,6 +256,8 @@ describe("the codes the page's actions branch on", () => {
     expect(ESTIMATION_RATE_LIMITED_CODE).toBe("estimation_rate_limited");
     expect(BACKLOG_SYNC_RUNNING_CODE).toBe("backlog_sync_running");
     expect(BACKLOG_SYNC_TOO_SOON_CODE).toBe("backlog_sync_too_soon");
+    expect(ISSUE_NOT_FOUND_CODE).toBe("issue_not_found");
+    expect(ISSUE_ALREADY_ESTIMATING_CODE).toBe("issue_already_estimating");
   });
 
   it("appear in ouroboros-rest/openapi.yaml, so a rename there is a failure here", () => {
@@ -195,6 +267,8 @@ describe("the codes the page's actions branch on", () => {
       ESTIMATION_RATE_LIMITED_CODE,
       BACKLOG_SYNC_RUNNING_CODE,
       BACKLOG_SYNC_TOO_SOON_CODE,
+      ISSUE_NOT_FOUND_CODE,
+      ISSUE_ALREADY_ESTIMATING_CODE,
       QUEUE_ISSUES_NOT_FOUND_CODE,
       QUEUE_ISSUES_CONFLICT_CODE,
       QUEUE_ISSUES_NOT_QUEUEABLE_CODE,

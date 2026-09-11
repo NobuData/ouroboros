@@ -1,8 +1,12 @@
 import type {
   BacklogEstimate,
+  BacklogIssueDetail,
   BacklogListing,
   BacklogRow,
+  EstimationAccepted,
   EstimationFanout,
+  IssueDetail,
+  IssueEstimateDetail,
   QueuedSelection,
   SyncStatus,
 } from "@/app/api/backlog";
@@ -14,12 +18,14 @@ import type { BacklogCounts, IssuesReadings } from "@/app/issues/view";
 /**
  * Fixtures for the intake screen ([#115](https://github.com/NobuData/ouroboros/issues/115),
  * [#116](https://github.com/NobuData/ouroboros/issues/116),
- * [#117](https://github.com/NobuData/ouroboros/issues/117)).
+ * [#117](https://github.com/NobuData/ouroboros/issues/117),
+ * [#119](https://github.com/NobuData/ouroboros/issues/119)).
  *
  * The numbers are the development seed's (`R__dev_seed_intake.sql`, K.5): nine mirrored issues in
  * `acme-robotics / helios-firmware`, every one of them open and seven of them sized — the head the
  * seeded workspace reads, *"9 open issues. 7 already sized."* — the four labels mockup 03's chip
- * set draws, and the nine rows themselves in the order M.1's `sort=effort` puts them.
+ * set draws, the nine rows themselves in the order M.1's `sort=effort` puts them, and the panel's
+ * `#485` in full, with the seed's `#483` and `#490` for the states the mockup does not draw.
  */
 
 /** Open issues in the seeded workspace — and every issue it mirrors, since none is closed. */
@@ -330,5 +336,214 @@ export function syncStatus(over: Partial<SyncStatus> = {}): SyncStatus {
     running: true,
     repositories: [],
     ...over,
+  };
+}
+
+/* ------------------------------------------------------------------ the detail panel (#119) */
+
+/** Where the seeded repository lives on GitHub — the base of every `ghUrl`. */
+const GITHUB_REPO_URL = `https://github.com/${HELIOS.login}/${HELIOS.name}`;
+
+/**
+ * When the seed's `#485` was sized — two minutes before {@link READ_AT}, which is the mockup's
+ * own *2m ago*. The seed writes it relative to `now()` for exactly this reason.
+ */
+export const SEEDED_SIZED_AT = "2026-09-10T15:39:52.000Z";
+
+/** When the seed's `#485` was opened — forty-eight hours before {@link READ_AT}: *opened 2d ago*. */
+export const SEEDED_OPENED_AT = "2026-09-08T15:41:52.000Z";
+
+/** The seed's `#485` body — the mockup's excerpt, without the quotation marks the panel adds. */
+export const SEEDED_BODY =
+  "Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the IMU holding SDA low " +
+  "after a burst read; the bus never recovers and the hardware watchdog fires ~2 s later. We need " +
+  "a bus-recovery sequence (9 clock pulses + re-init) before the watchdog trips.";
+
+/** The seed's `#485` file list — the mockup's three paths. */
+export const SEEDED_FILES: readonly string[] = [
+  "drivers/i2c_recovery.c",
+  "drivers/imu_bmi270.c",
+  "tests/unit/test_i2c_lockup.c",
+];
+
+/** The seed's `#485` risk rationale — the sentence under the mockup's meter. */
+export const SEEDED_RISK_NOTE =
+  "Isolated to the I²C driver path; full HIL coverage exists for bus recovery.";
+
+/**
+ * One issue as the panel's head reads it, over a seeded row.
+ *
+ * @param row The row, from {@link SEEDED_ROWS}.
+ * @param over The panel's four fields, and anything else this case is about.
+ * @returns The issue — the row minus its estimate, plus the body, author, opening instant and
+ *   GitHub URL.
+ */
+export function issueOf(row: BacklogRow, over: Partial<BacklogIssueDetail> = {}): BacklogIssueDetail {
+  const { estimate, ...issue } = row;
+  void estimate;
+
+  return {
+    ...issue,
+    body: SEEDED_BODY,
+    authorLogin: "field-support",
+    ghCreatedAt: SEEDED_OPENED_AT,
+    ghUrl: `${GITHUB_REPO_URL}/issues/${row.number}`,
+    ...over,
+  };
+}
+
+/**
+ * The seed's estimate of `#485`, in full — the mockup's *AI Work Breakdown* field for field,
+ * with the trace the seed actually writes: `heuristic-v0`, no tokens, no signals.
+ *
+ * @param over The fields this case is about.
+ * @returns The estimate.
+ */
+export function estimateDetail(over: Partial<IssueEstimateDetail> = {}): IssueEstimateDetail {
+  return {
+    version: 1,
+    effort: "m",
+    confidence: 92,
+    suggestedWorkflow: "standard-fix",
+    routedModel: "claude-fable-5",
+    breakdown: {
+      files: [...SEEDED_FILES],
+      estTokens: 180_000,
+      cycleMin: 12,
+      cycleMax: 18,
+      estMinutes: 45,
+    },
+    risk: "low",
+    riskNote: SEEDED_RISK_NOTE,
+    trace: {
+      estimator: "heuristic-v0",
+      sizedAt: SEEDED_SIZED_AT,
+      tokensUsed: 0,
+      signals: [],
+    },
+    ...over,
+  };
+}
+
+/** The seeded row of `#485` — the panel's issue. */
+const PANEL_ROW = SEEDED_ROWS.find((row) => row.number === 485)!;
+
+/**
+ * The seed's `#485` as `GET /api/v1/backlog/{id}` answers it — mockup 03's panel in one
+ * answer, with the two seed divergences the table's fixture also carries: `queued`, since the
+ * dashboard seed holds it, and the fourth label.
+ *
+ * @param over The parts this case is about. `issue` and `estimate` are merged over the seed's;
+ *   `history` replaces it.
+ * @returns The answer.
+ */
+export function issueDetail(
+  over: { issue?: Partial<BacklogIssueDetail>; estimate?: Partial<IssueEstimateDetail> | null; history?: IssueDetail["history"] } = {},
+): IssueDetail {
+  const estimate = over.estimate === null ? null : estimateDetail(over.estimate ?? {});
+
+  return {
+    issue: issueOf(PANEL_ROW, over.issue),
+    estimate,
+    history:
+      over.history ??
+      (estimate === null
+        ? []
+        : [{ version: estimate.version, estimator: estimate.trace.estimator, createdAt: estimate.trace.sizedAt }]),
+  };
+}
+
+/**
+ * The seed's `#483` as the endpoint answers it — `estimating`, with no `issue_estimates` row at
+ * all: the issue-only shape, which is the panel's first-estimate state.
+ *
+ * @param sizingStatus Where the issue is. Defaults to the seed's `estimating`; `unsized` is the
+ *   same shape a moment earlier.
+ * @returns The answer.
+ */
+export function estimatingDetail(sizingStatus: BacklogRow["sizingStatus"] = "estimating"): IssueDetail {
+  return {
+    issue: issueOf(ESTIMATING_ROW, {
+      sizingStatus,
+      authorLogin: "jorge-reyes",
+      ghCreatedAt: "2026-09-05T15:41:52.000Z",
+      body:
+        "Under a full telemetry load the BLE notify queue and the CAN receive path contend for the " +
+        "same DMA channel, and frames are dropped without any counter moving. Reproduced on bench " +
+        "unit 12 with both radios at full duty.",
+    }),
+    estimate: null,
+    history: [],
+  };
+}
+
+/** The seeded row of `#490` — the one the seed sends to a human. */
+const NEEDS_HUMAN_ROW = SEEDED_ROWS.find((row) => row.number === 490)!;
+
+/**
+ * The seed's `#490` as the endpoint answers it — `needs_human`, with the estimate that sent it
+ * there: XL at 61%, under the floor.
+ *
+ * @param over The issue's fields this case is about — `queued: false` for a panel whose head
+ *   reads the sizing status rather than the queue.
+ * @returns The answer.
+ */
+export function needsHumanDetail(over: Partial<BacklogIssueDetail> = {}): IssueDetail {
+  const estimate = estimateDetail({
+    effort: "xl",
+    confidence: 61,
+    suggestedWorkflow: "deps-refresh",
+    routedModel: "claude-fable-5",
+    breakdown: {
+      files: [
+        "west.yml",
+        "boards/helios_rev_c.dts",
+        "boards/helios_rev_d.dts",
+        "CMakeLists.txt",
+        "ci/build-matrix.yml",
+        "docs/porting-4.2.md",
+      ],
+      estTokens: 900_000,
+      cycleMin: 90,
+      cycleMax: 150,
+      estMinutes: 180,
+    },
+    risk: "high",
+    riskNote: "Moves every board file and the CI images at once; a partial migration leaves nothing that builds.",
+    trace: {
+      estimator: "heuristic-v0",
+      sizedAt: "2026-09-10T14:11:52.000Z",
+      tokensUsed: 0,
+      signals: [],
+    },
+  });
+
+  return {
+    issue: issueOf(NEEDS_HUMAN_ROW, {
+      authorLogin: "renovate[bot]",
+      ghCreatedAt: "2026-09-10T01:41:52.000Z",
+      body:
+        "Zephyr 3.7 leaves support this year, and 4.2 moves the device-tree bindings and the west " +
+        "manifest. This touches every board file and the CI images at once, so it wants a human to " +
+        "sequence it rather than a single loop.",
+      ...over,
+    }),
+    estimate,
+    history: [{ version: 1, estimator: "heuristic-v0", createdAt: estimate.trace.sizedAt }],
+  };
+}
+
+/**
+ * What a **Re-estimate** press answers — the issue, already `estimating`.
+ *
+ * @param number The issue's number. Defaults to the panel's.
+ * @returns The acceptance.
+ */
+export function estimationAccepted(number = 485): EstimationAccepted {
+  return {
+    issueId: issueId(number),
+    number,
+    repository: `${HELIOS.login}/${HELIOS.name}`,
+    status: "estimating",
   };
 }

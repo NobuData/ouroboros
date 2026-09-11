@@ -1,26 +1,29 @@
 /**
- * The backlog — what mockup 03's `/issues` reads from `ouroboros-rest`, and the two writes its
- * page head makes.
+ * The backlog — what mockup 03's `/issues` reads from `ouroboros-rest`, and the writes its page
+ * head and its detail panel make.
  *
- * Four operations of the `backlog` tag in one module, for the reason `app/api/routing.ts` is one
+ * Six operations of the `backlog` tag in one module, for the reason `app/api/routing.ts` is one
  * module: they are one screen's calls. `GET /api/v1/backlog`
  * ([#110](https://github.com/NobuData/ouroboros/issues/110)) is the listing the head's counts,
- * the filter bar and the table are drawn from;
+ * the filter bar and the table are drawn from; `GET /api/v1/backlog/{id}`
+ * ([#111](https://github.com/NobuData/ouroboros/issues/111)) is the one issue the detail panel
+ * draws ([#119](https://github.com/NobuData/ouroboros/issues/119));
  * `POST /api/v1/backlog/estimate-all` ([#108](https://github.com/NobuData/ouroboros/issues/108))
- * is **Re-estimate all**; `POST /api/v1/backlog/queue`
- * ([#112](https://github.com/NobuData/ouroboros/issues/112)) is **Queue N selected ⟳** — and the
- * selection bar's and the detail panel's queue buttons after it, because the contract makes all
- * three one write; and `POST /api/v1/backlog/sync`
+ * is **Re-estimate all** and `POST /api/v1/backlog/{id}/estimate` the panel's **Re-estimate**;
+ * `POST /api/v1/backlog/queue` ([#112](https://github.com/NobuData/ouroboros/issues/112)) is
+ * **Queue N selected ⟳** — and the selection bar's and the detail panel's queue buttons after it,
+ * because the contract makes all three one write; and `POST /api/v1/backlog/sync`
  * ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the table's freshness tag, pressed
  * ([#117](https://github.com/NobuData/ouroboros/issues/117)).
  *
  * ### The role gates are the service's
  *
- * Reading is every member's, `viewer` included. Queueing and syncing are `owner`, `admin` or
- * `member`; re-estimating the whole backlog is `owner` or `admin`, because one press spends the
- * workspace's engine quota. This module enforces neither: a check made in the browser is a check
- * anybody can skip, so what the screen does with a role is presentation, and {@link FORBIDDEN_CODE}
- * is what a press that went around it is answered with.
+ * Reading is every member's, `viewer` included — the listing and the one issue alike, since
+ * opening a panel spends nothing. Queueing, syncing and re-estimating one issue are `owner`,
+ * `admin` or `member`; re-estimating the whole backlog is `owner` or `admin`, because one press
+ * spends the workspace's engine quota. This module enforces none of it: a check made in the
+ * browser is a check anybody can skip, so what the screen does with a role is presentation, and
+ * {@link FORBIDDEN_CODE} is what a press that went around it is answered with.
  *
  * ### The workspace is the session's
  *
@@ -57,6 +60,47 @@ export type BacklogEstimate = components["schemas"]["BacklogEstimate"];
 
 /** The query the listing accepts: every control the filter bar draws, plus the page. */
 export type BacklogQuery = NonNullable<operations["listBacklog"]["parameters"]["query"]>;
+
+/**
+ * One issue in full — mockup 03's `ISSUE DETAIL` panel in one answer
+ * ([#111](https://github.com/NobuData/ouroboros/issues/111)): the issue as GitHub has it, the
+ * estimate in force, and every version the issue has been estimated at, oldest first.
+ *
+ * `estimate` is `null` for an issue nothing has sized — `unsized`, or `estimating` before its
+ * first answer lands — with every other field still there to draw; `history` is `[]` for the
+ * same fact. The two come from one read, so they cannot disagree.
+ */
+export type IssueDetail = components["schemas"]["IssueDetail"];
+
+/**
+ * The issue as the panel's head, tags and excerpt read it: a {@link BacklogRow} without its
+ * summary estimate, plus the body, the author, the opening instant and the GitHub URL.
+ */
+export type BacklogIssueDetail = components["schemas"]["BacklogIssueDetail"];
+
+/**
+ * The estimate in force, in full — everything the panel draws below the excerpt, where
+ * {@link BacklogEstimate} is the four-field summary a table cell needs.
+ */
+export type IssueEstimateDetail = components["schemas"]["IssueEstimateDetail"];
+
+/** The *AI Work Breakdown*'s numbers: the files, the tokens, the cycle range, the minutes. */
+export type IssueEstimateBreakdown = components["schemas"]["IssueEstimateBreakdown"];
+
+/**
+ * Where the estimate came from — decision K10 as a shape: what produced it, when, what it
+ * cost, and what it was reached from.
+ */
+export type IssueEstimateTrace = components["schemas"]["IssueEstimateTrace"];
+
+/** One entry of the version list: the version, what produced it, and when the row was written. */
+export type EstimateVersion = components["schemas"]["EstimateVersion"];
+
+/**
+ * What one press of the panel's **Re-estimate** answers: the issue, and the status it is now in
+ * — `estimating`, already true when the answer is sent.
+ */
+export type EstimationAccepted = components["schemas"]["EstimationAccepted"];
 
 /**
  * What one press of **Re-estimate all** answers: `enqueued` issues claimed and queued, `skipped`
@@ -114,6 +158,20 @@ export const BACKLOG_ALREADY_ESTIMATING_CODE = "backlog_already_estimating";
 export const ESTIMATION_RATE_LIMITED_CODE = "estimation_rate_limited";
 
 /**
+ * The code an id this workspace cannot see is answered with — by the one-issue read and by
+ * the single re-estimate alike. An issue in another workspace is this, never a `403`: a `403`
+ * would confirm that the id names a real issue somewhere.
+ */
+export const ISSUE_NOT_FOUND_CODE = "issue_not_found";
+
+/**
+ * The code a **Re-estimate** press is answered with while an estimate for that issue is already
+ * in flight. The estimate in flight will finish and write its version; the panel is already
+ * following it.
+ */
+export const ISSUE_ALREADY_ESTIMATING_CODE = "issue_already_estimating";
+
+/**
  * The three codes a queue press is refused with, and the per-issue codes inside them.
  *
  * Every refusal of `POST /api/v1/backlog/queue` names its offenders: `details.issues` carries
@@ -156,6 +214,41 @@ export const backlog = {
     signal?: AbortSignal,
   ): Promise<BacklogListing> {
     return unwrap(await client.GET("/api/v1/backlog", { params: { query }, signal }));
+  },
+
+  /**
+   * One issue, in full — everything the detail panel draws
+   * ([#119](https://github.com/NobuData/ouroboros/issues/119)).
+   *
+   * @param id The issue's `github_issues.id` — the `id` a backlog row carries, never GitHub's
+   *   number, which a workspace watching two repositories can hold twice.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal A way to give up on the read — the route handler answering the panel's poll
+   *   passes a timeout (`app/api/backlog-detail.ts`), for the reason the listing's does.
+   * @returns The issue, the estimate in force or `null`, and the version list.
+   * @throws {ApiError} What the service answered — {@link ISSUE_NOT_FOUND_CODE} for an id this
+   *   workspace cannot see.
+   */
+  async detail(id: string, client: ApiClient = api(), signal?: AbortSignal): Promise<IssueDetail> {
+    return unwrap(await client.GET("/api/v1/backlog/{id}", { params: { path: { id } }, signal }));
+  },
+
+  /**
+   * Re-estimate one issue — the detail panel's **Re-estimate**
+   * ([#108](https://github.com/NobuData/ouroboros/issues/108)).
+   *
+   * @param id The issue's `github_issues.id`.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The issue and its status, which is `estimating` and already true: the row is moved
+   *   before the work is queued. The new version lands when the pipeline finishes, and what a
+   *   client watches for is the issue's status moving on.
+   * @throws {ApiError} What the service answered — {@link FORBIDDEN_CODE} for a `viewer`,
+   *   {@link ISSUE_NOT_FOUND_CODE} for an id this workspace cannot see,
+   *   {@link ISSUE_ALREADY_ESTIMATING_CODE} while an estimate is in flight, and
+   *   {@link ESTIMATION_RATE_LIMITED_CODE} past the workspace's per-minute limit.
+   */
+  async estimate(id: string, client: ApiClient = api()): Promise<EstimationAccepted> {
+    return unwrap(await client.POST("/api/v1/backlog/{id}/estimate", { params: { path: { id } } }));
   },
 
   /**

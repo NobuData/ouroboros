@@ -1163,14 +1163,14 @@ is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page 
 [`docs/mockups/03-issues.html`](../docs/mockups/03-issues.html): the page head, its live counts
 and its two actions; since [#116](https://github.com/NobuData/ouroboros/issues/116) the filter
 bar under them; since [#117](https://github.com/NobuData/ouroboros/issues/117) the backlog
-table under that — the page's core, polled so its statuses are live; and since
+table under that — the page's core, polled so its statuses are live; since
 [#118](https://github.com/NobuData/ouroboros/issues/118) the selection bar under the table,
-where a selection becomes work. It retires the `/issues` placeholder #49 was to build — never
-built, so nothing was deleted — and the sidebar's **Issues** entry became a link on the same
-commit. The detail panel and the designed states arrive with
-[#119](https://github.com/NobuData/ouroboros/issues/119) and
-[#120](https://github.com/NobuData/ouroboros/issues/120) and mount beside the table, inside the
-same selection provider.
+where a selection becomes work; and since
+[#119](https://github.com/NobuData/ouroboros/issues/119) the detail panel beside them — the
+sizing story for one row, polled so it moves with the pipeline. It retires the `/issues`
+placeholder #49 was to build — never built, so nothing was deleted — and the sidebar's **Issues**
+entry became a link on the same commit. The designed guidance states arrive with
+[#120](https://github.com/NobuData/ouroboros/issues/120), inside the same selection provider.
 
 ```
 ISSUE INTAKE
@@ -1195,6 +1195,15 @@ to work.                                            issues."
 ┌─(glow)─────────────────────────────────────────────────────────────────────────────────────┐
 │ 2 issues selected · est. 3h 45m combined autonomous work   [Assign workflow ▾] [Queue → suggested] │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ ISSUE DETAIL ─────────────────────────────────────────────────────── (queued) ── [×] ─┐  c-4,
+│ #485 · opened 2d ago by field-support                                                   │  beside
+│ Watchdog reset on I²C bus lockup   [bug][i2c][watchdog][priority-high]                 │  the
+│ │ "Unit 07 in the Fremont pilot rebooted 14 times overnight…"                          │  table
+│ ── AI WORK BREAKDOWN ──  files · Est. tokens ~180k · Est. cycle 12–18 min · M conf 92% │
+│ Regression risk  low ▓▓░░░░░░░  "Isolated to the I²C driver path…"  [standard-fix]     │
+│ [Queue for loop] [Re-estimate] [Open on GitHub ↗]                                       │
+│ ▾ ESTIMATION TRACE  sized by heuristic-v0 · 2m ago · signals: none recorded             │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### The sentence is the mockup's; the numbers are the service's
@@ -1325,7 +1334,8 @@ and is indeterminate when some of it is selected — and the store sits above ev
 re-renders, so a filter change or a page turn keeps what was selected, ids off the page included.
 Checked rows wear the mockup's `tr.sel` through the Table primitive's accent selection. A row's
 click, or `Enter` on it, is the other state: it opens the issue's detail (`inspect` on the same
-store, N.5's panel to draw), and the inspected row lights its number in the accent — a quiet mark,
+store, the [detail panel](#the-detail-panel-is-the-sizing-story-for-one-row) draws), and the
+inspected row lights its number in the accent — a quiet mark,
 distinct from the check glow, since the mockup's `#485` is both and nothing in it draws the second
 state alone. The keyboard keeps the three verbs apart: the arrows, `Home` and `End` move the tab
 stop, `Space` checks, `Enter` opens — the Table primitive's checkable shape (`TableMultiSelection`).
@@ -1403,6 +1413,88 @@ on the [queue card](#the-queue-card-what-the-loop-will-do-next) link to `/issues
 fills the queue, and the toast links back to the card's heading through one fragment
 [`app/paths.ts`](app/paths.ts) owns; *⟳ Pull next issue* stays inert and names what it actually
 waits for. The e2e leg — select three, queue, watch the card gain rows — is N.7's
+([#121](https://github.com/NobuData/ouroboros/issues/121)).
+
+### The detail panel is the sizing story for one row
+
+Beside the table, in the mockup's grid — `c-8` for the table and the selection bar, `c-4` for
+the panel, one column below the mockup's own break
+([#119](https://github.com/NobuData/ouroboros/issues/119)): mockup 03's `ISSUE DETAIL` card,
+[`app/issues/detail-panel.tsx`](app/issues/detail-panel.tsx) over
+[`app/issues/panel.ts`](app/issues/panel.ts)'s copy and decisions — every word the mockup's panel
+prints, which the suite reads the mockup to hold, and every judgement about one issue's sizing
+story. The card is always seated: with no row open it says how to open one, so the table does not
+shift under the pointer that clicks a row.
+
+```
+row click / Enter ─▶ selection store's `detail` ─▶ GET /api/backlog/{id}  (this origin, polled)
+                                                     └─▶ ouroboros-rest GET /api/v1/backlog/{id}
+  unsized     ─▶ excerpt · "First estimate pending" · [Re-estimate]
+  estimating… ─▶ excerpt · "Sizing now" over the breakdown's skeleton · both writes inert
+  sized       ─▶ excerpt · breakdown · risk meter · [standard-fix][claude-fable-5] · actions · trace
+  needs human ─▶ the estimate that sent it there · trace opens with "confidence 61% was under the floor"
+```
+
+**The issue is the store's; the answer is a poll's.** The row a click or `Enter` opened is the
+[selection store](#queue-n-selected--reads-the-selection-the-table-writes)'s `detail`, and what the
+panel draws about it is the last answer of `GET /api/backlog/{id}`
+([`app/api/backlog/[id]/route.ts`](app/api/backlog/[id]/route.ts) over
+[`app/api/backlog-detail.ts`](app/api/backlog-detail.ts)) — a third route handler on this origin,
+over M.2's one-issue read, asked on the [polling store](#the-polling-store)'s cadence through the
+same loop the table keeps. That loop is keyed on whatever it asks for now
+([`app/issues/use-keyed-poll.ts`](app/issues/use-keyed-poll.ts); the table's
+[`use-backlog-poll.ts`](app/issues/use-backlog-poll.ts) delegates, and a `null` key holds no loop),
+and the server-side translation of a read into the loop's four answers is one function both readers
+share ([`app/api/poll-read.ts`](app/api/poll-read.ts)). Between a row being opened and its detail
+arriving, the head — number, title, tags, pill — is the row as the table last saw it
+([`seen-rows.ts`](app/issues/seen-rows.ts)) over the breakdown's skeleton, so the panel opens on the
+click rather than a round trip later; another row is a new loop; closing is a `null` id and no
+request at all. A poll that fails leaves the issue in place under a line saying so.
+
+**The trace is the trace's, and nothing else** — decision K10, the honesty rule this panel exists to
+keep. *sized by heuristic-v0 · 2m ago* is the estimator's own name and the instant it sized the
+issue, on the reader's ticking clock; tokens appear only when any were spent, since a rule engine
+spends none and `0 tokens` would dress an absence as a measurement; the version appears only past
+the first; and the signals line is the signals the trace recorded, or *signals: none recorded by
+this estimator*. The mockup's `claude-sonnet-5` and its three knowledge signals appear nowhere, and
+the suite asserts that divergence rather than avoiding it. The file list keeps the same rule: a live
+`heuristic-v0` estimate answers `files: []` because it cannot know files, and the panel draws *the
+file estimate arrives with the full estimator* in the list's place; the seed writes the mockup's
+three paths for `#485`, so the seeded panel draws the list.
+
+**Four states, one guard.** `unsized` is the issue's content, *First estimate pending* and a live
+**Re-estimate**; `estimating…` is the warn pill and *Sizing now* over the breakdown's skeleton, both
+writes inert with their reasons; `sized` is the whole panel — the left-ruled italic excerpt cut at
+a word and expandable in place, the **AI Work Breakdown** with the mockup's `~180k` and `12–18 min`,
+the effort chip through the same map the table's row uses, the risk meter in the level's hue and
+length with the level in words beside it, the workflow tag and the model pill as given; and `needs
+human` is the err pill, the estimate that sent it there, and a trace opening in the error hue with
+why. A `sized` answer carrying no estimate is drawn as `unsized` rather than as a breakdown over
+nothing. The head's pill is the table's rule — `queued` first — so the panel and the row it was
+opened from cannot disagree; the seeded `#485` therefore reads `queued`, as the table's does.
+
+**Three actions, and a press asks every poll now.** **Queue for loop** is the bar's `queueUnder`
+with one id — the contract makes the three queue affordances one write — and a refusal is drawn in
+the bar's own sentence for the issue it names. **Re-estimate** is L.4's single re-estimate through
+`reestimateIssue` in [`head-actions.ts`](app/issues/head-actions.ts), the fifth Server Action: a
+forged id is refused before a path is built from it, a `403` is the role's sentence, a `404` says the
+issue is gone, a `409` is reported as the thing asked for happening, a `429` carries the wait; it is
+inert while the issue is `estimating…`. **Open on GitHub ↗** is the button primitive's link form
+over `ghUrl`, in a new tab with `rel="noopener noreferrer"` — and the address is checked to be a
+web address at the boundary rather than trusted into an `href`, inert with a reason otherwise. A
+press that took publishes the same *ask again* signal the workspace switch does
+([`summary-refresh.ts`](app/dashboard/summary-refresh.ts)), so the panel draws the `estimating…` the
+service has already written at once, the table's pill follows, and the dashboard's queue card hears
+about a queued issue — no `router.refresh()`, because everything the panel draws is the poll's. The
+line under the actions clears when the state moves: *sizing again* over a breakdown that has already
+landed would be a sentence about a moment that has passed.
+
+**Keyboard and width.** `Enter` on a row opens the panel, which follows the table in the document,
+so `Tab` from the row reaches it; every control in it is a native button, link or `<details>`; and
+focus is deliberately not moved on open, since a reader arrowing through rows to compare them would
+lose their place on every `Enter`. Below the mockup's break the panel stacks under the table, and a
+long path or token wraps inside the column rather than widening it. The composed round trip — a
+**Re-estimate** pressed in a browser and the pill watched round — is N.7's
 ([#121](https://github.com/NobuData/ouroboros/issues/121)).
 
 ## Model routing
