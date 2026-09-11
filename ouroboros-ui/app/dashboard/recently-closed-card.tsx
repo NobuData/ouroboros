@@ -1,4 +1,5 @@
 import type { Dashboard, RunStatus } from "@/app/api/dashboard";
+import { ISSUES_PATH } from "@/app/paths";
 import {
   Button,
   Card,
@@ -32,14 +33,19 @@ import { type Completion, type Reading, recentCompletions } from "./view";
  *
  * ### What it will not do yet
  *
- * **`All issues →` does not navigate, and neither does a `needs human` row.** The issues
- * screen is mockup 03 and the needs-you inbox is mockup 16; `#49` holds both routes and is
- * post-MVP. The design system's honesty rule (§ 3.5) and #49's own first acceptance
- * criterion (*no dead nav links*) say the same thing about pointing at either today, and the
- * sidebar already answers it the same way for both destinations
- * (`app/shell/nav-modules.ts`). So each is an inert {@link Button} carrying its reason —
- * which keeps the explanation in the tab order where a dropped link would take it out — and
- * each becomes an `href` the day #49 lands.
+ * **A `needs human` row does not navigate.** The needs-you inbox is mockup 16 and `#49` holds
+ * its route, which is post-MVP. The design system's honesty rule (§ 3.5) and #49's own first
+ * acceptance criterion (*no dead nav links*) say the same thing about pointing at it today, and
+ * the sidebar already answers that destination the same way (`app/shell/nav-modules.ts`). So
+ * the control is an inert {@link Button} carrying its reason — which keeps the explanation in
+ * the tab order where a dropped link would take it out — and it becomes an `href` the day the
+ * inbox lands.
+ *
+ * **`All issues →` has been a link since [#115](https://github.com/NobuData/ouroboros/issues/115)**,
+ * which built the issues screen. Until then it was an inert button carrying the same kind of
+ * reason; the transition this card promised happened on the commit that built the route, and it
+ * goes to {@link ISSUES_PATH} — the route the sidebar's **Issues** entry names — so the card and
+ * the sidebar cannot disagree about where the backlog is.
  *
  * @param props.aggregate The dashboard aggregate, or why it could not be read.
  * @returns The card.
@@ -55,7 +61,7 @@ export function RecentlyClosedCard({
         title={TITLE}
         titleId={TITLE_ID}
         trailing={
-          <Button size="sm" tone="ghost" reason={ALL_ISSUES_SOON}>
+          <Button href={ISSUES_PATH} size="sm" tone="ghost">
             All issues →
           </Button>
         }
@@ -90,11 +96,6 @@ const TITLE_ID = "dash-recently-closed-title";
  * it, and a heading outside a table is not the table's accessible name.
  */
 const CAPTION = "Runs the loop has closed, newest first";
-
-/** Why *All issues* cannot act yet. */
-const ALL_ISSUES_SOON =
-  "The issues screen is not built yet — it arrives with its own roadmap (mockup 03), and " +
-  "#49 holds its placeholder route.";
 
 /**
  * Why the control on a `needs human` row cannot act yet.

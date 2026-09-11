@@ -1,0 +1,94 @@
+/*
+ * Issue intake — `/issues` (#115), from `docs/mockups/03-issues.html`.
+ *
+ * What is here is the page head: the page's gutter rhythm, the heading column, the two actions with
+ * what a press of either reports under it, and the confirmation's column. The filter bar, the
+ * table, the selection bar and the detail panel arrive with #116–#119 and add their rules below.
+ *
+ * Every length is a token or `rem`, so the font-size preference scales the head with the rest of the
+ * product (design system § 3.2), and every hue is a token, so both palettes are the token sheet's.
+ */
+
+.issues {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.issues__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+/*
+ * The floor keeps the headline from wrapping to a word a line beside the two buttons at the narrow
+ * end of the pane; the buttons drop under it instead.
+ */
+.issues__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.issues__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+/* The service's reason the counts could not be read, under the sentence that says so. */
+.issues__unread {
+  margin: var(--sp-2) 0 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's measure: one long sentence, kept to two lines on a laptop. */
+.issues__sub {
+  max-width: 64ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.issues__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-6);
+}
+
+/* One action over what its last press came back as, so the sentence sits under its own button. */
+.issues__action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+.issues__outcome {
+  max-width: 40ch;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  text-align: end;
+}
+
+.issues__outcome--err {
+  color: var(--err);
+}
+
+/* The confirmation, inside the shell's overlay panel: title, scope, note, then the two controls. */
+.issues-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.issues-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}

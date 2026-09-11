@@ -12,7 +12,7 @@ import {
   Workflow,
 } from "lucide-react";
 
-import { DASHBOARD_PATH, MODELS_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, ISSUES_PATH, MODELS_PATH } from "@/app/paths";
 
 import type { NavEntry } from "./nav";
 import { registerNavEntry } from "./nav-registry";
@@ -32,16 +32,17 @@ import { registerNavEntry } from "./nav-registry";
  * icon set is **lucide** (ISC, tree-shakable), which § 1.2 proposes and this issue records as
  * the decision.
  *
- * Every destination except the dashboard and Models is a screen that does not exist yet: the
- * placeholder routes are #49 and each real screen arrives with its own roadmap issue. Rather
- * than link to a 404, those entries are `"soon"` and render as labelled, non-interactive rows
- * — the design system's honesty rule (§ 3.5): a surface that is not ready is *labelled*,
+ * Every destination except the dashboard, Issues and Models is a screen that does not exist
+ * yet: the placeholder routes are #49 and each real screen arrives with its own roadmap issue.
+ * Rather than link to a 404, those entries are `"soon"` and render as labelled, non-interactive
+ * rows — the design system's honesty rule (§ 3.5): a surface that is not ready is *labelled*,
  * never dead. Each note names the issue that turns the row into a link, so the tooltip is a
  * usable answer to "when?" rather than the word *soon* on its own.
  *
- * **Models is the first of the nine to be answered.** #200 built `/models`, so its note has
- * become a route — which is exactly the transition each remaining note promises, and the
- * reason the notes name issues rather than saying *soon* and stopping.
+ * **Models was the first of the nine to be answered, and Issues the second.** #200 built
+ * `/models` and #115 built `/issues`, so both notes have become routes — which is exactly the
+ * transition each remaining note promises, and the reason the notes name issues rather than
+ * saying *soon* and stopping.
  */
 
 /**
@@ -66,15 +67,15 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     group: "primary",
     sort: 10,
   },
+  // Live since #115: the intake route is built (`app/(app)/issues/page.tsx`), so the row that
+  // named the issue it was waiting for is a link — the amendment #115 posted on #41, acted on.
   {
     id: "issues",
     label: "Issues",
-    route: "/issues",
+    route: ISSUES_PATH,
     icon: CircleDot,
     group: "primary",
     sort: 20,
-    status: "soon",
-    soonNote: "Issue intake arrives with #115.",
   },
   {
     id: "workflows",

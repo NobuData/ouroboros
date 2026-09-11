@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DASHBOARD_PATH, MODELS_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, ISSUES_PATH, MODELS_PATH } from "@/app/paths";
 import { focusStops } from "@/app/shell/focus-trap";
 import type { NavEntry } from "@/app/shell/nav";
 import { INBOX_BADGE_SOURCE, SEEDED_NAV_ENTRIES } from "@/app/shell/nav-modules";
@@ -182,14 +182,15 @@ describe("what the sidebar links to", () => {
   it("links only to routes that exist", () => {
     render(<SidebarNav />);
 
-    // The two screens that are built: the dashboard (#45) and Models (#200). Every other
-    // entry is a screen nobody has built, and a link to one would be a 404 in the product's
-    // primary navigation. The count is asserted too, so a third link cannot appear without
-    // somebody deciding it should.
+    // The three screens that are built: the dashboard (#45), Issues (#115) and Models (#200).
+    // Every other entry is a screen nobody has built, and a link to one would be a 404 in the
+    // product's primary navigation. The count is asserted too, so a fourth link cannot appear
+    // without somebody deciding it should.
     const links = screen.getAllByRole("link");
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       DASHBOARD_PATH,
+      ISSUES_PATH,
       MODELS_PATH,
     ]);
   });
@@ -263,12 +264,21 @@ describe("the active entry", () => {
   });
 
   it("never highlights an entry whose screen does not exist", () => {
-    // /issues is a real path in the registry and an unbuilt one in the product. Until #115
-    // lands it must not light up, or the shell claims a page that is not there.
-    path.current = "/issues";
+    // /workflows is a real path in the registry and an unbuilt one in the product. Until the
+    // workflow builder lands it must not light up, or the shell claims a page that is not there.
+    // (This case named /issues until #115 built that screen.)
+    path.current = "/workflows";
     const { container } = render(<SidebarNav />);
 
     expect(container.querySelectorAll(".shell-nav__item--active")).toHaveLength(0);
+  });
+
+  it("lights Issues on its own route, now that #115 has built the screen", () => {
+    path.current = "/issues";
+    const { container } = render(<SidebarNav />);
+
+    expect(container.querySelectorAll(".shell-nav__item--active")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Issues" })).toHaveAttribute("aria-current", "page");
   });
 });
 

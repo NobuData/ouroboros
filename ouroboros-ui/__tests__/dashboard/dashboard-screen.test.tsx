@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
+import { ISSUES_PATH } from "@/app/paths";
 import {
   ACTIVITY_NOT_READ,
   NOT_READ,
@@ -179,8 +180,9 @@ describe("the page head", () => {
 
 describe("the page head's actions", () => {
   it("offers the mockup's two, and neither of them acts", () => {
-    // Both destinations are screens nobody has built. A control that appeared to pull an
-    // issue would be the one dishonest thing on a screen built to be honest.
+    // Neither can do what its label offers yet: the workflow builder is unbuilt, and pulling an
+    // issue needs the issues screen's selection (#117, #118). A control that appeared to pull
+    // one would be the one dishonest thing on a screen built to be honest.
     const { container } = render(<DashboardScreen readings={readings()} />);
 
     const head = container.querySelector(".dash__actions");
@@ -196,19 +198,25 @@ describe("the page head's actions", () => {
   it("says why each cannot act, in a tooltip the keyboard can still reach", () => {
     // `aria-disabled` rather than `disabled`: a disabled button leaves the tab order and
     // takes its own explanation with it. Every inert control on the page is held to it, the
-    // cards' as much as the head's.
+    // cards' as much as the head's — and every explanation names the issue it is waiting for,
+    // so the tooltip answers "when?" rather than only "not now".
     render(<DashboardScreen readings={readings()} />);
 
     for (const action of screen.getAllByRole("button")) {
-      expect(action.getAttribute("title")).toMatch(/not built yet/);
+      expect(action.getAttribute("title")).toMatch(/#\d+/);
+      expect(action).toHaveAttribute("aria-disabled", "true");
       expect(action).not.toBeDisabled();
     }
   });
 
-  it("links nowhere at all, rather than to a 404", () => {
+  it("links only to a screen that exists — the issues screen, since #115 built it", () => {
+    // *All issues →* became a link on the commit that built `/issues`. Every other destination
+    // on the page is still unbuilt, and none of them is linked to a 404.
     render(<DashboardScreen readings={readings()} />);
 
-    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      ISSUES_PATH,
+    ]);
   });
 });
 

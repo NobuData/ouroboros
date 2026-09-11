@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DASHBOARD_PATH,
+  ISSUES_PATH,
   LOGIN_PATH,
   MODELS_PATH,
   PROVIDERS_PATH,
@@ -29,6 +30,14 @@ describe("the paths themselves", () => {
   it("are the two segments the application redirects between", () => {
     expect(LOGIN_PATH).toBe("/login");
     expect(DASHBOARD_PATH).toBe("/dashboard");
+  });
+
+  it("give the issues screen a segment of its own, outside the Models section (#115)", () => {
+    // The sidebar's **Issues** entry and the dashboard's *All issues →* both go here. Under
+    // `/models` it would light the wrong sidebar entry, for the reason the providers page sits
+    // under that section rather than beside it.
+    expect(ISSUES_PATH).toBe("/issues");
+    expect(ISSUES_PATH.startsWith(`${MODELS_PATH}/`)).toBe(false);
   });
 
   it("put the providers page under the Models section", () => {

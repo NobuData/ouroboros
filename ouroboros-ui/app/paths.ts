@@ -33,6 +33,17 @@ export const LOGIN_PATH = "/login";
 export const DASHBOARD_PATH = "/dashboard";
 
 /**
+ * Issue intake ([#115](https://github.com/NobuData/ouroboros/issues/115)) — mockup 03.
+ *
+ * Written down here for the reason every route in this file is: more than one module has to
+ * agree about it and none of them can import the others. The sidebar's registry entry
+ * (`app/shell/nav-modules.ts`) names it as the **Issues** destination, and the dashboard's
+ * *All issues →* (`app/dashboard/recently-closed-card.tsx`) links to it — so the card and the
+ * sidebar cannot come to disagree about where the backlog is.
+ */
+export const ISSUES_PATH = "/issues";
+
+/**
  * Model routing ([#200](https://github.com/NobuData/ouroboros/issues/200)) — mockup 06.
  *
  * Written down here for the reason every other route in this file is: three modules have to

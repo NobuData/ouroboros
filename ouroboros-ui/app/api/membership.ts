@@ -104,6 +104,33 @@ export function mayAdminister(roles: readonly Role[]): boolean {
 }
 
 /**
+ * The roles that may put work in front of a workspace's loop — everyone but `viewer`.
+ *
+ * The contract states this rule per operation rather than once — *"Queueing issues is `owner`,
+ * `admin` or `member`"* (`POST /api/v1/backlog/queue`,
+ * [#112](https://github.com/NobuData/ouroboros/issues/112)) — and a `viewer` is the role that
+ * exists to read without starting anything. This is that sentence as data, beside
+ * {@link ADMIN_ROLES}, so the screen that draws a queue button inert for a viewer and the service
+ * that would refuse the press agree about who may press it.
+ */
+export const CONTRIBUTOR_ROLES: readonly Role[] = ["owner", "admin", "member"];
+
+/**
+ * Whether a membership's roles include one that may start work — queue an issue, ask for an
+ * estimate.
+ *
+ * Errs in {@link mayAdminister}'s direction, for its reason: an empty list, or one holding only
+ * roles this installation does not recognise, is `false`, because a screen that guessed high
+ * would draw a control the service then refuses.
+ *
+ * @param roles The roles from a {@link Membership}.
+ * @returns `true` when at least one of them is `owner`, `admin` or `member`.
+ */
+export function mayContribute(roles: readonly Role[]): boolean {
+  return roles.some((role) => CONTRIBUTOR_ROLES.includes(role));
+}
+
+/**
  * The one role to name, out of the list a membership carries.
  *
  * A screen with room for a word rather than a list — the dashboard's subline — needs one,

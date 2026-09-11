@@ -16,6 +16,7 @@
 > [dashboard](#dashboard) ([#45](https://github.com/NobuData/ouroboros/issues/45)), both
 > built from the [UI primitives](#ui-primitives)
 > ([#46](https://github.com/NobuData/ouroboros/issues/46)) and, beside it,
+> [issue intake](#issue-intake) ([#115](https://github.com/NobuData/ouroboros/issues/115)),
 > [model routing](#model-routing) ([#200](https://github.com/NobuData/ouroboros/issues/200)),
 > [providers & keys](#providers--keys) ([#227](https://github.com/NobuData/ouroboros/issues/227))
 > with its [provider cards](#the-provider-cards)
@@ -27,7 +28,8 @@
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
-> those two is labelled *soon* rather than linked.
+> the three that are built — the dashboard, Issues and Models — is labelled *soon* rather than
+> linked.
 
 ## Purpose
 
@@ -875,7 +877,7 @@ test can pin.
 **Nothing in the card is a link yet.** The rows will open the run console, which is mockup 10;
 `Open run console →` and `+N more running →` will go to #49's placeholder routes. None of
 those exists, so all three are labelled with what is missing rather than pointed at a `404` —
-the same treatment the sidebar gives nine destinations, and the same reason: #49's own first
+the same treatment the sidebar gives the eight destinations nobody has built, and the same reason: #49's own first
 criterion is *no dead nav links*.
 
 ### The loop pulse: three meters, two windows, and the page's one write
@@ -980,10 +982,12 @@ written down. Nothing is re-sorted — the endpoint orders the whole table, newe
 `finishedAt`, and four rows sorted again here would come out in a different order from the
 listing that shows all of them.
 
-**Neither `All issues →` nor a `needs human` row navigates yet.** The issues screen is mockup
-03 and the needs-you inbox is mockup 16; #49 holds both routes and is post-MVP. Each is an
-inert button carrying what is missing, which is the treatment the sidebar already gives both
-destinations — and #49's own first criterion, *no dead nav links*.
+**A `needs human` row does not navigate yet.** The needs-you inbox is mockup 16 and #49 holds
+its route, which is post-MVP; the row's control is an inert button carrying what is missing,
+which is the treatment the sidebar already gives that destination — and #49's own first
+criterion, *no dead nav links*. **`All issues →` is a link** since
+[#115](https://github.com/NobuData/ouroboros/issues/115) built the [issues screen](#issue-intake),
+to the same `ISSUES_PATH` the sidebar's **Issues** entry names.
 
 ### The queue card: what the loop will do next
 
@@ -1018,11 +1022,14 @@ capped at five by the service and `stats.queued.count` speaks for the whole queu
 footer appears only when the count exceeds the rows and says exactly the remainder. It shares
 its arithmetic with the loops table's `+N more`, so two footers on one page cannot disagree.
 
-**Neither `Manage queue →` nor the footer navigates yet.** The queue screen is mockup 03 and
-#49 holds its route, which is post-MVP; both are inert buttons carrying the one reason, which
-keeps the explanation in the tab order, and both become an `href` the day #49 lands. Two
-controls pointing at one missing screen carry one sentence rather than two, because two would
-read as two missing screens.
+**Neither `Manage queue →` nor the footer navigates yet.** The [issues screen](#issue-intake)
+has been a route since #115 and is where the queue is filled, but what fills it from a
+selection — the backlog table and its selection bar — arrives with
+[#117](https://github.com/NobuData/ouroboros/issues/117) and
+[#118](https://github.com/NobuData/ouroboros/issues/118). Both are inert buttons carrying one
+reason, `QUEUEING_SOON` in [`app/dashboard/view.ts`](app/dashboard/view.ts), which keeps the
+explanation in the tab order; the page head's *⟳ Pull next issue* carries the same sentence,
+because three controls waiting on one thing should not describe it three ways.
 
 The empty state is the card's own until [#86](https://github.com/NobuData/ouroboros/issues/86)
 designs every card's together: a workspace that has caught up with its own queue reads
@@ -1110,12 +1117,13 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
   so `ollama/qwen3-coder` is rendered rather than split into a vendor and a version, and a run
   whose workflow has since been renamed still reads under the word it recorded.
 - **Both page-head actions are inert**, as are the active-loops card's two, and each says why
-  in a tooltip. Neither destination exists —
-  [#49](https://github.com/NobuData/ouroboros/issues/49) holds their place and is post-MVP —
-  and a control that appeared to pull an issue would be the one dishonest thing on the screen.
-  It is the same treatment the sidebar gives `/issues` and `/workflows`; linking them to routes
-  nobody has written would break #49's own first criterion, *no dead nav links*.
-  `aria-disabled` rather than `disabled`, so the explanation keeps its place in the tab order.
+  in a tooltip naming the issue it waits for. *Edit workflows* waits for the workflow builder,
+  whose route [#49](https://github.com/NobuData/ouroboros/issues/49) still holds; *Pull next
+  issue* waits for the issues screen's selection (#117, #118), and a control that appeared to
+  pull an issue would be the one dishonest thing on the screen. Linking either to a route that
+  cannot yet do what its label offers would break #49's own first criterion, *no dead nav
+  links*. `aria-disabled` rather than `disabled`, so the explanation keeps its place in the tab
+  order.
 - **A figure that could not be read is an em dash**, never a zero — and the reason it could
   not be read is said once, in the banner, rather than repeated under every figure.
 - **A dependency nobody could ask about is *unknown*, never green** — and the summary pill
@@ -1144,6 +1152,69 @@ is now drawn from the aggregate this page already fetches**, and
 does not draw — empty, loading and failed — across all of them at once. What is left of Epic I
 is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page fresh with the
 `ETag` poll and drives #86's freshness boundary instead of its manual retry.
+
+## Issue intake
+
+`/issues` ([#115](https://github.com/NobuData/ouroboros/issues/115)) is
+[`docs/mockups/03-issues.html`](../docs/mockups/03-issues.html)'s **frame**: the page head, its
+live counts and its two actions. It retires the `/issues` placeholder #49 was to build — never
+built, so nothing was deleted — and the sidebar's **Issues** entry became a link on the same
+commit. The filter bar, the backlog table, the selection bar, the detail panel and the designed
+states arrive with [#116](https://github.com/NobuData/ouroboros/issues/116)–[#120](https://github.com/NobuData/ouroboros/issues/120)
+and mount below the head, inside the same selection provider.
+
+```
+ISSUE INTAKE
+9 open issues. 7 already sized.                   [ Re-estimate all ] [ Queue 0 selected ⟳ ]
+Ouroboros watches the GitHub backlog and            owner/admin only    inert until the table
+continuously estimates effort, risk, and routing    → confirms "This    (#117) selects issues;
+for every open issue — before you ever ask it       re-estimates 9      a viewer's is inert
+to work.                                            issues."            for the role
+```
+
+### The sentence is the mockup's; the numbers are the service's
+
+The head reads `GET /api/v1/backlog` ([#110](https://github.com/NobuData/ouroboros/issues/110))
+through [`app/api/backlog.ts`](app/api/backlog.ts): *"`N` open issues. `M` already sized."* from
+`meta.openCount` and `meta.sizedCount`, so the seeded workspace reads **nine and seven** where the
+mockup draws 42 and 38. `__tests__/issues/view.test.ts` reads the mockup and feeds its own figures
+back in, which is how the sentence is held to the mockup while the numbers are not. A backlog that
+could not be counted says so, with the service's reason, rather than drawing zeros.
+
+**One listing, asked for `state=all`, one row long.** The two head counts are scoped by the
+workspace alone, so `state=all` leaves them where they are — and it turns `total` into every issue
+the workspace mirrors, which is exactly the set **Re-estimate all** claims from. The head's figures
+and the confirmation's count are therefore one snapshot; [`app/issues/data.ts`](app/issues/data.ts)
+has the argument.
+
+### Re-estimate all asks first, and states what it will act on
+
+`POST /api/v1/backlog/estimate-all` ([#108](https://github.com/NobuData/ouroboros/issues/108))
+spends the workspace's engine quota in one press, so the control is drawn for an **owner or admin
+only** and opens a confirmation: *"This re-estimates N issues."* N is the **mirrored** count, open
+and closed, because L.4's claim has no `state` in it — the open count would promise less than the
+press does the moment one issue closed. The answer says how many actually started (*"Re-estimating
+7 issues. 2 issues already being estimated were left alone."*), since issues already in flight are
+skipped. With nothing counted, or nothing mirrored, the button is inert with the reason and no
+dialog opens.
+
+### Queue N selected ⟳ reads a selection the table will write
+
+The label is the live count of [`app/issues/selection.tsx`](app/issues/selection.tsx)'s store — a
+provider around the screen, ordered the way the selection was built, because
+`POST /api/v1/backlog/queue` ([#112](https://github.com/NobuData/ouroboros/issues/112)) hands out
+queue positions down the list it is sent. The backlog table that writes into it is
+[#117](https://github.com/NobuData/ouroboros/issues/117); until then the count is zero and the
+button is inert, naming #117. A viewer's button is inert whatever is selected. A press sends the ids
+with no workflow — *each issue under the workflow its own estimate suggested* — and a press that took
+clears the selection and re-reads the route, while a refusal keeps it, because the write is all or
+nothing.
+
+Both actions report under their own button through one line,
+[`app/issues/head-outcome.tsx`](app/issues/head-outcome.tsx): a `status` for a press that took and an
+`alert` for a refusal. Their Server Actions, [`app/issues/head-actions.ts`](app/issues/head-actions.ts),
+refuse a forged selection that is not a list of ids before anything is sent; every other gate is the
+service's.
 
 ## Model routing
 
@@ -2127,7 +2198,7 @@ supersedes the top-bar navigation the mockups were drawn with.
 │        [Search ⌘K] [● 3 loops live] [● Needs you · 2] [🔔] [KS ▾] │  no nav links
 ├───────────────┬──────────────────────────────────────────────────┤
 │ ▦ Dashboard   │                                                  │
-│ ◉ Issues soon │   {page}                                       ░ │  ← the only
+│ ◉ Issues      │   {page}                                       ░ │  ← the only
 │ …             │                                                ░ │    scrollbar
 │ ───────────   │                                                  │
 │ ▣ Needs You   │                                                  │
@@ -2176,7 +2247,7 @@ Five things are worth knowing before adding a screen to it.
    behind, until that capability is among the set `setNavCapabilities` published; both
    publishers refuse to run outside the browser, since a module singleton on the server is
    shared by every request the process handles.
-3. **An entry links only to a route that exists.** Ten of the eleven screens are unbuilt,
+3. **An entry links only to a route that exists.** Eight of the eleven screens are unbuilt,
    so their rows render as labelled *soon* text — not links, not in the tab order, not in
    the arrow-key ring, each naming the issue that will build it (the registry refuses a
    `soon` entry that does not). Building one means dropping its `status` in the same pull
@@ -2252,7 +2323,8 @@ that finds nothing.
 ⌘K ─▶ ┌ Search screens and commands…──────────────┐
       │ NAVIGATION                                │
       │  ▸ Go to Dashboard                        │  ← ↑↓ walk these
-      │  ▸ Go to Issues       Issue intake · #115 │  ← and skip these
+      │  ▸ Go to Issues                           │
+      │  ▸ Go to Workflows    Builder · mockup 04 │  ← and skip these
       │ ACTIONS                                   │
       │  ▸ Toggle theme                   to dark │
       │  ▸ Sign out                               │
@@ -2704,6 +2776,7 @@ BetterAuth client & session store [#716](https://github.com/NobuData/ouroboros/i
 route guards & session-aware redirects [#720](https://github.com/NobuData/ouroboros/issues/720) ·
 sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
+issue intake [#115](https://github.com/NobuData/ouroboros/issues/115) ·
 model routing [#200](https://github.com/NobuData/ouroboros/issues/200) ·
 providers & keys [#227](https://github.com/NobuData/ouroboros/issues/227) ·
 provider cards [#228](https://github.com/NobuData/ouroboros/issues/228) ·

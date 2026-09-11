@@ -31,16 +31,16 @@ authority on *when* they are built.
 
 ## Progress
 
-**154 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
-are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
+**159 of 454 ordered issues are closed** — P0 through P5 are complete; P6 is in flight.
+Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
 and are accounted for in the counts below, not in the tables.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (15/23) | **20** of 31 |
+| ✅ **Complete** | P0, P1, P2, P3, P4, P5 | **142** |
+| 🟡 **In progress** | P6 (17/23) | **17** of 23 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -106,10 +106,10 @@ position is not forced by dependencies, one of these decided it.
 | **P0** | Repository foundation | ✅ **5/5** | 5 | 10 | Scaffolding |
 | **P1** | Running skeleton (`compose up`, pre-auth) | ✅ **25/25** | 25 | 57 | Scaffolding |
 | **P2** | Identity, tenancy & login page | ✅ **29/29** | 29 | 86 | Login/BetterAuth |
-| **P3** | Application shell & font scale | 🟡 5/8 | 8 | 28 | UI/UX App Shell |
+| **P3** | Application shell & font scale | ✅ **8/8** | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 15/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 17/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -121,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **150/454** | **454** | **1,404** | |
+| | **Total** | **159/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -476,11 +476,11 @@ that roadmap's "Existing issues affected" section.
 | 56 | **D.6** | ✅ [#721](https://github.com/NobuData/ouroboros/issues/721) | Signed-in session UI in the app shell | ouroboros-ui | S | 5.3, D.1 |
 | 59 | **D.4** | ✅ [#719](https://github.com/NobuData/ouroboros/issues/719) | Step 2 card — tenancy & org enablement | ouroboros-ui | L | C.4, D.3 |
 
-## P3 — The Application Shell 🟡
+## P3 — The Application Shell ✅
 
 > **8 issues** · 28 complexity points · order **#60–#67** · 4 dependency waves
 > **Source roadmaps:** `ROADMAP_UIUX_APP_SHELL.md` (Epics CP, CQ) + `DESIGN_SYSTEM_APP_SHELL.md`
-> **Status:** 🟡 **In progress** — 5 of 8 issues closed
+> **Status:** ✅ **Complete** — all 8 issues closed
 
 **Goal.** Replace the placeholder chrome with the spec'd frame: fixed header (brand, tenant, search, pills, profile menu — no nav links), registry-driven sidebar with icon+name entries and badge slots, the content pane as the sole scroll container, plus rem-based type and the five-step font scale persisted server-side with a no-flash boot.
 
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **7 issues** · 22 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157` and `158` · 12 dependency waves
+> **6 issues** · 20 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157`, `158` and `159` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 16 of 23 issues closed
+> **Status:** 🟡 **In progress** — 17 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1175,9 +1175,27 @@ that roadmap's "Existing issues affected" section.
 > case *and only that case* — which is the clause worth having, since a suite where every
 > deletion reddens everything cannot tell one mechanism from another. Neither is in the tree.
 
+> **`N.1` · [`#115`](https://github.com/NobuData/ouroboros/issues/115) has shipped, and row `159`
+> leaves the table. Epic N has opened.** `/issues` is a real screen in `ouroboros-ui` 0.52.0: the
+> page head counts the backlog through M.1's `meta` (*"9 open issues. 7 already sized."* on the
+> seeds), **Re-estimate all** is admin-visible and confirms with the number of issues it will
+> actually claim, and **Queue N selected ⟳** is inert at zero over a selection store N.3's table
+> will write. The sidebar's **Issues** entry became a link on the same commit, and three dashboard
+> controls that still said the issues screen was unbuilt were corrected with it.
+>
+> **The dialog's count is every mirrored issue, not the open count.** L.4's claim carries no `state`
+> predicate, so the head reads the listing once as `state=all&limit=1` — `meta`'s counts do not move
+> with `state`, and `total` becomes the claim's scope. 126 cases in 11 new suites.
+>
+> **This landing also corrects the counters, which had fallen four behind.** GitHub reports all
+> eight P3 issues closed — every row of its table already carried a ✅ — while its header, the
+> status table and the summary still said 5 of 8; and the status table and summary had P6 one behind
+> its own header. Re-derived from `gh issue list --state closed` rather than incremented: P3 is
+> complete, P6 is 17 of 23, and the document stands at **159 of 454** — where the summary table's
+> total had read 150 and the progress sentence 154.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 159 | **N.1** | [#115](https://github.com/NobuData/ouroboros/issues/115) | Issues route, page head & counts | ouroboros-ui | S | 5.3, D.5, M.1 |
 | 160 | **N.2** | [#116](https://github.com/NobuData/ouroboros/issues/116) | Filter bar (URL-reflected) | ouroboros-ui | M | N.1 |
 | 161 | **N.3** | [#117](https://github.com/NobuData/ouroboros/issues/117) | Backlog table with selection model | ouroboros-ui | L | N.1 |
 | 162 | **N.4** | [#118](https://github.com/NobuData/ouroboros/issues/118) | Selection action bar | ouroboros-ui | S | M.3, N.3 |
