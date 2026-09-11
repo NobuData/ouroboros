@@ -1172,7 +1172,7 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 | M.2 | #111 | 🟢 Done | ouroboros-rest: [M.2] Issue detail endpoint | Full issue + latest estimate + trace for the side panel | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
 | M.3 | #112 | 🟢 Done | ouroboros-rest: [M.3] Bulk queue action | Selection → `queue_items` with workflow tag + combined estimate | mvp, intake, rest | N (after L.3, DASH-F.2) | Y | M | ouroboros-rest |
 | M.4 | #113 | 🟢 Done | ouroboros-rest: [M.4] Sync status & manual re-sync | Freshness data + `POST /backlog/sync` trigger with guards | mvp, intake, rest | N (after K.4) | Y | S | ouroboros-rest |
-| M.5 | #114 | 🟡 Open | ouroboros-rest: [M.5] Backlog API integration tests | Filter matrix, queue writes, isolation, sync trigger | mvp, intake, rest, ci | N (after M.1–M.4) | Y | M | ouroboros-rest |
+| M.5 | #114 | 🟢 Done | ouroboros-rest: [M.5] Backlog API integration tests | Filter matrix, queue writes, isolation, sync trigger | mvp, intake, rest, ci | N (after M.1–M.4) | Y | M | ouroboros-rest |
 
 ### Issue M.1 — ouroboros-rest: [M.1] Backlog list endpoint with filters
 
@@ -1600,7 +1600,62 @@ POST /sync ─▶ 202 (running) │ 409 (already running / too soon)
 
 ### Issue M.5 — ouroboros-rest: [M.5] Backlog API integration tests
 
-> **GitHub issue:** #114 · **Status:** 🟡 Open · **Parent epic:** #96
+> **GitHub issue:** #114 · **Status:** 🟢 Done · **Parent epic:** #96
+
+> **Shipped 2026-09-11. Epic M is complete.** Two files —
+> [`ouroboros-rest/src/testing/volume.fixture.ts`](../ouroboros-rest/src/testing/volume.fixture.ts)
+> and
+> [`ouroboros-rest/src/modules/backlog/backlog-api.integration-spec.ts`](../ouroboros-rest/src/modules/backlog/backlog-api.integration-spec.ts)
+> — 54 cases, **3.8 seconds** against a sixty-second budget. `ouroboros-rest` 0.31.7, a patch:
+> nothing under `src/modules` changed and the contract is untouched, which is the shape a
+> test-only ticket should have.
+>
+> **The filter matrix and the isolation sweep are the same thirty cases, and that is the
+> ticket's one real decision.** Written as two suites they are thirty cases and thirty more, and
+> the second thirty are the ones that quietly stop covering the first thirty's parameters the
+> day a case is added to one and not the other. So the arrangement seeds **two** workspaces with
+> the *identical* generated population — the same numbers, titles and labels — and every case
+> asserts the rows and their order, the two head counts, the chip set, and that **every row id
+> returned belongs to the workspace that asked**. The identical seeds are what make that last
+> assertion sharp: a number cannot tell one backlog's `#1005` from the other's, and a count
+> cannot catch a swap. `github_issues.id` can.
+>
+> **The expected answer is computed, never recorded.** A matrix written the usual way — a table
+> of `{query, expectedNumbers}` — is a second copy of the answer that gets filled in from a run,
+> so a wrong answer becomes the expectation and a one-row change to the fixture invalidates every
+> cell. `volume.fixture.ts` instead carries the population *and* a plain array-filter restatement
+> of the endpoint's rules, and each case derives its expectation by running it. The two agreeing
+> is worth something precisely because one is SQL over GIN indexes and a lateral and the other is
+> `Array.prototype.filter`.
+>
+> **The population is arithmetic, and the moduli are the design.** A hundred and twenty issues in
+> the primary repository and forty in a second, every attribute a function of the row's index
+> through a different modulus — kind by 3, area by 4, state by 4, sizing status by 10, effort by
+> 5, the two extra chips by 5 and 7. Co-prime strides are what make `?labels=bug,priority-high`
+> one issue in twenty-one rather than one in three, which is the difference an AND written as an
+> OR would otherwise hide. Every twentieth issue is estimated twice with **every visible field
+> differing between the versions**, so a join that took an arbitrary row answers wrongly about
+> half the time rather than never. Two adjacent titles carry `100% duty cycle` and `100 ms`, which
+> is the only arrangement from which `q=100%` finding one and not the other means anything.
+>
+> **Both negative checks were performed deliberately, once, and reverted.** Dropping
+> `where organization_id = …` from `BacklogListingRepository.scope` turned **32 of the 54 red**,
+> including the foreign-repository cell and the neighbour's own read. Replacing the queue's one
+> transaction and multi-row insert with per-row inserts on the plain connection left **20
+> orphaned rows** where the rollback case expects zero, and turned that case and only that case
+> red. Neither is in the tree; this note is the record that they were run.
+>
+> *(One correction to the scope below, and it is narrower than it looks. The ticket asks for
+> "sync debounce" as one item; it is written here as **two** tests, because the endpoint has two
+> guards that answer differently — `backlog_sync_running` for a cycle in flight and
+> `backlog_sync_too_soon` with a countdown for the minimum interval — and a single test would
+> collect whichever one the race happened to produce. The in-flight case holds GitHub's answer
+> open behind a gate so that "a cycle is running" is a fact rather than a timing.)*
+>
+> What M.5 leaves for **N.1 (#115)**–**N.7 (#121)**: the API under the intake UI is now asserted
+> at volume rather than at nine rows, so a UI ticket that finds the wrong rows on screen can
+> start from its own component. `volume.fixture.ts` is also the population an e2e leg would seed
+> if N.7 wants a backlog that pages.
 
 - **Problem Statement:** The filter matrix, transactional queue writes, and
   org isolation are the regressions users would hit first.
