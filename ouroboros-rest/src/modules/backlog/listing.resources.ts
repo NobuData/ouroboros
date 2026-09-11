@@ -20,6 +20,15 @@
  * ([#117](https://github.com/NobuData/ouroboros/issues/117))'s unsized row is one branch on one
  * field.
  *
+ * **A fifth field joined the four with N.4** ([#118](https://github.com/NobuData/ouroboros/issues/118)):
+ * {@link BacklogEstimate.estMinutes}, the breakdown's `est_minutes`. The selection action bar
+ * sums it client-side over the rows a person ticked — *"est. 2h 5m combined autonomous work"*
+ * — and the intake roadmap left N.4 the choice between asking M.2 for every selected issue and
+ * asking this listing for one more number. It is one number the queue write already copies,
+ * V026's grammar makes it present on every estimate, and a bar that fetched a panel per row to
+ * add three integers would be paying the panel's price for the listing's job. The rest of the
+ * breakdown stays the panel's.
+ *
  * ## The status pill is two facts, not one
  *
  * M.3 ([#112](https://github.com/NobuData/ouroboros/issues/112)) added {@link BacklogRow.queued}
@@ -62,6 +71,11 @@ export interface BacklogEstimate {
   readonly suggestedWorkflow: string;
   /** The *Routed model* pill. Opaque (decision **K6**), and resolved rather than invoked. */
   readonly routedModel: string;
+  /**
+   * The breakdown's `est_minutes` — the single number the queue plans with, and the one the
+   * selection action bar sums for *"est. 2h 5m combined"* (see this file's header).
+   */
+  readonly estMinutes: number;
 }
 
 /** One row of `BACKLOG · AS OUROBOROS SEES IT`. */
@@ -178,10 +192,10 @@ export interface BacklogListing extends Page<BacklogRow> {
  *
  * A pure function over what the statement returned, for `dashboard/resources.ts`' reason: the
  * mapping is the contract, and a contract worth testing is worth testing without a database.
- * The four estimate columns collapse into one object here and nowhere else, so *"an issue has
+ * The five estimate columns collapse into one object here and nowhere else, so *"an issue has
  * an estimate or it has none"* is asserted in a single place.
  *
- * @param row - The joined issue and its latest estimate, or four nulls where there is none.
+ * @param row - The joined issue and its latest estimate, or five nulls where there is none.
  * @param queued - Whether the run queue holds this issue, decided by `listing.service.ts` from
  *   a read of `queue_items` rather than from anything on the row — the queue is a different
  *   table, and a column here would be a copy of it that goes stale.
@@ -205,26 +219,28 @@ export function backlogRow(row: BacklogListRow, queued: boolean): BacklogRow {
 /**
  * The estimate in force, or `null` for an issue that has none.
  *
- * All four columns are tested rather than one. They are null **together** — the lateral either
- * matched a row, and V026 makes every one of these columns `not null`, or it matched nothing —
- * so any single test would be enough at run time. Testing the four is what lets the returned
- * object be built from narrowed values instead of from a cast or from invented defaults, and a
- * fallback like `confidence ?? 0` would be this file publishing a number no estimator produced.
+ * All five columns are tested rather than one. They are null **together** — the lateral either
+ * matched a row, and V026 makes every one of these columns `not null` and the breakdown's
+ * `est_minutes` present, or it matched nothing — so any single test would be enough at run
+ * time. Testing the five is what lets the returned object be built from narrowed values instead
+ * of from a cast or from invented defaults, and a fallback like `confidence ?? 0` would be this
+ * file publishing a number no estimator produced.
  *
  * @param row - The joined row.
- * @returns The four fields as one object, or `null`.
+ * @returns The five fields as one object, or `null`.
  */
 function estimateOf(row: BacklogListRow): BacklogEstimate | null {
-  const { effort, confidence, suggestedWorkflow, routedModel } = row;
+  const { effort, confidence, suggestedWorkflow, routedModel, estMinutes } = row;
 
   if (
     effort === null ||
     confidence === null ||
     suggestedWorkflow === null ||
-    routedModel === null
+    routedModel === null ||
+    estMinutes === null
   ) {
     return null;
   }
 
-  return { effort, confidence, suggestedWorkflow, routedModel };
+  return { effort, confidence, suggestedWorkflow, routedModel, estMinutes };
 }

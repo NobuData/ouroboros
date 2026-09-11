@@ -123,6 +123,19 @@ describe("the backlog listing repository", () => {
       );
     });
 
+    it("reads the breakdown's est_minutes inside the same lateral, as one whole number", async () => {
+      // N.4 (#118) sums it across a selection; one key out of the document, cast the way the
+      // queue write reads it for the copy, so the listing and the queue row cannot disagree.
+      await backlog.list(WORKSPACE, OPEN, "effort", WINDOW);
+
+      const { sql } = database.statements[0];
+
+      expect(sql).toContain(
+        `("ouroboros"."issue_estimates"."breakdown"->>'est_minutes')::int as "estMinutes"`,
+      );
+      expect(sql).toContain('"estimate"."estMinutes" as "estMinutes"');
+    });
+
     it("keeps an unestimated issue, because the table draws one", async () => {
       // `left`, not `inner`: `unsized` and `estimating` are two of the four status pills.
       await backlog.list(WORKSPACE, OPEN, "effort", WINDOW);
@@ -166,6 +179,7 @@ describe("the backlog listing repository", () => {
             confidence: 92,
             suggestedWorkflow: "standard-fix",
             routedModel: "claude-fable-5",
+            estMinutes: 45,
           },
         ],
       });
@@ -175,6 +189,7 @@ describe("the backlog listing repository", () => {
       expect(row.number).toBe(485);
       expect(row.repository).toBe("acme-robotics/helios-firmware");
       expect(row.effort).toBe("m");
+      expect(row.estMinutes).toBe(45);
     });
   });
 

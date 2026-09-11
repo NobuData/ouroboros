@@ -2027,8 +2027,8 @@ filtering, sorting and searching are server-side rather than an array filter ove
 
 ```
 GET /api/v1/backlog?repo=&labels=&state=&sort=&q=&limit=&offset=      any member
-  ─▶ items[]      one row per issue: number, title, labels, state, sizingStatus,
-                  repository, and estimate{effort, confidence, workflow, model} | null
+  ─▶ items[]      one row per issue: number, title, labels, state, sizingStatus, queued,
+                  repository, and estimate{effort, confidence, workflow, model, estMinutes} | null
      total        how many rows the filter matched
      meta         { openCount, sizedCount, syncedAt }   the page head and the freshness tag
      labelFacets  every label in scope, ascending       the chip set
