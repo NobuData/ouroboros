@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and four amended in since:
+deployment. Five legs from the issue, and six amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -28,6 +28,7 @@ deployment. Five legs from the issue, and four amended in since:
 | 8 | [`specs/readability.spec.ts`](specs/readability.spec.ts) | Whether the product is still usable at the top of the font-size range: {100%, 125%, 150%} × both palettes × the dense pages, diffed; and the four things at 150% a screenshot review cannot see — pane-level scroll, clipped labels, chrome over chrome, AA contrast |
 | 9 | [`specs/routing.spec.ts`](specs/routing.spec.ts) | Mockup 06 against four seeded tables and the resolution engine: a chain reordered, saved and re-read; a rule switched off changing what the simulator answers; a floor turning a degradable run into a designed failure; and a member served the page read-only |
 | 10 | [`specs/providers.spec.ts`](specs/providers.spec.ts) | Mockup 07's credential lifecycle across four layers: a key the provider refuses connecting **no** card; a rotation that failed leaving the old key *still working*, proved by testing it; a reveal shown, recorded and masked again; a pull whose progress survives a reload; and a provider that really goes away |
+| 11 | [`specs/issues.spec.ts`](specs/issues.spec.ts) | Mockup 03 against the intake seed: a selection refused by name and then queued, with the *dashboard page* moving by exactly one row's worth; a press of **Re-estimate** that really goes through the engine and comes back as a new version the panel draws without a reload; the filter bar's address reloaded into the identical view; and the personal workspace's guidance |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -232,7 +233,10 @@ leg 9 ([#206](https://github.com/NobuData/ouroboros/issues/206)) —
 the seed in the middle of a suite — and, since leg 10
 ([#233](https://github.com/NobuData/ouroboros/issues/233)), one more service:
 `provider-stub`, the model host that answers so that a provider can actually be connected.
-That file argues both in full. Between #703 and #647 the
+That file argues both in full. Leg 11 ([#121](https://github.com/NobuData/ouroboros/issues/121)) added the fourth
+line — `OURO_ESTIMATION_STALE_SECONDS=86400`, which keeps L.3's recovery sweep from
+re-sizing the seed's own `estimating…` row ten minutes into a stack; that file argues it
+beside the health sweep's. Between #703 and #647 the
 signed-in legs were **parked** under `test.fixme` — `support/session.ts` § *The parking,
 and what ended it* is that history.
 
@@ -250,13 +254,14 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9 and 10's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10 and 11's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
 │   ├── dashboard.ts            # what mockup 02 renders against those values (leg 6)
 │   ├── routing.ts              # what mockup 06 renders, and putting a route or a rule back (leg 9)
 │   ├── providers.ts            # what mockup 07 renders, the stub's keys, and removing what leg 10 connects
+│   ├── issues.ts               # what mockup 03 renders against the intake seed, and what each flow leaves behind (leg 11)
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
@@ -334,10 +339,12 @@ explains.
 Leg 8 adds twelve more under `specs/__screenshots__/readability/`, named
 `<page>-<scale>-<theme>-chromium-linux.png`. Same rules, one more axis.
 
-Legs 9 and 10 add a pair each, taken through a **larger window** than the suite's Desktop
-Chrome: `PARITY_WINDOW` in [`specs/routing.spec.ts`](specs/routing.spec.ts) is 1920 × 2200 and
-[`specs/providers.spec.ts`](specs/providers.spec.ts)'s is 1920 × 1800,
-and that file says why. The short version is that the shell's pane is the only scroll
+Legs 9, 10 and 11 add pairs, taken through a **larger window** than the suite's Desktop
+Chrome: `PARITY_WINDOW` in [`specs/routing.spec.ts`](specs/routing.spec.ts) is 1920 × 2200,
+[`specs/providers.spec.ts`](specs/providers.spec.ts)'s is 1920 × 1800 and
+[`specs/issues.spec.ts`](specs/issues.spec.ts)'s is 1920 × 1700 — two pairs there, the seeded
+backlog with `#485` checked and open, and the personal workspace's guidance —
+and the routing file says why. The short version is that the shell's pane is the only scroll
 container, so an element screenshot of a `<main>` taller than the viewport cannot reveal what
 is below the fold — it records the tail as bare ground, which is how the first recording of
 this pair lost two of the five cards it was meant to be comparing. Giving the window the
@@ -378,9 +385,20 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9 and 10's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
---update-snapshots` — or `specs/routing.spec.ts`, or `specs/providers.spec.ts` — at step 2.
-The precondition is the same, and it is the same seed.
+Legs 6, 9, 10 and 11's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+--update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts` or
+`specs/issues.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
+
+**Leg 11 makes the fresh volume a precondition of a green run, not only of a recording.**
+Two of its writes have no undo on the API — the queue row it creates (`GET /api/v1/queue`
+is deliberately read-only) and the estimate version it produces (versions are append-only)
+— and the tenants leg's rule applies: the leg does not pretend to clean up. The version is
+made harmless by choice of issue (`support/issues.ts` § re-estimate: the rule engine
+reproduces `#487`'s seeded row, so the table's parity survives it); the queue row cannot be.
+A second run against the same volume finds `#484` already queued and the dashboard's
+*Queued issues* at thirteen, and both that leg and leg 6 are red at parity **by design**
+until `docker compose down -v`. `scripts/run.sh` keeps the volume on purpose (its header
+says why), so a developer re-running it starts with step 1 above; CI always starts cold.
 
 Leg 10's pair masks one thing, and it is worth knowing why before re-recording: each card's
 meta row ends in a **relative** time. `R__dev_seed_providers.sql` writes `last_used_at` as
@@ -410,8 +428,8 @@ volume and produced a dashboard reading zeroes.
 
 This suite is scheduled to grow. Every mockup roadmap amends a leg into
 [#56](https://github.com/NobuData/ouroboros/issues/56) — the dashboard leg in
-[#88](https://github.com/NobuData/ouroboros/issues/88) is the first and has landed, issues
-follow in [#121](https://github.com/NobuData/ouroboros/issues/121), the studio in
+[#88](https://github.com/NobuData/ouroboros/issues/88) was the first, the issues leg in
+[#121](https://github.com/NobuData/ouroboros/issues/121) the latest, the studio follows in
 [#154](https://github.com/NobuData/ouroboros/issues/154), and a dozen more — each with a
 stated runtime budget of its own. Two rules keep that from becoming a suite nobody can run:
 
@@ -454,3 +472,8 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#233](https://github.com/NobuData/ouroboros/issues/233) — leg 10, providers, and the mockup 07 roadmap's MVP gate
 - [#221](https://github.com/NobuData/ouroboros/issues/221) — the providers seed leg 10 asserts against
 - [#223](https://github.com/NobuData/ouroboros/issues/223) — the credential lifecycle leg 10 certifies end to end
+- [#121](https://github.com/NobuData/ouroboros/issues/121) — leg 11, issues, and the mockup 03 roadmap's MVP gate
+- [#103](https://github.com/NobuData/ouroboros/issues/103) — the intake seed leg 11 asserts against
+- [#112](https://github.com/NobuData/ouroboros/issues/112) — the queue write leg 11 follows onto the dashboard
+- [#108](https://github.com/NobuData/ouroboros/issues/108) — the re-estimation leg 11 drives through the engine
+- [#107](https://github.com/NobuData/ouroboros/issues/107) — the recovery sweep leg 11 asks the stack to hold still

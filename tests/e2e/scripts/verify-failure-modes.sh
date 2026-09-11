@@ -28,6 +28,32 @@
 #                                 out of the database rather than out of the mockup (#233)
 #   provider-  providers.spec.ts  the add flow really asks a provider, and the credential
 #   stub                          lifecycle really talks to one (#233)
+#   db        issues.spec.ts      the issues screen's head, rows, panel and refusals come
+#                                 out of the backlog tables rather than out of the mockup
+#                                 (#121)
+#   engine    issues.spec.ts      a press of Re-estimate really goes through the engine:
+#                                 with it stopped the orchestrator writes `needs_human`
+#                                 and no new version, and the panel says so (#121)
+#
+# ## The issues pairs, and the service each one takes down (#121)
+#
+# The ticket asks for each leg to fail "when its service is broken — spot-verified once per
+# service", and the intake flow crosses three: the page, the API over its tables, and the
+# estimation pipeline through the engine. The page is the `ui` pairs above — the issues leg is
+# served by the same container as the shell and signed in through the same rest, so a third
+# `ui` pair would prove what two already do. The other two are registered here.
+#
+# The `engine` pair is the interesting one, and the only pair in this table that is not a
+# whole leg going red at its first step. With the engine stopped, sign-in, the listing, the
+# filter round trip, the queue write and the dashboard read all still work — none of them
+# asks the engine anything — so fifteen of the leg's sixteen tests stay green, and the one
+# that presses **Re-estimate** goes red *for the reason the engine matters*: the orchestrator
+# tries twice, gets a refused connection twice, moves the issue to `needs_human` with the old
+# version still in force, and the panel's pill reads `needs human` where the leg requires
+# `sized`. The marker below is that pill, which the assertion's own message names so the log
+# says which layer broke rather than that a timeout elapsed. A leg whose estimate landed
+# `sized` with the engine gone would be a leg estimating in `rest`, which is exactly the
+# architecture decision K7 forbids and nothing else in the repository can see.
 #
 # ## The routing pair, and the three breakages its ticket asks for
 #
@@ -312,6 +338,20 @@ expect_red db providers.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 # created, and `support/providers.ts` fails by name. See the header on why only the first tests
 # go red.
 expect_red provider-stub providers.spec.ts "connecting the .* stub as"
+
+# The issues leg (#121), against the layer its head, its rows, its panel and its refusals all
+# come out of. *9 open issues. 7 already sized.* is two counts over `github_issues`, every cell
+# is a latest-wins join onto `issue_estimates`, and *Nothing was queued* names its offenders
+# from `queue_items` — so a page that still drew mockup 03 with the database stopped would be a
+# page drawing the artwork.
+#
+# `db` rather than `rest` for the reason every pair above uses it, and the leg breaks at its
+# first step for the reason the dashboard's does: a session is a row.
+expect_red db issues.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# …and the same leg against the engine. See the header: only the re-estimate test goes red,
+# and it goes red with the pill the orchestrator writes when the engine does not answer.
+expect_red engine issues.spec.ts "needs human"
 
 printf '\n'
 if check_summary; then
