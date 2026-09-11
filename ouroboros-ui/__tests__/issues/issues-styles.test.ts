@@ -222,6 +222,59 @@ describe("the grid and the detail panel (#119)", () => {
   });
 });
 
+describe("the states the mockup does not show (#120)", () => {
+  it("places the sync banner and leaves its box to the primitive", () => {
+    // DASH-I.7's box — the warn tint, the hairline, the headline's weight — is `.ou-retry`'s;
+    // the page adds the gap to the rows and nothing of its own.
+    const banner = rule("\\.issues-sync");
+
+    expect(banner).toMatch(/margin-bottom: var\(--sp-\d+\)/);
+    expect(banner).not.toMatch(/color|background|border|box-shadow|position/);
+    expect(CODE).not.toMatch(/\.issues-sync__(?:text|headline|reason)/);
+  });
+
+  it("draws the first sync's progress and the bar's pending line in the muted ink, never the error hue", () => {
+    expect(rule("\\.issues-sync__progress")).toContain("color: var(--ink-mut)");
+    expect(rule("\\.issues-filter__pending")).toContain("color: var(--ink-mut)");
+  });
+
+  it("gives every guidance state one floor, so a state change does not move the page", () => {
+    expect(rule("\\.issues-guidance")).toMatch(/min-height: [\d.]+rem/);
+  });
+
+  it("draws the member's sentence in the muted ink and the clear state's mark in the good hue", () => {
+    expect(rule("\\.issues-guidance__note")).toContain("color: var(--ink-mut)");
+    expect(rule("\\.issues-guidance__mark")).toContain("color: var(--ok)");
+  });
+
+  it("rules the skeleton's rows off at the table's own rhythm, with the checkbox column's width first", () => {
+    const row = rule("\\.issues-skeleton__row");
+
+    expect(row).toMatch(/grid-template-columns: 2\.125rem /);
+    expect(row).toMatch(/padding: var\(--sp-6\) 0/);
+    expect(row).toMatch(/border-block-end: [\d.]+rem solid var\(--line\)/);
+    expect(rule("\\.issues-skeleton__row:last-child")).toContain("border-block-end: 0");
+    expect(rule("\\.issues-table__check")).toContain("width: 2.125rem");
+  });
+
+  it("draws the skeleton's bars on the raised surface and the panel's seat on the inset well", () => {
+    for (const bar of ["bar", "action", "select", "chip", "search", "head", "check", "tag", "pill"]) {
+      expect(rule(`\\.issues-skeleton__${bar}`), bar).toContain("background: var(--raised)");
+    }
+    expect(rule("\\.issues-skeleton__panel")).toContain("background: var(--inset)");
+    expect(rule("\\.issues-skeleton__panel")).toMatch(/border: [\d.]+rem dashed var\(--line-strong\)/);
+  });
+
+  it("pulses the page skeleton and the first-sync state under the panel skeleton's own guard", () => {
+    const guard = CODE.slice(CODE.lastIndexOf("@media (prefers-reduced-motion: no-preference)"));
+
+    for (const pulsed of ["issues-skeleton__bar", "issues-skeleton__pill", "issues-guidance--busy"]) {
+      expect(guard, pulsed).toContain(`.${pulsed}`);
+    }
+    expect(CODE.match(/@keyframes issues-skeleton-pulse/g)).toHaveLength(1);
+  });
+});
+
 describe("the shell it mounts in", () => {
   it("holds nothing fixed or sticky, because the pane is the only scroll container", () => {
     expect(CODE).not.toMatch(/position:\s*(?:fixed|sticky)/);

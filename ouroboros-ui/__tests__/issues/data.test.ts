@@ -6,19 +6,19 @@ import { ApiError } from "@/app/api/errors";
 import { DEFAULT_FILTER } from "@/app/issues/filter";
 import { PAGE_SIZE } from "@/app/issues/paging";
 
-import { ATLAS, HELIOS, READ_AT, SEEDED_FACETS, backlogListing } from "../helpers/issues";
+import { ATLAS, HELIOS, READ_AT, SEEDED_FACETS, SYNCED, backlogListing } from "../helpers/issues";
 import { TENANT_ID, enablement, membership, org, repo, sessionUser } from "../helpers/login";
 
 /**
- * The intake page's reader (#115, #116).
+ * The intake page's reader (#115, #116, #120).
  *
- * Three reads issued together, and the suite is about what each is for and how each fails alone:
+ * Four reads issued together, and the suite is about what each is for and how each fails alone:
  * the **view** is asked with the filter bar's query and is where the head's two counts and the chip
  * set come from; the **scope** is asked as `state=all` and is where the confirmation's mirrored
- * count comes from, whatever the bar says; the **enablement** list fills the repository select. A
- * refused read is a value rather than a throw, and anything that is not a refusal keeps travelling,
- * which is what keeps a session that expired mid-render from being drawn as an uncounted backlog
- * instead of reaching the login screen.
+ * count comes from, whatever the bar says; the **enablement** list fills the repository select; the
+ * **status** is M.4's, for the guidance and the banner. A refused read is a value rather than a
+ * throw, and anything that is not a refusal keeps travelling, which is what keeps a session that
+ * expired mid-render from being drawn as an uncounted backlog instead of reaching the login screen.
  */
 
 vi.mock("server-only", () => ({}));
@@ -26,10 +26,15 @@ vi.mock("server-only", () => ({}));
 /** What the listing answers each query with, or the signal it throws instead. */
 const list = vi.fn();
 
+/** What the status read answers with. */
+const status = vi.fn();
+
 /** What the enablement read answers with. */
 const readEnablement = vi.fn();
 
-vi.mock("@/app/api/backlog", () => ({ backlog: { list: (query: unknown) => list(query) } }));
+vi.mock("@/app/api/backlog", () => ({
+  backlog: { list: (query: unknown) => list(query), status: () => status() },
+}));
 vi.mock("@/app/api/enablement", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/api/enablement")>()),
   readEnablement: (tenantId: string) => readEnablement(tenantId),
@@ -78,6 +83,7 @@ function answer(view: unknown, scope: unknown): void {
 
 beforeEach(() => {
   list.mockReset().mockResolvedValue(backlogListing());
+  status.mockReset().mockResolvedValue(SYNCED.ok ? SYNCED.value : undefined);
   readEnablement.mockReset().mockResolvedValue(ENABLEMENT);
 });
 
@@ -119,15 +125,22 @@ describe("what is asked", () => {
 
     expect(readEnablement).toHaveBeenCalledExactlyOnceWith(TENANT_ID);
   });
+
+  it("asks for the sync's status, once, beside the rest (#120)", async () => {
+    await readIssues(ACCESS, DEFAULT_FILTER);
+
+    expect(status).toHaveBeenCalledOnce();
+  });
 });
 
 describe("reading the seeded workspace", () => {
-  it("reads nine open, seven sized, nine mirrored, the four labels, the two enabled repositories and the page", async () => {
+  it("reads nine open, seven sized, nine mirrored, the four labels, the two enabled repositories, the page and the status", async () => {
     expect(await readIssues(ACCESS, DEFAULT_FILTER, 1, () => READ_AT)).toEqual({
       counts: { ok: true, value: { openCount: 9, sizedCount: 7, mirroredCount: 9 } },
       facets: { ok: true, value: SEEDED_FACETS },
       repos: { ok: true, value: [HELIOS, ATLAS] },
       listing: { ok: true, value: backlogListing() },
+      sync: SYNCED,
       readAt: READ_AT,
     });
   });
@@ -194,6 +207,15 @@ describe("one read failing", () => {
       ok: true,
       value: { openCount: 9, sizedCount: 7, mirroredCount: 9 },
     });
+  });
+
+  it("keeps a refused status as the banner's reason, and still draws the page (#120)", async () => {
+    status.mockRejectedValue(new ApiError(503, "unavailable", "Not now."));
+
+    const readings = await readIssues(ACCESS, DEFAULT_FILTER);
+
+    expect(readings.sync).toEqual({ ok: false, reason: "Not now." });
+    expect(readings.listing).toEqual({ ok: true, value: backlogListing() });
   });
 });
 

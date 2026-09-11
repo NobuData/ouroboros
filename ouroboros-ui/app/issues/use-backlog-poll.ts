@@ -1,9 +1,8 @@
 "use client";
 
-import type { BacklogListing } from "@/app/api/backlog";
 import type { PollSnapshot } from "@/app/poll";
 
-import { type BacklogPollOptions, createBacklogPoll } from "./backlog-poll";
+import { type BacklogPage, type BacklogPollOptions, createBacklogPoll } from "./backlog-poll";
 import { useKeyedPoll } from "./use-keyed-poll";
 
 /**
@@ -18,6 +17,10 @@ import { useKeyedPoll } from "./use-keyed-poll";
  * new loop's first answer the table draws what the server rendered for the new address — which
  * is exactly the view the reader asked for.
  *
+ * What one answer carries is the page *and* the sync's status
+ * ([#120](https://github.com/NobuData/ouroboros/issues/120)), read together, so the banner
+ * over the rows moves with the rows.
+ *
  * @param url The address to poll — `backlogUrl`'s answer for the view on screen.
  * @param options Test seams, read on the renders that build a poll; production passes none.
  * @returns The latest answer, and the way to ask now.
@@ -25,6 +28,6 @@ import { useKeyedPoll } from "./use-keyed-poll";
 export function useBacklogPoll(
   url: string,
   options?: BacklogPollOptions,
-): { readonly snapshot: PollSnapshot<BacklogListing>; readonly refresh: () => void } {
+): { readonly snapshot: PollSnapshot<BacklogPage>; readonly refresh: () => void } {
   return useKeyedPoll(url, (address) => createBacklogPoll(address, options));
 }

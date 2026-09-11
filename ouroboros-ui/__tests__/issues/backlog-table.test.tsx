@@ -1,10 +1,29 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BacklogListing } from "@/app/api/backlog";
+import type { BacklogListing, SyncStatus } from "@/app/api/backlog";
+import type { Reading } from "@/app/api/reading";
 import { requestSummaryRefresh } from "@/app/dashboard/summary-refresh";
-import { UNREACHABLE_BACKLOG } from "@/app/issues/backlog-poll";
+import { type BacklogPage, UNREACHABLE_BACKLOG } from "@/app/issues/backlog-poll";
+import { onClearFilters } from "@/app/issues/clear-filters";
 import { type BacklogFilter, DEFAULT_FILTER } from "@/app/issues/filter";
+import {
+  CHECKING_LABEL,
+  CHECK_AGAIN_LABEL,
+  CHOOSE_REPOS_LABEL,
+  CLEAR_FILTERS_LABEL,
+  CLEAR_TITLE,
+  FIRST_SYNC_TITLE,
+  NO_REPOS_MEMBER_NOTE,
+  NO_REPOS_TITLE,
+  NO_TOKEN_MEMBER_NOTE,
+  NO_TOKEN_TITLE,
+  OPEN_SETTINGS_LABEL,
+  OPEN_SETTINGS_SOON,
+  PAUSE_HEADLINE,
+  SYNC_UNREAD_HEADLINE,
+  firstSyncProgress,
+} from "@/app/issues/states";
 import {
   FIRST_PAGE_LABEL,
   FIRST_PAGE_REASON,
@@ -35,14 +54,22 @@ import { DEFAULT_POLL_SECONDS, type PollAnswer } from "@/app/poll";
 
 import {
   ESTIMATING_ROW,
+  PAUSE_MESSAGES,
   READ_AT,
   SEEDED_ROWS,
+  SEEDED_SYNCED_AT,
+  SYNCED,
   UNCOUNTED_REASON,
   UNPAGED,
+  UNSYNCED,
+  UNSYNCED_REASON,
   backlogListing,
   issueId,
   paged,
+  paused,
+  synced,
 } from "../helpers/issues";
+import { membership } from "../helpers/login";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { settle } from "../helpers/settle";
 
@@ -77,13 +104,13 @@ const { QueueSelectedButton } = await import("@/app/issues/queue-selected");
 const { IssueSelectionProvider, useSeenRows } = await import("@/app/issues/selection");
 
 /** The reader's queue, per case: each ask takes the next answer, the last repeating. */
-let answers: PollAnswer<BacklogListing>[] = [];
+let answers: PollAnswer<BacklogPage>[] = [];
 
 /** How many times the reader was asked. */
 let asks = 0;
 
 /** A reader that never answers, for the cases about what the server rendered. */
-const NEVER: PollAnswer<BacklogListing>[] = [];
+const NEVER: PollAnswer<BacklogPage>[] = [];
 
 /**
  * The poll's seam: answers from the queue, or a promise that never settles once it is empty.
@@ -95,19 +122,28 @@ function poll() {
     read: () => {
       asks += 1;
       const answer = answers[Math.min(asks - 1, answers.length - 1)];
-      return answer === undefined ? new Promise<PollAnswer<BacklogListing>>(() => {}) : Promise.resolve(answer);
+      return answer === undefined ? new Promise<PollAnswer<BacklogPage>>(() => {}) : Promise.resolve(answer);
     },
     visible: () => true,
   };
 }
 
-/** A fresh answer carrying a listing. */
-function fresh(listing: BacklogListing): PollAnswer<BacklogListing> {
-  return { state: "fresh", payload: listing, etag: null, pollAfterSeconds: null };
+/**
+ * A fresh answer carrying a listing, and the status beside it.
+ *
+ * @param listing The page's listing.
+ * @param sync The status reading. Defaults to the seeded loop between cycles.
+ * @returns The answer.
+ */
+function fresh(listing: BacklogListing, sync: Reading<SyncStatus> = SYNCED): PollAnswer<BacklogPage> {
+  return { state: "fresh", payload: { listing, sync }, etag: null, pollAfterSeconds: null };
 }
 
 /** The table's props, with the seeded page unless a case says otherwise. */
 type Props = Parameters<typeof BacklogTable>[0];
+
+/** The seeded workspace's slug, for the guidance's link. */
+const SLUG = membership().slug;
 
 /**
  * The table beside the head's queue button, inside one provider — the shape the screen has.
@@ -122,14 +158,22 @@ function table(over: Partial<Props> = {}) {
       <BacklogTable
         filter={DEFAULT_FILTER}
         listing={paged()}
+        mayAdminister
         mayContribute
         page={1}
         poll={poll()}
         readAt={READ_AT}
+        sync={SYNCED}
+        workspaceSlug={SLUG}
         {...over}
       />
     </IssueSelectionProvider>
   );
+}
+
+/** A listing with no rows, in a scope that has nothing open — the empty workspace. */
+function nothing(): Reading<BacklogListing> {
+  return paged({ items: [], total: 0, openCount: 0, sizedCount: 0 });
 }
 
 /**
@@ -476,6 +520,17 @@ describe("the freshness tag", () => {
 
     expect(tag()).toHaveTextContent("never synced");
   });
+
+  it("reads syncing while the status says a cycle is in flight, and takes no press it would refuse (#120)", async () => {
+    await mounted({ sync: synced({ running: true }) });
+
+    expect(tag()).toHaveTextContent(SYNCING);
+    expect(tag()).toHaveAttribute("aria-busy", "true");
+
+    fireEvent.click(tag());
+
+    expect(syncBacklog).not.toHaveBeenCalled();
+  });
 });
 
 describe("the seen rows (#118)", () => {
@@ -494,7 +549,17 @@ describe("the seen rows (#118)", () => {
     answers = [fresh(backlogListing()), fresh(sizedListing())];
     render(
       <IssueSelectionProvider>
-        <BacklogTable filter={DEFAULT_FILTER} listing={paged()} mayContribute page={1} poll={poll()} readAt={READ_AT} />
+        <BacklogTable
+          filter={DEFAULT_FILTER}
+          listing={paged()}
+          mayAdminister
+          mayContribute
+          page={1}
+          poll={poll()}
+          readAt={READ_AT}
+          sync={SYNCED}
+          workspaceSlug={SLUG}
+        />
         <SeenProbe />
       </IssueSelectionProvider>,
     );
@@ -606,10 +671,17 @@ describe("a page with no rows", () => {
     expect(screen.queryByRole("navigation", { name: PAGES_LABEL })).toBeNull();
   });
 
-  it("says there are no issues yet when the workspace mirrors none", async () => {
-    await mounted({ listing: paged({ items: [], total: 0, openCount: 0, sizedCount: 0 }) });
+  it("says there are no issues yet when the workspace mirrors none and nothing has ever synced", async () => {
+    await mounted({ listing: nothing(), sync: synced({ syncedAt: null }) });
 
     expect(screen.getByText(NOTHING_MIRRORED)).toBeInTheDocument();
+  });
+
+  it("says the backlog is clear instead, once a sync has run over it (#120)", async () => {
+    await mounted({ listing: nothing() });
+
+    expect(screen.getByText(CLEAR_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(NOTHING_MIRRORED)).toBeNull();
   });
 
   it("says the address ran past the end, with the way back", async () => {
@@ -617,6 +689,194 @@ describe("a page with no rows", () => {
 
     expect(screen.getByText(PAST_END)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: FIRST_PAGE_LABEL })).toHaveAttribute("href", "/issues");
+  });
+});
+
+describe("the guidance states (#120)", () => {
+  /** The empty state's well, wherever it is. */
+  function well(): HTMLElement {
+    return document.querySelector(".ou-empty") as HTMLElement;
+  }
+
+  it("offers a Clear filters control under no matches, which asks the bar to clear", async () => {
+    const heard = vi.fn();
+    const stop = onClearFilters(heard);
+    await mounted({
+      filter: { ...DEFAULT_FILTER, labels: ["zephyr", "docs"] },
+      listing: paged({ items: [], total: 0 }),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: CLEAR_FILTERS_LABEL }));
+
+    expect(heard).toHaveBeenCalledOnce();
+    stop();
+  });
+
+  it("tells an admin to connect GitHub over a workspace with no token, with the control labelled rather than linked nowhere", async () => {
+    await mounted({ listing: nothing(), sync: paused("not_configured") });
+
+    expect(screen.getByText(NO_TOKEN_TITLE)).toHaveClass("ou-empty__title");
+
+    const control = screen.getByRole("button", { name: OPEN_SETTINGS_LABEL });
+
+    expect(control).toHaveAttribute("aria-disabled", "true");
+    expect(control).toHaveAttribute("title", OPEN_SETTINGS_SOON);
+    expect(screen.queryByRole("link")).toBeNull();
+    // Said once: the empty state is the explanation, so no banner repeats it.
+    expect(screen.queryByText(PAUSE_HEADLINE.not_configured)).toBeNull();
+  });
+
+  it("tells a member who can connect GitHub, without an actionless admin button", async () => {
+    await mounted({ listing: nothing(), mayAdminister: false, sync: paused("not_configured") });
+
+    expect(screen.getByText(NO_TOKEN_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(NO_TOKEN_MEMBER_NOTE)).toHaveClass("issues-guidance__note");
+    expect(screen.queryByRole("button", { name: OPEN_SETTINGS_LABEL })).toBeNull();
+  });
+
+  it("sends an admin to sign-in's step 2, opened on this workspace, over a token pointed at nothing", async () => {
+    await mounted({ listing: nothing(), sync: paused("no_repositories") });
+
+    expect(screen.getByText(NO_REPOS_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: CHOOSE_REPOS_LABEL })).toHaveAttribute(
+      "href",
+      `/login?workspace=${SLUG}`,
+    );
+    expect(screen.queryByText(PAUSE_HEADLINE.no_repositories)).toBeNull();
+  });
+
+  it("tells a member who can enable a repository, without the link", async () => {
+    await mounted({ listing: nothing(), mayAdminister: false, sync: paused("no_repositories") });
+
+    expect(screen.getByText(NO_REPOS_MEMBER_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: CHOOSE_REPOS_LABEL })).toBeNull();
+  });
+
+  it("shows the seeded personal workspace — enabled repositories, no token — the no-token guidance, not an empty table", async () => {
+    await mounted({ listing: nothing(), sync: paused("not_configured") });
+
+    expect(screen.getByText(NO_TOKEN_TITLE)).toBeInTheDocument();
+    expect(screen.queryByRole("grid")).toBeNull();
+    expect(screen.queryByText(NOTHING_MIRRORED)).toBeNull();
+  });
+
+  it("says the first sync is running while a cycle runs over a backlog never stamped, as a busy status", async () => {
+    await mounted({ listing: nothing(), sync: synced({ running: true, syncedAt: null }) });
+
+    const status = screen.getByRole("status");
+
+    expect(status).toHaveAttribute("aria-busy", "true");
+    expect(status).toContainElement(well());
+    expect(screen.getByText(FIRST_SYNC_TITLE)).toBeInTheDocument();
+    expect(tag()).toHaveTextContent(SYNCING);
+  });
+
+  it("celebrates a synced scope with nothing open, in the good hue rather than the error tone", async () => {
+    await mounted({ listing: nothing(), sync: synced({ syncedAt: SEEDED_SYNCED_AT }) });
+
+    expect(well()).toHaveTextContent(CLEAR_TITLE);
+    expect(well().querySelector(".issues-guidance__mark")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("falls back to no issues yet under a pause the banner explains, so the reason is said once", async () => {
+    await mounted({ listing: nothing(), sync: paused("rate_limited") });
+
+    expect(screen.getByText(NOTHING_MIRRORED)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(PAUSE_HEADLINE.rate_limited);
+    expect(screen.getAllByText(new RegExp(PAUSE_MESSAGES.rate_limited.slice(0, 30)))).toHaveLength(1);
+  });
+});
+
+describe("the sync banner (#120)", () => {
+  it("is not drawn over a loop running normally", async () => {
+    await mounted();
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("names the pause over the rows, with the service's reason and the wait counting down", async () => {
+    await mounted({ sync: paused("rate_limited", { retryAfterSeconds: 1180 }) });
+
+    const banner = screen.getByRole("status");
+
+    expect(banner).toHaveClass("ou-retry", "issues-sync");
+    expect(banner).toHaveTextContent(PAUSE_HEADLINE.rate_limited);
+    expect(banner).toHaveTextContent(PAUSE_MESSAGES.rate_limited);
+    expect(banner).toHaveTextContent("Resumes in about 20 minutes.");
+    expect(rows()).toHaveLength(9);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(banner).toHaveTextContent("Resumes in about 19 minutes.");
+  });
+
+  it("says a token was cleared over rows that were mirrored before it was", async () => {
+    await mounted({ sync: paused("not_configured") });
+
+    expect(screen.getByRole("status")).toHaveTextContent(PAUSE_HEADLINE.not_configured);
+    expect(rows()).toHaveLength(9);
+  });
+
+  it("says the status could not be read, with the reason, over the rows", async () => {
+    await mounted({ sync: UNSYNCED });
+
+    const banner = screen.getByRole("status");
+
+    expect(banner).toHaveTextContent(SYNC_UNREAD_HEADLINE);
+    expect(banner).toHaveTextContent(UNSYNCED_REASON);
+    expect(rows()).toHaveLength(9);
+  });
+
+  it("reports the first sync's progress over rows already mirrored, and the count moves with the poll", async () => {
+    answers = [
+      fresh(backlogListing({ syncedAt: null }), synced({ running: true, syncedAt: null })),
+      fresh(backlogListing({ syncedAt: null, openCount: 120 }), synced({ running: true, syncedAt: null })),
+    ];
+    await mounted();
+
+    expect(screen.getByRole("status")).toHaveTextContent(firstSyncProgress(9));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEFAULT_POLL_SECONDS * 1000);
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent(firstSyncProgress(120));
+  });
+
+  it("asks the poll now when Check again is pressed, says so until the answer lands, and clears with it", async () => {
+    answers = [
+      fresh(backlogListing(), paused("upstream_error")),
+      fresh(backlogListing(), SYNCED),
+    ];
+    await mounted();
+    const before = asks;
+
+    fireEvent.click(screen.getByRole("button", { name: CHECK_AGAIN_LABEL }));
+
+    expect(screen.getByRole("button", { name: CHECKING_LABEL })).not.toHaveAttribute("aria-disabled");
+    expect(asks).toBe(before + 1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("clears on its own when a later poll says the pause ended", async () => {
+    answers = [fresh(backlogListing(), paused("rate_limited")), fresh(backlogListing(), SYNCED)];
+    await mounted();
+
+    expect(screen.getByRole("status")).toHaveTextContent(PAUSE_HEADLINE.rate_limited);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEFAULT_POLL_SECONDS * 1000);
+    });
+
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
 

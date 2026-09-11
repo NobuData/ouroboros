@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BacklogListing, BacklogQuery } from "@/app/api/backlog";
+import type { BacklogQuery } from "@/app/api/backlog";
 import { CACHE_CONTROL } from "@/app/api/poll-response";
+import type { BacklogPage } from "@/app/issues/backlog-poll";
 import { PAGE_SIZE } from "@/app/issues/paging";
 import type { PollAnswer } from "@/app/poll";
 
-import { HELIOS, backlogListing } from "../helpers/issues";
+import { HELIOS, backlogPage } from "../helpers/issues";
 
 /**
- * `GET /api/backlog` — one page of the backlog, on the origin the browser can reach (#117).
+ * `GET /api/backlog` — one page of the backlog, on the origin the browser can reach (#117), with
+ * the sync's status beside it (#120).
  *
  * Two things are the handler's own. The address: it reads the query string with the page's two
  * parsers, so the poll asks for exactly the view on screen and nothing else from the address
@@ -20,7 +22,7 @@ import { HELIOS, backlogListing } from "../helpers/issues";
 vi.mock("server-only", () => ({}));
 
 /** What the stubbed reader answers with. Reassigned per case. */
-let answer: PollAnswer<BacklogListing> = { state: "gone" };
+let answer: PollAnswer<BacklogPage> = { state: "gone" };
 
 /** What the reader was asked for. */
 let askedWith: BacklogQuery | undefined;
@@ -46,7 +48,7 @@ function poll(search = ""): Request {
 
 beforeEach(() => {
   askedWith = undefined;
-  answer = { state: "fresh", payload: backlogListing(), etag: null, pollAfterSeconds: null };
+  answer = { state: "fresh", payload: backlogPage(), etag: null, pollAfterSeconds: null };
 });
 
 describe("the address", () => {
@@ -78,11 +80,11 @@ describe("the address", () => {
 });
 
 describe("the answer", () => {
-  it("answers a page with the listing, uncacheable by anything shared", async () => {
+  it("answers a page with the listing and the status, uncacheable by anything shared", async () => {
     const response = await GET(poll());
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(backlogListing());
+    expect(await response.json()).toEqual(backlogPage());
     expect(response.headers.get("Cache-Control")).toBe(CACHE_CONTROL);
     expect(response.headers.get("ETag")).toBeNull();
   });

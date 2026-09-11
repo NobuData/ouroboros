@@ -68,12 +68,24 @@ import "./issues.css";
  * one-issue read and kept fresh by a poll of its own (`app/issues/detail-panel.tsx`), across
  * all four sizing states and with the trace's real provenance.
  *
+ * ### Every state the mockup does not show is the table card's
+ *
+ * No token, no enabled repository, a first sync still running, a backlog that is simply clear,
+ * a filter that matches nothing, and a sync that is paused
+ * ([#120](https://github.com/NobuData/ouroboros/issues/120)) are all drawn inside the table
+ * card, from M.4's status read beside the page: the guidance where the rows would be, the
+ * banner over them. The screen hands the card the roles and the workspace's slug, because the
+ * guidance's controls depend on both. The loading state is the route's own
+ * (`app/(app)/issues/loading.tsx`), at this page's geometry.
+ *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.filter The filter the address carries — what the readings were read for.
  * @param props.page The page the address carries. Defaults to the first.
  * @param props.organizationId The workspace, for the bar's focus-repository sync.
+ * @param props.workspaceSlug The workspace's slug, for the guidance that links to sign-in's
+ *   step 2.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles
- *   **Re-estimate all** is drawn for.
+ *   **Re-estimate all** and the guidance controls are drawn for.
  * @param props.mayContribute Whether this reader may queue issues, re-estimate one and sync the
  *   backlog — every role but `viewer`.
  * @returns The screen.
@@ -83,6 +95,7 @@ export function IssuesScreen({
   filter,
   page = FIRST_PAGE,
   organizationId,
+  workspaceSlug,
   mayAdminister,
   mayContribute,
 }: Readonly<{
@@ -90,10 +103,11 @@ export function IssuesScreen({
   filter: BacklogFilter;
   page?: number;
   organizationId: string;
+  workspaceSlug: string;
   mayAdminister: boolean;
   mayContribute: boolean;
 }>) {
-  const { counts, facets, repos, listing, readAt } = readings;
+  const { counts, facets, repos, listing, sync, readAt } = readings;
 
   return (
     <IssueSelectionProvider>
@@ -120,9 +134,12 @@ export function IssuesScreen({
             <BacklogTable
               filter={filter}
               listing={listing}
+              mayAdminister={mayAdminister}
               mayContribute={mayContribute}
               page={page}
               readAt={readAt}
+              sync={sync}
+              workspaceSlug={workspaceSlug}
             />
             <SelectionBar mayContribute={mayContribute} />
           </div>

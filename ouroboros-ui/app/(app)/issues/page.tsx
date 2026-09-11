@@ -59,7 +59,7 @@ export default async function Page({
   const filter = parseFilter(params);
   const page = parsePage(params);
   const readings = await readIssues(access, filter, page);
-  const { roles, id: organizationId } = access.membership;
+  const { roles, id: organizationId, slug: workspaceSlug } = access.membership;
 
   return (
     <IssuesScreen
@@ -69,6 +69,7 @@ export default async function Page({
       organizationId={organizationId}
       page={page}
       readings={readings}
+      workspaceSlug={workspaceSlug}
     />
   );
 }

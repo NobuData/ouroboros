@@ -142,6 +142,12 @@ export const CLEAR_ALL_LABEL = "Clear all";
 export const CLEAR_ALL_TITLE =
   "Back to the default view: every repository, no labels, open issues, sorted by estimated effort.";
 
+/**
+ * What the bar says under its row while the address is moving and the rows beneath are still
+ * the old address's ([#120](https://github.com/NobuData/ouroboros/issues/120)).
+ */
+export const UPDATING_VIEW = "Updating the backlog…";
+
 /** What the bar says over a chip set it could not read. The service's reason follows it. */
 export const FACETS_UNREAD = "The labels could not be listed.";
 

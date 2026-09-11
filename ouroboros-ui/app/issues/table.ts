@@ -376,8 +376,9 @@ export const NOTHING_MIRRORED = "No issues yet";
 
 /**
  * The note under {@link NOTHING_MIRRORED}. The guidance for *why* — no token, no enabled
- * repository, a sync that is paused — is N.6's ([#120](https://github.com/NobuData/ouroboros/issues/120));
- * this is the sentence until then.
+ * repository, a first sync still running — is `app/issues/states.ts`'s
+ * ([#120](https://github.com/NobuData/ouroboros/issues/120)); this is the sentence for a
+ * nothing nobody can name yet, and for a pause the banner above it is already explaining.
  */
 export const NOTHING_MIRRORED_NOTE =
   "Issues appear here once an enabled repository has been synced from GitHub.";
@@ -394,6 +395,9 @@ export const REFRESH_FAILED = "The backlog stopped refreshing.";
  * that mirrors nothing counts zero open and zero sized whatever the chips say — except when
  * the bar asks for closed issues, where `openCount` says nothing about what was asked for and
  * the view's own `total` has to decide.
+ *
+ * `mirrored` is the coarse answer; `app/issues/states.ts` refines it by the sync's status
+ * into the guidance states ([#120](https://github.com/NobuData/ouroboros/issues/120)).
  *
  * @param listing The page's listing.
  * @param filtered Whether anything differs from the default view.

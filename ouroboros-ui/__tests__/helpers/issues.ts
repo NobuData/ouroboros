@@ -12,6 +12,7 @@ import type {
 } from "@/app/api/backlog";
 import type { EnabledRepo } from "@/app/api/enablement";
 import type { Reading } from "@/app/api/reading";
+import type { BacklogPage } from "@/app/issues/backlog-poll";
 import { PAGE_SIZE } from "@/app/issues/paging";
 import type { BacklogCounts, IssuesReadings } from "@/app/issues/view";
 
@@ -271,6 +272,67 @@ export function paged(over: Parameters<typeof backlogListing>[0] = {}): Reading<
 export const UNPAGED: Reading<BacklogListing> = { ok: false, reason: UNCOUNTED_REASON };
 
 /**
+ * A read of the sync's status that succeeded ([#120](https://github.com/NobuData/ouroboros/issues/120)).
+ *
+ * @param over The fields this case is about. Defaults to the seeded workspace between cycles:
+ *   an `ok` loop, stamped with the seed's instant, nothing in flight.
+ * @returns The reading.
+ */
+export function synced(over: Partial<SyncStatus> = {}): Reading<SyncStatus> {
+  return { ok: true, value: syncStatus({ running: false, ...over }) };
+}
+
+/** The seeded workspace's status: an `ok` loop between cycles. */
+export const SYNCED: Reading<SyncStatus> = synced();
+
+/** The reason a failed read of the status carries in these suites. */
+export const UNSYNCED_REASON = "The sync status is not answering.";
+
+/** A read of the status that failed. */
+export const UNSYNCED: Reading<SyncStatus> = { ok: false, reason: UNSYNCED_REASON };
+
+/**
+ * A paused loop, for the reason given — the service's own sentence beside it, as M.4 answers.
+ *
+ * @param pause Why the loop is not running.
+ * @param over Anything else this case is about — `retryAfterSeconds`, `syncedAt`.
+ * @returns The reading.
+ */
+export function paused(
+  pause: NonNullable<SyncStatus["pause"]>,
+  over: Partial<SyncStatus> = {},
+): Reading<SyncStatus> {
+  return synced({ state: "paused", pause, message: PAUSE_MESSAGES[pause], ...over });
+}
+
+/** M.4's own sentence for each pause — `ouroboros-rest`'s `SYNC_PAUSE_MESSAGES`, verbatim. */
+export const PAUSE_MESSAGES: Record<NonNullable<SyncStatus["pause"]>, string> = {
+  not_configured: "This workspace has no GitHub token. Add one in settings to let Ouroboros read the backlog.",
+  unauthorized:
+    "GitHub rejected this workspace's token. It may have been revoked or expired — set a new one in settings.",
+  not_found: "GitHub has no such repository, or this workspace's token cannot see it.",
+  rate_limited: "GitHub's rate limit for this workspace's token is spent. Syncing resumes when it resets.",
+  upstream_error: "GitHub is not available right now. Try again in a moment.",
+  no_repositories:
+    "No repository is enabled for this workspace. Turn one on to let Ouroboros watch its backlog.",
+};
+
+/**
+ * What one poll carries: a listing and the status beside it.
+ *
+ * @param over The listing's figures — see {@link backlogListing} — and, as `sync`, the status
+ *   reading. Defaults to the seeded page over {@link SYNCED}.
+ * @returns The page.
+ */
+export function backlogPage(
+  over: Parameters<typeof backlogListing>[0] & { sync?: Reading<SyncStatus> } = {},
+): BacklogPage {
+  const { sync, ...listing } = over;
+
+  return { listing: backlogListing(listing), sync: sync ?? SYNCED };
+}
+
+/**
  * Everything the screen draws.
  *
  * @param over The readings this case is about. Each defaults to the seeded one.
@@ -282,6 +344,7 @@ export function issuesReadings(over: Partial<IssuesReadings> = {}): IssuesReadin
     facets: FACETED,
     repos: LISTED,
     listing: paged(),
+    sync: SYNCED,
     readAt: READ_AT,
     ...over,
   };

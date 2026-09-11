@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { BacklogListing } from "@/app/api/backlog";
+import type { BacklogListing, SyncStatus } from "@/app/api/backlog";
 import type { Reading } from "@/app/api/reading";
+import type { PollSnapshot } from "@/app/poll";
 import {
   Card,
   CardHead,
@@ -16,22 +17,21 @@ import {
   Tag,
 } from "@/app/ui";
 
-import { type BacklogPollOptions, backlogUrl } from "./backlog-poll";
+import { type BacklogPage, type BacklogPollOptions, backlogUrl } from "./backlog-poll";
 import { type BacklogFilter, isFiltered } from "./filter";
 import { FreshnessTag } from "./freshness-tag";
+import { Guidance } from "./guidance";
 import { syncBacklog } from "./head-actions";
 import { HeadOutcomeLine } from "./head-outcome";
 import { PageFooter } from "./page-footer";
-import { PAST_END, isPaged, pagination } from "./paging";
+import { isPaged, pagination } from "./paging";
 import { useIssueSelection } from "./selection";
+import { type GuidanceKind, guidanceKind, syncBanner } from "./states";
+import { SyncBanner } from "./sync-banner";
 import {
   BACKLOG_UNREAD,
   type BacklogStatus,
   COLUMN_HEADERS,
-  NOTHING_MIRRORED,
-  NOTHING_MIRRORED_NOTE,
-  NO_MATCHES,
-  NO_MATCHES_NOTE,
   REFRESH_FAILED,
   SELECT_ALL_LABEL,
   SIZING,
@@ -43,7 +43,6 @@ import {
   type TableRow,
   UNESTIMATED,
   coverage,
-  emptyKind,
   selectLabel,
   statusChanges,
   tableRows,
@@ -54,7 +53,10 @@ import type { HeadOutcome } from "./view";
 /**
  * Mockup 03's `BACKLOG · AS OUROBOROS SEES IT` card — the page's core
  * ([#117](https://github.com/NobuData/ouroboros/issues/117)): the dense rows, the checkbox
- * column, the freshness tag, and the live statuses.
+ * column, the freshness tag, and the live statuses — and, since
+ * [#120](https://github.com/NobuData/ouroboros/issues/120), every state the mockup does not
+ * show: the guidance a page with no rows gives, and the banner over the rows when the sync
+ * is not simply running.
  *
  * ### The rows are the last answer, and the first is the server's
  *
@@ -63,8 +65,13 @@ import type { HeadOutcome } from "./view";
  * cadence, and what this draws is the latest listing there is — the poll's once it has one,
  * the server's until then. That is what makes *`estimating…` rows flip to `sized` within one
  * poll of pipeline completion* a property of the page rather than of a reload, and the pill
- * that changed says so: it is keyed on its status, so a change remounts it, and a row that has
- * been seen to change carries the attribute the sheet animates ({@link statusChanges}).
+ * that changed says so: it is keyed on its status, so a change remounts it, and a row that
+ * has been seen to change carries the attribute the sheet animates ({@link statusChanges}).
+ *
+ * M.4's sync status rides the same answer (`app/issues/backlog-poll.ts`'s `BacklogPage`), for
+ * the same reason: a *sync paused* banner read once would be a banner that never clears, and
+ * a *first sync running* state would go on running after the sync finished. The server's
+ * status is the first paint's, the poll's every one after.
  *
  * ### Two selections, one store
  *
@@ -87,6 +94,15 @@ import type { HeadOutcome } from "./view";
  * state alone. `Space` checks. The primitive's `TableMultiSelection` is where the three verbs
  * are kept apart.
  *
+ * ### What is drawn instead of rows, and what is drawn over them
+ *
+ * A page with no rows is one of six states, decided by `app/issues/states.ts` from the
+ * listing, the filter and the sync's status, and drawn by `app/issues/guidance.tsx` with the
+ * control a reader of this role can act on. Over the rows — or over an empty state that is not
+ * itself the explanation — `app/issues/sync-banner.tsx` says why the sync is paused, in the
+ * service's own words, with the way to ask again; it stays away when the empty state already
+ * carries the same reason, so nothing on the card is said twice.
+ *
  * ### It scrolls inside its own wrapper
  *
  * The ticket's shell line asks for both a wrapper the table scrolls inside and a sticky
@@ -97,32 +113,48 @@ import type { HeadOutcome } from "./view";
  * head close enough to any row that the trade costs little.
  *
  * @param props.listing The page the route read, or why it could not.
+ * @param props.sync M.4's status as the route read it, or why it could not — the first paint's,
+ *   until the poll's first answer replaces it.
  * @param props.filter The filter the address carries.
  * @param props.page The page the address carries.
  * @param props.readAt When the route read it, in milliseconds since the epoch.
  * @param props.mayContribute Whether this reader may sync — every role but `viewer`.
+ * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles the
+ *   guidance states draw their controls for.
+ * @param props.workspaceSlug The workspace's slug, for the guidance that links to sign-in's
+ *   step 2.
  * @param props.poll Test seams for the poll; production passes none.
  * @returns The card.
  */
 export function BacklogTable({
   listing,
+  sync,
   filter,
   page,
   readAt,
   mayContribute,
+  mayAdminister,
+  workspaceSlug,
   poll,
 }: Readonly<{
   listing: Reading<BacklogListing>;
+  sync: Reading<SyncStatus>;
   filter: BacklogFilter;
   page: number;
   readAt: number;
   mayContribute: boolean;
+  mayAdminister: boolean;
+  workspaceSlug: string;
   poll?: BacklogPollOptions;
 }>) {
   const { snapshot, refresh } = useBacklogPoll(backlogUrl(filter, page), poll);
 
   /** The listing on screen: the poll's latest, else what the server rendered for this address. */
-  const shown = snapshot.data ?? (listing.ok ? listing.value : null);
+  const shown = snapshot.data?.listing ?? (listing.ok ? listing.value : null);
+  /** The status on screen, likewise — and when it was read, for a wait that counts down. */
+  const status = snapshot.data?.sync ?? sync;
+  const statusReadAt = snapshot.updatedAt ?? readAt;
+  const running = status.ok && status.value.running;
   const rows = useMemo(() => (shown === null ? [] : tableRows(shown.items)), [shown]);
 
   /**
@@ -179,7 +211,7 @@ export function BacklogTable({
   const [outcome, setOutcome] = useState<HeadOutcome | null>(null);
 
   /** Press the freshness tag: ask for a sync, report what came back, and ask the poll now. */
-  async function sync(): Promise<void> {
+  async function resync(): Promise<void> {
     if (pending) return;
 
     setPending(true);
@@ -194,10 +226,40 @@ export function BacklogTable({
     }
   }
 
+  /**
+   * The snapshot **Check again** was pressed over. The press is in flight until the poll
+   * publishes a snapshot that is not this one — success or failure — so the flag is a
+   * comparison rather than a second state that could be left set.
+   */
+  const [asked, setAsked] = useState<PollSnapshot<BacklogPage> | null>(null);
+  const checking = asked !== null && asked === snapshot;
+
+  /** Press the banner's control: ask the poll now, and say so until it answers. */
+  function check(): void {
+    if (checking) return;
+
+    setAsked(snapshot);
+    refresh();
+  }
+
   const paging =
     shown === null
       ? null
       : pagination({ shown: rows.length, total: shown.total, offset: shown.offset }, page);
+
+  /**
+   * What the card draws instead of rows: `undefined` while it draws rows, `null` for a page
+   * past the end of the backlog, else the guidance kind.
+   */
+  const empty: GuidanceKind | null | undefined =
+    shown === null || rows.length > 0
+      ? undefined
+      : paging?.pastEnd
+        ? null
+        : guidanceKind(shown, isFiltered(filter), status);
+
+  const banner =
+    shown === null ? null : syncBanner(status, empty ?? null, shown.meta.openCount);
 
   return (
     <Card aria-labelledby={TITLE_ID} as="section">
@@ -207,8 +269,10 @@ export function BacklogTable({
         trailing={
           <div className="issues__action">
             <FreshnessTag
-              onPress={() => void sync()}
-              pending={pending}
+              onPress={() => void resync()}
+              // A cycle the status says is in flight reads *syncing…* as a press's would: the
+              // press would be refused as `backlog_sync_running`, and the tag says why first.
+              pending={pending || running}
               readAtSeconds={Math.floor(readAt / 1000)}
               reason={mayContribute ? undefined : SYNC_ROLE_REASON}
               syncedAt={shown?.meta.syncedAt ?? null}
@@ -218,14 +282,19 @@ export function BacklogTable({
         }
       />
 
+      {banner !== null && (
+        <SyncBanner
+          checking={checking}
+          onCheck={check}
+          readAtSeconds={Math.floor(statusReadAt / 1000)}
+          state={banner}
+        />
+      )}
+
       {shown === null ? (
         <EmptyState note={listing.ok ? undefined : listing.reason} title={BACKLOG_UNREAD} />
-      ) : rows.length === 0 ? (
-        <EmptyPage
-          filtered={isFiltered(filter)}
-          listing={shown}
-          pastEnd={paging?.pastEnd ?? false}
-        />
+      ) : empty !== undefined ? (
+        <Guidance kind={empty} mayAdminister={mayAdminister} workspaceSlug={workspaceSlug} />
       ) : (
         <Table
           caption={TABLE_CAPTION}
@@ -253,32 +322,6 @@ export function BacklogTable({
 
 /** The id the card's `aria-labelledby` points at. */
 const TITLE_ID = "backlog-table-title";
-
-/**
- * What the card draws instead of rows.
- *
- * Three facts that must not read alike: the address asked for a page the backlog has run out
- * of, the filter matched nothing, and the workspace mirrors nothing. The way back from the
- * first is the footer's link, drawn beneath this.
- *
- * @param props.listing The page's listing.
- * @param props.filtered Whether anything differs from the default view.
- * @param props.pastEnd Whether the page is past the end of the backlog.
- * @returns The empty state.
- */
-function EmptyPage({
-  listing,
-  filtered,
-  pastEnd,
-}: Readonly<{ listing: BacklogListing; filtered: boolean; pastEnd: boolean }>) {
-  if (pastEnd) return <EmptyState title={PAST_END} />;
-
-  return emptyKind(listing, filtered) === "matches" ? (
-    <EmptyState note={NO_MATCHES_NOTE} title={NO_MATCHES} />
-  ) : (
-    <EmptyState note={NOTHING_MIRRORED_NOTE} title={NOTHING_MIRRORED} />
-  );
-}
 
 /**
  * The six columns, in the mockup's order: the checkbox, then the five the mockup heads.

@@ -7,18 +7,20 @@ import {
   backlogUrl,
   createBacklogPoll,
   isBacklogListing,
+  isBacklogPage,
   requestBacklog,
 } from "@/app/issues/backlog-poll";
 import { DEFAULT_FILTER } from "@/app/issues/filter";
 
-import { HELIOS, backlogListing } from "../helpers/issues";
+import { HELIOS, UNSYNCED, backlogListing, backlogPage } from "../helpers/issues";
 
 /**
- * The table's poll — the backlog's reader over `app/poll.ts`'s loop (#117).
+ * The table's poll — the backlog's reader over `app/poll.ts`'s loop (#117), carrying the sync's
+ * status beside the page since #120.
  *
  * The loop is `summary-poll.test.ts`'s, case by case. What is here is what this reader adds: the
- * address it asks, the guard that decides whether what answered is a listing, and the four
- * answers one read can come back as.
+ * address it asks, the guard that decides whether what answered is a page, and the four answers
+ * one read can come back as.
  */
 
 /** What the stubbed `fetch` was asked, per case. */
@@ -72,16 +74,42 @@ describe("isBacklogListing", () => {
   });
 });
 
+describe("isBacklogPage (#120)", () => {
+  it("accepts a listing beside a status that was read, and beside one that was not", () => {
+    expect(isBacklogPage(backlogPage())).toBe(true);
+    expect(isBacklogPage(backlogPage({ sync: UNSYNCED }))).toBe(true);
+    // What the page looks like after a trip through JSON — no class, no prototype.
+    expect(isBacklogPage(JSON.parse(JSON.stringify(backlogPage())))).toBe(true);
+  });
+
+  it("refuses a bare listing, which is what the endpoint answered before the status rode with it", () => {
+    expect(isBacklogPage(backlogListing())).toBe(false);
+  });
+
+  it("refuses a page whose status reading is not one", () => {
+    expect(isBacklogPage({ ...backlogPage(), sync: null })).toBe(false);
+    expect(isBacklogPage({ ...backlogPage(), sync: { ok: true } })).toBe(false);
+    expect(isBacklogPage({ ...backlogPage(), sync: { ok: false } })).toBe(false);
+    expect(isBacklogPage({ ...backlogPage(), sync: { ok: "yes", value: {} } })).toBe(false);
+  });
+
+  it("refuses a page whose listing is not one", () => {
+    expect(isBacklogPage({ ...backlogPage(), listing: { items: "none" } })).toBe(false);
+    expect(isBacklogPage(null)).toBe(false);
+    expect(isBacklogPage({})).toBe(false);
+  });
+});
+
 describe("requestBacklog", () => {
   it("asks the address it was built for, on this origin, without the browser's cache", async () => {
-    stubFetch(Response.json(backlogListing()));
+    stubFetch(Response.json(backlogPage()));
 
     const answer = await requestBacklog(`${BACKLOG_ENDPOINT}?page=2`)(null);
 
     expect(asked?.url).toBe(`${BACKLOG_ENDPOINT}?page=2`);
     expect(asked?.headers.get("Accept")).toBe("application/json");
     expect(asked?.headers.has("If-None-Match")).toBe(false);
-    expect(answer).toEqual({ state: "fresh", payload: backlogListing(), etag: null, pollAfterSeconds: null });
+    expect(answer).toEqual({ state: "fresh", payload: backlogPage(), etag: null, pollAfterSeconds: null });
   });
 
   it("echoes a tag it holds", async () => {
@@ -93,7 +121,7 @@ describe("requestBacklog", () => {
     expect(answer).toEqual({ state: "unchanged", etag: null, pollAfterSeconds: null });
   });
 
-  it("reads a body that is not a listing as unreadable, whatever its status", async () => {
+  it("reads a body that is not a page as unreadable, whatever its status", async () => {
     stubFetch(Response.json({ hello: "world" }));
 
     expect(await requestBacklog(BACKLOG_ENDPOINT)(null)).toEqual({
@@ -142,7 +170,7 @@ describe("createBacklogPoll", () => {
   });
 
   it("reads through the seam when given one, and nothing else", async () => {
-    const read = vi.fn().mockResolvedValue({ state: "fresh", payload: backlogListing(), etag: null, pollAfterSeconds: null });
+    const read = vi.fn().mockResolvedValue({ state: "fresh", payload: backlogPage(), etag: null, pollAfterSeconds: null });
     stubFetch(new TypeError("must not be called"));
     const poll = createBacklogPoll(BACKLOG_ENDPOINT, { read, visible: () => true });
 
@@ -150,20 +178,20 @@ describe("createBacklogPoll", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(read).toHaveBeenCalledExactlyOnceWith(null);
-    expect(poll.snapshot().data).toEqual(backlogListing());
+    expect(poll.snapshot().data).toEqual(backlogPage());
     expect(asked).toBeNull();
     stop();
   });
 
   it("reads the address it was built for otherwise", async () => {
-    stubFetch(Response.json(backlogListing()));
+    stubFetch(Response.json(backlogPage()));
     const poll = createBacklogPoll(`${BACKLOG_ENDPOINT}?page=3`, { visible: () => true });
 
     const stop = poll.start();
     await vi.advanceTimersByTimeAsync(0);
 
     expect(asked?.url).toBe(`${BACKLOG_ENDPOINT}?page=3`);
-    expect(poll.snapshot().data).toEqual(backlogListing());
+    expect(poll.snapshot().data).toEqual(backlogPage());
     stop();
   });
 });
