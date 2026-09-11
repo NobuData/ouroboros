@@ -1688,7 +1688,7 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 | N.2 | #116 | 🟢 Done | ouroboros-ui: [N.2] Filter bar (URL-reflected) | Repo select, label chips, state, sort, search — server-driven | mvp, intake, ui, design | N (after N.1) | Y | M | ouroboros-ui |
 | N.3 | #117 | 🟢 Done | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
 | N.4 | #118 | 🟢 Done | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
-| N.5 | #119 | 🟡 Open | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
+| N.5 | #119 | 🟢 Done | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
 | N.6 | #120 | 🟡 Open | ouroboros-ui: [N.6] Intake empty, loading & guidance states | No-token, no-repos, syncing, unsized, empty-filter states | mvp, intake, ui, design | N (after N.2–N.5) | Y | M | ouroboros-ui |
 | N.7 | #121 | 🟡 Open | ouroboros-ui: [N.7] Issues e2e leg | Seeded parity, filter/select/queue/re-estimate flows, both themes | mvp, intake, ui, ci | N (after N.1–N.6) | Y | S | ouroboros-ui, .github |
 
@@ -2025,7 +2025,93 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 
 ### Issue N.5 — ouroboros-ui: [N.5] Issue detail side panel
 
-> **GitHub issue:** #119 · **Status:** 🟡 Open · **Parent epic:** #97
+> **GitHub issue:** #119 · **Status:** 🟢 Done · **Parent epic:** #97
+
+> **Shipped 2026-09-11.** [`app/issues/detail-panel.tsx`](../ouroboros-ui/app/issues/detail-panel.tsx)
+> draws mockup 03's `ISSUE DETAIL` card beside the table, over
+> [`app/issues/panel.ts`](../ouroboros-ui/app/issues/panel.ts)'s copy and decisions — every word the
+> mockup's panel prints, held to the mockup by `panel.test.ts` field for field, and every judgement
+> about one issue's sizing story. The screen grew the mockup's grid (`c-8` for the table and the
+> selection bar, `c-4` for the panel; one column below the mockup's own break), and the panel is
+> always seated, saying how to open a row while none is. `ouroboros-ui` 0.56.0.
+>
+> **The issue is the store's, and the answer is a poll's.** The row a click or `Enter` opened is
+> N.3's `detail`, and what the panel draws about it is the last answer of `GET /api/backlog/{id}`
+> ([`app/api/backlog/[id]/route.ts`](../ouroboros-ui/app/api/backlog/[id]/route.ts) over
+> [`app/api/backlog-detail.ts`](../ouroboros-ui/app/api/backlog-detail.ts)), a third route handler on
+> this origin over M.2's one-issue read, asked on the DASH-I.8 cadence. The loop N.3 keyed on the
+> address is now keyed on whatever it asks for
+> ([`app/issues/use-keyed-poll.ts`](../ouroboros-ui/app/issues/use-keyed-poll.ts) — the table's hook
+> delegates, a `null` key holds no loop) and the server-side translation of a read into the loop's
+> four answers is one function both readers share
+> ([`app/api/poll-read.ts`](../ouroboros-ui/app/api/poll-read.ts)). Between a row being opened and
+> its detail arriving, the head is the row as the table last saw it — N.4's seen rows — over the
+> breakdown's skeleton, so the panel opens on the click rather than a round trip later; another row
+> is a new loop; closing is a `null` id and no request at all.
+>
+> **The trace is the trace's, and nothing else.** *sized by heuristic-v0 · 2m ago* is the
+> estimator's own name and the instant it sized the issue; tokens appear only when any were spent —
+> a rule engine spends none, and `0 tokens` would dress an absence as a measurement — and the version
+> only past the first; the signals line is the signals the trace recorded, or *signals: none recorded
+> by this estimator*. The mockup's model name and knowledge signals appear nowhere (decision **K10**),
+> and `panel.test.ts` asserts the divergence rather than avoiding it. The file list is the same rule:
+> a live `heuristic-v0` estimate answers `files: []` because it cannot know files, and the panel draws
+> *the file estimate arrives with the full estimator* in the list's place — a real answer, said — while
+> any other estimator's `[]` reads *this estimate names no files*.
+>
+> **Four states, one guard.** `unsized` is the issue's content, *First estimate pending* and a live
+> **Re-estimate**; `estimating` is the warn pill, *Sizing now* over the breakdown's skeleton, and both
+> writes inert with their reasons; `sized` is the whole panel; `needs_human` is the err pill, the
+> estimate that sent it there, and a trace that opens in the error hue with why — *confidence 61% was
+> under the floor for a sized estimate*, or that no estimate was produced, in which case the sentence
+> stands in the breakdown's place. A `sized` answer carrying no estimate cannot happen through the
+> pipeline and is drawn as `unsized` rather than as a breakdown over nothing. The head's pill is the
+> table's rule (`queued` first), so the panel and the row it was opened from cannot disagree.
+>
+> **Three actions, and a press asks every poll now.** **Queue for loop** is N.4's `queueUnder` with
+> one id — the contract makes the three queue affordances one write — and a refusal is drawn in the
+> bar's own sentence for the issue it names. **Re-estimate** is L.4's single re-estimate through
+> `reestimateIssue`, the fifth Server Action: a forged id is refused before a path is built from it,
+> a `403` is the role's sentence, a `404` says the issue is gone, a `409` is reported as the thing
+> asked for happening, a `429` carries the wait. **Open on GitHub ↗** is the #46 button's link form,
+> `target="_blank"` with `rel="noopener noreferrer"`, over `ghUrl` — checked to be a web address at
+> the boundary rather than trusted into an `href`, and inert with a reason otherwise. A press that
+> took publishes the same *ask again* signal the workspace switch does, so the panel draws the
+> `estimating…` the service already wrote, the table's pill follows, and the dashboard's queue card
+> hears about a queued issue — without a `router.refresh()`, since everything the panel draws is the
+> poll's. The line under the actions clears when the state moves: *sizing again* over a breakdown
+> that has already landed would be a sentence about a moment that has passed.
+>
+> **Two corrections to the ticket, both the seed's.** The seeded `#485` is queued by the dashboard
+> seed (DASH-F.5), as N.3's parity suite already records, so its pill reads `queued` and **Queue for
+> loop** is inert with *already in the queue* where the mockup draws `sized` and a live button; the
+> suite draws the mockup's own state over the same issue unqueued. And the seed writes the mockup's
+> three paths for `#485` — its header says so — so the seeded panel draws the list and the *arrives
+> with the full estimator* sentence is what a live estimate draws; the criterion below is read that
+> way. The `~180k` is the mockup's own spelling of an estimate: compacted without a zero decimal,
+> under a tilde.
+>
+> **Keyboard and width.** `Enter` on a row opens the panel, which follows the table in the document —
+> so `Tab` from the row reaches it — and every control in it is a native button, link or disclosure;
+> focus is deliberately not moved on open, since a reader arrowing through rows to compare them would
+> lose their place on every `Enter`. Below the mockup's break the panel stacks under the table; a long
+> path or token wraps inside the column rather than widening it.
+>
+> Proved by **6 new suites and 4 extended** — `panel.test.ts` (the copy against the mockup's panel,
+> the seeded `#485` field for field, the honest divergence in the trace, the excerpt's cut, the
+> figures, the reasons, the states), `detail-panel.test.tsx` (no row open; the row's head at once
+> and the detail after; the seeded `#485` as the mockup's panel; the four states, one case each; the
+> re-estimate round trip through `estimating…` to `v2` with no reload; the single queue and its
+> refusals; the GitHub link and the address it refuses; a viewer; the excerpt; a failed poll; both
+> palettes), `detail-poll.test.ts`, `api/backlog-detail.test.ts`, `api/backlog-detail-route.test.ts`,
+> `api/poll-read.test.ts` — with the resource file's, the actions', the screen's and the stylesheet's
+> suites extended. The module runs 4,778 cases over 248 files, green.
+>
+> **What is deferred, and to whom.** The composed round trip — a `Re-estimate` pressed in a browser
+> and the pill watched round — is N.7's (#121), as it was for the table's flip; the guidance behind
+> the panel's empty seat and the table's is N.6's (#120); M.2's version list arrives in the answer
+> and is drawn by nothing yet, which is the future history view M.2 priced it for; the knowledge
+> signals are O.4's (#125), and the estimator that names files O.2's (#123).
 
 - **Problem Statement:** The `c-4` panel is the sizing story for one issue —
   excerpt, breakdown, risk, trace, actions — and must render honestly across
@@ -2044,8 +2130,10 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
   unsized (issue content + "first estimate pending"), estimating (skeleton
   breakdown + live flip), needs_human (err pill + failure/low-conf trace).
 - **Acceptance Criteria:**
-  - Seeded `#485` matches the mockup panel except honest provenance; all four
-    states render designed (storybook-style test per state).
+  - Seeded `#485` matches the mockup panel except honest provenance — and
+    except its pill, which reads `queued` because the dashboard seed queues it
+    (the shipped note above); all four states render designed (storybook-style
+    test per state).
   - Re-estimate round-trips: button → `estimating…` → new version rendered.
   - Panel is keyboard-reachable from rows; responsive (stacks below the table
     at narrow widths).

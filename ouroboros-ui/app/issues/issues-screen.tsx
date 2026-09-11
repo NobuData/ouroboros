@@ -1,6 +1,7 @@
 import { Eyebrow } from "@/app/ui";
 
 import { BacklogTable } from "./backlog-table";
+import { DetailPanel } from "./detail-panel";
 import type { BacklogFilter } from "./filter";
 import { FilterBar } from "./filter-bar";
 import { FIRST_PAGE } from "./paging";
@@ -16,8 +17,9 @@ import "./issues.css";
  * Issue intake ([#115](https://github.com/NobuData/ouroboros/issues/115)) —
  * `docs/mockups/03-issues.html` from its page head, with the filter bar under it
  * ([#116](https://github.com/NobuData/ouroboros/issues/116)), the backlog table under that
- * ([#117](https://github.com/NobuData/ouroboros/issues/117)) and the selection bar under the
- * table ([#118](https://github.com/NobuData/ouroboros/issues/118)).
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)), the selection bar under the
+ * table ([#118](https://github.com/NobuData/ouroboros/issues/118)) and the detail panel beside
+ * them ([#119](https://github.com/NobuData/ouroboros/issues/119)).
  *
  * It renders **inside the app shell**, so it starts at its page head and contributes no chrome of
  * its own (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 2): the shell's content pane is the scroll container,
@@ -44,20 +46,27 @@ import "./issues.css";
  * contract scopes them that way, and by nothing else in the bar. It scrolls with the page, as the
  * mockup draws it; the page's one sticky slot is the selection bar's.
  *
- * ### The table is the address's page, kept fresh
+ * ### The grid: the table's column, and the panel's
  *
- * The card under the bar draws the page the route read for this address and then polls for it,
- * so a status the pipeline moves is a pill that moves. Its page is the address's `&page=`, beside
- * the bar's five controls and reset by every one of them.
+ * Under the bar is the mockup's grid — `c-8` for the table card and the selection bar beneath
+ * it, `c-4` for the detail panel — and below the mockup's own break the panel stacks under the
+ * table, because four columns of a narrow pane is narrower than the sentences the panel holds.
+ * The table card draws the page the route read for this address and then polls for it, so a
+ * status the pipeline moves is a pill that moves. Its page is the address's `&page=`, beside the
+ * bar's five controls and reset by every one of them.
  *
  * ### The selection bar turns the selection into work
  *
  * Under the table, and only while something is selected: the count and the combined estimate,
  * **Assign workflow ▾** and **Queue → workflow** (`app/issues/selection-bar.tsx`). It reads the
  * same selection the head does, from the same provider, and the rows the table publishes there
- * — which is what lets it sum an estimate over ids on pages the table is no longer drawing. The
- * detail panel is N.5's ([#119](https://github.com/NobuData/ouroboros/issues/119)) and mounts
- * beside the table, inside the same provider.
+ * — which is what lets it sum an estimate over ids on pages the table is no longer drawing.
+ *
+ * ### The detail panel is the sizing story for one row
+ *
+ * Beside the table, inside the same provider: the row a click or `Enter` opened, drawn from the
+ * one-issue read and kept fresh by a poll of its own (`app/issues/detail-panel.tsx`), across
+ * all four sizing states and with the trace's real provenance.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.filter The filter the address carries — what the readings were read for.
@@ -65,8 +74,8 @@ import "./issues.css";
  * @param props.organizationId The workspace, for the bar's focus-repository sync.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles
  *   **Re-estimate all** is drawn for.
- * @param props.mayContribute Whether this reader may queue issues and sync the backlog — every
- *   role but `viewer`.
+ * @param props.mayContribute Whether this reader may queue issues, re-estimate one and sync the
+ *   backlog — every role but `viewer`.
  * @returns The screen.
  */
 export function IssuesScreen({
@@ -106,14 +115,21 @@ export function IssuesScreen({
           </div>
         </div>
         <FilterBar facets={facets} filter={filter} organizationId={organizationId} repos={repos} />
-        <BacklogTable
-          filter={filter}
-          listing={listing}
-          mayContribute={mayContribute}
-          page={page}
-          readAt={readAt}
-        />
-        <SelectionBar mayContribute={mayContribute} />
+        <div className="issues__grid">
+          <div className="issues__main">
+            <BacklogTable
+              filter={filter}
+              listing={listing}
+              mayContribute={mayContribute}
+              page={page}
+              readAt={readAt}
+            />
+            <SelectionBar mayContribute={mayContribute} />
+          </div>
+          <div className="issues__aside">
+            <DetailPanel mayContribute={mayContribute} readAt={readAt} />
+          </div>
+        </div>
       </main>
     </IssueSelectionProvider>
   );

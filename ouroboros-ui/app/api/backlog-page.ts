@@ -24,27 +24,23 @@ import "server-only";
  *
  * ### It does not throw
  *
- * Every outcome is one of the four answers, because the caller is a route handler answering a
- * poll and there is no error boundary behind it that could render anything better than the
- * poll itself can. A refusal carries the service's own sentence; a read that never reached the
- * service — a dropped connection, or the timeout below — carries this module's.
+ * Every outcome is one of the four answers — `app/api/poll-read.ts` is the translation, shared
+ * with the detail panel's reader since [#119](https://github.com/NobuData/ouroboros/issues/119)
+ * — because the caller is a route handler answering a poll and there is no error boundary
+ * behind it that could render anything better than the poll itself can.
  */
 
 import { type BacklogListing, type BacklogQuery, backlog } from "@/app/api/backlog";
-import { isApiError } from "@/app/api/errors";
+import { POLL_READ_TIMEOUT_MS, readForPoll } from "@/app/api/poll-read";
 import { anonymousApi } from "@/app/api/server";
 import { UNREACHABLE_BACKLOG } from "@/app/issues/backlog-poll";
 import type { PollAnswer } from "@/app/poll";
 
 /**
- * How long to wait for the listing before giving up, in milliseconds.
- *
- * Comfortably inside the contract's fifteen-second cadence, so a service that has stopped
- * answering costs one slow poll rather than a queue of overlapping ones — the poll does not
- * start a second request while one is in flight, so a read that never resolved would stop the
- * loop altogether rather than merely slow it.
+ * How long to wait for the listing before giving up, in milliseconds — the poll readers' one
+ * deadline, kept under its old name for the suite that holds it inside the cadence.
  */
-export const BACKLOG_TIMEOUT_MS = 10_000;
+export const BACKLOG_TIMEOUT_MS = POLL_READ_TIMEOUT_MS;
 
 /**
  * Read one page of the backlog for a poll.
@@ -63,22 +59,5 @@ export async function readBacklogPage(
     signal,
   ) => backlog.list(asked, anonymousApi(), signal),
 ): Promise<PollAnswer<BacklogListing>> {
-  try {
-    const listing = await read(query, AbortSignal.timeout(BACKLOG_TIMEOUT_MS));
-
-    return { state: "fresh", payload: listing, etag: null, pollAfterSeconds: null };
-  } catch (error) {
-    // Whatever was not an answer from the service — a `TypeError` for a dropped connection, a
-    // `TimeoutError` for {@link BACKLOG_TIMEOUT_MS} — says the same thing to a reader looking
-    // at a table, and the distinction between them is one only a log can act on.
-    if (!isApiError(error)) {
-      return { state: "failed", reason: UNREACHABLE_BACKLOG, pollAfterSeconds: null };
-    }
-
-    if (error.isUnauthenticated) return { state: "gone" };
-
-    // The service's own sentence: every message in the contract's envelope is written for a
-    // person and names nothing internal (`app/api/errors.ts`).
-    return { state: "failed", reason: error.message, pollAfterSeconds: null };
-  }
+  return readForPoll((signal) => read(query, signal), UNREACHABLE_BACKLOG);
 }

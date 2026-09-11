@@ -19,11 +19,19 @@ import {
   syncTooSoon,
 } from "@/app/issues/table";
 
-import { SELECTED_TRIO, fanout, queuedSelection, syncStatus } from "../helpers/issues";
+import {
+  REESTIMATE_ONE_BUSY,
+  REESTIMATE_ONE_FAILED,
+  REESTIMATE_ONE_NOT_FOUND,
+  REESTIMATE_ONE_ROLE_REASON,
+  REESTIMATE_ONE_STARTED,
+} from "@/app/issues/panel";
+
+import { SELECTED_TRIO, estimationAccepted, fanout, issueId, queuedSelection, syncStatus } from "../helpers/issues";
 
 /**
- * The intake page's server hops — the head's two (#115), the freshness tag's (#117) and the
- * selection bar's (#118).
+ * The intake page's server hops — the head's two (#115), the freshness tag's (#117), the
+ * selection bar's (#118) and the detail panel's single re-estimate (#119).
  *
  * A Server Action is a POST endpoint anybody can reach, so the security cases come first: no
  * action takes a workspace or a person, the role gates are the service's, and the two queue
@@ -42,6 +50,9 @@ const queue = vi.fn();
 /** What the sync trigger answers, per case. */
 const sync = vi.fn();
 
+/** What the single re-estimate answers, per case. */
+const estimate = vi.fn();
+
 vi.mock("@/app/api/backlog", async () => {
   const actual = await vi.importActual<typeof import("@/app/api/backlog")>("@/app/api/backlog");
 
@@ -51,6 +62,7 @@ vi.mock("@/app/api/backlog", async () => {
     ...actual,
     backlog: {
       ...actual.backlog,
+      estimate: (id: unknown) => estimate(id),
       estimateAll: () => estimateAll(),
       queue: (selection: unknown) => queue(selection),
       sync: () => sync(),
@@ -64,12 +76,72 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { queueSelected, queueUnder, reestimateAll, syncBacklog } = await import("@/app/issues/head-actions");
+const { queueSelected, queueUnder, reestimateAll, reestimateIssue, syncBacklog } = await import(
+  "@/app/issues/head-actions"
+);
 
 beforeEach(() => {
   estimateAll.mockReset().mockResolvedValue(fanout());
   queue.mockReset().mockResolvedValue(queuedSelection());
   sync.mockReset().mockResolvedValue(syncStatus());
+  estimate.mockReset().mockResolvedValue(estimationAccepted());
+});
+
+describe("reestimateIssue (#119)", () => {
+  it("asks for the one issue by its id, and says sizing started", async () => {
+    expect(await reestimateIssue(issueId(485))).toEqual({ ok: true, message: REESTIMATE_ONE_STARTED });
+    expect(estimate).toHaveBeenCalledExactlyOnceWith(issueId(485));
+  });
+
+  it("sends nothing for a forged id that is not a non-empty string", async () => {
+    for (const forged of ["", 485, null, [issueId(485)]]) {
+      expect(await reestimateIssue(forged as unknown as string)).toEqual({ ok: false, reason: REESTIMATE_ONE_FAILED });
+    }
+    expect(estimate).not.toHaveBeenCalled();
+  });
+
+  it("answers a viewer with the panel's own sentence, not the API's", async () => {
+    estimate.mockRejectedValue(new ApiError(403, "forbidden", "Your role does not permit this."));
+
+    expect(await reestimateIssue(issueId(485))).toEqual({ ok: false, reason: REESTIMATE_ONE_ROLE_REASON });
+  });
+
+  it("says the issue is gone for an id this workspace cannot see", async () => {
+    estimate.mockRejectedValue(new ApiError(404, "issue_not_found", "No issue with that id."));
+
+    expect(await reestimateIssue(issueId(999))).toEqual({ ok: false, reason: REESTIMATE_ONE_NOT_FOUND });
+  });
+
+  it("reports an estimate already in flight as the thing asked for happening", async () => {
+    estimate.mockRejectedValue(new ApiError(409, "issue_already_estimating", "Already estimating."));
+
+    expect(await reestimateIssue(issueId(485))).toEqual({ ok: true, message: REESTIMATE_ONE_BUSY });
+  });
+
+  it("gives a rate-limited reader the wait the service asked for", async () => {
+    estimate.mockRejectedValue(
+      new ApiError(429, "estimation_rate_limited", "Too many.", { retryAfterSeconds: 24 }),
+    );
+
+    const outcome = await reestimateIssue(issueId(485));
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok ? "" : outcome.reason).toMatch(/Try again in 24 seconds\.$/);
+  });
+
+  it("carries any other refusal's sentence, with a fallback for an empty one", async () => {
+    estimate.mockRejectedValue(new ApiError(400, "organization_required", "Choose a workspace."));
+    expect(await reestimateIssue(issueId(485))).toEqual({ ok: false, reason: "Choose a workspace." });
+
+    estimate.mockRejectedValue(new ApiError(502, "client_unreadable_error", ""));
+    expect(await reestimateIssue(issueId(485))).toEqual({ ok: false, reason: REESTIMATE_ONE_FAILED });
+  });
+
+  it("lets the redirect signal through", async () => {
+    estimate.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(reestimateIssue(issueId(485))).rejects.toThrow("NEXT_REDIRECT /login");
+  });
 });
 
 describe("syncBacklog (#117)", () => {

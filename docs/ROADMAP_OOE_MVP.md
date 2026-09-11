@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**162 of 454 ordered issues are closed** — P0 through P5 are complete; P6 is in flight.
+**163 of 454 ordered issues are closed** — P0 through P5 are complete; P6 is in flight.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5 | **142** |
-| 🟡 **In progress** | P6 (20/23) | **20** of 23 |
+| 🟡 **In progress** | P6 (21/23) | **21** of 23 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | ✅ **8/8** | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 20/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 21/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -121,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **162/454** | **454** | **1,404** | |
+| | **Total** | **163/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **3 issues** · 10 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157`, `158`, `159`, `160`, `161` and `162` · 12 dependency waves
+> **2 issues** · 5 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157`, `158`, `159`, `160`, `161`, `162` and `163` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 20 of 23 issues closed
+> **Status:** 🟡 **In progress** — 21 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1242,9 +1242,30 @@ that roadmap's "Existing issues affected" section.
 > table's Total had stayed at 160 when N.3 landed, one behind its own sentence, and is re-summed
 > from the phase rows rather than incremented.
 
+> **`N.5` · [`#119`](https://github.com/NobuData/ouroboros/issues/119) has shipped, and row `163`
+> leaves the table.** Mockup 03's `ISSUE DETAIL` panel in `ouroboros-ui` 0.56.0: beside the table
+> in the mockup's grid, stacking under it at the mockup's break, and drawn from M.2's one-issue read
+> through a poll of its own — `GET /api/backlog/{id}`, a third route handler on this origin, over
+> the same loop the table keeps, now keyed on whatever it asks for. The head is the row's own facts
+> the moment a row is opened; the body is the last answer about it, across all four sizing states:
+> the excerpt, the *AI Work Breakdown* with the mockup's `~180k` and `12–18 min`, the risk meter in
+> the level's hue and length, **Queue for loop** (M.3 with one id), **Re-estimate** (L.4's single,
+> the fifth Server Action, inert while `estimating…`), **Open on GitHub ↗** in a new tab, and the
+> collapsible trace built from the trace's own fields — *sized by heuristic-v0 · 2m ago* over
+> *signals: none recorded by this estimator*, never the mockup's model name (decision **K10**).
+>
+> **A press asks every poll now.** Re-estimate and the single queue publish the same *ask again*
+> signal the workspace switch does, so the panel draws the `estimating…` the service has already
+> written at once, the table's pill follows, and the new version renders when the pipeline finishes
+> — no reload. Two corrections are argued in the intake roadmap: the seeded `#485` is queued by the
+> dashboard seed, so its pill reads `queued` and **Queue for loop** is inert with the reason where the
+> mockup draws `sized`; and the seed writes the mockup's three files for `#485`, so the *file estimate
+> arrives with the full estimator* sentence is what a live `heuristic-v0` estimate draws, not the
+> seeded panel. Six new suites, four extended. P6 is 21 of 23, and the document stands at
+> **163 of 454**.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 163 | **N.5** | [#119](https://github.com/NobuData/ouroboros/issues/119) | Issue detail side panel | ouroboros-ui | L | L.4, M.2, N.3 |
 | 164 | **N.6** | [#120](https://github.com/NobuData/ouroboros/issues/120) | Intake empty, loading & guidance states | ouroboros-ui | M | N.2, N.5 |
 | 165 | **N.7** | [#121](https://github.com/NobuData/ouroboros/issues/121) | Issues e2e leg | ouroboros-ui, .github | S | N.1, N.6 |
 

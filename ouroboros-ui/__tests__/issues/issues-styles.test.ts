@@ -172,6 +172,56 @@ describe("the selection bar (#118)", () => {
   });
 });
 
+describe("the grid and the detail panel (#119)", () => {
+  it("seats the table in eight columns and the panel in four, and stacks them at the mockup's break", () => {
+    expect(rule("\\.issues__grid")).toMatch(/grid-template-columns: repeat\(12, minmax\(0, 1fr\)\)/);
+    expect(rule("\\.issues__main")).toContain("grid-column: span 8");
+    expect(rule("\\.issues__aside")).toContain("grid-column: span 4");
+
+    const stack = CODE.indexOf(".issues__grid > *");
+    expect(stack).toBeGreaterThan(CODE.indexOf("@media (max-width: 68.75rem)"));
+    expect(rule("\\.issues__grid > \\*")).toContain("grid-column: span 12");
+  });
+
+  it("rules the excerpt on its reading edge, in logical properties, as an italic quotation", () => {
+    const excerpt = rule("\\.issues-panel__excerpt");
+
+    expect(excerpt).toMatch(/border-inline-start: [\d.]+rem solid var\(--line-strong\)/);
+    expect(excerpt).toContain("font-style: italic");
+    expect(excerpt).toContain("color: var(--ink-mut)");
+  });
+
+  it("colours the risk level off the attribute the component sets, in the three status inks", () => {
+    expect(rule('\\.issues-panel__risk-level\\[data-risk="low"\\]')).toContain("var(--ok)");
+    expect(rule('\\.issues-panel__risk-level\\[data-risk="medium"\\]')).toContain("var(--warn)");
+    expect(rule('\\.issues-panel__risk-level\\[data-risk="high"\\]')).toContain("var(--err)");
+    expect(CODE).not.toMatch(/issues-panel__risk-level--/);
+  });
+
+  it("draws the trace as a disclosure whose marker turns with the element's own state", () => {
+    expect(rule("\\.issues-panel__trace-head")).toContain("list-style: none");
+    expect(rule("\\.issues-panel__trace\\[open\\] > \\.issues-panel__trace-head::before")).toMatch(/content: "."/);
+    expect(rule("\\.issues-panel__trace")).toContain("background: var(--inset)");
+    expect(rule("\\.issues-panel__trace-line--err")).toContain("color: var(--err)");
+  });
+
+  it("pulses the skeleton only under the reduced-motion guard", () => {
+    const guard = CODE.lastIndexOf("@media (prefers-reduced-motion: no-preference)");
+    const pulse = CODE.indexOf("animation: issues-skeleton-pulse");
+
+    expect(pulse).toBeGreaterThan(guard);
+    expect(CODE).toContain("@keyframes issues-skeleton-pulse");
+    expect(rule("\\.issues-panel__skeleton-bar")).toContain("background: var(--raised)");
+  });
+
+  it("keeps a long path or token from widening the column", () => {
+    expect(rule("\\.issues-panel__files li")).toContain("overflow-wrap: anywhere");
+    expect(rule("\\.issues-panel__title")).toContain("overflow-wrap: anywhere");
+    expect(rule("\\.issues__main")).toContain("min-width: 0");
+    expect(rule("\\.issues__aside")).toContain("min-width: 0");
+  });
+});
+
 describe("the shell it mounts in", () => {
   it("holds nothing fixed or sticky, because the pane is the only scroll container", () => {
     expect(CODE).not.toMatch(/position:\s*(?:fixed|sticky)/);

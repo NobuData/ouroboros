@@ -3,9 +3,11 @@
 /**
  * The server hops for the intake page's actions — the head's two
  * ([#115](https://github.com/NobuData/ouroboros/issues/115)), the table's freshness tag
- * ([#117](https://github.com/NobuData/ouroboros/issues/117)) and the selection bar's queue
- * ([#118](https://github.com/NobuData/ouroboros/issues/118)) — the calls its Client Components
- * cannot make themselves.
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)), the selection bar's queue
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)) and the detail panel's single
+ * re-estimate ([#119](https://github.com/NobuData/ouroboros/issues/119)) — the calls its Client
+ * Components cannot make themselves. The panel's **Queue for loop** is {@link queueUnder} with
+ * one id: the contract makes the three queue affordances one write.
  *
  * `app/api/server.ts` states the rule this exists under, and `app/dashboard/pulse-actions.ts` is the
  * same seam for the dashboard's switch: the browser cannot reach REST — `OURO_REST_URL` has no
@@ -24,9 +26,10 @@
  *   shown.
  * - **The selection's shape is checked before it is sent.** Types do not survive a forged POST, so
  *   the two queue actions refuse anything that is not a non-empty list of strings — and a workflow
- *   outside the fixed set — instead of spreading a value that is not a list into a request.
- *   Everything past the shape — uuids, the ceiling of a hundred, duplicates, ids from another
- *   workspace — is the service's to refuse, and it refuses by writing nothing.
+ *   outside the fixed set — and the single re-estimate refuses anything that is not a non-empty
+ *   string, instead of spreading a value that is not a list into a request or building a path out
+ *   of one. Everything past the shape — uuids, the ceiling of a hundred, duplicates, ids from
+ *   another workspace — is the service's to refuse, and it refuses by writing nothing.
  *
  * ### Failure posture: a value, not a throw
  *
@@ -38,7 +41,8 @@
  *
  * **Every value this module needs is imported rather than declared**: a `"use server"` module may
  * export nothing but async functions, so the sentences and the outcome types live in
- * `app/issues/view.ts` and `app/issues/bar.ts`, and the contract's codes in `app/api/backlog.ts`.
+ * `app/issues/view.ts`, `app/issues/bar.ts` and `app/issues/panel.ts`, and the contract's codes
+ * in `app/api/backlog.ts`.
  */
 
 import {
@@ -47,12 +51,21 @@ import {
   BACKLOG_SYNC_TOO_SOON_CODE,
   ESTIMATION_RATE_LIMITED_CODE,
   FORBIDDEN_CODE,
+  ISSUE_ALREADY_ESTIMATING_CODE,
+  ISSUE_NOT_FOUND_CODE,
   type QueueSelection,
   backlog,
 } from "@/app/api/backlog";
 import { isApiError } from "@/app/api/errors";
 
 import { type QueueOutcome, isWorkflow, offendersOf } from "./bar";
+import {
+  REESTIMATE_ONE_BUSY,
+  REESTIMATE_ONE_FAILED,
+  REESTIMATE_ONE_NOT_FOUND,
+  REESTIMATE_ONE_ROLE_REASON,
+  estimationOutcome,
+} from "./panel";
 import { SYNC_FAILED, SYNC_ROLE_REASON, SYNC_RUNNING, syncOutcome, syncTooSoon } from "./table";
 import {
   type HeadOutcome,
@@ -171,6 +184,42 @@ export async function syncBacklog(): Promise<HeadOutcome> {
         return { ok: false, reason: syncTooSoon(error.details.retryAfterSeconds) };
       default:
         return { ok: false, reason: error.message === "" ? SYNC_FAILED : error.message };
+    }
+  }
+}
+
+/**
+ * Re-estimate one issue — the detail panel's **Re-estimate**
+ * ([#119](https://github.com/NobuData/ouroboros/issues/119)).
+ *
+ * @param issueId The issue's `github_issues.id`. Anything that is not a non-empty string is a
+ *   forged request and is refused before a path is built from it.
+ * @returns That sizing started, as a sentence — or why it did not. An estimate already in
+ *   flight is reported as the thing asked for happening rather than as a refusal, because it
+ *   is: the panel is following the same issue either way.
+ * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
+ */
+export async function reestimateIssue(issueId: string): Promise<HeadOutcome> {
+  if (typeof issueId !== "string" || issueId === "") {
+    return { ok: false, reason: REESTIMATE_ONE_FAILED };
+  }
+
+  try {
+    return estimationOutcome(await backlog.estimate(issueId));
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    switch (error.code) {
+      case FORBIDDEN_CODE:
+        return { ok: false, reason: REESTIMATE_ONE_ROLE_REASON };
+      case ISSUE_NOT_FOUND_CODE:
+        return { ok: false, reason: REESTIMATE_ONE_NOT_FOUND };
+      case ISSUE_ALREADY_ESTIMATING_CODE:
+        return { ok: true, message: REESTIMATE_ONE_BUSY };
+      case ESTIMATION_RATE_LIMITED_CODE:
+        return { ok: false, reason: reestimateRateLimited(error.details.retryAfterSeconds) };
+      default:
+        return { ok: false, reason: error.message === "" ? REESTIMATE_ONE_FAILED : error.message };
     }
   }
 }
