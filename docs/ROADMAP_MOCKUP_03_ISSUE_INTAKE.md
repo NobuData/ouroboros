@@ -1690,7 +1690,7 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 | N.4 | #118 | 🟢 Done | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
 | N.5 | #119 | 🟢 Done | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
 | N.6 | #120 | 🟢 Done | ouroboros-ui: [N.6] Intake empty, loading & guidance states | No-token, no-repos, syncing, unsized, empty-filter states | mvp, intake, ui, design | N (after N.2–N.5) | Y | M | ouroboros-ui |
-| N.7 | #121 | 🟡 Open | ouroboros-ui: [N.7] Issues e2e leg | Seeded parity, filter/select/queue/re-estimate flows, both themes | mvp, intake, ui, ci | N (after N.1–N.6) | Y | S | ouroboros-ui, .github |
+| N.7 | #121 | 🟢 Done | ouroboros-ui: [N.7] Issues e2e leg | Seeded parity, filter/select/queue/re-estimate flows, both themes | mvp, intake, ui, ci | N (after N.1–N.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue N.1 — ouroboros-ui: [N.1] Issues route, page head & counts
 
@@ -2264,7 +2264,63 @@ sync #1  ─▶ "First sync running — 120 issues so far…"
 
 ### Issue N.7 — ouroboros-ui: [N.7] Issues e2e leg
 
-> **GitHub issue:** #121 · **Status:** 🟡 Open · **Parent epic:** #97
+> **GitHub issue:** #121 · **Status:** 🟢 Done · **Parent epic:** #97
+
+> **Shipped 2026-09-11.** Leg 11 of the smoke suite,
+> [`tests/e2e/specs/issues.spec.ts`](../tests/e2e/specs/issues.spec.ts) over
+> [`support/issues.ts`](../tests/e2e/support/issues.ts), amending #56 — sixteen tests in under a
+> minute against the ticket's two-minute allowance, from a cold compose stack. `ouroboros-e2e` 0.8.0.
+> Every value the leg asserts is written down in the support module rather than derived, the
+> suite's standing rule: the head's *9 open issues. 7 already sized.*, the nine rows in M.1's own
+> total `effort` order with every chip, tag, pill and em dash, the fourteen label facets, the four
+> enabled repositories, and the `#485` panel field for field — meta line, excerpt, the mockup's
+> three files, `~180k`, `12–18 min`, `conf 92%`, the risk sentence, the inert **Queue for loop**
+> with its reason, the GitHub link, and a trace that says `heuristic-v0` and *none recorded*.
+>
+> **The two assertions the leg exists for cross every service.** *Select → queue → dashboard*: the
+> three `sized` issues no queue row names are ticked, the bar sums them to *3h 40m*, and the press is
+> **refused** — `#487` and `#489` share their numbers with issues the dashboard seed already queued
+> from `helios-telemetry` and `helios-console`, and `queue_items` is unique on the number by design
+> (V009; the intake seed's own header calls this *the fixture that shows it*). N.4's refusal dialog
+> names exactly those two, the leg deselects them, `#484` is queued under its own suggested
+> workflow, and the toast's link lands on the **dashboard page** — read as a page, never as the queue
+> API — where *Queued issues* moved from 12 to 13, its estimate from *9h 40m* to *10h 30m*, the
+> footer from `+7` to `+8`, and the five head rows are still the seed's, because a queue appends.
+> *Re-estimate*: a press on `#487` goes UI → REST → PostgreSQL → engine and back as **v3**, drawn by
+> the panel's poll with the page never reloaded (a window mark proves it) and still there after a
+> reload. `#487` is chosen because the rule engine reproduces its seeded row — `l`, 71, `feature-loop`,
+> `claude-fable-5` through `implement`'s primary — so the table's parity survives the write. The
+> filter bar's four controls become one address (`?repo=…&labels=bug&sort=number&q=CAN`), reloaded
+> into the identical view; `state=closed` narrows to *No issues match this filter* and **Clear
+> filters** ends at `/issues`. The personal workspace draws N.6's guidance. Both palettes are
+> screenshot-diffed for the seeded page (with `#485` checked and open) and for the guidance state, and
+> the shell addendum's three assertions hold: fixed chrome under a pane scroll, the sidebar's
+> **Issues** entry current, and no sideways scroll at 125%.
+>
+> **Two corrections to the ticket's own wording, argued in the leg's header rather than worked
+> around.** *Observe `estimating…`* is a race the browser cannot be made to win every time — the
+> panel's refresh on the `202` was seen catching the claim, and on a faster pipeline it will not — so
+> the transient state is asserted on `#483`, the seed's own mid-flight row (`sizing…`, two em dashes,
+> the *Sizing now* skeleton, both actions inert with the reason), and the live flow on what it leaves
+> behind, inside the page's promise of *within one poll*. And *the personal org renders the no-repos
+> state* is N.6's correction carried forward: the seed enables two repositories and writes no token,
+> so the leg asserts the no-token guidance, which is the true one.
+>
+> **What the stack had to hold still, and what the leg leaves behind.** `docker-compose.e2e.yml`
+> gained `OURO_ESTIMATION_STALE_SECONDS=86400`: L.3's recovery sweep would otherwise re-queue `#483`
+> ten minutes into any stack and the head would read *8 already sized* — correct behaviour, and fatal
+> to a parity leg, the same finding the health sweep's line records. `verify-failure-modes.sh` gained
+> the `db` pair (the leg fails at sign-in) and the `engine` pair, the interesting one: fifteen tests
+> stay green and the re-estimate goes red naming `needs human`, which is what the orchestrator writes
+> when the engine refuses twice — spot-verified by stopping each container. Two writes have no undo
+> on the API, the queue row and the estimate version; the tenants leg's rule applies and the README
+> says so: a second run on the same volume is red at parity until `docker compose down -v`.
+>
+> **What is deferred, and to whom.** A queue row a leg could remove is mockup 03's v2 queue
+> management (the read-only `GET /api/v1/queue` says so by name); the day it exists the queue leg
+> restores the seed in teardown as the providers leg does. A `sized` pill that waits for a model
+> rather than a rule engine is O.2's (#123), and the day the pipeline takes seconds the transient
+> assertion moves from `#483` to the live press.
 
 - **Problem Statement:** The intake flow (filter → select → queue → dashboard)
   and the estimation lifecycle are cross-service paths only e2e can certify.

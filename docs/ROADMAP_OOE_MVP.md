@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**164 of 454 ordered issues are closed** — P0 through P5 are complete; P6 is in flight.
+**165 of 454 ordered issues are closed** — P0 through P6 are complete.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -39,8 +39,8 @@ and are accounted for in the counts below, not in the tables.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | P0, P1, P2, P3, P4, P5 | **142** |
-| 🟡 **In progress** | P6 (22/23) | **22** of 23 |
+| ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
+| 🟡 **In progress** | — | **0** |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | ✅ **8/8** | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 22/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | ✅ 23/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -700,11 +700,11 @@ that roadmap's "Existing issues affected" section.
 | 141 | **AE.7** | ✅ [#233](https://github.com/NobuData/ouroboros/issues/233) | Providers e2e leg | ouroboros-ui, .github | S | AE.1, AE.6 |
 | 142 | **CI.3** | ✅ [#593](https://github.com/NobuData/ouroboros/issues/593) | Alias inspector | ouroboros-ui | L | CH.1, CH.2, CI.2 |
 
-## P6 — Issue Intake — Work Enters the System
+## P6 — Issue Intake — Work Enters the System ✅
 
-> **1 issue** · 2 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157`, `158`, `159`, `160`, `161`, `162`, `163` and `164` · 12 dependency waves
+> **23 issues** · 68 complexity points · order **#143–#165**, every row of which has shipped and left the table below · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 22 of 23 issues closed
+> **Status:** ✅ **Complete** — all 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1287,9 +1287,35 @@ that roadmap's "Existing issues affected" section.
 > still not an empty table. Four new suites, ten extended. P6 is 22 of 23, and the document stands
 > at **164 of 454**.
 
-| # | Ref | Issue | Work item | Module | Cx | Blocked by |
-|--:|-----|:-----:|-----------|--------|:--:|------------|
-| 165 | **N.7** | [#121](https://github.com/NobuData/ouroboros/issues/121) | Issues e2e leg | ouroboros-ui, .github | S | N.1, N.6 |
+> **`N.7` · [`#121`](https://github.com/NobuData/ouroboros/issues/121) has shipped, and row `165`
+> leaves the table — the last one, which closes the phase.** The issues leg of the e2e suite,
+> `tests/e2e/specs/issues.spec.ts` (`ouroboros-e2e` 0.8.0), amending #56 with the intake roadmap's
+> MVP gate: mockup 03 against the intake seed — the head's two counts, the nine rows in the
+> listing's own total order with every cell and pill, and the `#485` panel field for field — and the
+> two flows that cross every service in the stack. A selection of the three free issues is refused
+> naming the two whose numbers the workspace's queue already holds from other repositories (the
+> seed's own fixture, and N.4's refusal dialog exercised against a real `409`), those two are
+> deselected, `#484` is queued, and the toast's own link lands on the **dashboard page**, where the
+> *Queued issues* tile, its summed estimate and the card's footer have each moved by one row's
+> worth while the five head rows stayed the seed's. A press of **Re-estimate** on `#487` goes
+> through the real engine and comes back as v3 — the rule engine reproduces the seeded row, which is
+> why that issue — drawn by the panel's poll without a reload and re-read after one. The filter bar
+> writes four controls into one address that reloads into the identical view; the personal
+> workspace draws N.6's no-token guidance; both are screenshot-diffed in both palettes; the shell
+> assertions hold. Sixteen tests in under a minute, against a two-minute allowance.
+>
+> **Two lines outside the suite.** `docker-compose.e2e.yml` gained
+> `OURO_ESTIMATION_STALE_SECONDS=86400`, so L.3's recovery sweep leaves the seed's `estimating…`
+> row alone for the length of a stack — the argument the health sweep's line already makes, at the
+> next table over — and `verify-failure-modes.sh` gained two pairs: `db`, at which the leg fails at
+> sign-in, and `engine`, at which exactly one test goes red naming `needs human`, the pill the
+> orchestrator writes when the engine does not answer. **Two writes have no undo on the API** — a
+> queue row and an estimate version — and the leg says so rather than pretending: a second run on
+> the same volume is red at parity until `docker compose down -v`. P6 is 23 of 23, the phase is
+> complete, and the document stands at **165 of 454**.
+
+The phase's table is empty: every one of its twenty-three rows has shipped and left it, each with
+the blockquote above that records what it did and what it did differently.
 
 ## P7 — Workflow Authoring — Visual & Code
 

@@ -99,6 +99,41 @@
 # It publishes nothing: `rest` reaches it over the network below, and nothing on the host
 # needs to.
 #
+# ---------------------------------------------------------------------------
+# The fourth line, and the sweep it holds still (issue #121, the issues leg).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_ESTIMATION_STALE_SECONDS: "86400"` — how long an issue may sit in `estimating`
+#     before L.3's recovery sweep (`estimation.sweeper.ts`) decides nothing is estimating it
+#     and queues it again. The maximum the service accepts (one day,
+#     `MAX_ESTIMATION_STALE_SECONDS`), for the argument the third line makes about the health
+#     sweep, at the next table over.
+#
+# **What it is for.** `R__dev_seed_intake.sql` writes `#483` as the mockup's `estimating…` row —
+# a `sizing_status` and **no estimate**, because an answer in flight has none — and the sweep
+# is right to treat a row that has said `estimating` for ten minutes as abandoned: on any
+# ordinary stack it re-queues `#483`, the engine sizes it in milliseconds, and the page head
+# reads *8 already sized* over a table with no `sizing…` cell on it. That is the product
+# working. It is also a parity leg whose fixture depends on how long the stack has been up:
+# `specs/issues.spec.ts` asserts the head's count, `#483`'s mid-flight cells and both palettes
+# against the seed, and every one of those goes red about ten minutes after the seed was
+# written — inside the suite's own budget on a slow runner, and always on a `--keep` stack
+# somebody debugs against for an afternoon.
+#
+# **Why the threshold rather than the cadence.** `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS`
+# would also do it, and it is left alone on purpose: the sweep still runs on its ordinary
+# cadence and finds nothing, which is what a healthy service does and what its own log line
+# is written for — a sweep held off entirely would be a code path this stack never exercises.
+# The threshold is the one number that is *about the fixture*: it says how old a claim may be,
+# and the seed's claim is allowed to be a day old because it is the mockup's, not a process's.
+#
+# **What this therefore does not test, and where that is tested.** That a stranded claim is
+# recovered is L.3's own integration coverage in `ouroboros-rest`, against a clock it controls.
+# What the issues leg holds instead is the half no unit test can see: that a press in the
+# browser really moves an issue through the engine and back, and that what the pipeline wrote
+# reaches the pill, the panel and the trace without a reload — which is a claim about the
+# *running* pipeline, and the sweep would only ever have added a second claimant to it.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -107,6 +142,7 @@ services:
       NODE_ENV: test
       OURO_LISTEN_HOST: "0.0.0.0"
       OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: "86400"
+      OURO_ESTIMATION_STALE_SECONDS: "86400"
 
   provider-stub:
     build:
