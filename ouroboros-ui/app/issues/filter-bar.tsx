@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import type { EnabledRepo } from "@/app/api/enablement";
 import type { Reading } from "@/app/api/reading";
@@ -13,6 +13,7 @@ import {
 } from "@/app/shell/focus-repo";
 import { Button, Card } from "@/app/ui";
 
+import { onClearFilters } from "./clear-filters";
 import {
   ALL_REPOS_OPTION,
   type BacklogFilter,
@@ -35,6 +36,7 @@ import {
   STATE_LABEL,
   STATE_OPTIONS,
   UNLISTED_REPO_OPTION,
+  UPDATING_VIEW,
   chipSet,
   filterHref,
   focusArrival,
@@ -79,6 +81,22 @@ import {
  * A repository the enabled list does not name, or a label the facets do not, is still what the
  * address asked for — so each is drawn, as an option or a pressed chip, and can be changed. A bar
  * that hid them would show a default view over a filtered table.
+ *
+ * ### The address moving is a state, and the bar draws it
+ *
+ * Every navigation is made inside a transition ([#120](https://github.com/NobuData/ouroboros/issues/120)),
+ * so between a press and the server's answer the bar is `aria-busy` and says *Updating the
+ * backlog…* under its row — the rows beneath are the old address's until the new one arrives,
+ * and a reader who pressed a chip should be told the press took. Nothing else changes: the
+ * controls stay pressable, and a second press supersedes the first the way a second
+ * navigation does.
+ *
+ * ### Clearing is the bar's, from wherever it is asked
+ *
+ * The table's *no issues match* state carries a **Clear filters** control, and what it does is
+ * exactly this bar's **Clear all** — the store cleared, the box settled, the default address —
+ * asked for through `app/issues/clear-filters.ts`, because those three moves are only right in
+ * this order and only this bar knows it.
  */
 
 /** What the bar takes. */
@@ -132,6 +150,7 @@ function noticing(held: SearchBox, q: string): SearchBox {
  */
 export function FilterBar({ filter, facets, repos, organizationId }: FilterBarProps) {
   const router = useRouter();
+  const [pending, startNavigation] = useTransition();
 
   const [search, setSearch] = useState<SearchBox>({
     seen: filter.q,
@@ -171,9 +190,13 @@ export function FilterBar({ filter, facets, repos, organizationId }: FilterBarPr
         clearTimeout(timer.current);
         timer.current = null;
       }
-      router.replace(filterHref(next), { scroll: false });
+      // Inside a transition, so `pending` is true from the press until the route has drawn
+      // the new address — the state the bar reports under its row.
+      startNavigation(() => {
+        router.replace(filterHref(next), { scroll: false });
+      });
     },
-    [router],
+    [router, startNavigation],
   );
 
   const focus = useFocusRepo(organizationId);
@@ -210,6 +233,20 @@ export function FilterBar({ filter, facets, repos, organizationId }: FilterBarPr
     reconciled.current = focusId;
     if (focusId !== filter.repo) navigate({ ...filter, repo: focusId, q: search.draft.trim() });
   }, [filter, focusId, navigate, organizationId, repos, search.draft]);
+
+  /**
+   * Back to the default view: the header's chip cleared and recorded as this bar's own move, the
+   * box settled on nothing, and the default address. Also what the table's **Clear filters**
+   * asks for, through the signal below.
+   */
+  const clearAll = useCallback(() => {
+    reconciled.current = null;
+    setFocusRepo(organizationId, null);
+    setSearch((held) => ({ ...held, committed: "", draft: "" }));
+    navigate(DEFAULT_FILTER);
+  }, [navigate, organizationId]);
+
+  useEffect(() => onClearFilters(clearAll), [clearAll]);
 
   /** The repositories the select can name. */
   const listed = repos.ok ? repos.value : [];
@@ -258,15 +295,13 @@ export function FilterBar({ filter, facets, repos, organizationId }: FilterBarPr
     }, SEARCH_DEBOUNCE_MS);
   }
 
-  function clearAll(): void {
-    reconciled.current = null;
-    setFocusRepo(organizationId, null);
-    setSearch((held) => ({ ...held, committed: "", draft: "" }));
-    navigate(DEFAULT_FILTER);
-  }
-
   return (
-    <Card as="section" aria-label={FILTER_BAR_LABEL} className="issues-filter">
+    <Card
+      as="section"
+      aria-busy={pending || undefined}
+      aria-label={FILTER_BAR_LABEL}
+      className="issues-filter"
+    >
       <div className="issues-filter__row">
         <select
           aria-label={REPO_LABEL}
@@ -350,6 +385,11 @@ export function FilterBar({ filter, facets, repos, organizationId }: FilterBarPr
         )}
       </div>
 
+      {pending && (
+        <p className="issues-filter__pending" role="status">
+          {UPDATING_VIEW}
+        </p>
+      )}
       {!facets.ok && (
         <p className="issues-filter__unread" role="status">
           {FACETS_UNREAD} {facets.reason}

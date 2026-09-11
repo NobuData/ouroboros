@@ -39,8 +39,8 @@ const {
 } = await import("@/app/api/backlog");
 
 /**
- * The backlog resource file (#115, #117, #119) — the six `backlog` operations the intake page
- * calls.
+ * The backlog resource file (#115, #117, #119, #120) — the seven `backlog` operations the intake
+ * page calls.
  *
  * Held to what every resource file here is held to: the right path, the right verb, the body
  * returned rather than the envelope around it, and a refusal that arrives as an `ApiError`
@@ -245,6 +245,39 @@ describe("backlog.sync (#117)", () => {
       status: 409,
       code: BACKLOG_SYNC_TOO_SOON_CODE,
       details: { retryAfterSeconds: 12 },
+    });
+  });
+});
+
+describe("backlog.status (#120)", () => {
+  it("GETs the sync's status, and returns it itself", async () => {
+    const { client, requests } = clientAnswering(syncStatus({ running: false }));
+
+    const status = await backlog.status(client);
+
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/backlog/sync-status");
+    expect(status).toEqual(syncStatus({ running: false }));
+  });
+
+  it("hands the request the signal it was given, so the table's poll has a deadline", async () => {
+    const { client, requests } = clientAnswering(syncStatus());
+
+    await backlog.status(client, AbortSignal.abort());
+
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  it("rejects with the service's refusal rather than an invented status", async () => {
+    const { client } = clientAnswering(
+      { code: "organization_required", message: "Choose a workspace.", details: {} },
+      400,
+    );
+
+    await expect(backlog.status(client)).rejects.toMatchObject({
+      status: 400,
+      code: "organization_required",
+      message: "Choose a workspace.",
     });
   });
 });

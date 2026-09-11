@@ -3,6 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_FILTER, FILTER_BAR_LABEL, REPO_LABEL } from "@/app/issues/filter";
 import { CLOSE_PANEL_LABEL, NO_ISSUE_OPEN, PANEL_TITLE, READING_ISSUE } from "@/app/issues/panel";
+import {
+  CHOOSE_REPOS_LABEL,
+  NO_REPOS_MEMBER_NOTE,
+  NO_REPOS_TITLE,
+  PAUSE_HEADLINE,
+} from "@/app/issues/states";
 import { TABLE_CAPTION } from "@/app/issues/table";
 import {
   COUNTS_UNREAD,
@@ -15,8 +21,17 @@ import {
   queueLabel,
 } from "@/app/issues/view";
 
-import { HELIOS, UNCOUNTED, UNCOUNTED_REASON, issueId, issuesReadings } from "../helpers/issues";
-import { TENANT_ID } from "../helpers/login";
+import {
+  HELIOS,
+  UNCOUNTED,
+  UNCOUNTED_REASON,
+  issueId,
+  issuesReadings,
+  paged,
+  paused,
+  synced,
+} from "../helpers/issues";
+import { TENANT_ID, membership } from "../helpers/login";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 /**
@@ -71,6 +86,7 @@ function screenFor(
       mayContribute
       organizationId={TENANT_ID}
       readings={issuesReadings()}
+      workspaceSlug={membership().slug}
       {...over}
     />
   );
@@ -323,9 +339,64 @@ describe("a backlog that could not be counted", () => {
   });
 });
 
+describe("the guidance states (#120)", () => {
+  /** The seeded personal workspace's shape: nothing mirrored, and the status naming why. */
+  const NO_REPOS = issuesReadings({
+    counts: { ok: true, value: { openCount: 0, sizedCount: 0, mirroredCount: 0 } },
+    listing: paged({ items: [], total: 0, openCount: 0, sizedCount: 0 }),
+    sync: paused("no_repositories"),
+  });
+
+  it("draws the guidance inside the table card, with the admin's link opened on this workspace", () => {
+    render(screenFor({ readings: NO_REPOS }));
+
+    const card = screen.getByRole("region", { name: /backlog · as ouroboros sees it/i });
+
+    expect(within(card).getByText(NO_REPOS_TITLE)).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: CHOOSE_REPOS_LABEL })).toHaveAttribute(
+      "href",
+      `/login?workspace=${membership().slug}`,
+    );
+    expect(screen.queryByRole("grid")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("0 open issues. 0 already sized.");
+  });
+
+  it("gives a member the explanation and no control, the role deciding as it does for the head", () => {
+    render(screenFor({ mayAdminister: false, readings: NO_REPOS }));
+
+    expect(screen.getByText(NO_REPOS_MEMBER_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: CHOOSE_REPOS_LABEL })).toBeNull();
+  });
+
+  it("draws the sync banner over the seeded rows when the loop is paused", () => {
+    render(screenFor({ readings: issuesReadings({ sync: paused("rate_limited") }) }));
+
+    const card = screen.getByRole("region", { name: /backlog · as ouroboros sees it/i });
+
+    expect(within(card).getByRole("status")).toHaveTextContent(PAUSE_HEADLINE.rate_limited);
+    expect(within(card).getByRole("grid", { name: TABLE_CAPTION })).toBeInTheDocument();
+  });
+});
+
 describe("both palettes", () => {
   it("render the same markup, so the theme is the stylesheet's alone", () => {
     const [light, dark] = renderInBothPalettes(screenFor());
+
+    expect(maskIds(light!)).toBe(maskIds(dark!));
+  });
+
+  it.each([
+    ["no token", paused("not_configured")],
+    ["no repos", paused("no_repositories")],
+    ["first sync", synced({ running: true, syncedAt: null })],
+    ["clear", synced()],
+    ["paused", paused("rate_limited", { retryAfterSeconds: 1180 })],
+  ])("render the %s state the same in both", (_, sync) => {
+    const readings = issuesReadings({
+      listing: paged({ items: [], total: 0, openCount: 0, sizedCount: 0 }),
+      sync,
+    });
+    const [light, dark] = renderInBothPalettes(screenFor({ readings }));
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
   });

@@ -9,7 +9,7 @@ import "server-only";
  *
  * The composition `app/models/data.ts` makes: the route stays three lines, the reads are a function
  * a stub can drive, and a refusal is a value the screen draws rather than a throw that blanks the
- * page ({@link attempt}). Three reads, issued together, each degrading on its own.
+ * page ({@link attempt}). Four reads, issued together, each degrading on its own.
  *
  * ### Two listings, because the head asks two questions
  *
@@ -36,12 +36,21 @@ import "server-only";
  * defers that read until its menu opens; the select cannot, because a `<select>` needs its options
  * before it is opened, and the page arrives rendered.
  *
+ * ### The sync's status is read beside the page
+ *
+ * M.4's status ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the fourth read
+ * ([#120](https://github.com/NobuData/ouroboros/issues/120)): a page with no rows has to say
+ * *which* nothing it is — no token, no enabled repository, a first sync still running, a
+ * backlog that is simply clear — and a paused loop has to say why over the rows it did
+ * mirror. Every member may read it, `viewer` included, so it is asked for on every render.
+ *
  * ### The page is read here once, and polled afterwards
  *
- * The rows the route renders are the first paint. From then on the table asks
- * `app/api/backlog/route.ts` for the same page on the DASH-I.8 cadence, and what it draws is
- * the last answer — which is how an `estimating…` row becomes `sized` when the pipeline
- * finishes rather than when somebody reloads.
+ * The rows the route renders are the first paint, and the status with them. From then on the
+ * table asks `app/api/backlog/route.ts` for the same page on the DASH-I.8 cadence, and what it
+ * draws is the last answer — which is how an `estimating…` row becomes `sized` when the
+ * pipeline finishes rather than when somebody reloads, and how a paused banner clears when
+ * the pause does.
  */
 
 import type { Workspace } from "@/app/api/access";
@@ -97,10 +106,11 @@ export async function readIssues(
   now: () => number = Date.now,
 ): Promise<IssuesReadings> {
   const readAt = now();
-  const [view, scope, repos] = await Promise.all([
+  const [view, scope, repos, sync] = await Promise.all([
     attempt(() => backlog.list(pageQuery(filter, page))),
     attempt(() => backlog.list(SCOPE_QUERY)),
     attempt(async () => enabledRepos(await readEnablement(access.membership.id))),
+    attempt(() => backlog.status()),
   ]);
 
   return {
@@ -108,6 +118,7 @@ export async function readIssues(
     facets: view.ok ? { ok: true, value: view.value.labelFacets } : view,
     repos,
     listing: view,
+    sync,
     readAt,
   };
 }

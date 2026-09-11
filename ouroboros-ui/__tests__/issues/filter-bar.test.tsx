@@ -20,8 +20,10 @@ import {
   STATE_LABEL,
   STATE_OPTIONS,
   UNLISTED_REPO_OPTION,
+  UPDATING_VIEW,
   filterHref,
 } from "@/app/issues/filter";
+import { requestClearFilters } from "@/app/issues/clear-filters";
 
 import { ATLAS, FACETED, HELIOS, LISTED, SEEDED_FACETS } from "../helpers/issues";
 import { TENANT_ID } from "../helpers/login";
@@ -436,6 +438,50 @@ describe("Clear all", () => {
     render(bar({ filter: { ...DEFAULT_FILTER, sort: "number" } }));
 
     expect(screen.getByRole("button", { name: CLEAR_ALL_LABEL })).toBeInTheDocument();
+  });
+
+  it("is what the table's Clear filters asks for, through the signal, move for move (#120)", () => {
+    setFocusRepo(TENANT_ID, { id: HELIOS.id, name: HELIOS.name });
+    render(bar({ filter: FILTERED }));
+
+    act(() => {
+      requestClearFilters();
+    });
+
+    expect(wrote()).toEqual(["/issues", { scroll: false }]);
+    expect(searchBox()).toHaveValue("");
+    expect(focus()).toBeNull();
+  });
+
+  it("stops listening for the signal once unmounted", () => {
+    const { unmount } = render(bar({ filter: FILTERED }));
+    unmount();
+
+    act(() => {
+      requestClearFilters();
+    });
+
+    expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("the address moving (#120)", () => {
+  it("is not reported at rest: the region is not busy and carries no pending line", () => {
+    render(bar());
+
+    expect(screen.getByRole("region", { name: FILTER_BAR_LABEL })).not.toHaveAttribute("aria-busy");
+    expect(screen.queryByText(UPDATING_VIEW)).toBeNull();
+  });
+
+  it("navigates inside a transition, so the route's own pending state is the bar's to report", () => {
+    // The router is a stub that resolves nothing, so the transition settles at once here; what
+    // is asserted is that the navigation is made — the pending line is the route's to show.
+    render(bar());
+
+    fireEvent.click(chip("bug"));
+
+    expect(wrote()[0]).toBe("/issues?labels=bug");
+    expect(screen.queryByText(UPDATING_VIEW)).toBeNull();
   });
 });
 

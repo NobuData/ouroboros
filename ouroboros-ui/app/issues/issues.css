@@ -4,8 +4,10 @@
  * What is here is the page head — the page's gutter rhythm, the heading column, the two actions with
  * what a press of either reports under it, and the confirmation's column — since #116 the filter
  * bar under it, since #117 the backlog table under that, since #118 the selection bar under the
- * table with its menu, its refusal dialog and its toast, and since #119 the grid that seats the
- * table beside the detail panel, and the panel itself.
+ * table with its menu, its refusal dialog and its toast, since #119 the grid that seats the
+ * table beside the detail panel, and the panel itself, and since #120 the states the mockup does
+ * not show — the sync banner over the rows, the guidance where the rows would be, the bar's
+ * pending line, and the route's skeleton at the page's own geometry.
  *
  * Every length is a token or `rem`, so the font-size preference scales the head with the rest of the
  * product (design system § 3.2), and every hue is a token, so both palettes are the token sheet's.
@@ -170,6 +172,14 @@
 .issues-filter__unread {
   margin: var(--sp-4) 0 0;
   color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The address is moving (#120): said under the row, in the muted ink, until the route answers. */
+.issues-filter__pending {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
 }
@@ -837,6 +847,17 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .issues-guidance--busy,
+  .issues-skeleton__bar,
+  .issues-skeleton__action,
+  .issues-skeleton__select,
+  .issues-skeleton__chip,
+  .issues-skeleton__search,
+  .issues-skeleton__head,
+  .issues-skeleton__check,
+  .issues-skeleton__tag,
+  .issues-skeleton__pill,
+  .issues-skeleton__panel,
   .issues-panel__skeleton-bar {
     animation: issues-skeleton-pulse 1.6s ease-in-out infinite;
   }
@@ -854,4 +875,222 @@
   color: var(--err);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+/* ------------------------------------------------------------------ the sync banner (#120) */
+
+/*
+ * DASH-I.7's banner, inside the table card between its head and its rows: the box — the warn
+ * tint, the hairline, the headline's weight — is the design system's `.ou-retry`; what is here
+ * is placement, the gap to the rows or the empty state under it.
+ */
+.issues-sync {
+  margin-bottom: var(--sp-6);
+}
+
+/* The first sync's progress over rows already mirrored: a status line, not a warning. */
+.issues-sync__progress {
+  margin: 0 0 var(--sp-6);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ------------------------------------------------------------------ the guidance (#120) */
+
+/*
+ * Every state the mockup does not show is the #46 empty state with a control or a sentence
+ * under it. One floor for all of them, so a page that moves from *first sync running* to
+ * *backlog clear* does not change height on the way; the well, the dashed boundary and the
+ * centring are the primitive's.
+ */
+.issues-guidance {
+  min-height: 14rem;
+}
+
+/* The member's sentence in place of the control — the primitive's note, in the muted ink. */
+.issues-guidance__note {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The clear state's mark, in the good hue: the one empty state that is not waiting. */
+.issues-guidance__mark {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ the skeleton (#120) */
+
+/*
+ * What stands in for the page while its reads are in flight (`app/issues/issues-skeleton.tsx`),
+ * at the page's own geometry: every bar is the height of the thing it reserves, from the same
+ * tokens that size the real one, so nothing moves when the data lands. The wrapper only hides
+ * the bars from the accessibility tree; the frame around them is the page's own.
+ */
+.issues-skeleton {
+  display: contents;
+}
+
+/* The headline's line — `.issues__title`'s `--t-2xl` at a heading's leading. */
+.issues-skeleton__bar {
+  display: block;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.issues-skeleton__bar--title {
+  width: 40%;
+  height: 2.25rem;
+  margin-top: var(--sp-2);
+}
+
+/* The issue cell's title line — `.ou-table`'s `--t-sm` at body leading. */
+.issues-skeleton__bar--line {
+  width: 70%;
+  height: 1.25rem;
+}
+
+/* The mono confidence beside the effort chip. */
+.issues-skeleton__bar--conf {
+  width: 2rem;
+  height: 1rem;
+}
+
+/* One head action, at `.ou-btn`'s height. */
+.issues-skeleton__action {
+  display: inline-block;
+  width: 9rem;
+  height: 2.375rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* A select at `.issues-filter__select`'s height; the sort select is the wide one. */
+.issues-skeleton__select {
+  display: inline-block;
+  width: 9rem;
+  height: 2.375rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.issues-skeleton__select--wide {
+  width: 12rem;
+}
+
+/* A chip at `.ou-tag`'s height. */
+.issues-skeleton__chip {
+  display: inline-block;
+  width: 4.5rem;
+  height: 1.375rem;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The search box: takes what is left of the row, as the real one does. */
+.issues-skeleton__search {
+  display: block;
+  flex: 1;
+  min-width: 12rem;
+  height: 2.375rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* A card head at `.ou-card__head`'s height and margin, so the body starts on the same line. */
+.issues-skeleton__head {
+  display: block;
+  width: 40%;
+  height: var(--sp-7);
+  margin-bottom: var(--sp-7);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The table's head row: `.ou-table th`'s padding around its `--t-2xs` line, then its rule. */
+.issues-skeleton__thead {
+  display: block;
+  height: 2rem;
+  border-block-end: 0.0625rem solid var(--line);
+}
+
+/*
+ * One row: six cells on the table's own proportions — the checkbox column, the issue cell with
+ * its title measure, the effort pair, the workflow tag, the model pill, the status pill — at
+ * `.ou-table td`'s padding, ruled off the way the primitive rules its rows.
+ */
+.issues-skeleton__row {
+  display: grid;
+  grid-template-columns: 2.125rem minmax(18rem, 1fr) 7rem 8rem 9rem 6rem;
+  gap: var(--sp-6);
+  align-items: center;
+  padding: var(--sp-6) 0;
+  border-block-end: 0.0625rem solid var(--line);
+}
+
+.issues-skeleton__row:last-child {
+  border-block-end: 0;
+}
+
+/* The checkbox: `.issues-table__ckbox`'s square. */
+.issues-skeleton__check {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The issue cell: the title line over the tag row, at `.issues-table__tags`'s gap. */
+.issues-skeleton__issue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.issues-skeleton__tags {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+/* A tag at `.ou-tag`'s height. */
+.issues-skeleton__tag {
+  display: inline-block;
+  width: 3.5rem;
+  height: 1.375rem;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The effort chip and its confidence, on one line, at `.issues-table__effort`'s gap. */
+.issues-skeleton__effort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* A pill at `.ou-chip`'s height; the model pill is the wide one. */
+.issues-skeleton__pill {
+  display: inline-block;
+  width: 3.5rem;
+  height: 1.5rem;
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+.issues-skeleton__pill--model {
+  width: 7rem;
+}
+
+/* The panel's empty seat, at the primitive's own well. */
+.issues-skeleton__panel {
+  display: block;
+  min-height: 8rem;
+  border: 0.0625rem dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
 }

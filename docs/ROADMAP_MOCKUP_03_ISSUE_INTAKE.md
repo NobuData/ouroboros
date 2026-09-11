@@ -1689,7 +1689,7 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 | N.3 | #117 | 🟢 Done | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
 | N.4 | #118 | 🟢 Done | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
 | N.5 | #119 | 🟢 Done | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
-| N.6 | #120 | 🟡 Open | ouroboros-ui: [N.6] Intake empty, loading & guidance states | No-token, no-repos, syncing, unsized, empty-filter states | mvp, intake, ui, design | N (after N.2–N.5) | Y | M | ouroboros-ui |
+| N.6 | #120 | 🟢 Done | ouroboros-ui: [N.6] Intake empty, loading & guidance states | No-token, no-repos, syncing, unsized, empty-filter states | mvp, intake, ui, design | N (after N.2–N.5) | Y | M | ouroboros-ui |
 | N.7 | #121 | 🟡 Open | ouroboros-ui: [N.7] Issues e2e leg | Seeded parity, filter/select/queue/re-estimate flows, both themes | mvp, intake, ui, ci | N (after N.1–N.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue N.1 — ouroboros-ui: [N.1] Issues route, page head & counts
@@ -2156,7 +2156,87 @@ Regression risk  low ▓▓░░░░░░░ "Isolated to the I²C driver pa
 
 ### Issue N.6 — ouroboros-ui: [N.6] Intake empty, loading & guidance states
 
-> **GitHub issue:** #120 · **Status:** 🟡 Open · **Parent epic:** #97
+> **GitHub issue:** #120 · **Status:** 🟢 Done · **Parent epic:** #97
+
+> **Shipped 2026-09-11.** Every state the mockup does not show is drawn inside the table card, and
+> every one of them is decided from M.4's status rather than guessed.
+> [`app/issues/states.ts`](../ouroboros-ui/app/issues/states.ts) is the decision and the copy:
+> which of six kinds a page with no rows is in (`guidanceKind`), what sits over the rows
+> (`syncBanner`), and every sentence, held by `states.test.ts` to the ticket's own words and to the
+> contract's pause vocabulary. [`guidance.tsx`](../ouroboros-ui/app/issues/guidance.tsx) draws the
+> kinds as the #46 `EmptyState` with the control a reader of this role can act on;
+> [`sync-banner.tsx`](../ouroboros-ui/app/issues/sync-banner.tsx) is the DASH-I.7 box over the
+> rows; [`issues-skeleton.tsx`](../ouroboros-ui/app/issues/issues-skeleton.tsx) behind the route's
+> new [`loading.tsx`](<../ouroboros-ui/app/(app)/issues/loading.tsx>) is the page's geometry with
+> nothing in it. `ouroboros-ui` 0.57.0.
+>
+> **The status rides the table's poll, which is what makes the states honest over time.**
+> `GET /api/v1/backlog/sync-status` is read beside the page for the first paint — the fourth read in
+> `app/issues/data.ts`, a `Reading` like the other three — and from then on
+> [`app/api/backlog-page.ts`](../ouroboros-ui/app/api/backlog-page.ts) reads the listing and the
+> status in one ask, so `GET /api/backlog` answers a `BacklogPage` — the listing and the status
+> reading together — rather than a bare listing. A status read once would have been a *sync
+> paused* banner that never clears and a *first sync running* that goes on running after the sync
+> finished; carried by the poll, the banner clears when the pause does and the first sync's count
+> moves as issues arrive. The status failing on its own is a reason inside a page that still has
+> its rows, said once by the banner with the way to ask again; the listing failing fails the page,
+> as before. The freshness tag reads *syncing…* while the status says a cycle is in flight, since a
+> press would only be refused as `backlog_sync_running`.
+>
+> **Which nothing, in M.4's order.** The filter's doing comes first — a narrowed view of a backlog
+> that has open issues is the bar's problem whatever the sync is doing, and its **Clear filters**
+> asks the bar to do what its own **Clear all** does through a signal
+> ([`clear-filters.ts`](../ouroboros-ui/app/issues/clear-filters.ts)), because only the bar can
+> clear the header's focus repository and settle its search box in the right order. Then **no
+> token** (*Connect GitHub to watch your backlog*), then **no enabled repository** (*Enable an org
+> and repos to begin*, **Choose repos** linking to `/login?workspace=<slug>`, which is sign-in's step
+> 2 opened on this workspace), then a **first sync** still running over a backlog never stamped
+> (*First sync running*, and over rows *First sync running — 120 open issues so far…* from the
+> listing's own `openCount`), then **clear** (*✓ Backlog clear*, in the good hue) — honest only
+> over a loop that is running and has synced at least once — and the plain *no issues yet* for a
+> pause the banner explains, a loop that never ran, or a status that could not be read. Each
+> control respects the role the way the providers page's first-run state does: an owner or admin
+> gets the control, a member gets a sentence naming who can act rather than an actionless button.
+>
+> **The banner says the real reason, once.** The headline is this screen's word for the kind of
+> pause — *Sync paused — GitHub's rate limit is reached.* — and the sentence under it is M.4's own,
+> read from the same guard the GitHub client enforces, so a rate-limited Jira source will explain
+> itself the same way the day the provider-neutral taxonomy lands (the amendment filed with the
+> Workflow Studio roadmap asks for exactly that, and nothing here is GitHub-specific but the
+> headlines' words). A rate limit's wait counts down against the reader's clock as *Resumes in
+> about 20 minutes* rather than the ticket's *Resumes 14:20*, because a clock time formatted on the
+> server and again in the browser is a hydration mismatch and a wait is the same number on both
+> sides. The one control is **Check again** — the poll asked now, never inert. When the empty
+> state *is* the guidance for the pause (no token, no repository), the banner stays away, because
+> the same reason twice on one card reads as two problems.
+>
+> **The skeleton is the page's geometry.** The eyebrow and the subline are drawn as themselves,
+> the headline and the two actions as bars; the filter bar's three selects, four chips and search
+> box at their own heights; the table as a card head over the seeded nine rows, six cells each —
+> checkbox, title line over tags, effort pair, workflow tag, model pill, status pill — from rules in
+> `issues.css` that mirror the cells they stand in for (`2.125rem` for the checkbox column, the
+> table's own row padding and rule); the panel as its empty seat. Nothing in it is read aloud but
+> one *Loading the backlog*. The filter bar navigates inside a transition and says *Updating the
+> backlog…* under its row while the address moves — the pending state N.2 left for this ticket.
+>
+> **Two corrections to the ticket's own wording, argued here rather than worked around.** The
+> no-token CTA's destination does not exist: the amendment points it at the ticket-source settings
+> surface of #141, which is unbuilt, and the sidebar's **Settings** entry is still a *soon* row for
+> the same reason. An admin's **Open settings** is therefore drawn inert with that as its reason —
+> the dashboard's treatment for a destination that is not built, and what #49's *no dead nav links*
+> asks for — rather than linking somewhere that answers `404`; the day #141 lands, the control
+> becomes a link and the reason goes. And the criterion *"the personal-org seed shows the no-repos
+> state"* named the wrong state: `R__dev_seed_intake.sql` gives `kensuenobu` **two enabled
+> repositories** and no mirrored issue, and no seed writes a token, so M.4 answers `not_configured`
+> for it and the honest guidance is *no token*. The criterion is met in the sense it was written for
+> — the seed shows designed guidance, not an empty table — and the state it shows is the true one.
+>
+> **What is deferred, and to whom.** The settings link is #141's, per the amendment. The composed
+> leg — the personal workspace's guidance state watched in a browser, both themes — is N.7's
+> (#121), which the ticket's own scope names. The head's failed-count line stays the sentence and
+> the service's reason N.1 left it as: the DASH-I.7 banner the ticket names is the sync's, and a
+> second retry box on the same page for a failed count would be two banners for one read. Four new
+> suites (`states`, `sync-banner`, `clear-filters`, `issues-skeleton`), ten extended.
 
 - **Problem Statement:** The mockup shows a full backlog; reality starts with no
   token, no enabled repos, an empty repo, a first sync in progress, or a filter
@@ -2168,8 +2248,9 @@ Regression risk  low ▓▓░░░░░░░ "Isolated to the I²C driver pa
   matches** (clear-filters CTA), table skeletons on first load, stale/sync-
   paused banner reusing the DASH-I.7 pattern.
 - **Acceptance Criteria:** Each state reachable and rendered in both themes
-  (fixture-driven tests); personal-org seed shows the no-repos state; guidance
-  CTAs respect roles.
+  (fixture-driven tests); personal-org seed shows designed guidance rather than
+  an empty table (the no-token state, since the seed enables repositories and
+  writes no token — see the shipped note); guidance CTAs respect roles.
 - **Parallelism/Dependencies:** Needs N.2–N.5 (+M.4 status).
 - **Technical Stack:** React, #46 EmptyState/Skeleton.
 - **Epic:** N

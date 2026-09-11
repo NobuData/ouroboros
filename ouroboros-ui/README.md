@@ -1167,10 +1167,11 @@ table under that — the page's core, polled so its statuses are live; since
 [#118](https://github.com/NobuData/ouroboros/issues/118) the selection bar under the table,
 where a selection becomes work; and since
 [#119](https://github.com/NobuData/ouroboros/issues/119) the detail panel beside them — the
-sizing story for one row, polled so it moves with the pipeline. It retires the `/issues`
-placeholder #49 was to build — never built, so nothing was deleted — and the sidebar's **Issues**
-entry became a link on the same commit. The designed guidance states arrive with
-[#120](https://github.com/NobuData/ouroboros/issues/120), inside the same selection provider.
+sizing story for one row, polled so it moves with the pipeline; and since
+[#120](https://github.com/NobuData/ouroboros/issues/120) every state the mockup does not show —
+the guidance where the rows would be, the sync banner over them, and the route's skeleton. It
+retires the `/issues` placeholder #49 was to build — never built, so nothing was deleted — and the
+sidebar's **Issues** entry became a link on the same commit.
 
 ```
 ISSUE INTAKE
@@ -1496,6 +1497,61 @@ lose their place on every `Enter`. Below the mockup's break the panel stacks und
 long path or token wraps inside the column rather than widening it. The composed round trip — a
 **Re-estimate** pressed in a browser and the pill watched round — is N.7's
 ([#121](https://github.com/NobuData/ouroboros/issues/121)).
+
+### Every state the mockup does not show
+
+The mockup draws a full backlog. Reality starts with no GitHub token, or a token pointed at no
+enabled repository, or a first sync still running, or a repository with nothing open, or a filter
+that matches nothing — and each is a different problem with a different fix
+([#120](https://github.com/NobuData/ouroboros/issues/120)). All of them are drawn inside the table
+card, from M.4's sync status ([`GET /api/v1/backlog/sync-status`](../ouroboros-rest/openapi.yaml))
+read beside the page and carried by the table's poll afterwards:
+
+```
+no token     ─▶ "Connect GitHub to watch your backlog"  [Open settings] admin, inert: #141 · member: who can
+no repos     ─▶ "Enable an org and repos to begin"      [Choose repos] → /login?workspace=… · member: who can
+first sync   ─▶ "First sync running"                   busy · over rows: "First sync running — 120 open issues so far…"
+0 open       ─▶ "✓ Backlog clear"                       the good kind of empty
+0 matches    ─▶ "No issues match this filter"          [Clear filters] → the bar's own Clear all
+paused       ─▶ banner: "Sync paused — GitHub's rate limit is reached." + M.4's sentence · "Resumes in about 20 minutes."
+loading      ─▶ app/(app)/issues/loading.tsx: the head as itself, bars at the page's own geometry
+```
+
+**Which nothing it is** is [`app/issues/states.ts`](app/issues/states.ts)'s decision, in the order
+M.4 ranks the reasons: the filter's doing first (a narrowed view of a backlog that has open issues is
+the bar's problem whatever the sync is doing), then no token, then no repository, then a first sync
+that has not delivered, then *clear* — honest only over a loop that is running and has synced at
+least once — and the plain *no issues yet* for a pause the banner explains or a loop that never ran.
+[`guidance.tsx`](app/issues/guidance.tsx) draws each as the #46 empty state with the control a reader
+of this role can act on: **Choose repos** links to sign-in's step 2 opened on the workspace, which
+exists; **Open settings** is drawn inert naming the issue that builds its destination, because the
+ticket-source settings surface is [#141](https://github.com/NobuData/ouroboros/issues/141)'s and a
+link to a `404` is the one thing #49 forbids; a member gets a sentence naming who can act instead of
+an actionless admin button. **Clear filters** asks the bar to do what its own **Clear all** does,
+through a signal ([`clear-filters.ts`](app/issues/clear-filters.ts)) rather than a link, since only
+the bar can clear the header's focus repository and settle its search box in the right order.
+
+**The banner is DASH-I.7's, and the reason is the service's.** Over the rows — or over an empty
+state that is not itself the explanation — [`sync-banner.tsx`](app/issues/sync-banner.tsx) draws
+the retry banner with the kind of pause as its headline and M.4's own sentence under it, so a
+rate-limited source explains itself in the service's words whatever provider it is; a rate limit's
+wait counts down against the reader's clock, as a relative time rather than the ticket's *Resumes
+14:20*, because a clock time formatted on the server and again in the browser is a hydration
+mismatch. Its one control is **Check again**, the poll asked now; and since the status rides the
+same answer the rows do ([`backlog-page.ts`](app/api/backlog-page.ts) reads both in one ask), a
+banner clears on its own when the pause ends. Nothing is said twice: when the empty state *is* the
+guidance for the pause, the banner stays away. The freshness tag reads *syncing…* while the status
+says a cycle is in flight, since a press would only be refused.
+
+**The skeleton is the page's own geometry.** [`issues-skeleton.tsx`](app/issues/issues-skeleton.tsx)
+draws the eyebrow and subline as themselves — copy that does not depend on the reads — and bars
+where the reads land: the filter bar's three selects, four chips and search box at their own
+heights, and the table as a head over the seeded nine rows, each six cells at the row's rhythm —
+checkbox, title line over tags, effort pair, workflow tag, model pill, status pill — from rules in
+`issues.css` that mirror the cells they stand in for, so the first paint does not jump. The filter
+bar reports the address moving under its row (*Updating the backlog…*), navigating inside a
+transition. Every state renders identically in both palettes, and the seeded personal workspace
+— two enabled repositories and no token — shows the no-token guidance rather than an empty table.
 
 ## Model routing
 

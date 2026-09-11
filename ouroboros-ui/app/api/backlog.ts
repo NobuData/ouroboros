@@ -2,7 +2,7 @@
  * The backlog — what mockup 03's `/issues` reads from `ouroboros-rest`, and the writes its page
  * head and its detail panel make.
  *
- * Six operations of the `backlog` tag in one module, for the reason `app/api/routing.ts` is one
+ * Seven operations of the `backlog` tag in one module, for the reason `app/api/routing.ts` is one
  * module: they are one screen's calls. `GET /api/v1/backlog`
  * ([#110](https://github.com/NobuData/ouroboros/issues/110)) is the listing the head's counts,
  * the filter bar and the table are drawn from; `GET /api/v1/backlog/{id}`
@@ -12,9 +12,12 @@
  * is **Re-estimate all** and `POST /api/v1/backlog/{id}/estimate` the panel's **Re-estimate**;
  * `POST /api/v1/backlog/queue` ([#112](https://github.com/NobuData/ouroboros/issues/112)) is
  * **Queue N selected ⟳** — and the selection bar's and the detail panel's queue buttons after it,
- * because the contract makes all three one write; and `POST /api/v1/backlog/sync`
+ * because the contract makes all three one write; `POST /api/v1/backlog/sync`
  * ([#113](https://github.com/NobuData/ouroboros/issues/113)) is the table's freshness tag, pressed
- * ([#117](https://github.com/NobuData/ouroboros/issues/117)).
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)); and `GET /api/v1/backlog/sync-status`
+ * is the same ticket's other half — why the tag reads what it reads — which the table's
+ * guidance states and its sync banner are drawn from
+ * ([#120](https://github.com/NobuData/ouroboros/issues/120)).
  *
  * ### The role gates are the service's
  *
@@ -264,6 +267,28 @@ export const backlog = {
    */
   async sync(client: ApiClient = api()): Promise<SyncStatus> {
     return unwrap(await client.POST("/api/v1/backlog/sync", {}));
+  },
+
+  /**
+   * How fresh the backlog is, and why it is not fresher — the sync as M.4 reports it
+   * ([#113](https://github.com/NobuData/ouroboros/issues/113)), read rather than pressed.
+   *
+   * Every field is derived from state that is actually true: `not_configured` is whether a
+   * token exists, `no_repositories` how many repositories are enabled, `rate_limited` what
+   * the same guard the GitHub client enforces says. It is what the table's guidance states
+   * and its sync banner name their reason from
+   * ([#120](https://github.com/NobuData/ouroboros/issues/120)), and every member may read it,
+   * `viewer` included.
+   *
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal A way to give up on the read — the route handler answering the table's poll
+   *   passes a timeout (`app/api/backlog-page.ts`), for the reason the listing's does.
+   * @returns The status. Never a `404` and never empty: a workspace that has configured
+   *   nothing is in a state, and naming it is what this operation is for.
+   * @throws {ApiError} What the service answered.
+   */
+  async status(client: ApiClient = api(), signal?: AbortSignal): Promise<SyncStatus> {
+    return unwrap(await client.GET("/api/v1/backlog/sync-status", { signal }));
   },
 
   /**

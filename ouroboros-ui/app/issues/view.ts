@@ -17,7 +17,12 @@
  * hold the sentence, the eyebrow, the subline and both labels to it.
  */
 
-import type { BacklogListing, EstimationFanout, QueuedSelection } from "@/app/api/backlog";
+import type {
+  BacklogListing,
+  EstimationFanout,
+  QueuedSelection,
+  SyncStatus,
+} from "@/app/api/backlog";
 import type { EnabledRepo } from "@/app/api/enablement";
 import type { Reading } from "@/app/api/reading";
 
@@ -64,6 +69,12 @@ export interface IssuesReadings {
    * chip set above are read out of this same listing, so the three cannot disagree.
    */
   readonly listing: Reading<BacklogListing>;
+  /**
+   * M.4's sync status ([#120](https://github.com/NobuData/ouroboros/issues/120)) — why the
+   * freshness tag reads what it reads, and which guidance a page with no rows shows — or why
+   * it could not be read. The first paint's; the table's poll carries it afterwards.
+   */
+  readonly sync: Reading<SyncStatus>;
   /**
    * When the page was read, in milliseconds since the epoch — one reading for the whole
    * render, taken beside the reads themselves, so the freshness tag's *synced 40s ago* is

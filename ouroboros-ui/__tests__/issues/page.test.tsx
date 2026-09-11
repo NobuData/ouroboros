@@ -10,7 +10,9 @@ import {
   queueLabel,
 } from "@/app/issues/view";
 
-import { HELIOS, issuesReadings } from "../helpers/issues";
+import { CHOOSE_REPOS_LABEL } from "@/app/issues/states";
+
+import { HELIOS, issuesReadings, paged, paused } from "../helpers/issues";
 import { membership, sessionUser } from "../helpers/login";
 
 /**
@@ -126,6 +128,22 @@ describe("the intake route", () => {
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "9 open issues. 7 already sized.",
+    );
+  });
+
+  it("hands the screen the workspace's slug, so Choose repos opens sign-in's step 2 on it (#120)", async () => {
+    readIssues.mockResolvedValue(
+      issuesReadings({
+        listing: paged({ items: [], total: 0, openCount: 0, sizedCount: 0 }),
+        sync: paused("no_repositories"),
+      }),
+    );
+
+    render(await page());
+
+    expect(screen.getByRole("link", { name: CHOOSE_REPOS_LABEL })).toHaveAttribute(
+      "href",
+      `/login?workspace=${membership().slug}`,
     );
   });
 

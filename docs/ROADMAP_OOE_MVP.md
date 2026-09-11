@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**163 of 454 ordered issues are closed** — P0 through P5 are complete; P6 is in flight.
+**164 of 454 ordered issues are closed** — P0 through P5 are complete; P6 is in flight.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5 | **142** |
-| 🟡 **In progress** | P6 (21/23) | **21** of 23 |
+| 🟡 **In progress** | P6 (22/23) | **22** of 23 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | ✅ **8/8** | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 21/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 22/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **2 issues** · 5 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157`, `158`, `159`, `160`, `161`, `162` and `163` · 12 dependency waves
+> **1 issue** · 2 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157`, `158`, `159`, `160`, `161`, `162`, `163` and `164` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 21 of 23 issues closed
+> **Status:** 🟡 **In progress** — 22 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1264,9 +1264,31 @@ that roadmap's "Existing issues affected" section.
 > seeded panel. Six new suites, four extended. P6 is 21 of 23, and the document stands at
 > **163 of 454**.
 
+> **`N.6` · [`#120`](https://github.com/NobuData/ouroboros/issues/120) has shipped, and row `164`
+> leaves the table.** Every state mockup 03 does not show, in `ouroboros-ui` 0.57.0, drawn inside
+> the table card from M.4's `GET /api/v1/backlog/sync-status` — read beside the page for the first
+> paint and carried by the table's own poll afterwards, so a *sync paused* banner clears when the
+> pause does and a first sync's count moves as issues arrive. Which nothing a page with no rows is
+> in is one decision in `app/issues/states.ts`, in M.4's order: the filter's doing first, then no
+> token (*Connect GitHub to watch your backlog*), then no enabled repository (*Enable an org and
+> repos to begin*, linking to sign-in's step 2 opened on the workspace), then a first sync still
+> running, then *Backlog clear* — honest only over a loop that has synced at least once — and the
+> plain *no issues yet* for a pause the banner explains. The sync banner is DASH-I.7's box with the
+> kind of pause as its headline and the service's own sentence under it, a rate limit's wait counting
+> down, and **Check again** as its one control; it stays away when the empty state already carries
+> the reason. The route gained its `loading.tsx`, a skeleton at the page's own geometry — the seeded
+> nine rows, six cells each — and the filter bar reports the address moving.
+>
+> **Two things the ticket wrote are corrected in the intake roadmap.** The no-token CTA has no
+> destination: the ticket-source settings surface is #141's and unbuilt, so an admin's **Open
+> settings** is drawn inert naming that issue, the dashboard's treatment for the same situation. And
+> the seeded personal workspace has two enabled repositories and no token, so what it shows is the
+> no-token guidance rather than the no-repos state the criterion named — the honest reason, and
+> still not an empty table. Four new suites, ten extended. P6 is 22 of 23, and the document stands
+> at **164 of 454**.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 164 | **N.6** | [#120](https://github.com/NobuData/ouroboros/issues/120) | Intake empty, loading & guidance states | ouroboros-ui | M | N.2, N.5 |
 | 165 | **N.7** | [#121](https://github.com/NobuData/ouroboros/issues/121) | Issues e2e leg | ouroboros-ui, .github | S | N.1, N.6 |
 
 ## P7 — Workflow Authoring — Visual & Code
