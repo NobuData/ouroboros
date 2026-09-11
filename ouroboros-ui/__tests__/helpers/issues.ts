@@ -112,6 +112,10 @@ function seededRow(
  * the queue rows are DASH-F.5's, so `#485`, `#490` and `#491` are queued here where the mockup
  * draws them `sized` and `needs human`, and `#489` is not where the mockup draws it `queued`;
  * and `#485` carries the panel's fourth label, `priority-high`, which the mockup's cell omits.
+ *
+ * Each estimate's `estMinutes` is the seed's breakdown figure
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)), so the mockup's selected trio —
+ * `#485`, `#484`, `#491` — sums to the 125 minutes M.3 answers for it, not the mockup's 70.
  */
 export const SEEDED_ROWS: readonly BacklogRow[] = [
   seededRow(488, "Typo sweep in operator manual + pairing guide", ["docs", "good-first-issue"], "sized", true, {
@@ -119,51 +123,62 @@ export const SEEDED_ROWS: readonly BacklogRow[] = [
     confidence: 98,
     suggestedWorkflow: "docs-loop",
     routedModel: "ollama/qwen3-coder",
+    estMinutes: 15,
   }),
   seededRow(491, "Add CRC32 to config persistence layer", ["bug", "tech-debt"], "sized", true, {
     effort: "s",
     confidence: 95,
     suggestedWorkflow: "standard-fix",
     routedModel: "copilot/gpt-5-codex",
+    estMinutes: 30,
   }),
   seededRow(485, "Watchdog reset on I²C bus lockup", ["bug", "i2c", "watchdog", "priority-high"], "sized", true, {
     effort: "m",
     confidence: 92,
     suggestedWorkflow: "standard-fix",
     routedModel: "claude-fable-5",
+    estMinutes: 45,
   }),
   seededRow(484, "Motor PID integral windup on wheel stall", ["bug", "motor-control"], "sized", false, {
     effort: "m",
     confidence: 88,
     suggestedWorkflow: "standard-fix",
     routedModel: "cursor/composer-2",
+    estMinutes: 50,
   }),
   seededRow(489, "CAN arbitration-lost storm under full telemetry load", ["bug", "can-bus"], "sized", false, {
     effort: "m",
     confidence: 78,
     suggestedWorkflow: "standard-fix",
     routedModel: "claude-sonnet-5",
+    estMinutes: 60,
   }),
   seededRow(486, "Expose battery health over BLE GATT service", ["enhancement", "ble"], "sized", true, {
     effort: "l",
     confidence: 84,
     suggestedWorkflow: "feature-loop",
     routedModel: "claude-sonnet-5",
+    estMinutes: 90,
   }),
   seededRow(487, "Delta OTA updates for images larger than 1 MB", ["enhancement", "ota"], "sized", false, {
     effort: "l",
     confidence: 71,
     suggestedWorkflow: "feature-loop",
     routedModel: "claude-fable-5",
+    estMinutes: 110,
   }),
   seededRow(490, "Migrate build system to Zephyr RTOS 4.2", ["tech-debt", "zephyr"], "needs_human", true, {
     effort: "xl",
     confidence: 61,
     suggestedWorkflow: "deps-refresh",
     routedModel: "claude-fable-5",
+    estMinutes: 180,
   }),
   seededRow(483, "Telemetry frame drops when BLE and CAN both saturated", ["bug", "telemetry"], "estimating", false, null),
 ];
+
+/** What the seeded trio's estimates add up to — M.3's own answer for the mockup's selection. */
+export const SEEDED_TRIO_MINUTES = 125;
 
 /** The one seeded row with no estimate — `estimating`, mid-flight. */
 export const ESTIMATING_ROW = SEEDED_ROWS[SEEDED_ROWS.length - 1]!;
@@ -280,9 +295,10 @@ export function fanout(over: Partial<EstimationFanout> = {}): EstimationFanout {
  * What a queue press answers.
  *
  * @param count How many rows the service created.
+ * @param estMinutes Their combined estimate. Defaults to forty-five minutes a row.
  * @returns The created rows and their combined estimate.
  */
-export function queuedSelection(count = SELECTED_TRIO.length): QueuedSelection {
+export function queuedSelection(count = SELECTED_TRIO.length, estMinutes = 45 * count): QueuedSelection {
   return {
     items: Array.from({ length: count }, (_, index) => ({
       id: `7a1c0b90-0000-4000-8000-00000000000${index + 1}`,
@@ -294,7 +310,7 @@ export function queuedSelection(count = SELECTED_TRIO.length): QueuedSelection {
       estMinutes: 45,
       enqueuedAt: "2026-09-10T15:41:12.000Z",
     })),
-    estMinutes: 45 * count,
+    estMinutes,
   };
 }
 

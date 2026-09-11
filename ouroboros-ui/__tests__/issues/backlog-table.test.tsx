@@ -65,6 +65,7 @@ const syncBacklog = vi.fn();
 vi.mock("@/app/issues/head-actions", () => ({
   syncBacklog: () => syncBacklog(),
   queueSelected: vi.fn(),
+  queueUnder: vi.fn(),
   reestimateAll: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
@@ -73,7 +74,7 @@ vi.mock("next/navigation", () => ({
 
 const { BacklogTable } = await import("@/app/issues/backlog-table");
 const { QueueSelectedButton } = await import("@/app/issues/queue-selected");
-const { IssueSelectionProvider } = await import("@/app/issues/selection");
+const { IssueSelectionProvider, useSeenRows } = await import("@/app/issues/selection");
 
 /** The reader's queue, per case: each ask takes the next answer, the last repeating. */
 let answers: PollAnswer<BacklogListing>[] = [];
@@ -185,7 +186,13 @@ function sizedListing(): BacklogListing {
       {
         ...ESTIMATING_ROW,
         sizingStatus: "sized",
-        estimate: { effort: "m", confidence: 74, suggestedWorkflow: "standard-fix", routedModel: "claude-sonnet-5" },
+        estimate: {
+          effort: "m",
+          confidence: 74,
+          suggestedWorkflow: "standard-fix",
+          routedModel: "claude-sonnet-5",
+          estMinutes: 40,
+        },
       },
     ],
     sizedCount: 8,
@@ -468,6 +475,44 @@ describe("the freshness tag", () => {
     await mounted({ listing: paged({ syncedAt: null }) });
 
     expect(tag()).toHaveTextContent("never synced");
+  });
+});
+
+describe("the seen rows (#118)", () => {
+  /** A reader of the store the table publishes to, standing in for the selection bar. */
+  function SeenProbe() {
+    const seen = useSeenRows();
+
+    return (
+      <output aria-label="Seen">
+        {[...seen.values()].map((row) => `${row.number}:${row.estMinutes ?? "—"}`).join(" ")}
+      </output>
+    );
+  }
+
+  it("publishes every row it draws, and the fresh estimate when the poll moves one", async () => {
+    answers = [fresh(backlogListing()), fresh(sizedListing())];
+    render(
+      <IssueSelectionProvider>
+        <BacklogTable filter={DEFAULT_FILTER} listing={paged()} mayContribute page={1} poll={poll()} readAt={READ_AT} />
+        <SeenProbe />
+      </IssueSelectionProvider>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    const seen = screen.getByRole("status", { name: "Seen" });
+
+    expect(seen).toHaveTextContent("485:45");
+    expect(seen).toHaveTextContent("483:—");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(DEFAULT_POLL_SECONDS * 1000);
+    });
+
+    expect(seen).toHaveTextContent("483:40");
+    expect(seen.textContent?.split(" ")).toHaveLength(SEEDED_ROWS.length);
   });
 });
 

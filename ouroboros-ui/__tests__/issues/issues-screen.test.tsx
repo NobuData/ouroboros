@@ -19,8 +19,8 @@ import { TENANT_ID } from "../helpers/login";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 /**
- * The intake screen's page head (#115), the filter bar under it (#116) and the backlog table under
- * that (#117), as a component.
+ * The intake screen's page head (#115), the filter bar under it (#116), the backlog table under
+ * that (#117) and the selection bar under the table (#118), as a component.
  *
  * The issue's criteria that are visible without a route are all here: the counts are the read's
  * rather than the mockup's, the head carries the mockup's eyebrow, subline and two actions, a
@@ -34,6 +34,7 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 vi.mock("@/app/issues/head-actions", () => ({
   queueSelected: vi.fn(),
+  queueUnder: vi.fn(),
   reestimateAll: vi.fn(),
   syncBacklog: vi.fn(),
 }));
@@ -175,6 +176,49 @@ describe("the backlog table (#117)", () => {
     render(screenFor({ mayAdminister: false, mayContribute: false }));
 
     expect(screen.getByRole("button", { name: /synced/ })).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+describe("the selection bar (#118)", () => {
+  /** A row's checkbox, inside the grid. */
+  function box(number: number): HTMLElement {
+    return within(screen.getByRole("grid", { name: TABLE_CAPTION })).getByRole("checkbox", {
+      name: `Select #${number}`,
+    });
+  }
+
+  it("is not drawn until something is selected", () => {
+    const { container } = render(screenFor());
+
+    expect(container.querySelector(".issues-bar")).toBeNull();
+  });
+
+  it("mounts under the table with the first tick, summing the rows the table drew, and goes with the last", () => {
+    const { container } = render(screenFor());
+
+    box(485).click();
+    box(484).click();
+
+    const bar = container.querySelector(".issues-bar") as HTMLElement;
+    const grid = screen.getByRole("grid", { name: TABLE_CAPTION });
+
+    expect(screen.getByRole("main")).toContainElement(bar);
+    expect(grid.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bar).toHaveTextContent("2 issues selected · est. 1h 35m combined autonomous work");
+    expect(within(bar).getByRole("button", { name: "Queue → standard-fix" })).toBeInTheDocument();
+
+    box(485).click();
+    box(484).click();
+
+    expect(container.querySelector(".issues-bar")).toBeNull();
+  });
+
+  it("inerts a viewer's action for the role, as the head's is", () => {
+    render(screenFor({ mayAdminister: false, mayContribute: false }));
+
+    box(485).click();
+
+    expect(screen.getByRole("button", { name: /^Queue → / })).toHaveAttribute("title", QUEUE_ROLE_REASON);
   });
 });
 

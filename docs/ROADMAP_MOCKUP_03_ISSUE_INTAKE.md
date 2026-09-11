@@ -1687,7 +1687,7 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 | N.1 | #115 | 🟢 Done | ouroboros-ui: [N.1] Issues route, page head & counts | `(app)/issues`: head with live counts, Re-estimate all, Queue button | mvp, intake, ui, design | N (after #41, M.1, BA-D.5) | Y | S | ouroboros-ui |
 | N.2 | #116 | 🟢 Done | ouroboros-ui: [N.2] Filter bar (URL-reflected) | Repo select, label chips, state, sort, search — server-driven | mvp, intake, ui, design | N (after N.1) | Y | M | ouroboros-ui |
 | N.3 | #117 | 🟢 Done | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
-| N.4 | #118 | 🟡 Open | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
+| N.4 | #118 | 🟢 Done | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
 | N.5 | #119 | 🟡 Open | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
 | N.6 | #120 | 🟡 Open | ouroboros-ui: [N.6] Intake empty, loading & guidance states | No-token, no-repos, syncing, unsized, empty-filter states | mvp, intake, ui, design | N (after N.2–N.5) | Y | M | ouroboros-ui |
 | N.7 | #121 | 🟡 Open | ouroboros-ui: [N.7] Issues e2e leg | Seeded parity, filter/select/queue/re-estimate flows, both themes | mvp, intake, ui, ci | N (after N.1–N.6) | Y | S | ouroboros-ui, .github |
@@ -1993,7 +1993,7 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 
 ### Issue N.4 — ouroboros-ui: [N.4] Selection action bar
 
-> **GitHub issue:** #118 · **Status:** 🟡 Open · **Parent epic:** #97
+> **GitHub issue:** #118 · **Status:** 🟢 Done · **Parent epic:** #97
 
 - **Problem Statement:** The glow-bordered `.sel-bar` summarizes the selection
   ("3 issues selected · est. 1h 10m combined autonomous work") and carries the
@@ -2007,7 +2007,9 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
   names offenders); success clears selection and toasts with a link to the
   dashboard queue card.
 - **Acceptance Criteria:** Appears/disappears with selection; combined estimate
-  matches seeds ("est. 1h 10m" for the mockup trio); unsized-in-selection
+  matches seeds ("est. 2h 5m" for the mockup trio — the mockup's *1h 10m* is
+  design copy over rows that carry no minutes; the seeds sum `#485`, `#484` and
+  `#491` to M.3's 125, corrected by the shipped note below); unsized-in-selection
   surfaces the 422 explanation; queue success visible on the dashboard within
   one poll.
 - **Parallelism/Dependencies:** Needs N.3, M.3.
@@ -2725,3 +2727,70 @@ that turns `estimating…` into `sized` when the pipeline does, watched on the c
 > `#483` about ten minutes after boot, past the suite's budget — so a leg that wants the pill itself
 > to move inside the budget triggers `POST /api/v1/backlog/{id}/estimate` on a sized row and watches
 > it go round, knowing that re-estimate rewrites the seed's parity for the rest of the stack's life.
+
+**N.4 (#118) shipped on 2026-09-11.** The selection action bar is where a selection becomes work:
+mockup 03's `.sel-bar` in the page's one `StickyBar` slot, under the table and only while something
+is ticked — the count and the combined estimate, **Assign workflow ▾** over the fixed set behind
+*use suggested*, **Queue → workflow** reflecting the choice, a dialog that names every issue a
+refusal is about, and a toast linking to the dashboard's queue card.
+
+> **M.1 grew a fifth field, which was the fork N.3 left open.** The bar sums `est_minutes`
+> client-side and the listing row did not carry it; the choice was a panel read per selected issue
+> or one more number on the row, and the row won. `BacklogEstimate.estMinutes` (`ouroboros-rest`
+> 0.31.8, an additive 0.0.x change) is read out of the breakdown inside the same lateral, the way
+> the queue write reads it for the copy, so the listing, the panel and the queue row cannot disagree
+> about one issue; V026's grammar makes it present on every estimate, so it is required rather than
+> nullable. The rest of the breakdown stays the panel's. A bar that fetched a panel per row to add
+> three integers would have paid the panel's price for the listing's job.
+>
+> **The estimate is a preview, the service's is the truth — and the mockup's number is design
+> copy.** The seeds carry 45, 50 and 30 minutes for `#485`, `#484` and `#491`, and M.3's own note
+> records that it answers 125 for that selection, so the seeded bar reads *est. 2h 5m combined
+> autonomous work* where the mockup and the ticket's criterion say *1h 10m*: the sentence is the
+> mockup's and the figure is the service's, exactly as the head's nine and seven are. The criterion
+> above is corrected to say so. The toast prints the write's own `estMinutes`, summed over the rows
+> it created, never the preview. (On the seeds themselves the mockup's trio is a `409` — `#485` and
+> `#491` are already queued by DASH-F.5 — which is the dialog's own demonstration; `#484`, `#489`
+> and `#487` are the unqueued sized rows a success is shown with.)
+>
+> **The selection outlives its page, so the bar sums the rows as last seen.**
+> `app/issues/seen-rows.ts` is a store the table publishes every listing to and the bar subscribes
+> to through `useSyncExternalStore` — the shape `app/poll.ts` keeps, chosen because the rows arrive
+> in an effect and `react-hooks` refuses a `setState` there. It merges by the fields the bar reads
+> and hands back the same map when a listing repeated itself, so a poll that changed nothing wakes
+> nobody. A selected issue on a page the table is no longer drawing is summed from its last sighting;
+> one with no estimate is counted apart — *· 1 issue not sized yet* — before the press is refused for
+> it. The store rides on `useIssueSelection()` beside `detail`, for the reason `detail` does.
+>
+> **A refusal names its issues and nothing else.** `queueUnder` — the fourth Server Action, which
+> the head's `queueSelected` now goes through — refuses a forged selection or a workflow outside the
+> set before anything is sent, sends the workflow or no key at all (the contract's *use suggested*),
+> and answers a refusal with the sentence and `details.issues` read defensively out of an open map.
+> The bar opens the shell's overlay under *Nothing was queued*, one sentence per issue from its code
+> and status — *"#483 is still being sized."*, *"#490 needs a human before it can be queued."*,
+> *"#484 is already in the queue."*, a `404` named from the seen rows since the entry carries no
+> number — the all-or-nothing note for the rest of the selection, and **Deselect N issues** so the
+> reader drops exactly what was named and presses again. A refusal naming none is a line in the bar,
+> as the head's are. No code is ever printed, and a refusal clears nothing.
+>
+> **The dashboard's three inert controls parted ways.** *Manage queue →* and *+N queued →* link
+> to `/issues` now that the bar fills the queue, and the issues screen's toast links back to the
+> card's heading through one fragment `app/paths.ts` owns — the round trip is two links that name
+> each other. *⟳ Pull next issue* stays inert and names what it actually waits for — the engine
+> pulling the queue head into a run, J.3 (#91) — since one sentence for three controls stopped being
+> true the moment this landed. The e2e locator for the footer moved from button to link with it.
+>
+> **Placement.** Below the table as the mockup and the ticket draw it, in the `StickyBar` primitive
+> with its `asking` rim: the bar is the last thing on the page, so the primitive's stickiness is
+> moot there and its published height offsets nothing this page anchors; the slot is kept for the
+> day N.5's grid or a footer moves it. Both palettes are the token sheet's, the menu is
+> `app/shell/menu.ts`'s keyboard, and the dialog is the overlay's — Escape, the focus return, the
+> trap.
+>
+> **What is deferred, and to whom.** The workflow registry behind the menu is P.4's (#135), per the
+> ticket's amendment — the four tags are typed against the contract's enum until then, so the day
+> the enum moves is a compile error here. The composed round trip — select three, queue, assert the
+> dashboard's card gained rows — is N.7's (#121): the round trip was verified in the unit suites over
+> the replaced hop, and *visible within one poll* is the dashboard's own poll's doing. The detail
+> panel's **Queue for loop** (N.5, #119) is the same Server Action with one id. Four new suites, ten
+> extended, four REST specs extended; `ouroboros-ui` 0.55.0, `ouroboros-rest` 0.31.8.

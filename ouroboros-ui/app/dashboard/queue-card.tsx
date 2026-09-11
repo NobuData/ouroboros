@@ -1,7 +1,8 @@
 import type { Dashboard } from "@/app/api/dashboard";
+import { DASHBOARD_QUEUE_HASH, ISSUES_PATH } from "@/app/paths";
 import { Button, Card, CardHead, EffortChip, EmptyState, Tag } from "@/app/ui";
 
-import { QUEUEING_SOON, type QueuedIssue, type Reading, moreQueued, queueRows } from "./view";
+import { type QueuedIssue, type Reading, moreQueued, queueRows } from "./view";
 
 /**
  * *Up next in queue* ([#85](https://github.com/NobuData/ouroboros/issues/85)) — the mockup's
@@ -20,18 +21,17 @@ import { QUEUEING_SOON, type QueuedIssue, type Reading, moreQueued, queueRows } 
  * of five items* and then five issues, rather than a five-by-three grid whose column headers
  * would have to be invented to justify the markup.
  *
- * ### What it will not do yet
+ * ### Both controls go to the issues screen
  *
- * **Neither `Manage queue →` nor the `+N queued` footer navigates.** The issues screen
- * (mockup 03) became a route with [#115](https://github.com/NobuData/ouroboros/issues/115) and
- * its backlog table selects issues since
- * [#117](https://github.com/NobuData/ouroboros/issues/117) — but the bar that queues a selection
- * under a chosen workflow, the surface a *manage the queue* control would land on, arrives with
- * [#118](https://github.com/NobuData/ouroboros/issues/118). A link today would land a reader who
- * asked to manage the queue on a screen with nothing yet to manage it with, which the design
- * system's honesty rule (§ 3.5) treats as a dead end. Both are therefore inert {@link Button}s
- * carrying the one reason ({@link QUEUEING_SOON}) — which keeps the explanation in the tab order
- * where a dropped link would take it out — and both become an `href` when it lands.
+ * `Manage queue →` and the `+N queued` footer link to `/issues`, where the queue is filled:
+ * the backlog table selects issues ([#117](https://github.com/NobuData/ouroboros/issues/117))
+ * and the selection bar queues them under a chosen workflow
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)). Until that bar landed, both were
+ * inert {@link Button}s carrying the reason, because a link to a screen with nothing yet to
+ * manage the queue with is what the design system's honesty rule (§ 3.5) calls a dead end; the
+ * bar is what turned them into the `href` they were always going to be. The issues screen's own
+ * toast links back here, at this card's heading ({@link DASHBOARD_QUEUE_HASH}), so the round
+ * trip is two links that name each other.
  *
  * @param props.aggregate The dashboard aggregate, or why it could not be read.
  * @returns The card.
@@ -48,7 +48,7 @@ export function QueueCard({ aggregate }: Readonly<{ aggregate: Reading<Dashboard
         title={TITLE}
         titleId={TITLE_ID}
         trailing={
-          <Button size="sm" tone="ghost" reason={QUEUEING_SOON}>
+          <Button href={ISSUES_PATH} size="sm" tone="ghost">
             {MANAGE_LABEL}
           </Button>
         }
@@ -65,7 +65,7 @@ export function QueueCard({ aggregate }: Readonly<{ aggregate: Reading<Dashboard
           </ul>
           {more > 0 && (
             <p className="dash-queue__more">
-              <Button size="sm" tone="ghost" reason={QUEUEING_SOON}>
+              <Button href={ISSUES_PATH} size="sm" tone="ghost">
                 {`+${more} queued →`}
               </Button>
             </p>
@@ -113,8 +113,11 @@ function QueueRow({ item }: Readonly<{ item: QueuedIssue }>) {
 /** What the card is called, as the mockup titles it. */
 const TITLE = "Up next in queue";
 
-/** The id the card's `aria-labelledby` points at. */
-const TITLE_ID = "dash-up-next-title";
+/**
+ * The id the card's `aria-labelledby` points at — and the fragment the issues screen's toast
+ * links to, which is why `app/paths.ts` owns the string.
+ */
+const TITLE_ID = DASHBOARD_QUEUE_HASH;
 
 /** What the head's control is labelled. */
 const MANAGE_LABEL = "Manage queue →";

@@ -22,13 +22,15 @@ import {
 import { SELECTED_TRIO, fanout, queuedSelection, syncStatus } from "../helpers/issues";
 
 /**
- * The intake page's server hops — the head's two (#115) and the freshness tag's (#117).
+ * The intake page's server hops — the head's two (#115), the freshness tag's (#117) and the
+ * selection bar's (#118).
  *
  * A Server Action is a POST endpoint anybody can reach, so the security cases come first: no
- * action takes a workspace or a person, the role gates are the service's, and `queueSelected`
- * refuses a selection that is not a list of ids before anything is sent. The rest is the posture
- * every action here keeps — a refusal is a sentence the page can draw, and the redirect signal is
- * the one throw that travels.
+ * action takes a workspace or a person, the role gates are the service's, and the two queue
+ * actions refuse a selection that is not a list of ids — and a workflow outside the fixed set —
+ * before anything is sent. The rest is the posture every action here keeps — a refusal is a
+ * sentence the page can draw, with the issues it named where the service named any, and the
+ * redirect signal is the one throw that travels.
  */
 
 /** What the fan-out answers, per case. */
@@ -62,7 +64,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { queueSelected, reestimateAll, syncBacklog } = await import("@/app/issues/head-actions");
+const { queueSelected, queueUnder, reestimateAll, syncBacklog } = await import("@/app/issues/head-actions");
 
 beforeEach(() => {
   estimateAll.mockReset().mockResolvedValue(fanout());
@@ -255,5 +257,101 @@ describe("queueSelected", () => {
     queue.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
     await expect(queueSelected(SELECTED_TRIO)).rejects.toThrow("NEXT_REDIRECT /login");
+  });
+});
+
+describe("queueUnder (#118)", () => {
+  it("sends the selection under the chosen workflow, and answers with what the service created", async () => {
+    expect(await queueUnder(SELECTED_TRIO, "docs-loop")).toEqual({ ok: true, queued: queuedSelection() });
+    expect(queue).toHaveBeenCalledExactlyOnceWith({ issueIds: [...SELECTED_TRIO], workflow: "docs-loop" });
+  });
+
+  it("sends no workflow at all for use suggested — not an undefined one", async () => {
+    await queueUnder(SELECTED_TRIO, null);
+
+    expect(queue).toHaveBeenCalledOnce();
+    expect(queue.mock.calls[0]![0]).toEqual({ issueIds: [...SELECTED_TRIO] });
+    expect(queue.mock.calls[0]![0]).not.toHaveProperty("workflow");
+  });
+
+  it("sends nothing for a workflow outside the fixed set", async () => {
+    // A forged POST can name any string; the service would answer `validation_failed`, and
+    // there is no reason to ask it.
+    expect(await queueUnder(SELECTED_TRIO, "release-train")).toEqual({
+      ok: false,
+      reason: `${QUEUE_FAILED} ${NOTHING_QUEUED}`,
+      offenders: [],
+    });
+    expect(queue).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing for an empty or forged selection, as the head's action does", async () => {
+    expect(await queueUnder([], null)).toEqual({ ok: false, reason: QUEUE_NOTHING_SELECTED, offenders: [] });
+    expect((await queueUnder(SELECTED_TRIO[0] as unknown as readonly string[], null)).ok).toBe(false);
+    expect(queue).not.toHaveBeenCalled();
+  });
+
+  it("answers a viewer with the role sentence and no offenders", async () => {
+    queue.mockRejectedValue(new ApiError(403, "forbidden", "Your role does not permit this."));
+
+    expect(await queueUnder(SELECTED_TRIO, null)).toEqual({
+      ok: false,
+      reason: QUEUE_ROLE_REASON,
+      offenders: [],
+    });
+  });
+
+  it("carries the issues a refusal named, read out of details", async () => {
+    queue.mockRejectedValue(
+      new ApiError(
+        422,
+        "queue_issues_not_queueable",
+        "Some of those issues have not been sized yet. Only sized issues can be queued.",
+        {
+          issues: [
+            { issueId: SELECTED_TRIO[2], code: "issue_not_sized", issueNumber: 491, sizingStatus: "estimating" },
+          ],
+        },
+      ),
+    );
+
+    expect(await queueUnder(SELECTED_TRIO, "standard-fix")).toEqual({
+      ok: false,
+      reason: `Some of those issues have not been sized yet. Only sized issues can be queued. ${NOTHING_QUEUED}`,
+      offenders: [
+        { issueId: SELECTED_TRIO[2], code: "issue_not_sized", issueNumber: 491, sizingStatus: "estimating" },
+      ],
+    });
+  });
+
+  it("carries a conflict's issues the same way", async () => {
+    queue.mockRejectedValue(
+      new ApiError(409, "queue_issues_conflict", "Some of those issues are already in the queue.", {
+        issues: [{ issueId: SELECTED_TRIO[0], code: "issue_already_queued", issueNumber: 485 }],
+      }),
+    );
+
+    const outcome = await queueUnder(SELECTED_TRIO, null);
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok ? [] : outcome.offenders).toEqual([
+      { issueId: SELECTED_TRIO[0], code: "issue_already_queued", issueNumber: 485, sizingStatus: null },
+    ]);
+  });
+
+  it("names no offender for a refusal that carried none, with the fallback sentence", async () => {
+    queue.mockRejectedValue(new ApiError(502, "client_unreadable_error", ""));
+
+    expect(await queueUnder(SELECTED_TRIO, null)).toEqual({
+      ok: false,
+      reason: `${QUEUE_FAILED} ${NOTHING_QUEUED}`,
+      offenders: [],
+    });
+  });
+
+  it("lets a redirect through", async () => {
+    queue.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(queueUnder(SELECTED_TRIO, null)).rejects.toThrow("NEXT_REDIRECT /login");
   });
 });

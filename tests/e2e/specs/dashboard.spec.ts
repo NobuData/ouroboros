@@ -321,7 +321,8 @@ test.describe("the dashboard renders the seeded workspace", () => {
 
     // The card draws a slice and the tile counts the whole, so the footer is the difference
     // between two separately true figures rather than a flag on the slice.
-    await expect(card.getByRole("button", { name: SEEDED_QUEUE_BEYOND_HEAD })).toBeVisible();
+    // A link since #118: the issues screen is where the queue is filled, so the footer goes there.
+    await expect(card.getByRole("link", { name: SEEDED_QUEUE_BEYOND_HEAD })).toBeVisible();
   });
 });
 

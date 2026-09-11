@@ -68,6 +68,13 @@ export type EstimationFanout = components["schemas"]["EstimationFanout"];
 /** A selection to queue: `github_issues.id`s in the order to append them, and an optional workflow. */
 export type QueueSelection = components["schemas"]["QueueSelection"];
 
+/**
+ * A workflow the queue write accepts — the fixed set (decision K5), exactly as the contract
+ * enumerates it, so the selection bar's menu ([#118](https://github.com/NobuData/ouroboros/issues/118))
+ * cannot offer a tag the service would refuse.
+ */
+export type QueueWorkflow = NonNullable<QueueSelection["workflow"]>;
+
 /** What one press of a queue button answers: the rows created, and their combined estimate. */
 export type QueuedSelection = components["schemas"]["QueuedSelection"];
 
@@ -105,6 +112,28 @@ export const BACKLOG_ALREADY_ESTIMATING_CODE = "backlog_already_estimating";
  * `details.retryAfterSeconds` says how long until the window has room.
  */
 export const ESTIMATION_RATE_LIMITED_CODE = "estimation_rate_limited";
+
+/**
+ * The three codes a queue press is refused with, and the per-issue codes inside them.
+ *
+ * Every refusal of `POST /api/v1/backlog/queue` names its offenders: `details.issues` carries
+ * one entry per issue — the id the caller sent, a code for what is wrong with that row, and
+ * its number and status where this workspace's own row supplied them. The write is one
+ * transaction, so any of the three means nothing was queued, and the selection bar
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)) names the issues rather than
+ * showing a generic failure.
+ */
+export const QUEUE_ISSUES_NOT_FOUND_CODE = "queue_issues_not_found";
+
+/** The queue already holds one or more of the selection — see {@link QUEUE_ISSUES_NOT_FOUND_CODE}. */
+export const QUEUE_ISSUES_CONFLICT_CODE = "queue_issues_conflict";
+
+/**
+ * One or more of the selection is not `sized` — see {@link QUEUE_ISSUES_NOT_FOUND_CODE}. The
+ * per-issue codes inside all three are `app/issues/bar.ts`'s `QUEUE_ISSUE_CODES`, which the
+ * Client Component that words them can import.
+ */
+export const QUEUE_ISSUES_NOT_QUEUEABLE_CODE = "queue_issues_not_queueable";
 
 /** The backlog, as `ouroboros-rest` serves it. */
 export const backlog = {
@@ -167,8 +196,10 @@ export const backlog = {
    * @param client The client to call through. Defaults to the server-side one.
    * @returns The rows created, in queue order, and their combined estimate in minutes.
    * @throws {ApiError} What the service answered. The write is one transaction, so any refusal —
-   *   an id this workspace cannot see, an issue that is not `sized`, one the queue already holds
-   *   — means nothing was queued, and `details.issues` names the offenders.
+   *   {@link QUEUE_ISSUES_NOT_FOUND_CODE} for an id this workspace cannot see,
+   *   {@link QUEUE_ISSUES_NOT_QUEUEABLE_CODE} for an issue that is not `sized`,
+   *   {@link QUEUE_ISSUES_CONFLICT_CODE} for one the queue already holds — means nothing was
+   *   queued, and `details.issues` names the offenders.
    */
   async queue(selection: QueueSelection, client: ApiClient = api()): Promise<QueuedSelection> {
     return unwrap(await client.POST("/api/v1/backlog/queue", { body: selection }));

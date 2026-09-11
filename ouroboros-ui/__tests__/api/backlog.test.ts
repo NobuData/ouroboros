@@ -21,6 +21,9 @@ const {
   BACKLOG_SYNC_TOO_SOON_CODE,
   ESTIMATION_RATE_LIMITED_CODE,
   FORBIDDEN_CODE,
+  QUEUE_ISSUES_CONFLICT_CODE,
+  QUEUE_ISSUES_NOT_FOUND_CODE,
+  QUEUE_ISSUES_NOT_QUEUEABLE_CODE,
   backlog,
 } = await import("@/app/api/backlog");
 
@@ -192,6 +195,9 @@ describe("the codes the page's actions branch on", () => {
       ESTIMATION_RATE_LIMITED_CODE,
       BACKLOG_SYNC_RUNNING_CODE,
       BACKLOG_SYNC_TOO_SOON_CODE,
+      QUEUE_ISSUES_NOT_FOUND_CODE,
+      QUEUE_ISSUES_CONFLICT_CODE,
+      QUEUE_ISSUES_NOT_QUEUEABLE_CODE,
     ]) {
       expect(CONTRACT, code).toContain(`\`${code}\` —`);
     }

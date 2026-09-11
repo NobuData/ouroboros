@@ -141,6 +141,37 @@ describe("the backlog table (#117)", () => {
   });
 });
 
+describe("the selection bar (#118)", () => {
+  it("places the sticky bar and leaves its rim and glow to the primitive", () => {
+    // The mockup's `.sel-bar` glow is `ou-sticky-bar--asking`'s; the page adds the gap above
+    // and the wrap, and neither a colour nor a position of its own.
+    const bar = rule("\\.issues-bar");
+
+    expect(bar).toContain("flex-wrap: wrap");
+    expect(bar).toMatch(/margin-top: var\(--sp-\d+\)/);
+    expect(bar).not.toMatch(/color|background|box-shadow|position/);
+  });
+
+  it("opens the menu above the bar it hangs from", () => {
+    // The chrome contract puts the sticky bar at z-index 11 (`app/ui/chrome.ts`); a panel that
+    // opened beneath it would be a menu the bar covers.
+    expect(rule("\\.issues-bar__menu")).toMatch(/z-index: (1[2-9]|[2-9]\d)/);
+    expect(rule("\\.issues-bar__menu")).toContain("background: var(--surface)");
+  });
+
+  it("marks the checked row off the attribute actually set, in the accent", () => {
+    expect(rule('\\.issues-bar__option\\[aria-checked="true"\\]')).toContain("var(--accent)");
+    expect(CODE).not.toMatch(/issues-bar__option--(?:checked|current)/);
+  });
+
+  it("draws the toast in the accent rim and tint, since it answers the bar", () => {
+    const toast = rule("\\.issues-toast");
+
+    expect(toast).toContain("border: 0.0625rem solid var(--accent-line)");
+    expect(toast).toContain("background: var(--accent-tint)");
+  });
+});
+
 describe("the shell it mounts in", () => {
   it("holds nothing fixed or sticky, because the pane is the only scroll container", () => {
     expect(CODE).not.toMatch(/position:\s*(?:fixed|sticky)/);

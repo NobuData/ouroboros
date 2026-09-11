@@ -1022,13 +1022,17 @@ capped at five by the service and `stats.queued.count` speaks for the whole queu
 footer appears only when the count exceeds the rows and says exactly the remainder. It shares
 its arithmetic with the loops table's `+N more`, so two footers on one page cannot disagree.
 
-**Neither `Manage queue →` nor the footer navigates yet.** The [issues screen](#issue-intake)
-has been a route since #115 and its backlog table selects issues since #117, but the bar that
-queues a selection under a chosen workflow — the surface a *manage the queue* control would land
-on — arrives with [#118](https://github.com/NobuData/ouroboros/issues/118). Both are inert buttons carrying one
-reason, `QUEUEING_SOON` in [`app/dashboard/view.ts`](app/dashboard/view.ts), which keeps the
-explanation in the tab order; the page head's *⟳ Pull next issue* carries the same sentence,
-because three controls waiting on one thing should not describe it three ways.
+**`Manage queue →` and the footer link to the issues screen.** The
+[issues screen](#issue-intake) is where the queue is filled: its backlog table selects issues
+(#117) and its selection bar queues them under a chosen workflow
+([#118](https://github.com/NobuData/ouroboros/issues/118)). Until that bar landed both were inert
+buttons carrying one reason, because a link to a screen with nothing yet to manage the queue with
+is a dead end; the bar turned them into the `href` they were always going to be, and its toast
+links back here, at this card's heading, through the one fragment
+[`app/paths.ts`](app/paths.ts) owns. The page head's *⟳ Pull next issue* stays inert with its own
+sentence, `PULL_NEXT_SOON` in [`app/dashboard/view.ts`](app/dashboard/view.ts): pulling takes
+the head of the queue and starts a run, which is the engine's move and arrives with its ingestion
+bridge (#91).
 
 The empty state is the card's own until [#86](https://github.com/NobuData/ouroboros/issues/86)
 designs every card's together: a workspace that has caught up with its own queue reads
@@ -1118,11 +1122,12 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 - **Both page-head actions are inert**, as are the active-loops card's two, and each says why
   in a tooltip naming the issue it waits for. *Edit workflows* waits for the workflow builder,
   whose route [#49](https://github.com/NobuData/ouroboros/issues/49) still holds; *Pull next
-  issue* waits for the issues screen's selection bar (#118), and a control that appeared to
-  pull an issue would be the one dishonest thing on the screen. Linking either to a route that
-  cannot yet do what its label offers would break #49's own first criterion, *no dead nav
-  links*. `aria-disabled` rather than `disabled`, so the explanation keeps its place in the tab
-  order.
+  issue* waits for the engine's ingestion bridge (#91), which is what pulls the head of the
+  queue into a run — the queue itself is filled from the issues screen since #118 — and a
+  control that appeared to pull an issue would be the one dishonest thing on the screen. Linking
+  either to a route that cannot yet do what its label offers would break #49's own first
+  criterion, *no dead nav links*. `aria-disabled` rather than `disabled`, so the explanation
+  keeps its place in the tab order.
 - **A figure that could not be read is an em dash**, never a zero — and the reason it could
   not be read is said once, in the banner, rather than repeated under every figure.
 - **A dependency nobody could ask about is *unknown*, never green** — and the summary pill
@@ -1157,12 +1162,15 @@ is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page 
 `/issues` ([#115](https://github.com/NobuData/ouroboros/issues/115)) is
 [`docs/mockups/03-issues.html`](../docs/mockups/03-issues.html): the page head, its live counts
 and its two actions; since [#116](https://github.com/NobuData/ouroboros/issues/116) the filter
-bar under them; and since [#117](https://github.com/NobuData/ouroboros/issues/117) the backlog
-table under that — the page's core, polled so its statuses are live. It retires the `/issues`
-placeholder #49 was to build — never built, so nothing was deleted — and the sidebar's **Issues**
-entry became a link on the same commit. The selection bar, the detail panel and the designed
-states arrive with [#118](https://github.com/NobuData/ouroboros/issues/118)–[#120](https://github.com/NobuData/ouroboros/issues/120)
-and mount beside the table, inside the same selection provider.
+bar under them; since [#117](https://github.com/NobuData/ouroboros/issues/117) the backlog
+table under that — the page's core, polled so its statuses are live; and since
+[#118](https://github.com/NobuData/ouroboros/issues/118) the selection bar under the table,
+where a selection becomes work. It retires the `/issues` placeholder #49 was to build — never
+built, so nothing was deleted — and the sidebar's **Issues** entry became a link on the same
+commit. The detail panel and the designed states arrive with
+[#119](https://github.com/NobuData/ouroboros/issues/119) and
+[#120](https://github.com/NobuData/ouroboros/issues/120) and mount beside the table, inside the
+same selection provider.
 
 ```
 ISSUE INTAKE
@@ -1183,6 +1191,9 @@ to work.                                            issues."
 │ [ ] #483 Telemetry frame drops…    sizing…  —                   —              estimating…│
 │ [✓] #490 Migrate build to Zephyr…  XL 61%   deps-refresh        claude-fable-5   queued   │
 │                                                            1–25 of 42  [← Previous] [Next →] │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─(glow)─────────────────────────────────────────────────────────────────────────────────────┐
+│ 2 issues selected · est. 3h 45m combined autonomous work   [Assign workflow ▾] [Queue → suggested] │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1275,7 +1286,8 @@ chip set that could not be read says so under the row, with the service's reason
 draws the address's own chips.
 
 The bar scrolls with the page, as the mockup draws it. The page's one sticky slot
-(`app/ui/chrome.ts`) is the selection bar's, [#118](https://github.com/NobuData/ouroboros/issues/118).
+(`app/ui/chrome.ts`) is the [selection bar's](#the-selection-bar-turns-the-selection-into-work),
+below the table.
 
 ### The backlog table is the address's page, kept fresh
 
@@ -1331,6 +1343,67 @@ same line asks for is the wrapper's opposite in the primitive's recipe, and the 
 pagination footer is drawn for a backlog beyond a page — `1–25 of 42`, **← Previous** and
 **Next →** as `next/link`s that keep the filter and the selection, inert with a reason at either
 end — and for an address that has run past the end, with the way back to the first page.
+
+### The selection bar turns the selection into work
+
+Under the table, and only while something is ticked
+([#118](https://github.com/NobuData/ouroboros/issues/118)): mockup 03's `.sel-bar` in the page's
+one `StickyBar` slot, wearing the `asking` rim that is the mockup's glow.
+[`app/issues/selection-bar.tsx`](app/issues/selection-bar.tsx) draws it over
+[`app/issues/bar.ts`](app/issues/bar.ts)'s decisions — every sentence, every label, every judgement
+about a selection, as data and pure functions the suite reads the mockup to hold.
+
+```
+┌─(glow)────────────────────────────────────────────────────────────────────────────────────┐
+│ 3 issues selected · est. 2h 5m combined autonomous work   [Assign workflow ▾] [Queue → standard-fix] │
+└───────────────────────────────────────────────────────────────────────────────────────────┘
+   refused ─▶ dialog "Nothing was queued" · "#483 is still being sized." · [Deselect 1 issue] [Close]
+   took    ─▶ selection cleared · route re-read · toast "Queued 3 issues · est. 2h 5m …" → dashboard
+```
+
+**The estimate is a preview; the service's is the truth.** *"est. 2h 5m combined autonomous
+work"* is summed client-side from each selected row's `estimate.estMinutes` — a fifth field M.1's
+row grew for this bar (`ouroboros-rest` 0.31.8), read out of the estimate's breakdown the way the
+queue write reads it for the copy, so the listing, the panel and the queue row cannot disagree
+about one issue. The selection outlives the page it was made on, so the bar sums the rows **as
+the table last saw them**: [`app/issues/seen-rows.ts`](app/issues/seen-rows.ts) is a store the
+table publishes every listing to and the bar reads through `useSyncExternalStore` — the shape
+`app/poll.ts` keeps, because the rows arrive in an effect and a `setState` there is what the
+hooks lint refuses. An issue with no estimate is counted apart (*· 1 issue not sized yet*) before
+the press is refused for it. The mockup's *1h 10m* is design copy: the seeds carry 45, 50 and 30
+minutes for the mockup's trio and M.3 answers 125 for that selection, so the seeded bar reads
+*2h 5m*, as the head reads nine and seven.
+
+**Assign workflow ▾ is a menu over the fixed set.** *Use suggested* first — no workflow in the
+request, each issue under the one its own estimate suggested, which is what the head's **Queue N
+selected ⟳** always does — then the four tags of decision K5, typed against the contract's enum so
+a tag the service stopped accepting is a compile error here. The rows are `menuitemradio` with the
+current choice checked; the keyboard is `app/shell/menu.ts`'s, as the registry's import menu and
+the routing page's alias menu use it. **Queue → workflow** reflects the choice: the chosen tag, or
+under *use suggested* the one tag the selection agrees on, or `Queue → suggested` over a mixed
+selection.
+
+**A press is one transaction, and the bar says which way it went.** `queueUnder` in
+[`head-actions.ts`](app/issues/head-actions.ts) — the fourth Server Action, which the head's
+`queueSelected` now goes through — sends the ids in the order they were selected and the workflow
+or no key at all, and answers a refusal with the sentence *and* the issues `details.issues` named,
+read defensively out of an open map. A press that **took** clears the selection, re-reads the route
+so the `queued` pills follow, and leaves a toast in the bar's place with the service's own count and
+sum and a link to the dashboard's *Up next in queue* card; it stays until dismissed, because a link
+that vanished on a timer is one a keyboard reader never reaches. A refusal that **names issues**
+opens the shell's overlay under *Nothing was queued*: one sentence per issue from its code and
+status (*"#483 is still being sized."*, *"#490 needs a human before it can be queued."*, *"#484 is
+already in the queue."*; a `404` carries no number, so it is named from the seen rows), the
+all-or-nothing note for the rest, and **Deselect N issues** so the reader drops exactly what was
+named and presses again. A refusal naming **none** — a role, a request the service could not read —
+is a line in the bar, as the head's are. No code is ever printed, and a refusal clears nothing.
+
+**The dashboard's controls parted ways when this landed.** *Manage queue →* and *+N queued →*
+on the [queue card](#the-queue-card-what-the-loop-will-do-next) link to `/issues` now that the bar
+fills the queue, and the toast links back to the card's heading through one fragment
+[`app/paths.ts`](app/paths.ts) owns; *⟳ Pull next issue* stays inert and names what it actually
+waits for. The e2e leg — select three, queue, watch the card gain rows — is N.7's
+([#121](https://github.com/NobuData/ouroboros/issues/121)).
 
 ## Model routing
 
@@ -2899,6 +2972,7 @@ route guards & session-aware redirects [#720](https://github.com/NobuData/ourobo
 sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
 issue intake [#115](https://github.com/NobuData/ouroboros/issues/115) ·
+the selection action bar [#118](https://github.com/NobuData/ouroboros/issues/118) ·
 model routing [#200](https://github.com/NobuData/ouroboros/issues/200) ·
 providers & keys [#227](https://github.com/NobuData/ouroboros/issues/227) ·
 provider cards [#228](https://github.com/NobuData/ouroboros/issues/228) ·

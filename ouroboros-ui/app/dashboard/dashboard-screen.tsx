@@ -9,7 +9,7 @@ import { StatCard } from "./stat-card";
 import { SystemCard } from "./system-card";
 import {
   type DashboardReadings,
-  QUEUEING_SOON,
+  PULL_NEXT_SOON,
   pageSubline,
   statRow,
   systemRows,
@@ -127,15 +127,14 @@ interface Action {
  * **#80 asks that these navigate to their [#49](https://github.com/NobuData/ouroboros/issues/49)
  * placeholders, and neither destination can yet do what its label offers.** *Edit workflows*
  * waits for the workflow builder (mockup 04), whose route #49 still holds. *Pull next issue* is
- * an action rather than a destination: the issues screen became a route with
- * [#115](https://github.com/NobuData/ouroboros/issues/115) and its backlog table selects issues
- * since [#117](https://github.com/NobuData/ouroboros/issues/117), but the bar that queues a
- * selection under a chosen workflow arrives with
- * [#118](https://github.com/NobuData/ouroboros/issues/118), so it carries the queue card's
- * reason ({@link QUEUEING_SOON}) rather than linking to a screen with nothing yet to press. Both
- * render *labelled* rather than absent or linked to a `404`, which is what the sidebar does for a
- * destination that is not built and what #49 itself exists to prevent — "no dead nav links" is
- * its first acceptance criterion.
+ * an action rather than a destination: the queue it would pull from is filled from the issues
+ * screen since its selection bar landed
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)), but pulling *from* it starts a
+ * loop, and nothing can start a loop yet — so it carries that reason ({@link PULL_NEXT_SOON})
+ * rather than linking to a screen that cannot do what the label offers. Both render *labelled*
+ * rather than absent or linked to a `404`, which is what the sidebar does for a destination that
+ * is not built and what #49 itself exists to prevent — "no dead nav links" is its first
+ * acceptance criterion.
  *
  * `aria-disabled` rather than `disabled`, deliberately: a disabled button leaves the tab
  * order and takes its own explanation with it, so the keyboard reader who most needs the
@@ -160,7 +159,7 @@ const ACTIONS: readonly Action[] = [
     id: "pull-next",
     label: "⟳ Pull next issue",
     tone: "primary",
-    why: QUEUEING_SOON,
+    why: PULL_NEXT_SOON,
   },
 ];
 

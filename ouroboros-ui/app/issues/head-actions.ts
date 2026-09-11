@@ -2,8 +2,9 @@
 
 /**
  * The server hops for the intake page's actions — the head's two
- * ([#115](https://github.com/NobuData/ouroboros/issues/115)) and the table's freshness tag
- * ([#117](https://github.com/NobuData/ouroboros/issues/117)) — the calls its Client Components
+ * ([#115](https://github.com/NobuData/ouroboros/issues/115)), the table's freshness tag
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)) and the selection bar's queue
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)) — the calls its Client Components
  * cannot make themselves.
  *
  * `app/api/server.ts` states the rule this exists under, and `app/dashboard/pulse-actions.ts` is the
@@ -22,20 +23,22 @@
  *   around it gets the service's `403`, handed back here as the sentence the control would have
  *   shown.
  * - **The selection's shape is checked before it is sent.** Types do not survive a forged POST, so
- *   `queueSelected` refuses anything that is not a non-empty list of strings instead of spreading a
- *   value that is not a list into a request. Everything past the shape — uuids, the ceiling of a
- *   hundred, duplicates, ids from another workspace — is the service's to refuse, and it refuses by
- *   writing nothing.
+ *   the two queue actions refuse anything that is not a non-empty list of strings — and a workflow
+ *   outside the fixed set — instead of spreading a value that is not a list into a request.
+ *   Everything past the shape — uuids, the ceiling of a hundred, duplicates, ids from another
+ *   workspace — is the service's to refuse, and it refuses by writing nothing.
  *
  * ### Failure posture: a value, not a throw
  *
  * A refusal comes back as a sentence the head draws under the button, because the page is one the
- * reader is still entitled to be on. The one throw that must travel is Next.js's redirect signal,
- * for a session that expired since the page rendered.
+ * reader is still entitled to be on. The bar's ({@link queueUnder}) comes back as the sentence
+ * *and* the issues the service named, so the bar can explain the refusal issue by issue. The one
+ * throw that must travel is Next.js's redirect signal, for a session that expired since the page
+ * rendered.
  *
  * **Every value this module needs is imported rather than declared**: a `"use server"` module may
- * export nothing but async functions, so the sentences and the outcome type live in
- * `app/issues/view.ts`, and the contract's codes in `app/api/backlog.ts`.
+ * export nothing but async functions, so the sentences and the outcome types live in
+ * `app/issues/view.ts` and `app/issues/bar.ts`, and the contract's codes in `app/api/backlog.ts`.
  */
 
 import {
@@ -44,10 +47,12 @@ import {
   BACKLOG_SYNC_TOO_SOON_CODE,
   ESTIMATION_RATE_LIMITED_CODE,
   FORBIDDEN_CODE,
+  type QueueSelection,
   backlog,
 } from "@/app/api/backlog";
 import { isApiError } from "@/app/api/errors";
 
+import { type QueueOutcome, isWorkflow, offendersOf } from "./bar";
 import { SYNC_FAILED, SYNC_ROLE_REASON, SYNC_RUNNING, syncOutcome, syncTooSoon } from "./table";
 import {
   type HeadOutcome,
@@ -88,7 +93,8 @@ export async function reestimateAll(): Promise<HeadOutcome> {
 }
 
 /**
- * Queue the selected issues, each under the workflow its own estimate suggested.
+ * Queue the selected issues, each under the workflow its own estimate suggested — the page
+ * head's **Queue N selected ⟳**.
  *
  * @param issueIds The issues' `github_issues.id`s, in the order they were selected — the order the
  *   queue appends them in.
@@ -96,17 +102,50 @@ export async function reestimateAll(): Promise<HeadOutcome> {
  * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
  */
 export async function queueSelected(issueIds: readonly string[]): Promise<HeadOutcome> {
-  if (!isIdList(issueIds)) return { ok: false, reason: queueRefusal("") };
-  if (issueIds.length === 0) return { ok: false, reason: QUEUE_NOTHING_SELECTED };
+  const outcome = await queueUnder(issueIds, null);
+
+  return outcome.ok
+    ? { ok: true, message: queuedOutcome(outcome.queued) }
+    : { ok: false, reason: outcome.reason };
+}
+
+/**
+ * Queue the selected issues under one workflow, or each under its own — the selection bar's
+ * **Queue → workflow** ([#118](https://github.com/NobuData/ouroboros/issues/118)).
+ *
+ * @param issueIds The issues' `github_issues.id`s, in the order they were selected — the order the
+ *   queue appends them in.
+ * @param workflow The workflow to run every one under, from the fixed set — or `null` to send no
+ *   workflow, which the contract reads as *each issue under the workflow its own estimate
+ *   suggested*. Anything else is a forged request and is refused before it is sent.
+ * @returns The rows created and their combined estimate — or why none were, with the issues the
+ *   service named.
+ * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
+ */
+export async function queueUnder(
+  issueIds: readonly string[],
+  workflow: string | null,
+): Promise<QueueOutcome> {
+  if (!isIdList(issueIds) || (workflow !== null && !isWorkflow(workflow))) {
+    return { ok: false, reason: queueRefusal(""), offenders: [] };
+  }
+  if (issueIds.length === 0) return { ok: false, reason: QUEUE_NOTHING_SELECTED, offenders: [] };
+
+  // Built without the key rather than with `workflow: undefined`, so the request is exactly what
+  // the contract describes for *use suggested*: no `workflow` at all.
+  const selection: QueueSelection =
+    workflow === null ? { issueIds: [...issueIds] } : { issueIds: [...issueIds], workflow };
 
   try {
-    return { ok: true, message: queuedOutcome(await backlog.queue({ issueIds: [...issueIds] })) };
+    return { ok: true, queued: await backlog.queue(selection) };
   } catch (error) {
     if (!isApiError(error)) throw error;
 
-    if (error.code === FORBIDDEN_CODE) return { ok: false, reason: QUEUE_ROLE_REASON };
+    if (error.code === FORBIDDEN_CODE) {
+      return { ok: false, reason: QUEUE_ROLE_REASON, offenders: [] };
+    }
 
-    return { ok: false, reason: queueRefusal(error.message) };
+    return { ok: false, reason: queueRefusal(error.message), offenders: offendersOf(error.details) };
   }
 }
 

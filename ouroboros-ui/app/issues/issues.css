@@ -3,8 +3,9 @@
  *
  * What is here is the page head — the page's gutter rhythm, the heading column, the two actions with
  * what a press of either reports under it, and the confirmation's column — since #116 the filter
- * bar under it, and since #117 the backlog table under that. The selection bar and the detail panel
- * arrive with #118 and #119 and add their rules below.
+ * bar under it, since #117 the backlog table under that, and since #118 the selection bar under the
+ * table with its menu, its refusal dialog and its toast. The detail panel arrives with #119 and
+ * adds its rules below.
  *
  * Every length is a token or `rem`, so the font-size preference scales the head with the rest of the
  * product (design system § 3.2), and every hue is a token, so both palettes are the token sheet's.
@@ -343,4 +344,153 @@
   color: var(--ink-mut);
   font-family: var(--f-mono);
   font-size: var(--t-xs);
+}
+
+/* ------------------------------------------------------------------ the selection bar (#118) */
+
+/*
+ * The mockup's `.sel-bar`, in the page's one sticky slot: the #46 StickyBar's `asking` tone is
+ * the mockup's accent rim and glow, so what is here is placement — the gap above it, and the
+ * row wrapping so the sentence and the two actions drop under each other at the narrow end of
+ * the pane rather than pushing it sideways.
+ */
+.issues-bar {
+  flex-wrap: wrap;
+  margin-top: var(--sp-8);
+}
+
+/* The mockup's `<strong>3 issues selected</strong> <span class="muted">· est. …</span>`. */
+.issues-bar__summary {
+  flex: 1;
+  min-width: 16rem;
+  margin: 0;
+  line-height: var(--lh-body);
+}
+
+.issues-bar__estimate {
+  color: var(--ink-mut);
+}
+
+/* The mockup's `.row` of two buttons, at the trailing edge. */
+.issues-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* The trigger and its panel share an origin, so the panel opens from the trigger's edge. */
+.issues-bar__menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The mockup's `▾`, drawn beside the label rather than typed into it. */
+.issues-bar__caret {
+  margin-inline-start: var(--sp-3);
+  color: var(--ink-mut);
+}
+
+/*
+ * The panel: the shell's menu box (the routing page's alias menu and the registry's import menu
+ * keep the same one), anchored to the trigger's start edge. Its z-index sits above the sticky
+ * bar it opens from (`app/ui/chrome.ts` puts that at 11) and below the shell's own chrome.
+ */
+.issues-bar__menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--sp-4));
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 16rem;
+  padding: var(--sp-4);
+  border: 0.0625rem solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/*
+ * One row: the name, and for the default row what it means under it. A `button` reset to a
+ * row — on the panel's own surface, so it reads as part of the panel rather than as a control.
+ */
+.issues-bar__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.issues-bar__option:hover,
+.issues-bar__option:focus-visible {
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+
+/*
+ * The row the selection is queued under now — `aria-checked`, the attribute actually set —
+ * wears the accent rail the routing page's alias menu wears for the same fact.
+ */
+.issues-bar__option[aria-checked="true"] {
+  box-shadow: inset 0.1875rem 0 0 var(--accent);
+}
+
+.issues-bar__option-name {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+
+/* A workflow tag reads in the mono the table's tag column uses for it. */
+.issues-bar__option-name--tag {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.issues-bar__option-note {
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* The refusal's list, inside the shell's overlay: one sentence per issue the service named. */
+.issues-refusal {
+  margin: 0;
+  padding-inline-start: var(--sp-8);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The toast after a press that took, in the bar's place: the service's count and sum, the link
+ * to where the rows now are, and a dismissal. A card in the accent rim, since it is about the
+ * thing the bar was asking for; it stays until dismissed, because a link that vanished on a
+ * timer would be one a keyboard reader never reaches.
+ */
+.issues-toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-6);
+  margin-top: var(--sp-8);
+  padding: var(--sp-5) var(--sp-8);
+  border: 0.0625rem solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  line-height: var(--lh-body);
+}
+
+.issues-toast__text {
+  flex: 1;
+  min-width: 14rem;
 }

@@ -408,18 +408,22 @@ export const EMPTY_QUEUE = "Nothing is waiting for a loop.";
 export const UNSIZED_QUEUE = "None of them has been sized yet.";
 
 /**
- * Why the dashboard's queueing controls cannot act yet — *Manage queue →* and *+N queued* on the
- * queue card, and the page head's *⟳ Pull next issue*.
+ * Why the page head's *⟳ Pull next issue* cannot act yet.
  *
- * One sentence for all three, because all three wait on the same thing. The issues screen has
- * been a route since [#115](https://github.com/NobuData/ouroboros/issues/115) and its backlog
- * table selects issues since [#117](https://github.com/NobuData/ouroboros/issues/117); the bar
- * that queues a selection under a chosen workflow — the surface a *manage the queue* control
- * would land on — arrives with [#118](https://github.com/NobuData/ouroboros/issues/118).
- * Controls waiting on one thing should not describe it three ways.
+ * Until the issues screen's selection bar landed
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)) this was one sentence for three
+ * controls — the queue card's *Manage queue →* and *+N queued* waited on the same thing. The
+ * bar is what fills the queue, so those two now link to `/issues`
+ * (`app/dashboard/queue-card.tsx`); pulling from it is the other half. A pull takes the head
+ * of the queue and starts a run, which is the engine's move and arrives with its ingestion
+ * bridge, J.3 ([#91](https://github.com/NobuData/ouroboros/issues/91)) — *"engine pulls
+ * `queue_items` head → creates run → removes item"*. The control stays labelled rather than
+ * absent or faked, which is [#49](https://github.com/NobuData/ouroboros/issues/49)'s first
+ * criterion, and the tooltip names the issue it waits for, as every inert control here does.
  */
-export const QUEUEING_SOON =
-  "Queueing issues from the issues screen arrives with its selection bar (#118).";
+export const PULL_NEXT_SOON =
+  "Pulling the next issue takes the head of the queue and starts a run — the engine's move, " +
+  "which arrives with its ingestion bridge (#91). The queue itself is filled from the issues screen.";
 
 /**
  * *Queued issues* — how many are waiting, and how long they are expected to take.

@@ -8,9 +8,11 @@ import {
   selected as selectionWith,
   toggled,
   useIssueSelection,
+  useSeenRows,
 } from "@/app/issues/selection";
+import { tableRows } from "@/app/issues/table";
 
-import { SELECTED_TRIO } from "../helpers/issues";
+import { SEEDED_ROWS, SELECTED_TRIO } from "../helpers/issues";
 
 /**
  * The backlog's selection store (#115) — the seam the head's queue button reads and N.3's table
@@ -260,5 +262,57 @@ describe("useIssueSelection", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent(/needs an IssueSelectionProvider/);
     quiet.mockRestore();
+  });
+});
+
+describe("useSeenRows (#118)", () => {
+  /** A reader of the seen rows, and a writer standing in for the table. */
+  function SeenProbe() {
+    const { seen } = useIssueSelection();
+    const rows = useSeenRows();
+
+    return (
+      <div>
+        <output aria-label="Seen">{[...rows.keys()].join(",")}</output>
+        <button onClick={() => seen.publish(tableRows(SEEDED_ROWS))} type="button">
+          Draw the page
+        </button>
+      </div>
+    );
+  }
+
+  it("starts empty, and follows what the table publishes", () => {
+    render(
+      <IssueSelectionProvider>
+        <SeenProbe />
+      </IssueSelectionProvider>,
+    );
+
+    expect(screen.getByRole("status", { name: "Seen" })).toHaveTextContent("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Draw the page" }));
+
+    expect(screen.getByRole("status", { name: "Seen" })).toHaveTextContent(
+      SEEDED_ROWS.map((row) => row.id).join(","),
+    );
+  });
+
+  it("is the provider's own store, so two screens do not share a memory either", () => {
+    render(
+      <>
+        <IssueSelectionProvider>
+          <SeenProbe />
+        </IssueSelectionProvider>
+        <IssueSelectionProvider>
+          <SeenProbe />
+        </IssueSelectionProvider>
+      </>,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Draw the page" })[0]!);
+
+    const [first, second] = screen.getAllByRole("status", { name: "Seen" });
+    expect(first?.textContent).not.toBe("");
+    expect(second?.textContent).toBe("");
   });
 });
