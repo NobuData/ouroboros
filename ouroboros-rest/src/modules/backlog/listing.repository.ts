@@ -96,11 +96,16 @@ export interface BacklogListRow {
   readonly githubRepoId: string;
   /** `owner/name`, assembled in the statement from `github_orgs.login` and `github_repos.name`. */
   readonly repository: string;
-  /** The four estimate fields, all null together on an issue that has none. */
+  /** The five estimate fields, all null together on an issue that has none. */
   readonly effort: EstimateEffort | null;
   readonly confidence: number | null;
   readonly suggestedWorkflow: string | null;
   readonly routedModel: string | null;
+  /**
+   * `breakdown.est_minutes` from the same estimate — the number the selection action bar sums
+   * (N.4, [#118](https://github.com/NobuData/ouroboros/issues/118)) and the queue write copies.
+   */
+  readonly estMinutes: number | null;
 }
 
 /** One issue the run queue holds, as the `queued` pill needs to recognise it. */
@@ -136,7 +141,7 @@ export class BacklogListingRepository {
    * @param filter - What the filter bar narrowed it to.
    * @param sort - Which of the four orderings.
    * @param window - Which rows of the match to return.
-   * @returns The rows, each with the estimate in force or four nulls.
+   * @returns The rows, each with the estimate in force or five nulls.
    */
   async list(
     organizationId: string,
@@ -156,6 +161,12 @@ export class BacklogListingRepository {
               "issue_estimates.confidence as confidence",
               "issue_estimates.suggested_workflow as suggestedWorkflow",
               "issue_estimates.routed_model as routedModel",
+              // One key out of the breakdown document, the way `queue.repository.ts` reads it
+              // for the copy: V026's grammar makes it present and whole on every estimate, so
+              // the cast cannot fail on a row that exists.
+              sql<number>`(${sql.ref("issue_estimates.breakdown")}->>'est_minutes')::int`.as(
+                "estMinutes",
+              ),
             ])
             .whereRef("issue_estimates.github_issue_id", "=", "github_issues.id")
             .orderBy("issue_estimates.version", "desc")
@@ -175,6 +186,7 @@ export class BacklogListingRepository {
         "estimate.confidence as confidence",
         "estimate.suggestedWorkflow as suggestedWorkflow",
         "estimate.routedModel as routedModel",
+        "estimate.estMinutes as estMinutes",
         // `owner/name` in the statement rather than in TypeScript, for `estimation.repository.ts`'s
         // reason: the read stays one round trip and the assembly has nowhere else to live.
         sql<string>`${sql.ref("github_orgs.login")} || '/' || ${sql.ref("github_repos.name")}`.as(

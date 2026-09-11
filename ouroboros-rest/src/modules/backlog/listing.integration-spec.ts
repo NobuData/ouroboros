@@ -147,6 +147,9 @@ describe("the backlog listing, against a migrated database", () => {
           confidence: 92,
           suggestedWorkflow: "standard-fix",
           routedModel: "claude-fable-5",
+          // N.4 (#118) added the fifth field: the breakdown's `est_minutes`, which the
+          // selection action bar sums and the queue write copies — 45 on the seeded `#485`.
+          estMinutes: 45,
         },
       });
     });
@@ -163,6 +166,7 @@ describe("the backlog listing, against a migrated database", () => {
         confidence: 71,
         suggestedWorkflow: "feature-loop",
         routedModel: "claude-fable-5",
+        estMinutes: 110,
       });
     });
 

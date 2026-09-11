@@ -7947,6 +7947,17 @@ export interface components {
              * @example claude-fable-5
              */
             routedModel: string;
+            /**
+             * @description The breakdown's `est_minutes` — the single number the queue plans with, joined to
+             *     the four cells with N.4 ([#118](https://github.com/NobuData/ouroboros/issues/118))
+             *     so the selection action bar can sum it over the rows a person ticked: *"est. 2h 5m
+             *     combined autonomous work"*, as a preview the queue write's own `estMinutes` then
+             *     confirms. The same value `IssueEstimateBreakdown.estMinutes` carries for the panel
+             *     and `POST /api/v1/backlog/queue` copies onto each queue row, so the three cannot
+             *     disagree about one issue. The rest of the breakdown stays the panel's.
+             * @example 45
+             */
+            estMinutes: number;
         };
         /**
          * BacklogMeta
@@ -10185,7 +10196,8 @@ export interface operations {
                      *             "effort": "m",
                      *             "confidence": 92,
                      *             "suggestedWorkflow": "standard-fix",
-                     *             "routedModel": "claude-fable-5"
+                     *             "routedModel": "claude-fable-5",
+                     *             "estMinutes": 45
                      *           }
                      *         },
                      *         {

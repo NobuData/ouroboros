@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.31.7"
+  version: "0.31.8"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1925,6 +1925,7 @@ paths:
                       confidence: 92
                       suggestedWorkflow: standard-fix
                       routedModel: claude-fable-5
+                      estMinutes: 45
                   - id: 5eed0018-0000-4000-8000-000000000483
                     number: 483
                     title: Telemetry frame drops when BLE and CAN both saturated
@@ -15673,7 +15674,7 @@ components:
         provenance are `GET /api/v1/backlog/{id}`'s
         ([#111](https://github.com/NobuData/ouroboros/issues/111)).
       additionalProperties: false
-      required: [effort, confidence, suggestedWorkflow, routedModel]
+      required: [effort, confidence, suggestedWorkflow, routedModel, estMinutes]
       properties:
         effort:
           type: string
@@ -15701,6 +15702,19 @@ components:
             The *Routed model* pill. Opaque (decision K6), and **resolved rather than
             invoked**: sizing this issue called no model.
           examples: [claude-fable-5]
+        estMinutes:
+          type: integer
+          minimum: 0
+          maximum: 100000
+          description: |-
+            The breakdown's `est_minutes` — the single number the queue plans with, joined to
+            the four cells with N.4 ([#118](https://github.com/NobuData/ouroboros/issues/118))
+            so the selection action bar can sum it over the rows a person ticked: *"est. 2h 5m
+            combined autonomous work"*, as a preview the queue write's own `estMinutes` then
+            confirms. The same value `IssueEstimateBreakdown.estMinutes` carries for the panel
+            and `POST /api/v1/backlog/queue` copies onto each queue row, so the three cannot
+            disagree about one issue. The rest of the breakdown stays the panel's.
+          examples: [45]
 
     BacklogMeta:
       type: object

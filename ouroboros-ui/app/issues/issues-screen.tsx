@@ -7,6 +7,7 @@ import { FIRST_PAGE } from "./paging";
 import { QueueSelectedButton } from "./queue-selected";
 import { ReestimateAllButton } from "./reestimate-all";
 import { IssueSelectionProvider } from "./selection";
+import { SelectionBar } from "./selection-bar";
 import { ISSUES_EYEBROW, ISSUES_SUBLINE, type IssuesReadings, headline } from "./view";
 
 import "./issues.css";
@@ -14,8 +15,9 @@ import "./issues.css";
 /**
  * Issue intake ([#115](https://github.com/NobuData/ouroboros/issues/115)) —
  * `docs/mockups/03-issues.html` from its page head, with the filter bar under it
- * ([#116](https://github.com/NobuData/ouroboros/issues/116)) and the backlog table under that
- * ([#117](https://github.com/NobuData/ouroboros/issues/117)).
+ * ([#116](https://github.com/NobuData/ouroboros/issues/116)), the backlog table under that
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)) and the selection bar under the
+ * table ([#118](https://github.com/NobuData/ouroboros/issues/118)).
  *
  * It renders **inside the app shell**, so it starts at its page head and contributes no chrome of
  * its own (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 2): the shell's content pane is the scroll container,
@@ -40,17 +42,22 @@ import "./issues.css";
  * address (decision K8): the bar writes the next `?repo=&labels=&state=&sort=&q=`, this screen is
  * rendered again from it, and the head's counts follow the repository the bar selected — the
  * contract scopes them that way, and by nothing else in the bar. It scrolls with the page, as the
- * mockup draws it; the page's one sticky slot is the selection bar's, N.4's
- * ([#118](https://github.com/NobuData/ouroboros/issues/118)).
+ * mockup draws it; the page's one sticky slot is the selection bar's.
  *
  * ### The table is the address's page, kept fresh
  *
  * The card under the bar draws the page the route read for this address and then polls for it,
  * so a status the pipeline moves is a pill that moves. Its page is the address's `&page=`, beside
- * the bar's five controls and reset by every one of them. The selection bar and the detail panel
- * are N.4's and N.5's ([#118](https://github.com/NobuData/ouroboros/issues/118),
- * [#119](https://github.com/NobuData/ouroboros/issues/119)) and mount beside it, inside the same
- * provider.
+ * the bar's five controls and reset by every one of them.
+ *
+ * ### The selection bar turns the selection into work
+ *
+ * Under the table, and only while something is selected: the count and the combined estimate,
+ * **Assign workflow ▾** and **Queue → workflow** (`app/issues/selection-bar.tsx`). It reads the
+ * same selection the head does, from the same provider, and the rows the table publishes there
+ * — which is what lets it sum an estimate over ids on pages the table is no longer drawing. The
+ * detail panel is N.5's ([#119](https://github.com/NobuData/ouroboros/issues/119)) and mounts
+ * beside the table, inside the same provider.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.filter The filter the address carries — what the readings were read for.
@@ -106,6 +113,7 @@ export function IssuesScreen({
           page={page}
           readAt={readAt}
         />
+        <SelectionBar mayContribute={mayContribute} />
       </main>
     </IssueSelectionProvider>
   );

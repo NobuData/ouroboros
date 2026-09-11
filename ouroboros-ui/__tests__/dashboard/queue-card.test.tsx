@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { QueueCard } from "@/app/dashboard/queue-card";
-import { QUEUEING_SOON } from "@/app/dashboard/view";
+import { DASHBOARD_QUEUE_HASH, ISSUES_PATH } from "@/app/paths";
 
 import { dashboardPayload, failed, queueItem, read } from "../helpers/dashboard";
 
@@ -197,7 +197,7 @@ describe("the +N queued footer", () => {
     // five by the aggregate and the count speaks for the whole queue.
     render(seeded());
 
-    expect(within(card()).getByRole("button", { name: "+7 queued →" })).toBeInTheDocument();
+    expect(within(card()).getByRole("link", { name: "+7 queued →" })).toBeInTheDocument();
   });
 
   it("says nothing when the card is showing the whole queue", () => {
@@ -205,64 +205,59 @@ describe("the +N queued footer", () => {
     // built to say what is coming.
     render(withQueue([queueItem()]));
 
-    expect(within(card()).queryByRole("button", { name: /queued/ })).toBeNull();
+    expect(within(card()).queryByRole("link", { name: /queued/ })).toBeNull();
   });
 
   it("says nothing when a count somehow runs behind its own slice", () => {
     // `−1 queued` is not a thing this card will ever say. The guard is `view.ts`'s.
     render(withQueue([queueItem(), queueItem({ id: "second", issueNumber: 486 })], 1));
 
-    expect(within(card()).queryByRole("button", { name: /queued/ })).toBeNull();
+    expect(within(card()).queryByRole("link", { name: /queued/ })).toBeNull();
   });
 
   it("counts the remainder from the count rather than from the rows it drew", () => {
     render(withQueue([queueItem()], 40));
 
-    expect(within(card()).getByRole("button", { name: "+39 queued →" })).toBeInTheDocument();
+    expect(within(card()).getByRole("link", { name: "+39 queued →" })).toBeInTheDocument();
   });
 });
 
-describe("what the card will not do yet", () => {
-  it("offers `Manage queue →`, and it does not act", () => {
-    // The issues screen is a route since #115, but what manages the queue from it — the backlog
-    // table's selection and the bar that queues it — is #117's and #118's. Linking there today
-    // would land a reader on a screen with nothing yet to manage the queue with.
+describe("the way to the issues screen (#118)", () => {
+  it("links `Manage queue →` to the issues screen, where the queue is filled", () => {
+    // Inert until the selection bar landed; a link now that the bar queues a selection.
     render(seeded());
 
-    const manage = within(card()).getByRole("button", { name: "Manage queue →" });
+    const manage = within(card()).getByRole("link", { name: "Manage queue →" });
 
-    expect(manage).toHaveAttribute("aria-disabled", "true");
-    expect(manage.getAttribute("title")).toBe(QUEUEING_SOON);
+    expect(manage).toHaveAttribute("href", ISSUES_PATH);
+    expect(manage).not.toHaveAttribute("aria-disabled");
   });
 
-  it("keeps the explanation in the tab order", () => {
-    // `aria-disabled` rather than `disabled`: a disabled button leaves the tab order and takes
-    // its own tooltip with it, so the keyboard reader who most needs it can never reach it.
+  it("links the footer there too, so the whole queue is one press away", () => {
     render(seeded());
 
-    for (const control of within(card()).getAllByRole("button")) {
-      expect(control).not.toBeDisabled();
-    }
+    expect(within(card()).getByRole("link", { name: "+7 queued →" })).toHaveAttribute(
+      "href",
+      ISSUES_PATH,
+    );
   });
 
-  it("says the same thing about the same destination twice", () => {
-    // Both controls point at the queue screen. Two sentences for one missing screen would read
-    // as two missing screens.
+  it("carries the heading the issues screen's toast links back to", () => {
+    // `app/paths.ts` owns the fragment, so the link and its target cannot drift apart.
     render(seeded());
 
-    const reasons = within(card())
-      .getAllByRole("button")
-      .map((control) => control.getAttribute("title"));
-
-    expect(new Set(reasons).size).toBe(1);
+    expect(card()).toHaveAttribute("aria-labelledby", DASHBOARD_QUEUE_HASH);
+    expect(document.getElementById(DASHBOARD_QUEUE_HASH)).toHaveTextContent("Up next in queue");
   });
 
-  it("links nowhere at all, rather than to a 404", () => {
+  it("leaves no inert control on the card", () => {
     render(seeded());
 
-    expect(within(card()).queryAllByRole("link")).toHaveLength(0);
+    expect(within(card()).queryAllByRole("button")).toHaveLength(0);
   });
+});
 
+describe("what the card will not do", () => {
   it("draws no queued issue that did not come from the payload", () => {
     // The mockup fills this card with five plausible rows. An empty queue draws none of them.
     render(withQueue([]));
@@ -287,7 +282,7 @@ describe("a queue with nothing in it, and one nobody could read", () => {
     // dead and never a blank region.
     render(withQueue([]));
 
-    expect(within(card()).getByRole("button", { name: "Manage queue →" })).toBeInTheDocument();
+    expect(within(card()).getByRole("link", { name: "Manage queue →" })).toBeInTheDocument();
   });
 
   it("says what it could not read when the aggregate was refused", () => {

@@ -210,11 +210,15 @@ describe("the page head's actions", () => {
   });
 
   it("links only to a screen that exists — the issues screen, since #115 built it", () => {
-    // *All issues →* became a link on the commit that built `/issues`. Every other destination
-    // on the page is still unbuilt, and none of them is linked to a 404.
+    // *All issues →* became a link on the commit that built `/issues`; the queue card's
+    // *Manage queue →* and *+7 queued →* followed when the selection bar that fills the queue
+    // landed (#118). Every other destination on the page is still unbuilt, and none of them is
+    // linked to a 404.
     render(<DashboardScreen readings={readings()} />);
 
     expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      ISSUES_PATH,
+      ISSUES_PATH,
       ISSUES_PATH,
     ]);
   });
@@ -531,7 +535,7 @@ describe("the queue card, on the page", () => {
 
     const card = screen.getByRole("region", { name: "Up next in queue" });
 
-    expect(within(card).getByRole("button", { name: "+7 queued →" })).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "+7 queued →" })).toBeInTheDocument();
   });
 
   it("invents no queued issue for a workspace whose queue is empty", () => {

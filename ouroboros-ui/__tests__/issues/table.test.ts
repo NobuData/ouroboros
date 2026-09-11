@@ -239,7 +239,21 @@ describe("tableRows", () => {
   it("draws an issue with no estimate as sizing, with nothing to name beside it", () => {
     const [row] = tableRows([ESTIMATING_ROW]);
 
-    expect(row).toMatchObject({ effort: null, confidence: null, workflow: null, model: null, status: "estimating" });
+    expect(row).toMatchObject({
+      effort: null,
+      confidence: null,
+      workflow: null,
+      model: null,
+      estMinutes: null,
+      status: "estimating",
+    });
+  });
+
+  it("carries the estimate's minutes for the selection bar, drawn by no cell (#118)", () => {
+    const rows = tableRows(SEEDED_ROWS);
+
+    expect(rows.find((row) => row.number === 485)?.estMinutes).toBe(45);
+    expect(rows.find((row) => row.number === 490)?.estMinutes).toBe(180);
   });
 
   it("keeps the listing's order and every row's id", () => {

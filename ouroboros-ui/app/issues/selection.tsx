@@ -1,12 +1,22 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
+
+import { type SeenRowMap, type SeenRows, createSeenRows } from "./seen-rows";
 
 /**
  * The backlog's checkbox selection — the one piece of client state the intake screen shares
  * between regions ([#115](https://github.com/NobuData/ouroboros/issues/115)) — and, since the
  * table landed ([#117](https://github.com/NobuData/ouroboros/issues/117)), the row whose
- * detail is open beside it.
+ * detail is open beside it, and, since the selection bar landed
+ * ([#118](https://github.com/NobuData/ouroboros/issues/118)), the rows the table has drawn.
  *
  * ### Why it exists above the table
  *
@@ -14,9 +24,16 @@ import { createContext, useCallback, useContext, useMemo, useState } from "react
  * N.3's scope names the store — *"selection store (URL-independent, survives filter changes
  * within the page, exposed to N.1/N.4)"* — so the head was its first reader, the table
  * (`app/issues/backlog-table.tsx`) is its writer, and N.4's selection bar
- * ([#118](https://github.com/NobuData/ouroboros/issues/118)) is its second reader. Writing the
- * seam first, with its one reader, is what let the table arrive as a writer rather than as a
- * refactor of the head.
+ * (`app/issues/selection-bar.tsx`) is its second reader. Writing the seam first, with its one
+ * reader, is what let the table arrive as a writer rather than as a refactor of the head.
+ *
+ * ### The rows ride beside the ids
+ *
+ * The bar prints a combined estimate over the whole selection, and the selection outlives the
+ * page it was made on — so the ids alone are not enough to sum. {@link IssueSelection.seen} is
+ * `app/issues/seen-rows.ts`'s store: the table publishes every listing it draws, the bar reads
+ * a selected issue's row from it, as last seen. It is held here rather than in a provider of
+ * its own for the reason the detail is: the same kind of thing, for the same readers.
  *
  * ### Why a context rather than the URL
  *
@@ -75,6 +92,11 @@ export interface IssueSelection {
    * @param id The issue, or `null` to close the panel.
    */
   readonly inspect: (id: string | null) => void;
+  /**
+   * The rows the table has drawn since the page mounted — the table writes it after every
+   * listing, the selection bar reads through {@link useSeenRows}.
+   */
+  readonly seen: SeenRows;
 }
 
 /** The nearest provider's selection, or `null` outside one — see {@link useIssueSelection}. */
@@ -137,6 +159,9 @@ export function deselected(ids: readonly string[], gone: readonly string[]): rea
 export function IssueSelectionProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [ids, setIds] = useState<readonly string[]>([]);
   const [detail, setDetail] = useState<string | null>(null);
+  // Built once and never replaced: the store is the page's memory of its rows, and its identity
+  // is what the bar subscribes to.
+  const [seen] = useState(createSeenRows);
 
   const toggle = useCallback((id: string) => setIds((current) => toggled(current, id)), []);
   const select = useCallback(
@@ -153,11 +178,24 @@ export function IssueSelectionProvider({ children }: Readonly<{ children: React.
   const inspect = useCallback((id: string | null) => setDetail(id === "" ? null : id), []);
 
   const selection = useMemo(
-    () => ({ ids, toggle, select, deselect, clear, detail, inspect }),
-    [ids, toggle, select, deselect, clear, detail, inspect],
+    () => ({ ids, toggle, select, deselect, clear, detail, inspect, seen }),
+    [ids, toggle, select, deselect, clear, detail, inspect, seen],
   );
 
   return <SelectionContext.Provider value={selection}>{children}</SelectionContext.Provider>;
+}
+
+/**
+ * The rows the table has drawn, as they stand — re-rendering the caller when a row changes.
+ *
+ * @returns The map, by `github_issues.id`. Empty until the table has drawn a listing, and on
+ *   the server, which has no table to have drawn one.
+ * @throws {Error} Outside an {@link IssueSelectionProvider}, as {@link useIssueSelection} does.
+ */
+export function useSeenRows(): SeenRowMap {
+  const { seen } = useIssueSelection();
+
+  return useSyncExternalStore(seen.subscribe, seen.snapshot, seen.snapshot);
 }
 
 /**

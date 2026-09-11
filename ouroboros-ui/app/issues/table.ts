@@ -159,6 +159,12 @@ export interface TableRow {
   readonly workflow: string | null;
   /** The routed model pill, or `null` — drawn as {@link UNESTIMATED}. */
   readonly model: string | null;
+  /**
+   * The estimate's `estMinutes`, or `null` with the rest — drawn by no cell. It rides the row
+   * for the selection bar ([#118](https://github.com/NobuData/ouroboros/issues/118)), which
+   * sums it over the rows a person ticked.
+   */
+  readonly estMinutes: number | null;
   /** Which pill the row wears. */
   readonly status: BacklogStatus;
 }
@@ -183,6 +189,7 @@ export function tableRows(items: readonly BacklogRow[]): readonly TableRow[] {
     confidence: row.estimate === null ? null : `${Math.round(row.estimate.confidence)}%`,
     workflow: row.estimate?.suggestedWorkflow ?? null,
     model: row.estimate?.routedModel ?? null,
+    estMinutes: row.estimate?.estMinutes ?? null,
     status: statusOf(row),
   }));
 }

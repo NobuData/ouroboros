@@ -112,6 +112,15 @@ export const ROUTING_MATRIX_HASH = "models-matrix-title";
 export const ROUTING_RULES_HASH = "models-rules-title";
 
 /**
+ * The dashboard's *Up next in queue* heading, likewise — where the issues screen's toast sends
+ * a reader after a press that queued ([#118](https://github.com/NobuData/ouroboros/issues/118)).
+ *
+ * `app/dashboard/queue-card.tsx` renders it as the card's `aria-labelledby` target, and
+ * `app/issues/bar.ts` builds the link from it.
+ */
+export const DASHBOARD_QUEUE_HASH = "dash-up-next-title";
+
+/**
  * The query parameter carrying where a visitor was heading when they were sent to sign in.
  *
  * Added by [#716](https://github.com/NobuData/ouroboros/issues/716): a `401` routes to the

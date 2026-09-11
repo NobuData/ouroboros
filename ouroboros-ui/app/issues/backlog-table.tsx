@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { BacklogListing } from "@/app/api/backlog";
 import type { Reading } from "@/app/api/reading";
@@ -69,13 +69,16 @@ import type { HeadOutcome } from "./view";
  * ### Two selections, one store
  *
  * The checkboxes write `app/issues/selection.tsx`'s store, which the head's **Queue N
- * selected ⟳** reads and N.4's bar ([#118](https://github.com/NobuData/ouroboros/issues/118))
- * will: `toggle` per row, `select`/`deselect` over the page for the header's box. The store is
+ * selected ⟳** and the selection bar ([#118](https://github.com/NobuData/ouroboros/issues/118))
+ * read: `toggle` per row, `select`/`deselect` over the page for the header's box. The store is
  * above the route's re-renders, so a chip press or a page turn redraws the rows and the
  * selection stays — including ids no longer on the page, which is what *survives filter
  * changes* means. The header's box reports the *page's* coverage — checked when every row on
  * it is selected, indeterminate when some are — and the checked rows wear the mockup's `tr.sel`
  * through the primitive's own accent selection.
+ *
+ * Every listing drawn is also published to the store's `seen` rows, which is how the bar can
+ * sum an estimate over ids that are no longer on the page (`app/issues/seen-rows.ts`).
  *
  * A row's click, or `Enter` on it, is the other state: it opens the issue's detail, which is
  * `inspect` on the same store and N.5's panel ([#119](https://github.com/NobuData/ouroboros/issues/119))
@@ -135,8 +138,15 @@ export function BacklogTable({
     setChanges({ rows, ...statusChanges(changes.seen, rows, changes.swapped) });
   }
 
-  const { ids, toggle, select, deselect, detail, inspect } = useIssueSelection();
+  const { ids, toggle, select, deselect, detail, inspect, seen } = useIssueSelection();
   const [current, setCurrent] = useState<string | null>(null);
+
+  // The rows are a fact the poll delivers, and the store is the bar's; publishing after the
+  // commit is what keeps the two from racing, and the store itself decides whether anything
+  // changed.
+  useEffect(() => {
+    seen.publish(rows);
+  }, [seen, rows]);
   const checked = useMemo(() => new Set(ids), [ids]);
   const visible = useMemo(() => rows.map((row) => row.id), [rows]);
   const cover = coverage(visible, ids);

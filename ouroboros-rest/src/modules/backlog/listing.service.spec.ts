@@ -33,6 +33,7 @@ const ROW: BacklogListRow = {
   confidence: 92,
   suggestedWorkflow: "standard-fix",
   routedModel: "claude-fable-5",
+  estMinutes: 45,
 };
 
 /** The status the sync endpoint would answer, with the tag's instant on it. */

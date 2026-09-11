@@ -8,6 +8,7 @@ import {
   PROVIDERS_PATH,
   REGISTRY_PATH,
   RETURN_TO_PARAM,
+  DASHBOARD_QUEUE_HASH,
   ROUTING_MATRIX_HASH,
   ROUTING_RULES_HASH,
   loginPath,
@@ -69,6 +70,8 @@ describe("the paths themselves", () => {
     expect(ROUTING_MATRIX_HASH).toBe("models-matrix-title");
     expect(ROUTING_RULES_HASH).toBe("models-rules-title");
     expect(ROUTING_MATRIX_HASH).not.toBe(ROUTING_RULES_HASH);
+    // The dashboard's queue card, where the issues screen's toast sends a reader (#118).
+    expect(DASHBOARD_QUEUE_HASH).toBe("dash-up-next-title");
   });
 });
 

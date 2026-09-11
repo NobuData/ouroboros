@@ -6,11 +6,11 @@ import { backlogRow } from "./listing.resources";
  * a latest estimate or it has none**.
  *
  * `issue_estimates` makes `effort`, `confidence`, `suggested_workflow` and `routed_model` all
- * `not null` (V026), so the lateral either matched a row and produced four values or matched
- * nothing and produced four nulls. Publishing them as one nullable object is what lets N.3
- * ([#117](https://github.com/NobuData/ouroboros/issues/117)) branch once on an unsized row
- * instead of four times — and what stops this file from inventing a `confidence: 0` no
- * estimator produced.
+ * `not null` (V026) and the breakdown's `est_minutes` present, so the lateral either matched a
+ * row and produced five values or matched nothing and produced five nulls. Publishing them as
+ * one nullable object is what lets N.3 ([#117](https://github.com/NobuData/ouroboros/issues/117))
+ * branch once on an unsized row instead of five times — and what stops this file from inventing
+ * a `confidence: 0` no estimator produced.
  */
 
 /**
@@ -33,14 +33,16 @@ function row(overrides: Partial<BacklogListRow> = {}): BacklogListRow {
     confidence: 92,
     suggestedWorkflow: "standard-fix",
     routedModel: "claude-fable-5",
+    estMinutes: 45,
     ...overrides,
   };
 }
 
 describe("a backlog row", () => {
-  it("is the mockup's cells and no more", () => {
+  it("is the mockup's cells and the bar's one number, and no more", () => {
     // The table's six columns: the checkbox's id, the issue, effort with its confidence, the
-    // workflow, the model and the status pill.
+    // workflow, the model and the status pill — plus `estMinutes`, which no cell prints and the
+    // selection action bar (N.4, #118) sums.
     expect(backlogRow(row(), false)).toEqual({
       id: "5eed0018-0000-4000-8000-000000000485",
       number: 485,
@@ -56,6 +58,7 @@ describe("a backlog row", () => {
         confidence: 92,
         suggestedWorkflow: "standard-fix",
         routedModel: "claude-fable-5",
+        estMinutes: 45,
       },
     });
   });
@@ -68,7 +71,7 @@ describe("a backlog row", () => {
     expect(published).not.toContain("ghUrl");
   });
 
-  it("publishes an issue with no estimate as one null rather than four", () => {
+  it("publishes an issue with no estimate as one null rather than five", () => {
     // The seeded `#483`: `estimating`, and no `issue_estimates` row at all, because that is what
     // `estimating` means. N.2 renders a mid-flight row from what exists.
     const mapped = backlogRow(
@@ -79,6 +82,7 @@ describe("a backlog row", () => {
         confidence: null,
         suggestedWorkflow: null,
         routedModel: null,
+        estMinutes: null,
       }),
       false,
     );
@@ -91,7 +95,13 @@ describe("a backlog row", () => {
     // The seeded `#490`: sized by the pipeline and then held for a human. The pill and the
     // estimate say different things, and a row that derived one from the other would lose that.
     const mapped = backlogRow(
-      row({ number: 490, sizingStatus: "needs_human", effort: "xl", confidence: 61 }),
+      row({
+        number: 490,
+        sizingStatus: "needs_human",
+        effort: "xl",
+        confidence: 61,
+        estMinutes: 180,
+      }),
       true,
     );
 
@@ -105,6 +115,7 @@ describe("a backlog row", () => {
       confidence: 61,
       suggestedWorkflow: "standard-fix",
       routedModel: "claude-fable-5",
+      estMinutes: 180,
     });
   });
 
