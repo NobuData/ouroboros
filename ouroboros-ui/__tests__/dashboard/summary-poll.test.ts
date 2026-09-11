@@ -61,7 +61,7 @@ function reader(...answers: SummaryAnswer[]) {
 
 /** A `200`, carrying the seeded payload. */
 function fresh(etag: string | null = TAG, pollAfterSeconds: number | null = null): SummaryAnswer {
-  return { state: "fresh", summary: summary(), etag, pollAfterSeconds };
+  return { state: "fresh", payload: summary(), etag, pollAfterSeconds };
 }
 
 /** Whether the tab is being looked at. Flipped by {@link hide} and {@link show}. */
@@ -562,7 +562,7 @@ describe("requestSummary", () => {
 
     expect(await requestSummary(null)).toEqual({
       state: "fresh",
-      summary: payload,
+      payload,
       etag: TAG,
       pollAfterSeconds: 20,
     });

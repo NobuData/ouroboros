@@ -94,7 +94,7 @@ describe("readDashboardSummary", () => {
 
     expect(await readDashboardSummary({ fetcher, baseUrl: BASE })).toEqual({
       state: "fresh",
-      summary: payload,
+      payload,
       etag: TAG,
       pollAfterSeconds: 15,
     });

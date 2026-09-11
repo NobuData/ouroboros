@@ -371,6 +371,166 @@ describe("selectable rows (#201)", () => {
   });
 });
 
+describe("checkable rows (#117)", () => {
+  /** The three verbs, recorded. */
+  function verbs() {
+    return { onCurrent: vi.fn(), onToggle: vi.fn(), onActivate: vi.fn() };
+  }
+
+  /**
+   * The suite's table, with its rows checkable.
+   *
+   * @param selected Which rows are checked.
+   * @param current Which row holds the tab stop, or `null`.
+   * @param withActivate Whether `Enter` and a click do anything beyond moving.
+   * @returns The render result and the recorded verbs.
+   */
+  function checkable(selected: readonly string[], current: string | null, withActivate = true) {
+    const recorded = verbs();
+
+    return {
+      ...recorded,
+      ...render(
+        <Table
+          caption="Recent runs"
+          columns={[
+            ...COLUMNS,
+            { key: "pick", header: "Pick", cell: (run) => <input aria-label={`pick ${run.id}`} type="checkbox" /> },
+          ]}
+          rowKey={(run) => run.id}
+          rows={RUNS}
+          selection={{
+            kind: "multi",
+            selected: new Set(selected),
+            current,
+            onCurrent: recorded.onCurrent,
+            onToggle: recorded.onToggle,
+            ...(withActivate ? { onActivate: recorded.onActivate } : {}),
+            tone: "accent",
+          }}
+        />,
+      ),
+    };
+  }
+
+  /** One body row, by its key. */
+  function row(id: string): HTMLElement {
+    const found = screen.getAllByRole("row").find((candidate) => candidate.dataset.rowKey === id);
+
+    if (found === undefined) throw new Error(`no rendered row for ${id}`);
+    return found;
+  }
+
+  it("is a multiselectable grid, and aria-selected means checked", () => {
+    checkable(["run-2"], null);
+
+    expect(screen.getByRole("grid", { name: "Recent runs" })).toHaveAttribute("aria-multiselectable", "true");
+    expect(screen.getAllByRole("row", { selected: true })).toEqual([row("run-2")]);
+    expect(row("run-2")).toHaveClass("ou-table__row--selected");
+    expect(row("run-1")).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("grid")).toHaveClass("ou-table--accent");
+  });
+
+  it("can check every row at once — there is no one current selection to be exclusive with", () => {
+    checkable(["run-1", "run-2"], null);
+
+    expect(screen.getAllByRole("row", { selected: true })).toHaveLength(2);
+  });
+
+  it("holds the tab stop on the current row, and on the first when there is none on the page", () => {
+    checkable([], "run-2");
+    expect(row("run-2").tabIndex).toBe(0);
+    expect(row("run-1").tabIndex).toBe(-1);
+
+    cleanupAnd(() => checkable([], null));
+    expect(row("run-1").tabIndex).toBe(0);
+
+    cleanupAnd(() => checkable([], "run-gone"));
+    expect(row("run-1").tabIndex).toBe(0);
+    expect(row("run-2").tabIndex).toBe(-1);
+  });
+
+  it("checks the focused row on Space and does nothing else", () => {
+    const { onToggle, onCurrent, onActivate } = checkable([], "run-1");
+
+    expect(fireEvent.keyDown(row("run-1"), { key: " " })).toBe(false);
+
+    expect(onToggle).toHaveBeenCalledExactlyOnceWith("run-1");
+    expect(onCurrent).not.toHaveBeenCalled();
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it("activates the focused row on Enter, and on a click that is not on a control", () => {
+    const { onActivate, onCurrent, onToggle } = checkable([], "run-1");
+
+    expect(fireEvent.keyDown(row("run-1"), { key: "Enter" })).toBe(false);
+    fireEvent.click(within(row("run-2")).getByText("acme/atlas"));
+
+    expect(onActivate.mock.calls).toEqual([["run-1"], ["run-2"]]);
+    expect(onCurrent).toHaveBeenCalledExactlyOnceWith("run-2");
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("leaves a click on a control inside a cell to that control", () => {
+    const { onActivate, onCurrent } = checkable([], "run-1");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "pick run-2" }));
+
+    expect(onActivate).not.toHaveBeenCalled();
+    expect(onCurrent).not.toHaveBeenCalled();
+  });
+
+  it("only moves on Enter and a click when nothing is there to activate", () => {
+    const { onCurrent, onToggle } = checkable([], "run-1", false);
+
+    expect(fireEvent.keyDown(row("run-1"), { key: "Enter" })).toBe(false);
+    fireEvent.click(row("run-2"));
+
+    expect(onCurrent).toHaveBeenCalledExactlyOnceWith("run-2");
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("moves focus and the current row on the arrows, Home and End, checking nothing", () => {
+    const { onCurrent, onToggle } = checkable([], "run-1");
+
+    expect(fireEvent.keyDown(row("run-1"), { key: "ArrowDown" })).toBe(false);
+    expect(row("run-2")).toHaveFocus();
+    expect(onCurrent).toHaveBeenLastCalledWith("run-2");
+
+    fireEvent.keyDown(row("run-2"), { key: "Home" });
+    expect(row("run-1")).toHaveFocus();
+    expect(onCurrent).toHaveBeenLastCalledWith("run-1");
+
+    fireEvent.keyDown(row("run-1"), { key: "End" });
+    expect(onCurrent).toHaveBeenLastCalledWith("run-2");
+
+    fireEvent.keyDown(row("run-2"), { key: "ArrowDown" });
+    expect(onCurrent).toHaveBeenCalledTimes(3);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("leaves a key it does not own, and a key pressed on a control, entirely alone", () => {
+    const { onCurrent, onToggle, onActivate } = checkable([], "run-1");
+
+    expect(fireEvent.keyDown(row("run-1"), { key: "a" })).toBe(true);
+    expect(fireEvent.keyDown(screen.getByRole("checkbox", { name: "pick run-1" }), { key: " " })).toBe(true);
+
+    expect(onCurrent).not.toHaveBeenCalled();
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Unmount what a case rendered and render again — for the cases that compare renders.
+   *
+   * @param next What to render next.
+   */
+  function cleanupAnd(next: () => void): void {
+    document.body.innerHTML = "";
+    next();
+  }
+});
+
 describe("a page's own row class (#592)", () => {
   it("wears it on the row it is given for, and on no other", () => {
     // Mockup 21's dimmed unbound row: a state the row as a whole is in, which no column can say.

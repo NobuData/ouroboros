@@ -87,6 +87,7 @@ export {
   type Column,
   type ColumnAlign,
   type SelectionTone,
+  type TableMultiSelection,
   type TableProps,
   type TableSelection,
 } from "./table";

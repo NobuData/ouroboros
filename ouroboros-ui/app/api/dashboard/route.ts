@@ -37,25 +37,19 @@
  * (`node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`), and this
  * one reads request headers and cookies besides, which is request-time data. A cached poll
  * answer would be a pill reporting the loop as it was for whoever asked first.
+ *
+ * The translation from an answer to a response is `app/api/poll-response.ts`'s, shared with
+ * the backlog's handler since [#117](https://github.com/NobuData/ouroboros/issues/117).
  */
 
 import { readDashboardSummary } from "@/app/api/dashboard-summary";
-import {
-  ETAG_HEADER,
-  IF_NONE_MATCH_HEADER,
-  POLL_AFTER_HEADER,
-  type SummaryAnswer,
-} from "@/app/dashboard/summary";
+import { pollResponse } from "@/app/api/poll-response";
+import { IF_NONE_MATCH_HEADER } from "@/app/dashboard/summary";
 
-/**
- * What a browser is told about storing this answer — the same as the service says about its
- * own, because it is the same answer.
- *
- * `private` because it is one workspace's operational numbers and no shared cache may hold
- * them; `no-cache` because a browser may keep the body but must revalidate before reusing
- * it, which is precisely the loop this endpoint serves.
- */
-export const CACHE_CONTROL = "private, no-cache";
+export { CACHE_CONTROL } from "@/app/api/poll-response";
+
+/** The code a failed read is reported under — this hop's own, not the service's. */
+export const DASHBOARD_UNAVAILABLE_CODE = "dashboard_unavailable";
 
 /**
  * Answer one poll.
@@ -69,75 +63,5 @@ export async function GET(request: Request): Promise<Response> {
     etag: request.headers.get(IF_NONE_MATCH_HEADER),
   });
 
-  return respond(answer);
-}
-
-/**
- * Turn one answer into the response the contract describes.
- *
- * Written out per case rather than composed, because the cases genuinely differ in what
- * they may carry: a `304` must have **no body at all**, and a failure must not be given the
- * tag of a payload it is not carrying.
- *
- * @param answer What the service said.
- * @returns The response for the browser.
- */
-function respond(answer: SummaryAnswer): Response {
-  switch (answer.state) {
-    case "fresh":
-      return Response.json(answer.summary, {
-        headers: passThrough(answer.etag, answer.pollAfterSeconds),
-      });
-
-    case "unchanged":
-      // `null`, not an empty object: a `304` carrying a body is a `304` a client is entitled
-      // to be confused by, and the point of this answer is that nothing was serialized.
-      return new Response(null, {
-        status: 304,
-        headers: passThrough(answer.etag, answer.pollAfterSeconds),
-      });
-
-    case "gone":
-      return Response.json(
-        { code: "unauthenticated", message: "This session is no longer signed in." },
-        { status: 401, headers: { "Cache-Control": CACHE_CONTROL } },
-      );
-
-    case "failed":
-      // `502`: something answered, and it was not an answer this origin could pass on. The
-      // status is this hop's own rather than the service's — the browser is talking to this
-      // origin, and reporting somebody else's `500` as if it were ours would send a poll
-      // looking for a fault in the wrong place. The sentence is the service's.
-      return Response.json(
-        { code: "dashboard_unavailable", message: answer.reason },
-        {
-          status: 502,
-          headers: passThrough(null, answer.pollAfterSeconds),
-        },
-      );
-  }
-}
-
-/**
- * The headers that travel back out unchanged.
- *
- * @param etag The tag the service sent, or `null` when this answer carries no payload to
- *   tag. Absent rather than empty — a client that stored `""` would revalidate against a
- *   tag no service ever issued.
- * @param pollAfterSeconds The cadence the service asked for, or `null` when it asked for
- *   nothing usable. Also absent rather than defaulted: the browser already knows the
- *   contract's default, and a hint invented here would be this origin's opinion wearing the
- *   service's header.
- * @returns The headers.
- */
-function passThrough(
-  etag: string | null,
-  pollAfterSeconds: number | null,
-): Record<string, string> {
-  const headers: Record<string, string> = { "Cache-Control": CACHE_CONTROL };
-
-  if (etag !== null && etag !== "") headers[ETAG_HEADER] = etag;
-  if (pollAfterSeconds !== null) headers[POLL_AFTER_HEADER] = String(pollAfterSeconds);
-
-  return headers;
+  return pollResponse(answer, DASHBOARD_UNAVAILABLE_CODE);
 }

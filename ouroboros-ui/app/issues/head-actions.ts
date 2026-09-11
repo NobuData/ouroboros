@@ -1,8 +1,9 @@
 "use server";
 
 /**
- * The server hops for the intake page head's two actions
- * ([#115](https://github.com/NobuData/ouroboros/issues/115)) — the calls its Client Components
+ * The server hops for the intake page's actions — the head's two
+ * ([#115](https://github.com/NobuData/ouroboros/issues/115)) and the table's freshness tag
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)) — the calls its Client Components
  * cannot make themselves.
  *
  * `app/api/server.ts` states the rule this exists under, and `app/dashboard/pulse-actions.ts` is the
@@ -12,13 +13,14 @@
  *
  * ### A Server Action is a POST endpoint anybody can reach
  *
- * - **There is no workspace in either call and no person.** The backlog belongs to the workspace
+ * - **There is no workspace in any call and no person.** The backlog belongs to the workspace
  *   the caller's own session is acting in, resolved by `ouroboros-rest` from the cookie this request
  *   carries; an issue id from another workspace is the service's `404`, never a write.
- * - **The role gates are the service's.** Re-estimating everything is `owner` or `admin`, queueing
- *   is `owner`, `admin` or `member`. The head hides the first control and inerts the second for the
- *   roles that may not press them, but that is presentation: a press that goes around it gets the
- *   service's `403`, handed back here as the sentence the control would have shown.
+ * - **The role gates are the service's.** Re-estimating everything is `owner` or `admin`; queueing
+ *   and syncing are `owner`, `admin` or `member`. The screen hides the first control and inerts the
+ *   others for the roles that may not press them, but that is presentation: a press that goes
+ *   around it gets the service's `403`, handed back here as the sentence the control would have
+ *   shown.
  * - **The selection's shape is checked before it is sent.** Types do not survive a forged POST, so
  *   `queueSelected` refuses anything that is not a non-empty list of strings instead of spreading a
  *   value that is not a list into a request. Everything past the shape — uuids, the ceiling of a
@@ -38,12 +40,15 @@
 
 import {
   BACKLOG_ALREADY_ESTIMATING_CODE,
+  BACKLOG_SYNC_RUNNING_CODE,
+  BACKLOG_SYNC_TOO_SOON_CODE,
   ESTIMATION_RATE_LIMITED_CODE,
   FORBIDDEN_CODE,
   backlog,
 } from "@/app/api/backlog";
 import { isApiError } from "@/app/api/errors";
 
+import { SYNC_FAILED, SYNC_ROLE_REASON, SYNC_RUNNING, syncOutcome, syncTooSoon } from "./table";
 import {
   type HeadOutcome,
   QUEUE_NOTHING_SELECTED,
@@ -102,6 +107,32 @@ export async function queueSelected(issueIds: readonly string[]): Promise<HeadOu
     if (error.code === FORBIDDEN_CODE) return { ok: false, reason: QUEUE_ROLE_REASON };
 
     return { ok: false, reason: queueRefusal(error.message) };
+  }
+}
+
+/**
+ * Sync the backlog from GitHub now — the freshness tag, pressed.
+ *
+ * @returns That a cycle started, as a sentence — or why none did. A cycle already in flight is
+ *   reported as the thing asked for happening rather than as a refusal, because it is.
+ * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
+ */
+export async function syncBacklog(): Promise<HeadOutcome> {
+  try {
+    return syncOutcome(await backlog.sync());
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    switch (error.code) {
+      case FORBIDDEN_CODE:
+        return { ok: false, reason: SYNC_ROLE_REASON };
+      case BACKLOG_SYNC_RUNNING_CODE:
+        return { ok: true, message: SYNC_RUNNING };
+      case BACKLOG_SYNC_TOO_SOON_CODE:
+        return { ok: false, reason: syncTooSoon(error.details.retryAfterSeconds) };
+      default:
+        return { ok: false, reason: error.message === "" ? SYNC_FAILED : error.message };
+    }
   }
 }
 

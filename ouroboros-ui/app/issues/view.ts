@@ -21,6 +21,8 @@ import type { BacklogListing, EstimationFanout, QueuedSelection } from "@/app/ap
 import type { EnabledRepo } from "@/app/api/enablement";
 import type { Reading } from "@/app/api/reading";
 
+/** The intake screen's copy that lives beside its table is `app/issues/table.ts`'s. */
+
 /** The caption over the head, as the mockup writes it. */
 export const ISSUES_EYEBROW = "Issue Intake";
 
@@ -56,6 +58,19 @@ export interface IssuesReadings {
   readonly facets: Reading<readonly string[]>;
   /** The repository select's options — the workspace's enabled repositories — or why not. */
   readonly repos: Reading<readonly EnabledRepo[]>;
+  /**
+   * The page of the backlog the table draws ([#117](https://github.com/NobuData/ouroboros/issues/117))
+   * — the view listing itself, rows and all — or why it could not be read. The counts and the
+   * chip set above are read out of this same listing, so the three cannot disagree.
+   */
+  readonly listing: Reading<BacklogListing>;
+  /**
+   * When the page was read, in milliseconds since the epoch — one reading for the whole
+   * render, taken beside the reads themselves, so the freshness tag's *synced 40s ago* is
+   * measured from the same instant on the server and on the hydration pass that must match it
+   * (`app/dashboard/view.ts` keeps one for the same reason).
+   */
+  readonly readAt: number;
 }
 
 /** What a press of either head action came back as. */
@@ -149,12 +164,12 @@ export const QUEUE_ROLE_REASON =
 /**
  * Why the queue button is inert with nothing selected.
  *
- * It names the issue that builds the table a selection is made in, because until that lands the
- * honest answer to *"how do I select one?"* is *"not yet"* — and the design system's honesty rule
- * (§ 3.5) asks that a control say what it is waiting for rather than simply refuse.
+ * It says where a selection is made, because the design system's honesty rule (§ 3.5) asks
+ * that a control say what it is waiting for rather than simply refuse. Until the table landed
+ * ([#117](https://github.com/NobuData/ouroboros/issues/117)) it named that issue instead.
  */
 export const QUEUE_NOTHING_SELECTED =
-  "Select issues to queue them — the backlog table you select them in arrives with #117.";
+  "Select issues in the backlog table to queue them — tick a row, or press Space on it.";
 
 /** What a refused queue press says when the service gave no sentence of its own. */
 export const QUEUE_FAILED = "The selection could not be queued.";

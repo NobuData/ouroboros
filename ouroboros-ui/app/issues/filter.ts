@@ -154,6 +154,28 @@ export const REPOS_UNREAD = "The repositories could not be listed.";
 export type SearchParams = Readonly<Record<string, string | string[] | undefined>>;
 
 /**
+ * A request's query string, in the shape the route's `searchParams` arrive in.
+ *
+ * For the one reader that is handed a URL rather than a `searchParams` promise — the route
+ * handler answering the table's poll (`app/api/backlog/route.ts`) — so that it parses the
+ * address with the same two functions the page does, and the poll cannot ask for a different
+ * view than the one on screen.
+ *
+ * @param search The query string, parsed.
+ * @returns Every key once; a key given twice as an array, in the order given.
+ */
+export function searchParamsOf(search: URLSearchParams): SearchParams {
+  const params: Record<string, string | string[]> = {};
+
+  for (const [key, value] of search) {
+    const held = params[key];
+    params[key] = held === undefined ? value : Array.isArray(held) ? [...held, value] : [held, value];
+  }
+
+  return params;
+}
+
+/**
  * One parameter's value, when it is meant to occur once.
  *
  * @param value What the route was given for the key.

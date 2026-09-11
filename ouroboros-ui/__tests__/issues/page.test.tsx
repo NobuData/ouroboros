@@ -31,10 +31,18 @@ const readIssues = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/issues/data", () => ({
-  readIssues: (access: unknown, filter: unknown) => readIssues(access, filter),
+  readIssues: (access: unknown, filter: unknown, page: unknown) => readIssues(access, filter, page),
 }));
-vi.mock("@/app/issues/head-actions", () => ({ queueSelected: vi.fn(), reestimateAll: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }) }));
+vi.mock("@/app/issues/head-actions", () => ({
+  queueSelected: vi.fn(),
+  reestimateAll: vi.fn(),
+  syncBacklog: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
+}));
+// The table's poll asks this origin once mounted; here it is left asking for ever.
+vi.stubGlobal("fetch", () => new Promise<Response>(() => {}));
 
 const Page = (await import("@/app/(app)/issues/page")).default;
 const { resetFocusRepos } = await import("@/app/shell/focus-repo");
@@ -81,13 +89,24 @@ describe("the intake route", () => {
     expect(requireWorkspace).toHaveBeenCalledOnce();
   });
 
-  it("hands the reader exactly what the gate resolved, and the default filter for a bare address", async () => {
+  it("hands the reader exactly what the gate resolved, and the default view's first page for a bare address", async () => {
     const resolved = access();
     requireWorkspace.mockResolvedValue(resolved);
 
     await page();
 
-    expect(readIssues).toHaveBeenCalledExactlyOnceWith(resolved, DEFAULT_FILTER);
+    expect(readIssues).toHaveBeenCalledExactlyOnceWith(resolved, DEFAULT_FILTER, 1);
+  });
+
+  it("reads the page out of the address beside the filter, and draws it (#117)", async () => {
+    render(await page({ labels: "bug", page: "2" }));
+
+    expect(readIssues).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      { ...DEFAULT_FILTER, labels: ["bug"] },
+      2,
+    );
+    expect(screen.getByRole("grid")).toBeInTheDocument();
   });
 
   it("reads the filter out of the address, so the first paint is the filtered view", async () => {
@@ -95,7 +114,7 @@ describe("the intake route", () => {
 
     render(await page(query));
 
-    expect(readIssues).toHaveBeenCalledExactlyOnceWith(expect.anything(), parseFilter(query));
+    expect(readIssues).toHaveBeenCalledExactlyOnceWith(expect.anything(), parseFilter(query), 1);
     expect(screen.getByRole("combobox", { name: REPO_LABEL })).toHaveValue(HELIOS.id);
     expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("closed");
     expect(screen.getByRole("combobox", { name: "Sort" })).toHaveValue("number");

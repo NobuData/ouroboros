@@ -35,7 +35,7 @@ async function pills(data: DashboardSummary | null) {
   const answer =
     data === null
       ? ({ state: "failed", reason: "still asking", pollAfterSeconds: null } as const)
-      : ({ state: "fresh", summary: data, etag: null, pollAfterSeconds: null } as const);
+      : ({ state: "fresh", payload: data, etag: null, pollAfterSeconds: null } as const);
 
   const view = render(
     <DashboardSummaryProvider poll={{ read: () => Promise.resolve(answer), visible: () => true }}>
@@ -136,7 +136,7 @@ describe("the pills together", () => {
           read: () =>
             Promise.resolve({
               state: "fresh" as const,
-              summary: summary(),
+              payload: summary(),
               etag: null,
               pollAfterSeconds: null,
             }),
@@ -173,7 +173,7 @@ describe("the pills together", () => {
             live += 1;
             return Promise.resolve({
               state: "fresh" as const,
-              summary: payload,
+              payload,
               etag: null,
               pollAfterSeconds: 1,
             });

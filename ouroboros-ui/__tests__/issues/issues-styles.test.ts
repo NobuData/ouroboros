@@ -38,9 +38,13 @@ function rule(selector: string): string {
 /** Every page class this sheet declares a rule for. */
 const DECLARED = new Set([...CODE.matchAll(/\.(issues[a-z0-9_-]*)/g)].map((match) => match[1]!));
 
-/** Every page class a component renders, out of its `className` strings. */
+/**
+ * Every page class a component renders, out of its class-list string literals — a `className`
+ * attribute, a `rowClassName` result, a `cx()` argument. A literal counts when it is nothing but
+ * class tokens, so a sentence that happens to contain the word *issues* is not one.
+ */
 const RENDERED = new Set(
-  [...COMPONENT.matchAll(/className="([^"]*)"/g)]
+  [...COMPONENT.matchAll(/"((?:(?:issues|ou-)[a-z0-9_-]*)(?:\s+(?:issues|ou-)[a-z0-9_-]*)*)"/g)]
     .flatMap((match) => match[1]!.split(/\s+/))
     .filter((name) => name === "issues" || name.startsWith("issues_") || name.startsWith("issues-")),
 );
@@ -93,6 +97,47 @@ describe("both themes and every font scale", () => {
     expect(pressed).toContain("border-color: var(--accent-line)");
     expect(pressed).toContain("background: var(--accent-tint)");
     expect(CODE).not.toMatch(/issues-filter__chip--on/);
+  });
+});
+
+describe("the backlog table (#117)", () => {
+  it("draws the checkbox from the sheet, in tokens, with a hairline the font scale can move", () => {
+    const box = rule("\\.issues-table__ckbox");
+
+    expect(box).toContain("appearance: none");
+    expect(box).toMatch(/border: [\d.]+rem solid var\(--line-strong\)/);
+    expect(box).toContain("background: var(--inset)");
+
+    const on = rule("\\.issues-table__ckbox:checked,\\s*\\.issues-table__ckbox:indeterminate");
+    expect(on).toContain("background: var(--accent)");
+    expect(on).toContain("color: var(--accent-ink)");
+    expect(on).toContain("border-color: var(--accent-deep)");
+  });
+
+  it("marks the checked box and the indeterminate one with a glyph each, drawn rather than typed", () => {
+    expect(rule("\\.issues-table__ckbox:checked::after")).toContain('content: "✓"');
+    expect(rule("\\.issues-table__ckbox:indeterminate::after")).toMatch(/content: "."/);
+  });
+
+  it("animates the pill swap only under the reduced-motion guard, keyed on the attribute the table sets", () => {
+    const guard = CODE.indexOf("@media (prefers-reduced-motion: no-preference)");
+    const swap = CODE.indexOf(".issues-table__status[data-swapped]");
+
+    expect(guard).toBeGreaterThanOrEqual(0);
+    expect(swap).toBeGreaterThan(guard);
+    expect(rule("\\.issues-table__status\\[data-swapped\\]")).toMatch(/animation: issues-pill-swap/);
+    expect(CODE).toContain("@keyframes issues-pill-swap");
+    expect(CODE).not.toMatch(/issues-table__status--swapped/);
+  });
+
+  it("lights the inspected row's number in the accent, apart from the check glow", () => {
+    expect(rule("\\.issues-table__row--inspected \\.issues-table__number")).toContain("color: var(--accent)");
+  });
+
+  it("leaves the primitives' own classes to the design system's sheet", () => {
+    // A page places a primitive by passing its class, never by restyling `.ou-*` from its own
+    // sheet — the checked rows' glow is the primitive's accent selection, not a rule here.
+    expect(CODE).not.toMatch(/\.ou-/);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { ComponentProps, KeyboardEvent, ReactNode } from "react";
+import type { ComponentProps, KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 import { type ClassName, cx } from "./class-names";
 
@@ -53,6 +53,28 @@ import "./ui.css";
  * control's, and the row's handler leaves it alone. The control stays out of the tab order
  * (`tabIndex={-1}`), so the page still has one stop per table and the keyboard's path to what
  * the control does is the row plus whatever the selection drives.
+ *
+ * ### Checkable rows ([#117](https://github.com/NobuData/ouroboros/issues/117))
+ *
+ * {@link TableMultiSelection} is the second shape a selection can take: mockup 03's backlog,
+ * where any number of rows may be checked and the checked set is what the page's queue
+ * actions consume. The grid is `aria-multiselectable`, `aria-selected` on a row now means
+ * *checked*, and the tint the single-select rows wear for *current* is worn by every checked
+ * row instead — which is the mockup's own `tr.sel`, in the accent. What the keyboard does
+ * comes apart into three verbs, as the WAI-ARIA grid pattern separates them:
+ *
+ * - the arrow keys, `Home` and `End` **move** — focus, and the tab stop with it, through
+ *   {@link TableMultiSelection.onCurrent}, so a reader who leaves the table and comes back
+ *   lands on the row they were on;
+ * - `Space` **checks** the focused row ({@link TableMultiSelection.onToggle});
+ * - `Enter`, and a click anywhere on the row that is not on a control in it, **activate**
+ *   it ({@link TableMultiSelection.onActivate}) — mockup 03's *row click opens the detail
+ *   panel*, which is a different state from being checked and is the caller's to draw.
+ *
+ * The one new rule is the click's: a click on a control inside a cell — the row's own
+ * checkbox, above all — is that control's, exactly as a key pressed on one already was.
+ * Single-select rows keep their coupling, where a click and an arrow both *select*, because
+ * that is the right coupling for a list driving a panel and the two screens built on it.
  *
  * ### The sticky-header recipe ([#646](https://github.com/NobuData/ouroboros/issues/646))
  *
@@ -146,11 +168,43 @@ export interface TableSelection {
   readonly tone?: SelectionTone;
 }
 
+/**
+ * Multi-row selection: which rows are checked, which row holds the tab stop, and the three
+ * things the reader can do to a row.
+ *
+ * Controlled, like {@link TableSelection}, and for the same reason: the checked set is what
+ * the page's queue actions consume, and it outlives this table — a filter change redraws the
+ * rows and the selection stays (`app/issues/selection.tsx`).
+ */
+export interface TableMultiSelection {
+  /** What tells the two shapes apart. */
+  readonly kind: "multi";
+  /** The keys of the checked rows. */
+  readonly selected: ReadonlySet<string>;
+  /**
+   * The row holding the tab stop — the one the reader was last on — or `null` for the first
+   * row. A key naming no row on this page (the page turned, the filter moved) falls back to
+   * the first row too, so the table is never unreachable from the keyboard.
+   */
+  readonly current: string | null;
+  /** Called with a row's key when focus moves onto it — by arrow, `Home`, `End`, or a click. */
+  readonly onCurrent: (key: string) => void;
+  /** Called with a row's key on `Space`: check it, or uncheck it if it is checked. */
+  readonly onToggle: (key: string) => void;
+  /**
+   * Called with a row's key on `Enter`, and on a click anywhere on the row that is not on a
+   * control inside it. Omitted, `Enter` and a click move focus and do nothing else.
+   */
+  readonly onActivate?: (key: string) => void;
+  /** Which hue the checked rows wear. Defaults to `model`; mockup 03's `tr.sel` is `accent`. */
+  readonly tone?: SelectionTone;
+}
+
 /** The hue a selected row wears. */
 export type SelectionTone =
   /** Mockup 06's `tr.selected`: the model-routing violet. The default. */
   | "model"
-  /** Mockup 21's `tr.selected`: the brand accent. */
+  /** Mockup 21's `tr.selected`, and mockup 03's `tr.sel`: the brand accent. */
   | "accent";
 
 /** The modifier each selection tone adds to the table, or nothing for the default one. */
@@ -184,10 +238,11 @@ export interface TableProps<Row> {
    */
   readonly stickyHeader?: boolean;
   /**
-   * Makes the rows selectable. Omitted, the table is a table and its rows are not
+   * Makes the rows selectable — one at a time ({@link TableSelection}) or any number
+   * ({@link TableMultiSelection}). Omitted, the table is a table and its rows are not
    * interactive.
    */
-  readonly selection?: TableSelection;
+  readonly selection?: TableSelection | TableMultiSelection;
   /**
    * Classes from the page for one row — a state the row as a whole is in, which no column
    * can say. Mockup 21's dimmed unbound row is the case: `tr.dim` is a fact about the alias,
@@ -199,6 +254,18 @@ export interface TableProps<Row> {
   readonly rowClassName?: (row: Row) => ClassName;
   /** Classes from the page — placement only, never colour or type. */
   readonly className?: string;
+}
+
+/**
+ * Whether a selection is the multi-row shape.
+ *
+ * @param selection Either shape.
+ * @returns `true` for {@link TableMultiSelection}.
+ */
+function isMulti(
+  selection: TableSelection | TableMultiSelection,
+): selection is TableMultiSelection {
+  return "kind" in selection && selection.kind === "multi";
 }
 
 /**
@@ -221,6 +288,13 @@ export function Table<Row>({
   rowClassName,
   className,
 }: TableProps<Row>) {
+  const multi = selection !== undefined && isMulti(selection);
+  // The checkable shape's tab stop: the current row when it is on this page, else the first.
+  // Decided once here rather than per row, because *is the current row on this page* is a
+  // question about the whole list.
+  const stop =
+    selection !== undefined && multi ? multiTabStop(rows.map(rowKey), selection.current) : null;
+
   return (
     <div className={cx("ou-table-scroll", stickyHeader && "ou-table-scroll--open", className)}>
       <table
@@ -230,6 +304,7 @@ export function Table<Row>({
           selection !== undefined && SELECTION_TONE_CLASS[selection.tone ?? "model"],
         )}
         role={selection === undefined ? undefined : "grid"}
+        aria-multiselectable={multi || undefined}
       >
         <caption className={captionHidden ? "sr-only" : "ou-table__caption"}>
           {caption}
@@ -253,7 +328,9 @@ export function Table<Row>({
                 key={key}
                 {...(selection === undefined
                   ? { className: cx(own) || undefined }
-                  : selectableRow(key, index, selection, own))}
+                  : isMulti(selection)
+                    ? checkableRow(key, key === stop, selection, own)
+                    : selectableRow(key, index, selection, own))}
               >
                 {columns.map((column) => (
                   <td key={column.key} className={cellClass(column)}>
@@ -326,6 +403,71 @@ function selectableRow(
 }
 
 /**
+ * Which row holds the tab stop in a checkable table.
+ *
+ * @param keys Every row's key, in order.
+ * @param current The row the caller says is current, or `null`.
+ * @returns `current` when it names a row on this page, else the first row's key, else `null`
+ *   for a table with no rows.
+ */
+function multiTabStop(keys: readonly string[], current: string | null): string | null {
+  if (current !== null && keys.includes(current)) return current;
+
+  return keys[0] ?? null;
+}
+
+/**
+ * The attributes a checkable row wears — see the module note's *Checkable rows*.
+ *
+ * @param key The row's key.
+ * @param holdsStop Whether this row is the one in the tab order.
+ * @param selection What is checked, and what to call.
+ * @param own The page's own class for this row, if it gave one.
+ * @returns The row's props.
+ */
+function checkableRow(
+  key: string,
+  holdsStop: boolean,
+  selection: TableMultiSelection,
+  own: ClassName,
+): SelectableRowProps {
+  const isChecked = selection.selected.has(key);
+
+  return {
+    "aria-selected": isChecked,
+    className: cx("ou-table__row", isChecked && "ou-table__row--selected", own),
+    "data-row-key": key,
+    // A click on a control inside a cell — the row's own checkbox, above all — is that
+    // control's: checking a row must not also open it.
+    onClick: (event) => {
+      if (isOnControl(event)) return;
+      selection.onCurrent(key);
+      selection.onActivate?.(key);
+    },
+    onKeyDown: (event) => {
+      if (event.target !== event.currentTarget) return;
+      moveCurrent(event, selection);
+    },
+    tabIndex: holdsStop ? 0 : -1,
+  };
+}
+
+/** The elements a click inside a row belongs to rather than to the row. */
+const CONTROLS = "a, button, input, select, textarea, label";
+
+/**
+ * Whether a click landed on a control inside the row rather than on the row itself.
+ *
+ * @param event The click, from the row.
+ * @returns `true` when the target is, or is inside, one of {@link CONTROLS}.
+ */
+function isOnControl(event: MouseEvent<HTMLTableRowElement>): boolean {
+  const target = event.target;
+
+  return target instanceof Element && target.closest(CONTROLS) !== null;
+}
+
+/**
  * Move the selection with the keyboard, the way the grid pattern says.
  *
  * Up and down move by one row, `Home` and `End` to the ends, and `Enter` or `Space` select
@@ -357,32 +499,114 @@ function moveSelection(
 
   event.preventDefault();
 
-  const target = MOVES.get(event.key)?.(row, body) ?? null;
-  if (!(target instanceof HTMLElement)) return;
-
-  const key = target.dataset.rowKey;
-  if (key === undefined) return;
+  const key = keyOf(MOVES.get(event.key)?.(row, body) ?? null);
+  if (key === null) return;
 
   // Focus first, then select: the row is the focused element while the caller re-renders, so
   // the roving tabindex lands where the reader is rather than where they were.
-  target.focus();
+  focusRow(row, body, key);
   onSelect(key);
 }
 
 /**
- * The keys {@link moveSelection} owns, and where each one goes.
+ * The checkable shape's keyboard: the three verbs the module note separates.
+ *
+ * The arrow keys, `Home` and `End` move focus and report the new current row; `Space` checks
+ * the focused row; `Enter` activates it. Each has its default prevented — `Space` would
+ * otherwise scroll the pane a page, which is the last thing a reader checking a row wants.
+ *
+ * @param event The key press, from the focused row.
+ * @param selection What to call for each verb.
+ * @returns Nothing. An unhandled key is left entirely alone.
+ */
+function moveCurrent(
+  event: KeyboardEvent<HTMLTableRowElement>,
+  selection: TableMultiSelection,
+): void {
+  const row = event.currentTarget;
+  const body = row.parentElement;
+  if (body === null) return;
+
+  const here = row.dataset.rowKey;
+  if (here === undefined) return;
+
+  if (event.key === " ") {
+    event.preventDefault();
+    selection.onToggle(here);
+    return;
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    selection.onActivate?.(here);
+    return;
+  }
+
+  if (!NAVIGATION.has(event.key)) return;
+
+  event.preventDefault();
+
+  const key = keyOf(NAVIGATION.get(event.key)?.(row, body) ?? null);
+  if (key === null) return;
+
+  focusRow(row, body, key);
+  selection.onCurrent(key);
+}
+
+/**
+ * The key a destination carries.
+ *
+ * @param target The element a move landed on, or `null` for a move off the end.
+ * @returns Its `data-row-key`, or `null` when there is no row there.
+ */
+function keyOf(target: Element | null): string | null {
+  return target instanceof HTMLElement ? (target.dataset.rowKey ?? null) : null;
+}
+
+/**
+ * Focus the row carrying a key.
+ *
+ * @param from The row the move started on — focused again when the destination is itself.
+ * @param body The table body the rows sit in.
+ * @param key The destination's key.
+ * @returns Nothing.
+ */
+function focusRow(from: HTMLElement, body: Element, key: string): void {
+  if (from.dataset.rowKey === key) {
+    from.focus();
+    return;
+  }
+
+  for (const candidate of body.children) {
+    if (candidate instanceof HTMLElement && candidate.dataset.rowKey === key) {
+      candidate.focus();
+      return;
+    }
+  }
+}
+
+/**
+ * The keys that move between rows, and where each one goes.
  *
  * A map rather than a `switch` so that *which keys are handled* and *what each does* are one
  * fact: a key added to the table below is handled, and a key absent from it falls through
  * untouched. There is no third place to keep the two in step.
  */
+const NAVIGATION: ReadonlyMap<string, (row: Element, body: Element) => Element | null> =
+  new Map([
+    ["ArrowDown", (row: Element) => row.nextElementSibling],
+    ["ArrowUp", (row: Element) => row.previousElementSibling],
+    ["Home", (_row: Element, body: Element) => body.firstElementChild],
+    ["End", (_row: Element, body: Element) => body.lastElementChild],
+  ]);
+
+/**
+ * The keys {@link moveSelection} owns: the navigation keys, plus the two that name the row
+ * already focused. A no-op for a selection that follows focus, and supported anyway because
+ * a reader who arrived by `Tab` will press one of them.
+ */
 const MOVES: ReadonlyMap<string, (row: Element, body: Element) => Element | null> = new Map([
-  ["ArrowDown", (row: Element) => row.nextElementSibling],
-  ["ArrowUp", (row: Element) => row.previousElementSibling],
-  ["Home", (_row: Element, body: Element) => body.firstElementChild],
-  ["End", (_row: Element, body: Element) => body.lastElementChild],
-  // The row already focused. A no-op for a selection that follows focus, and supported
-  // anyway because a reader who arrived by `Tab` will press one of them.
+  ...NAVIGATION,
   ["Enter", (row: Element) => row],
   [" ", (row: Element) => row],
 ]);

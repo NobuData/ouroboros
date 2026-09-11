@@ -33,7 +33,7 @@ const INTERVAL = DEFAULT_POLL_SECONDS * 1000;
 let asks = 0;
 
 /** What it answers. Reassigned by the cases that care. */
-let answer: SummaryAnswer = { state: "fresh", summary: summary(), etag: null, pollAfterSeconds: null };
+let answer: SummaryAnswer = { state: "fresh", payload: summary(), etag: null, pollAfterSeconds: null };
 
 /**
  * The provider's test seam — one stable object, so a re-render cannot be mistaken for a
@@ -75,7 +75,7 @@ async function mount(children: React.ReactNode): Promise<void> {
 
 beforeEach(() => {
   asks = 0;
-  answer = { state: "fresh", summary: summary(), etag: null, pollAfterSeconds: null };
+  answer = { state: "fresh", payload: summary(), etag: null, pollAfterSeconds: null };
   vi.useFakeTimers();
 });
 
