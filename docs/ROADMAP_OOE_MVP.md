@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**159 of 454 ordered issues are closed** — P0 through P5 are complete; P6 is in flight.
+**160 of 454 ordered issues are closed** — P0 through P5 are complete; P6 is in flight.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5 | **142** |
-| 🟡 **In progress** | P6 (17/23) | **17** of 23 |
+| 🟡 **In progress** | P6 (18/23) | **18** of 23 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | ✅ **8/8** | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 17/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 18/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -121,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **159/454** | **454** | **1,404** | |
+| | **Total** | **160/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **6 issues** · 20 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157`, `158` and `159` · 12 dependency waves
+> **5 issues** · 17 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156`, `157`, `158`, `159` and `160` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 17 of 23 issues closed
+> **Status:** 🟡 **In progress** — 18 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1194,9 +1194,22 @@ that roadmap's "Existing issues affected" section.
 > complete, P6 is 17 of 23, and the document stands at **159 of 454** — where the summary table's
 > total had read 150 and the progress sentence 154.
 
+> **`N.2` · [`#116`](https://github.com/NobuData/ouroboros/issues/116) has shipped, and row `160`
+> leaves the table.** Mockup 03's filter bar is a query-string editor in `ouroboros-ui` 0.53.0:
+> every control in `?repo=&labels=&state=&sort=&q=` (decision K8), read on the server so the first
+> paint is the filtered view and written with `router.replace` so **Back** is the page before. The
+> chips are M.1's facets on `<button aria-pressed>` with the mockup's `chip-on` treatment keyed to
+> the attribute; the repository select is H.1's focus repository seen from the page, kept in step
+> both ways; the search waits 300 ms and every other control flushes it; **Clear all** goes to
+> `/issues`, the default view's one address.
+>
+> **The head reads twice now.** M.1 scopes its `meta` by `repo`, so the head's counts follow the
+> select through a *view* read asked with the bar's query; L.4's claim carries no `repo`, so the
+> confirmation's mirrored count keeps its `state=all` *scope* read beside it. 75 new cases in two
+> suites. P6 is 18 of 23, and the document stands at **160 of 454**.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 160 | **N.2** | [#116](https://github.com/NobuData/ouroboros/issues/116) | Filter bar (URL-reflected) | ouroboros-ui | M | N.1 |
 | 161 | **N.3** | [#117](https://github.com/NobuData/ouroboros/issues/117) | Backlog table with selection model | ouroboros-ui | L | N.1 |
 | 162 | **N.4** | [#118](https://github.com/NobuData/ouroboros/issues/118) | Selection action bar | ouroboros-ui | S | M.3, N.3 |
 | 163 | **N.5** | [#119](https://github.com/NobuData/ouroboros/issues/119) | Issue detail side panel | ouroboros-ui | L | L.4, M.2, N.3 |

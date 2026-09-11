@@ -1,9 +1,10 @@
 /*
  * Issue intake — `/issues` (#115), from `docs/mockups/03-issues.html`.
  *
- * What is here is the page head: the page's gutter rhythm, the heading column, the two actions with
- * what a press of either reports under it, and the confirmation's column. The filter bar, the
- * table, the selection bar and the detail panel arrive with #116–#119 and add their rules below.
+ * What is here is the page head — the page's gutter rhythm, the heading column, the two actions with
+ * what a press of either reports under it, and the confirmation's column — and, since #116, the
+ * filter bar under it. The table, the selection bar and the detail panel arrive with #117–#119 and
+ * add their rules below.
  *
  * Every length is a token or `rem`, so the font-size preference scales the head with the rest of the
  * product (design system § 3.2), and every hue is a token, so both palettes are the token sheet's.
@@ -91,4 +92,83 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-4);
+}
+
+/* ------------------------------------------------------------------ the filter bar (#116) */
+
+/*
+ * The mockup's `.filter-bar`: one card, one wrapping row of controls. It scrolls with the page —
+ * the mockup draws it as a plain card, and the page's one sticky slot (`app/ui/chrome.ts`) belongs
+ * to the selection bar, #118 — so there is nothing fixed or sticky here either.
+ */
+.issues-filter {
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-6) var(--sp-8);
+}
+
+/* The mockup's `.row`: wraps, with a smaller gap between rows than between controls. */
+.issues-filter__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5) var(--sp-6);
+}
+
+/* The mockup's `select.input`: sized to its label rather than to the row. */
+.issues-filter__select {
+  width: auto;
+  padding: var(--sp-4) var(--sp-5);
+  font-size: var(--t-sm);
+}
+
+/* The mockup's `.chip-set`. */
+.issues-filter__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/*
+ * A chip is the design system's tag, as a button. The on-state is the mockup's `.tag.chip-on` —
+ * accent ink, the accent hairline, the accent tint — read off `aria-pressed`, which is the attribute
+ * actually set, so the treatment and the announced state cannot disagree. Both palettes are the
+ * token sheet's published accent triple.
+ */
+.issues-filter__chip {
+  cursor: pointer;
+}
+
+.issues-filter__chip[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* The mockup's `.input.search`: takes what is left of the row, and wraps under it when little is. */
+.issues-filter__search {
+  flex: 1;
+  min-width: 12rem;
+  padding: var(--sp-4) var(--sp-6);
+  font-size: var(--t-sm);
+}
+
+/* Drawn only while something is filtered, at the row's end. */
+.issues-filter__clear {
+  flex: none;
+}
+
+/* A chip set with nothing in scope says so, in the chips' row. */
+.issues-filter__note {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* What could not be read, with the service's reason, under the row. */
+.issues-filter__unread {
+  margin: var(--sp-4) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
 }

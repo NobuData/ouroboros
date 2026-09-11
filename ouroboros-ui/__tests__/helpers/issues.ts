@@ -1,13 +1,16 @@
 import type { BacklogListing, EstimationFanout, QueuedSelection } from "@/app/api/backlog";
+import type { EnabledRepo } from "@/app/api/enablement";
 import type { Reading } from "@/app/api/reading";
 import type { BacklogCounts, IssuesReadings } from "@/app/issues/view";
 
 /**
- * Fixtures for the intake screen ([#115](https://github.com/NobuData/ouroboros/issues/115)).
+ * Fixtures for the intake screen ([#115](https://github.com/NobuData/ouroboros/issues/115),
+ * [#116](https://github.com/NobuData/ouroboros/issues/116)).
  *
  * The numbers are the development seed's (`R__dev_seed_intake.sql`, K.5): nine mirrored issues in
  * `acme-robotics / helios-firmware`, every one of them open and seven of them sized — the head the
- * seeded workspace reads, *"9 open issues. 7 already sized."*
+ * seeded workspace reads, *"9 open issues. 7 already sized."* — and the four labels mockup 03's
+ * chip set draws.
  */
 
 /** Open issues in the seeded workspace — and every issue it mirrors, since none is closed. */
@@ -15,6 +18,26 @@ export const SEEDED_OPEN = 9;
 
 /** How many of those are sized. */
 export const SEEDED_SIZED = 7;
+
+/** The mockup's chip set — M.1's `labelFacets` for the seeds, ascending by name. */
+export const SEEDED_FACETS: readonly string[] = ["bug", "enhancement", "good-first-issue", "tech-debt"];
+
+/** The seeded repository the mockup's select names, as the enablement list reports it. */
+export const HELIOS: EnabledRepo = {
+  id: "5eed0006-0000-4000-8000-000000000001",
+  name: "helios-firmware",
+  login: "acme-robotics",
+};
+
+/** A second enabled repository of the same workspace. */
+export const ATLAS: EnabledRepo = {
+  id: "5eed0006-0000-4000-8000-000000000004",
+  name: "atlas-scheduler",
+  login: "acme-robotics",
+};
+
+/** The seeded workspace's enabled repositories, in the listing's order. */
+export const SEEDED_REPOS: readonly EnabledRepo[] = [HELIOS, ATLAS];
 
 /** Mockup 03's selected trio — `#485`, `#484` and `#491` — by the ids the contract's example uses. */
 export const SELECTED_TRIO: readonly string[] = [
@@ -24,14 +47,19 @@ export const SELECTED_TRIO: readonly string[] = [
 ];
 
 /**
- * A listing as `GET /api/v1/backlog?state=all&limit=1` answers it for the head.
+ * A listing as `GET /api/v1/backlog` answers it one row long.
  *
- * @param over The three figures this case is about. `total` defaults to the open count, which is
- *   the seeded world, where nothing is closed.
- * @returns The listing, with no rows — the head reads none.
+ * @param over The figures this case is about. `total` defaults to the open count, which is the
+ *   seeded world, where nothing is closed; `labelFacets` to the seeded chip set.
+ * @returns The listing, with no rows — the page draws none yet.
  */
 export function backlogListing(
-  over: { openCount?: number; sizedCount?: number; total?: number } = {},
+  over: {
+    openCount?: number;
+    sizedCount?: number;
+    total?: number;
+    labelFacets?: readonly string[];
+  } = {},
 ): BacklogListing {
   const openCount = over.openCount ?? SEEDED_OPEN;
 
@@ -45,7 +73,7 @@ export function backlogListing(
       sizedCount: over.sizedCount ?? SEEDED_SIZED,
       syncedAt: "2026-09-10T15:41:12.000Z",
     },
-    labelFacets: [],
+    labelFacets: [...(over.labelFacets ?? SEEDED_FACETS)],
   };
 }
 
@@ -75,14 +103,20 @@ export const UNCOUNTED_REASON = "The backlog service is not answering.";
 /** A read of the counts that failed. */
 export const UNCOUNTED: Reading<BacklogCounts> = { ok: false, reason: UNCOUNTED_REASON };
 
+/** A read of the chip set that succeeded, with the seeded labels. */
+export const FACETED: Reading<readonly string[]> = { ok: true, value: SEEDED_FACETS };
+
+/** A read of the repositories that succeeded, with the seeded two. */
+export const LISTED: Reading<readonly EnabledRepo[]> = { ok: true, value: SEEDED_REPOS };
+
 /**
  * Everything the screen draws.
  *
- * @param counts The head's counts. Defaults to the seeded ones.
+ * @param over The readings this case is about. Each defaults to the seeded one.
  * @returns The readings.
  */
-export function issuesReadings(counts: Reading<BacklogCounts> = counted()): IssuesReadings {
-  return { counts };
+export function issuesReadings(over: Partial<IssuesReadings> = {}): IssuesReadings {
+  return { counts: counted(), facets: FACETED, repos: LISTED, ...over };
 }
 
 /**

@@ -1685,7 +1685,7 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | N.1 | #115 | 🟢 Done | ouroboros-ui: [N.1] Issues route, page head & counts | `(app)/issues`: head with live counts, Re-estimate all, Queue button | mvp, intake, ui, design | N (after #41, M.1, BA-D.5) | Y | S | ouroboros-ui |
-| N.2 | #116 | 🟡 Open | ouroboros-ui: [N.2] Filter bar (URL-reflected) | Repo select, label chips, state, sort, search — server-driven | mvp, intake, ui, design | N (after N.1) | Y | M | ouroboros-ui |
+| N.2 | #116 | 🟢 Done | ouroboros-ui: [N.2] Filter bar (URL-reflected) | Repo select, label chips, state, sort, search — server-driven | mvp, intake, ui, design | N (after N.1) | Y | M | ouroboros-ui |
 | N.3 | #117 | 🟡 Open | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
 | N.4 | #118 | 🟡 Open | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
 | N.5 | #119 | 🟡 Open | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
@@ -1777,7 +1777,74 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 
 ### Issue N.2 — ouroboros-ui: [N.2] Filter bar (URL-reflected)
 
-> **GitHub issue:** #116 · **Status:** 🟡 Open · **Parent epic:** #97
+> **GitHub issue:** #116 · **Status:** 🟢 Done · **Parent epic:** #97
+
+> **Shipped 2026-09-11.** [`app/issues/filter.ts`](../ouroboros-ui/app/issues/filter.ts) reads
+> `?repo=&labels=&state=&sort=&q=` into a filter and writes one back;
+> [`app/issues/filter-bar.tsx`](../ouroboros-ui/app/issues/filter-bar.tsx) draws mockup 03's
+> `.filter-bar` and writes the next address with `router.replace`; the route reads the query on the
+> server and [`app/issues/data.ts`](../ouroboros-ui/app/issues/data.ts) asks M.1 with it.
+> `ouroboros-ui` 0.53.0.
+>
+> **Every control round-trips through the address, and the default view has one address.** Defaults
+> are never written — `/issues?state=open&sort=effort` is never produced — so `/issues` is the default
+> view, the sidebar's link and what **Clear all** goes to. Unknown values fall back rather than fail
+> (`?state=archived` is the default state), and a label the address names that the facets no longer
+> carry is drawn pressed and last, so it can be pressed off: the alternative was a filter the bar
+> could not show and the reader could not remove.
+>
+> **The head now reads twice, which is the ticket's one consequence for N.1.** M.1 scopes
+> `meta.openCount` and `meta.sizedCount` by `repo` and by nothing else in the bar, so the head's
+> sentence follows the repository select — the **view** read, M.1 asked with the bar's query one row
+> long, which is also where `labelFacets` comes from. But L.4's claim has neither `state` nor `repo`
+> in it, so the confirmation's mirrored count cannot come from a filtered `total`: the **scope** read
+> — `state=all` and nothing else — stays beside it, exactly as N.1's own handoff note allowed
+> (*"moves onto the table's and takes the mirrored count from a `state=all` read beside it"*). The
+> enablement list is the third read, for the repository select, since a `<select>` needs its options
+> before it is opened and the page arrives rendered. Each degrades alone.
+>
+> **The repository select is H.1's focus repository seen from the page**, kept in step both ways:
+> choosing here publishes to the store the tenant chip draws from, a choice made in the chip is
+> followed into the address, and on arrival the address decides — a pasted `?repo=` wins and is
+> published to the header under the name the enabled list gives it; a bare `/issues` adopts the
+> header's choice and says so in the address, since *"a filter preference … narrowing what a screen
+> asks for"* is what the sidebar's **Issues** entry should open onto; a stored choice the workspace no
+> longer enables is dropped, as the chip's own menu drops it. `focusArrival` is that table, as a
+> function.
+>
+> **The chip is the design system's tag on a `<button aria-pressed>`**, and the mockup's `chip-on`
+> treatment — accent ink, the 35% accent hairline, the accent tint — is keyed on that attribute in the
+> token sheet's published accent triple, so both palettes are the sheet's and the treatment cannot
+> disagree with what a screen reader is told. The mockup's chip *order* is design copy: M.1's facets
+> are ascending by name, and the suite holds the set and the pressed one to the mockup rather than the
+> order.
+>
+> **The search box waits 300 ms and every other control flushes it**, so a chip pressed mid-word asks
+> for the word too; `q` is written trimmed, and trailing whitespace does not write again. The text is
+> reset from the address only when the address moved by another hand (**Back**, a pasted link) — the
+> paired-state shape the registry table keeps for its selection, with the prop-as-last-seen beside
+> the value-last-written, which is what stops the bar's own write coming back rendered from erasing
+> what was typed since.
+>
+> **One reading of the shell-compliance line.** *"The bar sticks within the content pane, never at
+> window level"* is read as the sibling tickets' boilerplate (N.3's says the same of its table header)
+> rather than as a sticky filter bar: the mockup draws `.filter-bar` as a plain card that scrolls, the
+> chrome contract allows one `StickyBar` per page and names mockup 03's `.sel-bar` — N.4's — as that
+> bar, and N.1's stylesheet suite forbids `position: sticky` in the page's sheet. Nothing here is
+> fixed or sticky at any level, which the suite holds.
+>
+> Proved by **75 new cases in two new suites** — `filter.test.ts` (the copy against the mockup, the
+> round trip, the fallbacks, M.1's query, `focusArrival` as a table) and `filter-bar.test.tsx` (every
+> control drawn from the address, every press's address, the debounce under fake timers, the flush,
+> the reset rule, **Clear all**'s coming and going, both directions of the focus sync, the keyboard,
+> both palettes) — with the reader's, the route's, the screen's and the stylesheet's suites extended.
+> The module runs 4,436 cases over 231 files, green.
+>
+> **What is deferred, and to whom.** The rows the view read returns are N.3's (#117), which turns
+> `limit: 1` into its page and reads `total` as the page count; a pending state while the address
+> moves, and a designed *no issues match* for an over-narrowed filter, are N.6's (#120) — the bar
+> today draws the readings and nothing about their age; the composed round trip of a pasted address
+> is N.7's (#121).
 
 - **Problem Statement:** The mockup's filter bar (repo, label chips with
   `chip-on` state, state, sort, search) must drive M.1 queries and survive
@@ -2529,3 +2596,21 @@ link, and the dashboard's *All issues →* with it.
 >
 > And for **N.6 (#120)**: the head's failed-count state is a sentence and the service's reason rather
 > than the DASH-I.7 banner with a retry, and the route has no skeleton. Both are N.6's by name.
+
+**N.2 (#116) shipped on 2026-09-11.** The filter bar is a query-string editor: every control in
+`?repo=&labels=&state=&sort=&q=`, read on the server and written with `router.replace`, the chip set
+from M.1's facets, the repository select kept in step with H.1's focus repository both ways, and the
+search debounced. The head reads twice now — the view, asked with the bar's query, for its counts and
+the chip set; the scope, `state=all`, for the confirmation's mirrored count.
+
+> What N.2 leaves for **N.3 (#117)**: `app/issues/data.ts`'s view read is M.1 asked with
+> `filterQuery(filter)` and `limit: 1`, so the table is that read with its page — `limit`/`offset`
+> are the #31 convention, and `total` under the bar's query is the page-count number. The bar passes
+> `scroll: false` to every replace, so the pane stays put as the rows change; a page control that
+> wanted the pane at the top would say otherwise. `IssueSelectionProvider` still wraps the screen, and
+> the selection is URL-independent by design: a chip press does not clear it.
+>
+> And for **N.6 (#120)**: the bar draws its readings with nothing about their age — no pending state
+> while the address moves, and the failed chip set and repository list are a sentence under the row
+> rather than the DASH-I.7 banner. An over-narrowed filter's *no issues match* state has nowhere to
+> draw until the table exists, and belongs beside it.
