@@ -1684,7 +1684,7 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| N.1 | #115 | 🟡 Open | ouroboros-ui: [N.1] Issues route, page head & counts | `(app)/issues`: head with live counts, Re-estimate all, Queue button | mvp, intake, ui, design | N (after #41, M.1, BA-D.5) | Y | S | ouroboros-ui |
+| N.1 | #115 | 🟢 Done | ouroboros-ui: [N.1] Issues route, page head & counts | `(app)/issues`: head with live counts, Re-estimate all, Queue button | mvp, intake, ui, design | N (after #41, M.1, BA-D.5) | Y | S | ouroboros-ui |
 | N.2 | #116 | 🟡 Open | ouroboros-ui: [N.2] Filter bar (URL-reflected) | Repo select, label chips, state, sort, search — server-driven | mvp, intake, ui, design | N (after N.1) | Y | M | ouroboros-ui |
 | N.3 | #117 | 🟡 Open | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
 | N.4 | #118 | 🟡 Open | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
@@ -1694,7 +1694,66 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 
 ### Issue N.1 — ouroboros-ui: [N.1] Issues route, page head & counts
 
-> **GitHub issue:** #115 · **Status:** 🟡 Open · **Parent epic:** #97
+> **GitHub issue:** #115 · **Status:** 🟢 Done · **Parent epic:** #97
+
+> **Shipped 2026-09-11, and Epic N has opened.**
+> [`ouroboros-ui/app/issues/`](../ouroboros-ui/app/issues/) over
+> [`app/(app)/issues/page.tsx`](../ouroboros-ui/app/%28app%29/issues/page.tsx), reading
+> `GET /api/v1/backlog` and pressing `POST /api/v1/backlog/estimate-all` and
+> `POST /api/v1/backlog/queue` through [`app/api/backlog.ts`](../ouroboros-ui/app/api/backlog.ts).
+> `ouroboros-ui` 0.52.0. The sidebar's **Issues** entry stopped being a *soon* row on the same
+> commit — #41's amendment, acted on — and #49's `/issues` placeholder is retired without a deletion,
+> because it was never built; the scaffolding roadmap's #49 section records it beside `/models`.
+>
+> **The confirmation counts mirrored issues rather than open ones, and that is the ticket's one
+> correction.** The scope asks for a dialog that *"states the scope truthfully"*, and L.4's note says
+> its N *"comes from M.1's count"* — but the count M.1 draws in the head is the open count, and that
+> is not the set L.4 claims from: `claimBacklog` is `where organization_id = … and sizing_status !=
+> 'estimating'`, with no `state` in it. A workspace holding a single closed issue would already see
+> the dialog promise less than the press does. So the head reads the listing **once, as
+> `state=all&limit=1`**: `meta`'s two counts are scoped by the workspace alone and do not move, and
+> `total` becomes every mirrored issue. The seeds cannot tell the two apart — all nine are open —
+> which is why `data.test.ts` and `reestimate-all.test.tsx` each hold a nine-open, twelve-mirrored
+> case by name. The answer's half of L.4's contract is drawn as written: the press reports how many
+> it actually started, and what it left alone.
+>
+> **Queue N selected ⟳ reads a selection store whose writer has not landed.** N.3's scope names the
+> store *"exposed to N.1/N.4"*, so the dependency runs against the order the tickets land in.
+> [`app/issues/selection.tsx`](../ouroboros-ui/app/issues/selection.tsx) is a provider around the
+> screen, ordered as the selection was built — M.3 hands out queue positions down the list it is
+> sent — and the head is its first reader. Until #117 writes to it the count is zero and the button
+> is inert, naming #117: *disabled at zero* met honestly rather than with a table stub. The press is
+> wired to M.3 with no workflow (*each issue under its own estimate's*), clears the selection when it
+> takes, and keeps it on a refusal, because the write is all or nothing.
+>
+> **The role gates are drawn the way the issue words them.** *Re-estimate all* is
+> **admin-visible**: an owner or an admin sees it, and a member sees no control rather than a dead
+> one. *Queue* is `member+` and inert for a viewer with the role as its reason — `mayContribute`
+> joined `app/api/membership.ts` beside `mayAdminister` as that rule's one home. Both gates are
+> presentation; `head-actions.ts` hands the service's `403` back as the same sentences, and refuses a
+> forged selection that is not a list of ids before anything is sent.
+>
+> **Three dashboard controls stopped telling a truth that had expired — asked, and agreed, as in
+> scope.** *All issues →* ([#84](https://github.com/NobuData/ouroboros/issues/84)) said *"the
+> issues screen is not built yet"*, and is now a link to `/issues`. *Manage queue →* and *+N
+> queued* ([#85](https://github.com/NobuData/ouroboros/issues/85)) and the head's *⟳ Pull next
+> issue* ([#80](https://github.com/NobuData/ouroboros/issues/80)) stay inert, under one sentence
+> (`QUEUEING_SOON`) naming what they actually wait for — the table and the selection bar, #117 and
+> #118 — rather than a placeholder #49 will now never build.
+>
+> Proved by **126 cases in 11 new suites** — `__tests__/issues/` and `__tests__/api/backlog.test.ts`:
+> the copy against `docs/mockups/03-issues.html` itself, the seeded *"9 open issues. 7 already
+> sized."*, the dialog's scope, the selection's order, both actions' refusals and the
+> forged-selection guard, the role gates through the route, the stylesheet's agreements and both
+> palettes — with the shell's and the dashboard's own suites updated for a live **Issues** entry. The
+> module runs 4,353 cases over 229 files, green. The e2e shell leg's `LIVE_ENTRIES` gained **Issues**
+> on this commit rather than one later, which is the gap AA.7 (#206) found **Models** had left.
+>
+> **What is deferred, and to whom.** The freshness tag, the table and the selection's writer are
+> N.3's (#117); the chip set and the URL-reflected filters N.2's (#116); the combined estimate, the
+> named offenders and *Queue → workflow* N.4's (#118); a skeleton for this route N.6's (#120) — there
+> is no `loading.tsx` yet, deliberately; and the head counts' seeded parity against the composed stack
+> N.7's (#121).
 
 - **Problem Statement:** `/issues` currently points at a #49 placeholder; the
   page needs its frame: eyebrow, live-count headline, subline, and the two head
@@ -2444,3 +2503,29 @@ the whole of *touches only non-`estimating` rows*.
 > actually took — `enqueued` can be smaller, and that is the honest shape of a second press. The
 > panel's button has a `409` carrying `details.status`, which is the pill to redraw rather than a
 > failure to report.
+>
+> *(N.1 collected its half with one correction: M.1's count is `total` read as `state=all`, not the
+> head's open count, because this claim has no `state` in it — see N.1's own note.)*
+
+**N.1 (#115) shipped on 2026-09-11, and Epic N has opened.** `/issues` is a real screen: the page
+head reads *"9 open issues. 7 already sized."* off the seeds through M.1's `meta`, **Re-estimate
+all** confirms with the mirrored count and reports what actually started, and **Queue N selected ⟳**
+reads a selection store the table has not yet arrived to write. The sidebar's **Issues** entry is a
+link, and the dashboard's *All issues →* with it.
+
+> What N.1 leaves for **N.2 (#116)** and **N.3 (#117)**: the page's one read is
+> `app/issues/data.ts`'s `state=all&limit=1` listing, asked for the head alone. The filter bar's
+> query and the table's page are a different question — `total` describes the filter there — so the
+> head either keeps its own read or moves onto the table's and takes the mirrored count from a
+> `state=all` read beside it; both keep the confirmation's scope honest, and a `total` read under a
+> filter would not. `IssueSelectionProvider` already wraps the screen's `<main>`, so the table mounts
+> inside it and calls `toggle`; select-all needs a replace the store does not have yet, and adding
+> it is N.3's.
+>
+> And for **N.4 (#118)**: the selection bar's *Queue → workflow* is the same M.3 write with a
+> `workflow`, and `backlog.queue` already takes one. The designed offender list (*"#483 is still being
+> sized"*) is still owed — the head reports M.3's own sentence, which names the problem and not the
+> issue.
+>
+> And for **N.6 (#120)**: the head's failed-count state is a sentence and the service's reason rather
+> than the DASH-I.7 banner with a retry, and the route has no skeleton. Both are N.6's by name.

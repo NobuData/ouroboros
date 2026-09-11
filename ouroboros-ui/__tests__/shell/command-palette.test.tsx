@@ -174,14 +174,15 @@ describe("the keyboard", () => {
   });
 
   it("moves down", () => {
-    // The second runnable row, which is a second *navigation* row since #200 built
-    // `/models`: an entry going live joins the palette because the palette is built from the
-    // registry rather than from a list of its own (`app/shell/command-sources.ts`).
+    // The second runnable row, which is a second *navigation* row since #200 built `/models` —
+    // and has been **Issues** since #115 built `/issues`: an entry going live joins the palette
+    // because the palette is built from the registry rather than from a list of its own
+    // (`app/shell/command-sources.ts`).
     const box = open();
 
     fireEvent.keyDown(box, { key: "ArrowDown" });
 
-    expect(highlighted()).toHaveTextContent("Go to Models");
+    expect(highlighted()).toHaveTextContent("Go to Issues");
   });
 
   it("wraps at the ends, which is what a short list wants", () => {
@@ -209,7 +210,7 @@ describe("the keyboard", () => {
 
     fireEvent.keyDown(box, { key: "Home" });
 
-    expect(highlighted()).toHaveTextContent("Go to Models");
+    expect(highlighted()).toHaveTextContent("Go to Issues");
   });
 });
 
@@ -260,11 +261,20 @@ describe("running an action", () => {
     expect(signOutOfSession).toHaveBeenCalled();
   });
 
-  it("does nothing at all on a row that leads nowhere", () => {
+  it("navigates to the issues screen, now that #115 has built it", () => {
     const box = open();
 
     type(box, "issues");
     fireEvent.click(screen.getByRole("option", { name: /Go to Issues/ }));
+
+    expect(push).toHaveBeenCalledWith("/issues");
+  });
+
+  it("does nothing at all on a row that leads nowhere", () => {
+    const box = open();
+
+    type(box, "workflows");
+    fireEvent.click(screen.getByRole("option", { name: /Go to Workflows/ }));
 
     expect(push).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
@@ -336,19 +346,22 @@ describe("a source that searches, which is what #93 registers", () => {
 
 describe("a screen nobody has built", () => {
   it("is listed, and says what it is waiting for", () => {
-    // Dropping the row would answer "Issues" with no matches — a claim that there is no such
-    // screen rather than the truth, which is that it is not built yet (§ 3.5).
+    // Dropping the row would answer "Workflows" with no matches — a claim that there is no such
+    // screen rather than the truth, which is that it is not built yet (§ 3.5). (Issues was this
+    // suite's example until #115 built that screen.)
     const box = open();
 
-    type(box, "issues");
+    type(box, "workflows");
 
-    expect(screen.getByRole("option", { name: /Issue intake arrives with #115/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /The workflow builder arrives with its own roadmap/ }),
+    ).toBeInTheDocument();
   });
 
   it("is marked, so nothing announces it as something to press", () => {
     open();
 
-    expect(screen.getByRole("option", { name: /Go to Issues/ })).toHaveAttribute(
+    expect(screen.getByRole("option", { name: /Go to Workflows/ })).toHaveAttribute(
       "aria-disabled",
       "true",
     );

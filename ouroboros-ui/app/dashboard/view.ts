@@ -408,6 +408,21 @@ export const EMPTY_QUEUE = "Nothing is waiting for a loop.";
 export const UNSIZED_QUEUE = "None of them has been sized yet.";
 
 /**
+ * Why the dashboard's queueing controls cannot act yet — *Manage queue →* and *+N queued* on the
+ * queue card, and the page head's *⟳ Pull next issue*.
+ *
+ * One sentence for all three, because all three wait on the same thing. The issues screen has
+ * been a route since [#115](https://github.com/NobuData/ouroboros/issues/115), and what queues work
+ * from it — the backlog table's selection and the bar that queues it — arrives with
+ * [#117](https://github.com/NobuData/ouroboros/issues/117) and
+ * [#118](https://github.com/NobuData/ouroboros/issues/118). Controls waiting on one thing should
+ * not describe it three ways.
+ */
+export const QUEUEING_SOON =
+  "Queueing issues from the issues screen arrives with its backlog table and selection bar " +
+  "(#117, #118).";
+
+/**
  * *Queued issues* — how many are waiting, and how long they are expected to take.
  *
  * **`estMinutes` skips the issues carrying no estimate rather than counting them as zero**

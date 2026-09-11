@@ -13,8 +13,8 @@
  *     executable, and `scripts/verify-containment.sh` proves the two measurable ones can go
  *     red by planting each offence and requiring this file to catch it
  *     (`support/shell.ts`).
- *   * **The sidebar tells the truth about all eleven entries** (§ 1.2, § 3.5) — the built
- *     route is a link that lights under its URL; the nine unbuilt ones are labelled, carry
+ *   * **The sidebar tells the truth about all eleven entries** (§ 1.2, § 3.5) — each built
+ *     route is a link that lights under its URL; the eight unbuilt ones are labelled, carry
  *     the issue that unparks them, and are never dead links; a contextual route lights
  *     nothing.
  *   * **The rail and the drawer work, keyboard included** (§ 1.2) — the collapse choice
@@ -32,7 +32,7 @@
  *
  * ## What "all eleven" means while nine screens do not exist
  *
- * The registry seeds eleven entries and exactly one route is built. This file asserts the
+ * The registry seeds eleven entries and three of their routes are built. This file asserts the
  * *whole* list — order, grouping, status honesty — and the active-state mechanics on
  * everything that can carry them: the live entry lights on its own route, stays lit on its
  * sub-paths (the rule is `isActiveRoute`, unit-tested in `ouroboros-ui`), and goes dark on
@@ -107,9 +107,11 @@ const ALL_ELEVEN = [
  * (`app/shell/nav-modules.ts`) and left this roster behind, which is the mechanism working in
  * the direction nobody expects — the list catches a link that leads nowhere, and it also
  * catches a route that landed without telling the suite. The MVP gate for that epic is where
- * it was noticed.
+ * it was noticed. **Issues** joined it on the commit that built its route (N.1,
+ * [#115](https://github.com/NobuData/ouroboros/issues/115)), which is the order it should
+ * happen in.
  */
-const LIVE_ENTRIES = ["Dashboard", "Models"] as const;
+const LIVE_ENTRIES = ["Dashboard", "Issues", "Models"] as const;
 
 /** The sidebar landmark — its accessible name is `aria-label="Primary"`. */
 function sidebar(page: Page) {

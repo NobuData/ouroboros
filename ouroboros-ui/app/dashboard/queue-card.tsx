@@ -1,7 +1,7 @@
 import type { Dashboard } from "@/app/api/dashboard";
 import { Button, Card, CardHead, EffortChip, EmptyState, Tag } from "@/app/ui";
 
-import { type QueuedIssue, type Reading, moreQueued, queueRows } from "./view";
+import { QUEUEING_SOON, type QueuedIssue, type Reading, moreQueued, queueRows } from "./view";
 
 /**
  * *Up next in queue* ([#85](https://github.com/NobuData/ouroboros/issues/85)) — the mockup's
@@ -22,14 +22,15 @@ import { type QueuedIssue, type Reading, moreQueued, queueRows } from "./view";
  *
  * ### What it will not do yet
  *
- * **Neither `Manage queue →` nor the `+N queued` footer navigates.** The queue screen is
- * mockup 03 and [#49](https://github.com/NobuData/ouroboros/issues/49) holds its route, which
- * is post-MVP; the design system's honesty rule (§ 3.5) and #49's own first acceptance
- * criterion (*no dead nav links*) say the same thing about pointing at it today, and the
- * sidebar already answers the same destination the same way (`app/shell/nav-modules.ts`). Both
- * are therefore inert {@link Button}s carrying the one reason — which keeps the explanation in
- * the tab order where a dropped link would take it out — and both become an `href` the day #49
- * lands.
+ * **Neither `Manage queue →` nor the `+N queued` footer navigates.** The issues screen
+ * (mockup 03) became a route with [#115](https://github.com/NobuData/ouroboros/issues/115), and
+ * it is where the queue is filled — but what fills it from a selection, the backlog table and
+ * its selection bar, arrives with [#117](https://github.com/NobuData/ouroboros/issues/117) and
+ * [#118](https://github.com/NobuData/ouroboros/issues/118). A link today would land a reader who
+ * asked to manage the queue on a screen with nothing yet to manage it with, which the design
+ * system's honesty rule (§ 3.5) treats as a dead end. Both are therefore inert {@link Button}s
+ * carrying the one reason ({@link QUEUEING_SOON}) — which keeps the explanation in the tab order
+ * where a dropped link would take it out — and both become an `href` when those land.
  *
  * @param props.aggregate The dashboard aggregate, or why it could not be read.
  * @returns The card.
@@ -46,7 +47,7 @@ export function QueueCard({ aggregate }: Readonly<{ aggregate: Reading<Dashboard
         title={TITLE}
         titleId={TITLE_ID}
         trailing={
-          <Button size="sm" tone="ghost" reason={QUEUE_SCREEN_SOON}>
+          <Button size="sm" tone="ghost" reason={QUEUEING_SOON}>
             {MANAGE_LABEL}
           </Button>
         }
@@ -63,7 +64,7 @@ export function QueueCard({ aggregate }: Readonly<{ aggregate: Reading<Dashboard
           </ul>
           {more > 0 && (
             <p className="dash-queue__more">
-              <Button size="sm" tone="ghost" reason={QUEUE_SCREEN_SOON}>
+              <Button size="sm" tone="ghost" reason={QUEUEING_SOON}>
                 {`+${more} queued →`}
               </Button>
             </p>
@@ -124,17 +125,6 @@ const MANAGE_LABEL = "Manage queue →";
  * accessible name — the same gap the two tables' hidden captions fill.
  */
 const LIST_LABEL = "Issues waiting for a loop, in queue order";
-
-/**
- * Why neither control on this card can act yet.
- *
- * One sentence for both, because both point at the same missing screen: two controls naming
- * one destination should not describe it two ways. It is also the sentence the sidebar's
- * `/issues` entry carries, for the same reason.
- */
-const QUEUE_SCREEN_SOON =
-  "The queue screen is not built yet — it arrives with its own roadmap (mockup 03), and #49 " +
-  "holds its placeholder route.";
 
 /** What the card says when nothing is waiting for a loop. */
 const NOTHING_QUEUED = "Nothing is queued";

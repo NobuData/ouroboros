@@ -7,7 +7,13 @@ import { QueueCard } from "./queue-card";
 import { RecentlyClosedCard } from "./recently-closed-card";
 import { StatCard } from "./stat-card";
 import { SystemCard } from "./system-card";
-import { type DashboardReadings, pageSubline, statRow, systemRows } from "./view";
+import {
+  type DashboardReadings,
+  QUEUEING_SOON,
+  pageSubline,
+  statRow,
+  systemRows,
+} from "./view";
 
 import "./dashboard.css";
 
@@ -119,21 +125,25 @@ interface Action {
  * The mockup's two page-head actions, both inert.
  *
  * **#80 asks that these navigate to their [#49](https://github.com/NobuData/ouroboros/issues/49)
- * placeholders, and #49 has not landed** — it is post-MVP, and it is nineteen routes rather
- * than these two. So the treatment #45 shipped stands: both render *labelled* rather than
- * absent or linked to a `404`, which is what the sidebar already does for the same two
- * destinations (`app/shell/nav-modules.ts` marks `/issues` and `/workflows` `soon`) and
- * what #49 itself exists to prevent — "no dead nav links" is its first acceptance criterion.
- * Linking to a route nobody has written would satisfy the letter of this one by breaking
- * the other. The moment #49 lands, each `why` below becomes an `href`.
+ * placeholders, and neither destination can yet do what its label offers.** *Edit workflows*
+ * waits for the workflow builder (mockup 04), whose route #49 still holds. *Pull next issue* is
+ * an action rather than a destination: the issues screen became a route with
+ * [#115](https://github.com/NobuData/ouroboros/issues/115), but what puts issues in front of the
+ * loop from it — the backlog table's selection and the bar that queues it — arrives with
+ * [#117](https://github.com/NobuData/ouroboros/issues/117) and
+ * [#118](https://github.com/NobuData/ouroboros/issues/118), so it carries the queue card's
+ * reason ({@link QUEUEING_SOON}) rather than linking to a screen with nothing yet to press. Both
+ * render *labelled* rather than absent or linked to a `404`, which is what the sidebar does for a
+ * destination that is not built and what #49 itself exists to prevent — "no dead nav links" is
+ * its first acceptance criterion.
  *
  * `aria-disabled` rather than `disabled`, deliberately: a disabled button leaves the tab
  * order and takes its own explanation with it, so the keyboard reader who most needs the
  * tooltip is the one who can never reach it.
  *
  * **Neither fakes an outcome**, which is the half of the criterion that is about honesty
- * rather than about routing. "Pull next issue" is a real action against a queue whose intake
- * does not exist; a button that appeared to do it would be the one dishonest control on a
+ * rather than about routing. "Pull next issue" is a real action, and nothing can select an
+ * issue to pull yet; a button that appeared to do it would be the one dishonest control on a
  * screen built to be honest. Real pull behaviour belongs to mockup 03's roadmap — link, do
  * not fake.
  */
@@ -150,9 +160,7 @@ const ACTIONS: readonly Action[] = [
     id: "pull-next",
     label: "⟳ Pull next issue",
     tone: "primary",
-    why:
-      "Issue intake is not built yet — it arrives with its own roadmap (mockup 03), and " +
-      "#49 holds its placeholder route.",
+    why: QUEUEING_SOON,
   },
 ];
 

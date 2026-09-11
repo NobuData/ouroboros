@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { QueueCard } from "@/app/dashboard/queue-card";
+import { QUEUEING_SOON } from "@/app/dashboard/view";
 
 import { dashboardPayload, failed, queueItem, read } from "../helpers/dashboard";
 
@@ -223,14 +224,15 @@ describe("the +N queued footer", () => {
 
 describe("what the card will not do yet", () => {
   it("offers `Manage queue →`, and it does not act", () => {
-    // The queue screen is mockup 03 and #49 holds its route, which is post-MVP. Linking there
-    // today would satisfy this issue by breaking #49's own first criterion.
+    // The issues screen is a route since #115, but what manages the queue from it — the backlog
+    // table's selection and the bar that queues it — is #117's and #118's. Linking there today
+    // would land a reader on a screen with nothing yet to manage the queue with.
     render(seeded());
 
     const manage = within(card()).getByRole("button", { name: "Manage queue →" });
 
     expect(manage).toHaveAttribute("aria-disabled", "true");
-    expect(manage.getAttribute("title")).toMatch(/not built yet/);
+    expect(manage.getAttribute("title")).toBe(QUEUEING_SOON);
   });
 
   it("keeps the explanation in the tab order", () => {

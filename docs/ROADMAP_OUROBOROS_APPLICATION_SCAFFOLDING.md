@@ -2073,6 +2073,15 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
 > Eight destinations still wait: `/issues`, `/workflows`, `/build-farm`, `/knowledge`,
 > `/planning`, `/research`, `/insights`, `/inbox` and `/settings`. This issue stays open for
 > whichever of them has no roadmap issue landing sooner.
+>
+> **Amended 2026-09-11 — `/issues` is out of scope too, retired by N.1
+> ([#115](https://github.com/NobuData/ouroboros/issues/115)),** acting on the amendment the intake
+> roadmap posted here on 2026-08-09
+> ([`ROADMAP_MOCKUP_03_ISSUE_INTAKE.md`](ROADMAP_MOCKUP_03_ISSUE_INTAKE.md)). The same shape as
+> `/models`: the screen arrived before its placeholder was ever built, and the sidebar's **Issues**
+> entry became a link on the commit that built it. Eight destinations still wait — `/workflows`,
+> `/build-farm`, `/knowledge`, `/planning`, `/research`, `/insights`, `/inbox` and `/settings` —
+> and the paragraph above, which listed nine and called them eight, was one out.
 
 - **Problem Statement:** The nav promises 21 screens; dead links undermine the tour.
   Placeholders make the information architecture real without faking features.
@@ -2080,8 +2089,9 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
   `/providers`, `/build-farm`, `/planning`, `/runs`, `/tests`, `/verification`,
   `/knowledge`, `/insights`, `/inbox`, `/settings`, …) rendering a shared
   ComingSoon component (mockup thumbnail + one-line description from mockups README);
-  nav "soon" markers removed as each activates. **`/models` is no longer among them** —
-  AA.1 (#200) built the screen itself on 2026-08-24.
+  nav "soon" markers removed as each activates. **Neither `/models` nor `/issues` is among them
+  any more** — AA.1 (#200) built the first on 2026-08-24, and N.1 (#115) the second on
+  2026-09-11.
 - **Acceptance Criteria:** No dead nav links; every route renders shell + placeholder
   in both themes.
 - **Parallelism/Dependencies:** Needs 5.3. v2 (nice-to-have polish).

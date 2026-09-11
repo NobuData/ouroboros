@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { RecentlyClosedCard } from "@/app/dashboard/recently-closed-card";
 import { COMPLETIONS_SHOWN, NO_VALUE } from "@/app/dashboard/view";
+import { ISSUES_PATH } from "@/app/paths";
 
 import { closedRun, dashboardPayload, emptyDashboard, failed, read } from "../helpers/dashboard";
 
@@ -240,13 +241,16 @@ describe("the rows that need a person", () => {
 });
 
 describe("the card's head", () => {
-  it("offers the issues screen, inert, and says why", () => {
+  it("links the issues screen, now that #115 has built it", () => {
+    // An inert button naming what was missing until the route existed; a link since, to the
+    // route the sidebar's **Issues** entry names, so the two cannot disagree about where it is.
     card();
 
-    const link = within(region()).getByRole("button", { name: /All issues/ });
+    const link = within(region()).getByRole("link", { name: "All issues →" });
 
-    expect(link).toHaveAttribute("aria-disabled", "true");
-    expect(link.getAttribute("title")).toMatch(/not built yet/);
+    expect(link).toHaveAttribute("href", ISSUES_PATH);
+    expect(link).not.toHaveAttribute("aria-disabled");
+    expect(within(region()).queryByRole("button", { name: /All issues/ })).toBeNull();
   });
 
   it("names itself as a region, and the table inside it as a table", () => {
@@ -380,8 +384,10 @@ describe("a row the service could not describe completely", () => {
 
 describe("what the table does not pretend", () => {
   it("links no row anywhere, since neither destination exists", () => {
+    // A row would open the run console or, for `needs human`, the inbox — both still unbuilt. The
+    // card head's *All issues →* is a link since #115, and is the head's rather than a row's.
     card();
 
-    expect(within(region()).queryAllByRole("link")).toHaveLength(0);
+    expect(within(within(region()).getByRole("table")).queryAllByRole("link")).toHaveLength(0);
   });
 });

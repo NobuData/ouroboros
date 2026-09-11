@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   ADMIN_ROLES,
+  CONTRIBUTOR_ROLES,
   ROLES,
   activeMembership,
   isAdminRole,
   mayAdminister,
+  mayContribute,
   primaryRole,
 } from "@/app/api/membership";
 
@@ -61,6 +63,28 @@ describe("mayAdminister", () => {
     // service does not recognise". A screen that guessed high would render a control the
     // service then refuses.
     expect(mayAdminister([])).toBe(false);
+  });
+});
+
+describe("mayContribute (#115)", () => {
+  it("admits every role that may start work — owner, admin and member", () => {
+    expect(mayContribute(["owner"])).toBe(true);
+    expect(mayContribute(["admin"])).toBe(true);
+    expect(mayContribute(["member"])).toBe(true);
+    expect(mayContribute(["viewer", "member"])).toBe(true);
+  });
+
+  it("refuses a viewer, the role that exists to read without starting anything", () => {
+    // `POST /api/v1/backlog/queue`: "Queueing issues is `owner`, `admin` or `member`."
+    expect(mayContribute(["viewer"])).toBe(false);
+  });
+
+  it("refuses an empty list, erring in the direction mayAdminister does", () => {
+    expect(mayContribute([])).toBe(false);
+  });
+
+  it("agrees with the published list, which is every role but viewer", () => {
+    expect([...CONTRIBUTOR_ROLES]).toEqual(ROLES.filter((role) => role !== "viewer"));
   });
 });
 
