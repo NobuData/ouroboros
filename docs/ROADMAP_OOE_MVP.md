@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**153 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
+**154 of 454 ordered issues are closed** — P0, P1, P2, P4 and P5 are complete; P3 and P6
 are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4, P5 | **134** |
-| 🟡 **In progress** | P3 (5/8), P6 (14/23) | **19** of 31 |
+| 🟡 **In progress** | P3 (5/8), P6 (15/23) | **20** of 31 |
 | — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -109,7 +109,7 @@ position is not forced by dependencies, one of these decided it.
 | **P3** | Application shell & font scale | 🟡 5/8 | 8 | 28 | UI/UX App Shell |
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
-| **P6** | Issue intake & estimation | 🟡 13/23 | 23 | 68 | Mockup 03 |
+| **P6** | Issue intake & estimation | 🟡 15/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | — 0/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **9 issues** · 28 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155` and `156` · 12 dependency waves
+> **8 issues** · 25 complexity points · order **#143–#165**, less `143`, `144`, `145`, `146`, `147`, `148`, `149`, `150`, `151`, `152`, `153`, `154`, `155`, `156` and `157` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** 🟡 **In progress** — 14 of 23 issues closed
+> **Status:** 🟡 **In progress** — 15 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -1113,9 +1113,44 @@ that roadmap's "Existing issues affected" section.
 > **`N.4` (`#118`) is what this unblocks**, and `M.5` (`#114`) inherits an endpoint that already
 > has a 24-case integration leg rather than a blank sheet.
 
+> **`L.5` · [`#109`](https://github.com/NobuData/ouroboros/issues/109) has shipped, and row
+> `157` has left the table below** — so this phase's order numbers now start at `158`, 8 rows
+> summing to 25 points, and 15 of this phase's 23 issues are closed. **Epic L is complete**:
+> the contract, the estimator, the pipeline, its triggers and now its matrix.
+>
+> [`ouroboros-rest/src/testing/engine.stub.fixture.ts`](../ouroboros-rest/src/testing/engine.stub.fixture.ts)
+> is the ticket's substance — a `ouroboros-engine` that **holds itself to the engine's published
+> contract**. Until this ticket the pipeline's suites drove an ad-hoc server that answered
+> whatever a test typed, and that fake was free to be wrong in the same direction as the code: a
+> body with a field `/v0` does not publish, or missing one it requires, sailed through a suite
+> that only ever compared it against itself. Now every answer is validated against
+> `ouroboros-engine/openapi.yaml` on the way out and every request against it on the way in, so
+> **a change to the engine's contract breaks the stub** — `startEngineStub()` refuses to come up
+> at all when the body it is about to serve no longer validates, which is the ticket's fourth
+> acceptance criterion as a mechanism rather than as a habit.
+>
+> **The matrix that was added is the part no single ticket could own.** `L.3` asserted provenance
+> on the happy path because that is the row `L.3` wrote; the criterion is *every persisted
+> estimate*, so the new block drives all four paths that write one — a first sizing, a
+> re-estimate, an answer under the confidence floor, and a row the recovery sweep picked up — and
+> then reads `issue_estimates` with no `where` clause. The same argument gives the failure log its
+> own case (`issue_estimates` deliberately holds no row for a failure, so the log *is* the trace),
+> the fan-out a five-issue concurrency case against a four-deep pipeline, and the version
+> monotonicity a four-way race where `L.3` had two.
+>
+> **The two deletions were performed rather than promised.** The ticket asks that *removing the
+> stale sweep turns tests red; removing the retry turns tests red — verified once, deliberately*,
+> and both were done by hand and recorded in the suite's header: neutering `sweep()` reddens five
+> cases, reducing `MAX_ENGINE_ATTEMPTS` to `1` reddens exactly two and leaves the recovery cases
+> green. That last clause is the one worth having — a suite where every deletion reddens
+> everything cannot tell one mechanism from another.
+>
+> **`M.5` (`#114`) is what this leaves**, and P6's remaining work is that suite plus Epic N's
+> seven UI tickets. Added runtime is **1.5 s** against a 60-second budget: 37 cases where there
+> were 28, and the run is 6.5 s.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 157 | **L.5** | [#109](https://github.com/NobuData/ouroboros/issues/109) | Pipeline integration tests | ouroboros-rest | M | L.4 |
 | 158 | **M.5** | [#114](https://github.com/NobuData/ouroboros/issues/114) | Backlog API integration tests | ouroboros-rest | M | M.1, M.4 |
 | 159 | **N.1** | [#115](https://github.com/NobuData/ouroboros/issues/115) | Issues route, page head & counts | ouroboros-ui | S | 5.3, D.5, M.1 |
 | 160 | **N.2** | [#116](https://github.com/NobuData/ouroboros/issues/116) | Filter bar (URL-reflected) | ouroboros-ui | M | N.1 |

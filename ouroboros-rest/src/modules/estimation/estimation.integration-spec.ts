@@ -1,6 +1,13 @@
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { Logger } from "@nestjs/common";
 
+import {
+  contractViolation,
+  engineFailure,
+  estimateAnswer,
+  offContractAnswer,
+  startEngineStub,
+  type EngineStub,
+} from "../../testing/engine.stub.fixture";
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME, type NewIssueEstimate } from "../db/schema";
@@ -10,7 +17,7 @@ import { seedRoutingBench, type RoutingBench } from "../routing/workspace.fixtur
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { ESTIMATION_ERRORS } from "./estimation.errors";
 import { ESTIMATION_ATTEMPTS_PER_WINDOW } from "./estimation.limiter";
-import { EstimationOrchestrator } from "./estimation.orchestrator";
+import { MAX_ENGINE_ATTEMPTS, EstimationOrchestrator } from "./estimation.orchestrator";
 import { EstimationRepository } from "./estimation.repository";
 import { EstimationSweeper } from "./estimation.sweeper";
 
@@ -44,6 +51,15 @@ import { EstimationSweeper } from "./estimation.sweeper";
  * reads `@Roles()`. L.5 ([#109](https://github.com/NobuData/ouroboros/issues/109)) keeps the
  * pipeline's own matrix; this is the leg that proves the buttons are wired to it.
  *
+ * **L.5 ([#109](https://github.com/NobuData/ouroboros/issues/109)) did two things to this
+ * file.** It replaced the engine — see below — and it added the last describe block, which is
+ * the matrix as a matrix: the cases above are each written where the ticket that needed them
+ * put them, and what was missing was the statements that are true of *every* path at once.
+ * Provenance is the clearest example. L.3 asserted it on the happy path, because that is the
+ * row L.3 wrote; the criterion is *every persisted estimate*, and the only way to hold the
+ * pipeline to that is to drive every path that writes one and then read the table with no
+ * `where` clause on it.
+ *
  * ---------------------------------------------------------------------------
  * **The engine is a listening HTTP server rather than a stubbed client.** `EngineClient` takes
  * its `fetch` as a constructor parameter so its own suite can drive it over a function, but a
@@ -52,10 +68,41 @@ import { EstimationSweeper } from "./estimation.sweeper";
  * socket and back through the real zod parse. What that catches is a `snake_case` key nobody
  * translated, which is precisely the failure between this ticket and #105.
  *
+ * **And it holds itself to the engine's published contract** —
+ * `testing/engine.stub.fixture.ts`, L.5's other half. Until this ticket the stub answered
+ * whatever a test typed, which meant a suite could assert against a body `ouroboros-engine`
+ * could never send and still be green. Now every answer is validated against
+ * `ouroboros-engine/openapi.yaml` on the way out and every request against it on the way in,
+ * so a fake that has drifted from the contract is a red suite here rather than a `502` in
+ * production. {@link EngineStub.violations} is asserted empty in `afterEach`, once, for all
+ * of them.
+ *
  * **The pipeline is driven from the injector rather than by waiting for the sweeper.** The
  * loop's own behaviour is `estimation.sweeper.spec.ts`'s, under fake timers; the harness is
  * started with a day-long sweep interval so the application's own loop cannot fire a competing
  * sweep mid-test.
+ *
+ * ---------------------------------------------------------------------------
+ * ## The two deletions this suite was checked against
+ *
+ * L.5 asks for one thing that is not a test: *removing the stale sweep turns tests red;
+ * removing the retry turns tests red — verified once, deliberately.* A suite nobody has watched
+ * fail is a suite that passes everything, so both were done by hand on 2026-09-10, against this
+ * file, and the results are recorded here rather than left as a claim:
+ *
+ *   * **`sweep()` returning `{stale: 0, requeued: 0, inFlight: 0}` without reading** — five
+ *     red: *re-estimates a row a restart left in `estimating`*, *recovers once the engine
+ *     returns, having failed while it was down*, *re-queues a whole batch of stranded rows*,
+ *     *writes exactly one estimate for a row it recovers*, and *leaves non-null provenance on
+ *     every estimate, whichever path wrote it* — the last one because the sweep is one of the
+ *     four paths it drives, which is the point of driving all four.
+ *   * **`MAX_ENGINE_ATTEMPTS` reduced to `1`** — two red: *gives up after one retry and leaves
+ *     the issue to a person* (one call where two were expected) and *names the failure, both
+ *     attempts and the issue in the log*.
+ *
+ * The second mutation reddens **only** those two, and the recovery cases stay green under it.
+ * That is the result worth recording: a suite where every deletion reddens everything cannot
+ * tell one mechanism from another, and a reader would learn nothing from a failure.
  *
  * ```bash
  * yarn test:integration
@@ -76,58 +123,6 @@ interface StoredEstimate {
   created_at: Date;
 }
 
-/** An engine a test scripts, listening on a real port. */
-interface EngineStub {
-  /** Where it is, as `OURO_ENGINE_URL` wants it. */
-  readonly url: string;
-  /** Every request body it received, parsed. */
-  readonly requests: Record<string, unknown>[];
-  /** Answer the next `n` calls with a status and body of the test's choosing. */
-  respond(handler: (attempt: number) => { status: number; body: unknown }): void;
-  /** Stop listening. */
-  stop(): Promise<void>;
-}
-
-/**
- * Start an engine that answers whatever a test says.
- *
- * @returns The stub, already listening on a loopback port.
- */
-async function startEngine(): Promise<EngineStub> {
-  const requests: Record<string, unknown>[] = [];
-  let handler = (_attempt: number) => ({ status: 200, body: ENGINE_ESTIMATE_BODY as unknown });
-
-  const server: Server = createServer((request, response) => {
-    const chunks: Buffer[] = [];
-
-    request.on("data", (chunk: Buffer) => chunks.push(chunk));
-    request.on("end", () => {
-      requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>);
-
-      const answer = handler(requests.length);
-
-      response.writeHead(answer.status, { "content-type": "application/json" });
-      response.end(JSON.stringify(answer.body));
-    });
-  });
-
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-
-  const { port } = server.address() as AddressInfo;
-
-  return {
-    url: `http://127.0.0.1:${String(port)}`,
-    requests,
-    respond: (next) => {
-      handler = next;
-    },
-    stop: () =>
-      new Promise<void>((resolve) => {
-        server.close(() => resolve());
-      }),
-  };
-}
-
 describe("the estimation pipeline, against a migrated database", () => {
   let api: ApiHarness;
   let engine: EngineStub;
@@ -135,7 +130,7 @@ describe("the estimation pipeline, against a migrated database", () => {
   let sweeper: EstimationSweeper;
 
   beforeAll(async () => {
-    engine = await startEngine();
+    engine = await startEngineStub();
     api = await ApiHarness.start({
       OURO_ENGINE_URL: engine.url,
       // A day, so neither background loop can fire in the middle of a test.
@@ -153,12 +148,21 @@ describe("the estimation pipeline, against a migrated database", () => {
   });
 
   beforeEach(() => {
-    engine.requests.length = 0;
-    engine.respond(() => ({ status: 200, body: ENGINE_ESTIMATE_BODY }));
+    engine.reset();
   });
 
   afterEach(async () => {
+    // Read first, truncate, assert last. An assertion that throws would skip whatever came
+    // after it, and the one thing that must not be skipped is emptying the tables for the next
+    // test — so the contract check is the last statement rather than the first.
+    const unfaithful = [...engine.violations];
+
     await api.truncate();
+
+    // Nothing in this suite may ask the stub for an answer `ouroboros-engine` could not give,
+    // and nothing in the service may send it a request the engine would refuse. Asserted once
+    // here rather than per test, because it is a property of the whole run.
+    expect(unfaithful).toEqual([]);
   });
 
   /**
@@ -394,10 +398,7 @@ describe("the estimation pipeline, against a migrated database", () => {
 
     it("routes an estimate under the floor to needs_human, and stores it in full", async () => {
       const { issueId } = await mirroredIssue();
-      engine.respond(() => ({
-        status: 200,
-        body: { ...ENGINE_ESTIMATE_BODY, confidence: 61, effort: "xl" },
-      }));
+      engine.respond(() => estimateAnswer({ confidence: 61, effort: "xl" }));
 
       orchestrator.enqueue(issueId);
       await orchestrator.settled();
@@ -416,10 +417,7 @@ describe("the estimation pipeline, against a migrated database", () => {
       orchestrator.enqueue(issueId);
       await orchestrator.settled();
 
-      engine.respond(() => ({
-        status: 200,
-        body: { ...ENGINE_ESTIMATE_BODY, effort: "l", confidence: 80 },
-      }));
+      engine.respond(() => estimateAnswer({ effort: "l", confidence: 80 }));
       orchestrator.enqueue(issueId);
       await orchestrator.settled();
 
@@ -481,7 +479,7 @@ describe("the estimation pipeline, against a migrated database", () => {
   describe("when the engine is down", () => {
     it("gives up after one retry and leaves the issue to a person", async () => {
       const { issueId } = await mirroredIssue();
-      engine.respond(() => ({ status: 503, body: { code: "unavailable", message: "no" } }));
+      engine.respond(() => engineFailure());
 
       orchestrator.enqueue(issueId);
       await orchestrator.settled();
@@ -494,7 +492,7 @@ describe("the estimation pipeline, against a migrated database", () => {
       // There is nothing to store, and a fabricated row would put an effort chip on the
       // backlog table for an issue nothing sized.
       const { issueId } = await mirroredIssue();
-      engine.respond(() => ({ status: 503, body: {} }));
+      engine.respond(() => engineFailure());
 
       orchestrator.enqueue(issueId);
       await orchestrator.settled();
@@ -506,10 +504,9 @@ describe("the estimation pipeline, against a migrated database", () => {
       // The parse is the engine client's, and it is what stops a field that changed type from
       // reaching a column as an `undefined`.
       const { issueId } = await mirroredIssue();
-      engine.respond(() => ({
-        status: 200,
-        body: { ...ENGINE_ESTIMATE_BODY, effort: "enormous" },
-      }));
+      // Off-contract on purpose, and the stub is told so — an unmarked answer this far
+      // outside `/v0` is the stub's failure to report rather than the service's to survive.
+      engine.respond(() => offContractAnswer());
 
       orchestrator.enqueue(issueId);
       await orchestrator.settled();
@@ -567,7 +564,7 @@ describe("the estimation pipeline, against a migrated database", () => {
       // Both halves of the acceptance criterion, in order: engine down leaves `needs_human`,
       // and a row stranded mid-flight is re-processed when the engine is back.
       const { issueId } = await mirroredIssue();
-      engine.respond(() => ({ status: 503, body: {} }));
+      engine.respond(() => engineFailure());
 
       orchestrator.enqueue(issueId);
       await orchestrator.settled();
@@ -575,7 +572,7 @@ describe("the estimation pipeline, against a migrated database", () => {
       expect(await statusOf(issueId)).toBe("needs_human");
 
       // Now the engine is back, and a row another process had claimed is still sitting there.
-      engine.respond(() => ({ status: 200, body: ENGINE_ESTIMATE_BODY }));
+      engine.respond(() => estimateAnswer());
       await strand(issueId);
 
       await sweeper.tick();
@@ -823,6 +820,320 @@ describe("the estimation pipeline, against a migrated database", () => {
       expect(envelope.details.retryAfterSeconds).toBeGreaterThan(0);
 
       await orchestrator.settled();
+    });
+  });
+
+  /**
+   * The matrix, as a matrix — L.5 ([#109](https://github.com/NobuData/ouroboros/issues/109)).
+   *
+   * Everything above is written where the ticket that needed it put it: L.3's cases are about
+   * the rows L.3 writes, L.4's are about the two buttons L.4 added. What that leaves out is the
+   * statements that are true of the *whole* pipeline rather than of one path through it, and
+   * those are the ones this ticket is for. Four of them:
+   *
+   *   * **Provenance is a claim about every persisted estimate**, not about the happy path's.
+   *     The only honest way to hold the pipeline to it is to drive every path that writes a row
+   *     and then read `issue_estimates` with no `where` clause.
+   *   * **The contract runs in both directions.** The stub refuses to serve a body the engine
+   *     could not send; this block asserts the other half — that what this service sends is a
+   *     body the engine would accept.
+   *   * **A failure is honest.** *Engine down → `needs_human` with a trace naming the failure*
+   *     is two claims, and the second one is about the log, which is the only place a failure
+   *     is recorded (`issue_estimates` deliberately holds no row for one).
+   *   * **Concurrency is a property of the pipeline, not of one statement.** The repository's
+   *     race is asserted above at the altitude it happens; these are the two shapes a *person*
+   *     can produce — two presses at once on one issue, and a fan-out over a whole backlog.
+   */
+  describe("the pipeline's own matrix", () => {
+    /**
+     * A member of the workspace an issue is in, for the cases that press a button.
+     *
+     * @param bench - The workspace.
+     * @param email - Their address, unique per test.
+     * @returns The signed-in person, already joined as a `member`.
+     */
+    async function memberOf(bench: RoutingBench, email: string): Promise<Person> {
+      const person = await api.signIn({ email });
+
+      await api.join(bench.id, person, "member");
+
+      return person;
+    }
+
+    /** Every estimate in the database, whichever issue it belongs to. */
+    async function everyEstimate(): Promise<{ trace: Record<string, unknown> }[]> {
+      const { rows } = await api.sql.query<{ trace: Record<string, unknown> }>(
+        `select trace from ${SCHEMA_NAME}.issue_estimates`,
+      );
+
+      return rows;
+    }
+
+    it("sends the engine a body the engine's own contract accepts", async () => {
+      // The stub would have answered `422` and recorded a violation, so this cannot fail
+      // alone — but a suite that only ever asserted the *absence* of a violation would not say
+      // what was checked. This is the criterion written out: the request that went over the
+      // socket is a valid `EstimateRequest` against the committed document.
+      const { issueId } = await mirroredIssue();
+
+      orchestrator.enqueue(issueId);
+      await orchestrator.settled();
+
+      expect(engine.requests).toHaveLength(1);
+      expect(contractViolation("request", engine.requests[0])).toBeUndefined();
+    });
+
+    it("leaves non-null provenance on every estimate, whichever path wrote it", async () => {
+      // Decision K10 across the matrix rather than on one row. Four paths write an estimate,
+      // and all four are driven here: a first sizing, a re-estimate, an answer under the
+      // confidence floor, and a row the recovery sweep picked up. The read at the foot has no
+      // `where` clause on purpose — *every persisted estimate* is the criterion, and a query
+      // that named an issue would only be re-asserting the paths it remembered.
+      const { bench, issueId } = await mirroredIssue();
+      const underFloor = await addIssue(bench, 486);
+      const stranded = await addIssue(bench, 487);
+
+      orchestrator.enqueue(issueId);
+      await orchestrator.settled();
+
+      engine.respond(() => estimateAnswer({ effort: "l" }));
+      orchestrator.enqueue(issueId);
+      await orchestrator.settled();
+
+      engine.respond(() => estimateAnswer({ confidence: 61 }));
+      orchestrator.enqueue(underFloor);
+      await orchestrator.settled();
+
+      engine.respond(() => estimateAnswer());
+      await strand(stranded);
+      await orchestrator.sweep();
+      await orchestrator.settled();
+
+      const written = await everyEstimate();
+
+      expect(written).toHaveLength(4);
+
+      for (const { trace } of written) {
+        expect(String(trace.estimator)).not.toHaveLength(0);
+        expect(trace.sized_at).toEqual(expect.any(String));
+      }
+
+      // And the same thing asked of the server, which is where the constraint lives: a `null`
+      // or blank estimator is a row V026 would not have taken, so a count of zero here says
+      // the CHECK was satisfied by an answer rather than by a placeholder.
+      const { rows } = await api.sql.query<{ count: string }>(
+        `select count(*)::text as count
+           from ${SCHEMA_NAME}.issue_estimates
+          where trace->>'estimator' is null or btrim(trace->>'estimator') = ''`,
+      );
+
+      expect(rows[0].count).toBe("0");
+    });
+
+    it("names the failure, both attempts and the issue in the log", async () => {
+      // The other half of *engine down → needs_human with an honest trace naming the failure*.
+      // `issue_estimates` holds nothing for a failure by design, so the log is the trace, and
+      // a pipeline that failed silently would satisfy every other assertion in this file.
+      const failed = jest.spyOn(Logger.prototype, "error");
+      const gaveUp = jest.spyOn(Logger.prototype, "warn");
+      const { issueId } = await mirroredIssue();
+
+      engine.respond(() => engineFailure());
+
+      orchestrator.enqueue(issueId);
+      await orchestrator.settled();
+
+      expect(await statusOf(issueId)).toBe("needs_human");
+
+      // The counts are literals, deliberately. Reading MAX_ENGINE_ATTEMPTS into the
+      // expectation would make this case agree with whatever the constant says — including
+      // `1`, which is the deletion it exists to catch — so the number is written out and the
+      // constant is asserted separately to say which number it is.
+      expect(MAX_ENGINE_ATTEMPTS).toBe(2);
+      expect(engine.requests).toHaveLength(2);
+      expect(failed).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Estimating acme-robotics/helios-firmware#485 failed (attempt 1 of 2)",
+        ),
+        expect.anything(),
+      );
+      expect(failed).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Estimating acme-robotics/helios-firmware#485 failed (attempt 2 of 2)",
+        ),
+        expect.anything(),
+      );
+      expect(gaveUp).toHaveBeenCalledWith(
+        expect.stringContaining("acme-robotics/helios-firmware#485 needs a human"),
+      );
+    });
+
+    it("sizes an issue on the next press once the engine is back", async () => {
+      // *Recovery on the next trigger*, which is the half the sweep does not cover: nothing
+      // stranded this row — the pipeline finished with it and left it `needs_human` — so the
+      // only thing that can move it is a person pressing the button L.4 added.
+      const { bench, issueId } = await mirroredIssue();
+      const member = await memberOf(bench, "recovery@ouroboros.invalid");
+
+      engine.respond(() => engineFailure());
+
+      orchestrator.enqueue(issueId);
+      await orchestrator.settled();
+
+      expect(await statusOf(issueId)).toBe("needs_human");
+      expect(await estimatesOf(issueId)).toHaveLength(0);
+
+      engine.respond(() => estimateAnswer());
+
+      await api
+        .as(member)("post", `/api/v1/backlog/${issueId}/estimate`)
+        .set(TENANT_HEADER, bench.slug)
+        .expect(202);
+
+      await orchestrator.settled();
+
+      expect(await statusOf(issueId)).toBe("sized");
+      // `v1`, not `v2`: the failure stored nothing, so the recovered estimate is the first
+      // version this issue has ever had.
+      expect(await estimatesOf(issueId)).toMatchObject([{ version: 1 }]);
+    });
+
+    it("re-queues a whole batch of stranded rows", async () => {
+      // One stranded row proves the read has a `where`; a batch proves the sweep is a sweep.
+      // Every one of them is a row a killed process left behind, and none of them has anything
+      // else that could move it.
+      const { bench, issueId } = await mirroredIssue();
+      const second = await addIssue(bench, 486);
+      const third = await addIssue(bench, 487);
+
+      for (const stranded of [issueId, second, third]) {
+        await strand(stranded);
+      }
+
+      const report = await orchestrator.sweep();
+      await orchestrator.settled();
+
+      expect(report).toMatchObject({ stale: 3, requeued: 3, inFlight: 0 });
+
+      for (const recovered of [issueId, second, third]) {
+        expect(await statusOf(recovered)).toBe("sized");
+      }
+    });
+
+    it("writes exactly one estimate for a row it recovers", async () => {
+      // The sweep re-queues; the queue de-duplicates. A sweep that ran twice over the same
+      // stranded row — which is what a cadence shorter than an estimate takes produces — must
+      // still leave one version, or every stale row would collect a version per sweep.
+      const { issueId } = await mirroredIssue();
+
+      await strand(issueId);
+
+      const first = await orchestrator.sweep();
+      const second = await orchestrator.sweep();
+
+      await orchestrator.settled();
+
+      expect(first).toMatchObject({ stale: 1, requeued: 1 });
+      // The second sweep still finds it — the row is `estimating` and still old — and says so
+      // rather than pretending it did not, which is what `inFlight` is for.
+      expect(second).toMatchObject({ stale: 1, requeued: 0, inFlight: 1 });
+      expect(await estimatesOf(issueId)).toHaveLength(1);
+      expect(engine.requests).toHaveLength(1);
+    });
+
+    it("de-duplicates two presses that arrive together into one estimate", async () => {
+      // Concurrency as a person produces it: two browsers, one issue, one moment. The status
+      // codes are deliberately not asserted — whether the second press is refused `409` or
+      // accepted and dropped by the queue depends on which of the two reads resolved first,
+      // and both are correct. What is not allowed either way is a second engine call and a
+      // second version, and that is what this asserts.
+      const { bench, issueId } = await mirroredIssue();
+      const member = await memberOf(bench, "presser@ouroboros.invalid");
+      const press = (): Promise<unknown> =>
+        api
+          .as(member)("post", `/api/v1/backlog/${issueId}/estimate`)
+          .set(TENANT_HEADER, bench.slug);
+
+      orchestrator.enqueue(issueId);
+      await orchestrator.settled();
+
+      await Promise.all([press(), press()]);
+      await orchestrator.settled();
+
+      expect(await estimatesOf(issueId)).toMatchObject([{ version: 1 }, { version: 2 }]);
+      expect(engine.requests).toHaveLength(2);
+      expect(await statusOf(issueId)).toBe("sized");
+    });
+
+    it("gives every issue in a fan-out exactly one version, with no deadlock", async () => {
+      // `OURO_ESTIMATION_CONCURRENCY` is four by default, so five issues is one more than the
+      // pipeline runs at once: four transactions are genuinely in flight together while the
+      // fifth waits. Different issues, so no version collides — what is under test is that
+      // concurrent writers to one table each get their row and the run ends.
+      const owner = await api.signIn({ email: "fanout@ouroboros.invalid" });
+      const { bench, issueId } = await mirroredIssue();
+      const rest = [];
+
+      await api.join(bench.id, owner, "owner");
+
+      for (const number of [486, 487, 488, 489]) {
+        rest.push(await addIssue(bench, number));
+      }
+
+      const accepted = await api
+        .as(owner)("post", "/api/v1/backlog/estimate-all")
+        .set(TENANT_HEADER, bench.slug)
+        .expect(202);
+
+      expect(bodyOf(accepted)).toEqual({ enqueued: 5, skipped: 0, total: 5 });
+
+      await orchestrator.settled();
+
+      for (const sized of [issueId, ...rest]) {
+        expect(await statusOf(sized)).toBe("sized");
+        expect(await estimatesOf(sized)).toMatchObject([{ version: 1 }]);
+      }
+    });
+
+    it("keeps versions sequential when four writers race on one issue", async () => {
+      // The acceptance criterion at its limit. Two writers prove the retry exists; four prove
+      // it converges — every collision moves somebody's version forward, so a writer that
+      // loses three races still lands on the fourth, inside `MAX_VERSION_ATTEMPTS`. A lock
+      // would have serialised these and a `max(version) + 1` with no retry would have lost
+      // three of them to `issue_estimates_issue_version_key`.
+      const { issueId } = await mirroredIssue();
+      const repository = api.nest.get(EstimationRepository);
+
+      const row = (version: number): NewIssueEstimate => ({
+        github_issue_id: issueId,
+        version,
+        effort: "m",
+        confidence: 92,
+        suggested_workflow: "standard-fix",
+        routed_model: "claude-fable-5",
+        breakdown: JSON.stringify({
+          files: [],
+          est_tokens: 1,
+          cycle_min: 1,
+          cycle_max: 2,
+          est_minutes: 1,
+        }),
+        risk: "low",
+        risk_note: "Concurrent write.",
+        trace: JSON.stringify({
+          estimator: "heuristic-v0",
+          sized_at: new Date().toISOString(),
+          tokens_used: 0,
+          signals: [],
+        }),
+      });
+
+      const versions = await Promise.all(
+        [0, 1, 2, 3].map(() => repository.persist(issueId, "sized", row)),
+      );
+
+      expect([...versions].sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+      expect((await estimatesOf(issueId)).map((stored) => stored.version)).toEqual([1, 2, 3, 4]);
     });
   });
 });
