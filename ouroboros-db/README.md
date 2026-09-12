@@ -353,6 +353,9 @@
 > weakened, and a closed run must still render under a workflow that has since been renamed —
 > so the bridge is `slug`, bounded at the 64 characters those columns already allow and
 > unique per workspace, which makes resolving a tag one indexed lookup with one answer.
+> [`R__dev_seed_workflows.sql`](migrations/R__dev_seed_workflows.sql)
+> ([#136](https://github.com/NobuData/ouroboros/issues/136)) is what finally writes both
+> tables — see [The development seed](#what-it-does-with-the-work).
 
 > `V030` ([#138](https://github.com/NobuData/ouroboros/issues/138)) opens the **sources**
 > domain with [`ticket_sources` and
@@ -583,7 +586,7 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **six migrations**, because they answer six questions and change on different
+It is **eight migrations**, because they answer eight questions and change on different
 days:
 
 | File | Holds | Issue |
@@ -595,12 +598,13 @@ days:
 | [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from — and, since [#582](https://github.com/NobuData/ouroboros/issues/582), *what the registry says about the same names*: mockup 21's eighth (unbound) alias, the params behind every chip, the one price override, and run #482's resolution snapshot | [#192](https://github.com/NobuData/ouroboros/issues/192), [#582](https://github.com/NobuData/ouroboros/issues/582) |
 | [`R__dev_seed_audit.sql`](migrations/R__dev_seed_audit.sql) | *Who touched the keys* — the credential trail mockup 07's **Audit log** sheet opens, including a failed rotation and a lease grant with no actor | [#225](https://github.com/NobuData/ouroboros/issues/225) |
 | [`R__dev_seed_sources.sql`](migrations/R__dev_seed_sources.sql) | *Where the work comes from* — the two trackers `acme-robotics` ingests from: an active `github` source over its four enabled repositories, and a paused `jira` source with no repository in it at all. Sources only; `tickets` is left empty, because the intake seed already holds mockup 03's backlog and the copy nothing renders is the copy that drifts | [#138](https://github.com/NobuData/ouroboros/issues/138) |
+| [`R__dev_seed_workflows.sql`](migrations/R__dev_seed_workflows.sql) | *What it does with it* — mockup 04's studio: the rail's five workflows, `standard-fix`'s twelve-node canvas at v14 with the fourteen versions that number implies, the draft the page head's *Last edited 2h ago* is read from, and the paused `hotfix-p0` behind the rail's err-dot | [#136](https://github.com/NobuData/ouroboros/issues/136) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
 > their *descriptions*, and every row the later seeds write finds its parent by natural key —
 > so `dev_seed_audit`, `dev_seed_dashboard`, `dev_seed_intake`, `dev_seed_providers`,
-> `dev_seed_routing` and `dev_seed_sources` all have to sort after `dev_seed`, and
-> `dev_seed_routing` after `dev_seed_providers` besides,
+> `dev_seed_routing`, `dev_seed_sources` and `dev_seed_workflows` all have to sort after
+> `dev_seed`, and `dev_seed_routing` after `dev_seed_providers` besides,
 > since every alias binds to a connection by kind and name. They do. `tests/seed.test.sh`
 > asserts the whole order, because the failure mode is silent: applied in the wrong order,
 > every join finds nothing, every insert inserts nothing, and a second `migrate` does not put
@@ -771,6 +775,51 @@ it is drawn from six tables plus the connections above:
 of* the providers seed's remainder rather than on top of it — so mockup 02's *Token spend ·
 today* card and mockup 07's month meters both read exactly what they read without it.
 
+#### What it does with the work
+
+Mockup 04's studio, all of it in `acme-robotics`. Two tables, and one of them holds documents
+rather than columns:
+
+| Table | Rows | What mockup 04 renders from them |
+|---|---|---|
+| `workflows` | 5 | The rail — `standard-fix`, `feature-loop`, `deps-refresh`, `docs-loop` and the paused `hotfix-p0` the err-dot belongs to — and the page head's title and `v14` chip |
+| `workflow_versions` | 19 | `standard-fix`'s fourteen versions, one apiece for the other four, and the draft the head's *Last edited 2h ago* and its **Publish v15** button are both read from |
+
+The definitions are P.2 documents
+([`schemas/workflow-dsl/v1.json`](../schemas/workflow-dsl/v1.json)), and `standard-fix`'s v14
+is the committed fixture `schemas/workflow-dsl/fixtures/valid/standard-fix.json` written out —
+the canvas node for node, at the positions the mockup draws them at, with its twelve edges
+including the dashed loop back from the gate to implement. A migration cannot read a file, so
+the copy is closed from the other side:
+`ouroboros-rest/src/modules/workflows/dsl.seed.spec.ts` runs the real validator over every
+document in the seed and compares that one against the fixture, and
+[`tests/seed.sql`](tests/seed.sql) asserts the graph against the mockup's own coordinates.
+
+> **`v14` is fourteen rows, not a column with a 14 in it.** `workflow_version_next` (V029)
+> holds version numbers dense from 1, so a workflow cannot be published straight to its
+> fourteenth. What the seed does *not* do is invent thirteen graphs: v1–v13 are one six-node
+> predecessor, each version raising the implement stage's token budget by 20k, and each change
+> note naming the number its own document carries. That predecessor is also where the
+> mockup's own disagreement with itself is resolved — see below.
+
+> **The rail reads `12 stages · auto-merge` where the mockup wrote `6 stages`.** A stage is a
+> node — the canvas toolbar's **Add stage** adds one, the inspector's **Delete stage** deletes
+> one, and mockup 20 counts the same way — and the mockup's caption was written beside a
+> canvas of six work stages that has since grown to twelve nodes.
+> [#135](https://github.com/NobuData/ouroboros/issues/135) left the choice to this seed, which
+> takes the ticket's twelve-node canvas and the caption it earns; the six-stage document the
+> string was written for is v13. The other four captions are the mockup's exactly:
+> `7 stages · auto-merge`, `5 stages · needs review`, `4 stages · auto-merge` and
+> `5 stages · paused`.
+
+> **The head's *used by 61% of runs* reads `used by 42% of runs`, and the seed does not fake
+> it.** That share is computed over `runs`, where the dashboard seed's fifty-three rows in the
+> trailing thirty days include twenty-two under `standard-fix`. No retagging reaches 61%
+> either — 61% of 53 is 32.33, and 32 runs give 60% while 33 give 62% — so the mockup's string
+> would need a different number of runs, which is mockup 02's figure and four of its cards'
+> arithmetic. `tests/seed.sql` asserts 22 of 53, so an edit to either seed that moves the
+> subline fails a test rather than a design review.
+
 **`kensuenobu` and `acme-labs` get no dashboard rows at all.** That is not an omission: the
 personal workspace is the *empty-state fixture* the zero-state cards
 ([#86](https://github.com/NobuData/ouroboros/issues/86)) are rendered against, so switching
@@ -778,7 +827,10 @@ the active organization to it is how a developer sees the empty dashboard. **Nei
 provider connection either**, which is the same fixture for mockup 07's *connect your first
 provider* guidance ([#233](https://github.com/NobuData/ouroboros/issues/233)). Neither gets a
 `workspace_settings` row either, which keeps "answered no" and "never asked" distinguishable
-— `workspace_settings_effective` resolves both to `false`, and only it says which.
+— `workspace_settings_effective` resolves both to `false`, and only it says which. **And
+neither gets a workflow**, which is the studio's own empty state: a workspace that has never
+opened it has an empty rail and a **+ New workflow** tile, and that is what switching to the
+personal workspace shows.
 
 Every seeded row carries an id beginning `5eed` —
 `5eed0001-0000-4000-8000-000000000001` is the acme-robotics organization,
@@ -793,7 +845,10 @@ events — which is also what keeps its usage rows and the dashboard's apart on 
 table both of them write. The routing seed takes the six after *those* — `5eed000f…`
 aliases, `5eed0010…` task kinds, `5eed0011…` routes, `5eed0012…` hops, `5eed0013…` rules and
 `5eed0014…` its own routed calls — so all three of the seeds that write `token_usage` are
-told apart by the first two hex digits of a row's id.
+told apart by the first two hex digits of a row's id. The workflows seed takes the two after
+the sources seed's — `5eed001b…` a workflow and `5eed001c…` one of its versions — and builds
+each id from the rail's ordinal and the version number, with `…0000000000` for the draft,
+which is a version a row does not have.
 
 **Neither can run against anything but a development database.** Each statement in either
 seed ends `and ${ouro_dev_seed}`, a Flyway placeholder that is `false` in
@@ -939,10 +994,12 @@ as the shell suites share [`../scripts/lib/checks.sh`](../scripts/lib/checks.sh)
 every uniqueness rule, check constraint, cascade, trigger and index the migrations claim
 — because `validate` compares checksums rather than behaviour, and a `unique` on the
 wrong columns passes it. [`tests/seed.sql`](tests/seed.sql) asserts the opposite side:
-what the six `R__dev_seed*.sql` migrations actually put in a development database, one
+what the eight `R__dev_seed*.sql` migrations actually put in a development database, one
 assertion per row — the workspaces, mockup 02's dashboard number for number, mockup 03's
-backlog and the estimates behind its chips, and mockup 07's five provider cards with the
-meters their two seeds add up to.
+backlog and the estimates behind its chips, mockup 07's five provider cards with the
+meters their two seeds add up to, and mockup 04's studio: the canvas against the mockup's
+own coordinates, the rail's five captions recomputed the way P.4 composes them, and a dry
+run of the seeded `#485` walked edge by edge through the graph.
 [`tests/registry-invariants.sql`](tests/registry-invariants.sql) is the third, and it is a
 second way into a file rather than a third body of assertions:
 [`tests/lib/registry-invariants.sql`](tests/lib/registry-invariants.sql) is CG.5's
@@ -1426,6 +1483,7 @@ ouroboros-db/
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
 │   ├── R__dev_seed_routing.sql       # mockup 06 as rows, and mockup 21's registry over them, dev only — #192, #582 (sorts after the above)
 │   ├── R__dev_seed_sources.sql       # the two trackers acme-robotics ingests from, dev only — #138 (sorts after the above)
+│   ├── R__dev_seed_workflows.sql     # mockup 04's studio — five workflows, standard-fix at v14, dev only — #136 (sorts after the above)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -1731,6 +1789,7 @@ provider schema extensions, discovered models & seeds [#221](https://github.com/
 GitHub issue cache schema [#99](https://github.com/NobuData/ouroboros/issues/99) *(done)* ·
 issue estimates schema [#100](https://github.com/NobuData/ouroboros/issues/100) *(done)* ·
 workflow & version schema [#132](https://github.com/NobuData/ouroboros/issues/132) *(done)* ·
+studio dev seeds [#136](https://github.com/NobuData/ouroboros/issues/136) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).

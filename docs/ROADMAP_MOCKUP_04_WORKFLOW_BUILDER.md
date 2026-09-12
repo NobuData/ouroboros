@@ -227,7 +227,7 @@ issue below is assigned to its epic's milestone. Complexity chips: **XS · S · 
 | P.2 | #133 | 🟢 Done | ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation | Published schema for nodes/edges/predicates; zod + pydantic parity | mvp, workflow, rest, engine | N (after P.1) | Y | L | ouroboros-rest, ouroboros-engine |
 | P.3 | #134 | 🟢 Done | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
 | P.4 | #135 | 🟢 Done | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
-| P.5 | #136 | 🟡 Open | ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity | Five workflows incl. standard-fix's full graph at v14 | mvp, workflow, db | N (after P.2) | Y | M | ouroboros-db |
+| P.5 | #136 | 🟢 Done | ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity | Five workflows incl. standard-fix's full graph at v14 | mvp, workflow, db | N (after P.2) | Y | M | ouroboros-db |
 | P.6 | #137 | 🟡 Open | ouroboros-db: [P.6] Workflow constraints in ci/db | Version immutability, status vocab, definition-schema drift check | mvp, workflow, db, ci | N (after P.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue P.1 — ouroboros-db: [P.1] Workflow & version schema
@@ -521,7 +521,11 @@ draft PUT (etag) ─▶ autosave · publish POST ─▶ [zod ✓][engine ✓] �
     needs a privileged terminal to walk towards, it changes when an author adds an unrelated
     branch, and it would make mockup 20's own `9 stages` wrong — so **#136's seed decides which
     number the seeded `standard-fix` renders**, and the caption is honest about whatever
-    document is published. Every other mockup caption is reproduced exactly.
+    document is published. Every other mockup caption is reproduced exactly. **#136 decided,
+    2026-09-12:** the twelve-node canvas is seeded and the rail reads `12 stages · auto-merge`,
+    with the six-stage document the mockup's string was written for kept as that workflow's
+    v13. The head's `used by 61% of runs` was not decidable the same way — it reads `used by
+    42% of runs`, and no integer count of the seeded runs rounds to 61%. See P.5.
   * **A workflow with no version in force reads `not published`, never `0 stages`.** That is
     the state **+ New workflow** leaves behind, and zero would be a number about a document
     nobody published. The join to `workflow_versions` is therefore a `left join`: such a
@@ -589,7 +593,7 @@ registry(active) ─▶ assign menu · estimator tags ─▶ 422 queue_workflow_
 
 ### Issue P.5 — ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity
 
-> **GitHub issue:** #136 · **Status:** 🟡 Open · **Parent epic:** #127
+> **GitHub issue:** #136 · **Status:** 🟢 Done · **Parent epic:** #127
 
 - **Problem Statement:** Design review and e2e need the mockup's exact studio
   state: five workflows, and standard-fix's complete 12-node graph at v14 with
@@ -615,10 +619,91 @@ registry(active) ─▶ assign menu · estimator tags ─▶ 422 queue_workflow_
   the six-stage graph the caption was written for. The other four workflows'
   captions (`7`, `5 · needs review`, `4`, `5 · paused`) are node counts already
   and need no such choice.
+- **Settled 2026-09-12 — the twelve-node canvas, and `12 stages · auto-merge`.**
+  The seed takes the graph this ticket asks for and the caption it earns; the
+  six-stage document the mockup's string was written for is `standard-fix` **v13**,
+  which is where a document that is no longer in force belongs. The head's
+  `used by 61% of runs` was settled the other way and could not be: it reads
+  `used by 42% of runs`, 22 of the dashboard seed's 53, and no integer count of
+  those runs rounds to 61%.
 - **Parallelism/Dependencies:** Needs P.2 (+INTAKE-K.5 coordination). Feeds
   R/S tests, e2e.
 - **Technical Stack:** Flyway repeatable migration, SQL/JSON.
 - **Epic:** P
+- **Decided in-issue and shipped as
+  `ouroboros-db/migrations/R__dev_seed_workflows.sql`, its sections in
+  `ouroboros-db/tests/{seed.sql,seed.test.sh}`, and
+  `ouroboros-rest/src/modules/workflows/dsl.seed.spec.ts`:**
+
+  * **A stage is a node, and the seeded `standard-fix` renders `12 stages · auto-merge`.**
+    This is P.4's open question settled, in the direction the ticket asks for: the twelve-node
+    canvas is seeded, positions included, and the caption is honest about the document in
+    force. The six-stage document the mockup's `6 stages` was written for is not discarded —
+    it is **v13**, and every version before it, which is where a document that is no longer in
+    force belongs. The other four captions are the mockup's exactly.
+  * **`v14` is fourteen rows, and that is what makes *version history depth ≥ 2* free.**
+    `workflow_version_next` holds versions dense from 1, so there is no such thing as a
+    workflow *at* v14 with two rows behind it. What the seed refuses to do is invent thirteen
+    graphs: v1–v13 are one six-node predecessor, each version raising the implement stage's
+    token budget by 20k, and every change note names the number its own document carries —
+    which `tests/seed.sql` asserts, so a note cannot come to describe a change that was not
+    made.
+  * **`standard-fix` carries a draft, because the mockup's page head does.**
+    `WorkflowDraft.updatedAt` is *"the mockup's Last edited, or null when there is no draft"*,
+    so *Last edited 2h ago* beside **Publish v15** is the head of a workflow with one open.
+    Its document is v14's, which is exactly what P.3's start-editing leaves behind, so the
+    canvas renders the mockup's graph whether the studio opens the draft or the version in
+    force. The other four have none, which puts both sides of
+    `workflow_versions_one_draft_idx` in one workspace.
+  * **The head reads `used by 42% of runs`, and the seed does not fake 61%.** Twenty-two of
+    the dashboard seed's fifty-three runs in the window carry this slug. 61% is not reachable
+    by retagging either — 61% of 53 is 32.33, and 32 runs give 60% while 33 give 62% — so the
+    mockup's string would need a different number of runs, which is mockup 02's figure and
+    four of its cards' arithmetic. `tests/seed.sql` asserts 22 of 53, so an edit to either
+    seed that moves the subline fails a test rather than a design review. The design wants
+    amending, as ROADMAP-06's two spend figures did.
+  * **The rail's order is `created_at`, so the dates are the order.** P.4 lists `order by
+    created_at asc, slug asc`, and an alphabetical seed would have put `deps-refresh` at the
+    top of the studio. The five are 120, 96, 72, 54 and 27 days old, and each one's
+    `created_at` is the instant its own v1 was published.
+  * **Three statements, and the one `update` in any seed in this module.** The two tables
+    reference each other — `workflows.current_version` names a `workflow_versions` row — so a
+    workflow cannot arrive with its pointer set. The entities land first, the history second,
+    and the pointer third, guarded by `is distinct from` so a second application does not even
+    move `updated_at` through the touch trigger. One consequence is stated rather than left to
+    be found: `workflows.updated_at` is the moment the seed applied, while `created_at` is in
+    the fiction.
+  * **`on conflict do nothing` is not enough, for R__dev_seed_intake.sql's reason.**
+    `workflow_version_next` is a BEFORE trigger, so a second application raises — *"the next
+    version of workflow … is v2, not v1"* — before PostgreSQL looks at the conflicting key.
+    The versions insert therefore carries a `not exists` guard phrased as *a version at or
+    above this one already exists*, which also makes it **converge**: a history somebody
+    truncated to v5 is rebuilt from v6 rather than failing on the first row offered. Verified
+    both ways against a throwaway `postgres:17-alpine`.
+  * **v14 is the committed fixture, and the copy is closed from the other side.** A Flyway
+    migration is SQL and cannot read a file, so
+    `schemas/workflow-dsl/fixtures/valid/standard-fix.json` is written out in the seed —
+    and `dsl.seed.spec.ts` runs P.2's **real** validator over every document in the file and
+    compares that one against the fixture. Edit either and the suite names the other. No
+    second implementation of the grammar was written for this ticket, which is decision P3's
+    whole point; re-recording the four new documents in `fixtures/expected.json` was rejected
+    for the opposite reason — that file is the frozen parity contract two services assert
+    against, and a seed is not a rule.
+  * **The rules JSON Schema cannot state are asserted in SQL.** *"Every node is reachable from
+    the trigger"* is not a property of a value, so `tests/seed.sql` walks every one of the
+    nineteen stored definitions with a recursive CTE: one trigger, somewhere to end, every
+    stage reached, nothing returning to a trigger, nothing leaving a terminal. It runs in
+    `ci/db` today through #24's existing step.
+  * **The `#485` dry run is a walk, not a list.** The acceptance criterion is asserted by
+    following every edge whose condition holds for the seeded ticket — the effort predicates
+    against the estimate in force, the check predicates on the happy path — and requiring
+    *one* path, which is the graph being deterministic for that ticket, and that it be
+    `issue-queued → analyze → effort-recheck → plan → implement → build → test → review →
+    checks-green → open-pr`. A static list of ten ids would still pass with an edge deleted.
+  * **What #137 inherits.** Validating the seeded definitions against the committed schema in
+    `ci/db` is still P.6's; what it no longer has to invent is where the documents are or what
+    they must satisfy — `dsl.seed.spec.ts` is the extraction and the verdict, and
+    `tests/seed.sql` the structural half.
 
 ```
 seeds: standard-fix v14 (12 nodes · 12 edges · loop-back) + 4 more workflows
@@ -637,6 +722,15 @@ seeds: standard-fix v14 (12 nodes · 12 edges · loop-back) + 4 more workflows
   check — schema change without migration fails).
 - **Acceptance Criteria:** Green on current schema; red on immutability breach or
   schema drift (spot-verified).
+- **Unblocked 2026-09-12 by P.5 (#136), which also narrowed it.** The seeded definitions
+  exist, and two of the things this ticket was going to have to build already do:
+  `ouroboros-rest/src/modules/workflows/dsl.seed.spec.ts` lifts every document out of
+  `R__dev_seed_workflows.sql` and runs P.2's real validator over it — schema, structure and
+  the fixture-parity check on `standard-fix` v14 — and `ouroboros-db/tests/seed.sql` asserts
+  the structural rules in SQL against the seeded rows. What is left for P.6 is the
+  `constraints.sql` probes (immutability, status vocabulary, version uniqueness and density,
+  the one-draft rule) and the `ci/db` **step** that makes the schema check a gate on a
+  migration change rather than a rest-suite assertion.
 - **Parallelism/Dependencies:** Needs P.5, #24.
 - **Technical Stack:** GitHub Actions, SQL, ajv (schema check).
 - **Epic:** P

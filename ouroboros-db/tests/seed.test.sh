@@ -3,8 +3,9 @@
 # seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
 # migrations/R__dev_seed_audit.sql, migrations/R__dev_seed_dashboard.sql,
 # migrations/R__dev_seed_intake.sql, migrations/R__dev_seed_providers.sql,
-# migrations/R__dev_seed_routing.sql, migrations/R__dev_seed_sources.sql, and the
-# configuration that decides whether they do anything.
+# migrations/R__dev_seed_routing.sql, migrations/R__dev_seed_sources.sql,
+# migrations/R__dev_seed_workflows.sql, and the configuration that decides whether they do
+# anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
 # so the properties worth testing are the ones that keep those two apart: that a
@@ -12,14 +13,15 @@
 # deliberate `--config` resolve it to `true`, and that every statement in either file is
 # behind that guard and can be applied twice.
 #
-# There are seven files because they answer different questions — R__dev_seed.sql (#23) is
+# There are eight files because they answer different questions — R__dev_seed.sql (#23) is
 # *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
 # R__dev_seed_intake.sql (#103) is *what it has an opinion about next*,
 # R__dev_seed_providers.sql (#221) is *what it is allowed to call*,
-# R__dev_seed_routing.sql (#192) is *how it decides which one to call*, and
-# R__dev_seed_audit.sql (#225) is *who touched the keys*, and R__dev_seed_sources.sql
-# (#138) is *where the work comes from* — and the structural rules below are asserted over
-# all of them, in a loop, so that an eighth seed inherits them by being added to one list.
+# R__dev_seed_routing.sql (#192) is *how it decides which one to call*,
+# R__dev_seed_audit.sql (#225) is *who touched the keys*, R__dev_seed_sources.sql (#138) is
+# *where the work comes from*, and R__dev_seed_workflows.sql (#136) is *what it does with
+# it* — and the structural rules below are asserted over all of them, in a loop, so that a
+# ninth seed inherits them by being added to the one list at the top.
 #
 # All of it is a file read plus the stubbed runners tests/lib/fixture.sh provides, so
 # this needs no database, no Docker and no network — the same contract as
@@ -63,6 +65,7 @@ PROVIDERS_SEED="$MODULE_DIR/migrations/R__dev_seed_providers.sql"
 ROUTING_SEED="$MODULE_DIR/migrations/R__dev_seed_routing.sql"
 AUDIT_SEED="$MODULE_DIR/migrations/R__dev_seed_audit.sql"
 SOURCES_SEED="$MODULE_DIR/migrations/R__dev_seed_sources.sql"
+WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -96,6 +99,7 @@ PROVIDERS_BODY="$work/seed-body-providers.sql"
 ROUTING_BODY="$work/seed-body-routing.sql"
 AUDIT_BODY="$work/seed-body-audit.sql"
 SOURCES_BODY="$work/seed-body-sources.sql"
+WORKFLOWS_BODY="$work/seed-body-workflows.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
@@ -103,6 +107,7 @@ seed_body "$PROVIDERS_SEED" "$PROVIDERS_BODY"
 seed_body "$ROUTING_SEED" "$ROUTING_BODY"
 seed_body "$AUDIT_SEED" "$AUDIT_BODY"
 seed_body "$SOURCES_SEED" "$SOURCES_BODY"
+seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -126,11 +131,12 @@ check_exists "$PROVIDERS_SEED" 'migrations/R__dev_seed_providers.sql exists'
 check_exists "$ROUTING_SEED" 'migrations/R__dev_seed_routing.sql exists'
 check_exists "$AUDIT_SEED" 'migrations/R__dev_seed_audit.sql exists'
 check_exists "$SOURCES_SEED" 'migrations/R__dev_seed_sources.sql exists'
+check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
-                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED"; do
+                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED" "$WORKFLOWS_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -160,6 +166,8 @@ audit_description=$(basename -- "$AUDIT_SEED" .sql)
 audit_description=${audit_description#R__}
 sources_description=$(basename -- "$SOURCES_SEED" .sql)
 sources_description=${sources_description#R__}
+workflows_description=$(basename -- "$WORKFLOWS_SEED" .sql)
+workflows_description=${workflows_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -175,12 +183,16 @@ sources_description=${sources_description#R__}
 # has nothing to join to. It is still asserted, because a seed added later between them
 # would inherit the position without inheriting the argument.
 #
-# The sources seed (#138) sorts last, and only needs to: it hangs off the first seed for its
-# workspace and off nothing else, because V030's two tables are the first of their domain.
-check_equals "$(printf '%s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" |
+# The sources seed (#138) sorts after those, and only needs to: it hangs off the first seed
+# for its workspace and off nothing else, because V030's two tables are the first of their
+# domain. The workflows seed (#136) sorts last and hangs off the first seed twice — the
+# workspace by slug and the publishers by email — and off nothing else; its own three
+# statements depend on *each other* in file order, which is the ordering a single file gets
+# for free and its header explains.
+check_equals "$(printf '%s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" "$workflows_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" "$workflows_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the seven seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the eight seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -190,8 +202,16 @@ check_equals "$(printf '%s %s %s %s %s %s %s' "$base_description" "$audit_descri
 # carries a deferrable unique key, and PostgreSQL refuses a targetless `on conflict` on
 # such a table outright. Naming the primary key is what that statement does instead, and it
 # is still the "applied twice writes nothing" rule this check exists for.
+#
+# **An `update` counts as a statement and not as an insert**, which is the shape
+# R__dev_seed_workflows.sql needs (#136): `workflows.current_version` points into
+# `workflow_versions`, so the pointer cannot be written until the version it names exists and
+# a third statement moves it. There is no `on conflict` on an update, so what is counted is
+# the guard — every statement has one — while the conflict clause is counted against the
+# inserts alone. What makes such an update idempotent is asserted where it lives, in that
+# seed's own section below.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
-                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED"; do
+                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED" "$WORKFLOWS_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -200,13 +220,16 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
   [ "$seed_file" = "$PROVIDERS_SEED" ] && body=$PROVIDERS_BODY
   [ "$seed_file" = "$ROUTING_SEED" ] && body=$ROUTING_BODY
   [ "$seed_file" = "$SOURCES_SEED" ] && body=$SOURCES_BODY
+  [ "$seed_file" = "$WORKFLOWS_SEED" ] && body=$WORKFLOWS_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
-  guards=$(count_lines '^ *(where|and) \$\{ouro_dev_seed\}$' "$body")
+  updates=$(count_lines '^update ouroboros\.' "$body")
+  statements=$((inserts + updates))
+  guards=$(count_lines '^ *(where|and) \$\{ouro_dev_seed\};?$' "$body")
   conflicts=$(count_lines '^on conflict( \([a-z_]+\))? do nothing;$' "$body")
 
   check_matches "$inserts" '^[1-9][0-9]*$' "$name inserts something"
-  check_equals "$inserts" "$guards" "every insert in $name is behind the \${ouro_dev_seed} guard"
+  check_equals "$statements" "$guards" "every statement in $name is behind the \${ouro_dev_seed} guard"
   check_equals "$inserts" "$conflicts" "every insert in $name ends \`on conflict do nothing\`"
 
   # Deterministic ids are what let a test, a URL or a fixture name a seeded row. A
@@ -217,6 +240,8 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
   # history, not to a table another module owns.
   check_equals "$inserts" "$(count_lines '^insert into ' "$body")" \
     "$name writes only into the ouroboros schema"
+  check_equals "$updates" "$(count_lines '^update ' "$body")" \
+    "$name updates nothing outside it either"
   check_absent "$body" 'flyway_schema_history' \
     "$name does not touch Flyway's history table"
 
@@ -622,6 +647,74 @@ for shape in 'ghp_' 'github_pat' 'glpat-' 'ATATT'; do
 done
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_workflows.sql — mockup 04's studio
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_workflows.sql — the workflows\n'
+
+# Two prefixes, because there are two tables, and both ids are computed from an ordinal and a
+# version rather than written out nineteen times — the dashboard seed's idiom, and as
+# deterministic as a literal.
+check_contains "$WORKFLOWS_BODY" '5eed001b-0000-4000-8000-' \
+  'the workflows seed builds its entity ids from the 5eed001b… prefix'
+check_contains "$WORKFLOWS_BODY" '5eed001c-0000-4000-8000-' \
+  'and its version ids from the 5eed001c… one, so the two tables are told apart on sight'
+
+# The two tables, and nothing else. V029 is the whole of this seed's schema.
+workflows_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$WORKFLOWS_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'workflow_versions workflows ' "$workflows_tables" \
+  'the workflows seed writes the two tables V029 added and no third'
+
+# **The update is the one statement in any seed that is not an insert, and this is what makes
+# it idempotent.** Without `is distinct from` a second application would match all five rows,
+# change nothing in them, and still move `updated_at` through `workflows_touch_updated_at` —
+# which is precisely the "applied twice writes nothing" rule the loop above enforces on the
+# inserts. There is one update and it carries the clause.
+check_equals 1 "$(count_lines '^update ouroboros\.' "$WORKFLOWS_BODY")" \
+  'the workflows seed has exactly one update — the pointer the two tables'"'"' cycle forces out of the insert'
+check_contains "$WORKFLOWS_BODY" 'current_version is distinct from' \
+  'and it only writes a pointer that is actually moving, so a second pass does not even touch a timestamp'
+
+# **The guard `on conflict do nothing` cannot provide.** `workflow_version_next` is a BEFORE
+# trigger, so on a second application it raises before PostgreSQL looks at the conflicting
+# key — the same trap R__dev_seed_intake.sql hit with `issue_estimates_version_monotonic`. The
+# `not exists` is what makes a re-applied seed a no-op rather than a failed `migrate`.
+check_contains "$WORKFLOWS_BODY" 'not exists \(select 1' \
+  'the versions insert holds the density trigger off a row that already exists'
+check_contains "$WORKFLOWS_BODY" 'order by seed\.slug, seed\.version' \
+  'and offers the versions in ascending order, because that trigger checks each row as it is written'
+
+# Parents by natural key, as every other seed does: the workspace by slug and the publishers
+# by email. No id from another seed appears.
+check_absent "$WORKFLOWS_BODY" '5eed0001-0000-4000-8000' \
+  'the workflows seed names no workspace id — it joins acme-robotics by slug'
+check_absent "$WORKFLOWS_BODY" '5eed0003-0000-4000-8000' \
+  'and no person id — it joins the publishers by email'
+
+# Every instant is relative to now(), so the history stays plausible however long after the
+# seed was written the stack is brought up — and *Last edited 2h ago* stays two hours.
+check_absent "$WORKFLOWS_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the workflows seed carries no literal date; every stamp is an interval before now()'
+
+# The six documents, each under its own dollar-quoted tag. Named here as well as in
+# ouroboros-rest's dsl.seed.spec.ts, which is what validates them: a document *renamed* would
+# leave that spec asserting nothing about it, and this is the half of the pair that can see a
+# tag disappear without a database or a validator.
+for tag in standard_fix_v14 standard_fix_v1 feature_loop_v1 deps_refresh_v1 docs_loop_v1 \
+           hotfix_p0_v1; do
+  check_equals 2 "$(count_lines "\\\$$tag\\\$" "$WORKFLOWS_BODY")" \
+    "the $tag document is written once, opened and closed by its own tag"
+done
+
+# And the canvas says where it came from. The migration cannot read a file, so v14 is written
+# out in it and the drift is closed the other way — by a spec that compares the two.
+check_contains "$WORKFLOWS_SEED" 'schemas/workflow-dsl/fixtures/valid/standard-fix\.json' \
+  'the seed says which committed fixture its v14 canvas is a copy of'
+check_contains "$WORKFLOWS_SEED" 'schemas/workflow-dsl/v1\.json' \
+  'and which schema every definition in it is written against'
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -635,6 +728,7 @@ check_contains "$README" 'R__dev_seed_providers\.sql' 'README.md documents the p
 check_contains "$README" 'R__dev_seed_routing\.sql' 'README.md documents the routing seed'
 check_contains "$README" 'R__dev_seed_audit\.sql' 'README.md documents the audit seed'
 check_contains "$README" 'R__dev_seed_sources\.sql' 'README.md documents the sources seed'
+check_contains "$README" 'R__dev_seed_workflows\.sql' 'README.md documents the workflows seed'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'
