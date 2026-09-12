@@ -43,34 +43,49 @@
  * ([#281](https://github.com/NobuData/ouroboros/issues/281)) both act on, and configuring a
  * route is what changes it.
  *
- * ## What is a constant here, and why that is not a shrug
+ * ## The tags come from the workflow registry, and they used to be a constant here
  *
- * {@link WORKFLOW_TAGS} is a list in this file because there is nowhere else for it to be
- * yet: workflow *entities* are mockup 04's, no migration declares one, and `runs.workflow_tag`
- * is opaque text by decision **F8** precisely so that a vocabulary can arrive later. The four
- * below are the four the bundled estimator classifies into and the four mockup 03 renders, so
- * this constant is the same claim the rest of the system already makes — written down once,
- * where the request is built, rather than implied in four places. When mockup 04's catalog
- * lands it replaces this constant and nothing else in this module changes.
+ * They were a list in this file while there was nowhere else for them to be — workflow
+ * *entities* were mockup 04's, no migration declared one, and `runs.workflow_tag` is opaque
+ * text by decision **F8** precisely so that a vocabulary could arrive later. This file
+ * predicted the move in as many words: *"when mockup 04's catalog lands it replaces this
+ * constant and nothing else in this module changes."*
+ *
+ * It has landed. V029 created `workflows`, and P.4
+ * ([#135](https://github.com/NobuData/ouroboros/issues/135)) is the registry over it — so
+ * `workflowTags` is now **this workspace's** active workflows rather than four names every
+ * installation shared, which is the amendment absorbed from
+ * [#124](https://github.com/NobuData/ouroboros/issues/124). Nothing else in this module
+ * changed, and the constant did not disappear: a workspace with no workflows of its own is
+ * still offered decision **K5**'s four, as `workflows/registry.service.ts`'
+ * `BOOTSTRAP_WORKFLOW_SLUGS`, and that file is where the reasoning for the fallback lives.
+ *
+ * **The set is still what an answer is held to.** The engine refuses an estimate naming
+ * anything outside the offered tags before answering, which is why nothing downstream
+ * re-checks the answer — and it is why a workspace's own vocabulary reaching the engine is the
+ * whole of what this amendment had to do.
+ *
+ * ## The one bound a registry brings that a constant did not
+ *
+ * `EstimationContext.workflow_tags` is capped at {@link MAX_OFFERED_WORKFLOW_TAGS} by the
+ * engine's own contract (`estimation/contract.py`'s `MAX_WORKFLOW_TAGS`), and it is a *refusal*
+ * there rather than a truncation: a longer list is a `422` and no estimate at all. Four names
+ * in a constant could never reach it; a workspace's registry can. So the list is cut here —
+ * keeping the rail's own order, which is the order the workflows were created, so that adding
+ * one does not change which sixty-four are offered — because the trade is between an estimate
+ * that cannot suggest the workspace's sixty-fifth workflow and no estimate for that workspace
+ * whatsoever. It is logged when it happens, since it means the two bounds need reconciling
+ * rather than that anything is wrong with the request.
+ *
+ * Slug *length* needs no such care: `workflows_slug_format` holds a slug to 64 characters,
+ * which is exactly the engine's `MAX_TAG_LENGTH`.
  */
 
 import { Injectable, Logger } from "@nestjs/common";
 
 import type { EstimationContext } from "../engine/engine.contract";
 import { ResolutionService } from "../routing/resolution.service";
-
-/**
- * Every workflow tag this installation has.
- *
- * The four the mockup's backlog table renders and the four `heuristic-v0` classifies into. The
- * engine only ever *prefers* one of them — `estimation/heuristic.py`'s `offered_tag` falls back
- * through `standard-fix` to whatever was offered first — so this list is what an answer is held
- * to rather than a hint.
- *
- * `standard-fix` is first deliberately: it is the fallback the estimator reaches for by name,
- * and a reader should not have to check that the list happens to contain it.
- */
-export const WORKFLOW_TAGS = ["standard-fix", "docs-loop", "feature-loop", "deps-refresh"] as const;
+import { WorkflowRegistryService } from "../workflows/registry.service";
 
 /**
  * The `model_defaults` keys this service offers, and the task kind each resolves through.
@@ -98,40 +113,64 @@ export const MODEL_DEFAULT_KINDS: Readonly<Record<string, string>> = Object.free
   docs: "docs",
 });
 
+/**
+ * How many workflow tags one estimate request may offer.
+ *
+ * `MAX_WORKFLOW_TAGS` in `ouroboros-engine`'s `estimation/contract.py`, mirrored — the engine
+ * refuses a longer list outright, so the number has to be known on this side of the call. See
+ * this file's header on why a list this long is truncated rather than sent.
+ */
+export const MAX_OFFERED_WORKFLOW_TAGS = 64;
+
 @Injectable()
 export class EstimationContextService {
-  /** Where a workspace that cannot be routed is reported. Once per workspace per attempt. */
+  /**
+   * Where a workspace that cannot be routed is reported, and where a registry longer than the
+   * engine's contract accepts is. Once per workspace per attempt, either way.
+   */
   private readonly logger = new Logger(EstimationContextService.name);
 
   /**
    * @param routing - Z.1's resolution, exported by `RoutingModule` as its one public contract.
    *   The same method `POST /api/v1/routing/simulate` serves, which is the whole point — see
    *   this file's header.
+   * @param workflows - P.4's registry, exported by `WorkflowsModule`. The same vocabulary a
+   *   bulk queue write is validated against, for the same reason the models come from
+   *   `ResolutionService`: one answer to *which workflows does this workspace have*, so the
+   *   assign menu and the estimator's offered tags cannot disagree.
    */
-  constructor(private readonly routing: ResolutionService) {}
+  constructor(
+    private readonly routing: ResolutionService,
+    private readonly workflows: WorkflowRegistryService,
+  ) {}
 
   /**
    * The vocabularies one workspace's estimates may use.
    *
-   * The resolutions are issued together: they are independent questions about unrelated task
-   * kinds, and a `Promise.all` is what keeps building a request one round trip deep rather than
-   * one per key.
+   * Every read is issued together: the two resolutions and the registry are independent
+   * questions about unrelated tables, and a `Promise.all` is what keeps building a request one
+   * round trip deep rather than one per answer.
    *
-   * @param organizationId - The workspace. Every resolution is scoped to it, so two workspaces
-   *   with different routes get different maps for the same issue.
-   * @returns The context to send, or `undefined` when nothing resolved — which means this
+   * @param organizationId - The workspace. Every read is scoped to it, so two workspaces with
+   *   different routes and different workflows get different vocabularies for the same issue.
+   * @returns The context to send, or `undefined` when no model resolved — which means this
    *   workspace has no routing configured and therefore no model an estimate could name. The
-   *   caller does not dispatch; see this file's header on why that is not `needs_human`.
+   *   caller does not dispatch; see this file's header on why that is not `needs_human`. An
+   *   empty *workflow* registry is deliberately not the same kind of answer: it has one, and
+   *   `workflows/registry.service.ts` gives it.
    */
   async forWorkspace(organizationId: string): Promise<EstimationContext | undefined> {
     const wanted = Object.entries(MODEL_DEFAULT_KINDS);
 
-    const resolved = await Promise.all(
-      wanted.map(async ([key, taskKind]) => ({
-        key,
-        model: await this.primaryModel(organizationId, taskKind),
-      })),
-    );
+    const [resolved, offered] = await Promise.all([
+      Promise.all(
+        wanted.map(async ([key, taskKind]) => ({
+          key,
+          model: await this.primaryModel(organizationId, taskKind),
+        })),
+      ),
+      this.workflows.offered(organizationId),
+    ]);
 
     const modelDefaults = Object.fromEntries(
       resolved
@@ -151,7 +190,33 @@ export class EstimationContextService {
       return undefined;
     }
 
-    return { workflowTags: [...WORKFLOW_TAGS], modelDefaults };
+    return { workflowTags: this.withinEngineBound(organizationId, offered.slugs), modelDefaults };
+  }
+
+  /**
+   * The offered tags, cut to what the engine's contract will accept.
+   *
+   * @param organizationId - The workspace, for the log line.
+   * @param slugs - What the registry offered, in the rail's order.
+   * @returns A copy — never the registry's own array, so nothing downstream can edit its
+   *   answer — holding at most {@link MAX_OFFERED_WORKFLOW_TAGS} of them.
+   */
+  private withinEngineBound(organizationId: string, slugs: readonly string[]): string[] {
+    if (slugs.length <= MAX_OFFERED_WORKFLOW_TAGS) {
+      return [...slugs];
+    }
+
+    this.logger.warn(
+      `Workspace ${organizationId} has ${slugs.length} active workflows and the engine's ` +
+        `estimation contract accepts ${MAX_OFFERED_WORKFLOW_TAGS} tags, so the ` +
+        `${slugs.length - MAX_OFFERED_WORKFLOW_TAGS} most recently created cannot be ` +
+        "suggested by an estimate. The rail's own order is kept rather than reversed, so which " +
+        "tags are offered does not change when a workflow is added; sending the whole list " +
+        "would be refused and leave these issues `unsized`, and raising MAX_WORKFLOW_TAGS in " +
+        "ouroboros-engine is what removes the cut.",
+    );
+
+    return slugs.slice(0, MAX_OFFERED_WORKFLOW_TAGS);
   }
 
   /**

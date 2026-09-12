@@ -3,12 +3,14 @@ import { join } from "node:path";
 
 import { HttpStatus } from "@nestjs/common";
 
+import { BOOTSTRAP_WORKFLOW_SLUGS } from "../workflows/registry.service";
 import {
   QUEUE_ERRORS,
   QUEUE_ISSUE_PROBLEMS,
   queueIssuesConflict,
   queueIssuesNotFound,
   queueIssuesNotQueueable,
+  queueWorkflowUnknown,
 } from "./queue.errors";
 
 /**
@@ -52,8 +54,38 @@ describe("the codes", () => {
     expect(SPECIFICATION).toContain(code);
   });
 
-  it("keeps the three refusals apart, because they are three statuses", () => {
-    expect(new Set(Object.values(QUEUE_ERRORS)).size).toBe(3);
+  it("keeps the four refusals apart", () => {
+    // Three of them are three different statuses on purpose. The fourth shares `422` with
+    // `queue_issues_not_queueable` and is a different code because it is about a different
+    // thing: one is the state of the issues, the other is a workflow the workspace does not
+    // have — and a client that had to read the message to tell them apart would branch wrongly.
+    expect(new Set(Object.values(QUEUE_ERRORS)).size).toBe(4);
+  });
+});
+
+describe("a workflow this workspace does not have", () => {
+  it("is a 422 naming the slug and the vocabulary it was held to", () => {
+    // The ticket's fourth criterion from the refusal's side: what the menu lists and what this
+    // accepts are one list, so a refusal can hand back the list rather than a shrug.
+    const error = queueWorkflowUnknown("midnight-loop", ["standard-fix", "hotfix-p0"]);
+
+    expect(error.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+    expect(error.envelope().code).toBe(QUEUE_ERRORS.workflowUnknown);
+    expect(error.envelope().details).toEqual({
+      workflow: "midnight-loop",
+      offered: ["standard-fix", "hotfix-p0"],
+    });
+  });
+
+  it("names the slug in the message, because there is exactly one offender", () => {
+    // Not bulk-shaped, unlike the three above: one request names one workflow, and it is not
+    // an issue — which is why `details` carries the vocabulary instead of a list of issues.
+    const { message, details } = queueWorkflowUnknown("midnight-loop", [
+      ...BOOTSTRAP_WORKFLOW_SLUGS,
+    ]).envelope();
+
+    expect(message).toContain("midnight-loop");
+    expect(details).not.toHaveProperty("issues");
   });
 });
 

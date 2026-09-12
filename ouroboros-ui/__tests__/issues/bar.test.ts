@@ -67,14 +67,28 @@ const CONTRACT = readFileSync(
 const SEEN = withSightings(new Map(), tableRows(SEEDED_ROWS));
 
 describe("the workflow menu's rows", () => {
-  it("are the contract's fixed set, every one and no other (decision K5)", () => {
-    // `QueueSelection.workflow`'s enum, read from the document rather than remembered.
-    const enumerated = /workflow:\n\s+type: string\n[\s\S]*?enum: \[([^\]]+)\]/.exec(
+  it("are every one a slug the contract's own shape accepts", () => {
+    // This used to compare the menu against `QueueSelection.workflow`'s **enum**, which was
+    // decision K5's four names and therefore the whole vocabulary. P.4
+    // ([#135](https://github.com/NobuData/ouroboros/issues/135)) made the vocabulary a
+    // workspace's own workflow registry, so the contract publishes a slug shape instead — and
+    // what is still checkable from here is the guarantee that matters to this menu: a row it
+    // draws can never be refused by the pipe for its *shape*. Whether the workspace has a
+    // workflow by that name is a `422 queue_workflow_unknown` carrying the real list, which is
+    // what S.1 (#147) will draw the menu from — see `app/issues/bar.ts`.
+    const published = /workflow:\n\s+type: string\n\s+pattern: (\S+)\n\s+maxLength: (\d+)/.exec(
       CONTRACT.slice(CONTRACT.indexOf("    QueueSelection:")),
     );
 
-    expect(enumerated).not.toBeNull();
-    expect(new Set(WORKFLOWS)).toEqual(new Set(enumerated![1]!.split(",").map((tag) => tag.trim())));
+    expect(published).not.toBeNull();
+
+    const shape = new RegExp(published![1]!);
+    const maxLength = Number(published![2]!);
+
+    for (const workflow of WORKFLOWS) {
+      expect(workflow).toMatch(shape);
+      expect(workflow.length).toBeLessThanOrEqual(maxLength);
+    }
   });
 
   it("lead with the tag the mockup's own button names", () => {

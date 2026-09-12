@@ -287,7 +287,13 @@ describe("TABLE_COLUMNS", () => {
     // The twenty-ninth is `issue_estimates` (V026, #100), which L.3 (#107) brought in for
     // exactly the same reason at exactly the same remove: K.2 landed the table, nothing wrote
     // a row of it, and the orchestration that fills it is the first thing here that does.
-    expect(TABLE_NAMES).toHaveLength(29);
+    //
+    // The thirtieth and thirty-first are `workflows` and `workflow_versions` (V029, #132),
+    // which P.4 (#135) brought in for the same reason a third time: V029 landed both with no
+    // writer anywhere, and the rail's stats are the first thing here to read one. Nothing in
+    // this service writes either — P.3 (#134) is the CRUD and #136 is the seed — so what the
+    // mirror declares is a read model plus the two `New…` shapes its suites arrange a rail with.
+    expect(TABLE_NAMES).toHaveLength(31);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

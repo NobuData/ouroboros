@@ -226,7 +226,7 @@ issue below is assigned to its epic's milestone. Complexity chips: **XS · S · 
 | P.1 | #132 | 🟢 Done | ouroboros-db: [P.1] Workflow & version schema | `workflows` + immutable `workflow_versions` (jsonb definition) | mvp, workflow, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | P.2 | #133 | 🟢 Done | ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation | Published schema for nodes/edges/predicates; zod + pydantic parity | mvp, workflow, rest, engine | N (after P.1) | Y | L | ouroboros-rest, ouroboros-engine |
 | P.3 | #134 | 🟡 Open | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
-| P.4 | #135 | 🟡 Open | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
+| P.4 | #135 | 🟢 Done | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
 | P.5 | #136 | 🟡 Open | ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity | Five workflows incl. standard-fix's full graph at v14 | mvp, workflow, db | N (after P.2) | Y | M | ouroboros-db |
 | P.6 | #137 | 🟡 Open | ouroboros-db: [P.6] Workflow constraints in ci/db | Version immutability, status vocab, definition-schema drift check | mvp, workflow, db, ci | N (after P.5, #24) | Y | XS | ouroboros-db, .github |
 
@@ -415,7 +415,7 @@ draft PUT (etag) ─▶ autosave · publish POST ─▶ [zod ✓][engine ✓] �
 
 ### Issue P.4 — ouroboros-rest: [P.4] Workflow usage & rail stats
 
-> **GitHub issue:** #135 · **Status:** 🟡 Open · **Parent epic:** #127
+> **GitHub issue:** #135 · **Status:** 🟢 Done · **Parent epic:** #127
 
 - **Problem Statement:** The head's `used by 61% of runs` and the rail captions
   (`6 stages · auto-merge`, `needs review`, `paused`) must be computed truth,
@@ -433,10 +433,84 @@ draft PUT (etag) ─▶ autosave · publish POST ─▶ [zod ✓][engine ✓] �
   INTAKE-M.3/L contexts.
 - **Technical Stack:** NestJS, Kysely.
 - **Epic:** P
+- **Decided in-issue and shipped as `ouroboros-rest/src/modules/workflows/{stats.captions,
+  stats.repository,stats.resources,stats.service,registry.service,workflows.module}.ts`,
+  plus the `workflows`/`workflow_versions` mirror in `modules/db/schema.ts`:**
+
+  * **A stage is a node — `nodes.length` of the version `current_version` points at.** The
+    issue's own diagram says so (`nodes.count = 6`), mockup 20's draft panel counts the same
+    way (`01 trigger` … `09 open PR`, captioned *9 stages*), and the canvas's **Add stage ▾**
+    and the inspector's **Delete stage** both act on a node. **The mockup contradicts itself
+    here and P.5 owns the resolution:** its rail caption reads `6 stages` beside a canvas of
+    twelve nodes, six being what the *primary path* holds once the trigger, the two forks, the
+    two terminals and the `> M` branch's `split` are left out. That reading was rejected — it
+    needs a privileged terminal to walk towards, it changes when an author adds an unrelated
+    branch, and it would make mockup 20's own `9 stages` wrong — so **#136's seed decides which
+    number the seeded `standard-fix` renders**, and the caption is honest about whatever
+    document is published. Every other mockup caption is reproduced exactly.
+  * **A workflow with no version in force reads `not published`, never `0 stages`.** That is
+    the state **+ New workflow** leaves behind, and zero would be a number about a document
+    nobody published. The join to `workflow_versions` is therefore a `left join`: such a
+    workflow still belongs on the rail.
+  * **The terminal caption is resolved by precedence** — `open_pr_automerge` → `needs_review`
+    → `back_to_queue` — because a definition may legally end in several places and the
+    mockup's `standard-fix` (which ends at both *Open PR & auto-merge* and *Back to queue*)
+    reads `auto-merge`. The caption answers *what does this do when it works?*, and precedence
+    beats a graph walk for the same reason as above.
+  * **`paused` replaces the behaviour rather than joining it** (`5 stages · paused`), which is
+    the mockup's own choice on `hotfix-p0`: a paused workflow's terminal behaviour is not what
+    a reader needs to know about it. The err-dot is the same fact drawn twice.
+  * **The window is 30 rolling days on `runs.started_at`**, and both halves of the share come
+    from **one** statement grouped by tag. `finished_at` is null while a loop is in flight, so
+    windowing on it would leave every live run out of *used by N% of runs*; and two statements
+    would put a run that started on the boundary inside one number and outside the other.
+    The denominator is **every** run in the window, including tags that resolve to no workflow
+    — a run performed under a since-renamed workflow is still a run the workspace performed.
+  * **`usagePercent` is `null` for a workspace with no runs, not `0`** — the honesty rule as a
+    return type, so no client can compose its own subline out of the number. `no runs yet`
+    ships beside it, and a workflow that ran but rounds to nothing reads `used by <1% of runs`
+    rather than a `0%` that contradicts its own run count.
+  * **The two derived facts are computed in PostgreSQL, the policy in TypeScript.** A
+    definition holds up to 20 000 characters of prompt per model stage, so fetching documents
+    to count nodes would move megabytes to produce two integers. Every jsonb expression is
+    guarded by `jsonb_typeof`, because `workflow_versions_definition_object` promises an
+    *object* and no more — one unreadable draft must not be a `500` for the whole rail.
+  * **No controller.** `GET /api/v1/workflows` is P.3's (#134); this module exports
+    `WorkflowStatsService` and `WorkflowRegistryService` in `PricingModule`'s pattern, so
+    there is one derivation of *how many stages does this workflow have* and the rail and the
+    page head cannot disagree.
+  * **The amendment (absorbed #124) is the registry, active-only.** `paused` and `archived`
+    are off the assign vocabulary — offering a switched-off workflow is offering to queue work
+    onto nothing. `POST /api/v1/backlog/queue` now validates `workflow` for *shape* in the
+    body (a slug, `workflows_slug_format` mirrored) and for *existence* in the service
+    (`422 queue_workflow_unknown`, carrying `details.offered` so a stale menu redraws itself),
+    and `estimation.context.ts` fills `workflowTags` from the registry — the move that file
+    predicted in as many words. The published `QueueSelection.workflow` enum becomes a
+    pattern, which is the OpenAPI minor bump (0.32.0 → 0.33.0) and one resync of the UI's
+    generated client.
+  * **A workspace with no workflows is offered decision K5's four**, as
+    `BOOTSTRAP_WORKFLOW_SLUGS`, and `offered()` publishes which of the two answers it gave.
+    V029's tables still have no writer — P.3 is the create and #136 the seed — and an empty
+    vocabulary would take a *shipped* intake pipeline offline
+    (`issue_estimates.suggested_workflow` is `not null`, and the engine refuses an estimate
+    naming anything outside the offered set). It is a fallback for the empty registry and for
+    no other case: a workspace with one workflow is offered that one and nothing beside it.
+  * **One bound arrived with the registry that a constant of four never reached.** The
+    engine's estimation contract *refuses* a request offering more than 64 workflow tags
+    (`MAX_WORKFLOW_TAGS`), so `estimation.context.ts` mirrors the number and cuts the list —
+    keeping the rail's order, so adding a workflow does not change which 64 are offered — and
+    warns, because the alternative is a `422` from the engine and no estimate at all for that
+    workspace. Slug *length* needs no care: 64 characters on both sides. The queue write is
+    unaffected; it validates one slug against the whole vocabulary.
+  * **`ouroboros-ui`'s assign menu still holds the four as a fallback**, and swapping them for
+    a read of P.3's listing is S.1's (#147) — there is no endpoint to read yet. Its
+    compile-time guarantee necessarily weakened with the enum; what its suite now asserts is
+    that every row it offers is a slug the contract's published shape accepts.
 
 ```
-definition ─▶ stages:6 · term:auto-merge     runs(30d) ─▶ usage 61% │ "no runs yet"
-status=paused ─▶ rail err-dot caption
+definition ─▶ stages:nodes.count · term:auto-merge   runs(30d, started_at) ─▶ 61% │ "no runs yet"
+status=paused ─▶ rail err-dot + "N stages · paused"  no version in force ─▶ "not published"
+registry(active) ─▶ assign menu · estimator tags ─▶ 422 queue_workflow_unknown {offered}
 ```
 
 ### Issue P.5 — ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity
@@ -456,6 +530,17 @@ status=paused ─▶ rail err-dot caption
 - **Acceptance Criteria:** Studio renders the mockup graph from seeds alone
   (positions included); P.4 captions match; dry-run of seeded `#485` (intake
   seeds) walks the expected path.
+- **Inherited from P.4 (#135), 2026-09-12 — `standard-fix`'s stage count is this
+  ticket's to settle.** A stage is a **node** (`nodes.length` of the version in
+  force), which is what the P.4 issue's diagram states and what mockup 20 counts.
+  The mockup-04 rail's `6 stages` was written against a canvas of six work stages
+  on the primary path and the canvas it sits beside now has twelve nodes, so
+  seeding the full twelve-node graph makes the rail read `12 stages · auto-merge`
+  rather than the mockup's string. Either is defensible and the seed decides:
+  seed the twelve-node canvas and accept the caption the document earns, or seed
+  the six-stage graph the caption was written for. The other four workflows'
+  captions (`7`, `5 · needs review`, `4`, `5 · paused`) are node counts already
+  and need no such choice.
 - **Parallelism/Dependencies:** Needs P.2 (+INTAKE-K.5 coordination). Feeds
   R/S tests, e2e.
 - **Technical Stack:** Flyway repeatable migration, SQL/JSON.
@@ -1226,10 +1311,10 @@ on 2026-08-09; no new work created:
 | #99 | INTAKE-K.1 `github_issues` **replaced** by the canonical ticket model Q.1 (#138) — **overtaken 2026-09-08**: `#99` shipped `V014`, so Q.1 became the *generalizing* migration the issue's own scope anticipated for that case. Landed 2026-09-12 as `V030`, and **additively**: `ticket_sources` and `tickets` are created with every constraint the canonical model needs, and `github_issues` is left exactly as it was found. The cut-over — the sync writing `tickets`, `issue_estimates` re-pointing at `tickets.id`, `github_issues` retiring — belongs to Q.2 (#139) and Q.3 (#140), which are the tickets that change the *writer* |
 | #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) — **overtaken 2026-09-08**: Epic K was built after all (`#99`, `#100`, `#101` all shipped), so Q.3 *refactors* the GitHub client behind the SPI rather than writing it. The boundary the amendment asked for landed with #101: `github.octokit.ts` is the only file that may import `@octokit/*`, lint-enforced |
 | #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) — **overtaken 2026-09-08**: `#102` shipped, so Q.2's scheduler generalizes a working loop and Q.3 *moves* GitHub's specifics rather than writing them. They are already one file each: the `since` cursor and the `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in `issue.mapping.ts`, and the estimation handoff behind an injectable token |
-| #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143) |
-| #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135) |
+| #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143). **Landed 2026-09-12 for P.4's half**: the body holds `workflow` to a *slug* and `queue.service.ts` holds it to the workspace's registry (`422 queue_workflow_unknown`), replacing decision K5's `@IsIn`. Stored tags keep resolving |
+| #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135). **Half landed 2026-09-12**: the REST vocabulary *is* the registry, so what the menu must list is defined and enforced. The UI list is still the built-in four as a fallback — swapping it for a read of P.3's `GET /api/v1/workflows` is S.1's (#147), there being no endpoint to read yet |
 | #120 | INTAKE-N.6 no-token guidance retargets the sources settings surface Q.4 (#141) |
-| #124 | INTAKE-O.3 **superseded** — scope absorbed by P.1/P.4 (#132/#135); recommend closing |
+| #124 | INTAKE-O.3 **superseded** — scope absorbed by P.1/P.4 (#132/#135); recommend closing. **Absorbed 2026-09-12**: `WorkflowRegistryService` is the registry both surfaces read — the assign vocabulary and `estimation.context.ts`'s `workflowTags`. A workspace with no workflow entities is still offered K5's four (`BOOTSTRAP_WORKFLOW_SLUGS`), because V029's tables have no writer until P.3/#136 and an empty vocabulary would take the shipped intake pipeline offline |
 
 ## References
 

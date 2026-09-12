@@ -279,13 +279,81 @@ describe("the bulk queue action, against a migrated database", () => {
       expect(queued.items.map((item) => item.workflowTag)).toEqual(["docs-loop", "feature-loop"]);
     });
 
-    it("refuses a workflow this installation has none of, before a statement is issued", async () => {
+    it("refuses a workflow this workspace does not have, and writes nothing", async () => {
+      // P.4 ([#135](https://github.com/NobuData/ouroboros/issues/135)) moved this refusal from
+      // the pipe to the service: the vocabulary is the workspace's registry rather than
+      // decision K5's four names, so a well-formed slug now reaches a handler and is refused
+      // for a reason a client can act on — `details.offered` is the menu, redrawn.
       const { workspace, owner } = await backlog();
       const issueIds = await idsOf(workspace, [485]);
 
       const response = await queue(owner, workspace, { issueIds, workflow: "midnight-loop" }, 422);
 
+      const envelope = bodyOf<ErrorEnvelope>(response);
+      expect(envelope.code).toBe(QUEUE_ERRORS.workflowUnknown);
+      expect(envelope.details).toMatchObject({ workflow: "midnight-loop" });
+      expect((envelope.details as { offered: string[] }).offered).toContain("standard-fix");
+      expect(await queueSize(workspace)).toBe(0);
+    });
+
+    it("still refuses a value that is not a slug at all, from the pipe", async () => {
+      // The shape stays the body's: `workflows_slug_format`, mirrored. Refused before a
+      // connection is taken from the pool, which is why it is a `validation_failed`.
+      const { workspace, owner } = await backlog();
+      const issueIds = await idsOf(workspace, [485]);
+
+      const response = await queue(owner, workspace, { issueIds, workflow: "Midnight Loop" }, 422);
+
       expect(bodyOf<ErrorEnvelope>(response).code).toBe("validation_failed");
+      expect(await queueSize(workspace)).toBe(0);
+    });
+
+    it("accepts a workflow only this workspace has, and no built-in beside it", async () => {
+      // The amendment carried in from #124, end to end: the assign vocabulary *is* the
+      // registry, so a workspace's own slug is queueable and the four names it replaced are
+      // not. Written straight into `workflows` because P.3's create does not exist yet.
+      const { workspace, owner } = await backlog();
+      await api.sql.query(
+        `insert into ${SCHEMA_NAME}.workflows (organization_id, slug, name, status)
+         values ($1, 'release-train', 'release-train', 'active')`,
+        [workspace.id],
+      );
+
+      const queued = bodyOf<QueuedSelection>(
+        await queue(owner, workspace, {
+          issueIds: await idsOf(workspace, [488]),
+          workflow: "release-train",
+        }),
+      );
+      expect(queued.items.map((item) => item.workflowTag)).toEqual(["release-train"]);
+
+      const response = await queue(
+        owner,
+        workspace,
+        { issueIds: await idsOf(workspace, [486]), workflow: "standard-fix" },
+        422,
+      );
+      expect(bodyOf<ErrorEnvelope>(response).code).toBe(QUEUE_ERRORS.workflowUnknown);
+    });
+
+    it("does not offer a paused workflow, though the rail still lists it", async () => {
+      // `hotfix-p0` on the mockup's rail, err-dot and all. Queueing an issue under it would be
+      // queueing work onto something the workspace has switched off.
+      const { workspace, owner } = await backlog();
+      await api.sql.query(
+        `insert into ${SCHEMA_NAME}.workflows (organization_id, slug, name, status)
+         values ($1, 'hotfix-p0', 'hotfix-p0', 'paused')`,
+        [workspace.id],
+      );
+
+      const response = await queue(
+        owner,
+        workspace,
+        { issueIds: await idsOf(workspace, [485]), workflow: "hotfix-p0" },
+        422,
+      );
+
+      expect(bodyOf<ErrorEnvelope>(response).code).toBe(QUEUE_ERRORS.workflowUnknown);
       expect(await queueSize(workspace)).toBe(0);
     });
   });

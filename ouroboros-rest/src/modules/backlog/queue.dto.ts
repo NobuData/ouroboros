@@ -17,6 +17,23 @@
  * connection is taken from the pool — a body that could not name rows costs no statement. The
  * `422`s `queue.errors.ts` defines are the other kind: a request that is *shaped* correctly and
  * names issues this workspace may not queue.
+ *
+ * **`workflow` moved from the first kind to the second with P.4**
+ * ([#135](https://github.com/NobuData/ouroboros/issues/135)). It was an `@IsIn` over decision
+ * **K5**'s four tags — a closed enumeration this file could hold, because workflow entities did
+ * not exist — and the amendment absorbed from
+ * [#124](https://github.com/NobuData/ouroboros/issues/124) makes the vocabulary *this
+ * workspace's own workflows*, which is a fact only a query knows. So what stays here is the
+ * **shape** — a slug, because `workflows.slug` and `queue_items.workflow_tag` both hold exactly
+ * that — and whether the workspace has one by that name is `queue.service.ts`' question,
+ * answered `422 queue_workflow_unknown`.
+ *
+ * That is a deliberate trade of a compile-time guarantee for a true one. A generated client no
+ * longer gets four string literals to choose from; it gets a string, because the real answer is
+ * per workspace and a specification that enumerated four would be publishing a list that is
+ * wrong for every installation that has its own. Nothing already stored stops working — every
+ * tag V029 could hold is a slug this pattern accepts, which is the compatibility guarantee
+ * decision **F8** was keeping.
  */
 
 import {
@@ -24,12 +41,11 @@ import {
   ArrayMinSize,
   ArrayUnique,
   IsArray,
-  IsIn,
   IsOptional,
   IsUUID,
+  Matches,
+  MaxLength,
 } from "class-validator";
-
-import { WORKFLOW_TAGS } from "../estimation/estimation.context";
 
 /**
  * The most issues one press may queue.
@@ -40,6 +56,21 @@ import { WORKFLOW_TAGS } from "../estimation/estimation.context";
  * transaction whose size a client chooses is a lock somebody else waits behind.
  */
 export const MAX_QUEUED_ISSUES = 100;
+
+/**
+ * What a workflow slug looks like — `workflows_slug_format`, mirrored.
+ *
+ * Lower-case kebab: alphanumeric groups joined by single hyphens, no leading, trailing or
+ * doubled hyphen. The same expression V029 CHECKs `workflows.slug` with, so a value this
+ * accepts is a value a workflow could be named, and a value it refuses could never match a row.
+ *
+ * Checking the shape rather than nothing at all is what keeps a malformed value off the
+ * statement: `'; drop'` is not a slug, and answering it from the pipe costs no connection.
+ */
+export const WORKFLOW_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** The longest slug `workflows.slug` and `queue_items.workflow_tag` will both hold. */
+export const MAX_WORKFLOW_SLUG_LENGTH = 64;
 
 /** The body of `POST /api/v1/backlog/queue`. */
 export class QueueSelectionBody {
@@ -70,18 +101,22 @@ export class QueueSelectionBody {
   /**
    * The workflow every queued issue runs under, or absent for *each issue's own*.
    *
-   * One of {@link WORKFLOW_TAGS} — decision **K5**'s fixed set, which is the list the
-   * estimator classifies into and the list mockup 03's *Assign workflow ▾* offers. Held to it
-   * here rather than left opaque because a tag this installation has no workflow for is a
-   * queue row nothing will ever pick up, and `queue_items.workflow_tag` is deliberately
-   * unconstrained text (decision **F8**) so that a renamed workflow still renders — which
-   * means the database will not catch it.
+   * **A slug, checked for shape here and for existence by the service.** It must name one of
+   * this workspace's active workflows — mockup 03's *Assign workflow ▾* lists exactly those
+   * (P.4's registry), and a tag the workspace has no workflow for is a queue row nothing will
+   * ever pick up. That check needs a query, so it is `queue.service.ts`':
+   * `422 queue_workflow_unknown`, carrying the vocabulary it was held to.
+   *
+   * `queue_items.workflow_tag` is deliberately unconstrained text (decision **F8**) so that a
+   * renamed workflow still renders, which is exactly why the database will not catch a wrong
+   * one and something here must.
    *
    * Absent is not the same as `standard-fix`: it means **Queue 3 selected** rather than
    * **Queue → standard-fix**, and each issue is queued under the workflow its own estimate
    * suggested. `queue.service.ts` holds that rule.
    */
   @IsOptional()
-  @IsIn([...WORKFLOW_TAGS])
+  @MaxLength(MAX_WORKFLOW_SLUG_LENGTH)
+  @Matches(WORKFLOW_SLUG_PATTERN)
   workflow?: string;
 }

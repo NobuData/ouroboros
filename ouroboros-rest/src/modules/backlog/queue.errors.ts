@@ -37,6 +37,22 @@
  *   * `409 queue_issues_conflict` — the issues are ready and the *queue* already speaks for
  *     them. Retrying unchanged gets the same answer until somebody dequeues, which is
  *     `ConflictError`'s.
+ *
+ * ---------------------------------------------------------------------------
+ * **A fourth refusal arrived with P.4** ([#135](https://github.com/NobuData/ouroboros/issues/135)),
+ * and it is the one refusal here that is not about the issues.
+ *
+ * `422 queue_workflow_unknown` — the request named a workflow this workspace does not have.
+ * It could not exist while decision **K5**'s four tags were a constant in this service, because
+ * the `@IsIn` on the body caught every value outside them before a handler ran. Now the
+ * vocabulary is *the workspace's own workflows* (`workflows/registry.service.ts`), which is a
+ * fact only a query knows — so the body carries a slug-shaped string and this is what says the
+ * workspace has nothing by that name.
+ *
+ * It is **not** bulk-shaped, and that is the exception that proves the rule above: one request
+ * names one workflow, so there is one offender and it is not an issue. `details` carries the
+ * vocabulary instead, which is what lets a stale assign menu redraw itself from the refusal
+ * rather than guess.
  */
 
 import { ConflictError, InvalidRequestError, NotFoundError } from "../errors/error.envelope";
@@ -55,6 +71,8 @@ export const QUEUE_ERRORS = {
   notQueueable: "queue_issues_not_queueable",
   /** `409` — the queue already holds one of these issues. */
   conflict: "queue_issues_conflict",
+  /** `422` — the request named a workflow this workspace does not have (#135). */
+  workflowUnknown: "queue_workflow_unknown",
 } as const;
 
 /** One of {@link QUEUE_ERRORS}' values. */
@@ -157,6 +175,50 @@ export function queueIssuesNotQueueable(issues: readonly QueueIssueProblem[]): I
     QUEUE_ERRORS.notQueueable,
     "Some of those issues have not been sized yet. Only sized issues can be queued.",
     { issues },
+  );
+}
+
+/**
+ * What a `queue_workflow_unknown` refusal carries.
+ *
+ * Both halves are needed and neither is guessable from the other: the slug says *which* value
+ * was refused — a client may have sent one it read from a menu that has since changed — and
+ * the vocabulary says what to offer instead, so the next press is a valid one without a second
+ * request to find out.
+ */
+export interface QueueWorkflowProblem {
+  /** The slug the request named, exactly as it sent it. */
+  readonly workflow: string;
+  /** Every workflow this workspace offers, in the order its rail lists them. */
+  readonly offered: readonly string[];
+}
+
+/**
+ * `422` — this workspace has no workflow by that name.
+ *
+ * A `422` rather than a `404`, for {@link queueIssuesNotQueueable}'s reason: nothing about the
+ * request is malformed — the slug is well-formed and may well name a workflow in another
+ * workspace — and nothing about it will succeed until the workspace changes, which is
+ * `InvalidRequestError`'s own definition. A `404` would also be answering about a path that
+ * exists.
+ *
+ * **Not a `403`, and the distinction is deliberate**: this says nothing about whether the slug
+ * names a workflow *somewhere*, exactly as `queue_issues_not_found` declines to confirm that a
+ * guessed issue id is real. What it discloses is this workspace's own vocabulary, which the
+ * caller is entitled to.
+ *
+ * @param workflow - The slug the request named.
+ * @param offered - What the workspace does have — `WorkflowRegistryService.offered()`'s slugs.
+ * @returns The error to throw.
+ */
+export function queueWorkflowUnknown(
+  workflow: string,
+  offered: readonly string[],
+): InvalidRequestError {
+  return new InvalidRequestError(
+    QUEUE_ERRORS.workflowUnknown,
+    `This workspace has no workflow named ${workflow}.`,
+    { workflow, offered } satisfies QueueWorkflowProblem,
   );
 }
 

@@ -69,11 +69,21 @@ export const QUEUE_ISSUE_CODES = {
  * The fixed set (decision K5), in the order the menu lists them: the tag the mockup's own
  * button names first, then the other three.
  *
- * Typed against the contract's enum rather than declared beside it, so a tag the service
- * stopped accepting is a compile error here and not a `422` in a browser. The amendment on the
- * ticket turns this list into the workflow registry once P.4
- * ([#135](https://github.com/NobuData/ouroboros/issues/135)) serves one; until then the four
- * are the whole vocabulary, and stored tags keep resolving because each is a valid slug.
+ * **These are now a fallback rather than the vocabulary.** P.4
+ * ([#135](https://github.com/NobuData/ouroboros/issues/135)) landed the workflow registry, and
+ * the service holds an explicit `workflow` to *this workspace's own active workflows* — the
+ * same four for a workspace that has none of its own, which is every installation until P.3's
+ * create ([#134](https://github.com/NobuData/ouroboros/issues/134)) and the studio seeds land.
+ * So the menu is right today and is not right by construction any more: the list a workspace
+ * should see comes from `GET /api/v1/workflows`, which P.3 publishes and S.1
+ * ([#147](https://github.com/NobuData/ouroboros/issues/147)) reads — and swapping this constant
+ * for that read is that ticket's, because there is no endpoint to read yet.
+ *
+ * The contract's type is a slug rather than an enum for the same reason (a document enumerating
+ * four would be wrong for every workspace with its own), so a tag the service stopped accepting
+ * is no longer a compile error here. It is a `422 queue_workflow_unknown`, whose
+ * `details.offered` carries the vocabulary — which is what the menu should be redrawn from.
+ * Stored tags keep resolving throughout, because each is a valid slug.
  */
 export const WORKFLOWS: readonly QueueWorkflow[] = [
   "standard-fix",
@@ -90,7 +100,11 @@ export const WORKFLOWS: readonly QueueWorkflow[] = [
 export type WorkflowChoice = QueueWorkflow | null;
 
 /**
- * Whether a value is a workflow the service accepts.
+ * Whether a value is one of the workflows this menu offers.
+ *
+ * Not *whether the service accepts it*, which is a fact about the workspace's registry and
+ * therefore not knowable here — see {@link WORKFLOWS}. What this guards is the selection state:
+ * a choice restored from somewhere must be a row the menu actually draws.
  *
  * @param value Anything — what a menu row carries, or what a forged POST sent.
  * @returns `true` for one of {@link WORKFLOWS}.

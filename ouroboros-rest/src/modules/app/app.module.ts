@@ -27,6 +27,7 @@ import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
+import { WorkflowsModule } from "../workflows/workflows.module";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 
@@ -189,6 +190,17 @@ import { AppService } from "./app.service";
  * one prefix is ordinary, and no path here can be shadowed by one — `sync-status` and `sync`
  * are literal segments, so a later `{number}` route matches neither.
  *
+ * `WorkflowsModule` ([#133](https://github.com/NobuData/ouroboros/issues/133),
+ * [#135](https://github.com/NobuData/ouroboros/issues/135)) declares **no route**, and is the
+ * fourth module here in that position — `RegistryModule`, `VaultModule` and `BacklogSyncModule`
+ * are the others, and the reason is the same one every time: a provider has to be *in* the
+ * running application to be injectable. What it provides is the workflow domain — the DSL
+ * validator P.2 landed, and P.4's registry and rail statistics over V029's `workflows` — and
+ * two of the modules above it consume the registry: `EstimationModule` for the tags an estimate
+ * may name, `BacklogModule` for the ones a bulk queue write accepts. Its own routes are P.3's
+ * ([#134](https://github.com/NobuData/ouroboros/issues/134)), and publishing a listing here
+ * instead would be two answers to *what is on the rail*.
+ *
  * `InternalModule` ([#224](https://github.com/NobuData/ouroboros/issues/224)) is last, and
  * its position is the only one it could have. It registers a global guard, and Nest runs
  * global guards in the order their modules are initialised — so being listed after
@@ -274,6 +286,16 @@ export class AppModule {
         // for the *which workspaces have a token* question; it declares no route at all, so
         // its position says nothing about middleware and everything about what it depends on.
         BacklogSyncModule,
+        // P.4 ([#135](https://github.com/NobuData/ouroboros/issues/135)) — the workflow domain:
+        // the DSL P.2 landed, and the registry and rail statistics over V029's `workflows`. It
+        // declares no route — every route over it is P.3's
+        // ([#134](https://github.com/NobuData/ouroboros/issues/134)) — so its position says
+        // nothing about middleware and everything about what depends on it: the two modules
+        // below both import it, for the vocabulary a queue write is held to and the one an
+        // estimate is offered. Listed here for `EstimationModule`'s reason a line further
+        // down — a process's capabilities should be answerable from this list rather than from
+        // a transitive import three files away.
+        WorkflowsModule,
         // L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the pipeline that
         // sizes what the sync mirrored. **After `BacklogSyncModule`, which imports it**, so
         // this entry is a statement rather than a requirement: Nest resolves the graph either
