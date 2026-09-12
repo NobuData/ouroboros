@@ -252,7 +252,7 @@ wheels = [
 
 [[package]]
 name = "ouroboros-engine"
-version = "0.5.2"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -263,6 +263,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "httpx2" },
+    { name = "jsonschema" },
     { name = "openapi-spec-validator" },
     { name = "pytest" },
     { name = "pyyaml" },
@@ -279,6 +280,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx2", specifier = ">=2.10.0" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "openapi-spec-validator", specifier = ">=0.7.2" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },

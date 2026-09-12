@@ -70,6 +70,7 @@ ouroboros/
 ├── ouroboros-rest/    # NestJS communications layer
 ├── ouroboros-engine/  # Python/FastAPI backend
 ├── ouroboros-db/      # Flyway migrations
+├── schemas/           # contracts more than one module reads — the workflow DSL
 ├── scripts/           # repo-level tooling
 ├── tests/e2e/         # the end-to-end smoke suite — the MVP exit gate
 ├── .github/           # labels, issue forms, PR template, workflows

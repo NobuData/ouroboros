@@ -21,6 +21,7 @@ ouroboros/
 ├── ouroboros-rest/    # NestJS communications layer   · epic #4
 ├── ouroboros-engine/  # Python/FastAPI backend        · epic #6
 ├── ouroboros-db/      # Flyway migrations             · epic #3
+├── schemas/           # contracts more than one module reads · issue #133
 ├── scripts/           # repo-level tooling
 ├── tests/e2e/         # the end-to-end smoke suite       · issue #56
 ├── package.json       # the Yarn workspace and the repo-level verbs
@@ -72,6 +73,17 @@ Four limits on it are deliberate:
 
 **Directory names are kebab-case and prefixed `ouroboros-`.** A module directory is
 never nested inside another module.
+
+**`schemas/` is not a module and holds no code.** It exists for the one thing a module directory
+cannot hold: a contract that more than one module reads. The workflow definition language
+([#133](https://github.com/NobuData/ouroboros/issues/133)) is the case that opened it — one
+published JSON Schema, a zod validator in `ouroboros-rest` and a pydantic one in
+`ouroboros-engine`, and a golden fixture set both suites assert against. Putting it inside either
+module would make the other reach across a boundary for it; putting it in `docs/` would make a
+runtime contract documentation. The rule for what belongs here is narrow: **a versioned artifact,
+with an `$id` or equivalent, that at least two modules read.** A shape one module owns stays in
+that module. Both `ci/rest` and `ci/engine` watch it (§ 9), because an edit that ran only one
+half is how two implementations of one contract stop agreeing.
 
 ## 2. Every module directory contains
 
@@ -501,6 +513,8 @@ package.json        ─▶ ci/ui + ci/rest   the workspace both resolve through
 yarn.lock
 turbo.json
 .yarnrc.yml
+
+schemas/**          ─▶ ci/rest + ci/engine  the contracts both services validate against
 ```
 
 Those four are the one filter that is not a directory. Since the TypeScript modules
@@ -508,6 +522,12 @@ became workspaces (§ 1) the lockfile they install from lives at the root, so a 
 it can break both builds without touching either module — and a filter that misses it
 would report nothing at all. `ouroboros-web` is unaffected: it is not a workspace, and
 `docker-publish.yml` watches only its own directory.
+
+`schemas/**` is the same argument for a different pair (§ 1,
+[#133](https://github.com/NobuData/ouroboros/issues/133)). The workflow DSL is one published
+schema with two validators over it and a golden fixture set both suites assert against, and it
+lives in neither module because neither owns it — so an edit there has to run both, or the two
+validators can stop agreeing with no check saying so.
 
 One file per module — [`ui.yml`](../.github/workflows/ui.yml),
 [`rest.yml`](../.github/workflows/rest.yml),

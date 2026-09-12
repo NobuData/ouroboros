@@ -44,8 +44,9 @@ make_fixture() {
   # ouroboros-rest watches the data tier as well, since issue #37: its integration harness
   # starts a PostgreSQL and applies ouroboros-db's Flyway project to it, so a migration is
   # one of that module's test inputs — and its unit suite compares the harness's image pins
-  # against docker-compose.yml. Held in a variable because the two workflows are otherwise
-  # identical, and the shared template is what makes that visible.
+  # against docker-compose.yml. It watches schemas/ since #133, for the reason engine.yml
+  # below does. Held in a variable because the two workflows are otherwise identical, and
+  # the shared template is what makes that visible.
   for module in ui rest; do
     data_tier=''
     if [ "$module" = rest ]; then
@@ -53,6 +54,7 @@ make_fixture() {
       - "ouroboros-db/migrations/**"
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
+      - "schemas/**"
       - "docker-compose.yml"'
     fi
 
@@ -153,12 +155,14 @@ on:
     branches: [main]
     paths:
       - "ouroboros-engine/**"
+      - "schemas/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/engine.yml"
   push:
     branches: [main]
     paths:
       - "ouroboros-engine/**"
+      - "schemas/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/engine.yml"
   workflow_dispatch:
@@ -707,6 +711,18 @@ check_break 'a rest workflow that stops watching the migrations is reported' \
 check_break 'a rest workflow that stops watching the image pins is reported' \
   'docker-compose\.yml runs db\.yml rest\.yml' \
   'sed -i "/^      - \"docker-compose.yml\"$/d" "$root/.github/workflows/rest.yml"'
+
+# #133: the workflow DSL is one published schema with two validators over it, and neither
+# module owns it. A half that stops watching it is a half whose validator can drift from the
+# contract — and from the other validator — with no check saying so, which is the one failure
+# mode the shared-fixture design exists to prevent.
+check_break 'a rest workflow that stops watching the shared schemas is reported' \
+  'schemas/workflow-dsl/v1\.json runs engine\.yml rest\.yml' \
+  'sed -i "/^      - \"schemas\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
+
+check_break 'an engine workflow that stops watching the shared schemas is reported' \
+  'schemas/workflow-dsl/v1\.json runs engine\.yml rest\.yml' \
+  'sed -i "/^      - \"schemas\/\*\*\"$/d" "$root/.github/workflows/engine.yml"'
 
 # The workspace root, #13. A module that stops watching the lockfile it installs from
 # builds green against a resolution nobody asked for.

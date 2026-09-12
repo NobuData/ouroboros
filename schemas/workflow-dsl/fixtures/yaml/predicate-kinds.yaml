@@ -1,0 +1,103 @@
+dsl_version: "1.0"
+trigger:
+  event: ticket_queued
+  conditions:
+    effort_lte: l
+    labels:
+      - bug
+      - regression
+    source: github
+nodes:
+  - id: start
+    type: trigger
+    title: Issue queued
+    position:
+      x: 0
+      y: 0
+    config: {}
+  - id: route
+    type: flow
+    title: Which path?
+    position:
+      x: 240
+      y: 0
+    config:
+      kind: decision
+      predicate:
+        kind: always
+  - id: small
+    type: term
+    title: Needs review
+    position:
+      x: 480
+      y: 0
+    config:
+      action: needs_review
+      options: {}
+  - id: labelled
+    type: term
+    title: Back to queue
+    position:
+      x: 480
+      y: 120
+    config:
+      action: back_to_queue
+      options: {}
+  - id: foreign
+    type: term
+    title: Open PR
+    position:
+      x: 480
+      y: 240
+    config:
+      action: open_pr_automerge
+      options:
+        merge_method: rebase
+        delete_branch: false
+  - id: verified
+    type: term
+    title: Merge
+    position:
+      x: 480
+      y: 360
+    config:
+      action: open_pr_automerge
+      options:
+        merge_method: merge
+        delete_branch: true
+edges:
+  - from: start
+    to: route
+    kind: default
+  - from: route
+    to: small
+    kind: branch
+    label: ≤ S
+    condition:
+      kind: effort
+      op: lte
+      value: s
+  - from: route
+    to: labelled
+    kind: branch
+    label: regressions
+    condition:
+      kind: labels
+      op: any
+      values:
+        - regression
+  - from: route
+    to: foreign
+    kind: branch
+    label: not GitHub
+    condition:
+      kind: source
+      op: not_in
+      values:
+        - github
+  - from: route
+    to: verified
+    kind: branch
+    label: otherwise
+    condition:
+      kind: always

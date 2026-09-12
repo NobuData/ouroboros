@@ -1,0 +1,6 @@
+{
+  "dsl_version": "1.0",
+  "trigger": { "event": "ticket_queued", "conditions": {} },
+  "nodes": [],
+  "edges": []
+}

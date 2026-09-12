@@ -2316,6 +2316,63 @@ neutering `sweep()` reddens five cases, and cutting the retry reddens exactly tw
 every recovery case green. A suite where any deletion reddens everything cannot tell one
 mechanism from another.
 
+## The workflow DSL
+
+**A workflow is one JSON document, and this is the half of its validator that answers the
+browser** ([#133](https://github.com/NobuData/ouroboros/issues/133)). The language itself is
+specified in [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) and published as
+[`schemas/workflow-dsl/v1.json`](../schemas/workflow-dsl/v1.json); `src/modules/workflows/` is
+that schema written in zod, the structural rules a schema cannot express, and the YAML
+projection mockup 05's code view is a view of.
+
+There is **no controller yet**. P.2 is the language; the CRUD, draft and publish routes are P.3
+([#134](https://github.com/NobuData/ouroboros/issues/134)), and the validation gate it runs is
+`validateWorkflowDocument`. Until then this directory is a library the service ships and does
+not yet route to — which is why it is the one module with no `*.module.ts`.
+
+```ts
+const verdict = validateWorkflowDocument(definition, { catalogue });
+// { valid, errors: Diagnostic[], warnings: Diagnostic[], document? }
+```
+
+**Every diagnostic is anchored** — an RFC 6901 pointer, plus the node id or the edge endpoints
+when there is one — so the canvas can select the offending stage rather than showing a banner.
+There is no bare *invalid document*. `errors` and `warnings` are separate lists rather than one
+list with a severity, because decision **P7** says an unknown skill must not fail a save and a
+caller who has to filter by severity to learn that is a caller who will forget to.
+
+**The typed document comes back exactly when the document is valid.** A document with an error
+has a node whose config did not parse, and there is no honest typed value for it.
+
+### Four stages, in one order
+
+The frame; then each node and each edge; then each node's type-dependent config and each edge's
+condition; then the structural rules; then decision P7's reference warnings. Each stage runs only
+over what the one before it accepted, and the elements are validated one at a time so that a
+mistake in one node does not hide a different one in the next — a canvas that reports one error,
+is corrected, and then reports another is a canvas an author stops trusting.
+
+`ouroboros-engine`'s `ouroboros_engine.workflows` runs the same four stages in the same order
+with pydantic, and the order is part of the contract: it decides *which* diagnostics a broken
+document gets.
+
+### What keeps the two validators honest
+
+| Suite | What it asserts |
+|---|---|
+| `dsl.parity.spec.ts` | Every case in [`fixtures/expected.json`](../schemas/workflow-dsl/fixtures/expected.json) — one document per rule, and the verdict both validators must produce. The engine's `test_workflows_parity.py` asserts the same file. |
+| `dsl.conformance.spec.ts` | ajv compiles the published schema in strict mode, and ajv and zod classify every fixture alike. |
+| `dsl.yaml.spec.ts` | Every valid document round-trips through YAML value for value, and renders exactly the projection committed beside it. |
+
+Neither module imports the other and no third process compares two outputs: each reads
+`schemas/workflow-dsl/` from its own suite. A rule added to one validator and forgotten in the
+other is a red check in the half that forgot it. `ci/rest` and `ci/engine` both watch
+`schemas/**` for that reason.
+
+The fixture set is checked for completeness in both directions — every document on disk has a
+recorded case, and every code the validator can emit has a case behind it — so a rule added
+without a fixture fails before it can quietly go unasserted.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -3254,6 +3311,9 @@ ouroboros-rest/
 │       │                   #   bounded queue · versioned writes · recovery sweep
 │       │                   #   POST /backlog/{id}/estimate · /backlog/estimate-all (#108)
 │       │                   #   member+ · admin+ · 30/min per workspace, sliding
+│       ├── workflows/      # the workflow DSL: zod validator + YAML projection · #133
+│       │                   #   no controller — CRUD and publish are P.3 (#134)
+│       │                   #   validates against ../../schemas/workflow-dsl/v1.json
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
@@ -3378,6 +3438,7 @@ the sync status and manual re-sync [#113](https://github.com/NobuData/ouroboros/
 the estimation pipeline [#107](https://github.com/NobuData/ouroboros/issues/107) ·
 the re-estimation endpoints [#108](https://github.com/NobuData/ouroboros/issues/108) ·
 the estimation contract it calls [#105](https://github.com/NobuData/ouroboros/issues/105) ·
+the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

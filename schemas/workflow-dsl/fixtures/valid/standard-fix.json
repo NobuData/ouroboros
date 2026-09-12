@@ -1,0 +1,188 @@
+{
+  "dsl_version": "1.0",
+  "trigger": {
+    "event": "ticket_queued",
+    "conditions": { "effort_lte": "m" }
+  },
+  "nodes": [
+    {
+      "id": "issue-queued",
+      "type": "trigger",
+      "title": "Issue queued",
+      "description": "Runs when a sized issue with effort at most M reaches the queue.",
+      "position": { "x": 24, "y": 40 },
+      "config": {}
+    },
+    {
+      "id": "analyze",
+      "type": "llm",
+      "title": "Understand & scope",
+      "description": "Reads the issue against a map of the repository and states what the change touches.",
+      "position": { "x": 306, "y": 40 },
+      "config": {
+        "mode": "skill",
+        "skill": "repo-map",
+        "prompt_template": "Scope the issue.\n\nIssue: {{issue.title}}\nBody:  {{issue.body}}\n\nName the files the change will touch and the risks you can see.",
+        "routing": { "pinned_model": "claude-sonnet-5" },
+        "limits": { "max_retries": 2, "token_budget": 200000 },
+        "permissions": { "push_fixup": false, "touch_ci": false }
+      }
+    },
+    {
+      "id": "effort-recheck",
+      "type": "flow",
+      "title": "Effort re-check",
+      "description": "Re-estimates after scoping; work that grew past M is split rather than attempted.",
+      "position": { "x": 588, "y": 40 },
+      "config": {
+        "kind": "decision",
+        "predicate": { "kind": "effort", "op": "lte", "value": "m" }
+      }
+    },
+    {
+      "id": "plan",
+      "type": "llm",
+      "title": "Write attack plan",
+      "description": "Turns the scope into an ordered plan the implement stage is held to.",
+      "position": { "x": 588, "y": 230 },
+      "config": {
+        "mode": "prompt",
+        "prompt_template": "Write the attack plan.\n\nScope: {{analyze}}\n\nOrder the steps and name every file each one touches.",
+        "routing": { "pinned_model": "claude-fable-5" },
+        "limits": { "max_retries": 2, "token_budget": 200000 },
+        "permissions": { "push_fixup": false, "touch_ci": false }
+      }
+    },
+    {
+      "id": "split",
+      "type": "llm",
+      "title": "Split into subtasks",
+      "description": "Creates linked issues for work that is larger than this loop accepts.",
+      "position": { "x": 306, "y": 230 },
+      "config": {
+        "mode": "prompt",
+        "prompt_template": "Split the issue into subtasks no larger than M.\n\nIssue: {{issue.title}}\nScope: {{analyze}}",
+        "routing": { "inherit_task": "split" },
+        "limits": { "max_retries": 1, "token_budget": 120000 },
+        "permissions": { "push_fixup": false, "touch_ci": false }
+      }
+    },
+    {
+      "id": "back-to-queue",
+      "type": "term",
+      "title": "Back to queue",
+      "description": "The split subtasks are queued and this run ends.",
+      "position": { "x": 32, "y": 260 },
+      "config": { "action": "back_to_queue", "options": {} }
+    },
+    {
+      "id": "implement",
+      "type": "llm",
+      "title": "Code the change",
+      "description": "Writes the change described by the attack plan onto a fresh branch.",
+      "position": { "x": 588, "y": 420 },
+      "config": {
+        "mode": "skill",
+        "skill": "zephyr-conventions",
+        "prompt_template": "Implement the approved plan.\n\nIssue: {{issue.title}}\nPlan:  {{plan}}\nRules: touch only files named in the plan; follow the skill.",
+        "routing": { "inherit_task": "implement" },
+        "limits": { "max_retries": 2, "token_budget": 400000 },
+        "permissions": { "push_fixup": true, "touch_ci": false }
+      }
+    },
+    {
+      "id": "build",
+      "type": "infra",
+      "title": "Build farm · pool A",
+      "description": "Builds the branch on the pool the workspace reserves for this loop.",
+      "position": { "x": 306, "y": 420 },
+      "config": { "runner_pool": "pool-a" }
+    },
+    {
+      "id": "test",
+      "type": "infra",
+      "title": "Run test suite",
+      "description": "Runs the suite the repository declares for a native build.",
+      "position": { "x": 24, "y": 420 },
+      "config": { "runner_pool": "pool-a", "command": "twister -p native_sim" }
+    },
+    {
+      "id": "review",
+      "type": "llm",
+      "title": "Self-review diff",
+      "description": "Reads its own diff against the plan before anything is offered for merge.",
+      "position": { "x": 24, "y": 630 },
+      "config": {
+        "mode": "prompt",
+        "prompt_template": "Review the diff against the plan.\n\nPlan: {{plan}}\nDiff: {{diff}}\n\nReport anything the plan did not ask for.",
+        "routing": { "pinned_model": "claude-fable-5" },
+        "limits": { "max_retries": 1, "token_budget": 200000 },
+        "permissions": { "push_fixup": true, "touch_ci": false }
+      }
+    },
+    {
+      "id": "checks-green",
+      "type": "flow",
+      "title": "Checks green?",
+      "description": "Holds until build, test and review all pass; a failure returns to implement.",
+      "position": { "x": 306, "y": 630 },
+      "config": {
+        "kind": "gate",
+        "predicate": {
+          "kind": "checks",
+          "op": "all_passed",
+          "names": ["build", "test", "review"]
+        }
+      }
+    },
+    {
+      "id": "open-pr",
+      "type": "term",
+      "title": "Open PR & auto-merge",
+      "description": "Opens the pull request and lets it merge itself once the required checks are green.",
+      "position": { "x": 588, "y": 630 },
+      "config": {
+        "action": "open_pr_automerge",
+        "options": { "merge_method": "squash", "delete_branch": true }
+      }
+    }
+  ],
+  "edges": [
+    { "from": "issue-queued", "to": "analyze", "kind": "default" },
+    { "from": "analyze", "to": "effort-recheck", "kind": "default" },
+    {
+      "from": "effort-recheck",
+      "to": "plan",
+      "kind": "branch",
+      "label": "≤ M ↓",
+      "condition": { "kind": "effort", "op": "lte", "value": "m" }
+    },
+    {
+      "from": "effort-recheck",
+      "to": "split",
+      "kind": "branch",
+      "label": "> M ↘",
+      "condition": { "kind": "effort", "op": "gt", "value": "m" }
+    },
+    { "from": "split", "to": "back-to-queue", "kind": "default" },
+    { "from": "plan", "to": "implement", "kind": "default" },
+    { "from": "implement", "to": "build", "kind": "default" },
+    { "from": "build", "to": "test", "kind": "default" },
+    { "from": "test", "to": "review", "kind": "default" },
+    { "from": "review", "to": "checks-green", "kind": "default" },
+    {
+      "from": "checks-green",
+      "to": "open-pr",
+      "kind": "branch",
+      "label": "pass →",
+      "condition": { "kind": "checks", "op": "all_passed" }
+    },
+    {
+      "from": "checks-green",
+      "to": "implement",
+      "kind": "loop",
+      "label": "fail ↺",
+      "condition": { "kind": "checks", "op": "any_failed" }
+    }
+  ]
+}

@@ -1,0 +1,618 @@
+{
+  "about": [
+    "The parity contract for the workflow DSL (#133): one case per rule, and the verdict",
+    "every validator of this language has to produce for it.",
+    "",
+    "ouroboros-rest asserts against this file from its zod validator's suite and",
+    "ouroboros-engine from its pydantic validator's, each reading this directory directly.",
+    "That is what makes the two agree without either module importing the other: a rule",
+    "added to one and forgotten in the other is a failure in the half that was forgotten.",
+    "",
+    "A diagnostic is recorded as its `code`, the RFC 6901 `path` it is anchored at, and the",
+    "node id or edge endpoints it names. Its message is not: each validator renders its own",
+    "prose, and a contract over English sentences is one nobody can translate. Errors and",
+    "warnings are in document order -- by path, with numeric path segments compared as",
+    "numbers, then by code.",
+    "",
+    "`catalogue` is decision P7's vocabulary. A case that names none supplies none, which is",
+    "the honest answer to *is this reference known?* when nothing in the system knows.",
+    "",
+    "Regenerating this file is not how it is maintained. It is reviewed and frozen; a change",
+    "to it is a change to the contract, and both suites have to be green on the new one."
+  ],
+  "cases": [
+    {
+      "name": "standard-fix",
+      "about": "Mockup 04's graph, complete: five node types, three edge kinds, and the loop.",
+      "document": "valid/standard-fix.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "standard-fix-known-references",
+      "about": "The same graph against a catalogue that lists every skill, model and task it names.",
+      "document": "valid/standard-fix.json",
+      "catalogue": "catalogues/complete.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "standard-fix-unknown-references",
+      "about": "Decision P7: against an empty catalogue every reference warns and the document still saves.",
+      "document": "valid/standard-fix.json",
+      "catalogue": "catalogues/empty.json",
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "code": "reference.unknown_model",
+          "path": "/nodes/1/config/routing/pinned_model",
+          "node": "analyze"
+        },
+        {
+          "code": "reference.unknown_skill",
+          "path": "/nodes/1/config/skill",
+          "node": "analyze"
+        },
+        {
+          "code": "reference.unknown_model",
+          "path": "/nodes/3/config/routing/pinned_model",
+          "node": "plan"
+        },
+        {
+          "code": "reference.unknown_task",
+          "path": "/nodes/4/config/routing/inherit_task",
+          "node": "split"
+        },
+        {
+          "code": "reference.unknown_task",
+          "path": "/nodes/6/config/routing/inherit_task",
+          "node": "implement"
+        },
+        {
+          "code": "reference.unknown_skill",
+          "path": "/nodes/6/config/skill",
+          "node": "implement"
+        },
+        {
+          "code": "reference.unknown_model",
+          "path": "/nodes/9/config/routing/pinned_model",
+          "node": "review"
+        }
+      ]
+    },
+    {
+      "name": "minimal",
+      "about": "The smallest workflow there is: a trigger, a terminal, and the edge between them.",
+      "document": "valid/minimal.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "infra-bare",
+      "about": "An infra stage with neither a pool nor a command, which the issue specifies as legal.",
+      "document": "valid/infra-bare.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "predicate-kinds",
+      "about": "Every predicate kind and every terminal action, on branch edges out of one decision.",
+      "document": "valid/predicate-kinds.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "name": "document-not-object",
+      "about": "A JSON array is not a workflow, and the validator says so rather than throwing.",
+      "document": "invalid/document-not-object.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "document.malformed",
+          "path": ""
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "dsl-version-unknown",
+      "about": "A document written in a later language: reported as such, and no rule is asserted about it.",
+      "document": "invalid/dsl-version-unknown.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "document.dsl_version_unsupported",
+          "path": "/dsl_version"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "nodes-empty",
+      "about": "A workflow with no stages at all.",
+      "document": "invalid/nodes-empty.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.length",
+          "path": "/nodes"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "trigger-unknown-event",
+      "about": "An event outside decision P8's vocabulary.",
+      "document": "invalid/trigger-unknown-event.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.enum",
+          "path": "/trigger/event"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "node-bad-id",
+      "about": "A node id that is not a slug.",
+      "document": "invalid/node-bad-id.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.pattern",
+          "path": "/nodes/1/id",
+          "node": "Needs Review"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "node-unknown-type",
+      "about": "A sixth node type, which the canvas could not draw and the interpreter could not run.",
+      "document": "invalid/node-unknown-type.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.enum",
+          "path": "/nodes/1/type",
+          "node": "webhook"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "node-title-wrong-type",
+      "about": "A value of the wrong JSON type, which is a different answer from an absent one.",
+      "document": "invalid/node-title-wrong-type.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.type",
+          "path": "/nodes/1/title",
+          "node": "done"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "node-missing-position",
+      "about": "A node with no place on the canvas.",
+      "document": "invalid/node-missing-position.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.required",
+          "path": "/nodes/1/position",
+          "node": "done"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "node-unknown-property",
+      "about": "Every object in the DSL is closed; an undeclared property is named, not dropped.",
+      "document": "invalid/node-unknown-property.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.unknown_property",
+          "path": "/nodes/1/colour",
+          "node": "done"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "trigger-node-with-config",
+      "about": "The trigger node configures nothing: its predicate is the document's own trigger.",
+      "document": "invalid/trigger-node-with-config.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.unknown_property",
+          "path": "/nodes/0/config/event",
+          "node": "start"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "llm-skill-mode-without-skill",
+      "about": "Skill mode with no skill to load.",
+      "document": "invalid/llm-skill-mode-without-skill.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "config.skill_required",
+          "path": "/nodes/1/config/skill",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "llm-skill-in-prompt-mode",
+      "about": "A skill in direct-prompt mode would never be loaded.",
+      "document": "invalid/llm-skill-in-prompt-mode.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "config.skill_not_allowed",
+          "path": "/nodes/1/config/skill",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "llm-routing-ambiguous",
+      "about": "The inspector's two routing radios are exclusive; both set is neither answered.",
+      "document": "invalid/llm-routing-ambiguous.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "config.routing_ambiguous",
+          "path": "/nodes/1/config/routing",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "llm-routing-missing",
+      "about": "Routing that neither inherits a task's route nor pins a model.",
+      "document": "invalid/llm-routing-missing.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "config.routing_missing",
+          "path": "/nodes/1/config/routing",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "llm-limits-out-of-range",
+      "about": "A retry budget outside the bounds the schema publishes.",
+      "document": "invalid/llm-limits-out-of-range.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.range",
+          "path": "/nodes/1/config/limits/max_retries",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "llm-permissions-missing",
+      "about": "Decision P9: both permissions are required, because one nobody decided binds nobody.",
+      "document": "invalid/llm-permissions-missing.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.required",
+          "path": "/nodes/1/config/permissions/touch_ci",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "flow-predicate-unknown-kind",
+      "about": "A predicate kind outside the closed grammar.",
+      "document": "invalid/flow-predicate-unknown-kind.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.enum",
+          "path": "/nodes/1/config/predicate/kind",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "predicate-extra-property",
+      "about": "A predicate carrying a member its own kind does not declare.",
+      "document": "invalid/predicate-extra-property.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.unknown_property",
+          "path": "/nodes/1/config/predicate/value",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "term-unknown-action",
+      "about": "A terminal action outside the three the issue specifies.",
+      "document": "invalid/term-unknown-action.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.enum",
+          "path": "/nodes/1/config/action",
+          "node": "done"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "term-options-mismatch",
+      "about": "Auto-merge with no options: the chip says squash and delete branch, so the document must.",
+      "document": "invalid/term-options-mismatch.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.required",
+          "path": "/nodes/1/config/options/delete_branch",
+          "node": "done"
+        },
+        {
+          "code": "schema.required",
+          "path": "/nodes/1/config/options/merge_method",
+          "node": "done"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "node-duplicate-id",
+      "about": "Two nodes sharing an id — schema-valid, and the first rule JSON Schema cannot express.",
+      "document": "invalid/node-duplicate-id.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "node.duplicate_id",
+          "path": "/nodes/2/id",
+          "node": "done"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "no-trigger",
+      "about": "Nothing starts a run.",
+      "document": "invalid/no-trigger.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "document.no_trigger",
+          "path": "/nodes"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "two-triggers",
+      "about": "Two things start a run, and a run pins one version of one graph.",
+      "document": "invalid/two-triggers.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "document.multiple_triggers",
+          "path": "/nodes/2",
+          "node": "also-start"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "no-terminal",
+      "about": "No path through the graph ends.",
+      "document": "invalid/no-terminal.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "document.no_terminal",
+          "path": "/nodes"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "unreachable-node",
+      "about": "A second component the trigger cannot reach.",
+      "document": "invalid/unreachable-node.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "node.unreachable",
+          "path": "/nodes/2",
+          "node": "orphan"
+        },
+        {
+          "code": "node.unreachable",
+          "path": "/nodes/3",
+          "node": "orphan-end"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-unknown-from",
+      "about": "An edge leaving a stage that does not exist.",
+      "document": "invalid/edge-unknown-from.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.unknown_from",
+          "path": "/edges/1/from",
+          "edge": {
+            "from": "compile",
+            "to": "done"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-unknown-to",
+      "about": "An edge arriving at a stage that does not exist.",
+      "document": "invalid/edge-unknown-to.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.unknown_to",
+          "path": "/edges/1/to",
+          "edge": {
+            "from": "build",
+            "to": "publish"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-duplicate",
+      "about": "A second edge between a pair already joined: an edge is identified by its endpoints.",
+      "document": "invalid/edge-duplicate.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.duplicate",
+          "path": "/edges/1",
+          "edge": {
+            "from": "start",
+            "to": "build"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-self-reference",
+      "about": "An edge from a stage to itself.",
+      "document": "invalid/edge-self-reference.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.self_reference",
+          "path": "/edges/1",
+          "edge": {
+            "from": "build",
+            "to": "build"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-into-trigger",
+      "about": "An edge back into the trigger, which is where a run starts.",
+      "document": "invalid/edge-into-trigger.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.into_trigger",
+          "path": "/edges/1",
+          "edge": {
+            "from": "build",
+            "to": "start"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-out-of-terminal",
+      "about": "An edge out of a terminal, which is where a run ends.",
+      "document": "invalid/edge-out-of-terminal.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.out_of_terminal",
+          "path": "/edges/2",
+          "edge": {
+            "from": "done",
+            "to": "build"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-branch-without-condition",
+      "about": "A branch nothing decides.",
+      "document": "invalid/edge-branch-without-condition.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.branch_without_condition",
+          "path": "/edges/1/condition",
+          "edge": {
+            "from": "build",
+            "to": "done"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-default-with-condition",
+      "about": "A condition on an edge that is always taken.",
+      "document": "invalid/edge-default-with-condition.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.unexpected_condition",
+          "path": "/edges/0/condition",
+          "edge": {
+            "from": "start",
+            "to": "build"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "edge-loop-not-upstream",
+      "about": "The ouroboros rule: a loop edge goes back up the graph, and this one goes forward.",
+      "document": "invalid/edge-loop-not-upstream.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "edge.loop_not_upstream",
+          "path": "/edges/3",
+          "edge": {
+            "from": "build",
+            "to": "done"
+          }
+        }
+      ],
+      "warnings": []
+    }
+  ]
+}

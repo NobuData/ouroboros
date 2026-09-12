@@ -1,0 +1,32 @@
+{
+  "dsl_version": "1.0",
+  "trigger": { "event": "ticket_queued", "conditions": {} },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "trigger",
+      "title": "Issue queued",
+      "position": { "x": 0, "y": 0 },
+      "config": {}
+    },
+    {
+      "id": "build",
+      "type": "infra",
+      "title": "Build",
+      "position": { "x": 240, "y": 0 },
+      "config": { "runner_pool": "pool-a" }
+    },
+    {
+      "id": "done",
+      "type": "term",
+      "title": "Needs review",
+      "position": { "x": 480, "y": 0 },
+      "config": { "action": "needs_review", "options": {} }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "build", "kind": "default" },
+    { "from": "build", "to": "start", "kind": "loop" },
+    { "from": "build", "to": "done", "kind": "default" }
+  ]
+}
