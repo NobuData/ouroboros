@@ -236,7 +236,7 @@ service never starts half-configured.
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
 | `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` | Seconds before a cloud provider's key validation is redone — deliberately much slower, because it asks a vendor rather than the operator's own machine |     no — 900      | a whole number of seconds, 60–86400 |
-| `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` | Seconds between [backlog sync](#the-backlog-sync) cycles ([#102](https://github.com/NobuData/ouroboros/issues/102)) — jittered ±25%, and what the intake page's freshness tag counts from |     no — 300      | a whole number of seconds, 60–86400 |
+| `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` | Seconds between [backlog sync](#the-backlog-sync) cycles ([#102](https://github.com/NobuData/ouroboros/issues/102)) — jittered ±25%, and what the intake page's freshness tag counts from. Since [#139](https://github.com/NobuData/ouroboros/issues/139) the [ticket-source loop](#pluggable-ticket-sources) shares it: one knob for *how often does Ouroboros ask a tracker what changed*, for the one release in which two loops ask it |     no — 300      | a whole number of seconds, 60–86400 |
 | `OURO_ESTIMATION_CONCURRENCY` | How many issues the [estimation pipeline](#the-estimation-pipeline) sizes at once ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the bound on outbound engine calls for sizing |      no — 4       | a whole number, 1–32 |
 | `OURO_ESTIMATION_CONFIDENCE_FLOOR` | Below what confidence an estimate sends its issue to `needs_human` — this service's policy, defaulted to the engine's own published floor |      no — 70      | a whole number, 0–100 |
 | `OURO_ESTIMATION_STALE_SECONDS` | How long an issue may sit in `estimating` before the recovery sweep re-queues it — a restart mid-flight is the case it exists for |     no — 600      | a whole number of seconds, 60–86400 |
@@ -2450,6 +2450,85 @@ so adding a workflow does not change which 64 are offered — and logs it. The a
 `422` from the engine and no estimate at all for that workspace. The queue write is unaffected:
 it validates one slug against the whole vocabulary.
 
+## Pluggable ticket sources
+
+**Ingestion is a plug-in decision** (roadmap decision **P5**), and
+[`src/modules/ticket-sources/`](src/modules/ticket-sources) is the seam
+([#139](https://github.com/NobuData/ouroboros/issues/139)). The core sync loop depends on
+`TicketSourceProvider` and on nothing else; a provider lives under `providers/`, is registered
+by one line in `ticket-sources.module.ts`, and is reached only through `TicketSourceRegistry`.
+[`docs/TICKET_SOURCES.md`](../docs/TICKET_SOURCES.md) is the walkthrough for writing one.
+
+```
+scheduler ─▶ for each active source:
+               registry.find(kind)      ─ nothing? skip, and leave the row alone
+               open the credential      ─ sealed column → plaintext, one call long
+               cursor === null          ─ fullSync(ctx)  :  incrementalSync(ctx, cursor)
+               applySync(page)          ─ one transaction: rows, cursor, synced_at, status
+               intake.accept(new)       ─ after the commit, never inside it
+```
+
+**`ticket-sources.service.ts` contains no `kind` at all**, and that is the point rather than a
+happy accident: the issue's own framing is that pluggability *"decays the first time someone
+adds `if (source.kind === 'github')` to the sync loop because it was quicker"*. Two rules in
+[`.dependency-cruiser.cjs`](.dependency-cruiser.cjs) make the import that line needs a build
+failure — `ticket-source-core-imports-the-spi-only` and
+`no-tracker-sdk-outside-ticket-source-providers` — and `ticket-sources/boundary.spec.ts`
+watches each of them fail on a tree built to break it, because a lint rule nobody has watched
+fail is a lint rule that passes everything. `ticket-sources.service.spec.ts` adds the half a
+cruise cannot see, reading the loop's own source for a comparison against a kind.
+
+**The cursor is opaque and the loop never reads it.** A stored cursor means
+`incrementalSync` and no stored cursor means `fullSync`; what those two ask a tracker is the
+provider's business, and `ticket_sources.sync_cursor` is `text` for the reason V030 gives — a
+loop that parsed GitHub's `since`, GitLab's `updated_after` and a JQL bound would be three
+implementations of somebody else's format with their own opinions about time zones. Which is
+why a page carries a third member: `hasMore` is how a provider asks for another cycle in a
+second rather than a full interval, and it is the only way to answer that question without
+interpreting the cursor.
+
+**Four words, and the sentence each becomes.** `ticket-source.errors.ts` is the taxonomy the
+issue asks for — `auth`, `rate_limit`, `not_found`, `upstream` — and it names no tracker below
+its header, which its suite asserts over the file. All four coarsen to
+`ticket_sources.status = 'error'`, because V030's three states have no word for *working, but
+throttled* and the loop's own filter must not keep hammering a tracker that is refusing. What
+separates them is V031's `status_reason`: `rate limited until 14:20 UTC`, `credentials
+rejected (401)`, `project or repository not found`, `tracker unavailable (503)`. It is composed
+from the **class** rather than from a provider's `detail`, which is what stops a tracker's error
+body — request headers and all — from reaching a page. The `detail` still reaches the log,
+where the audience is an operator.
+
+**The credential is opened for one call.** The sealed column is read by exactly one statement
+in `ticket-sources.repository.ts`; everything else selects `ticket_sources_public`, which does
+not carry it. `VaultService` opens it immediately before the provider call and the reference is
+dropped in a `finally`. Nothing logs it, and the suite asserts that against a captured
+transcript with a credential-shaped fixture rather than by reading the code.
+
+**Three outcomes, and only two touch the row.** A source whose kind has no provider in this
+build is *skipped* — reported, logged once at `debug`, row untouched, because a missing provider
+is a release that has not happened rather than something a workspace configured. A source whose
+provider threw is *failed*: `status` and `status_reason` are written and `synced_at` is not.
+A source that synced has its rows, its cursor, its stamp and its status written in one
+transaction, which is also what clears a previous failure.
+
+**It runs beside `backlog-sync/` rather than in place of it.** That loop is GitHub-shaped and
+fills `github_issues`; this one is source-agnostic and fills `tickets`. Q.3
+([#140](https://github.com/NobuData/ouroboros/issues/140)) is the ticket that turns the first
+into a provider behind the second and retires it. In this release
+`TICKET_SOURCE_PROVIDERS` is bound to an empty list, so a cycle reads a handful of rows, skips
+every one and makes no outbound request — which is the honest state of a build that has shipped
+the interface and not the implementations, and the same thing `ModelProviderRegistry` did when
+it shipped with one adapter and five `501`s.
+
+The estimation handoff is a port, `TICKET_INTAKE`, bound to a placeholder that logs. The
+pipeline is real but keyed on `github_issues.id`, so handing it a `tickets.id` would be a log
+full of misses; re-pointing `issue_estimates` is the cut-over, which is Q.3's. `ticket.intake.ts`
+carries the argument.
+
+The cadence is `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, shared with the backlog sync on purpose:
+one knob for one question — *how often does Ouroboros ask a tracker what changed* — for the one
+release in which there are two loops asking it.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -3388,6 +3467,10 @@ ouroboros-rest/
 │       │                   #   bounded queue · versioned writes · recovery sweep
 │       │                   #   POST /backlog/{id}/estimate · /backlog/estimate-all (#108)
 │       │                   #   member+ · admin+ · 30/min per workspace, sliding
+│       ├── ticket-sources/ # the TicketSourceProvider SPI, registry, sync loop · #139
+│       │                   #   providers/ is where a provider lives — lint-enforced,
+│       │                   #   and empty until Q.3 (#140) registers the GitHub one
+│       │                   #   no controller — the management API is Q.4 (#141)
 │       ├── workflows/      # the workflow DSL: zod validator + YAML projection · #133
 │       │                   #   stats.* — the rail's captions, stage counts, usage share · #135
 │       │                   #   registry.service.ts — which workflows a workspace may name
@@ -3519,6 +3602,8 @@ the re-estimation endpoints [#108](https://github.com/NobuData/ouroboros/issues/
 the estimation contract it calls [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
 the workflow rail's statistics and registry [#135](https://github.com/NobuData/ouroboros/issues/135) ·
+the ticket-source SPI, registry and sync loop [#139](https://github.com/NobuData/ouroboros/issues/139) ·
+the canonical ticket model it writes [#138](https://github.com/NobuData/ouroboros/issues/138) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

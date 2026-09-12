@@ -27,6 +27,7 @@ import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
+import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
@@ -201,6 +202,22 @@ import { AppService } from "./app.service";
  * ([#134](https://github.com/NobuData/ouroboros/issues/134)), and publishing a listing here
  * instead would be two answers to *what is on the rail*.
  *
+ * `TicketSourcesModule` ([#139](https://github.com/NobuData/ouroboros/issues/139)) is the
+ * fifth in that position, and the second module here that is a background loop and nothing
+ * else. What it provides is Q.2's pluggable intake: the `TicketSourceProvider` SPI, the
+ * registry that resolves one from `ticket_sources.kind`, and the source-agnostic sync loop
+ * that fills V030's `tickets`. Its routes are Q.4's
+ * ([#141](https://github.com/NobuData/ouroboros/issues/141)).
+ *
+ * It sits **beside** `BacklogSyncModule` rather than replacing it, and the pair is worth
+ * reading together: that loop is GitHub-shaped and fills `github_issues`, this one is
+ * source-agnostic and fills `tickets`, and Q.3
+ * ([#140](https://github.com/NobuData/ouroboros/issues/140)) is the ticket that turns the
+ * first into a provider behind the second and retires it. In this release the new loop makes
+ * no outbound request at all — its provider list is empty, which
+ * `ticket-sources/ticket-source.registry.ts` argues is the honest state of a build that has
+ * shipped the interface and not yet the implementation.
+ *
  * `InternalModule` ([#224](https://github.com/NobuData/ouroboros/issues/224)) is last, and
  * its position is the only one it could have. It registers a global guard, and Nest runs
  * global guards in the order their modules are initialised — so being listed after
@@ -307,6 +324,20 @@ export class AppModule {
         // carries no routing rule: `estimate-all` and `sync` are distinct literal segments, and
         // `{id}/estimate` is a segment longer than either. See `estimation.controller.ts`.
         EstimationModule,
+        // Q.2 ([#139](https://github.com/NobuData/ouroboros/issues/139)) — the pluggable
+        // intake layer: the `TicketSourceProvider` SPI, the registry, and the source-agnostic
+        // sync loop that writes V030's `tickets`. It declares no route — Q.4
+        // ([#141](https://github.com/NobuData/ouroboros/issues/141)) is the source-management
+        // API — so its position says nothing about middleware and everything about what it
+        // depends on: `VaultModule`, which is the only thing that opens a source's credential.
+        //
+        // It is the **fourth** module here to run periodic work, and the only one whose loop
+        // reaches nothing outside this deployment today: `TICKET_SOURCE_PROVIDERS` is bound to
+        // an empty list until Q.3 ([#140](https://github.com/NobuData/ouroboros/issues/140))
+        // registers the GitHub provider, so a cycle reads a handful of rows and stops. Listed
+        // beside `BacklogSyncModule` rather than replacing it: the two loops coexist for one
+        // release, and Q.3 is the ticket that retires the GitHub-specific one.
+        TicketSourcesModule,
         // M.4 ([#113](https://github.com/NobuData/ouroboros/issues/113)) — the intake screen's
         // API surface, and the first routes over anything the sync wrote. After the two
         // modules it imports; the rest of Epic M's controllers land in it.

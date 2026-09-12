@@ -9302,9 +9302,9 @@ select pg_temp.must_hold(
   'ticket_sources_public does not carry credentials_encrypted — the secret is absent, not merely unselected');
 
 select pg_temp.must_hold(
-  (select count(*) = 10 from information_schema.columns
+  (select count(*) = 11 from information_schema.columns
     where table_schema = 'ouroboros' and table_name = 'ticket_sources_public'),
-  'and it carries every other column of ticket_sources — ten of the eleven');
+  'and it carries every other column of ticket_sources — eleven of the twelve');
 
 select pg_temp.must_hold(
   (select count(*) = 7 from ouroboros.ticket_sources_public
@@ -9940,6 +9940,139 @@ delete from ouroboros.organization where "id" = 'org-sources';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.ticket_sources),
   'nothing this section created is left behind');
+
+-- ===========================================================================
+-- V031 — ticket_sources.status_reason, the sentence behind the dot (#139)
+-- ===========================================================================
+--
+-- Q.2's second acceptance criterion is that a provider's failure reaches a source as a reason
+-- somebody can act on — *"rate limited until 14:20"* rather than *"error"*. `V030` deliberately
+-- left the column out and named this ticket as the one that adds it; what is asserted here is
+-- the half of that criterion the schema owns. The other half — that the four provider-neutral
+-- error classes each compose the right phrase — is a `switch` over a closed union and is
+-- asserted in `ouroboros-rest/src/modules/ticket-sources/ticket-source.errors.spec.ts`, where
+-- exhaustiveness is a compile error rather than a test.
+--
+-- Its own workspace and its own source: the V030 section above deletes everything it made, so
+-- there is nothing here to inherit.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt")
+  values ('org-reasons', 'Reasons Inc', 'reasons-inc', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name)
+  values ('b0310000-0000-0000-0000-000000000001', 'org-reasons', 'github', 'GitHub · reasons');
+
+-- --- a healthy source has nothing to explain -----------------------------------
+--
+-- Null rather than a cheerful sentence, and it is the reason a surface can use `status_reason
+-- is not null` to decide whether to draw a line at all. A column that were always populated
+-- would make that question unanswerable without parsing the text.
+select pg_temp.must_hold(
+  (select status_reason is null from ouroboros.ticket_sources
+    where id = 'b0310000-0000-0000-0000-000000000001'),
+  'a source arrives with no reason, because there is nothing yet to explain');
+
+-- --- the four classes coarsen to one status and stay four reasons ---------------
+--
+-- The point of the column, asserted as the thing it is for: `status` answers *may the loop
+-- poll this*, and all four failures answer it the same way. `status_reason` is what keeps the
+-- four distinguishable to the person who has to fix one of them.
+update ouroboros.ticket_sources
+   set status = 'error', status_reason = 'rate limited until 14:20 UTC'
+ where id = 'b0310000-0000-0000-0000-000000000001';
+
+insert into ouroboros.ticket_sources (organization_id, kind, display_name, status, status_reason)
+values
+  ('org-reasons', 'jira',   'Jira · auth',     'error', 'credentials rejected'),
+  ('org-reasons', 'linear', 'Linear · gone',   'error', 'project or repository not found'),
+  ('org-reasons', 'gitlab', 'GitLab · down',   'error', 'tracker unavailable (503)');
+
+select pg_temp.must_hold(
+  (select count(distinct status) = 1 and count(distinct status_reason) = 4
+     from ouroboros.ticket_sources where organization_id = 'org-reasons'),
+  'four provider failure classes are one status and four reasons — which is why the column exists');
+
+-- --- a reason says something -----------------------------------------------------
+--
+-- `''` is what a phrase composed from an empty branch looks like, and it renders as a status
+-- line that is present and blank. Refused here rather than left to every writer.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_sources set status_reason = '   '
+     where id = 'b0310000-0000-0000-0000-000000000001'$$,
+  'a status reason says something rather than being blank',
+  'ticket_sources_status_reason_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_sources set status_reason = repeat('x', 201)
+     where id = 'b0310000-0000-0000-0000-000000000001'$$,
+  'and it is a rendered line rather than a place to paste a stack trace',
+  'ticket_sources_status_reason_present');
+
+with bounded as (
+  update ouroboros.ticket_sources set status_reason = repeat('x', 200)
+   where id = 'b0310000-0000-0000-0000-000000000001'
+   returning status_reason
+)
+select pg_temp.must_hold(
+  (select length(status_reason) = 200 from bounded),
+  'two hundred characters is inside the bound, so the limit is where the comment says it is');
+
+-- --- clearing it is how a source recovers ----------------------------------------
+--
+-- The loop writes `status`/`status_reason` in one statement, so a poll that succeeds after a
+-- failure has to be able to take the sentence back down. Null is that; a CHECK tying a reason
+-- to `status = 'error'` would have made this the only legal order of two writes.
+update ouroboros.ticket_sources
+   set status = 'active', status_reason = null
+ where id = 'b0310000-0000-0000-0000-000000000001';
+select pg_temp.must_hold(
+  (select status = 'active' and status_reason is null from ouroboros.ticket_sources
+    where id = 'b0310000-0000-0000-0000-000000000001'),
+  'a source that recovers goes back to active with nothing to explain');
+
+-- And the other direction, which is the reason no biconditional was written: a paused source
+-- may keep the sentence its last poll produced, because *why it stopped* is exactly what a
+-- person reading a paused row wants.
+update ouroboros.ticket_sources
+   set status = 'paused', status_reason = 'credentials rejected'
+ where id = 'b0310000-0000-0000-0000-000000000001';
+select pg_temp.must_hold(
+  (select status = 'paused' and status_reason = 'credentials rejected'
+     from ouroboros.ticket_sources where id = 'b0310000-0000-0000-0000-000000000001'),
+  'a paused source may carry the reason its last poll produced');
+
+-- --- the reason is published, and the credential still is not --------------------
+--
+-- V030's view assertion above counts the columns; this one is about *which* column arrived.
+-- A reason that a settings list cannot select is a reason nothing renders, and the whole
+-- criterion is about what a person reads.
+select pg_temp.must_hold(
+  (select count(*) = 1 from information_schema.columns
+    where table_schema = 'ouroboros'
+      and table_name = 'ticket_sources_public'
+      and column_name = 'status_reason'),
+  'ticket_sources_public carries status_reason — the sentence is for reading');
+
+select pg_temp.must_hold(
+  (select status_reason = 'credentials rejected' from ouroboros.ticket_sources_public
+    where id = 'b0310000-0000-0000-0000-000000000001'),
+  'and it reads through the view, which is the only table a read path names');
+
+-- The replacement appended rather than reordered, which is what keeps every existing reader
+-- of this view — by name or by ordinal — pointing at the column it was pointing at.
+select pg_temp.must_hold(
+  (select array_agg(column_name::text order by ordinal_position) = array[
+     'id', 'organization_id', 'kind', 'display_name', 'config', 'status',
+     'sync_cursor', 'synced_at', 'created_at', 'updated_at', 'status_reason']
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'ticket_sources_public'),
+  'V030''s ten columns keep their positions and status_reason is the eleventh');
+
+delete from ouroboros.organization where "id" = 'org-reasons';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.ticket_sources),
+  'and nothing this section created is left behind either');
 
 -- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)

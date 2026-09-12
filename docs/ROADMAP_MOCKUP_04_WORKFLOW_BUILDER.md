@@ -582,7 +582,7 @@ abstraction + GitHub; T.2–T.4 add providers without core changes.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | Q.1 | #138 | 🟢 Done | ouroboros-db: [Q.1] Canonical ticket model | Source-agnostic `tickets` + `ticket_sources` schema (P6) | mvp, sources, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| Q.2 | #139 | 🟡 Open | ouroboros-rest: [Q.2] TicketSourceProvider SPI & registry | Provider interface, lifecycle, capability flags, secret handling | mvp, sources, rest | N (after Q.1) | Y | L | ouroboros-rest |
+| Q.2 | #139 | 🟢 Done | ouroboros-rest: [Q.2] TicketSourceProvider SPI & registry | Provider interface, lifecycle, capability flags, secret handling | mvp, sources, rest | N (after Q.1) | Y | L | ouroboros-rest |
 | Q.3 | #140 | 🟡 Open | ouroboros-rest: [Q.3] GitHub provider (first conforming plugin) | INTAKE-K.3/K.4 behavior behind the SPI (both shipped 2026-09-08 — a refactor); cursor sync; PR filtering | mvp, sources, intake, rest | N (after Q.2) | Y | M | ouroboros-rest |
 | Q.4 | #141 | 🟡 Open | ouroboros-rest: [Q.4] Source management API & settings UI | Add/configure/pause sources per org; masked credentials; status | mvp, sources, rest, ui | N (after Q.2, BA-C.3) | Y | M | ouroboros-rest, ouroboros-ui |
 | Q.5 | #142 | 🟡 Open | ouroboros-rest: [Q.5] Provider conformance kit | Contract test suite + in-memory fake provider proving pluggability | mvp, sources, rest, ci | N (after Q.3) | Y | M | ouroboros-rest |
@@ -644,7 +644,7 @@ erDiagram
 
 ### Issue Q.2 — ouroboros-rest: [Q.2] TicketSourceProvider SPI & registry
 
-> **GitHub issue:** #139 · **Status:** 🟡 Open · **Parent epic:** #128
+> **GitHub issue:** #139 · **Status:** 🟢 Done · **Parent epic:** #128
 
 - **Problem Statement:** Pluggability is an interface discipline: core intake
   must depend only on a contract every tracker can implement.
@@ -676,6 +676,40 @@ interface TicketSourceProvider {
 }
 scheduler ─▶ for source in active: provider(kind).incrementalSync ─▶ upsert tickets ─▶ estimation
 ```
+
+  *(Landed 2026-09-12 as `ouroboros-rest/src/modules/ticket-sources/` and
+  `docs/TICKET_SOURCES.md`. Five choices the issue left open were decided here.*
+
+  * *`TicketPage` carries a third member, `hasMore`. The issue sketches
+    `{tickets[], nextCursor}`, and with only those two the loop would have to read the
+    cursor to know whether to come back — which the fourth acceptance criterion forbids.
+    A provider answers the question instead; page size is its business.*
+  * *The four error classes are the issue's four exactly. No `network` — every tracker
+    here is somebody else's service, so a closed socket and a `503` are one sentence to
+    the reader — and no `config`, because a base URL pointing at a web page and a
+    mistyped project key produce the same `404` and the row cannot tell them apart.
+    `validateConfig` can, and it runs while somebody is looking at the form.*
+  * *`V031` adds `ticket_sources.status_reason`, which `V030` deliberately left out and
+    named this ticket as the one that adds it. The second acceptance criterion needs the
+    sentence stored somewhere, and widening `status` past three words would have made
+    every reader re-derive the loop's own filter from a longer list.*
+  * ***No `configSchema()`.*** *Q.4's criterion is that its form renders from a
+    provider-declared schema, so that member is Q.4's to add in
+    `providers/provider.config.ts`'s dialect. A dialect invented here with no form
+    rendering it would be a dialect nothing had checked.*
+  * ***The estimation handoff is a port bound to a placeholder that logs.*** *The
+    pipeline exists and is keyed on `github_issues.id`; handing it a `tickets.id` would
+    be a log full of misses rather than work. Re-pointing `issue_estimates` is the
+    cut-over, which is Q.3's — the ticket that changes the writer. `ticket.intake.ts`
+    carries the argument, and Q.3 changes one `provide`.*
+
+  *The credential helper the scope asks for is `VaultService` (AD.1, #222) rather than a
+  new one: the issue asks for a shared AES-GCM helper keyed from typed config, and that
+  is what AD.1 built — so a second would have been a second thing to rotate. Two lint
+  rules landed in `.dependency-cruiser.cjs` and `ticket-sources/boundary.spec.ts` watches
+  both fail on trees built to break them. The loop makes no outbound request in this
+  release: `TICKET_SOURCE_PROVIDERS` is bound to an empty list until Q.3, so every source
+  is skipped with a reason and its row left alone.)*
 
 ### Issue Q.3 — ouroboros-rest: [Q.3] GitHub provider (first conforming plugin)
 
@@ -1310,7 +1344,7 @@ on 2026-08-09; no new work created:
 | #64 | DASH-F.1 `runs` gains P.4 (#135) as a consumer — no schema change |
 | #99 | INTAKE-K.1 `github_issues` **replaced** by the canonical ticket model Q.1 (#138) — **overtaken 2026-09-08**: `#99` shipped `V014`, so Q.1 became the *generalizing* migration the issue's own scope anticipated for that case. Landed 2026-09-12 as `V030`, and **additively**: `ticket_sources` and `tickets` are created with every constraint the canonical model needs, and `github_issues` is left exactly as it was found. The cut-over — the sync writing `tickets`, `issue_estimates` re-pointing at `tickets.id`, `github_issues` retiring — belongs to Q.2 (#139) and Q.3 (#140), which are the tickets that change the *writer* |
 | #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) — **overtaken 2026-09-08**: Epic K was built after all (`#99`, `#100`, `#101` all shipped), so Q.3 *refactors* the GitHub client behind the SPI rather than writing it. The boundary the amendment asked for landed with #101: `github.octokit.ts` is the only file that may import `@octokit/*`, lint-enforced |
-| #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) — **overtaken 2026-09-08**: `#102` shipped, so Q.2's scheduler generalizes a working loop and Q.3 *moves* GitHub's specifics rather than writing them. They are already one file each: the `since` cursor and the `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in `issue.mapping.ts`, and the estimation handoff behind an injectable token |
+| #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) — **overtaken 2026-09-08**: `#102` shipped, so Q.2's scheduler generalizes a working loop and Q.3 *moves* GitHub's specifics rather than writing them. They are already one file each: the `since` cursor and the `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in `issue.mapping.ts`, and the estimation handoff behind an injectable token. **Q.2 landed 2026-09-12** and the generalized loop is `ouroboros-rest/src/modules/ticket-sources/`, beside `backlog-sync/` rather than in place of it: the two coexist for one release, the new one writing `tickets` and reaching nothing until a provider is registered, and Q.3 is what retires the GitHub-specific one |
 | #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143). **Landed 2026-09-12 for P.4's half**: the body holds `workflow` to a *slug* and `queue.service.ts` holds it to the workspace's registry (`422 queue_workflow_unknown`), replacing decision K5's `@IsIn`. Stored tags keep resolving |
 | #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135). **Half landed 2026-09-12**: the REST vocabulary *is* the registry, so what the menu must list is defined and enforced. The UI list is still the built-in four as a fallback — swapping it for a read of P.3's `GET /api/v1/workflows` is S.1's (#147), there being no endpoint to read yet |
 | #120 | INTAKE-N.6 no-token guidance retargets the sources settings surface Q.4 (#141) |

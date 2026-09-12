@@ -1337,7 +1337,7 @@ the blockquote above that records what it did and what it did differently.
 | 167 | **Q.1** | ✅ [#138](https://github.com/NobuData/ouroboros/issues/138) | Canonical ticket model | ouroboros-db | M | 3.1, B.3 |
 | 168 | **P.2** | [#133](https://github.com/NobuData/ouroboros/issues/133) | Workflow DSL JSON Schema & shared validation | ouroboros-rest, ouroboros-engine | L | P.1 |
 | 169 | **P.4** | [#135](https://github.com/NobuData/ouroboros/issues/135) | Workflow usage & rail stats | ouroboros-rest | S | F.1, P.1 |
-| 170 | **Q.2** | [#139](https://github.com/NobuData/ouroboros/issues/139) | TicketSourceProvider SPI & registry | ouroboros-rest | L | Q.1 |
+| 170 | **Q.2** | ✅ [#139](https://github.com/NobuData/ouroboros/issues/139) | TicketSourceProvider SPI & registry | ouroboros-rest | L | Q.1 |
 | 171 | **P.3** | [#134](https://github.com/NobuData/ouroboros/issues/134) | Workflow CRUD, draft & publish API | ouroboros-rest | L | P.2 |
 | 172 | **P.5** | [#136](https://github.com/NobuData/ouroboros/issues/136) | Studio dev seeds — mockup-04 parity | ouroboros-db | M | P.2 |
 | 173 | **Q.3** | [#140](https://github.com/NobuData/ouroboros/issues/140) | GitHub provider (first conforming plugin) | ouroboros-rest | M | Q.2 |
