@@ -106,6 +106,11 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/runs/{id}`                             | One run, in the same `RunSummary` shape everywhere; another workspace's id is a `404`, never a `403` |
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
+| `GET POST /api/v1/workflows`                        | [The workflow lifecycle](#the-workflow-lifecycle-api) (#134) — the rail with P.4's captions; **+ New workflow** |
+| `GET PATCH /api/v1/workflows/{id}`                  | One workflow, its draft and one version (`?version=` for history); rename, pause or archive |
+| `PUT /api/v1/workflows/{id}/draft`                  | The canvas's autosave, guarded by an `If-Match` draft etag — a stale one is a `409`, never an overwrite |
+| `POST /api/v1/workflows/{id}/publish`               | The next immutable version, behind the zod **and** engine validators; a finding is a `422` and nothing is written |
+| `GET /api/v1/workflows/{id}/versions`               | The version history, newest first, without the documents |
 | `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list yours, create one                  |
 | `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
 | `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
@@ -2325,11 +2330,12 @@ specified in [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) and published as
 that schema written in zod, the structural rules a schema cannot express, and the YAML
 projection mockup 05's code view is a view of.
 
-There is **no controller yet**. P.2 is the language, P.4 is the derivation over it (below), and
-the CRUD, draft and publish routes are P.3
-([#134](https://github.com/NobuData/ouroboros/issues/134)) — whose validation gate is
-`validateWorkflowDocument`. So this module declares no route and exports two providers instead,
-exactly as `PricingModule` does.
+P.2 is the language, P.4 is the derivation over it (below), and the CRUD, draft and publish
+routes are P.3 ([#134](https://github.com/NobuData/ouroboros/issues/134)) — [the lifecycle
+API](#the-workflow-lifecycle-api), whose publish gate is `validateWorkflowDocument` and the
+engine's own reading of the same document. The module also *exports* two providers, as
+`PricingModule` does, so the rail its own controller serves and the vocabulary the intake
+surfaces read are one derivation rather than three.
 
 ```ts
 const verdict = validateWorkflowDocument(definition, { catalogue });
@@ -2431,8 +2437,9 @@ constant, and now read a workspace.
 | The estimate request's `workflowTags` | the same four | the workspace's own, so an estimate is held to workflows that exist |
 
 **A workspace with no workflows is offered the built-in four**, and that is neither a default
-merged into the registry nor a fabrication. V029's tables have no writer yet — P.3 is the create
-and #136 the seed — and an empty vocabulary would take a shipped intake pipeline offline
+merged into the registry nor a fabrication. It is the empty-registry answer and no other case:
+`POST /api/v1/workflows` is the create (#134) and #136 is the seed, and until a workspace has
+used one of them an empty vocabulary would take a shipped intake pipeline offline
 (`issue_estimates.suggested_workflow` is `not null`, and the engine refuses an estimate naming
 anything outside the offered set). `offered()` says which answer it gave, so *the menu lists the
 registry* is a claim a test makes about a workspace that has one. A workspace with **one**
@@ -2449,6 +2456,124 @@ estimation contract *refuses* a request offering more than 64 workflow tags, so
 so adding a workflow does not change which 64 are offered — and logs it. The alternative is a
 `422` from the engine and no estimate at all for that workspace. The queue write is unaffected:
 it validates one slug against the whole vocabulary.
+
+## The workflow lifecycle API
+
+**Seven operations under `/api/v1/workflows`, and two of them are the whole of P.3**
+([#134](https://github.com/NobuData/ouroboros/issues/134)). The rest is ordinary CRUD; the
+draft save and the publish are where a workflow studio is easy to get subtly wrong, so they
+are specified rather than assumed.
+
+```
+GET    /api/v1/workflows                 any member      the rail — P.4's entries, verbatim
+POST   /api/v1/workflows                 owner · admin   + New workflow: entity + draft, one transaction
+GET    /api/v1/workflows/{id}            any member      the canvas: entity + draft slot + one version
+PATCH  /api/v1/workflows/{id}            owner · admin   name and status — never the slug
+PUT    /api/v1/workflows/{id}/draft      owner · admin   autosave, If-Match required
+POST   /api/v1/workflows/{id}/publish    owner · admin   [zod ✓][engine ✓] → v+1, immutable
+GET    /api/v1/workflows/{id}/versions   any member      the history, documents excluded
+```
+
+**The rail is P.4's answer served, not recomposed.** `GET /api/v1/workflows` returns
+`WorkflowStatsService`'s entries — the same objects [the statistics
+section](#the-workflow-rails-statistics) describes — which is what that module's export was for.
+It is a named array rather than a page, because the rail is a workspace's *whole* set and every
+`usagePercent` is a fraction of one denominator measured across all of them.
+
+### The draft, and the etag that guards it
+
+A workflow has **one** draft (`workflow_versions.version is null`, V029) and any number of
+published versions. The draft is the only mutable document; a published one cannot be revised by
+anybody, including an owner, because a run pins the version it executed (decision **P1**,
+enforced by a trigger for every role).
+
+```
+GET  /api/v1/workflows/{id}          →  { draft: { etag: "2f0a…", definition: {…} }, … }
+PUT  /api/v1/workflows/{id}/draft       If-Match: 2f0a…
+                                     →  200  { etag: "8b1c…", … }        the next save's token
+                                     →  409  workflow_draft_conflict     someone else got there
+                                     →  400  workflow_draft_etag_required  no header at all
+```
+
+Four decisions hold that together, and each is a failure mode rather than a preference:
+
+* **The etag is a digest of the draft row's identity and its document — not its `updated_at`.**
+  A `timestamptz` reaches this service as a `Date`, whose resolution is a millisecond, so two
+  autosaves that close together would share a stamp and therefore an etag, and one edit would
+  be lost with nobody told. Hashing the document makes *stale* mean what a person means by it:
+  **the document you edited is not the document that is stored**.
+* **"There is no draft" has an etag of its own** (`none`), so a client's first write is the same
+  three lines as its hundredth — read, edit, `If-Match`. Two writers who both hold it do not
+  both create one: `workflow_versions_one_draft_idx` refuses the second, reported as the same
+  `409`.
+* **A missing `If-Match` is a `400`, not a default and not a conflict.** Forgetting the guard
+  and losing a race are different mistakes, and a client that could opt out by omitting a header
+  would opt out by accident. `*` is the only opt-out and has to be typed.
+* **The comparison is made against a `for update` read inside the write's own transaction.** Two
+  autosaves a millisecond apart are then separated by PostgreSQL rather than by luck: the second
+  blocks, re-reads what the first committed, and is told.
+
+**The draft is not validated.** `{}` is the blank canvas and a half-built graph is what autosave
+exists to keep; the grammar is checked once, at publish. An autosave that refused work in
+progress would be an autosave nobody could use.
+
+### Publishing: two validators, and nothing written unless both are green
+
+```
+draft ─▶ zod (P.2, in process) ─┬─ any error ─▶ 422, and the engine is never asked
+                                └─ green ────▶ engine (R.2, over the wire)
+                                               ─┬─ any finding ─▶ 422
+                                                └─ green ──────▶ BEGIN
+                                                                  lock the workflow
+                                                                  draft still the one validated?
+                                                                  INSERT v+1 · move current_version
+                                                                 COMMIT
+```
+
+**The gate runs before a transaction is opened**, which is what makes *creates nothing*
+structural: there is no unit of work to roll back. It is also why the engine call cannot be
+inside one — a five-second network deadline holding a pooled connection would put the engine's
+latency into this service's connection budget. What replaces the transaction's protection is the
+re-check inside it: the draft's etag is compared against the one the validated document came
+from, so **what becomes immutable is what passed**.
+
+**zod first, and a document it refuses never reaches the engine.** The overwhelmingly common
+failure is a canvas somebody is still building, which then costs no hop; and a list of findings
+never says the same thing twice in two vocabularies. Each finding carries `source` (`dsl` or
+`engine`), that validator's own `code`, and an anchor — `node`, `edge`, or a `path` JSON
+Pointer — so the studio can select the offending node when somebody clicks one.
+
+**R.2 ([#144](https://github.com/NobuData/ouroboros/issues/144)) has not landed, and the
+tolerance for that is exactly one status wide.** `EngineClient.validateWorkflow` reads a `404` as
+*this engine build predates the route*, logs it at `warn`, and the publish proceeds on the zod
+verdict; an engine that is **down**, refusing, or answering off-contract is still
+`502 engine_unavailable` and the publish is refused. What a `404` costs is a *redundant* check —
+`dsl.parity.spec.ts` holds the two validators to one verdict over every committed fixture — and
+`engine.contract.spec.ts` carries a tripwire that goes red the day the engine publishes the
+operation, so the tolerance and the test are replaced together.
+
+**Publishing copies the draft rather than promoting it.** V029 permits either; copying is what
+leaves the canvas with a draft to autosave into and an etag that did not move, so *edit →
+publish → edit again* needs no round trip to re-create one. The version number is offered as
+`max + 1` and the database decides: `workflow_versions_next_version` refuses anything else and
+the unique key lets one of two racing publishers commit, which surfaces as
+`409 workflow_publish_conflict` rather than a silent retry — the loser's document may no longer
+be the one they meant to build on.
+
+### What this API will not do
+
+| | Why |
+|---|---|
+| Change a slug | It is the bridge a stored `runs.workflow_tag` resolves through (decision **F8**, V029). Renaming it would silently re-point every closed run that carried it. |
+| `DELETE` a workflow | `archived` is the soft delete: off the rail and out of the assign vocabulary, history intact. A hard delete would have to mean destroying the provenance of every run that named it. |
+| Invent a slug from an unfoldable name | A title with no ASCII letter or digit yields none, and `workflow-1` would be an identifier with no relationship to what somebody typed. `422 workflow_slug_required` asks for one. |
+| Inline documents in the history | A definition holds up to 20 000 characters of prompt per model stage. One document is read by number, through `?version=`. |
+| Answer `403` for another workspace's id | A `403` confirms that an identifier names something real, which is the whole of what somebody enumerating uuids is trying to learn. |
+
+**Reading is every member's, `viewer` included; every write is `owner` or `admin`.**
+`CONTRIBUTORS` was the wrong list here: a `member` is somebody who works here, and publishing
+changes what every future run of the workspace does.
+
 
 ## Pluggable ticket sources
 
@@ -3474,7 +3599,8 @@ ouroboros-rest/
 │       ├── workflows/      # the workflow DSL: zod validator + YAML projection · #133
 │       │                   #   stats.* — the rail's captions, stage counts, usage share · #135
 │       │                   #   registry.service.ts — which workflows a workspace may name
-│       │                   #   no controller — CRUD and publish are P.3 (#134)
+│       │                   #   the lifecycle API: /api/v1/workflows, 7 operations   · #134
+│       │                   #   draft.etag.ts — the If-Match guard; publish.gate.ts — zod + engine
 │       │                   #   validates against ../../schemas/workflow-dsl/v1.json
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract

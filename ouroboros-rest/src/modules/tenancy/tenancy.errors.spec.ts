@@ -58,7 +58,14 @@ describe("the codes", () => {
   it.each(RETIRED_ERRORS)("no longer publishes %s in openapi.yaml", (code) => {
     // The other half, and the one a client can see. Deleting the operation and leaving its
     // failure documented would advertise an answer nothing can produce.
-    expect(SPECIFICATION).not.toContain(code);
+    //
+    // Matched as a whole word rather than as a substring, because a retired code can be the
+    // *tail* of a live one from another module and still be retired: `slug_taken` left with
+    // workspace creation (#714), and `workflow_slug_taken` arrived with P.3
+    // ([#134](https://github.com/NobuData/ouroboros/issues/134)). They are different codes, a
+    // client switches on them separately, and a substring check would refuse the second
+    // because of the first.
+    expect(SPECIFICATION).not.toMatch(new RegExp(`(?<![a-z_])${code}(?![a-z_])`));
   });
 });
 

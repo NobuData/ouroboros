@@ -3,7 +3,7 @@
  *
  * `DomainError` already carries its envelope, so a handler that throws one needs nothing
  * from this file. What needs it is everything else that can end a request: Nest's own `404`
- * for a path no controller claims, a `415` from the body parser, a `TypeError` from a
+ * for a path no controller claims, a `413` from the body parser, a `TypeError` from a
  * library, a connection the database refused. Without a catch-all those answer in three
  * different shapes, and a client's error handling has to know which layer failed.
  *
@@ -66,6 +66,9 @@ export interface FilteredAnswer {
  *   * A {@link DomainError} already *is* the answer. Nothing is derived.
  *   * Another `HttpException` knows its status and, for a 4xx, has a message written for a
  *     client — Nest's `Cannot GET /nope` among them. The code is derived from the status.
+ *   * A body-parser failure is **not** an `HttpException` and would otherwise fall to the
+ *     case below — see {@link bodyParserAnswer}, which is what makes a body this API will
+ *     not read a `413` or a `400` rather than an `internal_error`.
  *   * Anything else is a `500` whose message is {@link INTERNAL_ERROR_MESSAGE} and whose
  *     own text never leaves the process. So is a 5xx `HttpException`: the status came from
  *     somewhere deliberate, the message did not.
@@ -86,6 +89,12 @@ export function answerFor(exception: unknown): FilteredAnswer {
     return { status, body: { code: codeForStatus(status), message, details: {} } };
   }
 
+  const unread = bodyParserAnswer(exception);
+
+  if (unread !== undefined) {
+    return unread;
+  }
+
   return {
     status: HttpStatus.INTERNAL_SERVER_ERROR,
     body: {
@@ -93,6 +102,85 @@ export function answerFor(exception: unknown): FilteredAnswer {
       message: INTERNAL_ERROR_MESSAGE,
       details: {},
     },
+  };
+}
+
+/**
+ * What a body-parser refusal means, keyed by the `type` `body-parser` puts on it.
+ *
+ * **The parser runs before Nest's pipeline, so its failures are not `HttpException`s** —
+ * they are `http-errors` objects, and without this table every one of them is the `500`
+ * below. That is the wrong answer twice over: the caller *can* act on each of these, and
+ * `error.envelope.ts` already publishes a code for them
+ * (`GENERIC_CODES` carries `payload_too_large`), which until now nothing could reach.
+ *
+ * **The parser's own message is never forwarded.** `body-parser` writes *request entity too
+ * large*, and it writes the configured limit into the error object beside it; the sentences
+ * here are written for a person, name no number, and are the same whatever the limit is
+ * configured to.
+ *
+ * The set is enumerated rather than derived from the error's status, so a type this service
+ * has never seen falls through to the `500` and is logged, instead of being dressed up as a
+ * `4xx` on the strength of a field some other library also happens to have.
+ */
+const BODY_PARSER_FAILURES: Readonly<Record<string, { status: number; message: string }>> =
+  Object.freeze({
+    "entity.too.large": {
+      status: HttpStatus.PAYLOAD_TOO_LARGE,
+      message: "This request body is larger than this API accepts.",
+    },
+    "entity.parse.failed": {
+      status: HttpStatus.BAD_REQUEST,
+      message: "This request body is not valid JSON.",
+    },
+    "entity.verify.failed": {
+      status: HttpStatus.BAD_REQUEST,
+      message: "This request body could not be read.",
+    },
+    "request.aborted": {
+      status: HttpStatus.BAD_REQUEST,
+      message: "This request ended before its body arrived.",
+    },
+    "charset.unsupported": {
+      status: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+      message: "This request body is in a character set this API does not read.",
+    },
+    "encoding.unsupported": {
+      status: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+      message: "This request body is in a content encoding this API does not read.",
+    },
+  });
+
+/**
+ * The answer for a request whose body the parser refused, if that is what this was.
+ *
+ * Exported for the same reason {@link answerFor} is: the mapping is a table, and a table is
+ * tested as one.
+ *
+ * @param exception - Whatever was thrown.
+ * @returns The status and envelope, or `undefined` when this is not a body-parser failure —
+ *   which leaves it to the `500`, where a failure nobody classified belongs.
+ */
+export function bodyParserAnswer(exception: unknown): FilteredAnswer | undefined {
+  if (typeof exception !== "object" || exception === null) {
+    return undefined;
+  }
+
+  const type = (exception as { type?: unknown }).type;
+
+  if (typeof type !== "string") {
+    return undefined;
+  }
+
+  const failure = BODY_PARSER_FAILURES[type];
+
+  if (failure === undefined) {
+    return undefined;
+  }
+
+  return {
+    status: failure.status,
+    body: { code: codeForStatus(failure.status), message: failure.message, details: {} },
   };
 }
 

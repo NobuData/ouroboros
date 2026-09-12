@@ -11,7 +11,7 @@ import { AppConfigService } from "../modules/config/config.service";
 import { testConfiguration } from "../modules/config/configuration.fixture";
 import { DatabaseService } from "../modules/db/db.service";
 import type { ErrorEnvelope } from "../modules/errors/error.envelope";
-import { betterAuthOptions } from "./auth.module";
+import { REQUEST_BODY_LIMIT, betterAuthOptions } from "./auth.module";
 import { authOptions } from "./auth.options";
 import type { StubbedAuth } from "./better-auth.fixture";
 
@@ -93,6 +93,26 @@ describe("the options handed to the library", () => {
     const options = betterAuthOptions(stubConfig(), stubDatabase(new Pool()));
 
     expect(options.disableTrustedOriginsCors).toBe(true);
+  });
+
+  it("sizes the body parser from what this API actually stores", () => {
+    // `express.json()`'s default of 100 kB is smaller than a workflow definition the DSL
+    // admits — 200 nodes, 20 000 characters of prompt each — so a draft autosave carrying one
+    // would be refused before any handler saw it (#134). The parser runs ahead of Nest's
+    // router, so this is the only place the number can be set.
+    const options = betterAuthOptions(stubConfig(), stubDatabase(new Pool()));
+
+    expect(options.bodyParser.json.limit).toBe(REQUEST_BODY_LIMIT);
+  });
+
+  it("publishes a limit above the DSL's own ceiling", () => {
+    // Stated as a property rather than as the literal, so the number can be revised and the
+    // reason cannot be lost: what it has to clear is `nodes.max(200)` times
+    // `prompt_template.max(20000)` from `workflows/dsl.schema.ts`.
+    const megabytes = Number(REQUEST_BODY_LIMIT.replace("mb", ""));
+
+    expect(REQUEST_BODY_LIMIT).toMatch(/^\d+mb$/);
+    expect(megabytes * 1024 * 1024).toBeGreaterThan(200 * 20000);
   });
 });
 

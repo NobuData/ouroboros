@@ -7,6 +7,7 @@ import {
   ENGINE_ECHO_ROUTE,
   ENGINE_ESTIMATE_ROUTE,
   ENGINE_STATUS_ROUTE,
+  ENGINE_WORKFLOW_VALIDATE_ROUTE,
   ESTIMATE_EFFORTS,
   ESTIMATE_RISKS,
   INTERNAL_KEY_HEADER,
@@ -14,8 +15,10 @@ import {
   echoResultSchema,
   engineRouteUrl,
   engineStatusSchema,
+  engineWorkflowValidationSchema,
   estimateRequestBody,
   estimateSchema,
+  workflowValidateRequestBody,
 } from "./engine.contract";
 import { ENGINE_ESTIMATE_BODY, ESTIMATE_REQUEST } from "./engine.fixture";
 
@@ -305,6 +308,93 @@ describe("estimateRequestBody", () => {
   });
 });
 
+describe("the workflow validation schema", () => {
+  it("renames the engine's node anchor to this service's", () => {
+    const parsed = engineWorkflowValidationSchema.parse({
+      findings: [
+        { code: "unreachable_node", message: "Nothing reaches this node.", node_id: "review" },
+      ],
+    });
+
+    expect(parsed).toEqual({
+      findings: [
+        { code: "unreachable_node", message: "Nothing reaches this node.", node: "review" },
+      ],
+    });
+  });
+
+  it("treats an empty findings list as the green verdict", () => {
+    // There is no separate `valid` flag, deliberately: two fields that can disagree is one
+    // field too many.
+    expect(engineWorkflowValidationSchema.parse({ findings: [] })).toEqual({ findings: [] });
+  });
+
+  it("carries an edge anchor and a pointer when the engine sends them", () => {
+    const parsed = engineWorkflowValidationSchema.parse({
+      findings: [
+        {
+          code: "branch_without_condition",
+          message: "A branch edge needs a condition.",
+          edge: { from: "decide", to: "plan" },
+          path: "/edges/2",
+        },
+      ],
+    });
+
+    expect(parsed.findings[0]).toEqual({
+      code: "branch_without_condition",
+      message: "A branch edge needs a condition.",
+      edge: { from: "decide", to: "plan" },
+      path: "/edges/2",
+    });
+  });
+
+  it("reads a null anchor as no anchor, which is what a Python service sends", () => {
+    // A dataclass with an unset field serialises as `null` far more often than it is omitted,
+    // and refusing that would turn an ordinary answer into a 502.
+    const parsed = engineWorkflowValidationSchema.parse({
+      findings: [{ code: "graph_cyclic", message: "…", node_id: null, edge: null, path: null }],
+    });
+
+    expect(parsed.findings[0]).toEqual({ code: "graph_cyclic", message: "…" });
+  });
+
+  it("ignores a field the engine added", () => {
+    const parsed = engineWorkflowValidationSchema.parse({
+      findings: [{ code: "x", message: "y", severity: "error" }],
+      elapsed_ms: 4,
+    });
+
+    expect(parsed.findings[0]).not.toHaveProperty("severity");
+  });
+
+  it.each([
+    ["findings that are not a list", { findings: {} }],
+    ["a finding with no code", { findings: [{ message: "y" }] }],
+    ["a finding whose code is empty", { findings: [{ code: "", message: "y" }] }],
+    ["a body with no findings at all", {}],
+  ])("refuses %s", (_name, body) => {
+    expect(engineWorkflowValidationSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe("workflowValidateRequestBody", () => {
+  it("sends the document under the key the engine's contract names", () => {
+    expect(workflowValidateRequestBody({ dsl_version: "1.0" })).toEqual({
+      definition: { dsl_version: "1.0" },
+    });
+  });
+
+  it("does not reshape the document", () => {
+    // What is judged has to be what becomes immutable — this is the one place in this file
+    // where `camelCase` is deliberately *not* applied, because the DSL is `snake_case` on both
+    // sides of the boundary.
+    const definition = { dsl_version: "1.0", nodes: [{ id: "a", type: "trigger" }] };
+
+    expect(workflowValidateRequestBody(definition).definition).toBe(definition);
+  });
+});
+
 describe("the engine's own specification", () => {
   it("serves the status route this client calls", () => {
     expect(engineDocument().paths).toHaveProperty(`/${ENGINE_STATUS_ROUTE}`);
@@ -323,6 +413,17 @@ describe("the engine's own specification", () => {
 
   it("serves the estimate route this client calls", () => {
     expect(engineDocument().paths).toHaveProperty(`/${ENGINE_ESTIMATE_ROUTE}`);
+  });
+
+  it("does not yet serve the workflow validation route, which is why the gate tolerates a 404", () => {
+    // **A tripwire, and it is meant to fail.** R.2
+    // ([#144](https://github.com/NobuData/ouroboros/issues/144)) is the engine half of P.3's
+    // publish gate and has not landed; until it does, `EngineClient.validateWorkflow` reads a
+    // `404` as *this build predates the route* and `publish.gate.ts` publishes on the DSL
+    // verdict alone. The day the engine publishes the operation, this assertion goes red — and
+    // what it is asking for is that the tolerance and this test be replaced together, by the
+    // positive assertion its siblings above make.
+    expect(engineDocument().paths).not.toHaveProperty(`/${ENGINE_WORKFLOW_VALIDATE_ROUTE}`);
   });
 
   it.each([

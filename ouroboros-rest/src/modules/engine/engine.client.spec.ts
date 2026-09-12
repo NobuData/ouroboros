@@ -291,6 +291,94 @@ describe("sizing an issue", () => {
   });
 });
 
+describe("validating a workflow definition", () => {
+  /** Mockup 04's canvas, reduced to the two keys this suite needs it to have. */
+  const DEFINITION = { dsl_version: "1.0", nodes: [{ id: "issue-queued", type: "trigger" }] };
+
+  /** What an engine that implements R.2 answers a green definition with. */
+  function green(): Response {
+    return jsonResponse({ findings: [] });
+  }
+
+  it("posts the definition to the engine's validate route", async () => {
+    const engine = alwaysAnswering(green);
+
+    await clientWith(engine).validateWorkflow(DEFINITION);
+
+    expect(engine.calls[0].url).toBe(`${ENGINE_URL}/v0/workflows/validate`);
+    expect(engine.calls[0].method).toBe("POST");
+    expect(JSON.parse(engine.calls[0].body ?? "")).toEqual({ definition: DEFINITION });
+  });
+
+  it("still carries the shared secret", async () => {
+    const engine = alwaysAnswering(green);
+
+    await clientWith(engine).validateWorkflow(DEFINITION);
+
+    expect(headerOf(engine, "X-Ouro-Internal-Key")).toBe(SHARED_SECRET);
+  });
+
+  it("reads the findings back in this service's names", async () => {
+    const engine = alwaysAnswering(() =>
+      jsonResponse({
+        findings: [
+          { code: "unreachable_node", message: "Nothing reaches this node.", node_id: "review" },
+        ],
+      }),
+    );
+
+    await expect(clientWith(engine).validateWorkflow(DEFINITION)).resolves.toEqual({
+      findings: [
+        { code: "unreachable_node", message: "Nothing reaches this node.", node: "review" },
+      ],
+    });
+  });
+
+  it("answers undefined for a 404, which is an engine that predates the route", async () => {
+    // The one status this client reads as an answer rather than a failure, and only where a
+    // caller asked for it. R.2 (#144) has not landed, so this is every build today.
+    const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    const engine = alwaysAnswering(() => engineError(HttpStatus.NOT_FOUND, "not_found"));
+
+    await expect(clientWith(engine).validateWorkflow(DEFINITION)).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("does not publish the route"));
+
+    warn.mockRestore();
+  });
+
+  it.each([
+    ["an engine that is unwell", HttpStatus.SERVICE_UNAVAILABLE],
+    ["an engine holding the wrong secret", HttpStatus.UNAUTHORIZED],
+    ["an engine that failed", HttpStatus.INTERNAL_SERVER_ERROR],
+  ])("still answers engine_unavailable for %s", async (_name, status) => {
+    // The tolerance above is exactly one status wide: an outage must refuse a publish rather
+    // than wave it through.
+    const engine = alwaysAnswering(() => engineError(status));
+
+    await expect(clientWith(engine).validateWorkflow(DEFINITION)).rejects.toMatchObject({
+      response: { code: ENGINE_ERRORS.unavailable },
+    });
+  });
+
+  it("refuses a body outside the contract rather than answering undefined", async () => {
+    const engine = alwaysAnswering(() => jsonResponse({ ok: true }));
+
+    await expect(clientWith(engine).validateWorkflow(DEFINITION)).rejects.toMatchObject({
+      response: { code: ENGINE_ERRORS.unavailable },
+    });
+  });
+
+  it("leaves the other routes intolerant of a 404", async () => {
+    // `absentWhenUnpublished` is opt-in per call. A `404` from the status route is an engine
+    // this deployment is misconfigured against, not an answer.
+    const engine = alwaysAnswering(() => engineError(HttpStatus.NOT_FOUND, "not_found"));
+
+    await expect(clientWith(engine).status()).rejects.toMatchObject({
+      response: { code: ENGINE_ERRORS.unavailable },
+    });
+  });
+});
+
 describe("when the engine cannot be reached", () => {
   it.each([...RETRYABLE_CONNECT_CODES])("retries once after %s", async (code) => {
     const engine = failingThenAnswering(() => connectFailure(code), jsonResponse);

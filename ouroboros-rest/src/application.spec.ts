@@ -1,7 +1,7 @@
 import type { IncomingMessage, Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import type { INestApplication } from "@nestjs/common";
+import { HttpStatus, type INestApplication } from "@nestjs/common";
 import request from "supertest";
 
 import {
@@ -12,6 +12,7 @@ import {
   createApplication,
 } from "./application";
 import type { AuthEcho } from "./auth/better-auth.fixture";
+import { REQUEST_BODY_LIMIT } from "./auth/auth.module";
 import { AUTH_BASE_PATH } from "./auth/auth.options";
 import { AUTH_ROUTES } from "./auth/auth.routes";
 import type { Heartbeat } from "./modules/app/app.service";
@@ -384,24 +385,26 @@ describe("the body parser every other route depends on", () => {
   });
 
   it("still refuses a body larger than the parser's limit", async () => {
-    // Express's default is 100 kB, and the library re-adds the parsers with their own
-    // defaults rather than with none. A parser with no limit would be a way to make this
-    // service allocate as much memory as a caller cared to send it, and switching Nest's
-    // parsers off is exactly the change that could have left one behind.
+    // A parser with *no* limit would be a way to make this service allocate as much memory as
+    // a caller cared to send it, and switching Nest's parsers off is exactly the change that
+    // could have left one behind. The number is no longer Express's 100 kB default — P.3
+    // ([#134](https://github.com/NobuData/ouroboros/issues/134)) raised it to
+    // `REQUEST_BODY_LIMIT`, because a workflow definition the DSL admits is larger than that
+    // default — so the size below is derived from the constant rather than written down
+    // twice, and this test fails if the limit is ever removed rather than merely changed.
     //
-    // What the refusal is spelled as is not asserted, deliberately. It is the envelope
-    // filter's answer for an error no handler produced, it is what Nest's own parser
-    // produced before this issue — checked by running this suite with `bodyParser: true` —
-    // and improving it belongs to [#38](https://github.com/NobuData/ouroboros/issues/38)'s
-    // security baseline rather than here. That the request never reaches the guard is the
-    // claim this test makes.
+    // Two claims: the request never reaches the guard, and the refusal is the envelope rather
+    // than an `internal_error`. The second arrived with the raise: a limit somebody can hit is
+    // a limit that has to say so (`errors/error.filter.ts`).
+    const megabytes = Number(REQUEST_BODY_LIMIT.replace("mb", ""));
+
     const response = await request(server())
       .post(`${API_BASE_PATH}/orgs/00000000-0000-4000-8000-000000000000/github-orgs`)
       .set("Content-Type", "application/json")
-      .send(JSON.stringify({ slug: "x".repeat(200_000) }));
+      .send(JSON.stringify({ slug: "x".repeat((megabytes + 1) * 1024 * 1024) }));
 
-    expect(response.status).toBeGreaterThanOrEqual(400);
-    expect(response.status).not.toBe(401);
+    expect(response.status).toBe(HttpStatus.PAYLOAD_TOO_LARGE);
+    expect(response.body).toMatchObject({ code: "payload_too_large" });
   });
 });
 
