@@ -2190,5 +2190,122 @@ select pg_temp.must_hold(
   'the intake seed created its eighteen prefixed rows and no nineteenth');
 
 
+-- ===========================================================================
+-- R__dev_seed_sources.sql — where acme-robotics' work comes from.
+--
+-- The seventh seed's rows: two `ticket_sources` (`5eed001a…`) in `acme-robotics`, one
+-- `github` and one `jira`. Scoped to those ids and that workspace, for the reason every
+-- other seed's assertions are scoped: a developer who configured a source of their own must
+-- not fail this suite.
+--
+-- The counts are exact, so this is the sources seed's idempotency test too. It deliberately
+-- asserts what the seed does **not** write as well — no `tickets` row — because that
+-- restraint is the seed's main decision and a later edit that helpfully filled the canonical
+-- table would otherwise pass unnoticed.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- Two sources, two kinds, one workspace.
+--
+-- The pair is the point: source-neutrality is only visible where two kinds coexist, and the
+-- `status` vocabulary only has a second value in use because one of them is paused.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2
+     from ouroboros.ticket_sources src
+     join ouroboros.organization org on org."id" = src.organization_id
+    where org."slug" = 'acme-robotics'
+      and src.id::text like '5eed001a-0000-4000-8000-%'),
+  'the sources seed configured two ticket sources for acme-robotics');
+
+select pg_temp.must_hold(
+  (select array_agg(src.kind order by src.kind) = array['github', 'jira']
+     from ouroboros.ticket_sources src
+    where src.id::text like '5eed001a-0000-4000-8000-%'),
+  'one GitHub and one Jira — a development stack in which a second tracker is not hypothetical');
+
+select pg_temp.must_hold(
+  (select array_agg(src.status order by src.kind) = array['active', 'paused']
+     from ouroboros.ticket_sources src
+    where src.id::text like '5eed001a-0000-4000-8000-%'),
+  'the GitHub source is active and the Jira one paused, so both halves of the dot are seeded');
+
+-- ---------------------------------------------------------------------------
+-- The GitHub source: the four repositories R__dev_seed.sql enables, in config.
+--
+-- Decision P6 is what this asserts: the repository list is a provider's idea of scope kept
+-- in `config`, not a column or a join table, and the Jira row below is why.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select src.display_name = 'GitHub · acme-robotics'
+          and src.config->>'login' = 'acme-robotics'
+          and src.config->'repos' @> '["helios-firmware"]'::jsonb
+          and jsonb_array_length(src.config->'repos') = 4
+     from ouroboros.ticket_sources src
+    where src.id = '5eed001a-0000-4000-8000-000000000001'),
+  'the GitHub source names the workspace''s org and its four enabled repositories in config');
+
+-- Its credential is a real envelope the vault's own CHECK accepted, and it opens nothing —
+-- the base64url body is a sentence saying so, and there is no key anywhere that would
+-- decrypt it. Asserted against the envelope grammar rather than with a `like 'ouro.v1.%'`,
+-- which is what the providers seed's assertions settle for: the grammar is the thing
+-- V030's CHECK enforces, so it is the thing worth asserting the seed produced.
+select pg_temp.must_hold(
+  (select src.credentials_encrypted ~ '^ouro\.v1\.[0-9]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+     from ouroboros.ticket_sources src
+    where src.id = '5eed001a-0000-4000-8000-000000000001'),
+  'the GitHub source carries one of the vault''s envelopes, not a token');
+
+-- ---------------------------------------------------------------------------
+-- The Jira source: no repository anywhere in it.
+--
+-- The row the whole seed exists to put in a development database. A site and a project key,
+-- and nothing a GitHub-shaped reader could have assumed.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select src.display_name = 'Jira · PROJ'
+          and src.config->>'base_url' = 'https://acme-robotics.atlassian.net'
+          and src.config->'project_keys' = '["PROJ"]'::jsonb
+          and not src.config ? 'repos'
+          and not src.config ? 'login'
+     from ouroboros.ticket_sources src
+    where src.id = '5eed001a-0000-4000-8000-000000000002'),
+  'the Jira source is a site and a project key — no repository, no login, no issue numbers');
+
+select pg_temp.must_hold(
+  (select src.credentials_encrypted is null
+     from ouroboros.ticket_sources src
+    where src.id = '5eed001a-0000-4000-8000-000000000002'),
+  'and it carries no credential, which is why it is paused rather than active');
+
+-- ---------------------------------------------------------------------------
+-- Neither source has been polled, and no ticket has been ingested.
+--
+-- The same restraint R__dev_seed_intake.sql showed when it left
+-- `github_repos.issues_synced_at` null: a stamp here would claim a poll that never happened.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2
+     from ouroboros.ticket_sources src
+    where src.id::text like '5eed001a-0000-4000-8000-%'
+      and src.sync_cursor is null and src.synced_at is null),
+  'no sync has run against either source, and neither claims one has');
+
+-- And the decision the seed's header argues at length: `tickets` is left empty, because
+-- R__dev_seed_intake.sql already seeds the same nine issues into `github_issues` and the
+-- copy nothing renders is the copy that drifts. Q.3 (#140) is the cut-over that fills this.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.tickets),
+  'and the canonical tickets table is empty — the seed writes sources, not a second backlog');
+
+-- ---------------------------------------------------------------------------
+-- The id convention, for the sources seed's own rows.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.ticket_sources
+    where id::text like '5eed001a-0000-4000-8000-%'),
+  'the sources seed created its two prefixed rows and no third');
+
+
 \o
 \echo 'seed.sql: all assertions passed'

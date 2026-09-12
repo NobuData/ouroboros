@@ -1334,7 +1334,7 @@ the blockquote above that records what it did and what it did differently.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 166 | **P.1** | [#132](https://github.com/NobuData/ouroboros/issues/132) | Workflow & version schema | ouroboros-db | M | 3.1, B.3 |
-| 167 | **Q.1** | [#138](https://github.com/NobuData/ouroboros/issues/138) | Canonical ticket model | ouroboros-db | M | 3.1, B.3 |
+| 167 | **Q.1** | ✅ [#138](https://github.com/NobuData/ouroboros/issues/138) | Canonical ticket model | ouroboros-db | M | 3.1, B.3 |
 | 168 | **P.2** | [#133](https://github.com/NobuData/ouroboros/issues/133) | Workflow DSL JSON Schema & shared validation | ouroboros-rest, ouroboros-engine | L | P.1 |
 | 169 | **P.4** | [#135](https://github.com/NobuData/ouroboros/issues/135) | Workflow usage & rail stats | ouroboros-rest | S | F.1, P.1 |
 | 170 | **Q.2** | [#139](https://github.com/NobuData/ouroboros/issues/139) | TicketSourceProvider SPI & registry | ouroboros-rest | L | Q.1 |

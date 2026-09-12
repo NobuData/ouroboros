@@ -9122,6 +9122,826 @@ select pg_temp.must_hold(
 delete from ouroboros.organization where "id" = 'org-nextdoor';
 
 -- ===========================================================================
+-- V030 — ticket_sources and tickets, the canonical intake model (#138)
+-- ===========================================================================
+--
+-- Decision **P6** as rules: a Jira ticket and a GitHub issue are the same kind of row, so
+-- nothing in this section may be true only of the one whose identifier happens to be an
+-- integer. Every assertion below is checked against **both** shapes where the shape could
+-- matter, which is what the acceptance criteria ask for and is also the only way a
+-- generalization can be shown to have worked rather than merely been attempted.
+--
+-- Nothing writes these tables yet: Q.2 (#139) is the SPI and the sync loop, Q.3 (#140) the
+-- GitHub provider, Q.4 (#141) the settings surface. `github_issues` remains the shipped
+-- intake table until that cut-over, and this migration leaves it alone — so the assertions
+-- here are the only thing standing between a future provider and a backlog that cannot be
+-- trusted.
+--
+-- Five of them are the acceptance criteria, and they are the five to read first:
+-- **`(source_id, external_id)` is unique and two sources may hold the same key**, **the
+-- intake filters, search and sorting work over the canonical model**, **a Jira-shaped row
+-- with no repository round-trips the whole intake read path**, **the credential is sealed
+-- and is not in the read view at all**, and **`sizing_status` still carries V014's four
+-- values and V014's default**.
+--
+-- Its own fixtures, and two workspaces: the tenancy rule is a claim about a row naming one
+-- workspace and another's source, so there has to be another workspace to name. No
+-- `github_orgs` or `github_repos` row is created anywhere in this section, deliberately —
+-- if any assertion below needed one, the generalization would not have happened.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-tickets',   'Ticket Works', 'ticket-works',  now()),
+  ('org-sources', 'Sources Ltd', 'sources-ltd', now());
+
+-- Two sources in one workspace, of two different kinds, and a third next door carrying the
+-- *same display name* as one of them — which is what makes the uniqueness assertion below
+-- about the workspace rather than about the installation.
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config, status)
+values
+  ('b0300000-0000-0000-0000-000000000001', 'org-tickets', 'github', 'GitHub · acme',
+   '{"login": "acme-robotics", "repos": ["helios-firmware"]}', 'active'),
+  ('b0300000-0000-0000-0000-000000000002', 'org-tickets', 'jira', 'Jira · PROJ',
+   '{"base_url": "https://acme-robotics.atlassian.net", "project_keys": ["PROJ"]}', 'active'),
+  ('b0300000-0000-0000-0000-000000000003', 'org-sources', 'jira', 'Jira · PROJ',
+   '{"base_url": "https://elsewhere.atlassian.net", "project_keys": ["PROJ"]}', 'paused');
+
+-- --- a source arrives active, and the vocabularies are closed --------------------
+--
+-- `status` decides whether the sync loop picks a source up and `kind` decides which provider
+-- it is dispatched through, so a value outside either set is a source that is either polled
+-- by nothing or resolved to nothing.
+insert into ouroboros.ticket_sources (organization_id, kind, display_name)
+  values ('org-tickets', 'github', 'GitHub · unconfigured');
+select pg_temp.must_hold(
+  (select status = 'active' from ouroboros.ticket_sources
+    where organization_id = 'org-tickets' and display_name = 'GitHub · unconfigured'),
+  'a source arrives active — the sync loop is meant to pick up what somebody just added');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_sources (organization_id, kind, display_name)
+      values ('org-tickets', 'bugzilla', 'Bugzilla')$$,
+  'ticket_sources.kind rejects a tracker outside the five P6 names',
+  'ticket_sources_kind');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_sources set status = 'syncing'
+     where id = 'b0300000-0000-0000-0000-000000000001'$$,
+  'ticket_sources.status rejects a fourth state',
+  'ticket_sources_status');
+
+-- Every name in both vocabularies is storable, including `custom` — the kind a community
+-- provider registers as, which is in the set from the start precisely so the first one needs
+-- no migration.
+insert into ouroboros.ticket_sources (organization_id, kind, display_name, status) values
+  ('org-tickets', 'gitlab', 'GitLab · self-hosted', 'paused'),
+  ('org-tickets', 'linear', 'Linear · ENG',         'error'),
+  ('org-tickets', 'custom', 'Our own tracker',      'active');
+
+select pg_temp.must_hold(
+  (select count(distinct kind) = 5 from ouroboros.ticket_sources
+    where organization_id = 'org-tickets'),
+  'all five P6 kinds are storable, custom included');
+
+select pg_temp.must_hold(
+  (select count(distinct status) = 3 from ouroboros.ticket_sources
+    where organization_id = 'org-tickets'),
+  'and all three states — active, paused and error — coexist in one workspace');
+
+-- --- a workspace's sources are distinguishable ----------------------------------
+--
+-- Per **organization**, not per installation: `org-sources` already holds a `Jira · PROJ`
+-- of its own, inserted above, and a global unique would have refused it.
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_sources (organization_id, kind, display_name)
+      values ('org-tickets', 'jira', 'Jira · PROJ')$$,
+  'a workspace cannot have two sources with the same display name',
+  'ticket_sources_organization_name_key');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.ticket_sources where display_name = 'Jira · PROJ'),
+  'and the workspace next door may name one the same');
+
+-- Two GitHub sources in one workspace, on the other hand, is a legitimate configuration —
+-- two enterprises, or a personal account beside an org — and nothing refuses it.
+insert into ouroboros.ticket_sources (organization_id, kind, display_name)
+  values ('org-tickets', 'github', 'GitHub · acme-labs');
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.ticket_sources
+    where organization_id = 'org-tickets' and kind = 'github'),
+  'but several GitHub sources in one workspace are several sources, not a duplicate');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_sources (organization_id, kind, display_name)
+      values ('org-tickets', 'github', '   ')$$,
+  'a source''s display name says something',
+  'ticket_sources_display_name_present');
+
+-- --- config is an object --------------------------------------------------------
+--
+-- `jsonb` alone accepts `3`, `"github"` and `[]`, and a settings form can round-trip none of
+-- them. The per-kind shape is Q.2's SPI contract; this is the one rule the schema keeps.
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_sources (organization_id, kind, display_name, config)
+      values ('org-tickets', 'github', 'Numbers', '3'::jsonb)$$,
+  'ticket_sources.config rejects a bare number',
+  'ticket_sources_config_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_sources (organization_id, kind, display_name, config)
+      values ('org-tickets', 'github', 'Lists', '[]'::jsonb)$$,
+  'and an array, which is the shape a repo list alone would have arrived as',
+  'ticket_sources_config_shape');
+
+select pg_temp.must_hold(
+  (select config = '{}'::jsonb from ouroboros.ticket_sources
+    where organization_id = 'org-tickets' and display_name = 'GitHub · acme-labs'),
+  'a source configured with nothing yet holds an empty object, not null');
+
+-- --- the credential is sealed, always -------------------------------------------
+--
+-- Acceptance criterion, and the half of it that is a rule about *every* writer rather than
+-- about the service that is supposed to encrypt. A plaintext token pasted in here by a
+-- migration, a fixture or a hand-written update is refused by the server.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_sources
+       set credentials_encrypted = 'ghp_00000000000000000000000000000000000000'
+     where id = 'b0300000-0000-0000-0000-000000000001'$$,
+  'a plaintext GitHub token cannot be stored as a source credential',
+  'ticket_sources_credentials_sealed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_sources set credentials_encrypted = 'ouro.v1.notaversion.aaaa.bbbb'
+     where id = 'b0300000-0000-0000-0000-000000000001'$$,
+  'nor a value that only looks like an envelope — the key version is a number',
+  'ticket_sources_credentials_sealed');
+
+update ouroboros.ticket_sources
+   set credentials_encrypted = 'ouro.v1.1.c2VlZC1ub25jZS00.ZGV2LXNlZWQtbm90LWEtY3JlZGVudGlhbA'
+ where id = 'b0300000-0000-0000-0000-000000000001';
+select pg_temp.must_hold(
+  (select credentials_encrypted like 'ouro.v1.1.%' from ouroboros.ticket_sources
+    where id = 'b0300000-0000-0000-0000-000000000001'),
+  'one of the vault''s envelopes is accepted, and its key version travels with it');
+
+select pg_temp.must_hold(
+  (select credentials_encrypted is null from ouroboros.ticket_sources
+    where id = 'b0300000-0000-0000-0000-000000000002'),
+  'and null is a real state: a source configured before anybody pasted its token in');
+
+-- --- the secret is not in the read view at all ----------------------------------
+--
+-- Acceptance criterion: *"the column is never selected by read paths"*. Asserted over
+-- `information_schema` rather than by reading a row, because what is being claimed is about
+-- the view's shape and not about one row's value — a later migration that widened the view
+-- back would fail here rather than quietly re-exposing the column.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros'
+      and table_name = 'ticket_sources_public'
+      and column_name = 'credentials_encrypted'),
+  'ticket_sources_public does not carry credentials_encrypted — the secret is absent, not merely unselected');
+
+select pg_temp.must_hold(
+  (select count(*) = 10 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'ticket_sources_public'),
+  'and it carries every other column of ticket_sources — ten of the eleven');
+
+select pg_temp.must_hold(
+  (select count(*) = 7 from ouroboros.ticket_sources_public
+    where organization_id = 'org-tickets'),
+  'the view reads the workspace''s sources, which is what a read path wants from it');
+
+select pg_temp.must_hold(
+  (select count(*) = (select count(*) from ouroboros.ticket_sources)
+     from ouroboros.ticket_sources_public),
+  'and it hides no row — it is a narrower projection, not a filtered one');
+
+-- --- the cursor is something a sync produced ------------------------------------
+--
+-- V014's two rules on `github_repos.issues_sync_cursor`, carried over. A cursor of `''` is a
+-- poller that would silently re-import the whole backlog on every pass.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_sources set sync_cursor = '2026-09-01T00:00:00Z'
+     where id = 'b0300000-0000-0000-0000-000000000001'$$,
+  'a source cannot carry a watermark from a sync that never ran',
+  'ticket_sources_cursor_after_sync');
+
+update ouroboros.ticket_sources
+   set synced_at = now() - interval '40 seconds', sync_cursor = '2026-09-01T00:00:00Z'
+ where id = 'b0300000-0000-0000-0000-000000000001';
+select pg_temp.must_hold(
+  (select sync_cursor is not null and synced_at is not null from ouroboros.ticket_sources
+    where id = 'b0300000-0000-0000-0000-000000000001'),
+  'a sync stamps both, and the cursor is opaque text the provider round-trips');
+
+-- The other direction is legitimate and is why the constraint is an implication: a first
+-- poll of a project with no tickets at all completes and has no watermark to record.
+update ouroboros.ticket_sources
+   set synced_at = now(), sync_cursor = null
+ where id = 'b0300000-0000-0000-0000-000000000002';
+select pg_temp.must_hold(
+  (select synced_at is not null and sync_cursor is null from ouroboros.ticket_sources
+    where id = 'b0300000-0000-0000-0000-000000000002'),
+  'and a sync that found nothing stamps the clock without a cursor');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_sources set sync_cursor = '  '
+     where id = 'b0300000-0000-0000-0000-000000000001'$$,
+  'a blank watermark is refused — it is a poller that would re-import everything',
+  'ticket_sources_sync_cursor_present');
+
+-- ---------------------------------------------------------------------------
+-- tickets — the canonical row, in both shapes at once.
+-- ---------------------------------------------------------------------------
+--
+-- Three tickets, and the point of the arrangement is that no two of them are alike in the
+-- ways P6 generalized:
+--
+-- The GitHub rows carry the repository in `meta` as `github_repos.id` — the uuid V014's
+-- column held — with the name beside it for display. That is the mapping V030's header
+-- records and Q.3 (#140) will write, and the filter assertions below use the uuid, because
+-- a filter written against the display name would be a second identity for the same thing.
+--
+--   | key        | source | identity is  | repository | created  |
+--   |------------|--------|--------------|-----------:|----------|
+--   | `#485`     | GitHub | `485`        | in `meta`  | 3 days   |
+--   | `#9`       | GitHub | `9`          | in `meta`  | 1 day    |
+--   | `PROJ-142` | Jira   | `PROJ-142`   | **none**   | 2 days   |
+--
+-- `#9` is there for one reason: `'9'` sorts above `'485'` as text and below it as a number,
+-- so it is what makes the ordering assertions further down say something. Without it the
+-- two candidate orderings would agree and the decision the migration records would be
+-- untested.
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, body,
+     state, labels, author, source_created_at, source_updated_at, sizing_status, meta)
+values
+  ('b0310000-0000-0000-0000-000000000485', 'org-tickets',
+   'b0300000-0000-0000-0000-000000000001', '485', '#485',
+   'https://github.com/acme-robotics/helios-firmware/issues/485',
+   'I2C watchdog resets under load', 'The watchdog fires during sustained I2C traffic.',
+   'open', '["bug", "i2c", "watchdog"]', 'field-support',
+   now() - interval '3 days', now() - interval '2 hours', 'sized',
+   '{"github": {"repo_id": "b03f0000-0000-0000-0000-00000000000a",
+                "repo": "helios-firmware", "login": "acme-robotics", "number": 485}}'),
+
+  ('b0310000-0000-0000-0000-000000000009', 'org-tickets',
+   'b0300000-0000-0000-0000-000000000001', '9', '#9',
+   'https://github.com/acme-robotics/helios-firmware/issues/9',
+   'Bump toolchain to 14.2', null,
+   'open', '["deps"]', 'renovate[bot]',
+   now() - interval '1 day', now() - interval '1 day', 'unsized',
+   '{"github": {"repo_id": "b03f0000-0000-0000-0000-00000000000a",
+                "repo": "helios-firmware", "login": "acme-robotics", "number": 9}}'),
+
+  -- The row this migration exists for: no repository, no number, an Atlassian URL, and an
+  -- author that is an account id rather than a login.
+  ('b0310000-0000-0000-0000-000000000142', 'org-tickets',
+   'b0300000-0000-0000-0000-000000000002', 'PROJ-142', 'PROJ-142',
+   'https://acme-robotics.atlassian.net/browse/PROJ-142',
+   'Watchdog telemetry missing from nightly export', 'Nightly export drops the watchdog rows.',
+   'open', '["bug", "telemetry"]', '5b10ac8d82e05b22cc7d4ef5',
+   now() - interval '2 days', now() - interval '5 hours', 'unsized',
+   '{"jira": {"project_key": "PROJ", "issue_type": "Bug"}}');
+
+-- --- one row per ticket per source ----------------------------------------------
+--
+-- First acceptance criterion, and both halves of it. Identity is the tracker's identifier
+-- *within its source*, so the same key under two sources is two tickets and the same key
+-- twice under one source is a duplicate.
+select pg_temp.must_reject(
+  $$insert into ouroboros.tickets
+      (organization_id, source_id, external_id, external_key, external_url, title, state,
+       source_created_at, source_updated_at)
+    values ('org-tickets', 'b0300000-0000-0000-0000-000000000002', 'PROJ-142', 'PROJ-142',
+            'https://acme-robotics.atlassian.net/browse/PROJ-142', 'A duplicate', 'open',
+            now(), now())$$,
+  'one source cannot hold PROJ-142 twice',
+  'tickets_source_external_id_key');
+
+-- The other half: `org-tickets`' second Jira source — the one next door in `org-sources`
+-- is a different workspace, so a third source inside the same workspace is what makes this
+-- a claim about sources rather than about tenancy.
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config)
+  values ('b0300000-0000-0000-0000-000000000004', 'org-tickets', 'jira', 'Jira · legacy site',
+          '{"base_url": "https://legacy.atlassian.net", "project_keys": ["PROJ"]}');
+
+insert into ouroboros.tickets
+    (organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values ('org-tickets', 'b0300000-0000-0000-0000-000000000004', 'PROJ-142', 'PROJ-142',
+          'https://legacy.atlassian.net/browse/PROJ-142', 'A different PROJ-142', 'open',
+          now() - interval '9 days', now() - interval '9 days');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.tickets
+    where organization_id = 'org-tickets' and external_id = 'PROJ-142'),
+  'two sources may each hold PROJ-142 without collision — they are two different tickets');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.tickets
+    where organization_id = 'org-tickets' and external_key = 'PROJ-142'),
+  'and external_key is a label rather than an identity, so it is not unique either');
+
+-- --- V014's vocabulary, unchanged ------------------------------------------------
+--
+-- Acceptance criterion: `sizing_status` keeps the intake vocabulary so the estimation
+-- pipeline needs no change. Both halves — the four names and the default — because a
+-- pipeline that claims `unsized` work would find nothing if a freshly ingested ticket
+-- arrived as anything else.
+insert into ouroboros.tickets
+    (organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values ('org-tickets', 'b0300000-0000-0000-0000-000000000001', '486', '#486',
+          'https://github.com/acme-robotics/helios-firmware/issues/486', 'Fresh from a sync',
+          'open', now() - interval '4 days', now() - interval '4 days');
+
+select pg_temp.must_hold(
+  (select sizing_status = 'unsized' from ouroboros.tickets
+    where organization_id = 'org-tickets' and external_id = '486'),
+  'a freshly ingested ticket is unsized — the sync writes tickets, not estimates');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set sizing_status = 'guessing'
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'tickets.sizing_status rejects a value outside V014''s four K4 names',
+  'tickets_sizing_status');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set state = 'merged'
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'tickets.state rejects a value outside open and closed',
+  'tickets_state');
+
+-- Every name in both vocabularies is storable, which is what the status pill and the State
+-- select are each a partition of.
+update ouroboros.tickets set sizing_status = 'estimating'
+ where id = 'b0310000-0000-0000-0000-000000000009';
+update ouroboros.tickets set sizing_status = 'needs_human', state = 'closed'
+ where id = 'b0310000-0000-0000-0000-000000000142';
+select pg_temp.must_hold(
+  (select count(distinct sizing_status) = 4 from ouroboros.tickets
+    where organization_id = 'org-tickets'),
+  'all four sizing statuses and both states are storable over one workspace''s tickets');
+
+update ouroboros.tickets set sizing_status = 'unsized', state = 'open'
+ where id = 'b0310000-0000-0000-0000-000000000142';
+
+-- --- the identifiers and the strings the tracker gave us -------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set external_id = '  '
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'a ticket''s identity says something',
+  'tickets_external_id_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set external_key = ''
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'so does the form a table cell renders',
+  'tickets_external_key_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set title = '   '
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'and so does a title',
+  'tickets_title_present');
+
+-- A Linear-shaped identity is a uuid, which is why the bound is 255 and not something
+-- chosen from GitHub's integers.
+insert into ouroboros.tickets
+    (organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values ('org-tickets',
+          (select id from ouroboros.ticket_sources
+            where organization_id = 'org-tickets' and display_name = 'Linear · ENG'),
+          '5c8f2e40-3b1a-4a7e-9f2b-7d6c1e0a4b93', 'ENG-123',
+          'https://linear.app/acme/issue/ENG-123', 'A Linear-shaped identity', 'open',
+          now() - interval '6 days', now() - interval '6 days');
+select pg_temp.must_hold(
+  (select external_key = 'ENG-123' from ouroboros.tickets
+    where external_id = '5c8f2e40-3b1a-4a7e-9f2b-7d6c1e0a4b93'),
+  'a uuid identity with an unrelated display key round-trips — the two columns are independent');
+
+-- --- the author carries no login grammar ----------------------------------------
+--
+-- Deliberate, and the assertion is the decision: V014's GitHub pattern on this column would
+-- reject a Jira account id and a Linear display name, which is three of the five kinds.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.tickets
+    where organization_id = 'org-tickets'
+      and author in ('field-support', 'renovate[bot]', '5b10ac8d82e05b22cc7d4ef5')),
+  'a GitHub login, a bot login and a Jira account id are all storable authors');
+
+insert into ouroboros.tickets
+    (organization_id, source_id, external_id, external_key, external_url, title, state,
+     author, source_created_at, source_updated_at)
+  values ('org-tickets', 'b0300000-0000-0000-0000-000000000002', 'PROJ-9', 'PROJ-9',
+          'https://acme-robotics.atlassian.net/browse/PROJ-9', 'Named by a person', 'open',
+          'Maya Chen', now() - interval '7 days', now() - interval '7 days');
+select pg_temp.must_hold(
+  (select author = 'Maya Chen' from ouroboros.tickets
+    where organization_id = 'org-tickets' and external_id = 'PROJ-9'),
+  'and so is a display name with a space in it, which every GitHub login rule refuses');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set author = '   '
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'what is refused is a blank author, which is an attribution nobody holds',
+  'tickets_author_present');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.tickets
+    where organization_id = 'org-tickets' and author is null),
+  'null is the honest state for a ticket whose author deleted their account');
+
+-- --- the URL is a link something will render ------------------------------------
+--
+-- V014's rule, and its reason: `external_url` becomes an `href`, and an `href` is a place a
+-- scheme executes rather than navigates.
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set external_url = 'javascript:alert(1)'
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'a ticket URL cannot carry a scheme that executes',
+  'tickets_external_url_https');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets
+       set external_url = 'http://github.com/acme-robotics/helios-firmware/issues/485'
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'nor plain http',
+  'tickets_external_url_https');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets
+       set external_url = 'https://github.com@evil.example/acme/helios/issues/485'
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'and userinfo cannot be smuggled ahead of the host',
+  'tickets_external_url_https');
+
+-- Self-hosted installations are the ordinary case for three of the five kinds, so a host
+-- with a port has to be accepted — the check is about the scheme and the shape, not about
+-- which company serves the ticket.
+update ouroboros.tickets
+   set external_url = 'https://git.acme.internal:8443/acme-robotics/helios-firmware/issues/485'
+ where id = 'b0310000-0000-0000-0000-000000000485';
+select pg_temp.must_hold(
+  (select external_url like 'https://git.acme.internal:8443/%' from ouroboros.tickets
+    where id = 'b0310000-0000-0000-0000-000000000485'),
+  'a self-hosted host with a port is accepted — GHES, a private GitLab and a Jira site all are');
+
+update ouroboros.tickets
+   set external_url = 'https://github.com/acme-robotics/helios-firmware/issues/485'
+ where id = 'b0310000-0000-0000-0000-000000000485';
+
+-- --- the labels are a list of names, and meta is an object ----------------------
+--
+-- Through V026's `jsonb_string_list_valid` rather than V014's open-coded jsonpath, so the
+-- three shapes a tags renderer would each break differently on are one constraint.
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set labels = '[{"name": "bug"}]'::jsonb
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'labels are names, not label objects',
+  'tickets_labels_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set labels = '["bug", 3]'::jsonb
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'and every element is a string',
+  'tickets_labels_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set labels = '"bug"'::jsonb
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'a bare string is not a list of one',
+  'tickets_labels_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set labels = '[""]'::jsonb
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'and a label with no name is refused',
+  'tickets_labels_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets
+       set labels = (select jsonb_agg('label-' || n) from generate_series(1, 101) as n)
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'a hundred labels is the cap — it bounds what one row puts into the GIN index',
+  'tickets_labels_shape');
+
+select pg_temp.must_hold(
+  (select labels = '[]'::jsonb from ouroboros.tickets
+    where organization_id = 'org-tickets' and external_id = '486'),
+  'no labels is an empty array, not null — which is what renders as no tags');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set meta = '[]'::jsonb
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'tickets.meta is an object — a provider''s specifics are keyed, not listed',
+  'tickets_meta_shape');
+
+-- --- the body's bound is storage sanity, not any one tracker's -------------------
+--
+-- Well above every known limit, because the one thing this constraint must never be is the
+-- reason a ticket a provider legitimately returned cannot be stored: GitHub caps a body at
+-- 64 KiB, Jira at 32 767 characters, and a `custom` provider at whatever somebody wrote.
+update ouroboros.tickets set body = repeat('x', 262144)
+ where id = 'b0310000-0000-0000-0000-000000000485';
+select pg_temp.must_hold(
+  (select length(body) = 262144 from ouroboros.tickets
+    where id = 'b0310000-0000-0000-0000-000000000485'),
+  'a body four times GitHub''s own limit is stored, because the provider set is open');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set body = repeat('x', 262145)
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'and the bound is still a bound',
+  'tickets_body_bounded');
+
+update ouroboros.tickets set body = 'The watchdog fires during sustained I2C traffic.'
+ where id = 'b0310000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select body is null from ouroboros.tickets
+    where id = 'b0310000-0000-0000-0000-000000000009'),
+  'null is a real body: a ticket opened with a title and no description');
+
+-- --- the mirrored timestamps agree with each other -------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set source_updated_at = source_created_at - interval '1 hour'
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'a ticket cannot have been updated before it was opened — that pair is a mapping bug',
+  'tickets_updated_after_created');
+
+-- --- the tenancy rule ------------------------------------------------------------
+--
+-- Not a broken join: one workspace's ticket titles rendering on another's backlog. Asserted
+-- on insert **and** on update, because the trigger is scoped to the two columns and a row
+-- re-parented afterwards would be just as leaked.
+select pg_temp.must_reject(
+  $$insert into ouroboros.tickets
+      (organization_id, source_id, external_id, external_key, external_url, title, state,
+       source_created_at, source_updated_at)
+    values ('org-tickets', 'b0300000-0000-0000-0000-000000000003', 'PROJ-500', 'PROJ-500',
+            'https://elsewhere.atlassian.net/browse/PROJ-500', 'Somebody else''s', 'open',
+            now(), now())$$,
+  'a ticket cannot name another workspace''s source',
+  'tickets_source_in_organization');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tickets set source_id = 'b0300000-0000-0000-0000-000000000003'
+     where id = 'b0310000-0000-0000-0000-000000000485'$$,
+  'and it cannot be re-parented onto one afterwards either',
+  'tickets_source_in_organization');
+
+-- --- synced_at and updated_at are different clocks ------------------------------
+--
+-- V014's freshness distinction, generalized: `synced_at` says when the tracker was last
+-- asked, `updated_at` says when this row last changed. A poll that re-read an unchanged
+-- ticket moves the first and not the second — and `updated_at` is the server's to set, so a
+-- writer cannot backdate what it did.
+update ouroboros.tickets set updated_at = '2000-01-01T00:00:00Z'
+ where id = 'b0310000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.tickets
+    where id = 'b0310000-0000-0000-0000-000000000485'),
+  'tickets.updated_at is stamped from the server clock by its touch trigger');
+
+update ouroboros.ticket_sources set updated_at = '2000-01-01T00:00:00Z'
+ where id = 'b0300000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.ticket_sources
+    where id = 'b0300000-0000-0000-0000-000000000001'),
+  'and so is ticket_sources.updated_at, by the same V001 function');
+
+-- `synced_at`, by contrast, is the sync's to set and is taken at face value: it records when
+-- a poll happened, which is a fact about the poll rather than about this row.
+update ouroboros.tickets set synced_at = '2026-01-01T00:00:00Z'
+ where id = 'b0310000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select synced_at = '2026-01-01T00:00:00Z'::timestamptz and updated_at = now()
+     from ouroboros.tickets where id = 'b0310000-0000-0000-0000-000000000485'),
+  'while synced_at is the writer''s — the two columns answer different questions');
+
+-- ---------------------------------------------------------------------------
+-- The Jira round-trip, through the whole intake read path.
+-- ---------------------------------------------------------------------------
+--
+-- Two acceptance criteria at once, and they are the two this migration exists to satisfy:
+-- *"a Jira-shaped row (no repository, key `PROJ-142`) round-trips the full intake read
+-- path"* and *"intake queries — filters, sorting, search — work unchanged over the canonical
+-- model"*.
+--
+-- Every read below is one the backlog screen makes, and each is asserted to return **both**
+-- shapes where both match. That is the part that matters: a query returning only the GitHub
+-- rows would pass a test written against GitHub alone, and would be exactly the bug P6 is
+-- about.
+
+-- First, the claim the whole ticket rests on: the Jira row carries no repository anywhere.
+-- Not in a column — there is none — and not smuggled into `meta` either.
+select pg_temp.must_hold(
+  (select meta = '{"jira": {"project_key": "PROJ", "issue_type": "Bug"}}'::jsonb
+     from ouroboros.tickets where id = 'b0310000-0000-0000-0000-000000000142'),
+  'the Jira ticket names no repository at all — its meta is a project key and an issue type');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'tickets'
+      and column_name in ('github_repo_id', 'number', 'gh_url', 'gh_created_at',
+                          'gh_updated_at', 'author_login')),
+  'and no column of tickets names GitHub — the six V014 columns P6 generalized are gone');
+
+-- The State select.
+update ouroboros.tickets set state = 'closed'
+ where organization_id = 'org-tickets' and external_id = 'PROJ-9';
+select pg_temp.must_hold(
+  (select count(*) = 6 from ouroboros.tickets
+    where organization_id = 'org-tickets' and state = 'open'),
+  'the State filter narrows the canonical backlog, GitHub and Jira rows alike');
+
+-- The Repository select — the one filter path decision P6 *moved*, from a column to a
+-- containment query over `meta`. It still selects exactly the repository's tickets, and it
+-- still excludes every row that has no repository to be selected by.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.tickets
+    where organization_id = 'org-tickets'
+      and meta @> '{"github": {"repo_id": "b03f0000-0000-0000-0000-00000000000a"}}'::jsonb),
+  'the repository filter works over meta — the two tickets mirrored from helios-firmware');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.tickets
+    where organization_id = 'org-tickets'
+      and meta @> '{"github": {"repo_id": "b03f0000-0000-0000-0000-00000000000b"}}'::jsonb),
+  'and a repository with nothing mirrored from it selects nothing rather than everything');
+
+-- The chip-set, both ways it can be read: all-of (containment) and any-of (`?|`), which is
+-- the operator `jsonb_path_ops` would have silently dropped.
+select pg_temp.must_hold(
+  (select array_agg(external_key order by external_key) = array['#485', 'PROJ-142']
+     from ouroboros.tickets
+    where organization_id = 'org-tickets' and labels @> '["bug"]'::jsonb),
+  'a label chip matches across sources — one GitHub issue and one Jira ticket carry bug');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.tickets
+    where organization_id = 'org-tickets' and labels ?| array['i2c', 'telemetry']),
+  'and an any-of chip-set spanning two trackers'' label vocabularies matches both');
+
+-- The search box.
+select pg_temp.must_hold(
+  (select array_agg(external_key order by external_key) = array['#485', 'PROJ-142']
+     from ouroboros.tickets
+    where organization_id = 'org-tickets' and title ilike '%watchdog%'),
+  'title search is source-agnostic — it finds Watchdog in a Jira summary and watchdog in a GitHub title');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.tickets
+    where organization_id = 'org-tickets' and external_key = 'PROJ-142'
+      and source_id = 'b0300000-0000-0000-0000-000000000002'),
+  'and a key search resolves a ticket within its source, which is where a key is unique');
+
+-- The detail panel's read: one ticket, by the id a URL carries, with its source beside it.
+select pg_temp.must_hold(
+  (select t.external_key = 'PROJ-142' and t.author = '5b10ac8d82e05b22cc7d4ef5'
+          and t.external_url like 'https://acme-robotics.atlassian.net/%'
+          and s.kind = 'jira' and s.display_name = 'Jira · PROJ'
+     from ouroboros.tickets t
+     join ouroboros.ticket_sources_public s on s.id = t.source_id
+    where t.id = 'b0310000-0000-0000-0000-000000000142'),
+  'the detail read joins a ticket to its source through the public view and needs no repository');
+
+-- --- the orderings ---------------------------------------------------------------
+--
+-- Two of the listing's four. `effort` and `confidence` sort over `issue_estimates`, which
+-- this migration leaves pointing at `github_issues` — they move with the cut-over in Q.3 and
+-- there is nothing here to assert about them yet.
+select pg_temp.must_hold(
+  (select array_agg(external_key order by source_updated_at desc, id asc)
+            = array['#485', 'PROJ-142', '#9', '#486', 'ENG-123', 'PROJ-9', 'PROJ-142']
+     from ouroboros.tickets where organization_id = 'org-tickets'),
+  'the updated ordering is source_updated_at desc, and it interleaves the two trackers');
+
+-- And the replacement for `number desc`, which is the decision the migration records:
+-- *most recently opened first*, which is what a GitHub number happened to encode.
+select pg_temp.must_hold(
+  (select array_agg(external_key order by source_created_at desc, id asc)
+            = array['#9', 'PROJ-142', '#485', '#486', 'ENG-123', 'PROJ-9', 'PROJ-142']
+     from ouroboros.tickets where organization_id = 'org-tickets'),
+  'newest-first is source_created_at desc — the source-neutral spelling of the number sort');
+
+-- The assertion that makes the decision load-bearing rather than stylistic: ordering by the
+-- identifier is **not** the same ordering, so re-pointing that sort at `external_id` would
+-- have silently changed what the backlog shows. `is distinct from` rather than a spelled-out
+-- text order, because the text order depends on the database's collation and the claim does
+-- not.
+select pg_temp.must_hold(
+  (select (array_agg(external_key order by source_created_at desc, id asc))
+            is distinct from (array_agg(external_key order by external_id desc, id asc))
+     from ouroboros.tickets where organization_id = 'org-tickets'),
+  'and ordering by external_id is a different order, which is why the sort moved to a timestamp');
+
+-- --- the indexes the filter bar needs --------------------------------------------
+--
+-- Acceptance criterion: the intake queries work unchanged over the canonical model, which is
+-- a claim about plans as well as results. Sequential scans are off for the reason every other
+-- plan assertion in this file gives — a handful of fixture rows is genuinely cheaper to scan,
+-- and what is asserted is that a usable index exists at production size.
+--
+-- `analyze` first, and it is load-bearing here for V015's reason: `organization_id, source_id,
+-- state` and the unique key's `source_id` prefix can both serve the list read, and on a table
+-- of this size the two cost the same — so which one is chosen would be a tie-break, and a
+-- tie-break moves when something unrelated moves. With statistics the composite wins for the
+-- reason it should. It is an `analyze` inside the transaction this file rolls back; the
+-- in-place half of what it writes is repaired at the foot of the file.
+analyze ouroboros.tickets;
+analyze ouroboros.ticket_sources;
+
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select external_key, title from ouroboros.tickets
+     where organization_id = 'org-tickets'
+       and source_id = 'b0300000-0000-0000-0000-000000000001'
+       and state = 'open'$$,
+  'tickets_organization_source_state_idx');
+
+select pg_temp.must_use_index(
+  $$select external_key from ouroboros.tickets where labels @> '["bug"]'::jsonb$$,
+  'tickets_labels_idx');
+
+select pg_temp.must_use_index(
+  $$select external_key from ouroboros.tickets where labels ?| array['i2c', 'telemetry']$$,
+  'tickets_labels_idx');
+
+select pg_temp.must_use_index(
+  $$select external_key from ouroboros.tickets where title ilike '%watchdog%'$$,
+  'tickets_title_trgm_idx');
+
+-- The repository filter after P6 moved it into `meta`. This is the index the issue did not
+-- name and the criterion needs: without it the one filter path that changed shape would be
+-- the one that stopped being an index scan.
+select pg_temp.must_use_index(
+  $$select external_key from ouroboros.tickets
+     where meta @> '{"github": {"repo_id": "b03f0000-0000-0000-0000-00000000000a"}}'::jsonb$$,
+  'tickets_meta_idx');
+
+-- Not a read path: the cascade's. `ticket_sources` cascades into this table, and the unique
+-- key's leading column is what keeps a source deletion from scanning every ticket — which is
+-- why no separate index on `source_id` was created. V014's argument for `github_repo_id`.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.tickets
+     where source_id = 'b0300000-0000-0000-0000-000000000001'$$,
+  'tickets_source_external_id_key');
+
+-- The page read the backlog table actually makes: a page of tickets with the source each
+-- came from. `must_not_scan` rather than `must_use_index`, because naming one index proves
+-- one relation was entered through it and says nothing about the other.
+select pg_temp.must_not_scan(
+  $$select t.external_key, t.title, t.sizing_status, s.kind, s.display_name
+      from ouroboros.tickets t
+      join ouroboros.ticket_sources_public s on s.id = t.source_id
+     where t.organization_id = 'org-tickets'
+       and t.source_id = 'b0300000-0000-0000-0000-000000000001'
+       and t.state = 'open'$$);
+
+set local enable_seqscan = on;
+
+-- --- what a deletion takes with it ------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.tickets
+    where source_id = 'b0300000-0000-0000-0000-000000000002'),
+  'the Jira source holds two tickets before it is removed');
+
+delete from ouroboros.ticket_sources where id = 'b0300000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.tickets
+    where source_id = 'b0300000-0000-0000-0000-000000000002'),
+  'deleting a source takes its tickets with it — a ticket with no source cannot be rendered');
+
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.tickets where organization_id = 'org-tickets'),
+  'and it takes only its own — the other sources'' tickets are untouched');
+
+delete from ouroboros.organization where "id" = 'org-tickets';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.tickets where organization_id = 'org-tickets'),
+  'deleting a workspace takes its tickets with it');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.ticket_sources where organization_id = 'org-tickets'),
+  'and its sources, which is what keeps a sealed credential from outliving its workspace');
+
+delete from ouroboros.organization where "id" = 'org-sources';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.ticket_sources),
+  'nothing this section created is left behind');
+
+-- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)
 -- ===========================================================================
 --
@@ -9280,11 +10100,11 @@ rollback;
 
 -- Except one thing, which is why it is put back here rather than trusted to the rollback.
 --
--- The plan assertions above `analyze` two tables so the planner has statistics to choose
+-- The plan assertions above `analyze` four tables so the planner has statistics to choose
 -- between two otherwise identically-priced index paths — see the V015 section for why that
 -- is load-bearing. `ANALYZE` writes `pg_statistic` transactionally, and that much did go out
 -- with the rollback; but it also writes `pg_class.reltuples` and `relpages` **in place**,
--- and an in-place update is not part of any transaction. Left alone it would leave both
+-- and an in-place update is not part of any transaction. Left alone it would leave those
 -- tables claiming the row count they had *inside* the transaction, which is a count of
 -- fixtures that no longer exist — so a second run of this file would plan differently from
 -- the first, and a developer running it against a database they are using would leave it
@@ -9295,6 +10115,8 @@ rollback;
 -- else's.
 analyze ouroboros.model_aliases;
 analyze ouroboros.provider_connections;
+analyze ouroboros.tickets;
+analyze ouroboros.ticket_sources;
 
 \o
 \echo 'constraints.sql: all assertions passed'
