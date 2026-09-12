@@ -3,8 +3,8 @@
 # seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
 # migrations/R__dev_seed_audit.sql, migrations/R__dev_seed_dashboard.sql,
 # migrations/R__dev_seed_intake.sql, migrations/R__dev_seed_providers.sql,
-# migrations/R__dev_seed_routing.sql, and the configuration that decides whether they do
-# anything.
+# migrations/R__dev_seed_routing.sql, migrations/R__dev_seed_sources.sql, and the
+# configuration that decides whether they do anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
 # so the properties worth testing are the ones that keep those two apart: that a
@@ -12,14 +12,14 @@
 # deliberate `--config` resolve it to `true`, and that every statement in either file is
 # behind that guard and can be applied twice.
 #
-# There are six files because they answer different questions — R__dev_seed.sql (#23) is
+# There are seven files because they answer different questions — R__dev_seed.sql (#23) is
 # *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
 # R__dev_seed_intake.sql (#103) is *what it has an opinion about next*,
 # R__dev_seed_providers.sql (#221) is *what it is allowed to call*,
 # R__dev_seed_routing.sql (#192) is *how it decides which one to call*, and
-# R__dev_seed_audit.sql (#225) is *who touched the keys* — and the structural rules below
-# are asserted over all of them, in a loop, so that a seventh seed inherits them by being
-# added to one list.
+# R__dev_seed_audit.sql (#225) is *who touched the keys*, and R__dev_seed_sources.sql
+# (#138) is *where the work comes from* — and the structural rules below are asserted over
+# all of them, in a loop, so that an eighth seed inherits them by being added to one list.
 #
 # All of it is a file read plus the stubbed runners tests/lib/fixture.sh provides, so
 # this needs no database, no Docker and no network — the same contract as
@@ -62,6 +62,7 @@ INTAKE_SEED="$MODULE_DIR/migrations/R__dev_seed_intake.sql"
 PROVIDERS_SEED="$MODULE_DIR/migrations/R__dev_seed_providers.sql"
 ROUTING_SEED="$MODULE_DIR/migrations/R__dev_seed_routing.sql"
 AUDIT_SEED="$MODULE_DIR/migrations/R__dev_seed_audit.sql"
+SOURCES_SEED="$MODULE_DIR/migrations/R__dev_seed_sources.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -94,12 +95,14 @@ INTAKE_BODY="$work/seed-body-intake.sql"
 PROVIDERS_BODY="$work/seed-body-providers.sql"
 ROUTING_BODY="$work/seed-body-routing.sql"
 AUDIT_BODY="$work/seed-body-audit.sql"
+SOURCES_BODY="$work/seed-body-sources.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
 seed_body "$PROVIDERS_SEED" "$PROVIDERS_BODY"
 seed_body "$ROUTING_SEED" "$ROUTING_BODY"
 seed_body "$AUDIT_SEED" "$AUDIT_BODY"
+seed_body "$SOURCES_SEED" "$SOURCES_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -122,11 +125,12 @@ check_exists "$INTAKE_SEED" 'migrations/R__dev_seed_intake.sql exists'
 check_exists "$PROVIDERS_SEED" 'migrations/R__dev_seed_providers.sql exists'
 check_exists "$ROUTING_SEED" 'migrations/R__dev_seed_routing.sql exists'
 check_exists "$AUDIT_SEED" 'migrations/R__dev_seed_audit.sql exists'
+check_exists "$SOURCES_SEED" 'migrations/R__dev_seed_sources.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
-                 "$PROVIDERS_SEED" "$ROUTING_SEED"; do
+                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -154,6 +158,8 @@ routing_description=$(basename -- "$ROUTING_SEED" .sql)
 routing_description=${routing_description#R__}
 audit_description=$(basename -- "$AUDIT_SEED" .sql)
 audit_description=${audit_description#R__}
+sources_description=$(basename -- "$SOURCES_SEED" .sql)
+sources_description=${sources_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -168,10 +174,13 @@ audit_description=${audit_description#R__}
 # is deliberately non-referential, so that seed names its connections by literal uuid and
 # has nothing to join to. It is still asserted, because a seed added later between them
 # would inherit the position without inheriting the argument.
-check_equals "$(printf '%s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" |
+#
+# The sources seed (#138) sorts last, and only needs to: it hangs off the first seed for its
+# workspace and off nothing else, because V030's two tables are the first of their domain.
+check_equals "$(printf '%s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the six seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the seven seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -182,7 +191,7 @@ check_equals "$(printf '%s %s %s %s %s %s' "$base_description" "$audit_descripti
 # such a table outright. Naming the primary key is what that statement does instead, and it
 # is still the "applied twice writes nothing" rule this check exists for.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
-                 "$PROVIDERS_SEED" "$ROUTING_SEED"; do
+                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -190,6 +199,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
   [ "$seed_file" = "$INTAKE_SEED" ] && body=$INTAKE_BODY
   [ "$seed_file" = "$PROVIDERS_SEED" ] && body=$PROVIDERS_BODY
   [ "$seed_file" = "$ROUTING_SEED" ] && body=$ROUTING_BODY
+  [ "$seed_file" = "$SOURCES_SEED" ] && body=$SOURCES_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   guards=$(count_lines '^ *(where|and) \$\{ouro_dev_seed\}$' "$body")
@@ -558,6 +568,60 @@ check_matches "$out" 'configFiles=[^ ]*/flyway\.toml,[^ ]*/flyway\.seed\.toml ' 
 check_matches "$out" ' migrate$' 'and still runs migrate'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_sources.sql — where the work comes from
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_sources.sql — the ticket sources\n'
+
+# One prefix, because there is one table. Both ids are literals rather than computed — there
+# are two of them — so the prefix is asserted the way every other seed's is.
+check_contains "$SOURCES_BODY" '5eed001a-0000-4000-8000-' \
+  'the sources seed builds its ids from the 5eed001a… prefix'
+
+# **The one table, and this is the assertion that keeps the seed honest.** V030 created
+# `tickets` as well, and an insert into it here would put mockup 03's nine issues in two
+# places — R__dev_seed_intake.sql already seeds them into `github_issues`, which is what the
+# backlog reads until Q.3 (#140) cuts it over. The copy nothing renders is the copy that
+# drifts, so the restraint is asserted rather than left to the header that argues for it.
+sources_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$SOURCES_BODY" |
+  sed 's/^insert into ouroboros\.//' | sort -u | tr '\n' ' ')
+check_equals 'ticket_sources ' "$sources_tables" \
+  'the sources seed writes the sources and deliberately not the canonical tickets'
+
+# Both kinds, because one of them would prove nothing. A lone `github` row is a source
+# neutrality claim nobody can check; the `jira` row is what makes the development stack hold
+# a tracker with no repository in it.
+for kind in "'github'" "'jira'"; do
+  check_contains "$SOURCES_BODY" "$kind" \
+    "the sources seed configures a $kind source, so two kinds coexist in the dev stack"
+done
+
+# Parents by natural key, exactly as the other seeds do — the workspace by slug.
+check_absent "$SOURCES_BODY" '5eed0001-0000-4000-8000' \
+  'the sources seed names no id from another seed — it joins the workspace by slug'
+
+# Every timestamp is left to the column defaults or to a sync that has not run, so there is
+# no literal date to fall out of date. `synced_at` and `sync_cursor` are absent from the
+# statement entirely, which is what makes the freshness tag honest on a seeded database.
+check_absent "$SOURCES_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the sources seed carries no literal date — nothing here claims a poll happened'
+for stamp in 'synced_at' 'sync_cursor'; do
+  check_absent "$SOURCES_BODY" "$stamp" \
+    "the sources seed writes no $stamp, because no sync has run against either source"
+done
+
+# The credential is an envelope and nothing else: one `ouro.v1.…` value for the GitHub
+# source, none for the Jira one, and not a single string shaped like a tracker token. V030's
+# CHECK refuses a plaintext outright; this is the half that keeps one out of the file.
+sources_envelopes=$(grep -Eoc "'ouro\.v1\.[0-9]+\." "$SOURCES_BODY" || true)
+check_equals 1 "$(printf '%s' "$sources_envelopes" | tr -d ' ')" \
+  'the sources seed seals one credential and leaves the un-credentialed source without one'
+for shape in 'ghp_' 'github_pat' 'glpat-' 'ATATT'; do
+  check_absent "$SOURCES_BODY" "$shape" \
+    "the sources seed carries nothing shaped like a $shape… credential"
+done
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -570,6 +634,7 @@ check_contains "$README" 'R__dev_seed_intake\.sql' 'README.md documents the inta
 check_contains "$README" 'R__dev_seed_providers\.sql' 'README.md documents the providers seed'
 check_contains "$README" 'R__dev_seed_routing\.sql' 'README.md documents the routing seed'
 check_contains "$README" 'R__dev_seed_audit\.sql' 'README.md documents the audit seed'
+check_contains "$README" 'R__dev_seed_sources\.sql' 'README.md documents the sources seed'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'

@@ -441,7 +441,7 @@ abstraction + GitHub; T.2–T.4 add providers without core changes.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| Q.1 | #138 | 🟡 Open | ouroboros-db: [Q.1] Canonical ticket model | Source-agnostic `tickets` + `ticket_sources` schema (P6) | mvp, sources, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| Q.1 | #138 | 🟢 Done | ouroboros-db: [Q.1] Canonical ticket model | Source-agnostic `tickets` + `ticket_sources` schema (P6) | mvp, sources, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | Q.2 | #139 | 🟡 Open | ouroboros-rest: [Q.2] TicketSourceProvider SPI & registry | Provider interface, lifecycle, capability flags, secret handling | mvp, sources, rest | N (after Q.1) | Y | L | ouroboros-rest |
 | Q.3 | #140 | 🟡 Open | ouroboros-rest: [Q.3] GitHub provider (first conforming plugin) | INTAKE-K.3/K.4 behavior behind the SPI (both shipped 2026-09-08 — a refactor); cursor sync; PR filtering | mvp, sources, intake, rest | N (after Q.2) | Y | M | ouroboros-rest |
 | Q.4 | #141 | 🟡 Open | ouroboros-rest: [Q.4] Source management API & settings UI | Add/configure/pause sources per org; masked credentials; status | mvp, sources, rest, ui | N (after Q.2, BA-C.3) | Y | M | ouroboros-rest, ouroboros-ui |
@@ -449,7 +449,7 @@ abstraction + GitHub; T.2–T.4 add providers without core changes.
 
 ### Issue Q.1 — ouroboros-db: [Q.1] Canonical ticket model
 
-> **GitHub issue:** #138 · **Status:** 🟡 Open · **Parent epic:** #128
+> **GitHub issue:** #138 · **Status:** 🟢 Done · **Parent epic:** #128
 
 - **Problem Statement:** The intake schema (INTAKE-K.1) is GitHub-shaped
   (`github_issues`, repo FK, `gh_*` columns); a Jira ticket has no repo and no
@@ -1168,7 +1168,7 @@ on 2026-08-09; no new work created:
 | #49 | `/workflows` placeholder retired by S.1 (#147) |
 | #56 | e2e suite gains the studio leg S.8 (#154) |
 | #64 | DASH-F.1 `runs` gains P.4 (#135) as a consumer — no schema change |
-| #99 | INTAKE-K.1 `github_issues` **replaced** by the canonical ticket model Q.1 (#138) |
+| #99 | INTAKE-K.1 `github_issues` **replaced** by the canonical ticket model Q.1 (#138) — **overtaken 2026-09-08**: `#99` shipped `V014`, so Q.1 became the *generalizing* migration the issue's own scope anticipated for that case. Landed 2026-09-12 as `V030`, and **additively**: `ticket_sources` and `tickets` are created with every constraint the canonical model needs, and `github_issues` is left exactly as it was found. The cut-over — the sync writing `tickets`, `issue_estimates` re-pointing at `tickets.id`, `github_issues` retiring — belongs to Q.2 (#139) and Q.3 (#140), which are the tickets that change the *writer* |
 | #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) — **overtaken 2026-09-08**: Epic K was built after all (`#99`, `#100`, `#101` all shipped), so Q.3 *refactors* the GitHub client behind the SPI rather than writing it. The boundary the amendment asked for landed with #101: `github.octokit.ts` is the only file that may import `@octokit/*`, lint-enforced |
 | #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) — **overtaken 2026-09-08**: `#102` shipped, so Q.2's scheduler generalizes a working loop and Q.3 *moves* GitHub's specifics rather than writing them. They are already one file each: the `since` cursor and the `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in `issue.mapping.ts`, and the estimation handoff behind an injectable token |
 | #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143) |
@@ -1243,6 +1243,10 @@ Epic K is filed (#99–#104) but **unbuilt** — no migration or service code ex
 the repository. Therefore:
 
 - **Q.1 (#138) replaces #99** rather than generalizing a shipped `github_issues` table.
+  *(Superseded 2026-09-08: `#99` shipped `V014`'s `github_issues`, so Q.1 generalized it
+  instead — see the coordination row above. `V030` landed 2026-09-12 creating
+  `ticket_sources` and `tickets` alongside the shipped table rather than in place of it,
+  because moving intake onto them means changing the sync, which is Q.2's and Q.3's.)*
 - **Q.3 (#140) implements #101/#102 SPI-first** rather than refactoring built code.
   *(Superseded 2026-09-08: #101 and #102 both shipped, so Q.3 refactors them behind the SPI.
   The seams it needs already exist — the Octokit boundary from #101, and #102's per-file
