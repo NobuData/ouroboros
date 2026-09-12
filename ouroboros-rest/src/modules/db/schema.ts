@@ -2193,6 +2193,261 @@ export interface WorkflowVersionsTable {
 }
 
 /**
+ * `ticket_sources.kind` — which tracker a source is (V030, decision **P6**).
+ *
+ * The `ticket_sources_kind` CHECK, mirrored the way this file's header says a CHECK becomes a
+ * type, and **the key Q.2's registry resolves a provider by**
+ * ([#139](https://github.com/NobuData/ouroboros/issues/139)). That is what makes this union
+ * different from the other vocabularies here: the others partition something a page renders,
+ * and this one partitions the set of implementations a build has.
+ *
+ * `custom` is in the set from the start rather than added when somebody needs it — it is what
+ * a community provider registers as, and leaving it out would mean the first such provider
+ * needed a migration before it could store a row.
+ */
+export type TicketSourceKind = "github" | "gitlab" | "jira" | "linear" | "custom";
+
+/**
+ * The five, in the order the CHECK declares them.
+ *
+ * Iterated by `ticket-sources/ticket-source.registry.ts`, which answers *which kinds does this
+ * build have a provider for* by filtering this list — so the catalog's order is the
+ * migration's rather than an injector's.
+ */
+export const TICKET_SOURCE_KINDS = [
+  "github",
+  "gitlab",
+  "jira",
+  "linear",
+  "custom",
+] as const satisfies readonly TicketSourceKind[];
+
+/**
+ * `ticket_sources.status` — the sync loop's filter and the settings list's dot (V030).
+ *
+ * Three states rather than a boolean, and the third is the reason: a source that is *failing*
+ * must not be confusable with one somebody switched off, because the two are fixed by
+ * different people. `active` is the working state and the only one Q.2's loop polls, `paused`
+ * is a person's choice, and `error` is the sync's own report.
+ *
+ * All four provider error classes coarsen into `error` — see
+ * `ticket-sources/ticket-source.errors.ts`, which carries that table and the
+ * {@link TicketSourcesTable.status_reason} that keeps them distinguishable.
+ */
+export type TicketSourceStatus = "active" | "paused" | "error";
+
+/** The three, in the order the CHECK declares them. */
+export const TICKET_SOURCE_STATUSES = [
+  "active",
+  "paused",
+  "error",
+] as const satisfies readonly TicketSourceStatus[];
+
+/**
+ * `tickets.state` — the one state vocabulary every tracker in the set maps onto (V030).
+ *
+ * The same two words {@link GithubIssueState} carries, and deliberately the same two: Jira's
+ * workflow states and Linear's are richer than two, and collapsing them is the **provider's**
+ * job in `mapTicket`. A wider union here would be a filter whose options changed depending on
+ * which tracker a workspace happened to use.
+ */
+export type TicketState = "open" | "closed";
+
+/** The two, in the order the CHECK declares them. */
+export const TICKET_STATES = ["open", "closed"] as const satisfies readonly TicketState[];
+
+/**
+ * `ouroboros.ticket_sources` — where a workspace's tickets come from (V030,
+ * [#138](https://github.com/NobuData/ouroboros/issues/138)), polled by Q.2
+ * ([#139](https://github.com/NobuData/ouroboros/issues/139)).
+ *
+ * One row per configured tracker per workspace. Decision **P6**, and the reason mockup 04's
+ * trigger node reads `Issue queued` rather than *GitHub issue queued*.
+ *
+ * **Almost nothing reads this interface — reads go through {@link TicketSourcesPublicView}.**
+ * The table is declared because {@link credentials_encrypted} lives on it and nowhere else,
+ * and because a write has to name a table; the view is declared because the credential is
+ * absent from it, which is what makes *"never selected by read paths"* a property of the
+ * projection rather than of everybody's care. `ticket-sources.repository.ts` has exactly one
+ * statement that names this table for reading, and it selects one column.
+ */
+export interface TicketSourcesTable {
+  id: Generated<string>;
+  /** Owning workspace. `on delete cascade` — a deleted workspace takes its sealed credentials with it. */
+  organization_id: string;
+  /** Which tracker, and the key the provider registry resolves by. */
+  kind: TicketSourceKind;
+  /** What the settings list calls this source. Unique per workspace — the one column here nothing external owns. */
+  display_name: string;
+  /**
+   * Non-secret settings: a base URL, the project keys to poll, a GitHub-kind source's
+   * repository list.
+   *
+   * `unknown` on the way out rather than a shape, because the column's CHECK promises an
+   * object and no more: the per-kind grammar belongs to the provider that reads it, and a type
+   * spelled here would be GitHub's grammar under a neutral name — the special case V030 exists
+   * to remove. A provider parses it in `validateConfig`.
+   *
+   * `ColumnType` for {@link WorkflowVersionsTable.definition}'s reason: `pg` hands a `jsonb`
+   * column back parsed, and Kysely wants the value *written* to be the string a driver will
+   * send, so every write goes through `JSON.stringify`.
+   */
+  config: ColumnType<unknown, string, string>;
+  /**
+   * The sealed credential, or null while a source is configured and not yet credentialed.
+   *
+   * One of `VaultService`'s envelopes, always — `ticket_sources_credentials_sealed` refuses
+   * anything else, for *every* writer rather than for the service that is supposed to
+   * encrypt. Selected by one statement in this service and decrypted inside the call that
+   * needs it; see `ticket-sources.repository.ts` and `ticket-sources.service.ts`.
+   */
+  credentials_encrypted: string | null;
+  /** `active` | `paused` | `error`. Defaults to `active`: a source somebody just added is meant to be polled. */
+  status: Generated<TicketSourceStatus>;
+  /**
+   * Why it is in that state, in words fit to render — `rate limited until 14:20 UTC` (V031,
+   * [#139](https://github.com/NobuData/ouroboros/issues/139)).
+   *
+   * Null when there is nothing to say. Composed by `ticket-source.errors.ts` from a closed set
+   * of phrases, never from a provider's error body.
+   */
+  status_reason: string | null;
+  /**
+   * The watermark the next incremental sync sends to the tracker.
+   *
+   * **Opaque**, and that is an acceptance criterion of Q.2 rather than a convenience: the loop
+   * stores what a provider returned and never interprets it. Null until a poll has produced
+   * one, which is what makes a poll a full sync rather than an incremental one.
+   */
+  sync_cursor: string | null;
+  /** When this source was last polled successfully. Null until the first poll; moved by a poll that found nothing. */
+  synced_at: Date | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.ticket_sources_public` — every column of {@link TicketSourcesTable} except the
+ * sealed credential (V030, widened by V031).
+ *
+ * **What every read path selects.** The secret is not forgotten here, it is *absent*: there is
+ * nothing for a listing, a join or a debug dump to leak. `ouroboros-db/tests/constraints.sql`
+ * asserts the column list against `information_schema`, so a later migration that widened it
+ * back would fail that build rather than quietly re-expose the column.
+ *
+ * It is in {@link READ_ONLY_VIEWS}, and it is the first entry there that PostgreSQL itself
+ * would happily accept a write through — one base table, no filter, so it is auto-updatable.
+ * That makes the rule *more* necessary rather than less: an `insertInto` here would compile,
+ * run, and create a source with no credential and no way to be given one.
+ */
+export interface TicketSourcesPublicView {
+  id: string;
+  organization_id: string;
+  kind: TicketSourceKind;
+  display_name: string;
+  config: unknown;
+  status: TicketSourceStatus;
+  sync_cursor: string | null;
+  synced_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+  /** V031's column, appended rather than inserted, so V030's ten keep their ordinals. */
+  status_reason: string | null;
+}
+
+/**
+ * `ouroboros.tickets` — the canonical intake row (V030,
+ * [#138](https://github.com/NobuData/ouroboros/issues/138)), written by Q.2's sync loop
+ * ([#139](https://github.com/NobuData/ouroboros/issues/139)).
+ *
+ * One row per ticket per source, whatever tracker it came from. Source-agnostic by
+ * construction: no repository, no issue number, no `gh_` prefix — decision **P6**, and the
+ * four columns of {@link GithubIssuesTable} that stop being columns are named in V030's
+ * header.
+ *
+ * **Decision K3 still applies, generalized: this is a cache and the tracker is the source of
+ * truth.** Exactly one column below is this product's — {@link sizing_status} — and it keeps
+ * V014's four values and V014's default *verbatim*, which is what lets the estimation pipeline
+ * stay as it is. Everything from {@link external_id} to {@link source_updated_at} is a copy of
+ * something a tracker owns, and nothing in this service authors one.
+ *
+ * **`github_issues` is still the shipped intake table.** V030 generalized additively and left
+ * it exactly as it was found, and the cut-over — the intake surfaces reading this table, the
+ * estimates re-pointing at {@link id} — belongs to Q.3
+ * ([#140](https://github.com/NobuData/ouroboros/issues/140)), which is the ticket that makes
+ * GitHub a provider. What Q.2 contributes is the writer.
+ */
+export interface TicketsTable {
+  id: Generated<string>;
+  /** Owning workspace, and the leading column of every read. Held to the source's own workspace by a trigger. */
+  organization_id: string;
+  /** Where this ticket came from. The upsert key with {@link external_id}. */
+  source_id: string;
+  /**
+   * The tracker's own identity — `485`, `PROJ-142`, a Linear uuid.
+   *
+   * Text, which is what makes those three one column, and unique within its source rather than
+   * globally: every tracker has a first ticket.
+   */
+  external_id: string;
+  /**
+   * The display form — `#485`, `PROJ-142`, `ENG-123`.
+   *
+   * Supplied by the provider rather than computed, because a Linear key has no relationship to
+   * the uuid that identifies it. Deliberately not unique: two sources may hold the same key.
+   */
+  external_key: string;
+  /** The ticket in its own tracker — the href behind *"Open ↗"*, constrained to `https` and a host. */
+  external_url: string;
+  /** Title as the tracker currently has it. Overwritten by every sync that sees it change. */
+  title: string;
+  /** Body in full, or null when the tracker's is. */
+  body: string | null;
+  /** `open` | `closed`. Collapsing a richer workflow onto these two is the provider's job. */
+  state: TicketState;
+  /**
+   * The **tracker's** label names as a JSON array of strings — not this product's vocabulary.
+   *
+   * `ColumnType` for {@link GithubIssuesTable.labels}' reason: parsed on the way out, a string
+   * on the way in.
+   */
+  labels: ColumnType<string[], string, string>;
+  /**
+   * Who opened it, in whatever form the tracker returns — a GitHub login, a Jira account id, a
+   * Linear display name.
+   *
+   * **No login grammar**, deliberately: V014's GitHub pattern on a source-agnostic column
+   * would reject legitimate authors from three of the five kinds. Null when the tracker
+   * returns no author.
+   */
+  author: string | null;
+  /** When the tracker says it was opened — and the column the backlog's newest-first ordering is defined over. */
+  source_created_at: Date;
+  /** The tracker's last-updated time. Not nullable: a row without one could not take part in an incremental sync. */
+  source_updated_at: Date;
+  /**
+   * When this row was last confirmed against its source.
+   *
+   * Moved by every sync, including one that found nothing changed. Distinct from
+   * {@link updated_at}, which the touch trigger moves only when the row actually differed.
+   */
+  synced_at: Generated<Date>;
+  /** Our sizing pipeline. V014's four values and default, verbatim — see {@link SizingStatus}. */
+  sizing_status: Generated<SizingStatus>;
+  /**
+   * Provider specifics the canonical columns do not name — a GitHub repository, a Jira
+   * project, a Linear team.
+   *
+   * Where `github_repo_id` went (decision **P6**), and still queryable: the repository filter
+   * becomes a containment query served by `tickets_meta_idx`. `unknown` on the way out for
+   * {@link TicketSourcesTable.config}'s reason.
+   */
+  meta: ColumnType<unknown, string, string>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -2260,11 +2515,23 @@ export interface WorkspaceSettingsEffectiveView {
  * base table and neither of these has one. Both are windows onto a table this mirror also
  * declares, and that table is where a write goes.
  *
- * `schema.spec.ts` holds this list to the two view interfaces above; `db.integration-spec.ts`
+ * **`ticket_sources_public` (V030, [#138](https://github.com/NobuData/ouroboros/issues/138))
+ * is the third, and it is the first entry here that PostgreSQL itself would accept a write
+ * through**: one base table, no filter, so it is auto-updatable and the run-time refusal the
+ * paragraph above relies on does not arrive. That makes the rule load-bearing rather than
+ * belt-and-braces — an `insertInto` here would compile *and* succeed, and would create a
+ * ticket source whose sealed credential column the statement had no way to reach. Writes go
+ * to `ticket_sources`, which {@link Database} also declares.
+ *
+ * `schema.spec.ts` holds this list to the view interfaces above; `db.integration-spec.ts`
  * compares their columns against `information_schema` exactly as it does a table's, because a
  * view that lost a column breaks a query the same way a table that lost one does.
  */
-export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effective"] as const;
+export const READ_ONLY_VIEWS = [
+  "token_usage_daily",
+  "workspace_settings_effective",
+  "ticket_sources_public",
+] as const;
 
 /**
  * Every table `ouroboros-rest` may query, keyed by its name in the database.
@@ -2388,7 +2655,10 @@ export interface Database {
   audit_events: AuditEventsTable;
   workflows: WorkflowsTable;
   workflow_versions: WorkflowVersionsTable;
+  ticket_sources: TicketSourcesTable;
+  tickets: TicketsTable;
   token_usage_daily: TokenUsageDailyView;
+  ticket_sources_public: TicketSourcesPublicView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
   alias_references: AliasReferencesView;
 }
@@ -2669,6 +2939,53 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  ticket_sources: [
+    "id",
+    "organization_id",
+    "kind",
+    "display_name",
+    "config",
+    "credentials_encrypted",
+    "status",
+    "sync_cursor",
+    "synced_at",
+    "created_at",
+    "updated_at",
+    "status_reason",
+  ],
+  tickets: [
+    "id",
+    "organization_id",
+    "source_id",
+    "external_id",
+    "external_key",
+    "external_url",
+    "title",
+    "body",
+    "state",
+    "labels",
+    "author",
+    "source_created_at",
+    "source_updated_at",
+    "synced_at",
+    "sizing_status",
+    "meta",
+    "created_at",
+    "updated_at",
+  ],
+  ticket_sources_public: [
+    "id",
+    "organization_id",
+    "kind",
+    "display_name",
+    "config",
+    "status",
+    "sync_cursor",
+    "synced_at",
+    "created_at",
+    "updated_at",
+    "status_reason",
+  ],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -2945,6 +3262,38 @@ export type WorkflowVersion = Selectable<WorkflowVersionsTable>;
  * exception that trigger carries.
  */
 export type NewWorkflowVersion = Insertable<WorkflowVersionsTable>;
+
+/**
+ * A row of `ouroboros.ticket_sources`, as a `select` returns it — **including the sealed
+ * credential**, which is why almost nothing uses this type.
+ *
+ * The shape a read path wants is {@link TicketSourcePublic}. This one exists for the single
+ * statement that opens a credential and for the writes, which have to name a table.
+ */
+export type TicketSource = Selectable<TicketSourcesTable>;
+/** The columns an `insert` into `ouroboros.ticket_sources` may carry. */
+export type NewTicketSource = Insertable<TicketSourcesTable>;
+
+/**
+ * A row of `ouroboros.ticket_sources_public`, as a `select` returns it — a source with no
+ * credential on it at all.
+ *
+ * No `New…` counterpart, for the reason {@link TokenUsageDaily} gives and with more force:
+ * see {@link READ_ONLY_VIEWS} on why PostgreSQL would not refuse the write itself.
+ */
+export type TicketSourcePublic = Selectable<TicketSourcesPublicView>;
+
+/** A row of `ouroboros.tickets`, as a `select` returns it — one canonical ticket. */
+export type Ticket = Selectable<TicketsTable>;
+/**
+ * The columns an `insert` into `ouroboros.tickets` may carry.
+ *
+ * What Q.2's sync loop writes ([#139](https://github.com/NobuData/ouroboros/issues/139)), from
+ * what a provider's `mapTicket` returned. `sizing_status` is deliberately absent from every
+ * statement that builds one: a freshly ingested ticket is `unsized` by the column's default,
+ * and a sync that set it would be claiming an estimate that does not exist.
+ */
+export type NewTicket = Insertable<TicketsTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.

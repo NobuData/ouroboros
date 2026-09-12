@@ -15,7 +15,20 @@
  * (#140) turns the GitHub client into the first `TicketSourceProvider`, the seam moves and
  * this rule's `pathNot` moves with it.
  *
- * `providers/boundary.spec.ts` and `github/boundary.spec.ts` prove the rules bite: each
+ * The fourth and fifth rules are the same sentence again, for the ticket-source SPI that Q.2
+ * (#139) landed — and they are the rules that ticket's *first* acceptance criterion asks for
+ * by name: *"the core sync loop compiles against the SPI only — a provider-specific import in
+ * core code fails CI (dependency-cruiser or equivalent lint rule)"*. The issue is explicit
+ * about why it is a build step: pluggability *"decays the first time someone adds
+ * `if (source.kind === 'github')` to the sync loop because it was quicker"*, and the import is
+ * what that line needs before it can be written.
+ *
+ * `src/modules/ticket-sources/providers/` does not exist yet — Q.3 (#140) creates it with the
+ * GitHub provider — and the rule is here anyway, because a boundary added after the first
+ * thing crosses it is a boundary that has to be argued rather than enforced.
+ *
+ * `providers/boundary.spec.ts`, `github/boundary.spec.ts` and
+ * `ticket-sources/boundary.spec.ts` prove the rules bite: each
  * builds a tree containing exactly the violation its rule describes, cruises it with *this*
  * configuration, and asserts the violation is reported. A lint rule nobody has watched fail is
  * a lint rule that passes everything.
@@ -81,6 +94,39 @@ module.exports = {
         "When Q.3 (#140) moves this behind the ticket-source SPI, move the pathNot with it.",
       from: { path: "^src/", pathNot: "^src/modules/github/github\\.octokit\\.ts$" },
       to: { path: "(^|node_modules/)@octokit(/|$)" },
+    },
+
+    {
+      name: "ticket-source-core-imports-the-spi-only",
+      severity: "error",
+      comment:
+        "The intake loop reaches a tracker through TicketSourceRegistry, never by importing " +
+        "one (Q.2, #139). src/modules/ticket-sources/providers/ is where a provider lives and " +
+        "ticket-sources.module.ts is the single registration point; tests and fixtures are " +
+        "exempt, because the in-memory provider exists to power them.",
+      from: {
+        path: "^src/",
+        pathNot:
+          "^src/modules/ticket-sources/(ticket-sources\\.module\\.ts|providers/)|" +
+          "spec\\.ts$|\\.fixture\\.ts$",
+      },
+      to: { path: "^src/modules/ticket-sources/providers/" },
+    },
+    {
+      name: "no-tracker-sdk-outside-ticket-source-providers",
+      severity: "error",
+      comment:
+        "A tracker's SDK belongs behind the TicketSourceProvider SPI (decision P5, #139). " +
+        "Import it from src/modules/ticket-sources/providers/ and expose what the sync loop " +
+        "needs through the interface. @octokit is governed by no-octokit-outside-the-seam " +
+        "rather than by this rule, because K.3 gave it a seam before this SPI existed; Q.3 " +
+        "(#140) moves that rule's pathNot into providers/ and the two become one.",
+      from: { path: "^src/", pathNot: "^src/modules/ticket-sources/providers/" },
+      to: {
+        path:
+          "(^|node_modules/)(@gitbeaker|@linear/sdk|gitlab|jira-client|jira\\.js|" +
+          "node-gitlab|jira-connector)(/|$)",
+      },
     },
 
     {

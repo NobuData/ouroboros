@@ -293,7 +293,15 @@ describe("TABLE_COLUMNS", () => {
     // writer anywhere, and the rail's stats are the first thing here to read one. Nothing in
     // this service writes either — P.3 (#134) is the CRUD and #136 is the seed — so what the
     // mirror declares is a read model plus the two `New…` shapes its suites arrange a rail with.
-    expect(TABLE_NAMES).toHaveLength(31);
+    //
+    // The thirty-second, thirty-third and thirty-fourth are the canonical intake model (V030,
+    // #138) and the view over half of it: `ticket_sources`, `tickets` and
+    // `ticket_sources_public`. They break the *"a mirrored table with no reader is drift"*
+    // rule the three entries above kept, and deliberately — Q.2 (#139) is the ticket that
+    // brought them in, and Q.2 is the **writer**. The sync loop fills `tickets`, stamps
+    // `ticket_sources`, and reads its sources through the view; there is no release in which
+    // these are declared and untouched.
+    expect(TABLE_NAMES).toHaveLength(34);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -468,14 +476,14 @@ describe("TABLE_COLUMNS", () => {
     }
   });
 
-  it("declares both views, and declares them as views", () => {
+  it("declares each read-only view, and declares it as a view", () => {
     // A view is in `Database` because it is read, and in `READ_ONLY_VIEWS` because it may not
     // be written — `Database` itself has no way to say the second thing. The pairing is what
     // stops a view being added to the mirror and quietly acquiring an `insertInto`.
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(2);
+    expect(READ_ONLY_VIEWS).toHaveLength(3);
   });
 
   it("mirrors, for each view, the table a write to it belongs in", () => {
@@ -484,6 +492,38 @@ describe("TABLE_COLUMNS", () => {
     // write to go.
     expect(TABLE_NAMES).toContain("token_usage");
     expect(TABLE_NAMES).toContain("workspace_settings");
+    expect(TABLE_NAMES).toContain("ticket_sources");
+  });
+
+  it("keeps the sealed credential off the view a read path selects", () => {
+    // V030's acceptance criterion, as a property of the mirror: `credentials_encrypted` is on
+    // the table and absent from the view, so a `select *` through the view cannot reach it and
+    // a query that wants it has to name the table — which is one statement, in one file.
+    expect(TABLE_COLUMNS.ticket_sources).toContain("credentials_encrypted");
+    expect(TABLE_COLUMNS.ticket_sources_public).not.toContain("credentials_encrypted");
+
+    // And the view is otherwise the whole table, so reading through it costs a caller nothing
+    // but the column it must not have.
+    const hidden = TABLE_COLUMNS.ticket_sources.filter(
+      (column) => !(TABLE_COLUMNS.ticket_sources_public as readonly string[]).includes(column),
+    );
+
+    expect(hidden).toEqual(["credentials_encrypted"]);
+  });
+
+  it("gives a ticket no column that names one tracker", () => {
+    // Decision P6, as an assertion about the mirror rather than about the migration: the four
+    // GitHub-shaped columns of `github_issues` are exactly what the canonical model exists to
+    // not have, and a `gh_`-prefixed or repository-shaped column arriving here would be the
+    // generalization being undone one convenience at a time.
+    for (const shaped of ["github_repo_id", "number", "gh_created_at", "gh_updated_at", "gh_url"]) {
+      expect(TABLE_COLUMNS.tickets).not.toContain(shaped);
+    }
+
+    // What replaced them, named — so the failure says which half of the trade went missing.
+    for (const canonical of ["external_id", "external_key", "external_url", "meta"]) {
+      expect(TABLE_COLUMNS.tickets).toContain(canonical);
+    }
   });
 
   it("mirrors no table V006 dropped", () => {
