@@ -39,8 +39,10 @@
 -- references this alias?"* (V023, #581), and `resolution_snapshots`, what a run's
 -- resolution decided, kept (V024, #582), and `alias_revisions`, the record every
 -- registry write leaves (V025, #584), `issue_estimates`, the AI Work Breakdown as
--- versioned latest-wins rows (V026, #100), and `github_credentials`, the per-workspace
--- GitHub token the backlog sync authenticates with (V027, #101).
+-- versioned latest-wins rows (V026, #100), `github_credentials`, the per-workspace
+-- GitHub token the backlog sync authenticates with (V027, #101), and `workflows` with
+-- `workflow_versions`, the studio's entities and the version history a run can pin
+-- (V029, #132).
 --
 -- The last two sections belong to no migration. Y.5 (#193) names the routing invariants
 -- Z.1's resolution is written against and asks the catalogue for each of them **by name** — a
@@ -8537,6 +8539,587 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.github_credentials),
   'a workspace''s credential goes with the workspace');
 
+
+-- ===========================================================================
+-- V029 — workflows and workflow_versions, the studio's entities (#132)
+-- ===========================================================================
+--
+-- Decision **P1** as rules: a workspace's workflows, an immutable published history, and
+-- exactly one mutable draft per workflow. Mockup 04's page head is the whole specification —
+-- the title `standard-fix`, the `v14` chip beside *Last edited 2h ago*, and the **Publish
+-- v15** button that turns one into the other — and the rail beneath it adds the fifth entry,
+-- `hotfix-p0`, whose err-dot is a `status` of `paused`.
+--
+-- Nothing writes these tables yet: P.2 (#133) is the DSL, P.3 the endpoints, #136 the seed.
+-- So every assertion below is the only thing standing between a future writer and a version
+-- history that cannot be trusted — which is the argument the migration makes for putting each
+-- of these rules in the database rather than in the service that will arrive later.
+--
+-- Four of them are the acceptance criteria, and they are the four to read first:
+-- **publishing creates version N+1**, **any update of a published row is refused by the
+-- trigger**, **slug uniqueness holds per organization and a stored `workflow_tag` resolves
+-- against it**, and **a second draft is refused by the database**.
+--
+-- Its own fixtures. `org-ghtoken` and its neighbour went with the V027 section, and this one
+-- needs a workspace with a repository under it anyway — the tag bridge is asserted against a
+-- real `runs` row rather than against a string, because *"existing run and queue tags resolve
+-- against slugs"* is a claim about the rows those tables already hold.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-studio',    'Studio Works',  'studio-works',  now()),
+  ('org-nextdoor', 'Next Door Ltd', 'next-door-ltd', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-publisher', 'Maya Chen', 'maya@studio-works.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a9000000-0000-0000-0000-00000000000a', 'org-studio', 'studio-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a9f00000-0000-0000-0000-00000000000a', 'a9000000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+-- The rail, as the mockup draws it: four active workflows and the paused one.
+insert into ouroboros.workflows (id, organization_id, slug, name, status) values
+  ('a9a00000-0000-0000-0000-000000000001', 'org-studio', 'standard-fix', 'Standard fix', 'active'),
+  ('a9a00000-0000-0000-0000-000000000002', 'org-studio', 'feature-loop', 'Feature loop', 'active'),
+  ('a9a00000-0000-0000-0000-000000000003', 'org-studio', 'deps-refresh', 'Deps refresh', 'active'),
+  ('a9a00000-0000-0000-0000-000000000004', 'org-studio', 'docs-loop',    'Docs loop',    'active'),
+  ('a9a00000-0000-0000-0000-000000000005', 'org-studio', 'hotfix-p0',    'Hotfix P0',    'paused');
+
+-- --- the slug is the name the rest of the product already uses ---------------------
+--
+-- Acceptance criterion. Per **organization**, not per installation: two tenants both running
+-- a `standard-fix` is the ordinary case, and a global unique would make the second one rename
+-- for a reason it could never be told.
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name)
+      values ('org-studio', 'standard-fix', 'A second one')$$,
+  'a workspace cannot have two workflows with the same slug',
+  'workflows_organization_slug_key');
+
+insert into ouroboros.workflows (organization_id, slug, name)
+  values ('org-nextdoor', 'standard-fix', 'Their standard fix');
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.workflows where slug = 'standard-fix'),
+  'and the workspace next door may run a standard-fix of its own');
+
+-- Folded and kebab, so uniqueness cannot be defeated by capitalisation — and so that the
+-- slug and the tag are the same alphabet.
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name)
+      values ('org-studio', 'Standard-Fix', 'Shouting')$$,
+  'a slug is lower-case kebab, so Standard-Fix is not a second standard-fix',
+  'workflows_slug_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name)
+      values ('org-studio', 'standard fix', 'Spaced')$$,
+  'nor is a slug with a space in it',
+  'workflows_slug_format');
+
+-- **The bound is `runs.workflow_tag`'s bound**, which is the point of it: a tag those tables
+-- can hold must be short enough to be a slug, or the bridge below would have a gap in it that
+-- only showed up on the longest workflow name somebody ever typed.
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from pg_constraint
+    where conrelid = 'ouroboros.workflows'::regclass
+      and conname  = 'workflows_slug_format'
+      and pg_get_constraintdef(oid) like '%length(slug) <= 64%'),
+  'the slug bound is 64 — the same bound runs.workflow_tag and queue_items.workflow_tag carry');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name)
+      values ('org-studio', repeat('a', 65), 'Too long')$$,
+  'and a 65-character slug is refused at it',
+  'workflows_slug_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name)
+      values ('org-studio', 'nameless', '   ')$$,
+  'a workflow with a blank title is a rail entry nobody can read',
+  'workflows_name_present');
+
+-- --- the rail's three states ------------------------------------------------------
+--
+-- Acceptance criterion: `status` rejects an unknown value, and `paused` is what the err-dot
+-- is rendered from.
+select pg_temp.must_hold(
+  (select status = 'paused' from ouroboros.workflows
+    where organization_id = 'org-studio' and slug = 'hotfix-p0'),
+  'paused is the state the rail draws hotfix-p0''s err-dot from');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflows set status = 'draft'
+     where organization_id = 'org-studio' and slug = 'docs-loop'$$,
+  'status has three values and draft is not one of them — unpublished work is a draft row, not a status',
+  'workflows_status_valid');
+
+select pg_temp.must_hold(
+  (select status = 'active' from ouroboros.workflows
+    where organization_id = 'org-nextdoor' and slug = 'standard-fix'),
+  'a new workflow is active without being told to be');
+
+-- --- one draft per workflow --------------------------------------------------------
+--
+-- Acceptance criterion, and the rule the whole draft model rests on. `version is null` is
+-- what a draft *is*, so the constraint is a partial unique index rather than a flag somebody
+-- maintains.
+insert into ouroboros.workflow_versions (workflow_id, definition) values
+  ('a9a00000-0000-0000-0000-000000000001', '{"dsl_version": 1, "nodes": []}'::jsonb);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_versions (workflow_id, definition)
+      values ('a9a00000-0000-0000-0000-000000000001', '{}')$$,
+  'a workflow has at most one draft, and the second is refused by the database rather than by the editor',
+  'workflow_versions_one_draft_idx');
+
+-- A draft apiece is not a collision: the rule is per workflow.
+insert into ouroboros.workflow_versions (workflow_id, definition) values
+  ('a9a00000-0000-0000-0000-000000000002', '{}'::jsonb);
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.workflow_versions where version is null),
+  'and two workflows may each hold one');
+
+-- An empty canvas is a legal draft — the state + New workflow leaves behind — which is why
+-- the definition check stops at "is it an object" and the grammar belongs to P.2 (#133).
+select pg_temp.must_hold(
+  (select definition = '{}'::jsonb from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000002'),
+  'an empty document is a legal draft, because a canvas with nothing on it is a real state');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set definition = '[]'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000002'$$,
+  'but a definition that is not a document at all is refused',
+  'workflow_versions_definition_object');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set definition = '"standard-fix"'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000002'$$,
+  'and so is a bare string',
+  'workflow_versions_definition_object');
+
+-- --- a draft is a draft in every column, or in none of them -------------------------
+--
+-- The rule that makes `version is null` a definition rather than a convention: the number and
+-- the publish stamp arrive together, and the publisher and the note describe a publish that a
+-- draft has not had.
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set version = 1
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000002'$$,
+  'a numbered version without a publish stamp is half a publish',
+  'workflow_versions_version_publish_stamp');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set published_at = now()
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000002'$$,
+  'and a publish stamp without a number is the other half',
+  'workflow_versions_version_publish_stamp');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set published_by = 'user-publisher'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000002'$$,
+  'a draft has no publisher, because nobody has published it',
+  'workflow_versions_draft_unattributed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set change_note = 'work in progress'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000002'$$,
+  'nor a change note, which describes a publish rather than an edit',
+  'workflow_versions_draft_unattributed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at, change_note)
+      values ('a9a00000-0000-0000-0000-000000000003', 1, '{}', now(), '   ')$$,
+  'a blank change note is a note that lost its text rather than one nobody wrote',
+  'workflow_versions_change_note_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+      values ('a9a00000-0000-0000-0000-000000000003', 0, '{}', now())$$,
+  'versions start at 1, so there is no version 0',
+  'workflow_versions_version_positive');
+
+-- --- publishing creates version N+1 -------------------------------------------------
+--
+-- Acceptance criterion. **Publishing promotes the draft in place**: the unnumbered row is
+-- given the next number and a publish stamp, which is what makes the mockup's button literal
+-- — the row being edited becomes v15 — and what makes *a draft exists* mean *there are
+-- unpublished changes*.
+--
+-- The first published version is 1, and refused if it is anything else.
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions
+       set version = 7, published_at = now(), published_by = 'user-publisher'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null$$,
+  'the first version a workflow publishes is 1, not whatever number the writer felt like',
+  'workflow_versions_next_version');
+
+update ouroboros.workflow_versions
+   set version = 1, published_at = now(), published_by = 'user-publisher',
+       change_note = 'First cut'
+ where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null;
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null),
+  'publishing consumes the draft, which is what makes "a draft exists" mean "there are unpublished changes"');
+
+-- The next edit starts the next draft, and the next publish is 2 — not 3, and not 2 a second
+-- time. Dense, because a person reads `v14` as the fourteenth publish and nothing deletes a
+-- published version, so a gap would be a defect with no explanation.
+insert into ouroboros.workflow_versions (workflow_id, definition)
+  values ('a9a00000-0000-0000-0000-000000000001', '{"dsl_version": 1, "nodes": ["plan"]}'::jsonb);
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions
+       set version = 3, published_at = now(), published_by = 'user-publisher'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null$$,
+  'a workflow published to v1 publishes v2 next — a skipped number would be a v2 nobody could account for',
+  'workflow_versions_next_version');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions
+       set version = 1, published_at = now(), published_by = 'user-publisher'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null$$,
+  'and it cannot publish v1 twice',
+  'workflow_versions_next_version');
+
+update ouroboros.workflow_versions
+   set version = 2, published_at = now(), published_by = 'user-publisher'
+ where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null;
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is not null),
+  'so the version number and the number of times this workflow has been published are the same quantity');
+
+-- Inserting a numbered row directly is the other way to publish, and it is held to the same
+-- rule: the schema does not require promotion, it requires the next number.
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+      values ('a9a00000-0000-0000-0000-000000000001', 4, '{}', now())$$,
+  'a version written straight in as a new row obeys the same numbering',
+  'workflow_versions_next_version');
+
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at, published_by)
+  values ('a9a00000-0000-0000-0000-000000000001', 3, '{"dsl_version": 1}'::jsonb, now(), 'user-publisher');
+
+select pg_temp.must_hold(
+  (select max(version) = 3 from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000001'),
+  'and lands as v3');
+
+-- Numbering is per workflow. `feature-loop` has published nothing, so its first is 1 however
+-- far `standard-fix` has got.
+update ouroboros.workflow_versions
+   set version = 1, published_at = now(), published_by = 'user-publisher'
+ where workflow_id = 'a9a00000-0000-0000-0000-000000000002' and version is null;
+
+select pg_temp.must_hold(
+  (select version = 1 from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000002'),
+  'and it is counted per workflow, so a second workflow''s first publish is still v1');
+
+-- --- a published version cannot be revised ------------------------------------------
+--
+-- Acceptance criterion, and the one the whole design exists for: a run pins the version it
+-- executed, so editing a published definition would rewrite what that run did. Enforced by a
+-- trigger rather than by a grant, because the development stack connects as the database
+-- owner and a superuser bypasses every grant.
+select pg_temp.must_raise(
+  $$update ouroboros.workflow_versions set definition = '{"dsl_version": 1, "nodes": ["sneaked"]}'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 1$$,
+  '23001',
+  'the definition of a published version cannot be edited');
+
+select pg_temp.must_raise(
+  $$update ouroboros.workflow_versions set change_note = 'actually it was something else'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 1$$,
+  '23001',
+  'nor its change note, which is part of the record rather than a caption on it');
+
+-- Renumbered to 4 deliberately — the next number this workflow is owed — so the numbering
+-- trigger has nothing to say and the refusal is immutability's alone.
+select pg_temp.must_raise(
+  $$update ouroboros.workflow_versions set version = 4, published_at = now()
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 1$$,
+  '23001',
+  'nor can a published version be renumbered, even to a number that is free');
+
+select pg_temp.must_raise(
+  $$update ouroboros.workflow_versions set version = null, published_at = null,
+        published_by = null, change_note = null
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 1$$,
+  '23001',
+  'nor unpublished back into a draft, which would be an edit of a published definition with an extra step');
+
+select pg_temp.must_hold(
+  (select definition = '{"dsl_version": 1, "nodes": []}'::jsonb
+     from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 1),
+  'so v1 still holds what v1 held');
+
+-- The draft is the row this table is mutable *for*, and the same trigger lets every edit of
+-- it through — otherwise the refusals above would be a table nobody could author in.
+insert into ouroboros.workflow_versions (workflow_id, definition)
+  values ('a9a00000-0000-0000-0000-000000000001', '{"dsl_version": 1, "nodes": ["draft"]}'::jsonb);
+
+update ouroboros.workflow_versions
+   set definition = '{"dsl_version": 1, "nodes": ["draft", "again"]}'::jsonb
+ where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null;
+
+select pg_temp.must_hold(
+  (select definition -> 'nodes' = '["draft", "again"]'::jsonb
+     from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null),
+  'and a draft is edited as freely as the studio needs, which is the difference between immutable-after-publish and append-only');
+
+-- --- what was published cannot be rewritten; who published it can be forgotten --------
+--
+-- `published_by` is `on delete set null`, and a set-null **is an UPDATE**: a trigger that
+-- refused every one of them would not be making this table immutable, it would be making
+-- `delete from "user"` fail. So exactly that statement passes — and only ever as an erasure.
+select pg_temp.must_raise(
+  $$update ouroboros.workflow_versions set published_by = 'user-publisher'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000002' and version = 1$$,
+  '23001',
+  'an attribution cannot be changed from one person to another');
+
+select pg_temp.must_raise(
+  $$update ouroboros.workflow_versions
+       set published_by = null, definition = '{"smuggled": true}'
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 1$$,
+  '23001',
+  'nor can a revision ride along with the erasure that is allowed');
+
+-- One published row stamped in the past before the erasure runs, which is what makes the
+-- touch trigger's scope observable inside a single transaction: every other stamp in this
+-- file is `now()`, so a trigger that fired here and one that did not would leave the same
+-- value. Inserts are not touched, so the statement's value survives to be checked.
+insert into ouroboros.workflow_versions
+    (workflow_id, version, definition, published_at, published_by, updated_at)
+  values ('a9a00000-0000-0000-0000-000000000004', 1, '{"dsl_version": 1}'::jsonb, now(),
+          'user-publisher', '2000-01-01T00:00:00Z');
+
+delete from ouroboros."user" where "id" = 'user-publisher';
+
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.workflow_versions where published_by is null
+     and version is not null),
+  'but deleting the person who pressed Publish clears the attribution on every version they published');
+
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.workflow_versions where version is not null),
+  'and leaves every one of those versions exactly where it was — what happened cannot be rewritten, who did it can be forgotten');
+
+select pg_temp.must_hold(
+  (select updated_at = '2000-01-01T00:00:00Z'::timestamptz from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000004' and version = 1),
+  'and does not move that row''s updated_at — the touch trigger is scoped to drafts, so the stamp cannot come to mean "when somebody was forgotten"');
+
+-- --- last edited belongs to the draft -------------------------------------------------
+--
+-- The mockup's *Last edited 2h ago*. What is asserted is **authorship**, not ordering: `now()`
+-- is the transaction's clock, so every stamp taken in this file is the same instant and no
+-- inequality between two of them could be true here however correct the trigger is. What can
+-- be proved is the load-bearing half — that a writer does not get to decide the value.
+update ouroboros.workflow_versions
+   set updated_at = '2000-01-01T00:00:00Z'
+ where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null;
+
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null),
+  'the trigger overwrites an updated_at the statement supplied, so a draft''s last-edited time is the server''s account of the edit');
+
+-- And only a draft has one; the block above proved that against a row stamped in the past.
+-- Here is the ordinary case: publishing is itself an update of a draft, so it stamps, and
+-- `updated_at` on a published version is the moment it was published.
+select pg_temp.must_hold(
+  (select updated_at = published_at from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 2),
+  'a promoted draft''s last-edited time is the moment it was published, which is the last time that row changed');
+
+update ouroboros.workflows set updated_at = '2000-01-01T00:00:00Z'
+ where organization_id = 'org-studio' and slug = 'standard-fix';
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.workflows
+    where organization_id = 'org-studio' and slug = 'standard-fix'),
+  'and the workflow row''s own stamp is the trigger''s too');
+
+-- --- current_version names a version, or nothing at all --------------------------------
+--
+-- The `v14` chip. A pointer rather than a cache of `max(version)`, held to a real published
+-- version *of this workflow* by a composite foreign key.
+select pg_temp.must_hold(
+  (select current_version is null from ouroboros.workflows
+    where organization_id = 'org-studio' and slug = 'deps-refresh'),
+  'a workflow that has never published has nothing in force, and null is how that is said');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflows set current_version = 9
+     where organization_id = 'org-studio' and slug = 'standard-fix'$$,
+  'a pointer at a version that was never published is unstorable',
+  'workflows_current_version_fk');
+
+-- The composite half: v1 exists, but it is `feature-loop`'s. A single-column key would have
+-- accepted this, and the chip would have rendered a version from another workflow's history.
+select pg_temp.must_reject(
+  $$update ouroboros.workflows set current_version = 1
+     where organization_id = 'org-studio' and slug = 'deps-refresh'$$,
+  'and so is one at a version number that belongs to a different workflow',
+  'workflows_current_version_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflows set current_version = 0
+     where organization_id = 'org-studio' and slug = 'standard-fix'$$,
+  'a pointer below 1 names nothing, and the column says so before the key has to',
+  'workflows_current_version_positive');
+
+update ouroboros.workflows set current_version = 3
+ where organization_id = 'org-studio' and slug = 'standard-fix';
+
+-- **Rolling back is this column moving and no history changing** — which is the reason it is
+-- a pointer rather than a derived maximum, and something a `max(version)` could not express.
+update ouroboros.workflows set current_version = 2
+ where organization_id = 'org-studio' and slug = 'standard-fix';
+
+select pg_temp.must_hold(
+  (select w.current_version = 2 and count(*) = 3
+     from ouroboros.workflows w
+     join ouroboros.workflow_versions v
+       on v.workflow_id = w.id and v.version is not null
+    where w.id = 'a9a00000-0000-0000-0000-000000000001'
+    group by w.current_version),
+  'a rollback to an earlier version is the pointer moving, with v3 still published and unaltered');
+
+-- Nothing may take the version in force out from under the chip. This is also the whole of
+-- the delete protection these tables have, and deliberately so: a delete-refusing trigger
+-- would not protect the history, it would make removing a workflow fail (V022's argument).
+select pg_temp.must_reject(
+  $$delete from ouroboros.workflow_versions
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 2$$,
+  'the version a workflow is running cannot be deleted out from under it',
+  'workflows_current_version_fk');
+
+-- --- the tag bridge ---------------------------------------------------------------------
+--
+-- Acceptance criterion: *existing run and queue tags resolve against slugs*. No foreign key
+-- was added to `runs` or `queue_items` — decision **F8** has not weakened, and a closed run
+-- must still render under a workflow that has since been renamed — so what is asserted is that
+-- the join works, has one answer, and is an index lookup rather than a scan.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a9e00000-0000-0000-0000-000000000482', 'org-studio',
+          'a9f00000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implementing', 4, 6, now());
+
+insert into ouroboros.queue_items
+    (organization_id, github_repo_id, issue_number, issue_title, workflow_tag, effort, position)
+  values ('org-studio', 'a9f00000-0000-0000-0000-00000000000a', 485,
+          'Add CAN-bus retry budget', 'standard-fix', 'm', 1);
+
+select pg_temp.must_hold(
+  (select w.name = 'Standard fix' and w.status = 'active'
+     from ouroboros.runs r
+     join ouroboros.workflows w
+       on w.organization_id = r.organization_id and w.slug = r.workflow_tag
+    where r.id = 'a9e00000-0000-0000-0000-000000000482'),
+  'a run''s workflow_tag resolves to exactly one workflow in the run''s own workspace');
+
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.queue_items q
+     join ouroboros.workflows w
+       on w.organization_id = q.organization_id and w.slug = q.workflow_tag
+    where q.organization_id = 'org-studio' and q.issue_number = 485),
+  'and so does a queue item''s');
+
+-- The tags stay opaque. Deleting the workflow leaves both rows exactly as they were, which is
+-- decision F8 in one statement — and it is why the bridge is a join rather than a key.
+delete from ouroboros.workflows
+ where organization_id = 'org-nextdoor' and slug = 'standard-fix';
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runs
+    where id = 'a9e00000-0000-0000-0000-000000000482' and workflow_tag = 'standard-fix'),
+  'and a run keeps its tag when a workflow of that slug is deleted in another workspace — the tag is text, not a reference');
+
+set local enable_seqscan = off;
+
+-- Resolution is `where organization_id = $1 and slug = $tag`, which is the unique key exactly.
+select pg_temp.must_use_index(
+  $$select id, name, status, current_version from ouroboros.workflows
+     where organization_id = 'org-studio' and slug = 'standard-fix'$$,
+  'workflows_organization_slug_key');
+
+-- And the rail's own read — a workspace's workflows — enters through the same index's leading
+-- column, which is why no second index on organization_id exists.
+select pg_temp.must_use_index(
+  $$select slug, name, status from ouroboros.workflows where organization_id = 'org-studio'$$,
+  'workflows_organization_slug_key');
+
+-- The dashboard's active loops, each resolved to the workflow it ran under. `must_not_scan`
+-- rather than `must_use_index`, because naming one index proves one relation was entered
+-- through it and says nothing about the other.
+select pg_temp.must_not_scan(
+  $$select r.issue_number, w.name
+      from ouroboros.runs r
+      join ouroboros.workflows w
+        on w.organization_id = r.organization_id and w.slug = r.workflow_tag
+     where r.organization_id = 'org-studio' and r.status = 'coding'$$);
+
+-- The studio's two reads of the history table. The version list is the unique key read
+-- backwards — `V026`'s measurement, unchanged — so no descending index was created beside it.
+select pg_temp.must_use_index(
+  $$select version, published_at, change_note from ouroboros.workflow_versions
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001'
+       and version is not null
+     order by version desc$$,
+  'workflow_versions_workflow_version_key');
+
+-- And "open the draft" is the partial unique index that enforces there being one — the rule
+-- and the read are the same object, which is why neither pays for the other.
+select pg_temp.must_use_index(
+  $$select id, definition, updated_at from ouroboros.workflow_versions
+     where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version is null$$,
+  'workflow_versions_one_draft_idx');
+
+set local enable_seqscan = on;
+
+-- --- the cascades --------------------------------------------------------------------
+--
+-- A version of a workflow that is gone cannot be rendered and cannot be pinned. Deleting a
+-- single published row is *not* refused — see above for why the only guard is the pointer's
+-- key — but a workflow takes its whole history with it, and a workspace takes its workflows.
+delete from ouroboros.workflows where id = 'a9a00000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000002'),
+  'deleting a workflow takes its version history with it, pointer and all');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000001'),
+  'and reaches no other workflow''s — three published versions and the draft in hand');
+
+delete from ouroboros.organization where "id" = 'org-studio';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflows),
+  'deleting a workspace takes its workflows with it');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_versions),
+  'and every version those workflows ever published');
+
+delete from ouroboros.organization where "id" = 'org-nextdoor';
 
 -- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)

@@ -223,7 +223,7 @@ issue below is assigned to its epic's milestone. Complexity chips: **XS · S · 
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| P.1 | #132 | 🟡 Open | ouroboros-db: [P.1] Workflow & version schema | `workflows` + immutable `workflow_versions` (jsonb definition) | mvp, workflow, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| P.1 | #132 | 🟢 Done | ouroboros-db: [P.1] Workflow & version schema | `workflows` + immutable `workflow_versions` (jsonb definition) | mvp, workflow, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | P.2 | #133 | 🟡 Open | ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation | Published schema for nodes/edges/predicates; zod + pydantic parity | mvp, workflow, rest, engine | N (after P.1) | Y | L | ouroboros-rest, ouroboros-engine |
 | P.3 | #134 | 🟡 Open | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
 | P.4 | #135 | 🟡 Open | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
@@ -232,7 +232,7 @@ issue below is assigned to its epic's milestone. Complexity chips: **XS · S · 
 
 ### Issue P.1 — ouroboros-db: [P.1] Workflow & version schema
 
-> **GitHub issue:** #132 · **Status:** 🟡 Open · **Parent epic:** #127
+> **GitHub issue:** #132 · **Status:** 🟢 Done · **Parent epic:** #127
 
 - **Problem Statement:** Workflows exist only as opaque tags (intake decision K5);
   the studio needs real org-scoped entities with immutable version history
@@ -242,9 +242,21 @@ issue below is assigned to its epic's milestone. Complexity chips: **XS · S · 
   `status` CHECK `active|paused|archived`, `current_version` FK-ish int,
   timestamps; `workflow_versions` — workflow FK, `version` int (unique per
   workflow), `definition` jsonb (P.2 schema), `published_at`, `published_by` →
-  `"user".id`, `change_note`; one mutable **draft** row per workflow
-  (`version = null` variant or `is_draft` flag — decided in-issue) holding
+  `"user".id`, `change_note`; one mutable **draft** row per workflow holding
   work-in-progress. Published rows are immutable (trigger-enforced).
+- **Decided in-issue and shipped as `V029__workflows_versions.sql`:** the draft is
+  the row with `version is null` rather than an `is_draft` flag — a draft has no
+  number because publishing is what confers one, and one column cannot disagree
+  with itself; *at most one draft* is the partial unique index
+  `workflow_versions_one_draft_idx`. **Publishing promotes the draft in place** to
+  version N+1, so *a draft exists* ⟺ *there are unpublished changes*, which is what
+  the mockup's **Publish v15** button and *Last edited 2h ago* are honest about.
+  Versions are **dense from 1** (unlike `issue_estimates.version`, which need only
+  ascend) because the number is read by a person as `v14` and a gap would have no
+  explanation. `current_version` is a **pointer, not a cache** of `max(version)` —
+  held to a real published version of its own workflow by the composite key
+  `workflows_current_version_fk`, which leaves a rollback to an earlier version
+  representable without rewriting history.
 - **Acceptance Criteria:**
   - Publishing creates version N+1; any UPDATE on a published row is rejected by
     trigger (tested).
