@@ -14,6 +14,12 @@ name: ouroboros-rest · ci
 # database, rather than in the next pull request that happens to touch a controller.
 # docker-compose.yml and run.sh are here for the drift check in the *unit* suite, which
 # fails when the harness's image pins or Flyway arguments stop matching the stack's.
+#
+# schemas/ is here because of P.2 (#133). The workflow DSL is one published contract read by
+# two services, so it lives above both rather than inside either, and this module's unit suite
+# compiles it with ajv and asserts its zod validator classifies every golden fixture the way
+# the schema does. A rule edited there without this filter would run neither validator's
+# checks — which is the one way two validators quietly stop agreeing.
 
 on:
   pull_request:
@@ -25,6 +31,7 @@ on:
       - "ouroboros-db/migrations/**"
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
+      - "schemas/**"
       - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
@@ -40,6 +47,7 @@ on:
       - "ouroboros-db/migrations/**"
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
+      - "schemas/**"
       - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"

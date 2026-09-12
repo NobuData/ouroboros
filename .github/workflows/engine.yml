@@ -1,19 +1,28 @@
 name: ouroboros-engine · ci
 
-# Path-filtered per issue #11: this runs only when the Python backend, the scaffold gate
-# it shares with the TypeScript modules, or this file itself changes.
+# Path-filtered per issue #11: this runs only when the Python backend, the shared schemas it
+# validates against, the scaffold gate it shares with the TypeScript modules, or this file
+# itself changes.
+#
+# schemas/ is the one path outside this module, and it is here for the reason rest.yml gives:
+# P.2 (#133) put the workflow DSL above both services because both read it, and this module's
+# suite asserts that its pydantic validator agrees with the published schema and with the
+# golden verdicts ouroboros-rest asserts against too. A contract edited without running both
+# halves is a contract with two halves that have stopped agreeing.
 
 on:
   pull_request:
     branches: [main]
     paths:
       - "ouroboros-engine/**"
+      - "schemas/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/engine.yml"
   push:
     branches: [main]
     paths:
       - "ouroboros-engine/**"
+      - "schemas/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/engine.yml"
   workflow_dispatch:

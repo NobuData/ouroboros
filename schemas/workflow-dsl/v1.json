@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ouroboros.build/schemas/workflow-dsl/v1.json",
+  "title": "Ouroboros workflow definition, version 1",
+  "description": "The canonical JSON document a workflow version stores in workflow_versions.definition (V029). Decision P3: one artifact, published as a schema, so the canvas, the code view, the validator, the dry-run simulator and the eventual interpreter read the same thing rather than each inventing a parser. This file describes the whole 1.x line; a 2.x document needs a v2.json beside it. See docs/WORKFLOW_DSL.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["dsl_version", "trigger", "nodes", "edges"],
+  "properties": {
+    "dsl_version": {
+      "description": "Which minor of the 1.x line this document is written against. Every minor this file knows is listed; adding an optional field appends a minor here, a breaking change starts v2.json.",
+      "enum": ["1.0"]
+    },
+    "trigger": { "$ref": "#/$defs/trigger" },
+    "nodes": {
+      "description": "Every stage on the canvas, in no significant order — the graph is the edges, not the array.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "description": "Every connection between stages. An edge is identified by its endpoints: at most one edge may join a given ordered pair.",
+      "type": "array",
+      "maxItems": 400,
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+
+  "$defs": {
+    "node_id": {
+      "description": "A stable, human-readable identifier for one node, unique within the document. Edges reference it, and a run journal records it, so it is a slug rather than a generated id.",
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+    },
+
+    "reference": {
+      "description": "A skill name, a model identifier or a task-route name. Decision P7: these are validated strings, never foreign keys — the model registry and the skills catalogue do not exist yet, and an unknown one is a warning at validation rather than a refusal at save.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+
+    "effort": {
+      "description": "How much work a ticket is, in the vocabulary issue_estimates.effort stores and the mockup's chips render.",
+      "enum": ["xs", "s", "m", "l", "xl"]
+    },
+
+    "source_kind": {
+      "description": "Which tracker a ticket came from, in the vocabulary ticket_sources.kind stores (V030).",
+      "enum": ["github", "gitlab", "jira", "linear"]
+    },
+
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+
+    "position": {
+      "description": "Where the node sits on the canvas. Carried in the document because the canvas is the authored artifact: a re-layout is an edit, and two people opening the same workflow must see the same picture.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number", "minimum": -100000, "maximum": 100000 },
+        "y": { "type": "number", "minimum": -100000, "maximum": 100000 }
+      }
+    },
+
+    "trigger": {
+      "description": "What starts a run, as decision P8 structures it: a named event and a closed set of conditions, ANDed. Held at the document root rather than in the trigger node's config, so the predicate has one home and the node carries only what the canvas draws.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event", "conditions"],
+      "properties": {
+        "event": { "enum": ["ticket_queued"] },
+        "conditions": {
+          "description": "All present conditions must hold. An empty object is a trigger that fires on every occurrence of the event, which is a thing an author may legitimately mean.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "effort_lte": { "$ref": "#/$defs/effort" },
+            "labels": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "items": { "$ref": "#/$defs/label" }
+            },
+            "source": { "$ref": "#/$defs/source_kind" }
+          }
+        }
+      }
+    },
+
+    "predicate": {
+      "description": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees.",
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["always", "effort", "labels", "source", "checks"] }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "effort" } } },
+          "then": {
+            "required": ["op", "value"],
+            "properties": {
+              "op": { "enum": ["lt", "lte", "eq", "gte", "gt"] },
+              "value": { "$ref": "#/$defs/effort" }
+            }
+          }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "labels" } } },
+          "then": {
+            "required": ["op", "values"],
+            "properties": {
+              "op": { "enum": ["any", "all", "none"] },
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": { "$ref": "#/$defs/label" }
+              }
+            }
+          }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "source" } } },
+          "then": {
+            "required": ["op", "values"],
+            "properties": {
+              "op": { "enum": ["in", "not_in"] },
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 4,
+                "items": { "$ref": "#/$defs/source_kind" }
+              }
+            }
+          }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "checks" } } },
+          "then": {
+            "required": ["op"],
+            "properties": {
+              "op": { "enum": ["all_passed", "any_failed"] },
+              "names": {
+                "description": "Which checks are required. Absent means every check the run produced — the mockup's `required checks: 14` is a count of what a repository declares, not a list this document pins.",
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 64,
+                "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "trigger_config": {
+      "description": "The trigger node configures nothing: its predicate is the document's own `trigger`. Closed and empty so that a field put here is an error rather than a second place to look.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+
+    "llm_config": {
+      "description": "A model stage — the inspector's exact field set (mockup 04).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "prompt_template", "routing", "limits", "permissions"],
+      "properties": {
+        "mode": {
+          "description": "The inspector's Direct prompt / Skill segment. In `skill` mode the named skill is loaded into context before the prompt, which is why a prompt template is required in both modes.",
+          "enum": ["prompt", "skill"]
+        },
+        "skill": { "$ref": "#/$defs/reference" },
+        "prompt_template": {
+          "description": "The stage prompt, with {{…}} placeholders resolved from the run context.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "routing": {
+          "description": "The inspector's Model routing radios. Exactly one of the two: inherit the route configured for a task name, or pin an opaque model identifier.",
+          "type": "object",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "required": ["inherit_task"],
+              "properties": { "inherit_task": { "$ref": "#/$defs/reference" } }
+            },
+            {
+              "additionalProperties": false,
+              "required": ["pinned_model"],
+              "properties": { "pinned_model": { "$ref": "#/$defs/reference" } }
+            }
+          ]
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_retries", "token_budget"],
+          "properties": {
+            "max_retries": { "type": "integer", "minimum": 0, "maximum": 10 },
+            "token_budget": {
+              "description": "Tokens, as a number. The inspector renders 400000 as `400k`; the formatting is the UI's and never the document's.",
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 10000000
+            }
+          }
+        },
+        "permissions": {
+          "description": "Decision P9: enforced declarations. Both are required and neither defaults, because a permission nobody decided is a permission nobody can be held to. Enforcement itself lands with the interpreter (T.6).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["push_fixup", "touch_ci"],
+          "properties": {
+            "push_fixup": { "type": "boolean" },
+            "touch_ci": { "type": "boolean" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["mode"], "properties": { "mode": { "const": "skill" } } },
+          "then": {
+            "required": ["skill"],
+            "properties": { "skill": { "$ref": "#/$defs/reference" } }
+          }
+        },
+        {
+          "if": { "required": ["mode"], "properties": { "mode": { "const": "prompt" } } },
+          "then": { "properties": { "skill": false } }
+        }
+      ]
+    },
+
+    "infra_config": {
+      "description": "A build-farm or test stage. Both fields are optional: a stage with neither runs the repository's default command on the default pool, which is a deployment decision rather than a document one.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runner_pool": { "$ref": "#/$defs/reference" },
+        "command": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    },
+
+    "flow_config": {
+      "description": "A fork in the graph. `decision` diverges, `gate` holds — the difference is topological and is what the edges say; both carry a predicate and neither restricts which kind.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "predicate"],
+      "properties": {
+        "kind": { "enum": ["decision", "gate"] },
+        "predicate": { "$ref": "#/$defs/predicate" }
+      }
+    },
+
+    "term_config": {
+      "description": "Where a run ends. Options are per action and closed, so adding one is an edit to this file rather than a field that quietly appears.",
+      "type": "object",
+      "required": ["action", "options"],
+      "properties": {
+        "action": { "enum": ["open_pr_automerge", "back_to_queue", "needs_review"] },
+        "options": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["action"],
+            "properties": { "action": { "const": "open_pr_automerge" } }
+          },
+          "then": {
+            "properties": {
+              "options": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["merge_method", "delete_branch"],
+                "properties": {
+                  "merge_method": { "enum": ["squash", "merge", "rebase"] },
+                  "delete_branch": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["action"],
+            "properties": { "action": { "const": "back_to_queue" } }
+          },
+          "then": {
+            "properties": {
+              "options": { "type": "object", "additionalProperties": false, "properties": {} }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["action"],
+            "properties": { "action": { "const": "needs_review" } }
+          },
+          "then": {
+            "properties": {
+              "options": { "type": "object", "additionalProperties": false, "properties": {} }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "node": {
+      "description": "One stage on the canvas. `type` picks the treatment the mockup draws and the config schema below.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "title", "position", "config"],
+      "properties": {
+        "id": { "$ref": "#/$defs/node_id" },
+        "type": { "enum": ["trigger", "llm", "infra", "flow", "term"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 400 },
+        "position": { "$ref": "#/$defs/position" },
+        "config": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "trigger" } } },
+          "then": { "properties": { "config": { "$ref": "#/$defs/trigger_config" } } }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "llm" } } },
+          "then": { "properties": { "config": { "$ref": "#/$defs/llm_config" } } }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "infra" } } },
+          "then": { "properties": { "config": { "$ref": "#/$defs/infra_config" } } }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "flow" } } },
+          "then": { "properties": { "config": { "$ref": "#/$defs/flow_config" } } }
+        },
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "term" } } },
+          "then": { "properties": { "config": { "$ref": "#/$defs/term_config" } } }
+        }
+      ]
+    },
+
+    "edge": {
+      "description": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "kind"],
+      "properties": {
+        "from": { "$ref": "#/$defs/node_id" },
+        "to": { "$ref": "#/$defs/node_id" },
+        "kind": { "enum": ["default", "branch", "loop"] },
+        "label": {
+          "description": "What the canvas prints beside the edge — the mockup's `≤ M ↓`, `> M ↘`, `pass →`, `fail ↺`. Presentation, never evaluated.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "condition": { "$ref": "#/$defs/predicate" }
+      }
+    }
+  }
+}

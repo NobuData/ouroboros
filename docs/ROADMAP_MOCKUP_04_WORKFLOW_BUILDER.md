@@ -224,7 +224,7 @@ issue below is assigned to its epic's milestone. Complexity chips: **XS · S · 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | P.1 | #132 | 🟢 Done | ouroboros-db: [P.1] Workflow & version schema | `workflows` + immutable `workflow_versions` (jsonb definition) | mvp, workflow, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| P.2 | #133 | 🟡 Open | ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation | Published schema for nodes/edges/predicates; zod + pydantic parity | mvp, workflow, rest, engine | N (after P.1) | Y | L | ouroboros-rest, ouroboros-engine |
+| P.2 | #133 | 🟢 Done | ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation | Published schema for nodes/edges/predicates; zod + pydantic parity | mvp, workflow, rest, engine | N (after P.1) | Y | L | ouroboros-rest, ouroboros-engine |
 | P.3 | #134 | 🟡 Open | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
 | P.4 | #135 | 🟡 Open | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
 | P.5 | #136 | 🟡 Open | ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity | Five workflows incl. standard-fix's full graph at v14 | mvp, workflow, db | N (after P.2) | Y | M | ouroboros-db |
@@ -291,7 +291,7 @@ erDiagram
 
 ### Issue P.2 — ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation
 
-> **GitHub issue:** #133 · **Status:** 🟡 Open · **Parent epic:** #127
+> **GitHub issue:** #133 · **Status:** 🟢 Done · **Parent epic:** #127
 
 - **Problem Statement:** The canvas, the code view (mockup 05, future), the
   validator, and the future interpreter must agree on one definition language —
@@ -316,6 +316,61 @@ erDiagram
   - REST and engine validators agree on a golden fixture set (parity test in CI).
   - `docs/WORKFLOW_DSL.md` renders the schema with examples; YAML projection
     round-trips losslessly (fixture proof for mockup 05).
+- **Decided in-issue and shipped as `schemas/workflow-dsl/v1.json`,
+  `docs/WORKFLOW_DSL.md`, `ouroboros-rest/src/modules/workflows/` and
+  `ouroboros-engine/src/ouroboros_engine/workflows/`:** the contract lives in a new
+  top-level `schemas/` directory because it belongs to **neither** module — putting it
+  inside one would make the other reach across a boundary for it, and putting it in
+  `docs/` would make a runtime contract documentation. Both `ci/rest` and `ci/engine`
+  watch `schemas/**` (`verify-ci.sh` asserts the routing), because an edit that ran only
+  one half is precisely how two implementations of one contract stop agreeing.
+
+  Seven choices the issue left open are decided here:
+
+  * **The trigger predicate lives at the document root, and the trigger node's config is
+    closed and empty.** The issue lists `trigger` as a root member *and* `trigger` as a
+    node type, and gives per-type config schemas for the other four only — so the node
+    carries what the canvas draws and the root carries what P8 structures. One home for
+    the predicate, and the node's `effort ≤ M` chip renders the root's condition.
+  * **Predicates are a flat, closed, discriminated grammar** (`always`, `effort`,
+    `labels`, `source`, `checks`) shared by a flow node's predicate and a branch or loop
+    edge's condition, so R.2's simulator needs one evaluator. There is deliberately no
+    `all`/`any` composition: recursion would have to be written three times — schema, zod,
+    pydantic — and kept anchoring-identical in all three, and the canvas draws branches
+    rather than boolean trees.
+  * **The structural rules are deliberately *not* expressed in the published schema**, as
+    the issue's own "post-schema validators" says. JSON Schema describes values; *every
+    node is reachable from the trigger* is not a property of a value, and a contract that
+    half-expressed it would be one two implementations could read two ways. The
+    conformance suites therefore compare the schema against the **schema stage** alone,
+    and `SCHEMA_STAGE_CODES` / `STRUCTURAL_STAGE_CODES` partition the vocabulary so a code
+    added to neither is a red check rather than a silent reclassification.
+  * **The parity contract is `(valid, code, path, node, edge)` and not the message.** Each
+    validator renders its own prose in its own idiom; a contract over English sentences is
+    one nobody can translate. What both suites *do* assert is that every diagnostic carries
+    one. The ordering is part of the contract too — document order, numeric path segments
+    compared as numbers — because two validators agreeing on a set but not a sequence are
+    still two a client can tell apart.
+  * **The discriminated dispatch is hand-written on both sides.** zod anchors an unknown
+    discriminator at the discriminator and pydantic at the object, with the matched tag
+    prepended to every path beneath it; since the anchor is half of what the two have to
+    agree on, both validate the skeleton first and dispatch on the tag themselves. A dozen
+    lines each, against a contract whose anchoring would otherwise depend on which library
+    read the document.
+  * **Decision P7's catalogue is supplied by the caller**, exactly as
+    `EstimationContext` is (K5/K6): neither validator holds a list of skills or models, so
+    neither can invent one, and a caller that supplies none gets no reference warnings —
+    the honest answer to *is this reference known?* while nothing in the system knows.
+  * **pydantic runs in strict mode, with one relaxation.** Lax mode would accept `"12"`
+    where the document says a number and zod would not; the relaxation is the reverse
+    case — JSON's `2.0` *is* an integer, JavaScript cannot tell it from `2`, and Python's
+    `json` module makes it a float.
+
+  The golden set is 38 documents — four valid, 34 each breaking exactly one rule — and 40
+  recorded cases over them, checked for completeness in both directions: every fixture on
+  disk has a case, and every code either validator can emit has a case behind it. The YAML
+  projection of each valid document is committed beside it, so a change that silently
+  reformats mockup 05's code view is a diff a reviewer sees.
 - **Parallelism/Dependencies:** Needs P.1. Blocks P.3, R.2, R.3, S.2.
 - **Technical Stack:** JSON Schema 2020-12, zod, pydantic v2.
 - **Epic:** P

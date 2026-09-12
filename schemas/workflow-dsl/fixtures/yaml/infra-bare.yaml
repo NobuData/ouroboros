@@ -1,0 +1,36 @@
+dsl_version: "1.0"
+trigger:
+  event: ticket_queued
+  conditions: {}
+nodes:
+  - id: start
+    type: trigger
+    title: Issue queued
+    position:
+      x: 0
+      y: 0
+    config: {}
+  - id: build
+    type: infra
+    title: Build
+    description: "Neither a pool nor a command: the repository's defaults on the default pool."
+    position:
+      x: 240
+      y: 0
+    config: {}
+  - id: done
+    type: term
+    title: Needs review
+    position:
+      x: 480
+      y: 0
+    config:
+      action: needs_review
+      options: {}
+edges:
+  - from: start
+    to: build
+    kind: default
+  - from: build
+    to: done
+    kind: default

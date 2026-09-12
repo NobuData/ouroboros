@@ -1,0 +1,37 @@
+{
+  "dsl_version": "1.0",
+  "trigger": { "event": "ticket_queued", "conditions": {} },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "trigger",
+      "title": "Issue queued",
+      "position": { "x": 0, "y": 0 },
+      "config": {}
+    },
+    {
+      "id": "stage",
+      "type": "llm",
+      "title": "Code the change",
+      "position": { "x": 240, "y": 0 },
+      "config": {
+        "mode": "prompt",
+        "prompt_template": "Implement the approved plan.",
+        "routing": { "inherit_task": "implement" },
+        "limits": { "max_retries": 99, "token_budget": 100000 },
+        "permissions": { "push_fixup": false, "touch_ci": false }
+      }
+    },
+    {
+      "id": "done",
+      "type": "term",
+      "title": "Needs review",
+      "position": { "x": 480, "y": 0 },
+      "config": { "action": "needs_review", "options": {} }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "stage", "kind": "default" },
+    { "from": "stage", "to": "done", "kind": "default" }
+  ]
+}

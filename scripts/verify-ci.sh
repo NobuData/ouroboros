@@ -211,6 +211,15 @@ check_route ouroboros-db/flyway.toml 'db.yml rest.yml'
 check_route ouroboros-rest/src/auth/auth.config.ts 'db.yml rest.yml'
 check_route ouroboros-rest/package.json 'db.yml rest.yml'
 
+# The fifth, and the first that belongs to no module at all (#133). The workflow DSL is one
+# published JSON Schema with two validators over it — zod in ouroboros-rest, pydantic in
+# ouroboros-engine — and a golden fixture set both suites assert against. It lives above both
+# because neither owns it, so both have to run when it moves: an edit reaching only one of them
+# would let the two validators stop agreeing without any check saying so, which is the single
+# failure mode that whole design exists to prevent.
+check_route schemas/workflow-dsl/v1.json 'engine.yml rest.yml'
+check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml'
+
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.
 check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'

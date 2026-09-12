@@ -7,7 +7,7 @@
 
 [project]
 name = "ouroboros-engine"
-version = "0.5.2"
+version = "0.6.0"
 description = "Ouroboros backend — executes the work ouroboros-rest brokers."
 readme = "README.md"
 license = "Apache-2.0"
@@ -43,6 +43,11 @@ dev = [
     # YAML. The specification is written by hand and published to a catalogue, so the
     # thing that would otherwise catch a malformed one is the upload.
     "openapi-spec-validator>=0.7.2",
+    # Compiles the committed workflow DSL schema (schemas/workflow-dsl/v1.json) so that
+    # tests/test_workflows_conformance.py can ask whether the *published* contract and the
+    # pydantic models in ouroboros_engine.workflows classify the golden fixtures the same
+    # way. Development-only: the service validates with pydantic and ships without the file.
+    "jsonschema>=4.26.0",
     "pytest>=9.1.1",
     # Reads the authoritative openapi.yaml so `uv run openapi` can render the JSON the
     # service loads. Development-only on purpose: the served application parses JSON

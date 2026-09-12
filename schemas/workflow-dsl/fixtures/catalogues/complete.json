@@ -1,0 +1,5 @@
+{
+  "skills": ["repo-map", "zephyr-conventions"],
+  "models": ["claude-sonnet-5", "claude-fable-5"],
+  "tasks": ["analyze", "plan", "split", "implement", "review"]
+}

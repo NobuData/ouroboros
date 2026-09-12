@@ -1,0 +1,21 @@
+{
+  "dsl_version": "1.0",
+  "trigger": { "event": "ticket_queued", "conditions": {} },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "trigger",
+      "title": "Issue queued",
+      "position": { "x": 0, "y": 0 },
+      "config": {}
+    },
+    {
+      "id": "done",
+      "type": "term",
+      "title": "Needs review",
+      "position": { "x": 240, "y": 0 },
+      "config": { "action": "needs_review", "options": {} }
+    }
+  ],
+  "edges": [{ "from": "start", "to": "done", "kind": "default" }]
+}

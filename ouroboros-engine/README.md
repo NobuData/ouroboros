@@ -95,13 +95,13 @@ $ curl -s localhost:8000/v0/status && echo
 {"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.5.2","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.6.0","uptime_seconds":42.5}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
     -d '{"task_kind":"echo","payload":{"note":"hello"}}' \
     localhost:8000/v0/tasks/echo && echo
-{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.5.2"}
+{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.6.0"}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
@@ -205,6 +205,54 @@ for, so the operation's `x-async-escalation` block specifies the `202`-plus-poll
 documented `202` response because this build cannot answer one, and a `responses` entry is
 a promise a caller may hold it to. Specifying it now is what keeps O.2 from rewriting a
 contract that L.3, M.1 and N.3 are built on.
+
+## The workflow DSL
+
+**A workflow is one JSON document, and this is the half of its validator that answers this
+service** ([#133](https://github.com/NobuData/ouroboros/issues/133)). The language is specified
+in [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) and published as
+[`schemas/workflow-dsl/v1.json`](../schemas/workflow-dsl/v1.json), above both modules because
+neither owns it. `ouroboros_engine.workflows` is that schema written in pydantic, plus the
+structural rules a schema cannot express.
+
+There are **no routes yet.** `POST /v0/workflows/validate` and the dry-run simulator are R.2
+([#144](https://github.com/NobuData/ouroboros/issues/144)); what lands here is the language and
+its verdict, so that R.2 is a router over a validator rather than a validator behind a route.
+
+```python
+verdict = validate_workflow_document(definition, catalogue)
+verdict.as_dict()  # {"valid": …, "errors": [...], "warnings": [...]}
+```
+
+Every diagnostic carries an RFC 6901 pointer and, where there is one, the node id or the edge
+endpoints — there is no bare *invalid document*. Errors and warnings are separate lists rather
+than one list with a severity: decision **P7** says an unknown skill reference must not fail a
+save, and a caller who has to filter by severity to learn that is a caller who will forget to.
+
+**The models are strict and closed.** `strict=True` because pydantic's lax mode would accept
+`"12"` where the document says a number and `ouroboros-rest`'s zod would not — a validator that
+accepts what the other refuses is exactly the divergence this design exists to prevent.
+`extra="forbid"` because every object in the DSL is closed. The one relaxation is the `Integer`
+annotation, and it exists for the opposite reason: JSON's `2.0` *is* an integer, JavaScript
+cannot tell it from `2`, and Python's `json` module makes it a `float`.
+
+### What keeps the two validators honest
+
+| Suite | What it asserts |
+|---|---|
+| `tests/test_workflows_parity.py` | Every case in [`fixtures/expected.json`](../schemas/workflow-dsl/fixtures/expected.json) — one document per rule, and the verdict both validators must produce. `ouroboros-rest`'s `dsl.parity.spec.ts` asserts the same file. |
+| `tests/test_workflows_conformance.py` | `jsonschema` compiles the published schema, and the schema and these models classify every fixture alike. |
+
+Neither module imports the other and no third process compares two outputs: each reads
+`schemas/workflow-dsl/` from its own suite, so a rule added to one validator and forgotten in
+the other is a red check in the half that forgot it. `ci/engine` and `ci/rest` both watch
+`schemas/**` for that reason.
+
+The two implementations are also written to **mirror each other file for file** —
+`errors.py`/`dsl.errors.ts`, `dsl.py`/`dsl.schema.ts`, `issues.py`/`dsl.issues.ts`,
+`structure.py`/`dsl.structure.ts`, `references.py`/`dsl.references.ts`,
+`validate.py`/`dsl.validator.ts` — so they can be read side by side. That is the defence a test
+suite cannot provide.
 
 ## The API specification
 
@@ -437,6 +485,13 @@ ouroboros-engine/
 │   │   ├── estimator.py#   the seam an estimator plugs into, and the K5/K6 check
 │   │   ├── signals.py  #   the rules heuristic-v0 reads an issue with          · #106
 │   │   └── heuristic.py#   heuristic-v0 itself: the arithmetic over those rules · #106
+│   ├── workflows/      # the workflow DSL, validated with pydantic              · #133
+│   │   ├── errors.py   #   the diagnostic vocabulary, the anchors, the ordering
+│   │   ├── dsl.py      #   the shapes — strict, closed, dispatched by hand
+│   │   ├── issues.py   #   pydantic's error types → the DSL's codes
+│   │   ├── structure.py#   the graph rules a JSON Schema cannot express
+│   │   ├── references.py#  decision P7's warnings, over a catalogue the caller gives
+│   │   └── validate.py #   the four stages, in the order both validators run them
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
@@ -527,6 +582,7 @@ container [#53](https://github.com/NobuData/ouroboros/issues/53) ·
 task execution [#54](https://github.com/NobuData/ouroboros/issues/54) ·
 estimation contract [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 heuristic estimator [#106](https://github.com/NobuData/ouroboros/issues/106) ·
+the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 
