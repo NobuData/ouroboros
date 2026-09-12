@@ -345,3 +345,103 @@ export function estimateRequestBody(request: EstimateRequest): Record<string, un
     },
   };
 }
+
+/**
+ * `POST` — the engine's opinion on a workflow definition. R.2
+ * ([#144](https://github.com/NobuData/ouroboros/issues/144)), and the second half of P.3's
+ * publish gate ([#134](https://github.com/NobuData/ouroboros/issues/134)).
+ *
+ * **This is the one route in this file mirrored from a specification rather than from a
+ * served document.** #144 states the operation and its answer — `POST /v0/workflows/validate
+ * {definition}` → `{findings: [{node_id, code, message}]}` — and the engine build in this
+ * repository does not publish it yet, which `engine.contract.spec.ts` asserts outright so
+ * that the day it does is the day this comment has to be revisited. Until then
+ * {@link EngineClient.validateWorkflow} treats a `404` as *this engine predates R.2* rather
+ * than as a failure; see that method for why that is safe and what it costs.
+ */
+export const ENGINE_WORKFLOW_VALIDATE_ROUTE = `${ENGINE_API_VERSION}/workflows/validate`;
+
+/** The endpoints of the edge a finding anchors to, when it anchors to one. */
+export interface EngineEdgeAnchor {
+  /** The edge's `from`, verbatim — including when it names no node. */
+  from: string;
+  /** The edge's `to`, verbatim. */
+  to: string;
+}
+
+/**
+ * One thing the engine says is wrong with a definition, and where.
+ *
+ * Deliberately the shape `dsl.errors.ts`' `DslDiagnostic` has, minus the fields the engine
+ * does not promise: the studio anchors a finding to a node by `node`, and a finding from
+ * either validator has to be clickable the same way. What the two do **not** share is a
+ * type — the engine's codes are its own vocabulary, and typing this as `DslErrorCode` would
+ * be this service asserting something about another service's strings.
+ */
+export interface EngineFinding {
+  /** Which rule broke, in the engine's vocabulary. Never empty. */
+  code: string;
+  /** What a person should read. */
+  message: string;
+  /** The node this anchors to, when it anchors to one. */
+  node?: string;
+  /** The edge this anchors to, when it anchors to one. */
+  edge?: EngineEdgeAnchor;
+  /** An RFC 6901 JSON Pointer to the offending value, when the engine reports one. */
+  path?: string;
+}
+
+/** What `POST /v0/workflows/validate` answers, in this service's names. */
+export interface EngineWorkflowValidation {
+  /** Everything the engine found. Empty is the green verdict — there is no separate flag. */
+  findings: EngineFinding[];
+}
+
+/** The edge anchor, as it arrives. */
+const engineEdgeAnchorSchema = z
+  .object({ from: z.string(), to: z.string() })
+  .transform((body): EngineEdgeAnchor => ({ from: body.from, to: body.to }));
+
+/**
+ * One finding, as it arrives.
+ *
+ * `code` and `message` are required and everything else is optional, which is #144's own
+ * shape read strictly: a finding that anchors to nothing is a finding about the document,
+ * and a validator that had to invent a node id to report one would anchor it to the wrong
+ * place. `null` is admitted beside absence for each optional field, because a Python service
+ * serialising a dataclass sends `null` for an unset field far more often than it omits it,
+ * and refusing that would turn an ordinary answer into a `502`.
+ */
+const engineFindingSchema = z
+  .object({
+    code: z.string().min(1),
+    message: z.string(),
+    node_id: z.string().nullish(),
+    edge: engineEdgeAnchorSchema.nullish(),
+    path: z.string().nullish(),
+  })
+  .transform((body): EngineFinding => ({
+    code: body.code,
+    message: body.message,
+    ...(body.node_id == null ? {} : { node: body.node_id }),
+    ...(body.edge == null ? {} : { edge: body.edge }),
+    ...(body.path == null ? {} : { path: body.path }),
+  }));
+
+/** `POST /v0/workflows/validate`, as it arrives. */
+export const engineWorkflowValidationSchema = z
+  .object({ findings: z.array(engineFindingSchema) })
+  .transform((body): EngineWorkflowValidation => ({ findings: body.findings }));
+
+/**
+ * A definition, as the engine's request body.
+ *
+ * @param definition - The document to validate, exactly as it is stored. Opaque to this
+ *   function: what makes a document valid is the DSL's question and the engine's, and a
+ *   gateway that reshaped it on the way would be asking about a different document than the
+ *   one publishing is about to make immutable.
+ * @returns The body to serialise.
+ */
+export function workflowValidateRequestBody(definition: unknown): Record<string, unknown> {
+  return { definition };
+}

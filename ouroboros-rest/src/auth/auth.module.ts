@@ -63,12 +63,39 @@ import { DbModule } from "../modules/db/db.module";
 import { DatabaseService } from "../modules/db/db.service";
 import { createAuth, type Auth } from "./auth.factory";
 
+/**
+ * How large a JSON request body this service will read.
+ *
+ * **`express.json()`'s own default is 100 kB, and it is too small for one thing this API
+ * stores: a workflow definition.** The DSL bounds a document at 200 nodes and each model
+ * stage's `prompt_template` at 20 000 characters (`workflows/dsl.schema.ts`), so a document
+ * the validator *accepts* can be four megabytes of JSON — and a draft autosave carrying one
+ * would be refused by the parser before any handler saw it
+ * ([#134](https://github.com/NobuData/ouroboros/issues/134)). Even mockup 04's twelve-node
+ * canvas goes past 100 kB once its prompts are real. A limit that refuses what the grammar
+ * admits is a limit that makes the grammar a lie.
+ *
+ * So it is sized from that ceiling rather than guessed at, with room for the structure around
+ * the prompts — titles, descriptions, positions, edges — and for JSON's own escaping.
+ *
+ * **It is deliberately one number for the whole service.** The parser runs ahead of Nest's
+ * router, so a per-route limit would have to be a second parser racing the first, and which
+ * one won would depend on the order two modules happened to register middleware. What this
+ * widens is the bytes an unauthenticated caller can make this process buffer; **rate limiting
+ * and the rest of the hardening review are
+ * [#38](https://github.com/NobuData/ouroboros/issues/38)'s**, and a body above this limit is a
+ * `413 payload_too_large` with no handler reached (`errors/error.filter.ts`).
+ */
+export const REQUEST_BODY_LIMIT = "8mb";
+
 /** What {@link betterAuthOptions} hands the library. */
 export interface BetterAuthOptions {
   /** The instance whose routes are served. */
   readonly auth: Auth;
   /** Whether the library applies a CORS policy of its own — never; see {@link betterAuthOptions}. */
   readonly disableTrustedOriginsCors: true;
+  /** The parser the library re-adds for every path outside `/api/auth` — see {@link REQUEST_BODY_LIMIT}. */
+  readonly bodyParser: { readonly json: { readonly limit: string } };
 }
 
 /**
@@ -84,9 +111,10 @@ export interface BetterAuthOptions {
  *   so BetterAuth's adapter issues its statements over the connections `DbModule` already
  *   opened and `DatabaseService.end` already drains — one pool, one drain, one row in
  *   `pg_stat_activity`.
- * @returns The instance, and the one default this module turns off in the injected
- *   options. (The global guard is an "extra" and is declined below — the library's own
- *   distinction: extras build the provider list rather than reaching the module.)
+ * @returns The instance, the one default this module turns off, and the body-parser limit in
+ *   the injected options. (The global guard is an "extra" and is declined below — the
+ *   library's own distinction: extras build the provider list rather than reaching the
+ *   module.)
  */
 export function betterAuthOptions(
   config: AppConfigService,
@@ -95,6 +123,10 @@ export function betterAuthOptions(
   return {
     auth: createAuth({ configuration: config.all, pool: database.pool }),
     disableTrustedOriginsCors: true,
+    // `application.ts` turns Nest's own parser off so BetterAuth can sign the bytes it was
+    // sent; the library re-adds `express.json()` for every other path, and this is the one
+    // option this service has about it.
+    bodyParser: { json: { limit: REQUEST_BODY_LIMIT } },
   };
 }
 

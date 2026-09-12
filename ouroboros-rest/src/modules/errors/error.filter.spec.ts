@@ -114,6 +114,63 @@ describe("the answer for a failure", () => {
       body: { code: "internal_error", message: INTERNAL_ERROR_MESSAGE, details: {} },
     });
   });
+
+  describe("a body the parser refused", () => {
+    /**
+     * One `body-parser` failure, as `http-errors` builds it.
+     *
+     * Written out rather than provoked, `engine.fixture.ts`' argument: what is under test is
+     * the mapping, and a fixture that had to run a real parser to produce one would make the
+     * table depend on a library's stream behaviour.
+     *
+     * @param type - The `type` the parser stamps on it.
+     * @returns The error, with the fields the parser really sets.
+     */
+    function refused(type: string): Error & { type: string; status: number; expose: boolean } {
+      return Object.assign(new Error("request entity too large"), {
+        type,
+        status: HttpStatus.PAYLOAD_TOO_LARGE,
+        expose: true,
+      });
+    }
+
+    it.each([
+      ["entity.too.large", HttpStatus.PAYLOAD_TOO_LARGE, "payload_too_large"],
+      ["entity.parse.failed", HttpStatus.BAD_REQUEST, "bad_request"],
+      ["entity.verify.failed", HttpStatus.BAD_REQUEST, "bad_request"],
+      ["request.aborted", HttpStatus.BAD_REQUEST, "bad_request"],
+      ["charset.unsupported", HttpStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type"],
+      ["encoding.unsupported", HttpStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type"],
+    ])("answers %s with %s and a code a client can switch on", (type, status, code) => {
+      // The parser runs ahead of Nest's pipeline, so none of these is an `HttpException`.
+      // Without the table they are all `internal_error`, which is wrong twice: the caller can
+      // act on each of them, and `error.envelope.ts` already publishes the codes.
+      const answer = answerFor(refused(type));
+
+      expect(answer.status).toBe(status);
+      expect(answer.body.code).toBe(code);
+    });
+
+    it("never forwards the parser's own message", () => {
+      // `body-parser` writes the configured limit into the error beside its message, and a
+      // client has no use for this deployment's number.
+      const answer = answerFor(refused("entity.too.large"));
+
+      expect(answer.body.message).toBe("This request body is larger than this API accepts.");
+      expect(answer.body.message).not.toContain("entity");
+      expect(answer.body.details).toEqual({});
+    });
+
+    it("leaves a failure it does not recognise as the 500 it is", () => {
+      // Enumerated rather than derived from the error's status, so a library that happens to
+      // carry a `type` is not dressed up as a `4xx`.
+      expect(answerFor(refused("stream.not.readable")).status).toBe(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+      expect(answerFor({ type: 42 }).status).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
+      expect(answerFor(null).status).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
+    });
+  });
 });
 
 describe("the filter", () => {

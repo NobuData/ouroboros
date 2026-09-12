@@ -225,7 +225,7 @@ issue below is assigned to its epic's milestone. Complexity chips: **XS · S · 
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | P.1 | #132 | 🟢 Done | ouroboros-db: [P.1] Workflow & version schema | `workflows` + immutable `workflow_versions` (jsonb definition) | mvp, workflow, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | P.2 | #133 | 🟢 Done | ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation | Published schema for nodes/edges/predicates; zod + pydantic parity | mvp, workflow, rest, engine | N (after P.1) | Y | L | ouroboros-rest, ouroboros-engine |
-| P.3 | #134 | 🟡 Open | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
+| P.3 | #134 | 🟢 Done | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
 | P.4 | #135 | 🟢 Done | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
 | P.5 | #136 | 🟡 Open | ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity | Five workflows incl. standard-fix's full graph at v14 | mvp, workflow, db | N (after P.2) | Y | M | ouroboros-db |
 | P.6 | #137 | 🟡 Open | ouroboros-db: [P.6] Workflow constraints in ci/db | Version immutability, status vocab, definition-schema drift check | mvp, workflow, db, ci | N (after P.5, #24) | Y | XS | ouroboros-db, .github |
@@ -384,7 +384,7 @@ definition.json ─▶ JSON Schema (committed, $id: dsl/v1)
 
 ### Issue P.3 — ouroboros-rest: [P.3] Workflow CRUD, draft & publish API
 
-> **GitHub issue:** #134 · **Status:** 🟡 Open · **Parent epic:** #127
+> **GitHub issue:** #134 · **Status:** 🟢 Done · **Parent epic:** #127
 
 - **Problem Statement:** The rail, canvas, and publish button need the full
   lifecycle: list, create, rename, pause, draft-save, validate, publish, version
@@ -412,6 +412,80 @@ definition.json ─▶ JSON Schema (committed, $id: dsl/v1)
 rail GET /workflows ─▶ [{slug, name, status, caption "6 stages · auto-merge", usage%}]
 draft PUT (etag) ─▶ autosave · publish POST ─▶ [zod ✓][engine ✓] ─▶ v15 (immutable)
 ```
+
+- **Decided in-issue and shipped as `ouroboros-rest/src/modules/workflows/{slug,draft.etag,
+  publish.gate,workflows.repository,workflows.resources,workflows.dto,workflows.errors,
+  workflows.service,workflows.controller}.ts`, the seven operations in `openapi.yaml`, and
+  `EngineClient.validateWorkflow`:**
+
+  * **The rail is P.4's answer, served rather than recomposed.** `GET /api/v1/workflows`
+    returns `WorkflowStatsService`'s entries verbatim, which is what that module's export was
+    for — one derivation of *how many stages does this workflow have*. It is a named array
+    rather than a page: the rail is a workspace's whole set and every `usagePercent` is a
+    fraction of one denominator measured over all of them.
+  * **Publishing copies the draft rather than promoting it.** V029 permits both; copying is
+    what leaves the canvas with a draft to autosave into and an etag that did not move, so
+    *edit → publish → edit again* needs no round trip to re-create a draft. `POST` creates a
+    workflow **and** its draft in one transaction for the same reason: a workflow with no
+    draft is a state this API otherwise never produces.
+  * **The draft etag is a digest of the draft's identity and its document, not its
+    `updated_at`.** A `timestamptz` reaches this service as a `Date`, whose resolution is a
+    millisecond — two autosaves that close together would share a stamp, and so an etag, and
+    one edit would be lost silently. Hashing the document makes *stale* mean *the document you
+    edited is not the document that is stored*, which is what a person means by it.
+  * **"There is no draft" is a state with an etag of its own** (`none`), so a client's first
+    write is the same three lines as its hundredth: read, edit, `If-Match`. Two writers who
+    both hold it do not both create a draft — `workflow_versions_one_draft_idx` refuses the
+    second, reported as the same `409`.
+  * **A missing `If-Match` is a `400 workflow_draft_etag_required`, not a conflict and not a
+    default.** Forgetting the guard and losing a race are different mistakes; a client that
+    could opt out by omitting a header would opt out by accident. `*` is the only opt-out and
+    has to be typed.
+  * **The guard is checked against a `for update` read inside the write's own transaction**, so
+    two autosaves a millisecond apart are separated by PostgreSQL rather than by luck: the
+    second blocks, re-reads what the first committed, and is told.
+  * **The publish gate runs before a transaction is opened.** *Creates nothing* is then
+    structural rather than an ordering somebody keeps — there is no unit of work to roll back.
+    The engine leg is a network call with a five-second deadline and holding a pooled
+    connection across it would put the engine's latency into this service's connection budget;
+    what replaces the transaction's protection is a re-check inside it that the draft is still
+    the one that was validated, so what becomes immutable is what passed.
+  * **zod first, and a document it refuses never reaches the engine.** The common failure — a
+    canvas somebody is still building — costs no hop, and a list of findings never says the
+    same thing twice in two vocabularies. Findings carry `source` (`dsl` or `engine`), the
+    validator's own `code`, and an anchor (`node`, `edge`, `path`) so the canvas can select the
+    offending node.
+  * **R.2 (#144) has not landed, so the engine leg tolerates exactly one status.** A `404`
+    means *this engine build predates the route* and the publish proceeds on the zod verdict,
+    logged at `warn`; an engine that is down, refusing, or off-contract is still
+    `502 engine_unavailable` and the publish is refused. What a `404` costs is a **redundant**
+    check — `dsl.parity.spec.ts` holds the two validators to one verdict over every committed
+    fixture — and `engine.contract.spec.ts` carries a tripwire that goes red the day the engine
+    publishes the operation, so the tolerance and the test are replaced together.
+  * **The slug cannot be changed, and `archived` is the only delete.** The slug is the bridge a
+    stored `runs.workflow_tag` resolves through (decision **F8**, V029), so renaming it would
+    silently re-point every closed run that carried it; a hard `DELETE` would have to mean
+    destroying that provenance. `PATCH` therefore carries `name` and `status` and nothing else,
+    and a body with neither answers with the workflow as it stands.
+  * **A slug is derived from the title only as a convenience.** A name holding no ASCII letter
+    or digit yields none and answers `422 workflow_slug_required` rather than inventing
+    `workflow-1` — an identifier with no relationship to what somebody typed is worse than
+    asking them for one.
+  * **Reading is every member's including a `viewer`; every write is `owner` or `admin`.**
+    `CONTRIBUTORS` was rejected: a `member` is somebody who works here, and publishing changes
+    what every future run of the workspace does.
+  * **A history page carries no documents.** A definition holds up to 20 000 characters of
+    prompt per model stage, so twenty versions would move megabytes to render a list of dates;
+    one document is read by number through `?version=`. `isCurrent` is measured against
+    `current_version` rather than `max(version)`, because V029's pointer is a pointer.
+  * **The version numbering race is surfaced, not retried.** V029's trigger and unique key both
+    refuse a publisher that lost, and the loser's definition may no longer be the one they
+    meant to publish on top of — `409 workflow_publish_conflict` is the answer that says so.
+  * **`200` on publish, not `201`.** A version has no URL of its own: it is read back through
+    `GET …/{id}?version=15`, so a `201` would owe a `Location` naming nothing new.
+
+  OpenAPI additions only, so a patch bump (0.34.0 → 0.34.1) per `AGENTS.md`, and one resync of
+  `ouroboros-ui`'s generated client.
 
 ### Issue P.4 — ouroboros-rest: [P.4] Workflow usage & rail stats
 
@@ -1346,7 +1420,7 @@ on 2026-08-09; no new work created:
 | #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) — **overtaken 2026-09-08**: Epic K was built after all (`#99`, `#100`, `#101` all shipped), so Q.3 *refactors* the GitHub client behind the SPI rather than writing it. The boundary the amendment asked for landed with #101: `github.octokit.ts` is the only file that may import `@octokit/*`, lint-enforced |
 | #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) — **overtaken 2026-09-08**: `#102` shipped, so Q.2's scheduler generalizes a working loop and Q.3 *moves* GitHub's specifics rather than writing them. They are already one file each: the `since` cursor and the `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in `issue.mapping.ts`, and the estimation handoff behind an injectable token. **Q.2 landed 2026-09-12** and the generalized loop is `ouroboros-rest/src/modules/ticket-sources/`, beside `backlog-sync/` rather than in place of it: the two coexist for one release, the new one writing `tickets` and reaching nothing until a provider is registered, and Q.3 is what retires the GitHub-specific one |
 | #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143). **Landed 2026-09-12 for P.4's half**: the body holds `workflow` to a *slug* and `queue.service.ts` holds it to the workspace's registry (`422 queue_workflow_unknown`), replacing decision K5's `@IsIn`. Stored tags keep resolving |
-| #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135). **Half landed 2026-09-12**: the REST vocabulary *is* the registry, so what the menu must list is defined and enforced. The UI list is still the built-in four as a fallback — swapping it for a read of P.3's `GET /api/v1/workflows` is S.1's (#147), there being no endpoint to read yet |
+| #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135). **Half landed 2026-09-12**: the REST vocabulary *is* the registry, so what the menu must list is defined and enforced. The UI list is still the built-in four as a fallback — swapping it for a read of P.3's `GET /api/v1/workflows` is S.1's (#147). **That endpoint exists as of 2026-09-12** (#134), so the swap is now a UI change with nothing left to wait for |
 | #120 | INTAKE-N.6 no-token guidance retargets the sources settings surface Q.4 (#141) |
 | #124 | INTAKE-O.3 **superseded** — scope absorbed by P.1/P.4 (#132/#135); recommend closing. **Absorbed 2026-09-12**: `WorkflowRegistryService` is the registry both surfaces read — the assign vocabulary and `estimation.context.ts`'s `workflowTags`. A workspace with no workflow entities is still offered K5's four (`BOOTSTRAP_WORKFLOW_SLUGS`), because V029's tables have no writer until P.3/#136 and an empty vocabulary would take the shipped intake pipeline offline |
 

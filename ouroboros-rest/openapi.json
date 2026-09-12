@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.34.0",
+    "version": "0.34.1",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -77,6 +77,10 @@
     {
       "name": "github",
       "description": "The GitHub organisations and repositories a workspace has enabled — the boundary of\nwhere Ouroboros may operate, and the switches mockup 01 Step 2 draws. Both carry their\nown flag, and a repository is in scope only when **both** are true, so suspending an\norganisation preserves the per-repository choices underneath it.\n\nBoth default to off. A row records that Ouroboros knows about the organisation or the\nrepository; the flag records that somebody deliberately turned it on.\n\n**Two words called \"org\" meet under this tag**, and the paths are what keep them apart:\n`/api/v1/orgs/{orgId}` is the *workspace*, and `/github-orgs/{login}` under it is\nGitHub's. A resource's `orgId` is always the workspace; a repository names its parent\norganisation `githubOrgId` for the same reason.\n\nAdministering these is `owner` or `admin`; `member` and `viewer` may read them. A member\nwhose role is too low gets a `403` with `code: \"forbidden\"` — the one place this API\nanswers `403`, because by then the caller has already proved the workspace is no secret\nfrom them."
+    },
+    {
+      "name": "workflows",
+      "description": "**Workflow Studio's own surface** (mockup 04, epic\n[#127](https://github.com/NobuData/ouroboros/issues/127)) — the rail, the canvas, the\ndraft, and the **Publish v15** button.\n\nA workflow is an entity with a slug, a title, a status, and a version history. The slug\nis load-bearing: `runs.workflow_tag` and `queue_items.workflow_tag` are opaque text by\ndecision **F8**, and the slug is what one of those resolves through — so a closed run is\nstill rendered under the workflow it named, and a slug cannot be changed.\n\n**A workflow has one draft and any number of published versions.** The draft is the only\nmutable document; a published version cannot be revised by anybody, including an owner,\nbecause a run pins the version it executed (decision **P1**, enforced in the database).\nChanging a workflow therefore means editing its draft and publishing the next version.\n\n**Two operations here are easy to get subtly wrong, and are specified accordingly.**\nSaving a draft requires an `If-Match` carrying the etag of the draft you read, so a\nsecond tab cannot silently overwrite the first — a stale one is a `409` with the current\netag in `details`. Publishing runs two validators, this service's and\n`ouroboros-engine`'s, and creates a version only when both are green; a finding from\neither is a `422` with node-anchored errors and **nothing written**.\n\nReading is every member's, `viewer` included. Creating, renaming, pausing, saving a\ndraft and publishing are `owner` or `admin` — a `member` is somebody who works here,\nand publishing changes what every future run of the workspace does."
     }
   ],
   "paths": {
@@ -9431,6 +9435,969 @@
         }
       }
     },
+    "/api/v1/workflows": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "The workspace's workflow rail",
+        "description": "Mockup 04's `.wf-list` — every non-archived workflow this workspace has, with the\ncaptions and usage shares P.4\n([#135](https://github.com/NobuData/ouroboros/issues/135)) computes\n([#134](https://github.com/NobuData/ouroboros/issues/134)).\n\n**Nothing here is stored.** The stage count is the node count of the definition\n`currentVersion` points at, the terminal behaviour is the `action` of its `term` nodes,\nand the usage share is this workspace's runs over the last 30 days. So a version\npublished a second ago is already reflected, and there is no column anybody has to\nremember to update.\n\n**`usagePercent` is `null` rather than `0` for a workspace with no runs in the\nwindow**, and `usageCaption` already says `no runs yet`. The null is what stops a\nclient composing its own subline from a number it should not divide.\n\n**Not a page.** The rail is a workspace's whole set, and every share is a fraction of\none denominator — a window over that would be a window onto an answer that was already\ncomplete. Archived workflows are absent, which is what `archived` means.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "listWorkflows",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rail. Empty for a workspace with no workflows — the studio's empty state, not a\nfailure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRail"
+                },
+                "example": {
+                  "workflows": [
+                    {
+                      "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                      "slug": "standard-fix",
+                      "name": "Standard Fix",
+                      "status": "active",
+                      "currentVersion": 14,
+                      "stageCount": 6,
+                      "terminal": "open_pr_automerge",
+                      "caption": "6 stages · auto-merge",
+                      "runs": 61,
+                      "usagePercent": 61,
+                      "usageCaption": "used by 61% of runs"
+                    },
+                    {
+                      "id": "7c2f5a19-1b34-4c8d-9e07-5a6b3c2d1e0f",
+                      "slug": "hotfix-p0",
+                      "name": "Hotfix P0",
+                      "status": "paused",
+                      "currentVersion": 5,
+                      "stageCount": 5,
+                      "terminal": "needs_review",
+                      "caption": "5 stages · paused",
+                      "runs": 0,
+                      "usagePercent": 0,
+                      "usageCaption": "used by <1% of runs"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Create a workflow",
+        "description": "**+ New workflow** — blank, or from a template stub.\n\n**It creates a draft and publishes nothing.** The new workflow's `currentVersion` is\n`null` and its `version` is `null`; the canvas opens on `draft.definition`, and the\nfirst **Publish** is what makes a version. That is the state V029 describes as *a\nworkflow that has only ever had a draft*.\n\n**`slug` is derived from `name` when it is omitted** — lower-cased, with every run of\ncharacters the format does not admit collapsed to a single hyphen. Send it explicitly\nwhen the identifier matters: the slug is what a stored `runs.workflow_tag` resolves\nthrough, so a workspace moving off the built-in vocabulary needs to be able to say\n`standard-fix` rather than accept whatever a title folds to. A name holding no ASCII\nletter or digit yields no slug and answers `422 workflow_slug_required` rather than\ninventing one.\n\n**`definition` is stored as-is and validated at publish.** `{}` — the blank canvas — is\na legal stored state, which is what lets **Browse templates**\n([#159](https://github.com/NobuData/ouroboros/issues/159)) create from a starter\nwithout this operation needing to know what a template is.\n\n**`owner` or `admin`.**",
+        "operationId": "createWorkflow",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowRequest"
+              },
+              "examples": {
+                "blank": {
+                  "summary": "A blank canvas",
+                  "value": {
+                    "name": "Standard Fix"
+                  }
+                },
+                "fromTemplate": {
+                  "summary": "From a template stub, with an explicit slug",
+                  "value": {
+                    "name": "Standard Fix",
+                    "slug": "standard-fix",
+                    "definition": {
+                      "dsl_version": "1.0",
+                      "trigger": {
+                        "event": "ticket_queued",
+                        "conditions": {}
+                      },
+                      "nodes": [],
+                      "edges": []
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The workflow, with the draft its canvas opens on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDetail"
+                },
+                "example": {
+                  "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                  "slug": "standard-fix",
+                  "name": "Standard Fix",
+                  "status": "active",
+                  "currentVersion": null,
+                  "createdAt": "2026-09-12T10:00:00.000Z",
+                  "updatedAt": "2026-09-12T10:00:00.000Z",
+                  "draft": {
+                    "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                    "definition": {},
+                    "updatedAt": "2026-09-12T10:00:00.000Z"
+                  },
+                  "version": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role is too low. Creating\na workflow is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_slug_taken` — that slug already names a workflow in this workspace.\n`details.slug` echoes it. Per workspace rather than globally: two tenants both\nrunning a `standard-fix` is the ordinary case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_slug_taken",
+                  "message": "A workflow with that name already exists in this workspace.",
+                  "details": {
+                    "slug": "standard-fix"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`payload_too_large` — the request body is larger than this service reads. The limit\nis sized from the DSL's own ceiling (200 nodes, 20 000 characters of prompt each),\nso a definition the validator would accept always fits; a body past it is one no\nworkflow document can be.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `name` blank or too long, `slug` not lower-case kebab, or\n`definition` not an object. `workflow_slug_required` when no slug was sent and the\nname yields none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "One workflow, its draft, and one version",
+        "description": "What the canvas loads: the entity, the draft slot, and one published version.\n\n**`version` is the one in force unless `?version=` names another.** A workflow that has\npublished nothing carries `version: null`, which is not an error — it is the state\n**+ New workflow** leaves behind, and what the canvas opens on is `draft.definition`.\n\n**The draft slot travels whichever version was asked for.** One shape for a client to\nread, and a person browsing history still knows there is unpublished work.\n\n**`draft.etag` is always present, including when there is no draft at all** — a\nworkflow whose draft has never been written carries `definition: null` with an etag of\nits own. Send that etag back as `If-Match` and the first write creates the draft, so a\nclient's first save is the same three lines as its hundredth. Treat it as opaque:\ncompare it for equality and nothing else.\n\n**A workflow that is not yours does not exist.** A well-formed id belonging to another\nworkspace answers `404 workflow_not_found`, indistinguishably from an id that names\nnothing — a `403` would confirm that an identifier names something real.\n\n**Every member may read it**, `viewer` included.",
+        "operationId": "readWorkflow",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "description": "Read this published version's document instead of the one in force. A number that\nnames no version of this workflow is a `404 workflow_version_not_found` — which\ndiscloses nothing, since the caller has already been shown the workflow.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 14
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workflow.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDetail"
+                },
+                "example": {
+                  "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                  "slug": "standard-fix",
+                  "name": "Standard Fix",
+                  "status": "active",
+                  "currentVersion": 14,
+                  "createdAt": "2026-08-01T09:00:00.000Z",
+                  "updatedAt": "2026-09-12T08:30:00.000Z",
+                  "draft": {
+                    "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                    "definition": {
+                      "dsl_version": "1.0",
+                      "trigger": {
+                        "event": "ticket_queued",
+                        "conditions": {}
+                      },
+                      "nodes": [],
+                      "edges": []
+                    },
+                    "updatedAt": "2026-09-12T08:30:00.000Z"
+                  },
+                  "version": {
+                    "version": 14,
+                    "definition": {
+                      "dsl_version": "1.0",
+                      "trigger": {
+                        "event": "ticket_queued",
+                        "conditions": {}
+                      },
+                      "nodes": [],
+                      "edges": []
+                    },
+                    "changeNote": "Added the review gate.",
+                    "publishedAt": "2026-09-01T12:00:00.000Z",
+                    "publishedBy": "9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that id, **or none this caller may know\nabout**. `workflow_version_not_found` when `?version=` names no version of it.\n(`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_not_found",
+                  "message": "No such workflow.",
+                  "details": {
+                    "workflowId": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a99"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid, or `version` is not a positive integer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Rename, pause, resume or archive a workflow",
+        "description": "The title and the status, which are the two things about a workflow a person changes\nwithout touching its canvas.\n\n**`paused` is the rail's err-dot**, and the caption that reads `5 stages · paused`\nfollows from the same column with no second write. **`archived` is the soft delete**:\nthe workflow leaves the rail and the assign-workflow vocabulary, and its version\nhistory stays readable. There is deliberately **no `DELETE`** — a hard delete would\nhave to mean destroying the provenance of every closed run that named it.\n\n**The slug cannot be changed.** It is the bridge a stored `runs.workflow_tag` resolves\nthrough (decision **F8**, V029), so renaming it would silently re-point every run that\ncarried it. Rename the *title* instead; the two are independent.\n\n**A body with neither field is not an error.** A property no field here declares is\nalready refused, so `{}` is a request that genuinely asks for nothing, and the honest\nanswer to it is the workflow as it stands.\n\n**`owner` or `admin`.**",
+        "operationId": "updateWorkflow",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkflowRequest"
+              },
+              "examples": {
+                "pause": {
+                  "summary": "Pause it — the mockup's err-dot state",
+                  "value": {
+                    "status": "paused"
+                  }
+                },
+                "rename": {
+                  "summary": "Rename it, leaving the slug alone",
+                  "value": {
+                    "name": "Standard fix (v2 rules)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The workflow after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowSummary"
+                },
+                "example": {
+                  "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                  "slug": "standard-fix",
+                  "name": "Standard Fix",
+                  "status": "paused",
+                  "currentVersion": 14,
+                  "createdAt": "2026-08-01T09:00:00.000Z",
+                  "updatedAt": "2026-09-12T10:05:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role is too low. Changing a workflow is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that id, or none this caller may know\nabout. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid, `name` is blank or too long, or\n`status` names no state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/draft": {
+      "put": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Save the draft, guarded by its etag",
+        "description": "The canvas's autosave — **a replacement, not a patch**. The studio holds the graph in\nmemory and writes what it has; a partial update would need a merge rule for a graph,\nand two clients merging concurrently is the loss this operation exists to refuse.\n\n**`If-Match` is required, and a stale one is a `409`.** Send the `draft.etag` the last\nread handed you. The draft is read under a row lock inside the same transaction as the\nwrite, so a second autosave arriving mid-flight blocks, re-reads the row the first one\ncommitted, and finds an etag its header does not admit — it is told, rather than\nwinning. `details.current` carries the etag the draft has now, so the studio's reload\ndialog costs no second round trip.\n\nThe header is read the way RFC 9110 writes one: quoted, weak (`W/\"…\"`), or a\ncomma-separated list, and a bare token as well, since that is what this API publishes.\n`*` means *whatever is there now* and is the only way to opt out of the guard —\ndeliberately something a client has to say rather than something it can forget.\n\n**A request with no `If-Match` at all is a `400 workflow_draft_etag_required`**, not a\nconflict: forgetting the guard and losing a race are different mistakes, and a client\nfixes them differently.\n\n**The document is not validated here.** `{}` and a half-built canvas are both legal\nstored states — an autosave that refused work in progress would be an autosave nobody\ncould use. The grammar is checked once, at publish, when the document is about to\nbecome immutable.\n\n**`owner` or `admin`.**",
+        "operationId": "saveWorkflowDraft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The etag of the draft this write is based on — `draft.etag` from the last read.\nOpaque. `*` overwrites whatever is there.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "example": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDraftRequest"
+              },
+              "example": {
+                "definition": {
+                  "dsl_version": "1.0",
+                  "trigger": {
+                    "event": "ticket_queued",
+                    "conditions": {}
+                  },
+                  "nodes": [],
+                  "edges": []
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The draft slot after the write, carrying the etag for the next save and the\n*Last edited* stamp the page head prints.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDraft"
+                },
+                "example": {
+                  "etag": "8b1c4d7e0a3f6295c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0a3f6295c8d1e4f7a0b",
+                  "definition": {
+                    "dsl_version": "1.0",
+                    "trigger": {
+                      "event": "ticket_queued",
+                      "conditions": {}
+                    },
+                    "nodes": [],
+                    "edges": []
+                  },
+                  "updatedAt": "2026-09-12T10:07:31.412Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`workflow_draft_etag_required` — the request carried no `If-Match`. Read the\nworkflow and send back its `draft.etag`. (`organization_required` is the other\n`400` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_draft_etag_required",
+                  "message": "Saving a draft requires an If-Match header carrying the draft's etag.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role is too low. Saving a draft is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that id, or none this caller may know\nabout. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_draft_conflict` — the draft was changed by somebody else, and **nothing\nwas overwritten**. `details.expected` is what you sent and `details.current` is the\netag the draft has now; reload and save again. `details.current` is absent in the\none case where it genuinely is not known — two requests creating the first draft at\nonce, which a unique index separates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_draft_conflict",
+                  "message": "This draft was changed by someone else. Reload it before saving again.",
+                  "details": {
+                    "expected": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                    "current": "8b1c4d7e0a3f6295c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0a3f6295c8d1e4f7a0b"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`payload_too_large` — the request body is larger than this service reads. The limit\nis sized from the DSL's own ceiling (200 nodes, 20 000 characters of prompt each),\nso a definition the validator would accept always fits; a body past it is one no\nworkflow document can be.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid, or `definition` is missing or not a\nJSON object.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/publish": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Publish the draft as the next immutable version",
+        "description": "The mockup's **Publish v15** — the draft's document frozen as the next version, behind\ntwo validators.\n\n**Both must be green.** The P.2 zod validator\n([#133](https://github.com/NobuData/ouroboros/issues/133)) runs first, in this process;\na document it refuses never reaches the second stage, because the engine cannot say\nanything useful about a document that does not parse and two copies of one complaint\nmake a list harder to act on. Then `ouroboros-engine`'s own reading of the DSL (R.2,\n[#144](https://github.com/NobuData/ouroboros/issues/144)) — the component that will\nexecute the definition — so the first time the two disagree is here rather than at\nruntime months later.\n\n**A finding from either is a `422`, and nothing is written.** Not rolled back: the\ngate runs before a transaction is opened, so there is no version to undo. Each finding\ncarries `source` (`dsl` or `engine`), the validator's own `code`, and an anchor —\n`node`, `edge`, or a `path` JSON Pointer — so the canvas can select the offending node\nwhen somebody clicks one.\n\n**The draft survives the publish.** The version is a new row; the draft keeps its\ndocument and its etag, so the canvas goes on autosaving into the same slot. Publishing\nagain with no edit in between writes the *next* version rather than revising the last\none — `workflow_versions` is immutable once published (decision **P1**), enforced in\nthe database for every role.\n\n**`200`, not `201`.** A version is not a resource with a URL of its own: it is read\nback through `GET /api/v1/workflows/{id}?version=15`, which is the same resource the\nworkflow already had, so a `201` would owe a `Location` that names nothing new.\n\n**`owner` or `admin`.**",
+        "operationId": "publishWorkflow",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishWorkflowRequest"
+              },
+              "examples": {
+                "withNote": {
+                  "summary": "With a note",
+                  "value": {
+                    "changeNote": "Added the review gate before auto-merge."
+                  }
+                },
+                "withoutNote": {
+                  "summary": "A publish with nothing to say is ordinary",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The version that is now in force. `workflows.currentVersion` names it from here on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowVersion"
+                },
+                "example": {
+                  "version": 15,
+                  "definition": {
+                    "dsl_version": "1.0",
+                    "trigger": {
+                      "event": "ticket_queued",
+                      "conditions": {}
+                    },
+                    "nodes": [],
+                    "edges": []
+                  },
+                  "changeNote": "Added the review gate before auto-merge.",
+                  "publishedAt": "2026-09-12T10:09:44.008Z",
+                  "publishedBy": "9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role is too low. Publishing is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that id, or none this caller may know\nabout. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_draft_absent` — there is nothing to publish; save a draft first.\n`workflow_draft_conflict` — the draft changed while the validators were running, so\nwhat would have been frozen is not what passed. `workflow_publish_conflict` —\nsomebody else published while you were publishing and took the version number;\nreload and try again, because your document may no longer be the one you meant to\nbuild on.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_publish_conflict",
+                  "message": "This workflow was published by someone else. Reload it and try again.",
+                  "details": {
+                    "workflowId": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`workflow_definition_invalid` — one or both validators refused the definition, and\n**nothing was created**. `details.findings` carries every finding, node-anchored.\n(`validation_failed` is the other `422` here: the id is not a uuid, or `changeNote`\nis blank or longer than 500 characters.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_definition_invalid",
+                  "message": "This definition cannot be published yet.",
+                  "details": {
+                    "findings": [
+                      {
+                        "source": "dsl",
+                        "code": "structure.trigger_missing",
+                        "message": "A workflow needs exactly one trigger node.",
+                        "path": "/nodes"
+                      },
+                      {
+                        "source": "engine",
+                        "code": "unreachable_node",
+                        "message": "Nothing reaches this node.",
+                        "node": "review"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`engine_unavailable` — `ouroboros-engine` publishes the validation route and could\nnot answer it. The publish is refused rather than waved through: an outage must not\nsilence half the gate. An engine build that does not publish the route at all is a\ndifferent case and does not produce this — see the operation description.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/versions": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "A workflow's version history",
+        "description": "Every published version of one workflow, newest first — the history panel behind the\n`v14` chip.\n\n**The documents are deliberately absent.** A definition holds a prompt template per\nmodel stage, up to 20 000 characters each, so a page that inlined twenty of them would\nmove megabytes to render a list of dates. Read one by number instead:\n`GET /api/v1/workflows/{id}?version=14`.\n\n**`isCurrent` marks the version in force, which is not necessarily the newest.**\n`workflows.currentVersion` is a pointer rather than a cache of the highest number, so a\nworkflow can carry several published versions while an older one runs.\n\n**Drafts are not history.** An unnumbered row is the canvas's working copy; it is read\nthrough the workflow's `draft` slot.\n\n**Every member may read it**, `viewer` included.",
+        "operationId": "listWorkflowVersions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page. Empty for a workflow that has never been published — the state\n**+ New workflow** leaves behind, not a failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowVersionPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "version": 14,
+                      "changeNote": "Added the review gate.",
+                      "publishedAt": "2026-09-01T12:00:00.000Z",
+                      "publishedBy": "9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10",
+                      "isCurrent": true
+                    },
+                    {
+                      "version": 13,
+                      "changeNote": null,
+                      "publishedAt": "2026-08-20T09:14:02.000Z",
+                      "publishedBy": null,
+                      "isCurrent": false
+                    }
+                  ],
+                  "total": 14,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that id, or none this caller may know\nabout. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid, or the window is out of range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "tags": [
@@ -9685,6 +10652,17 @@
           "format": "uuid"
         },
         "example": "5eed0009-0000-4000-8000-000000000482"
+      },
+      "WorkflowId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is\nnot a uuid is a `422` naming the field, before anything is read; a well-formed id that\nnames nothing *this caller may see* is a `404`, and the difference is the difference\nbetween \"you asked wrongly\" and \"there is no such thing for you\".",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
       },
       "ConnectionId": {
         "name": "id",
@@ -17906,6 +18884,591 @@
             "description": "Present when the status is `down`: what was attempted, and a classification of\nwhy it failed — `SELECT 1 failed (ECONNREFUSED)`, `GET /healthz responded 503`,\n`SELECT 1 timed out after 2000 ms`. Never a driver's own message; this route\nanswers without authentication, and a driver names the host, the port and the\nrole it could not reach with.",
             "examples": [
               "SELECT 1 failed (ECONNREFUSED)"
+            ]
+          }
+        }
+      },
+      "WorkflowDefinition": {
+        "type": "object",
+        "title": "WorkflowDefinition",
+        "description": "A workflow definition — the P.2 DSL document\n([#133](https://github.com/NobuData/ouroboros/issues/133)).\n\n**Deliberately unconstrained here.** The grammar has one owner and it is not this\ndocument: the published JSON Schema at\n[`schemas/workflow-dsl/v1.json`](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json)\nis what a definition is checked against, by this service's zod validator and by\n`ouroboros-engine`'s pydantic one. Restating it here would be a third copy that could\ndisagree with the other two.\n\nIt is also the honest shape for *where* these travel. A draft is stored unvalidated —\n`{}` is the blank canvas, and a half-built graph is what autosave exists to keep — so\nthe only thing true of every document on this API is that it is a JSON object.",
+        "additionalProperties": true,
+        "example": {
+          "dsl_version": "1.0",
+          "trigger": {
+            "event": "ticket_queued",
+            "conditions": {}
+          },
+          "nodes": [],
+          "edges": []
+        }
+      },
+      "WorkflowStatus": {
+        "type": "string",
+        "title": "WorkflowStatus",
+        "description": "What the rail draws a workflow as (V029, `workflows_status_valid`).\n\n`active` is an ordinary rail entry and the only status the assign-workflow vocabulary\noffers. `paused` is the mockup's err-dot, whose caption reads `5 stages · paused`.\n`archived` is the soft delete: off the rail and out of the vocabulary, with its version\nhistory still readable.",
+        "enum": [
+          "active",
+          "paused",
+          "archived"
+        ],
+        "examples": [
+          "active"
+        ]
+      },
+      "WorkflowTerminalAction": {
+        "type": "string",
+        "title": "WorkflowTerminalAction",
+        "description": "What a workflow does when it finishes, from its definition's `term` nodes — the second\nhalf of the rail caption. The words the rail prints for these are `auto-merge`,\n`needs review` and `back to queue`, already composed into `caption`.",
+        "enum": [
+          "open_pr_automerge",
+          "needs_review",
+          "back_to_queue"
+        ],
+        "examples": [
+          "open_pr_automerge"
+        ]
+      },
+      "WorkflowRailEntry": {
+        "type": "object",
+        "title": "WorkflowRailEntry",
+        "description": "One workflow on mockup 04's rail, with the statistics P.4\n([#135](https://github.com/NobuData/ouroboros/issues/135)) computes per request.\n\n**The facts travel beside the strings.** `caption` and `usageCaption` are composed here\nso that the rail and the page head cannot draw two different sentences from one row;\nthe fields beside them are there so a surface never has to parse `5 stages · paused` to\nlearn a status.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "status",
+          "currentVersion",
+          "stageCount",
+          "terminal",
+          "caption",
+          "runs",
+          "usagePercent",
+          "usageCaption"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`workflows.id`."
+          },
+          "slug": {
+            "type": "string",
+            "description": "What a stored `runs.workflow_tag` resolves through, and what an assign menu sends.\nLower-case kebab, at most 64 characters.",
+            "examples": [
+              "standard-fix"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The human title the rail and the page head print.",
+            "examples": [
+              "Standard Fix"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowStatus"
+          },
+          "currentVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The `v14` chip's number, or `null` for a workflow that has only ever had a draft.",
+            "examples": [
+              14
+            ]
+          },
+          "stageCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How many stages the definition in force holds — its node count. `null` when there\nis no version in force, and **never `0`** for a real document: a workflow nobody has\npublished has no stage count, and zero would be a claim about a document that does\nnot exist.",
+            "examples": [
+              6
+            ]
+          },
+          "terminal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowTerminalAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What it does when it finishes. `null` when nothing is published, or when the\ndocument names no terminal action this build knows."
+          },
+          "caption": {
+            "type": "string",
+            "description": "The rail's caption, composed — `6 stages · auto-merge`, `5 stages · paused`, or\n`not published`.",
+            "examples": [
+              "6 stages · auto-merge"
+            ]
+          },
+          "runs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many of the last 30 days' runs in this workspace carried this slug.",
+            "examples": [
+              61
+            ]
+          },
+          "usagePercent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "That as a whole percent of every run in the window, or **`null` when the window\nholds none**. The null is the honesty rule as a type: it is never `0` for a\nworkspace with nothing to divide by, and a client that renders a percentage from it\nmust check.",
+            "examples": [
+              61
+            ]
+          },
+          "usageCaption": {
+            "type": "string",
+            "description": "The head's subline, composed — `used by 61% of runs`, `used by <1% of runs`, or\n`no runs yet`.",
+            "examples": [
+              "used by 61% of runs"
+            ]
+          }
+        }
+      },
+      "WorkflowRail": {
+        "type": "object",
+        "title": "WorkflowRail",
+        "description": "The rail — every non-archived workflow of one workspace, in the order they were\ncreated.\n\nA named array rather than a page: the rail is a workspace's whole set, and every\n`usagePercent` is a fraction of one denominator measured over all of them.",
+        "additionalProperties": false,
+        "required": [
+          "workflows"
+        ],
+        "properties": {
+          "workflows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRailEntry"
+            }
+          }
+        }
+      },
+      "WorkflowSummary": {
+        "type": "object",
+        "title": "WorkflowSummary",
+        "description": "One workflow's entity — the page head's title, chip and status, without its document.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "status",
+          "currentVersion",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "description": "The identifier a stored `workflow_tag` resolves through. Unique within the\nworkspace, and **not changeable** — see `PATCH /api/v1/workflows/{id}`.",
+            "examples": [
+              "standard-fix"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "Standard Fix"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowStatus"
+          },
+          "currentVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The version in force, or `null` for a workflow that has published nothing.",
+            "examples": [
+              14
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-01T09:00:00.000Z"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the *entity* last changed — a rename, a pause, a publish moving the pointer.\nA draft edit does not move it; that stamp is `draft.updatedAt`.",
+            "examples": [
+              "2026-09-12T08:30:00.000Z"
+            ]
+          }
+        }
+      },
+      "WorkflowDraft": {
+        "type": "object",
+        "title": "WorkflowDraft",
+        "description": "A workflow's one mutable document, and the token that guards writing it.\n\n**The slot always has an etag, and sometimes has a document.** `definition` is `null`\nfor a workflow with no draft at all; `etag` is present either way, so a client's first\nwrite is the same three lines as its hundredth — read, edit, `If-Match`.",
+        "additionalProperties": false,
+        "required": [
+          "etag",
+          "definition",
+          "updatedAt"
+        ],
+        "properties": {
+          "etag": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Send this back as `If-Match` on the next save. **Opaque**: compare it for equality\nand nothing else. It changes whenever the stored document changes, which is what\nmakes *stale* mean *the document you edited is not the document that is stored*.",
+            "examples": [
+              "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0"
+            ]
+          },
+          "definition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowDefinition"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stored document, or `null` when this workflow has no draft."
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The mockup's *Last edited*, or `null` when there is no draft.",
+            "examples": [
+              "2026-09-12T08:30:00.000Z"
+            ]
+          }
+        }
+      },
+      "WorkflowVersion": {
+        "type": "object",
+        "title": "WorkflowVersion",
+        "description": "One published, immutable version — document and all.\n\nDecision **P1**: a run pins the version it executed, so editing a published definition\nwould rewrite what that run did. `workflow_versions` refuses every such update in the\ndatabase, for every role; the way to change a workflow is to publish the next version.",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "definition",
+          "changeNote",
+          "publishedAt",
+          "publishedBy"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Dense from 1, assigned by publishing, never reused.",
+            "examples": [
+              15
+            ]
+          },
+          "definition": {
+            "$ref": "#/components/schemas/WorkflowDefinition"
+          },
+          "changeNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "description": "What changed, in the publisher's words. `null` for a publish with nothing to say.",
+            "examples": [
+              "Added the review gate before auto-merge."
+            ]
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-09-12T10:09:44.008Z"
+            ]
+          },
+          "publishedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who pressed Publish. `null` for a version published by a seed or a template import,\nand `null` once that person has been deleted — what was published cannot be\nrewritten, who published it can be forgotten.",
+            "examples": [
+              "9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10"
+            ]
+          }
+        }
+      },
+      "WorkflowVersionSummary": {
+        "type": "object",
+        "title": "WorkflowVersionSummary",
+        "description": "One row of a workflow's history — everything but the document. Read a document by\nnumber through `GET /api/v1/workflows/{id}?version=`.",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "changeNote",
+          "publishedAt",
+          "publishedBy",
+          "isCurrent"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              14
+            ]
+          },
+          "changeNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "examples": [
+              "Added the review gate."
+            ]
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-09-01T12:00:00.000Z"
+            ]
+          },
+          "publishedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10"
+            ]
+          },
+          "isCurrent": {
+            "type": "boolean",
+            "description": "Whether this is the version in force — the `v14` chip. Measured against\n`currentVersion`, which is a pointer rather than the highest number, so this is not\nalways the first row.",
+            "examples": [
+              true
+            ]
+          }
+        }
+      },
+      "WorkflowVersionPage": {
+        "type": "object",
+        "title": "WorkflowVersionPage",
+        "description": "One page of a workflow's history — the #31 pagination convention over\n`WorkflowVersionSummary` rows, newest first.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowVersionSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many published versions this workflow has. Drafts are not counted.",
+            "examples": [
+              14
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              25
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              0
+            ]
+          }
+        }
+      },
+      "WorkflowDetail": {
+        "type": "object",
+        "title": "WorkflowDetail",
+        "description": "A workflow, its draft slot, and the one version the request asked for — what the canvas\nloads in a single round trip.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "status",
+          "currentVersion",
+          "createdAt",
+          "updatedAt",
+          "draft",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "examples": [
+              "standard-fix"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "Standard Fix"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowStatus"
+          },
+          "currentVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "examples": [
+              14
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-01T09:00:00.000Z"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-09-12T08:30:00.000Z"
+            ]
+          },
+          "draft": {
+            "$ref": "#/components/schemas/WorkflowDraft"
+          },
+          "version": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowVersion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version `?version=` named, or the one in force when it named none. `null` for a\nworkflow that has published nothing — not an error, and the canvas opens on\n`draft.definition`."
+          }
+        }
+      },
+      "CreateWorkflowRequest": {
+        "type": "object",
+        "title": "CreateWorkflowRequest",
+        "description": "What **+ New workflow** sends.",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "The human title. Non-blank, at most 120 characters (`workflows_name_present`).",
+            "examples": [
+              "Standard Fix"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "description": "The identifier, when the caller has one in mind. Omitted, it is derived from `name`.\nSend it when the identifier matters — it is what a stored `workflow_tag` resolves\nthrough.",
+            "examples": [
+              "standard-fix"
+            ]
+          },
+          "definition": {
+            "$ref": "#/components/schemas/WorkflowDefinition"
+          }
+        }
+      },
+      "UpdateWorkflowRequest": {
+        "type": "object",
+        "title": "UpdateWorkflowRequest",
+        "description": "The title, the status, or both. A body with neither asks for nothing and answers with\nthe workflow as it stands. There is no `slug`, deliberately.",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "examples": [
+              "Standard fix (v2 rules)"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowStatus"
+          }
+        }
+      },
+      "SaveDraftRequest": {
+        "type": "object",
+        "title": "SaveDraftRequest",
+        "description": "The whole document, as the canvas holds it. A replacement rather than a patch — see the\noperation.",
+        "additionalProperties": false,
+        "required": [
+          "definition"
+        ],
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/WorkflowDefinition"
+          }
+        }
+      },
+      "PublishWorkflowRequest": {
+        "type": "object",
+        "title": "PublishWorkflowRequest",
+        "description": "What **Publish v15** sends.",
+        "additionalProperties": false,
+        "properties": {
+          "changeNote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "What changed, in the publisher's words. Optional — a publish with nothing to say is\nordinary — but never blank, because an empty string is a note that lost its text\nrather than one that was never written.",
+            "examples": [
+              "Added the review gate before auto-merge."
             ]
           }
         }

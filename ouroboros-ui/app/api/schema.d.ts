@@ -3073,6 +3073,261 @@ export interface paths {
         patch: operations["setRepoEnabled"];
         trace?: never;
     };
+    "/api/v1/workflows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's workflow rail
+         * @description Mockup 04's `.wf-list` — every non-archived workflow this workspace has, with the
+         *     captions and usage shares P.4
+         *     ([#135](https://github.com/NobuData/ouroboros/issues/135)) computes
+         *     ([#134](https://github.com/NobuData/ouroboros/issues/134)).
+         *
+         *     **Nothing here is stored.** The stage count is the node count of the definition
+         *     `currentVersion` points at, the terminal behaviour is the `action` of its `term` nodes,
+         *     and the usage share is this workspace's runs over the last 30 days. So a version
+         *     published a second ago is already reflected, and there is no column anybody has to
+         *     remember to update.
+         *
+         *     **`usagePercent` is `null` rather than `0` for a workspace with no runs in the
+         *     window**, and `usageCaption` already says `no runs yet`. The null is what stops a
+         *     client composing its own subline from a number it should not divide.
+         *
+         *     **Not a page.** The rail is a workspace's whole set, and every share is a fraction of
+         *     one denominator — a window over that would be a window onto an answer that was already
+         *     complete. Archived workflows are absent, which is what `archived` means.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["listWorkflows"];
+        put?: never;
+        /**
+         * Create a workflow
+         * @description **+ New workflow** — blank, or from a template stub.
+         *
+         *     **It creates a draft and publishes nothing.** The new workflow's `currentVersion` is
+         *     `null` and its `version` is `null`; the canvas opens on `draft.definition`, and the
+         *     first **Publish** is what makes a version. That is the state V029 describes as *a
+         *     workflow that has only ever had a draft*.
+         *
+         *     **`slug` is derived from `name` when it is omitted** — lower-cased, with every run of
+         *     characters the format does not admit collapsed to a single hyphen. Send it explicitly
+         *     when the identifier matters: the slug is what a stored `runs.workflow_tag` resolves
+         *     through, so a workspace moving off the built-in vocabulary needs to be able to say
+         *     `standard-fix` rather than accept whatever a title folds to. A name holding no ASCII
+         *     letter or digit yields no slug and answers `422 workflow_slug_required` rather than
+         *     inventing one.
+         *
+         *     **`definition` is stored as-is and validated at publish.** `{}` — the blank canvas — is
+         *     a legal stored state, which is what lets **Browse templates**
+         *     ([#159](https://github.com/NobuData/ouroboros/issues/159)) create from a starter
+         *     without this operation needing to know what a template is.
+         *
+         *     **`owner` or `admin`.**
+         */
+        post: operations["createWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One workflow, its draft, and one version
+         * @description What the canvas loads: the entity, the draft slot, and one published version.
+         *
+         *     **`version` is the one in force unless `?version=` names another.** A workflow that has
+         *     published nothing carries `version: null`, which is not an error — it is the state
+         *     **+ New workflow** leaves behind, and what the canvas opens on is `draft.definition`.
+         *
+         *     **The draft slot travels whichever version was asked for.** One shape for a client to
+         *     read, and a person browsing history still knows there is unpublished work.
+         *
+         *     **`draft.etag` is always present, including when there is no draft at all** — a
+         *     workflow whose draft has never been written carries `definition: null` with an etag of
+         *     its own. Send that etag back as `If-Match` and the first write creates the draft, so a
+         *     client's first save is the same three lines as its hundredth. Treat it as opaque:
+         *     compare it for equality and nothing else.
+         *
+         *     **A workflow that is not yours does not exist.** A well-formed id belonging to another
+         *     workspace answers `404 workflow_not_found`, indistinguishably from an id that names
+         *     nothing — a `403` would confirm that an identifier names something real.
+         *
+         *     **Every member may read it**, `viewer` included.
+         */
+        get: operations["readWorkflow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename, pause, resume or archive a workflow
+         * @description The title and the status, which are the two things about a workflow a person changes
+         *     without touching its canvas.
+         *
+         *     **`paused` is the rail's err-dot**, and the caption that reads `5 stages · paused`
+         *     follows from the same column with no second write. **`archived` is the soft delete**:
+         *     the workflow leaves the rail and the assign-workflow vocabulary, and its version
+         *     history stays readable. There is deliberately **no `DELETE`** — a hard delete would
+         *     have to mean destroying the provenance of every closed run that named it.
+         *
+         *     **The slug cannot be changed.** It is the bridge a stored `runs.workflow_tag` resolves
+         *     through (decision **F8**, V029), so renaming it would silently re-point every run that
+         *     carried it. Rename the *title* instead; the two are independent.
+         *
+         *     **A body with neither field is not an error.** A property no field here declares is
+         *     already refused, so `{}` is a request that genuinely asks for nothing, and the honest
+         *     answer to it is the workflow as it stands.
+         *
+         *     **`owner` or `admin`.**
+         */
+        patch: operations["updateWorkflow"];
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save the draft, guarded by its etag
+         * @description The canvas's autosave — **a replacement, not a patch**. The studio holds the graph in
+         *     memory and writes what it has; a partial update would need a merge rule for a graph,
+         *     and two clients merging concurrently is the loss this operation exists to refuse.
+         *
+         *     **`If-Match` is required, and a stale one is a `409`.** Send the `draft.etag` the last
+         *     read handed you. The draft is read under a row lock inside the same transaction as the
+         *     write, so a second autosave arriving mid-flight blocks, re-reads the row the first one
+         *     committed, and finds an etag its header does not admit — it is told, rather than
+         *     winning. `details.current` carries the etag the draft has now, so the studio's reload
+         *     dialog costs no second round trip.
+         *
+         *     The header is read the way RFC 9110 writes one: quoted, weak (`W/"…"`), or a
+         *     comma-separated list, and a bare token as well, since that is what this API publishes.
+         *     `*` means *whatever is there now* and is the only way to opt out of the guard —
+         *     deliberately something a client has to say rather than something it can forget.
+         *
+         *     **A request with no `If-Match` at all is a `400 workflow_draft_etag_required`**, not a
+         *     conflict: forgetting the guard and losing a race are different mistakes, and a client
+         *     fixes them differently.
+         *
+         *     **The document is not validated here.** `{}` and a half-built canvas are both legal
+         *     stored states — an autosave that refused work in progress would be an autosave nobody
+         *     could use. The grammar is checked once, at publish, when the document is about to
+         *     become immutable.
+         *
+         *     **`owner` or `admin`.**
+         */
+        put: operations["saveWorkflowDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish the draft as the next immutable version
+         * @description The mockup's **Publish v15** — the draft's document frozen as the next version, behind
+         *     two validators.
+         *
+         *     **Both must be green.** The P.2 zod validator
+         *     ([#133](https://github.com/NobuData/ouroboros/issues/133)) runs first, in this process;
+         *     a document it refuses never reaches the second stage, because the engine cannot say
+         *     anything useful about a document that does not parse and two copies of one complaint
+         *     make a list harder to act on. Then `ouroboros-engine`'s own reading of the DSL (R.2,
+         *     [#144](https://github.com/NobuData/ouroboros/issues/144)) — the component that will
+         *     execute the definition — so the first time the two disagree is here rather than at
+         *     runtime months later.
+         *
+         *     **A finding from either is a `422`, and nothing is written.** Not rolled back: the
+         *     gate runs before a transaction is opened, so there is no version to undo. Each finding
+         *     carries `source` (`dsl` or `engine`), the validator's own `code`, and an anchor —
+         *     `node`, `edge`, or a `path` JSON Pointer — so the canvas can select the offending node
+         *     when somebody clicks one.
+         *
+         *     **The draft survives the publish.** The version is a new row; the draft keeps its
+         *     document and its etag, so the canvas goes on autosaving into the same slot. Publishing
+         *     again with no edit in between writes the *next* version rather than revising the last
+         *     one — `workflow_versions` is immutable once published (decision **P1**), enforced in
+         *     the database for every role.
+         *
+         *     **`200`, not `201`.** A version is not a resource with a URL of its own: it is read
+         *     back through `GET /api/v1/workflows/{id}?version=15`, which is the same resource the
+         *     workflow already had, so a `201` would owe a `Location` that names nothing new.
+         *
+         *     **`owner` or `admin`.**
+         */
+        post: operations["publishWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A workflow's version history
+         * @description Every published version of one workflow, newest first — the history panel behind the
+         *     `v14` chip.
+         *
+         *     **The documents are deliberately absent.** A definition holds a prompt template per
+         *     model stage, up to 20 000 characters each, so a page that inlined twenty of them would
+         *     move megabytes to render a list of dates. Read one by number instead:
+         *     `GET /api/v1/workflows/{id}?version=14`.
+         *
+         *     **`isCurrent` marks the version in force, which is not necessarily the newest.**
+         *     `workflows.currentVersion` is a pointer rather than a cache of the highest number, so a
+         *     workflow can carry several published versions while an older one runs.
+         *
+         *     **Drafts are not history.** An unnumbered row is the canvas's working copy; it is read
+         *     through the workflow's `draft` slot.
+         *
+         *     **Every member may read it**, `viewer` included.
+         */
+        get: operations["listWorkflowVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -8492,6 +8747,355 @@ export interface components {
              */
             message?: string;
         };
+        /**
+         * WorkflowDefinition
+         * @description A workflow definition — the P.2 DSL document
+         *     ([#133](https://github.com/NobuData/ouroboros/issues/133)).
+         *
+         *     **Deliberately unconstrained here.** The grammar has one owner and it is not this
+         *     document: the published JSON Schema at
+         *     [`schemas/workflow-dsl/v1.json`](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json)
+         *     is what a definition is checked against, by this service's zod validator and by
+         *     `ouroboros-engine`'s pydantic one. Restating it here would be a third copy that could
+         *     disagree with the other two.
+         *
+         *     It is also the honest shape for *where* these travel. A draft is stored unvalidated —
+         *     `{}` is the blank canvas, and a half-built graph is what autosave exists to keep — so
+         *     the only thing true of every document on this API is that it is a JSON object.
+         * @example {
+         *       "dsl_version": "1.0",
+         *       "trigger": {
+         *         "event": "ticket_queued",
+         *         "conditions": {}
+         *       },
+         *       "nodes": [],
+         *       "edges": []
+         *     }
+         */
+        WorkflowDefinition: {
+            [key: string]: unknown;
+        };
+        /**
+         * WorkflowStatus
+         * @description What the rail draws a workflow as (V029, `workflows_status_valid`).
+         *
+         *     `active` is an ordinary rail entry and the only status the assign-workflow vocabulary
+         *     offers. `paused` is the mockup's err-dot, whose caption reads `5 stages · paused`.
+         *     `archived` is the soft delete: off the rail and out of the vocabulary, with its version
+         *     history still readable.
+         * @example active
+         * @enum {string}
+         */
+        WorkflowStatus: "active" | "paused" | "archived";
+        /**
+         * WorkflowTerminalAction
+         * @description What a workflow does when it finishes, from its definition's `term` nodes — the second
+         *     half of the rail caption. The words the rail prints for these are `auto-merge`,
+         *     `needs review` and `back to queue`, already composed into `caption`.
+         * @example open_pr_automerge
+         * @enum {string}
+         */
+        WorkflowTerminalAction: "open_pr_automerge" | "needs_review" | "back_to_queue";
+        /**
+         * WorkflowRailEntry
+         * @description One workflow on mockup 04's rail, with the statistics P.4
+         *     ([#135](https://github.com/NobuData/ouroboros/issues/135)) computes per request.
+         *
+         *     **The facts travel beside the strings.** `caption` and `usageCaption` are composed here
+         *     so that the rail and the page head cannot draw two different sentences from one row;
+         *     the fields beside them are there so a surface never has to parse `5 stages · paused` to
+         *     learn a status.
+         */
+        WorkflowRailEntry: {
+            /**
+             * Format: uuid
+             * @description `workflows.id`.
+             */
+            id: string;
+            /**
+             * @description What a stored `runs.workflow_tag` resolves through, and what an assign menu sends.
+             *     Lower-case kebab, at most 64 characters.
+             * @example standard-fix
+             */
+            slug: string;
+            /**
+             * @description The human title the rail and the page head print.
+             * @example Standard Fix
+             */
+            name: string;
+            status: components["schemas"]["WorkflowStatus"];
+            /**
+             * @description The `v14` chip's number, or `null` for a workflow that has only ever had a draft.
+             * @example 14
+             */
+            currentVersion: number | null;
+            /**
+             * @description How many stages the definition in force holds — its node count. `null` when there
+             *     is no version in force, and **never `0`** for a real document: a workflow nobody has
+             *     published has no stage count, and zero would be a claim about a document that does
+             *     not exist.
+             * @example 6
+             */
+            stageCount: number | null;
+            /**
+             * @description What it does when it finishes. `null` when nothing is published, or when the
+             *     document names no terminal action this build knows.
+             */
+            terminal: components["schemas"]["WorkflowTerminalAction"] | null;
+            /**
+             * @description The rail's caption, composed — `6 stages · auto-merge`, `5 stages · paused`, or
+             *     `not published`.
+             * @example 6 stages · auto-merge
+             */
+            caption: string;
+            /**
+             * @description How many of the last 30 days' runs in this workspace carried this slug.
+             * @example 61
+             */
+            runs: number;
+            /**
+             * @description That as a whole percent of every run in the window, or **`null` when the window
+             *     holds none**. The null is the honesty rule as a type: it is never `0` for a
+             *     workspace with nothing to divide by, and a client that renders a percentage from it
+             *     must check.
+             * @example 61
+             */
+            usagePercent: number | null;
+            /**
+             * @description The head's subline, composed — `used by 61% of runs`, `used by <1% of runs`, or
+             *     `no runs yet`.
+             * @example used by 61% of runs
+             */
+            usageCaption: string;
+        };
+        /**
+         * WorkflowRail
+         * @description The rail — every non-archived workflow of one workspace, in the order they were
+         *     created.
+         *
+         *     A named array rather than a page: the rail is a workspace's whole set, and every
+         *     `usagePercent` is a fraction of one denominator measured over all of them.
+         */
+        WorkflowRail: {
+            workflows: components["schemas"]["WorkflowRailEntry"][];
+        };
+        /**
+         * WorkflowSummary
+         * @description One workflow's entity — the page head's title, chip and status, without its document.
+         */
+        WorkflowSummary: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description The identifier a stored `workflow_tag` resolves through. Unique within the
+             *     workspace, and **not changeable** — see `PATCH /api/v1/workflows/{id}`.
+             * @example standard-fix
+             */
+            slug: string;
+            /** @example Standard Fix */
+            name: string;
+            status: components["schemas"]["WorkflowStatus"];
+            /**
+             * @description The version in force, or `null` for a workflow that has published nothing.
+             * @example 14
+             */
+            currentVersion: number | null;
+            /**
+             * Format: date-time
+             * @example 2026-08-01T09:00:00.000Z
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the *entity* last changed — a rename, a pause, a publish moving the pointer.
+             *     A draft edit does not move it; that stamp is `draft.updatedAt`.
+             * @example 2026-09-12T08:30:00.000Z
+             */
+            updatedAt: string;
+        };
+        /**
+         * WorkflowDraft
+         * @description A workflow's one mutable document, and the token that guards writing it.
+         *
+         *     **The slot always has an etag, and sometimes has a document.** `definition` is `null`
+         *     for a workflow with no draft at all; `etag` is present either way, so a client's first
+         *     write is the same three lines as its hundredth — read, edit, `If-Match`.
+         */
+        WorkflowDraft: {
+            /**
+             * @description Send this back as `If-Match` on the next save. **Opaque**: compare it for equality
+             *     and nothing else. It changes whenever the stored document changes, which is what
+             *     makes *stale* mean *the document you edited is not the document that is stored*.
+             * @example 2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0
+             */
+            etag: string;
+            /** @description The stored document, or `null` when this workflow has no draft. */
+            definition: components["schemas"]["WorkflowDefinition"] | null;
+            /**
+             * Format: date-time
+             * @description The mockup's *Last edited*, or `null` when there is no draft.
+             * @example 2026-09-12T08:30:00.000Z
+             */
+            updatedAt: string | null;
+        };
+        /**
+         * WorkflowVersion
+         * @description One published, immutable version — document and all.
+         *
+         *     Decision **P1**: a run pins the version it executed, so editing a published definition
+         *     would rewrite what that run did. `workflow_versions` refuses every such update in the
+         *     database, for every role; the way to change a workflow is to publish the next version.
+         */
+        WorkflowVersion: {
+            /**
+             * @description Dense from 1, assigned by publishing, never reused.
+             * @example 15
+             */
+            version: number;
+            definition: components["schemas"]["WorkflowDefinition"];
+            /**
+             * @description What changed, in the publisher's words. `null` for a publish with nothing to say.
+             * @example Added the review gate before auto-merge.
+             */
+            changeNote: string | null;
+            /**
+             * Format: date-time
+             * @example 2026-09-12T10:09:44.008Z
+             */
+            publishedAt: string;
+            /**
+             * @description Who pressed Publish. `null` for a version published by a seed or a template import,
+             *     and `null` once that person has been deleted — what was published cannot be
+             *     rewritten, who published it can be forgotten.
+             * @example 9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10
+             */
+            publishedBy: string | null;
+        };
+        /**
+         * WorkflowVersionSummary
+         * @description One row of a workflow's history — everything but the document. Read a document by
+         *     number through `GET /api/v1/workflows/{id}?version=`.
+         */
+        WorkflowVersionSummary: {
+            /** @example 14 */
+            version: number;
+            /** @example Added the review gate. */
+            changeNote: string | null;
+            /**
+             * Format: date-time
+             * @example 2026-09-01T12:00:00.000Z
+             */
+            publishedAt: string;
+            /** @example 9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10 */
+            publishedBy: string | null;
+            /**
+             * @description Whether this is the version in force — the `v14` chip. Measured against
+             *     `currentVersion`, which is a pointer rather than the highest number, so this is not
+             *     always the first row.
+             * @example true
+             */
+            isCurrent: boolean;
+        };
+        /**
+         * WorkflowVersionPage
+         * @description One page of a workflow's history — the #31 pagination convention over
+         *     `WorkflowVersionSummary` rows, newest first.
+         */
+        WorkflowVersionPage: {
+            items: components["schemas"]["WorkflowVersionSummary"][];
+            /**
+             * @description How many published versions this workflow has. Drafts are not counted.
+             * @example 14
+             */
+            total: number;
+            /** @example 25 */
+            limit: number;
+            /** @example 0 */
+            offset: number;
+        };
+        /**
+         * WorkflowDetail
+         * @description A workflow, its draft slot, and the one version the request asked for — what the canvas
+         *     loads in a single round trip.
+         */
+        WorkflowDetail: {
+            /** Format: uuid */
+            id: string;
+            /** @example standard-fix */
+            slug: string;
+            /** @example Standard Fix */
+            name: string;
+            status: components["schemas"]["WorkflowStatus"];
+            /** @example 14 */
+            currentVersion: number | null;
+            /**
+             * Format: date-time
+             * @example 2026-08-01T09:00:00.000Z
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-09-12T08:30:00.000Z
+             */
+            updatedAt: string;
+            draft: components["schemas"]["WorkflowDraft"];
+            /**
+             * @description The version `?version=` named, or the one in force when it named none. `null` for a
+             *     workflow that has published nothing — not an error, and the canvas opens on
+             *     `draft.definition`.
+             */
+            version: components["schemas"]["WorkflowVersion"] | null;
+        };
+        /**
+         * CreateWorkflowRequest
+         * @description What **+ New workflow** sends.
+         */
+        CreateWorkflowRequest: {
+            /**
+             * @description The human title. Non-blank, at most 120 characters (`workflows_name_present`).
+             * @example Standard Fix
+             */
+            name: string;
+            /**
+             * @description The identifier, when the caller has one in mind. Omitted, it is derived from `name`.
+             *     Send it when the identifier matters — it is what a stored `workflow_tag` resolves
+             *     through.
+             * @example standard-fix
+             */
+            slug?: string;
+            definition?: components["schemas"]["WorkflowDefinition"];
+        };
+        /**
+         * UpdateWorkflowRequest
+         * @description The title, the status, or both. A body with neither asks for nothing and answers with
+         *     the workflow as it stands. There is no `slug`, deliberately.
+         */
+        UpdateWorkflowRequest: {
+            /** @example Standard fix (v2 rules) */
+            name?: string;
+            status?: components["schemas"]["WorkflowStatus"];
+        };
+        /**
+         * SaveDraftRequest
+         * @description The whole document, as the canvas holds it. A replacement rather than a patch — see the
+         *     operation.
+         */
+        SaveDraftRequest: {
+            definition: components["schemas"]["WorkflowDefinition"];
+        };
+        /**
+         * PublishWorkflowRequest
+         * @description What **Publish v15** sends.
+         */
+        PublishWorkflowRequest: {
+            /**
+             * @description What changed, in the publisher's words. Optional — a publish with nothing to say is
+             *     ordinary — but never blank, because an empty string is a note that lost its text
+             *     rather than one that was never written.
+             * @example Added the review gate before auto-merge.
+             */
+            changeNote?: string;
+        };
     };
     responses: never;
     parameters: {
@@ -8610,6 +9214,14 @@ export interface components {
          * @example 5eed0009-0000-4000-8000-000000000482
          */
         RunId: string;
+        /**
+         * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+         *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+         *     names nothing *this caller may see* is a `404`, and the difference is the difference
+         *     between "you asked wrongly" and "there is no such thing for you".
+         * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+         */
+        WorkflowId: string;
         /**
          * @description A provider connection's id. A connection of another workspace answers `404`, never
          *     `403`: confirming that an identifier names something real is the whole of what
@@ -20692,6 +21304,1261 @@ export interface operations {
              * @description `internal_error` — the service itself failed. The message is a constant and
              *     `details` is empty, deliberately: the real diagnosis names a query, a host or a
              *     role, and it goes to the service log where only an operator reads it.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listWorkflows: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The rail. Empty for a workspace with no workflows — the studio's empty state, not a
+             *     failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "workflows": [
+                     *         {
+                     *           "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                     *           "slug": "standard-fix",
+                     *           "name": "Standard Fix",
+                     *           "status": "active",
+                     *           "currentVersion": 14,
+                     *           "stageCount": 6,
+                     *           "terminal": "open_pr_automerge",
+                     *           "caption": "6 stages · auto-merge",
+                     *           "runs": 61,
+                     *           "usagePercent": 61,
+                     *           "usageCaption": "used by 61% of runs"
+                     *         },
+                     *         {
+                     *           "id": "7c2f5a19-1b34-4c8d-9e07-5a6b3c2d1e0f",
+                     *           "slug": "hotfix-p0",
+                     *           "name": "Hotfix P0",
+                     *           "status": "paused",
+                     *           "currentVersion": 5,
+                     *           "stageCount": 5,
+                     *           "terminal": "needs_review",
+                     *           "caption": "5 stages · paused",
+                     *           "runs": 0,
+                     *           "usagePercent": 0,
+                     *           "usageCaption": "used by <1% of runs"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowRail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createWorkflow: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkflowRequest"];
+            };
+        };
+        responses: {
+            /** @description The workflow, with the draft its canvas opens on. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                     *       "slug": "standard-fix",
+                     *       "name": "Standard Fix",
+                     *       "status": "active",
+                     *       "currentVersion": null,
+                     *       "createdAt": "2026-09-12T10:00:00.000Z",
+                     *       "updatedAt": "2026-09-12T10:00:00.000Z",
+                     *       "draft": {
+                     *         "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                     *         "definition": {},
+                     *         "updatedAt": "2026-09-12T10:00:00.000Z"
+                     *       },
+                     *       "version": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role is too low. Creating
+             *     a workflow is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_slug_taken` — that slug already names a workflow in this workspace.
+             *     `details.slug` echoes it. Per workspace rather than globally: two tenants both
+             *     running a `standard-fix` is the ordinary case.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "workflow_slug_taken",
+                     *       "message": "A workflow with that name already exists in this workspace.",
+                     *       "details": {
+                     *         "slug": "standard-fix"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `payload_too_large` — the request body is larger than this service reads. The limit
+             *     is sized from the DSL's own ceiling (200 nodes, 20 000 characters of prompt each),
+             *     so a definition the validator would accept always fits; a body past it is one no
+             *     workflow document can be.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `name` blank or too long, `slug` not lower-case kebab, or
+             *     `definition` not an object. `workflow_slug_required` when no slug was sent and the
+             *     name yields none.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readWorkflow: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Read this published version's document instead of the one in force. A number that
+                 *     names no version of this workflow is a `404 workflow_version_not_found` — which
+                 *     discloses nothing, since the caller has already been shown the workflow.
+                 * @example 14
+                 */
+                version?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workflow. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                     *       "slug": "standard-fix",
+                     *       "name": "Standard Fix",
+                     *       "status": "active",
+                     *       "currentVersion": 14,
+                     *       "createdAt": "2026-08-01T09:00:00.000Z",
+                     *       "updatedAt": "2026-09-12T08:30:00.000Z",
+                     *       "draft": {
+                     *         "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                     *         "definition": {
+                     *           "dsl_version": "1.0",
+                     *           "trigger": {
+                     *             "event": "ticket_queued",
+                     *             "conditions": {}
+                     *           },
+                     *           "nodes": [],
+                     *           "edges": []
+                     *         },
+                     *         "updatedAt": "2026-09-12T08:30:00.000Z"
+                     *       },
+                     *       "version": {
+                     *         "version": 14,
+                     *         "definition": {
+                     *           "dsl_version": "1.0",
+                     *           "trigger": {
+                     *             "event": "ticket_queued",
+                     *             "conditions": {}
+                     *           },
+                     *           "nodes": [],
+                     *           "edges": []
+                     *         },
+                     *         "changeNote": "Added the review gate.",
+                     *         "publishedAt": "2026-09-01T12:00:00.000Z",
+                     *         "publishedBy": "9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_not_found` — no workflow with that id, **or none this caller may know
+             *     about**. `workflow_version_not_found` when `?version=` names no version of it.
+             *     (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "workflow_not_found",
+                     *       "message": "No such workflow.",
+                     *       "details": {
+                     *         "workflowId": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a99"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid, or `version` is not a positive integer. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateWorkflow: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkflowRequest"];
+            };
+        };
+        responses: {
+            /** @description The workflow after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                     *       "slug": "standard-fix",
+                     *       "name": "Standard Fix",
+                     *       "status": "paused",
+                     *       "currentVersion": 14,
+                     *       "createdAt": "2026-08-01T09:00:00.000Z",
+                     *       "updatedAt": "2026-09-12T10:05:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowSummary"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — your role is too low. Changing a workflow is `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_not_found` — no workflow with that id, or none this caller may know
+             *     about. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the id is not a uuid, `name` is blank or too long, or
+             *     `status` names no state.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveWorkflowDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The etag of the draft this write is based on — `draft.etag` from the last read.
+                 *     Opaque. `*` overwrites whatever is there.
+                 * @example 2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0
+                 */
+                "If-Match": string;
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "definition": {
+                 *         "dsl_version": "1.0",
+                 *         "trigger": {
+                 *           "event": "ticket_queued",
+                 *           "conditions": {}
+                 *         },
+                 *         "nodes": [],
+                 *         "edges": []
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["SaveDraftRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The draft slot after the write, carrying the etag for the next save and the
+             *     *Last edited* stamp the page head prints.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "etag": "8b1c4d7e0a3f6295c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0a3f6295c8d1e4f7a0b",
+                     *       "definition": {
+                     *         "dsl_version": "1.0",
+                     *         "trigger": {
+                     *           "event": "ticket_queued",
+                     *           "conditions": {}
+                     *         },
+                     *         "nodes": [],
+                     *         "edges": []
+                     *       },
+                     *       "updatedAt": "2026-09-12T10:07:31.412Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowDraft"];
+                };
+            };
+            /**
+             * @description `workflow_draft_etag_required` — the request carried no `If-Match`. Read the
+             *     workflow and send back its `draft.etag`. (`organization_required` is the other
+             *     `400` here.)
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "workflow_draft_etag_required",
+                     *       "message": "Saving a draft requires an If-Match header carrying the draft's etag.",
+                     *       "details": {}
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — your role is too low. Saving a draft is `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_not_found` — no workflow with that id, or none this caller may know
+             *     about. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_draft_conflict` — the draft was changed by somebody else, and **nothing
+             *     was overwritten**. `details.expected` is what you sent and `details.current` is the
+             *     etag the draft has now; reload and save again. `details.current` is absent in the
+             *     one case where it genuinely is not known — two requests creating the first draft at
+             *     once, which a unique index separates.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "workflow_draft_conflict",
+                     *       "message": "This draft was changed by someone else. Reload it before saving again.",
+                     *       "details": {
+                     *         "expected": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                     *         "current": "8b1c4d7e0a3f6295c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0a3f6295c8d1e4f7a0b"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `payload_too_large` — the request body is larger than this service reads. The limit
+             *     is sized from the DSL's own ceiling (200 nodes, 20 000 characters of prompt each),
+             *     so a definition the validator would accept always fits; a body past it is one no
+             *     workflow document can be.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the id is not a uuid, or `definition` is missing or not a
+             *     JSON object.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    publishWorkflow: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishWorkflowRequest"];
+            };
+        };
+        responses: {
+            /** @description The version that is now in force. `workflows.currentVersion` names it from here on. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "version": 15,
+                     *       "definition": {
+                     *         "dsl_version": "1.0",
+                     *         "trigger": {
+                     *           "event": "ticket_queued",
+                     *           "conditions": {}
+                     *         },
+                     *         "nodes": [],
+                     *         "edges": []
+                     *       },
+                     *       "changeNote": "Added the review gate before auto-merge.",
+                     *       "publishedAt": "2026-09-12T10:09:44.008Z",
+                     *       "publishedBy": "9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowVersion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — your role is too low. Publishing is `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_not_found` — no workflow with that id, or none this caller may know
+             *     about. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_draft_absent` — there is nothing to publish; save a draft first.
+             *     `workflow_draft_conflict` — the draft changed while the validators were running, so
+             *     what would have been frozen is not what passed. `workflow_publish_conflict` —
+             *     somebody else published while you were publishing and took the version number;
+             *     reload and try again, because your document may no longer be the one you meant to
+             *     build on.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "workflow_publish_conflict",
+                     *       "message": "This workflow was published by someone else. Reload it and try again.",
+                     *       "details": {
+                     *         "workflowId": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_definition_invalid` — one or both validators refused the definition, and
+             *     **nothing was created**. `details.findings` carries every finding, node-anchored.
+             *     (`validation_failed` is the other `422` here: the id is not a uuid, or `changeNote`
+             *     is blank or longer than 500 characters.)
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "workflow_definition_invalid",
+                     *       "message": "This definition cannot be published yet.",
+                     *       "details": {
+                     *         "findings": [
+                     *           {
+                     *             "source": "dsl",
+                     *             "code": "structure.trigger_missing",
+                     *             "message": "A workflow needs exactly one trigger node.",
+                     *             "path": "/nodes"
+                     *           },
+                     *           {
+                     *             "source": "engine",
+                     *             "code": "unreachable_node",
+                     *             "message": "Nothing reaches this node.",
+                     *             "node": "review"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `engine_unavailable` — `ouroboros-engine` publishes the validation route and could
+             *     not answer it. The publish is refused rather than waved through: an outage must not
+             *     silence half the gate. An engine build that does not publish the route at all is a
+             *     different case and does not produce this — see the operation description.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listWorkflowVersions: {
+        parameters: {
+            query?: {
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The page. Empty for a workflow that has never been published — the state
+             *     **+ New workflow** leaves behind, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "version": 14,
+                     *           "changeNote": "Added the review gate.",
+                     *           "publishedAt": "2026-09-01T12:00:00.000Z",
+                     *           "publishedBy": "9f1c0a5e0f6d4a1b9d5e2b8f3c7a4e10",
+                     *           "isCurrent": true
+                     *         },
+                     *         {
+                     *           "version": 13,
+                     *           "changeNote": null,
+                     *           "publishedAt": "2026-08-20T09:14:02.000Z",
+                     *           "publishedBy": null,
+                     *           "isCurrent": false
+                     *         }
+                     *       ],
+                     *       "total": 14,
+                     *       "limit": 25,
+                     *       "offset": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowVersionPage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_not_found` — no workflow with that id, or none this caller may know
+             *     about. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid, or the window is out of range. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
              */
             500: {
                 headers: {

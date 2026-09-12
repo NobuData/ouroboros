@@ -192,15 +192,20 @@ import { AppService } from "./app.service";
  * are literal segments, so a later `{number}` route matches neither.
  *
  * `WorkflowsModule` ([#133](https://github.com/NobuData/ouroboros/issues/133),
- * [#135](https://github.com/NobuData/ouroboros/issues/135)) declares **no route**, and is the
- * fourth module here in that position — `RegistryModule`, `VaultModule` and `BacklogSyncModule`
- * are the others, and the reason is the same one every time: a provider has to be *in* the
- * running application to be injectable. What it provides is the workflow domain — the DSL
- * validator P.2 landed, and P.4's registry and rail statistics over V029's `workflows` — and
- * two of the modules above it consume the registry: `EstimationModule` for the tags an estimate
- * may name, `BacklogModule` for the ones a bulk queue write accepts. Its own routes are P.3's
- * ([#134](https://github.com/NobuData/ouroboros/issues/134)), and publishing a listing here
- * instead would be two answers to *what is on the rail*.
+ * [#135](https://github.com/NobuData/ouroboros/issues/135),
+ * [#134](https://github.com/NobuData/ouroboros/issues/134)) is the workflow domain: the DSL
+ * validator P.2 landed, P.4's registry and rail statistics over V029's `workflows`, and — since
+ * P.3 — the seven routes of the lifecycle under `/api/v1/workflows`. Two of the modules above
+ * it consume the registry: `EstimationModule` for the tags an estimate may name,
+ * `BacklogModule` for the ones a bulk queue write accepts.
+ *
+ * It declared no route until P.3 and was listed here for the reason `RegistryModule`,
+ * `VaultModule` and `BacklogSyncModule` are — a provider has to be *in* the running application
+ * to be injectable — so its position is about what depends on it rather than about routing. It
+ * is after `EngineModule`, which it now imports for the publish gate's second opinion
+ * ([#144](https://github.com/NobuData/ouroboros/issues/144)); Nest resolves the graph either
+ * way, and the ordering is the statement. No path under `/api/v1/workflows` can be shadowed:
+ * nothing else in this list claims the prefix.
  *
  * `TicketSourcesModule` ([#139](https://github.com/NobuData/ouroboros/issues/139)) is the
  * fifth in that position, and the second module here that is a background loop and nothing
@@ -303,10 +308,9 @@ export class AppModule {
         // for the *which workspaces have a token* question; it declares no route at all, so
         // its position says nothing about middleware and everything about what it depends on.
         BacklogSyncModule,
-        // P.4 ([#135](https://github.com/NobuData/ouroboros/issues/135)) — the workflow domain:
-        // the DSL P.2 landed, and the registry and rail statistics over V029's `workflows`. It
-        // declares no route — every route over it is P.3's
-        // ([#134](https://github.com/NobuData/ouroboros/issues/134)) — so its position says
+        // P.2/P.4/P.3 (#133, #135, [#134](https://github.com/NobuData/ouroboros/issues/134)) —
+        // the workflow domain: the DSL, the registry and rail statistics over V029's
+        // `workflows`, and the lifecycle routes under `/api/v1/workflows`. Its position says
         // nothing about middleware and everything about what depends on it: the two modules
         // below both import it, for the vocabulary a queue write is held to and the one an
         // estimate is offered. Listed here for `EstimationModule`'s reason a line further
