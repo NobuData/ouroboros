@@ -2325,10 +2325,11 @@ specified in [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) and published as
 that schema written in zod, the structural rules a schema cannot express, and the YAML
 projection mockup 05's code view is a view of.
 
-There is **no controller yet**. P.2 is the language; the CRUD, draft and publish routes are P.3
-([#134](https://github.com/NobuData/ouroboros/issues/134)), and the validation gate it runs is
-`validateWorkflowDocument`. Until then this directory is a library the service ships and does
-not yet route to — which is why it is the one module with no `*.module.ts`.
+There is **no controller yet**. P.2 is the language, P.4 is the derivation over it (below), and
+the CRUD, draft and publish routes are P.3
+([#134](https://github.com/NobuData/ouroboros/issues/134)) — whose validation gate is
+`validateWorkflowDocument`. So this module declares no route and exports two providers instead,
+exactly as `PricingModule` does.
 
 ```ts
 const verdict = validateWorkflowDocument(definition, { catalogue });
@@ -2372,6 +2373,82 @@ other is a red check in the half that forgot it. `ci/rest` and `ci/engine` both 
 The fixture set is checked for completeness in both directions — every document on disk has a
 recorded case, and every code the validator can emit has a case behind it — so a rule added
 without a fixture fails before it can quietly go unasserted.
+
+## The workflow rail's statistics
+
+**Every string on mockup 04's rail is computed on the read, and none of them is stored** (P.4,
+[#135](https://github.com/NobuData/ouroboros/issues/135)). `6 stages · auto-merge`,
+`5 stages · needs review`, `5 stages · paused` and the page head's `used by 61% of runs` are
+derived from a definition, a `status` column and a count of runs — V029 says why from the other
+side: *"a stored count would be a number that drifts from the document it counts."*
+
+```ts
+const rail = await workflowStats.forWorkspace(organizationId);
+// [{ slug, name, status, currentVersion, stageCount, terminal,
+//    caption: "6 stages · auto-merge",
+//    runs, usagePercent: 61, usageCaption: "used by 61% of runs" }, …]
+```
+
+| Field | Where it comes from |
+|---|---|
+| `stageCount` | `jsonb_array_length(definition -> 'nodes')` of the version `current_version` points at. `null` for a workflow with only a draft — there is no document in force to count, and `0 stages` would be a number about one that does not exist. |
+| `terminal` | The `action` of the definition's `term` nodes, resolved by precedence — `open_pr_automerge` beats `needs_review` beats `back_to_queue`, because the caption answers *what does this do when it works?* and `standard-fix` legitimately ends in two places. |
+| `caption` | The two composed, with `paused` replacing the behaviour exactly as the mockup's `hotfix-p0` does. |
+| `usagePercent` | Runs carrying this slug over **every** run in a rolling 30-day window, both counted in one statement so numerator and denominator cannot disagree. `null` when the window holds no runs. |
+| `usageCaption` | `used by 61% of runs`, `used by <1% of runs` for a workflow that ran but rounds to nothing, or **`no runs yet`** when there are none. |
+
+**`no runs yet` is the answer, not a formatting choice.** An installation with no runs must
+never read a plausible-looking percentage — the honesty rule that governs the dashboard and
+intake surfaces — so `usagePercent` is `null` rather than `0` and the sentence ships with it.
+
+**Two facts are asked of PostgreSQL rather than fetched.** A definition holds a prompt template
+per model stage, up to 20 000 characters each, so a rail of twenty workflows would move
+megabytes of prose to compute two integers. Every jsonb expression is guarded:
+`workflow_versions.definition` is CHECKed to be an *object* and no further, and a document this
+build cannot read produces no stage count rather than a `500` for the whole rail.
+
+**The mockup disagrees with itself about `standard-fix`, and this is where that is recorded.**
+Its rail caption reads `6 stages` beside a canvas of twelve nodes — six is what the *primary
+path* holds, with the trigger, the forks, the terminals and the `> M` branch left out. A stage
+is a **node** here: that is what the issue's own diagram says (`nodes.count = 6`), what mockup
+20's draft panel counts (`01 trigger` … `09 open PR`, captioned *9 stages*), and what the
+canvas's **Add stage ▾** and the inspector's **Delete stage** act on. Which number the *seeded*
+`standard-fix` shows is therefore #136's to settle.
+
+### The workflow registry, and the intake amendment
+
+`WorkflowRegistryService.offered(organizationId)` is *which workflows may this workspace name* —
+its **active** workflows, in the rail's order. `paused` is deliberately out (queueing work onto
+a switched-off workflow is not something to offer) and `archived` is V029's soft delete.
+
+This is the amendment absorbed from [#124](https://github.com/NobuData/ouroboros/issues/124):
+the two intake surfaces that name a workflow used to read decision **K5**'s four tags from a
+constant, and now read a workspace.
+
+| Surface | Before | Now |
+|---|---|---|
+| `POST /api/v1/backlog/queue`'s `workflow` | `@IsIn` over four tags, refused by the pipe | a slug by shape, then the registry — `422 queue_workflow_unknown` carrying `details.offered` |
+| The estimate request's `workflowTags` | the same four | the workspace's own, so an estimate is held to workflows that exist |
+
+**A workspace with no workflows is offered the built-in four**, and that is neither a default
+merged into the registry nor a fabrication. V029's tables have no writer yet — P.3 is the create
+and #136 the seed — and an empty vocabulary would take a shipped intake pipeline offline
+(`issue_estimates.suggested_workflow` is `not null`, and the engine refuses an estimate naming
+anything outside the offered set). `offered()` says which answer it gave, so *the menu lists the
+registry* is a claim a test makes about a workspace that has one. A workspace with **one**
+workflow is offered that one and nothing beside it.
+
+**Nothing already stored stops resolving.** `runs.workflow_tag` and `queue_items.workflow_tag`
+are still opaque text by decision **F8**, V029 added no foreign key, and `workflows.slug` is
+bounded to exactly what a tag can hold — so every tag in the database is a slug, and a tag whose
+workflow was renamed or removed is a fact about history rather than a broken row.
+
+**One bound came with the registry that a constant never reached.** `ouroboros-engine`'s
+estimation contract *refuses* a request offering more than 64 workflow tags, so
+`estimation.context.ts` cuts the list at `MAX_OFFERED_WORKFLOW_TAGS` — keeping the rail's order,
+so adding a workflow does not change which 64 are offered — and logs it. The alternative is a
+`422` from the engine and no estimate at all for that workspace. The queue write is unaffected:
+it validates one slug against the whole vocabulary.
 
 ## BetterAuth
 
@@ -3312,6 +3389,8 @@ ouroboros-rest/
 │       │                   #   POST /backlog/{id}/estimate · /backlog/estimate-all (#108)
 │       │                   #   member+ · admin+ · 30/min per workspace, sliding
 │       ├── workflows/      # the workflow DSL: zod validator + YAML projection · #133
+│       │                   #   stats.* — the rail's captions, stage counts, usage share · #135
+│       │                   #   registry.service.ts — which workflows a workspace may name
 │       │                   #   no controller — CRUD and publish are P.3 (#134)
 │       │                   #   validates against ../../schemas/workflow-dsl/v1.json
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
@@ -3439,6 +3518,7 @@ the estimation pipeline [#107](https://github.com/NobuData/ouroboros/issues/107)
 the re-estimation endpoints [#108](https://github.com/NobuData/ouroboros/issues/108) ·
 the estimation contract it calls [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
+the workflow rail's statistics and registry [#135](https://github.com/NobuData/ouroboros/issues/135) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

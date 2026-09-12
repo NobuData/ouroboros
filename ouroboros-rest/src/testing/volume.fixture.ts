@@ -70,7 +70,11 @@ export interface VolumeEstimate {
   readonly version: number;
   readonly effort: "xs" | "s" | "m" | "l" | "xl";
   readonly confidence: number;
-  /** One of `estimation.context.ts`' `WORKFLOW_TAGS`, so the queue write can take it as-is. */
+  /**
+   * One of `workflows/registry.service.ts`' `BOOTSTRAP_WORKFLOW_SLUGS`, so the queue write can
+   * take it as-is: a volume workspace has no workflow entities, which is what that vocabulary
+   * is the answer for.
+   */
   readonly suggestedWorkflow: string;
   readonly routedModel: string;
   /** What `queue_items.est_minutes` is copied from — never recomputed. */

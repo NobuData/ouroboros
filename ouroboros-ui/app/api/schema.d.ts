@@ -7746,13 +7746,22 @@ export interface components {
              *     Omit it for *Queue 3 selected ⟳*, where each issue is queued under the workflow
              *     **its own estimate suggested**. Absent is therefore not the same as `standard-fix`.
              *
-             *     Held to the fixed set (decision K5) here and nowhere else: `queue_items.workflow_tag`
-             *     is deliberately unconstrained text (decision F8) so a queued issue still renders
-             *     under a renamed workflow, which means the database will not catch a tag nothing runs.
+             *     **It must be the slug of one of this workspace's active workflows** — the list
+             *     *Assign workflow ▾* is drawn from. A slug this workspace has no workflow for is
+             *     refused `422 queue_workflow_unknown`, whose `details.offered` carries the vocabulary
+             *     it was held to, so a stale menu can redraw itself from the refusal.
+             *
+             *     The shape published here is a slug rather than an enumeration, and that changed with
+             *     P.4 ([#135](https://github.com/NobuData/ouroboros/issues/135)): the vocabulary used
+             *     to be decision K5's four names, which every installation shared, and is now the
+             *     workspace's own workflow entities (V029) — so a document enumerating four would be
+             *     publishing a list that is wrong for every workspace that has its own. Nothing stored
+             *     stops working: `queue_items.workflow_tag` is deliberately unconstrained text
+             *     (decision F8) so a queued issue still renders under a renamed workflow, and every
+             *     tag it can hold is a slug this pattern accepts.
              * @example standard-fix
-             * @enum {string}
              */
-            workflow?: "standard-fix" | "docs-loop" | "feature-loop" | "deps-refresh";
+            workflow?: string;
         };
         /**
          * QueuedSelection
@@ -10712,9 +10721,19 @@ export interface operations {
              *     `needs_human` — and `issue_estimate_missing` is a `sized` issue whose estimate row
              *     has gone, which is answerable rather than a failure of this service.
              *
-             *     Or `validation_failed`, when the *body* is wrong rather than the backlog: an id that
-             *     is not a uuid, an empty or duplicated selection, more than 100 issues, or a
-             *     `workflow` outside the fixed set. `details` carries one entry per field.
+             *     Or `queue_workflow_unknown`, when the request named a workflow this workspace does
+             *     not have (P.4, [#135](https://github.com/NobuData/ouroboros/issues/135)).
+             *     `details.workflow` is the slug that was refused and `details.offered` is this
+             *     workspace's vocabulary — its active workflows, which is what *Assign workflow ▾*
+             *     lists — so a client holding a stale menu can redraw it from the refusal. A `422`
+             *     rather than a `404` because nothing about the request is malformed and nothing about
+             *     it will succeed until the workspace changes; and deliberately not a `403`, which
+             *     would confirm that the slug names a workflow somewhere.
+             *
+             *     Or `validation_failed`, when the *body* is wrong rather than the backlog or the
+             *     registry: an id that is not a uuid, an empty or duplicated selection, more than 100
+             *     issues, or a `workflow` that is not a slug at all. `details` carries one entry per
+             *     field.
              *
              *     Nothing is written.
              */

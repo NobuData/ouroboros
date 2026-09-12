@@ -2053,6 +2053,146 @@ export interface AuditEventsTable {
 }
 
 /**
+ * `workflows.status` — what the rail draws a workflow as (V029,
+ * [#132](https://github.com/NobuData/ouroboros/issues/132)).
+ *
+ * The `workflows_status_valid` CHECK, mirrored the way this file's header says a CHECK
+ * becomes a type. Three words, and each is a different thing on mockup 04's `.wf-list`:
+ *
+ *   * `active` — an ordinary rail entry, and the only status the assign-workflow vocabulary
+ *     offers (see `workflows/registry.service.ts`).
+ *   * `paused` — the `hotfix-p0` entry, whose err-dot *is* this value and whose caption reads
+ *     `5 stages · paused`.
+ *   * `archived` — the soft delete. Its version history stays readable, and it is off the rail
+ *     and out of the vocabulary.
+ */
+export type WorkflowStatus = "active" | "paused" | "archived";
+
+/** The three, in the order the CHECK declares them. */
+export const WORKFLOW_STATUSES = [
+  "active",
+  "paused",
+  "archived",
+] as const satisfies readonly WorkflowStatus[];
+
+/**
+ * `ouroboros.workflows` — one workspace's workflow entities (V029,
+ * [#132](https://github.com/NobuData/ouroboros/issues/132)), read by P.4
+ * ([#135](https://github.com/NobuData/ouroboros/issues/135)).
+ *
+ * Mockup 04's page head and its `.wf-list` rail: the title, the `v14` chip, the err-dot. The
+ * entities that decision **K5** deferred — `runs.workflow_tag` and `queue_items.workflow_tag`
+ * are still opaque text by decision **F8**, and V029 deliberately did not come back and
+ * tighten them, so **the bridge between a stored tag and one of these rows is the slug**: a
+ * lookup on `(organization_id, slug)`, which is unique, and a tag that resolves to nothing is
+ * a workflow that was renamed or removed rather than a broken row.
+ *
+ * **Nothing in this service writes it.** P.3 ([#134](https://github.com/NobuData/ouroboros/issues/134))
+ * is the CRUD and publish API and #136 is the seed that fills the rail; P.4 is the first
+ * reader, which is why the mirror arrives with it rather than with V029 — a mirrored table
+ * with no reader is drift waiting to happen, as {@link GithubIssuesTable} and
+ * {@link IssueEstimatesTable} both say from the other side.
+ */
+export interface WorkflowsTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`, taking the history with it. */
+  organization_id: string;
+  /**
+   * **The name the rest of the product already knows this workflow by.**
+   *
+   * Lower-case kebab, at most 64 characters by `workflows_slug_format` — which is exactly what
+   * a `workflow_tag` can hold, so every tag already stored is a slug this column could carry.
+   * Unique within the workspace, and per workspace rather than globally: two tenants both
+   * running a `standard-fix` is the ordinary case.
+   */
+  slug: string;
+  /** The human title. Free text — the slug is the identifier, and the two are often the same string. */
+  name: string;
+  /** `active` on the rail, `paused` as its err-dot, `archived` as the soft delete. */
+  status: WorkflowStatus;
+  /**
+   * **Which published version is in force** — the `v14` chip.
+   *
+   * Null is *nothing in force yet*: the state of a workflow that has only ever had a draft,
+   * which is what **+ New workflow** leaves behind. Not a cache of `max(version)` — held to a
+   * real published version of *this* workflow by `workflows_current_version_fk`.
+   *
+   * P.4's stats read the definition through it, which is why a null renders `not published`
+   * rather than a stage count of zero: a workflow with no version in force has no definition
+   * to count, and `0 stages` would be a number about a document nobody published.
+   */
+  current_version: number | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.workflow_versions` — a workflow's version history plus its one mutable draft
+ * (V029, [#132](https://github.com/NobuData/ouroboros/issues/132)).
+ *
+ * **Decision P1: published versions are immutable, and the draft is the row that becomes
+ * one.** A run pins the version it executed, so editing a published definition would rewrite
+ * what that run did. `workflow_versions_no_update` enforces it in the database for every role,
+ * which is why there is no `Updateable` counterpart to {@link NewWorkflowVersion} — the same
+ * shape of rule {@link IssueEstimatesTable} and {@link AuditEventsTable} carry.
+ *
+ * **`version is null` *is* the draft**, rather than an `is_draft` flag beside a number the row
+ * has not earned: `workflow_versions_version_publish_stamp` ties the number to the publish
+ * stamp, so a row has both or neither and no reader has to know which of two facts wins.
+ * `workflow_versions_one_draft_idx` holds a workflow to at most one of them.
+ */
+export interface WorkflowVersionsTable {
+  id: Generated<string>;
+  /**
+   * The workflow this is a version of, and the whole of this row's tenancy.
+   *
+   * V017's and V026's choice: a version has no meaning apart from a workflow and every read
+   * enters through one, so the single cascading foreign key is its tenancy and there is no
+   * second `organization_id` for a trigger to keep in agreement.
+   */
+  workflow_id: string;
+  /** The published version number — dense from 1, assigned by publishing, never reused. Null is the draft. */
+  version: number | null;
+  /**
+   * The P.2 DSL document ([#133](https://github.com/NobuData/ouroboros/issues/133)).
+   *
+   * CHECKed to be a jsonb *object* and no further — the grammar has one owner, and an empty
+   * `{}` is the legal state of a canvas with nothing on it yet. So what is stored here is
+   * **not** known to be a valid document, and a reader that needs one parses it:
+   * `validateWorkflowDocument` for the whole grammar, or — for the rail's two facts —
+   * `workflows/stats.repository.ts`, which asks PostgreSQL for the node count and the terminal
+   * actions and treats anything else as a document it cannot read.
+   *
+   * `ColumnType` for {@link IssueEstimatesTable.breakdown}'s reason: `pg` hands a `jsonb`
+   * column back parsed, and Kysely wants the value *written* to be the string a driver will
+   * send — so every write goes through `JSON.stringify`. `unknown` on the way out rather than
+   * a document type, because the column's own constraint promises no more than an object.
+   */
+  definition: ColumnType<unknown, string, string>;
+  /** When this row became a version. Null exactly while {@link version} is null. */
+  published_at: Date | null;
+  /**
+   * Who pressed Publish — `"user"."id"`, `on delete set null`.
+   *
+   * Nullable because a version can be published by a seed or a template import, and the
+   * set-null rather than a cascade because removing a person must not delete what they
+   * published. That set-null is the one update `workflow_versions_no_update` permits.
+   */
+  published_by: string | null;
+  /** What changed, in the publisher's words. Optional, never blank, and never on a draft. */
+  change_note: string | null;
+  created_at: Stamped;
+  /**
+   * **Last edited** — the mockup's *Last edited 2h ago*.
+   *
+   * Moved by the touch trigger only while the row is a draft: a published version cannot be
+   * edited, so its stamp stays where publishing left it rather than drifting when the foreign
+   * key erases an attribution.
+   */
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -2201,6 +2341,17 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * than by convention — `audit_events` is the first — and, like it, has no `Updateable`
  * counterpart to its {@link NewIssueEstimate}.
  *
+ * **`workflows` and `workflow_versions` (V029,
+ * [#132](https://github.com/NobuData/ouroboros/issues/132)) are the thirtieth and
+ * thirty-first**, and they arrived a release late by the same rule for the third time: V029
+ * landed both tables with no writer anywhere, and nothing here read a row of either until P.4
+ * ([#135](https://github.com/NobuData/ouroboros/issues/135)) — the rail's stage counts,
+ * terminal captions and usage share. Every write is still somewhere else's: P.3
+ * ([#134](https://github.com/NobuData/ouroboros/issues/134)) is the CRUD and publish API and
+ * #136 is the seed, so what this mirror declares today is a **read model** — the columns two
+ * statements in `src/modules/workflows/` select, plus the two `New…` shapes the suites arrange
+ * a rail with.
+ *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
  * ([#714](https://github.com/NobuData/ouroboros/issues/714)) — a mirror that still declared
@@ -2235,6 +2386,8 @@ export interface Database {
   route_revisions: RouteRevisionsTable;
   alias_revisions: AliasRevisionsTable;
   audit_events: AuditEventsTable;
+  workflows: WorkflowsTable;
+  workflow_versions: WorkflowVersionsTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
   alias_references: AliasReferencesView;
@@ -2495,6 +2648,27 @@ export const TABLE_COLUMNS = {
     "detail",
     "occurred_at",
   ],
+  workflows: [
+    "id",
+    "organization_id",
+    "slug",
+    "name",
+    "status",
+    "current_version",
+    "created_at",
+    "updated_at",
+  ],
+  workflow_versions: [
+    "id",
+    "workflow_id",
+    "version",
+    "definition",
+    "published_at",
+    "published_by",
+    "change_note",
+    "created_at",
+    "updated_at",
+  ],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -2746,6 +2920,31 @@ export type AuditEvent = Selectable<AuditEventsTable>;
  * including the owner. The absence of the type is the compiler's half of the same rule.
  */
 export type NewAuditEvent = Insertable<AuditEventsTable>;
+
+/** A row of `ouroboros.workflows`, as a `select` returns it — one rail entry's entity. */
+export type Workflow = Selectable<WorkflowsTable>;
+/**
+ * The columns an `insert` into `ouroboros.workflows` may carry.
+ *
+ * Declared although nothing in this service writes one yet: P.3
+ * ([#134](https://github.com/NobuData/ouroboros/issues/134)) is the create, and the shape it
+ * will insert is decided by V029 rather than by that ticket. P.4's own suites use it — a
+ * fixture that arranges a rail through the mirror is a fixture the drift check covers.
+ */
+export type NewWorkflow = Insertable<WorkflowsTable>;
+
+/** A row of `ouroboros.workflow_versions`, as a `select` returns it — one version, or the draft. */
+export type WorkflowVersion = Selectable<WorkflowVersionsTable>;
+/**
+ * The columns an `insert` into `ouroboros.workflow_versions` may carry.
+ *
+ * There is no `Updateable` counterpart, and — as with {@link NewAuditEvent} — that is not a
+ * convention this service keeps but decision **P1** in the database:
+ * `workflow_versions_no_update` refuses an edit to a published row for every role. The draft
+ * is the mutable row, and the update path that promotes it is P.3's to write against the one
+ * exception that trigger carries.
+ */
+export type NewWorkflowVersion = Insertable<WorkflowVersionsTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.

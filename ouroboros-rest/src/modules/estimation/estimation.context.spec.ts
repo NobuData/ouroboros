@@ -1,10 +1,21 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { Logger } from "@nestjs/common";
 
 import { FLOOR_CODES, HOP_CODES, RESOLUTION_FAILURE_CODES } from "../routing/explanations";
 import { RESOLUTION_VERSION, type Resolution, type ResolutionHop } from "../routing/resolution";
 import type { ResolutionService } from "../routing/resolution.service";
 import { routeNotFound } from "../routing/routing.errors";
-import { EstimationContextService, MODEL_DEFAULT_KINDS, WORKFLOW_TAGS } from "./estimation.context";
+import {
+  BOOTSTRAP_WORKFLOW_SLUGS,
+  type WorkflowRegistryService,
+} from "../workflows/registry.service";
+import {
+  EstimationContextService,
+  MAX_OFFERED_WORKFLOW_TAGS,
+  MODEL_DEFAULT_KINDS,
+} from "./estimation.context";
 import { FIXTURE_WORKSPACE } from "./estimation.fixture";
 
 /**
@@ -15,6 +26,12 @@ import { FIXTURE_WORKSPACE } from "./estimation.fixture";
  * `model_defaults` is filled from the routing resolution rather than from configuration, and
  * the value is the resolved primary — the hop an executor would actually try. The engine's
  * half landed with #106 and is asserted in its own suite.
+ *
+ * And since P.4 ([#135](https://github.com/NobuData/ouroboros/issues/135)) the other vocabulary
+ * comes from a workspace too: `workflowTags` is the workflow registry's, which is the amendment
+ * absorbed from [#124](https://github.com/NobuData/ouroboros/issues/124). What an *empty*
+ * registry answers is `workflows/registry.service.spec.ts`'; what is asserted here is that this
+ * service asks it rather than holding a list of its own.
  */
 
 /** One hop of a resolved chain. */
@@ -53,13 +70,21 @@ function resolution(overrides: Partial<Resolution> = {}): Resolution {
 }
 
 /**
- * A context service over a resolver a spec writes.
+ * A context service over a resolver and a registry a spec writes.
  *
  * @param resolve - What `ResolutionService.resolve` answers, per task kind.
- * @returns The service and the calls made through it.
+ * @param slugs - What the workflow registry offers this workspace. Decision K5's four by
+ *   default, which is what a workspace with no workflow entities of its own is offered — so a
+ *   case about the models says nothing about the tags by leaving this out.
+ * @returns The service, the resolutions made through it, and the workspaces the registry was
+ *   asked about.
  */
-function build(resolve: (taskKind: string) => Promise<Resolution>) {
+function build(
+  resolve: (taskKind: string) => Promise<Resolution>,
+  slugs: readonly string[] = BOOTSTRAP_WORKFLOW_SLUGS,
+) {
   const calls: { organizationId: string; taskKind: string }[] = [];
+  const registryAsked: string[] = [];
 
   const routing = {
     resolve: async (organizationId: string, taskKind: string) => {
@@ -68,25 +93,145 @@ function build(resolve: (taskKind: string) => Promise<Resolution>) {
     },
   } as unknown as ResolutionService;
 
-  return { service: new EstimationContextService(routing), calls };
+  const workflows = {
+    offered: (organizationId: string) => {
+      registryAsked.push(organizationId);
+      return Promise.resolve({
+        slugs,
+        source: slugs === BOOTSTRAP_WORKFLOW_SLUGS ? ("bootstrap" as const) : ("registry" as const),
+      });
+    },
+  } as unknown as WorkflowRegistryService;
+
+  return { service: new EstimationContextService(routing, workflows), calls, registryAsked };
 }
 
 describe("the workflow tags", () => {
-  it("offers the four the mockup renders, with the estimator's fallback among them", async () => {
-    // The engine only ever *prefers* a tag: `offered_tag` falls back through `standard-fix` to
-    // whatever was offered first, so this list is what an answer is held to. It is a constant
-    // here because workflow entities are mockup 04's and no table declares one yet.
+  it("offers what the registry offers, scoped to the workspace", async () => {
+    // The amendment: this workspace's own active workflows rather than four names every
+    // installation shared. The engine only ever *prefers* one of them — `offered_tag` falls
+    // back through `standard-fix` to whatever was offered first — so the list is what an answer
+    // is held to rather than a hint, which is why it has to be the real one.
+    const { service, registryAsked } = build(
+      async () => Promise.resolve(resolution()),
+      ["release-train", "hotfix-p0"],
+    );
+
+    const context = await service.forWorkspace(FIXTURE_WORKSPACE);
+
+    expect(context?.workflowTags).toEqual(["release-train", "hotfix-p0"]);
+    expect(registryAsked).toEqual([FIXTURE_WORKSPACE]);
+  });
+
+  it("holds no list of its own to fall back to", async () => {
+    // The constant this file used to carry moved to `workflows/registry.service.ts`. If it were
+    // still here, a workspace with its own workflows would be offered both.
+    const { service } = build(async () => Promise.resolve(resolution()), ["release-train"]);
+
+    const context = await service.forWorkspace(FIXTURE_WORKSPACE);
+
+    expect(context?.workflowTags).toEqual(["release-train"]);
+    for (const builtin of BOOTSTRAP_WORKFLOW_SLUGS) {
+      expect(context?.workflowTags).not.toContain(builtin);
+    }
+  });
+
+  it("passes the bootstrap vocabulary through unchanged for a workspace with no workflows", async () => {
+    // Which is every installation today. The estimator's own fallback is first, and that is the
+    // registry's guarantee rather than this file's — see `registry.service.spec.ts`.
     const { service } = build(async () => Promise.resolve(resolution()));
 
     const context = await service.forWorkspace(FIXTURE_WORKSPACE);
 
-    expect(context?.workflowTags).toEqual([
-      "standard-fix",
-      "docs-loop",
-      "feature-loop",
-      "deps-refresh",
-    ]);
-    expect(WORKFLOW_TAGS[0]).toBe("standard-fix");
+    expect(context?.workflowTags).toEqual([...BOOTSTRAP_WORKFLOW_SLUGS]);
+    expect(context?.workflowTags[0]).toBe("standard-fix");
+  });
+
+  it("sends a copy, so nothing downstream can edit the registry's answer", async () => {
+    const offered = ["release-train"];
+    const { service } = build(async () => Promise.resolve(resolution()), offered);
+
+    const context = await service.forWorkspace(FIXTURE_WORKSPACE);
+    context?.workflowTags.push("invented");
+
+    expect(offered).toEqual(["release-train"]);
+  });
+});
+
+describe("a workspace with more workflows than the engine accepts", () => {
+  let warned: jest.SpyInstance;
+
+  /** The rail's order, long enough to cross the engine's bound. */
+  const many = Array.from(
+    { length: MAX_OFFERED_WORKFLOW_TAGS + 3 },
+    (_unused, index) => `workflow-${String(index).padStart(3, "0")}`,
+  );
+
+  beforeEach(() => {
+    warned = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+  });
+
+  it("cuts the list to the bound rather than having the request refused", async () => {
+    // `MAX_WORKFLOW_TAGS` is a refusal in `estimation/contract.py`, not a truncation: a longer
+    // list is a `422` and no estimate at all. A constant of four could never reach it and a
+    // registry can, so the trade is an estimate that cannot suggest the sixty-fifth workflow
+    // against no estimate for that workspace whatsoever.
+    const { service } = build(async () => Promise.resolve(resolution()), many);
+
+    const context = await service.forWorkspace(FIXTURE_WORKSPACE);
+
+    expect(context?.workflowTags).toHaveLength(MAX_OFFERED_WORKFLOW_TAGS);
+  });
+
+  it("keeps the rail's order, so adding a workflow does not change what is offered", async () => {
+    const { service } = build(async () => Promise.resolve(resolution()), many);
+
+    const context = await service.forWorkspace(FIXTURE_WORKSPACE);
+
+    expect(context?.workflowTags).toEqual(many.slice(0, MAX_OFFERED_WORKFLOW_TAGS));
+  });
+
+  it("says so, because the two bounds need reconciling", async () => {
+    const { service } = build(async () => Promise.resolve(resolution()), many);
+
+    await service.forWorkspace(FIXTURE_WORKSPACE);
+
+    expect(warned).toHaveBeenCalledTimes(1);
+    expect(warned).toHaveBeenCalledWith(expect.stringContaining(String(many.length)));
+  });
+
+  it("is quiet at exactly the bound", async () => {
+    const { service } = build(
+      async () => Promise.resolve(resolution()),
+      many.slice(0, MAX_OFFERED_WORKFLOW_TAGS),
+    );
+
+    const context = await service.forWorkspace(FIXTURE_WORKSPACE);
+
+    expect(context?.workflowTags).toHaveLength(MAX_OFFERED_WORKFLOW_TAGS);
+    expect(warned).not.toHaveBeenCalled();
+  });
+
+  it("mirrors the engine's own number", () => {
+    // `ouroboros-engine`'s `estimation/contract.py`. A mirror that drifted upwards would send a
+    // list the engine refuses; one that drifted downwards would hide workflows for no reason.
+    const contract = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "ouroboros-engine",
+        "src",
+        "ouroboros_engine",
+        "estimation",
+        "contract.py",
+      ),
+      "utf8",
+    );
+
+    expect(contract).toContain(`MAX_WORKFLOW_TAGS = ${MAX_OFFERED_WORKFLOW_TAGS}`);
   });
 });
 

@@ -73,6 +73,15 @@
  * same instance the client enforces rather than a second opinion about it. No credential is
  * read here and this module cannot reach one.
  *
+ * **`WorkflowsModule` joined them with P.4** ([#135](https://github.com/NobuData/ouroboros/issues/135)),
+ * for `WorkflowRegistryService` and only for that. The bulk queue write used to hold its
+ * `workflow` to decision **K5**'s four tags with an `@IsIn` on the body; the amendment absorbed
+ * from [#124](https://github.com/NobuData/ouroboros/issues/124) makes the vocabulary the
+ * workspace's own workflows, which is a query rather than a constant. Importing the registry
+ * rather than reading `workflows` through a repository of this module's own is the same call
+ * the paragraph above makes about writers — and here there is a second reason: the honesty
+ * rules about that vocabulary (active only, and what an empty registry answers) have one home.
+ *
  * **Nothing is exported**, for the queue and dashboard modules' reason: the routes are the
  * surface. A second module wanting the freshness stamp should call the endpoint or import
  * `BacklogSyncRepository`, not reach through this one.
@@ -83,6 +92,7 @@ import { Module } from "@nestjs/common";
 import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
 import { DbModule } from "../db/db.module";
 import { GithubModule } from "../github/github.module";
+import { WorkflowsModule } from "../workflows/workflows.module";
 import { BacklogController } from "./backlog.controller";
 import { BacklogDetailController } from "./detail.controller";
 import { BacklogDetailRepository } from "./detail.repository";
@@ -97,7 +107,7 @@ import { SyncStatusService } from "./sync-status.service";
 import { SyncTriggerService } from "./sync-trigger.service";
 
 @Module({
-  imports: [BacklogSyncModule, DbModule, GithubModule],
+  imports: [BacklogSyncModule, DbModule, GithubModule, WorkflowsModule],
   // `BacklogController` first, and that is a rule: see this file's header on `GET
   // /backlog/{id}` being the first bare-parameter path under this prefix.
   controllers: [

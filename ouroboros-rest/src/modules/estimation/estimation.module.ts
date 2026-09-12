@@ -32,6 +32,14 @@
  * is decision **M6**'s remaining half. There is no second answer to *which model runs this* for
  * the two to drift apart into.
  *
+ * **`WorkflowsModule` is imported, and what it contributes is the amendment absorbed from
+ * [#124](https://github.com/NobuData/ouroboros/issues/124).** Its `WorkflowRegistryService` is
+ * where `estimation.context.ts` gets `workflowTags` — this workspace's own active workflows,
+ * rather than the four names decision **K5** wrote into a constant while workflow entities did
+ * not exist. The import is the same shape as `RoutingModule`'s above and is there for the same
+ * reason: the vocabulary an estimate is held to and the vocabulary a bulk queue write accepts
+ * must be one answer, and importing the registry is what stops them being two.
+ *
  * **`EngineModule` is imported for `EngineClient` and nothing else.** Decision **K7**: sizing
  * runs through the engine even while the estimator is a rule engine, because that pipeline
  * shape is the product architecture and v0-vs-v2 is an engine-internal swap.
@@ -47,6 +55,7 @@ import { ScheduleModule } from "@nestjs/schedule";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
 import { RoutingModule } from "../routing/routing.module";
+import { WorkflowsModule } from "../workflows/workflows.module";
 import { EstimationContextService } from "./estimation.context";
 import { EstimationController } from "./estimation.controller";
 import { EstimationLimiter } from "./estimation.limiter";
@@ -56,7 +65,7 @@ import { EstimationSweeper } from "./estimation.sweeper";
 import { EstimationTriggerService } from "./estimation.trigger.service";
 
 @Module({
-  imports: [DbModule, EngineModule, RoutingModule, ScheduleModule.forRoot()],
+  imports: [DbModule, EngineModule, RoutingModule, WorkflowsModule, ScheduleModule.forRoot()],
   controllers: [EstimationController],
   providers: [
     EstimationOrchestrator,

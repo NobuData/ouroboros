@@ -1,5 +1,6 @@
 import { UNIQUE_VIOLATION } from "../tenancy/constraints";
 import type { QueueItem } from "../db/schema";
+import type { WorkflowRegistryService } from "../workflows/registry.service";
 import { QUEUE_ERRORS } from "./queue.errors";
 import type { BacklogQueueRepository, QueueCandidate } from "./queue.repository";
 import { BacklogQueueService } from "./queue.service";
@@ -15,6 +16,12 @@ import { BacklogQueueService } from "./queue.service";
  *   * **a queue row is copied from the estimate in force** — the effort, the tag and
  *     `est_minutes` — rather than recomputed from anything;
  *   * **an explicit `workflow` wins, and otherwise each issue keeps its own.**
+ *
+ * A fifth arrived with P.4 ([#135](https://github.com/NobuData/ouroboros/issues/135)): **an
+ * explicit workflow must be one the workspace has**, checked against the registry before the
+ * selection is read. The vocabulary was a constant caught by the body's `@IsIn` until the
+ * amendment absorbed from [#124](https://github.com/NobuData/ouroboros/issues/124) made it a
+ * workspace's own workflows.
  *
  * The repository is a double, so what is asserted here is the *rules* — which id is refused,
  * with which code, in which order, and what is handed to the write. What the statements say is
@@ -82,6 +89,29 @@ function written(position: number, overrides: Partial<QueueItem> = {}): QueueIte
 }
 
 /**
+ * The workflows a workspace offers, as `WorkflowRegistryService` answers.
+ *
+ * Mockup 03's four by default, which is what a workspace with no workflow entities of its own
+ * is offered — see `workflows/registry.service.ts` on the bootstrap vocabulary.
+ *
+ * @param slugs - What this case's workspace has.
+ * @returns The registry double, and the workspaces it was asked about.
+ */
+function registry(slugs: string[] = ["standard-fix", "docs-loop", "feature-loop", "deps-refresh"]) {
+  const asked: string[] = [];
+
+  return {
+    asked,
+    service: {
+      offered: (organizationId: string) => {
+        asked.push(organizationId);
+        return Promise.resolve({ slugs, source: "bootstrap" as const });
+      },
+    } as unknown as WorkflowRegistryService,
+  };
+}
+
+/**
  * A `pg` refusal, as the driver hands one up.
  *
  * @param constraint - Which constraint refused.
@@ -102,7 +132,7 @@ describe("the bulk queue write", () => {
       append: jest.fn().mockResolvedValue([written(1)]),
     } as unknown as jest.Mocked<BacklogQueueRepository>;
 
-    queue = new BacklogQueueService(repository);
+    queue = new BacklogQueueService(repository, registry().service);
   });
 
   describe("the happy path", () => {
@@ -187,6 +217,62 @@ describe("the bulk queue write", () => {
       const [, rows] = repository.append.mock.calls[0];
 
       expect(rows.map((row) => row.workflowTag)).toEqual(["deps-refresh", "deps-refresh"]);
+    });
+
+    it("accepts a workflow only this workspace has", async () => {
+      // The amendment's whole point: the vocabulary is the workspace's registry, so a slug no
+      // installation shares is as valid as `standard-fix` in the workspace that owns it.
+      const workflows = registry(["release-train"]);
+      queue = new BacklogQueueService(repository, workflows.service);
+      repository.selection.mockResolvedValue([candidate()]);
+
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "release-train" });
+
+      const [, rows] = repository.append.mock.calls[0];
+      expect(rows.map((row) => row.workflowTag)).toEqual(["release-train"]);
+      expect(workflows.asked).toEqual([WORKSPACE]);
+    });
+
+    it("refuses one the workspace does not have, naming the vocabulary", async () => {
+      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service);
+
+      await expect(
+        queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "midnight-loop" }),
+      ).rejects.toMatchObject({
+        response: {
+          code: QUEUE_ERRORS.workflowUnknown,
+          details: { workflow: "midnight-loop", offered: ["standard-fix"] },
+        },
+      });
+    });
+
+    it("refuses it before reading the selection, and writes nothing", async () => {
+      // A request naming a workflow the workspace does not have cannot succeed for *any*
+      // selection, so refusing it first keeps one failure one answer — and costs no statement.
+      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service);
+
+      await expect(
+        queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "midnight-loop" }),
+      ).rejects.toBeDefined();
+
+      expect(repository.selection).not.toHaveBeenCalled();
+      expect(repository.append).not.toHaveBeenCalled();
+    });
+
+    it("does not check the registry when the request names no workflow", async () => {
+      // *Queue 3 selected* copies each issue's own suggestion, and that value was held to the
+      // offered vocabulary when the estimate was made. Re-checking it here would refuse a
+      // stored estimate for naming a workflow that has since been renamed — which is exactly
+      // the history decision F8 keeps readable.
+      const workflows = registry(["release-train"]);
+      queue = new BacklogQueueService(repository, workflows.service);
+      repository.selection.mockResolvedValue([candidate({ suggestedWorkflow: "standard-fix" })]);
+
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] });
+
+      const [, rows] = repository.append.mock.calls[0];
+      expect(rows.map((row) => row.workflowTag)).toEqual(["standard-fix"]);
+      expect(workflows.asked).toEqual([]);
     });
   });
 

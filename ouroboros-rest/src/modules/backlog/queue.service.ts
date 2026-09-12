@@ -25,15 +25,37 @@
  *     case each row is queued under the workflow its own estimate suggested. That is the whole
  *     of the rule today; the amendment on the ticket records that #143's trigger evaluation
  *     will fill the default by predicate instead, with an explicit choice still winning.
+ *
+ * ---------------------------------------------------------------------------
+ * **A named workflow is checked against the workspace's registry, and P.4 is why**
+ * ([#135](https://github.com/NobuData/ouroboros/issues/135), absorbing
+ * [#124](https://github.com/NobuData/ouroboros/issues/124)).
+ *
+ * The tag used to be held to decision **K5**'s four by an `@IsIn` on the body, which needed no
+ * query because the vocabulary was a constant every installation shared. It is now this
+ * workspace's own active workflows — the same list *Assign workflow ▾* is drawn from — so the
+ * check is a read, and it is **first**, before the selection is even looked up: a request that
+ * names a workflow the workspace does not have cannot succeed for any selection, and refusing
+ * it before touching `github_issues` keeps one failure one answer.
+ *
+ * **Only an explicit tag is checked.** A row queued under *each issue's own* copies
+ * `suggested_workflow` off the estimate in force, and that value was already held to the
+ * offered vocabulary — by the engine, at the moment the estimate was made, against the same
+ * registry (`estimation/estimation.context.ts`). Re-checking it here would refuse a stored
+ * estimate for naming a workflow that has since been renamed, which is exactly the history
+ * decision **F8** keeps readable: the queue row is opaque text, and a tag that no longer
+ * resolves is a fact about the past rather than a broken write.
  */
 
 import { Injectable } from "@nestjs/common";
 
+import { WorkflowRegistryService } from "../workflows/registry.service";
 import {
   QUEUE_ISSUE_PROBLEMS,
   queueIssuesConflict,
   queueIssuesNotFound,
   queueIssuesNotQueueable,
+  queueWorkflowUnknown,
   type QueueIssueProblem,
 } from "./queue.errors";
 import {
@@ -59,8 +81,16 @@ interface QueueableIssue extends QueueCandidate {
 
 @Injectable()
 export class BacklogQueueService {
-  /** @param queue - The two reads and the write. */
-  constructor(private readonly queue: BacklogQueueRepository) {}
+  /**
+   * @param queue - The two reads and the write.
+   * @param workflows - P.4's registry, for the one check that is not about the issues. The same
+   *   service `estimation.context.ts` offers the engine, so what a menu lists, what an estimate
+   *   may suggest and what this accepts are one answer.
+   */
+  constructor(
+    private readonly queue: BacklogQueueRepository,
+    private readonly workflows: WorkflowRegistryService,
+  ) {}
 
   /**
    * Queue a selection of issues, or refuse the whole of it.
@@ -73,12 +103,17 @@ export class BacklogQueueService {
    *   the selection action bar renders as *"est. 1h 10m combined autonomous work"*.
    * @throws {NotFoundError} `queue_issues_not_found` — an id names no issue in this workspace,
    *   including one that names an issue in another.
+   * @throws {InvalidRequestError} `queue_workflow_unknown` — the request named a workflow this
+   *   workspace does not have. Checked before the selection, for the reason this file's header
+   *   gives.
    * @throws {InvalidRequestError} `queue_issues_not_queueable` — an issue in the selection is
    *   not `sized`, or is `sized` with no estimate to copy.
    * @throws {ConflictError} `queue_issues_conflict` — the queue already holds one of them, or
    *   two of them share a GitHub number.
    */
   async queueSelection(organizationId: string, body: QueueSelectionBody): Promise<QueuedSelection> {
+    await this.refuseUnknownWorkflow(organizationId, body.workflow);
+
     const found = await this.queue.selection(organizationId, body.issueIds);
     // Reordered into the request's own order: positions are handed out down this list, so the
     // queue reads the way the person built the selection rather than the way a planner
@@ -110,6 +145,30 @@ export class BacklogQueueService {
       // also removed while this request was failing over it — three writers in one instant, and
       // an empty list is more honest than a guess about which of them collided.
       throw queueIssuesConflict(await this.conflicts(organizationId, queueable));
+    }
+  }
+
+  /**
+   * `422` when the request named a workflow this workspace does not have.
+   *
+   * @param organizationId - The workspace, established by the tenant guard.
+   * @param workflow - What the request named, or `undefined` for *each issue's own* — which
+   *   names no workflow and therefore has none to check.
+   * @throws {InvalidRequestError} `queue_workflow_unknown`, carrying the slug and the
+   *   vocabulary it was held to, so a stale menu can redraw itself from the refusal.
+   */
+  private async refuseUnknownWorkflow(
+    organizationId: string,
+    workflow: string | undefined,
+  ): Promise<void> {
+    if (workflow === undefined) {
+      return;
+    }
+
+    const { slugs } = await this.workflows.offered(organizationId);
+
+    if (!slugs.includes(workflow)) {
+      throw queueWorkflowUnknown(workflow, slugs);
     }
   }
 
