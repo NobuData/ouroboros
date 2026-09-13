@@ -2307,5 +2307,470 @@ select pg_temp.must_hold(
   'the sources seed created its two prefixed rows and no third');
 
 
+-- ===========================================================================
+-- R__dev_seed_workflows.sql — mockup 04's studio.
+--
+-- The eighth seed's rows: five `workflows` (`5eed001b…`) and nineteen
+-- `workflow_versions` (`5eed001c…`), all of them `acme-robotics`'. Scoped to those ids and
+-- that workspace, for the reason every other seed's assertions are scoped: a developer who
+-- built a workflow of their own must not fail this suite.
+--
+-- The counts are exact, so this is the workflows seed's idempotency test too — and it is the
+-- one seed where that matters most, because `workflow_version_next` raises on a second
+-- application unless the statement's `not exists` guard holds it off, and a seed that lost
+-- that guard would fail `migrate` rather than fail quietly.
+--
+-- It asserts three kinds of thing, and they are worth telling apart:
+--
+--   * **What the seed wrote** — the entities, the history, the draft, and the canvas node for
+--     node and edge for edge against mockup 04.
+--   * **What the DSL requires of a document and JSON Schema cannot say** — one trigger,
+--     somewhere to end, every stage reachable from the trigger. `schemas/workflow-dsl/v1.json`
+--     describes values, and *"every node is reachable"* is not a property of a value, so it is
+--     asserted here over every stored definition. The grammar's own validator lives in
+--     `ouroboros-rest` and `dsl.seed.spec.ts` runs it over these same documents.
+--   * **What P.4 then renders** — the five rail captions and the head's usage share,
+--     recomputed here the way `stats.captions.ts` composes them, because a caption is the
+--     acceptance criterion and not the column it is derived from.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- The five entities the rail lists.
+--
+-- The order is the assertion worth reading twice: P.4 lists `order by created_at asc, slug
+-- asc`, so the mockup's rail is a claim about *when each workflow was created* and an
+-- alphabetical seed would have put `deps-refresh` at the top of the studio.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 5
+     from ouroboros.workflows wf
+     join ouroboros.organization org on org."id" = wf.organization_id
+    where org."slug" = 'acme-robotics'
+      and wf.id::text like '5eed001b-0000-4000-8000-%'),
+  'the workflows seed created acme-robotics'' five workflows');
+
+select pg_temp.must_hold(
+  (select array_agg(wf.slug order by wf.created_at, wf.slug)
+            = array['standard-fix', 'feature-loop', 'deps-refresh', 'docs-loop', 'hotfix-p0']
+     from ouroboros.workflows wf
+    where wf.id::text like '5eed001b-0000-4000-8000-%'),
+  'and they are the rail''s five entries, in the rail''s order — which is created_at, not the alphabet');
+
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.workflows wf
+    where wf.id::text like '5eed001b-0000-4000-8000-%' and wf.name = wf.slug),
+  'the name is the slug on all five, which is what mockup 04 renders in both places it names one');
+
+select pg_temp.must_hold(
+  (select array_agg(wf.status order by wf.created_at) = array['active', 'active', 'active', 'active', 'paused']
+     from ouroboros.workflows wf
+    where wf.id::text like '5eed001b-0000-4000-8000-%'),
+  'four are active and hotfix-p0 is paused — the rail''s err-dot as a column');
+
+select pg_temp.must_hold(
+  (select array_agg(wf.current_version order by wf.created_at) = array[14, 1, 1, 1, 1]
+     from ouroboros.workflows wf
+    where wf.id::text like '5eed001b-0000-4000-8000-%'),
+  'standard-fix runs v14 — the page head''s chip — and the other four their first publish');
+
+select pg_temp.must_hold(
+  (select count(*) = 5
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions first
+       on first.workflow_id = wf.id and first.version = 1
+    where wf.id::text like '5eed001b-0000-4000-8000-%'
+      and date_trunc('minute', wf.created_at) = date_trunc('minute', first.published_at)),
+  'each workflow is exactly as old as its own history — created_at is when its v1 was published');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.workflows wf
+     join ouroboros.organization org on org."id" = wf.organization_id
+    where org."slug" in ('acme-labs', 'kensuenobu')),
+  'and the personal and second workspaces have none — the empty-state fixture S.7 renders against');
+
+
+-- ---------------------------------------------------------------------------
+-- The history — fourteen versions, because v14 is a number the database counts to.
+--
+-- `workflow_version_next` holds versions dense from 1, so *v14, active* is fourteen rows and
+-- the ticket's *"version history depth ≥ 2"* comes with them. What the seed does not do is
+-- invent thirteen graphs: v1–v13 are one predecessor changed one true way each, and the
+-- assertion below is that every change note names the number its own document carries.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 19 from ouroboros.workflow_versions
+    where id::text like '5eed001c-0000-4000-8000-%'),
+  'nineteen version rows — fourteen of standard-fix, one apiece for the other four, and one draft');
+
+select pg_temp.must_hold(
+  (select array_agg(v.version order by v.version) = (select array_agg(n) from generate_series(1, 14) as n)
+     from ouroboros.workflow_versions v
+     join ouroboros.workflows wf on wf.id = v.workflow_id and wf.slug = 'standard-fix'
+    where v.version is not null),
+  'standard-fix''s history is dense from 1 to 14, because v14 is a number the trigger counts to');
+
+select pg_temp.must_hold(
+  (select count(*) = 13
+     from ouroboros.workflow_versions v
+     join ouroboros.workflows wf on wf.id = v.workflow_id and wf.slug = 'standard-fix'
+    where v.version between 1 and 13
+      and jsonb_array_length(v.definition -> 'nodes') = 6
+      and (v.definition #>> '{nodes,3,config,limits,token_budget}')::int = 120000 + v.version * 20000),
+  'v1-v13 are the six-node predecessor, each raising the implement budget by 20k as its note says');
+
+select pg_temp.must_hold(
+  (select count(*) = 12
+     from ouroboros.workflow_versions v
+     join ouroboros.workflows wf on wf.id = v.workflow_id and wf.slug = 'standard-fix'
+    where v.version between 2 and 13
+      and v.change_note = 'Raise the implement stage''s token budget to '
+                          || ((120000 + v.version * 20000) / 1000)::text || 'k.'),
+  'and every one of those notes names the number its own document carries');
+
+select pg_temp.must_hold(
+  (select v.published_by is null and v.change_note = 'Imported from the standard-fix template.'
+     from ouroboros.workflow_versions v
+     join ouroboros.workflows wf on wf.id = v.workflow_id and wf.slug = 'standard-fix'
+    where v.version = 1),
+  'v1 was published by nobody — the template import, and the fixture for published_by''s null');
+
+select pg_temp.must_hold(
+  (select count(distinct v.published_by) = 3
+     from ouroboros.workflow_versions v
+    where v.id::text like '5eed001c-0000-4000-8000-%' and v.published_by is not null),
+  'three people have published into this workspace, so published_by has more than one answer');
+
+select pg_temp.must_hold(
+  (select count(*) = 19
+     from ouroboros.workflow_versions v
+    where v.id::text like '5eed001c-0000-4000-8000-%'
+      and (v.version is null) = (v.published_at is null)
+      and (v.published_at is not null or (v.published_by is null and v.change_note is null))),
+  'every row is a published version or the draft, and no row is half of each');
+
+
+-- ---------------------------------------------------------------------------
+-- The draft — the row the page head's *Last edited 2h ago* is read from.
+--
+-- An hour either side of two hours, which is `#485`'s *opened 2d ago* band and for its
+-- reason: the suite runs some time after `migrate` did, and a stamp relative to `now()`
+-- drifts by exactly that much.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.workflow_versions v
+     join ouroboros.workflows wf on wf.id = v.workflow_id
+    where v.id::text like '5eed001c-0000-4000-8000-%'
+      and v.version is null
+      and wf.slug = 'standard-fix'),
+  'exactly one workflow is being edited, and it is standard-fix');
+
+select pg_temp.must_hold(
+  (select v.updated_at between now() - interval '3 hours' and now() - interval '1 hour'
+     from ouroboros.workflow_versions v
+     join ouroboros.workflows wf on wf.id = v.workflow_id and wf.slug = 'standard-fix'
+    where v.version is null),
+  'the draft was last edited two hours ago — the page head''s *Last edited 2h ago*');
+
+select pg_temp.must_hold(
+  (select draft.updated_at > published.published_at
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions draft on draft.workflow_id = wf.id and draft.version is null
+     join ouroboros.workflow_versions published on published.workflow_id = wf.id and published.version = 14
+    where wf.slug = 'standard-fix'),
+  'and it was opened after the version it was copied from was published, which is the only order it could have happened in');
+
+select pg_temp.must_hold(
+  (select draft.definition = published.definition
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions draft on draft.workflow_id = wf.id and draft.version is null
+     join ouroboros.workflow_versions published on published.workflow_id = wf.id and published.version = 14
+    where wf.slug = 'standard-fix'),
+  'and its document is v14''s, which is what *start editing* leaves behind and what the canvas renders');
+
+
+-- ---------------------------------------------------------------------------
+-- The canvas, against mockup 04.
+--
+-- Positions matter here in a way they did not on any previous screen: parity means the graph
+-- renders where the mockup draws it, so the nodes are asserted with their coordinates and the
+-- edges with their labels and kinds. The `left:`/`top:` values in
+-- `docs/mockups/04-workflow-builder.html` are the numbers on the right-hand side of these
+-- arrays.
+--
+-- The Implement stage is asserted as a whole object rather than field by field, which is what
+-- makes it the *inspector*: a field added to that config by a later edit fails here instead of
+-- appearing in a panel nobody drew.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(n.value ->> 'id' || ' ' || (n.value ->> 'type') || ' '
+                    || (n.value #>> '{position,x}') || ',' || (n.value #>> '{position,y}')
+                    order by n.ord)
+          = array[
+              'issue-queued trigger 24,40',
+              'analyze llm 306,40',
+              'effort-recheck flow 588,40',
+              'plan llm 588,230',
+              'split llm 306,230',
+              'back-to-queue term 32,260',
+              'implement llm 588,420',
+              'build infra 306,420',
+              'test infra 24,420',
+              'review llm 24,630',
+              'checks-green flow 306,630',
+              'open-pr term 588,630']
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version = wf.current_version
+    cross join lateral jsonb_array_elements(v.definition -> 'nodes') with ordinality as n(value, ord)
+    where wf.slug = 'standard-fix'),
+  'the canvas is mockup 04''s twelve nodes at mockup 04''s twelve positions, in its own order');
+
+select pg_temp.must_hold(
+  (select n.value -> 'config' = jsonb_build_object(
+            'mode', 'skill',
+            'skill', 'zephyr-conventions',
+            'prompt_template', 'Implement the approved plan.
+
+Issue: {{issue.title}}
+Plan:  {{plan}}
+Rules: touch only files named in the plan; follow the skill.',
+            'routing', jsonb_build_object('inherit_task', 'implement'),
+            'limits', jsonb_build_object('max_retries', 2, 'token_budget', 400000),
+            'permissions', jsonb_build_object('push_fixup', true, 'touch_ci', false))
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version = wf.current_version
+    cross join lateral jsonb_array_elements(v.definition -> 'nodes') as n
+    where wf.slug = 'standard-fix' and n.value ->> 'id' = 'implement'),
+  'and the Implement stage is the inspector field for field — skill mode, the prompt with its two variables, the inherited implement route, 2 retries, a 400k budget, fixups on and CI off');
+
+select pg_temp.must_hold(
+  (select array_agg(e.value ->> 'from' || ' -> ' || (e.value ->> 'to') || ' ' || (e.value ->> 'kind')
+                    || coalesce(' ' || (e.value ->> 'label'), '') order by e.ord)
+          = array[
+              'issue-queued -> analyze default',
+              'analyze -> effort-recheck default',
+              'effort-recheck -> plan branch ≤ M ↓',
+              'effort-recheck -> split branch > M ↘',
+              'split -> back-to-queue default',
+              'plan -> implement default',
+              'implement -> build default',
+              'build -> test default',
+              'test -> review default',
+              'review -> checks-green default',
+              'checks-green -> open-pr branch pass →',
+              'checks-green -> implement loop fail ↺']
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version = wf.current_version
+    cross join lateral jsonb_array_elements(v.definition -> 'edges') with ordinality as e(value, ord)
+    where wf.slug = 'standard-fix'),
+  'and its twelve edges carry the mockup''s four labels and its three kinds — including the one dashed loop back from the gate to implement');
+
+
+-- ---------------------------------------------------------------------------
+-- What every stored definition has to be — the rules JSON Schema cannot state.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 19
+     from ouroboros.workflow_versions v
+    where v.id::text like '5eed001c-0000-4000-8000-%'
+      and (select count(*) from jsonb_array_elements(v.definition -> 'nodes') as n
+            where n.value ->> 'type' = 'trigger') = 1
+      and (select count(*) from jsonb_array_elements(v.definition -> 'nodes') as n
+            where n.value ->> 'type' = 'term') >= 1),
+  'every stored definition has exactly one trigger and somewhere for a run to end');
+
+with recursive
+  doc as (select v.id, v.definition as d
+            from ouroboros.workflow_versions v
+           where v.id::text like '5eed001c-0000-4000-8000-%'),
+  node as (select doc.id, n.value ->> 'id' as nid, n.value ->> 'type' as type
+             from doc, jsonb_array_elements(doc.d -> 'nodes') as n),
+  edge as (select doc.id, e.value ->> 'from' as src, e.value ->> 'to' as dst,
+                  e.value ->> 'kind' as kind, e.value -> 'condition' as cond
+             from doc, jsonb_array_elements(doc.d -> 'edges') as e),
+  reached as (
+    select node.id, node.nid from node where node.type = 'trigger'
+    union
+    select edge.id, edge.dst
+      from reached join edge on edge.id = reached.id and edge.src = reached.nid
+  )
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from node
+    where not exists (select 1 from reached
+                       where reached.id = node.id and reached.nid = node.nid)),
+  'and every stage in every one of them is reachable from its trigger');
+
+with doc as (select v.id, v.definition as d
+               from ouroboros.workflow_versions v
+              where v.id::text like '5eed001c-0000-4000-8000-%'),
+     node as (select doc.id, n.value ->> 'id' as nid, n.value ->> 'type' as type
+                from doc, jsonb_array_elements(doc.d -> 'nodes') as n),
+     edge as (select doc.id, e.value ->> 'from' as src, e.value ->> 'to' as dst,
+                     e.value ->> 'kind' as kind, e.value -> 'condition' as cond
+                from doc, jsonb_array_elements(doc.d -> 'edges') as e)
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from edge
+     join node as source on source.id = edge.id and source.nid = edge.src
+     join node as target on target.id = edge.id and target.nid = edge.dst
+    where target.type = 'trigger'
+       or source.type = 'term'
+       or edge.src = edge.dst
+       or (edge.kind = 'branch' and edge.cond is null)
+       or (edge.kind = 'default' and edge.cond is not null)),
+  'nothing returns to a trigger, nothing leaves a terminal, every branch decides and no default pretends to');
+
+
+-- ---------------------------------------------------------------------------
+-- The rail P.4 then renders, and the one caption that is not the mockup's string.
+--
+-- `standard-fix` reads `12 stages`, not the mockup's `6`. #135 left that choice to this seed
+-- and the seed made it: a stage is a node, the ticket asks for the twelve-node canvas, and the
+-- caption is honest about the document in force. The six-stage document the mockup's string
+-- was written for is v13 — see the migration's header.
+-- ---------------------------------------------------------------------------
+with rail as (
+  select wf.slug, wf.status, wf.created_at,
+         case when jsonb_typeof(v.definition -> 'nodes') = 'array'
+              then jsonb_array_length(v.definition -> 'nodes') end as stage_count,
+         coalesce((select array_agg(n.value -> 'config' ->> 'action')
+                     from jsonb_array_elements(v.definition -> 'nodes') as n
+                    where n.value ->> 'type' = 'term'
+                      and n.value -> 'config' ->> 'action' is not null), '{}'::text[]) as terminals
+    from ouroboros.workflows wf
+    join ouroboros.organization org on org."id" = wf.organization_id
+    left join ouroboros.workflow_versions v
+      on v.workflow_id = wf.id and v.version = wf.current_version
+   where org."slug" = 'acme-robotics' and wf.status <> 'archived'
+)
+select pg_temp.must_hold(
+  (select array_agg(
+            case when stage_count is null then 'not published'
+                 else stage_count::text || ' stage' || case when stage_count = 1 then '' else 's' end end
+            || coalesce(' · ' || case when status = 'paused'                        then 'paused'
+                                      when 'open_pr_automerge' = any(terminals)     then 'auto-merge'
+                                      when 'needs_review'      = any(terminals)     then 'needs review'
+                                      when 'back_to_queue'     = any(terminals)     then 'back to queue' end,
+                        '')
+            order by created_at, slug)
+          = array['12 stages · auto-merge',
+                  '7 stages · auto-merge',
+                  '5 stages · needs review',
+                  '4 stages · auto-merge',
+                  '5 stages · paused']
+     from rail),
+  'the rail reads what P.4 computes from these rows — the mockup''s four captions exactly, and 12 stages where the mockup wrote 6');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where r.workflow_tag = 'standard-fix') = 22
+          and count(*) = 53
+          and round(count(*) filter (where r.workflow_tag = 'standard-fix') * 100.0 / count(*)) = 42
+     from ouroboros.runs r
+     join ouroboros.organization org on org."id" = r.organization_id
+    where org."slug" = 'acme-robotics'
+      and r.started_at >= now() - interval '30 days'),
+  'and the page head reads *used by 42% of runs* — 22 of the dashboard seed''s 53, which is the share these two seeds earn rather than the mockup''s unreachable 61%');
+
+
+-- ---------------------------------------------------------------------------
+-- The dry run of `#485`, which is the acceptance criterion as a query.
+--
+-- The intake seed sizes `#485` as an `m`, this seed's trigger fires at `effort ≤ M`, and the
+-- walk below follows every edge whose condition holds for that ticket — the effort predicates
+-- against the estimate in force, the check predicates on the happy path, where everything
+-- passes. What it must produce is *one* path, which is the graph being deterministic for this
+-- ticket, and that path must be the expected one.
+--
+-- It is a walk rather than a list of nodes for a reason worth stating: an edge deleted from
+-- the seeded document, or a predicate inverted, changes the path and fails here, while a
+-- static list of ten ids would still pass.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_position(array['xs', 's', 'm', 'l', 'xl'], est.effort)
+          <= array_position(array['xs', 's', 'm', 'l', 'xl'],
+                            v.definition #>> '{trigger,conditions,effort_lte}')
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version = wf.current_version
+     join ouroboros.organization org on org."id" = wf.organization_id
+     join ouroboros.github_issues issue on issue.organization_id = org."id" and issue.number = 485
+     join ouroboros.issue_estimates est on est.github_issue_id = issue.id
+    where org."slug" = 'acme-robotics' and wf.slug = 'standard-fix'
+    order by est.version desc
+    limit 1),
+  'the seeded #485 is an M, so standard-fix''s `effort ≤ M` trigger fires for it');
+
+with recursive
+  scale as (select array['xs', 's', 'm', 'l', 'xl'] as steps),
+  ticket as (
+    select est.effort
+      from ouroboros.github_issues issue
+      join ouroboros.issue_estimates est on est.github_issue_id = issue.id
+      join ouroboros.organization org on org."id" = issue.organization_id
+     where org."slug" = 'acme-robotics' and issue.number = 485
+     order by est.version desc
+     limit 1
+  ),
+  doc as (
+    select v.definition as d
+      from ouroboros.workflows wf
+      join ouroboros.organization org on org."id" = wf.organization_id
+      join ouroboros.workflow_versions v
+        on v.workflow_id = wf.id and v.version = wf.current_version
+     where org."slug" = 'acme-robotics' and wf.slug = 'standard-fix'
+  ),
+  node as (select n.value ->> 'id' as nid, n.value ->> 'type' as type
+             from doc, jsonb_array_elements(doc.d -> 'nodes') as n),
+  edge as (select e.value ->> 'from' as src, e.value ->> 'to' as dst,
+                  e.value -> 'condition' as cond
+             from doc, jsonb_array_elements(doc.d -> 'edges') as e),
+  taken as (
+    select edge.src, edge.dst
+      from edge, scale, ticket
+     where edge.cond is null
+        or (edge.cond ->> 'kind' = 'checks' and edge.cond ->> 'op' = 'all_passed')
+        or (edge.cond ->> 'kind' = 'effort'
+            and case edge.cond ->> 'op'
+                  when 'lt'  then array_position(scale.steps, ticket.effort)
+                               <  array_position(scale.steps, edge.cond ->> 'value')
+                  when 'lte' then array_position(scale.steps, ticket.effort)
+                               <= array_position(scale.steps, edge.cond ->> 'value')
+                  when 'eq'  then ticket.effort = edge.cond ->> 'value'
+                  when 'gte' then array_position(scale.steps, ticket.effort)
+                               >= array_position(scale.steps, edge.cond ->> 'value')
+                  when 'gt'  then array_position(scale.steps, ticket.effort)
+                               >  array_position(scale.steps, edge.cond ->> 'value')
+                end)
+  ),
+  walk as (
+    select node.nid as at, array[node.nid] as path from node where node.type = 'trigger'
+    union all
+    select taken.dst, walk.path || taken.dst
+      from walk join taken on taken.src = walk.at
+     where not (taken.dst = any(walk.path))
+  )
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from walk
+    where not exists (select 1 from taken where taken.src = walk.at)
+      and walk.path = array['issue-queued', 'analyze', 'effort-recheck', 'plan', 'implement',
+                            'build', 'test', 'review', 'checks-green', 'open-pr']),
+  'and a dry run of it walks one path and the expected one — down the `≤ M` branch, through implement, build, test and review, and out of the gate to the pull request');
+
+
+-- ---------------------------------------------------------------------------
+-- The id convention, for the workflows seed's own rows.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.workflows
+    where id::text like '5eed001b-0000-4000-8000-%'),
+  'the workflows seed created its five prefixed entities and no sixth');
+
+select pg_temp.must_hold(
+  (select count(*) = 19 from ouroboros.workflow_versions
+    where id::text like '5eed001c-0000-4000-8000-%'),
+  'and its nineteen prefixed versions and no twentieth');
+
 \o
 \echo 'seed.sql: all assertions passed'
