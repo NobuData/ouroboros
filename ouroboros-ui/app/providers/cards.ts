@@ -63,7 +63,7 @@ import type {
 } from "@/app/api/providers";
 import type { Reading } from "@/app/api/reading";
 import type { ProviderHealth } from "@/app/api/routing";
-import { compactNumber, durationOfMinutes, moneyOfCents } from "@/app/format";
+import { compactNumber, moneyOfCents, relativeAgo } from "@/app/format";
 import type { ChipDot, ChipTone, MeterTone } from "@/app/ui";
 
 import { BASE_URL_FIELD, monogramOf } from "./catalog";
@@ -332,37 +332,14 @@ export interface MetaRow {
 /** What the meta row prints for a connection nothing has invoked through — an em-dash. */
 export const NEVER_USED = "—";
 
-/** Seconds in a minute, minutes in an hour, hours in a day. */
-const SECOND_MS = 1000;
-const MINUTE_MS = 60 * SECOND_MS;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
-
 /**
- * How long ago an instant was, in the mockup's own spellings — `41s ago`, `3m ago`,
- * `1h 12m ago`, `3d ago`.
+ * How long ago an instant was — `41s ago`, `3m ago`, `1h 12m ago`, `3d ago`.
  *
- * Measured from the instant the page was read, which the reader passes down rather than
- * each card reading a clock: a server render and its hydration then agree about every
- * figure, and a suite can hold the arithmetic still.
- *
- * @param iso The instant, ISO 8601.
- * @param now The instant the page was read.
- * @returns The phrase. An instant in the future — a clock skew — is drawn as `0s ago`
- *   rather than as a negative, and an unparseable one as the value itself.
+ * `app/format.ts`'s since Q.4 ([#141](https://github.com/NobuData/ouroboros/issues/141)),
+ * where the ticket-source rows read the same phrase; re-exported so this module's callers and
+ * its suite keep one import.
  */
-export function relativeAgo(iso: string, now: Date): string {
-  const then = new Date(iso);
-
-  if (Number.isNaN(then.getTime())) return iso;
-
-  const elapsed = Math.max(0, now.getTime() - then.getTime());
-
-  if (elapsed < MINUTE_MS) return `${Math.floor(elapsed / SECOND_MS)}s ago`;
-  if (elapsed < DAY_MS) return `${durationOfMinutes(Math.floor(elapsed / MINUTE_MS))} ago`;
-
-  return `${Math.floor(elapsed / DAY_MS)}d ago`;
-}
+export { relativeAgo };
 
 /**
  * The calendar day an instant falls on, in UTC — the mockup's `2026-06-12`.

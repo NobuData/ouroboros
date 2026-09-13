@@ -31,6 +31,12 @@
 
 import { z } from "zod";
 
+import {
+  PLACEHOLDER_ANNOTATION,
+  PROVIDER_CONFIG_DIALECT,
+  SECRET_ANNOTATION,
+} from "../../providers/provider.config";
+import type { TicketSourceConfigSchema } from "../ticket-source.config";
 import { TicketSourceError } from "../ticket-source.errors";
 
 /**
@@ -59,6 +65,83 @@ export const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
  * is past what a workspace plausibly enables and far below either of those cliffs.
  */
 export const MAX_ENABLED_REPOS = 50;
+
+/**
+ * The property name the personal access token is submitted under.
+ *
+ * Not a key of {@link GithubSourceConfig}: it is marked `x-ouroboros-secret`, so the management
+ * API routes it to the vault and it never enters the `config` column. Named once so the schema
+ * below and the provider's own reading of a submission agree.
+ */
+export const GITHUB_TOKEN_FIELD = "token";
+
+/**
+ * The longest token the form accepts.
+ *
+ * `MAX_SECRET_LENGTH` in `provider-connections.dto.ts` is the API's own ceiling for a credential
+ * body, and this is deliberately the same number: a fine-grained token is ninety-odd characters,
+ * a classic one forty, and a value past four thousand is not a token somebody pasted.
+ */
+export const GITHUB_TOKEN_MAX_LENGTH = 4096;
+
+/**
+ * The `github` kind's settings, as a form — what `configSchema()` answers.
+ *
+ * Q.4's ([#141](https://github.com/NobuData/ouroboros/issues/141)) *"no hardcoded GitHub
+ * form"*, kept from this side: the settings surface draws these three fields from this object
+ * and knows nothing else about GitHub. The two grammar rules {@link readGithubConfig} enforces
+ * are here as `pattern`s, so a form refuses a login with a `/` in it before a request exists,
+ * and `repos` is the **list** field `ticket-source.config.ts` adds to the dialect — one name per
+ * line, each held to {@link GITHUB_REPO} and bounded by {@link MAX_ENABLED_REPOS}, which is
+ * exactly what the parse below checks again on the way in.
+ *
+ * `.` and `..` are refused by the entry pattern's look-ahead rather than by a second rule, so
+ * the two names that would traverse are refused where every other bad name is.
+ */
+export const GITHUB_SOURCE_SCHEMA: TicketSourceConfigSchema = {
+  $schema: PROVIDER_CONFIG_DIALECT,
+  type: "object",
+  title: "Connect a GitHub account",
+  properties: {
+    login: {
+      type: "string",
+      title: "GitHub account",
+      description: "The organization or user whose repositories to watch, as it appears in a URL.",
+      minLength: 1,
+      maxLength: 39,
+      pattern: GITHUB_LOGIN.source,
+      [PLACEHOLDER_ANNOTATION]: "The account name — not a URL",
+    },
+    repos: {
+      type: "array",
+      title: "Repositories",
+      description:
+        "One repository name per line, without the account — helios-firmware, not acme/helios-firmware.",
+      items: {
+        type: "string",
+        minLength: 1,
+        maxLength: 100,
+        pattern: `^(?!\\.\\.?$)${GITHUB_REPO.source.slice(1)}`,
+      },
+      minItems: 1,
+      maxItems: MAX_ENABLED_REPOS,
+      [PLACEHOLDER_ANNOTATION]: "One repository per line",
+    },
+    [GITHUB_TOKEN_FIELD]: {
+      type: "string",
+      title: "Personal access token",
+      description:
+        "Read access to issues on the repositories above. Sealed in the vault the moment it is " +
+        "stored and never shown again.",
+      minLength: 1,
+      maxLength: GITHUB_TOKEN_MAX_LENGTH,
+      [SECRET_ANNOTATION]: true,
+      [PLACEHOLDER_ANNOTATION]: "Pasted, never typed — a fine-grained or classic token",
+    },
+  },
+  required: ["login", "repos", GITHUB_TOKEN_FIELD],
+  additionalProperties: false,
+};
 
 /** The `github` kind's settings, parsed. */
 export interface GithubSourceConfig {

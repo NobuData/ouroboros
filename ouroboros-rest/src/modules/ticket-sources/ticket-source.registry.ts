@@ -50,6 +50,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { TICKET_SOURCE_KINDS, type TicketSourceKind } from "../db/schema";
 import { InvalidRequestError, NotImplementedError } from "../errors/error.envelope";
+import { sourceSchemaViolations } from "./ticket-source.config";
 import {
   supportsWebhooks,
   type TicketSourceProvider,
@@ -68,11 +69,11 @@ export const TICKET_SOURCE_PROVIDERS = Symbol("TICKET_SOURCE_PROVIDERS");
 /**
  * The codes the registry refuses with.
  *
- * `as const` so each value is its own literal type. Neither is published in `openapi.yaml` yet,
- * and that is deliberate rather than an omission: this module declares no controller — the
- * routes that surface these are Q.4's ([#141](https://github.com/NobuData/ouroboros/issues/141))
- * — and a code published against no operation is a code a client cannot look up.
- * `provider.registry.ts` makes the same choice.
+ * `as const` so each value is its own literal type. `kindUnsupported` is published in
+ * `openapi.yaml` since Q.4 ([#141](https://github.com/NobuData/ouroboros/issues/141)) against
+ * the source-management operations that can answer it — `sources.errors.spec.ts` holds it there.
+ * `kindNoWebhooks` is not yet, and that is deliberate rather than an omission: no route delivers
+ * a webhook, and a code published against no operation is a code a client cannot look up.
  */
 export const TICKET_SOURCE_REGISTRY_ERRORS = {
   /** `501` — a real kind, with no provider in this build. */
@@ -154,6 +155,19 @@ export class TicketSourceRegistry {
         throw new Error(
           `Provider "${provider.kind}" declares webhooks: ${declaresWebhooks.toString()} ` +
             "but its webhookHandler member says otherwise",
+        );
+      }
+
+      // Q.4's assertion: a schema the settings form could not draw is a provider nobody can
+      // configure, and the moment to find out is boot rather than the first press of
+      // **+ Add source**. `sourceSchemaViolations` lists everything wrong at once, so a new
+      // provider's author fixes one boot failure rather than one per keyword.
+      const violations = sourceSchemaViolations(schemaOf(provider));
+
+      if (violations.length > 0) {
+        throw new Error(
+          `Provider "${provider.kind}" declares a config schema outside the dialect: ` +
+            violations.join("; "),
         );
       }
 
@@ -249,4 +263,21 @@ export class TicketSourceRegistry {
  */
 function webhookMemberOf(provider: TicketSourceProvider): unknown {
   return (provider as Partial<WebhookCapableProvider>).webhookHandler;
+}
+
+/**
+ * What a provider answers for its schema, read without trusting the type.
+ *
+ * A provider compiled against Q.2's copy of the interface has no `configSchema` at all, and a
+ * registry that called it would throw a `TypeError` naming nothing. Reading the member first
+ * turns that into `sourceSchemaViolations`' own *"schema must be an object"*, prefixed with the
+ * kind that lacks one.
+ *
+ * @param provider - Any provider.
+ * @returns Whatever `configSchema()` answered, or `undefined` when there is no such member.
+ */
+function schemaOf(provider: TicketSourceProvider): unknown {
+  const member = (provider as Partial<TicketSourceProvider>).configSchema;
+
+  return typeof member === "function" ? member.call(provider) : undefined;
 }

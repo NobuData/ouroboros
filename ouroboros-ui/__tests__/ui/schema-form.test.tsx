@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { SchemaField, SchemaFields, type SchemaFieldSpec } from "@/app/ui";
+import { LIST_ROWS, SchemaField, SchemaFields, type SchemaFieldSpec, listEntries } from "@/app/ui";
 
 import { renderInBothPalettes } from "../helpers/palettes";
 
@@ -250,6 +250,61 @@ describe("the renderer knows nothing about providers", () => {
   });
 });
 
+describe("the list widget (#141)", () => {
+  it("draws a list as a multi-line control, one entry per line, read character by character", () => {
+    render(
+      <SchemaFields
+        fields={[
+          spec({
+            name: "repos",
+            label: "Repositories",
+            widget: "list",
+            required: true,
+            help: "One repository name per line.",
+            placeholder: "One repository per line",
+            minItems: 1,
+            maxItems: 50,
+            defaultValue: "helios-firmware\nhelios-console",
+          }),
+        ]}
+        idPrefix="f"
+      />,
+    );
+
+    const repos = screen.getByLabelText("Repositories");
+
+    expect(repos.tagName).toBe("TEXTAREA");
+    expect(repos).toHaveClass("ou-input", "ou-input--multiline", "ou-input--mono");
+    expect(repos).toHaveAttribute("rows", String(LIST_ROWS));
+    expect(repos).toHaveAttribute("name", "repos");
+    expect(repos).toHaveAttribute("spellcheck", "false");
+    expect(repos).toHaveAttribute("placeholder", "One repository per line");
+    expect(repos).toBeRequired();
+    expect(repos).toHaveValue("helios-firmware\nhelios-console");
+    expect(repos).toHaveAccessibleDescription("One repository name per line.");
+  });
+
+  it("reads a list back by line, trimmed, blanks dropped, and commas accepted as a pasted list arrives", () => {
+    expect(listEntries("helios-firmware\n  helios-console \n\n")).toEqual([
+      "helios-firmware",
+      "helios-console",
+    ]);
+    expect(listEntries("a, b,c")).toEqual(["a", "b", "c"]);
+    expect(listEntries("")).toEqual([]);
+  });
+
+  it("accepts a field with no list bounds at all, as a contract without lists serves it", () => {
+    const full = spec({ name: "n", label: "N", widget: "text" });
+    const bare = Object.fromEntries(
+      Object.entries(full).filter(([key]) => key !== "minItems" && key !== "maxItems"),
+    ) as SchemaFieldSpec;
+
+    render(<SchemaFields fields={[bare]} idPrefix="f" />);
+
+    expect(screen.getByLabelText("N")).toHaveAttribute("type", "text");
+  });
+});
+
 describe("both palettes", () => {
   it("renders identically under each", () => {
     const [light, dark] = renderInBothPalettes(
@@ -258,6 +313,7 @@ describe("both palettes", () => {
           spec({ name: "baseUrl", label: "Base URL", widget: "url" }),
           spec({ name: "apiKey", label: "API key", widget: "secret" }),
           spec({ name: "region", label: "Region", widget: "select", choices: ["x"] }),
+          spec({ name: "repos", label: "Repositories", widget: "list" }),
         ]}
         idPrefix="f"
       />,

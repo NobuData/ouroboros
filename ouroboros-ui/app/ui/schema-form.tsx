@@ -1,4 +1,4 @@
-import { SelectField, TextField } from "./field";
+import { SelectField, TextAreaField, TextField } from "./field";
 import { cx } from "./class-names";
 
 import "./ui.css";
@@ -6,28 +6,36 @@ import "./ui.css";
 /**
  * A form drawn from a list of fields it did not write — the schema-driven form machinery
  * ([#231](https://github.com/NobuData/ouroboros/issues/231), shared with WF-S.4's inspector,
- * [#150](https://github.com/NobuData/ouroboros/issues/150)).
+ * [#150](https://github.com/NobuData/ouroboros/issues/150), and since Q.4 with the ticket-source
+ * settings form, [#141](https://github.com/NobuData/ouroboros/issues/141)).
  *
  * The add-provider dialog's whole claim is that a new adapter gets a working form the day it
- * lands, with no UI written for it. That is only true if the thing drawing the form has **no
- * list of fields of its own**: it takes a list, and draws one control per entry, and the
- * entry says everything — the label, the widget, whether it is required, the placeholder, the
- * bounds. So this is a primitive rather than a screen's component, for the reason the
- * `app/ui` barrel gives for every primitive: it names no domain concept. `SchemaFieldSpec`
- * is structurally the contract's `ProviderFormField`, and it will be structurally whatever
- * the workflow catalog's fields are too, because it is the shape a *form* needs and not the
- * shape any one service happens to send.
+ * lands, with no UI written for it — and the add-source dialog makes the same claim about a
+ * tracker. That is only true if the thing drawing the form has **no list of fields of its
+ * own**: it takes a list, and draws one control per entry, and the entry says everything — the
+ * label, the widget, whether it is required, the placeholder, the bounds. So this is a
+ * primitive rather than a screen's component, for the reason the `app/ui` barrel gives for
+ * every primitive: it names no domain concept. `SchemaFieldSpec` is structurally the
+ * contract's `ProviderFormField` *and* its `TicketSourceFormField`, and it will be structurally
+ * whatever the workflow catalog's fields are too, because it is the shape a *form* needs and
+ * not the shape any one service happens to send.
  *
- * ### Four widgets, and no fifth
+ * ### Five widgets, and no sixth
  *
- * `text`, `url`, `secret` and `select` — the four `ouroboros-rest`'s form dialect derives, and
- * derives rather than lets an adapter declare, so that a fifth cannot be invented per
- * provider. Each maps onto one of the field primitives with the attributes that make the
- * browser do the checking: a `url` is a `type="url"` input, a `secret` is a `type="password"`
- * one with autofill turned off, a `select` is the platform's `<select>` over `choices`, and
- * `required`, `minLength`, `maxLength` and `pattern` are the input's own — so the form refuses
- * a blank required key before a request is made, and the server's own check is the one that
- * decides.
+ * `text`, `url`, `secret`, `select` and `list` — the widgets `ouroboros-rest`'s two form
+ * dialects derive, and derive rather than let a provider declare, so that a sixth cannot be
+ * invented per provider. Each maps onto one of the field primitives with the attributes that
+ * make the browser do the checking: a `url` is a `type="url"` input, a `secret` is a
+ * `type="password"` one with autofill turned off, a `select` is the platform's `<select>` over
+ * `choices`, a `list` is a `<textarea>` with one entry per line, and `required`, `minLength`,
+ * `maxLength` and `pattern` are the input's own — so the form refuses a blank required key
+ * before a request is made, and the server's own check is the one that decides.
+ *
+ * **A `list`'s bounds describe its entries, and the browser cannot check them.** `minLength`,
+ * `maxLength` and `pattern` on a list field are per entry, and `minItems`/`maxItems` bound the
+ * list; a textarea has no attribute for any of those, so a list is submitted with only
+ * `required` enforced client-side and the server's `details.fields` is what says which entry
+ * was wrong. The help line carries the rule in words, which is what a reader needs anyway.
  *
  * ### Uncontrolled, like every field in this module
  *
@@ -39,19 +47,22 @@ import "./ui.css";
  * ### Errors arrive keyed by name
  *
  * A refusal from the service is keyed by the field's `name` — `details.fields` on a
- * `provider_config_invalid` — and that is the shape {@link SchemaFieldsProps.errors} takes, so
- * the dialog hands the service's answer straight through and each field draws its own line.
+ * `provider_config_invalid` or a `ticket_source_config_invalid` — and that is the shape
+ * {@link SchemaFieldsProps.errors} takes, so the dialog hands the service's answer straight
+ * through and each field draws its own line.
  */
 
-/** How one field is drawn — the four widgets a form dialect derives. */
-export type SchemaWidget = "text" | "url" | "secret" | "select";
+/** How one field is drawn — the five widgets the form dialects derive. */
+export type SchemaWidget = "text" | "url" | "secret" | "select" | "list";
 
 /**
  * One field of a schema-driven form.
  *
  * Every optional property is an explicit `null` rather than absent, because this is a value a
  * renderer consumes rather than a schema an author writes — and a renderer that had to supply
- * defaults would be a renderer with opinions.
+ * defaults would be a renderer with opinions. The two list bounds are the exception in shape
+ * only: a contract that has no `list` widget does not carry them, so they may be absent as
+ * well as null, and both read as *unbounded*.
  */
 export interface SchemaFieldSpec {
   /** The property name — the control's `name`, and what a submitted value is keyed by. */
@@ -66,16 +77,20 @@ export interface SchemaFieldSpec {
   readonly help: string | null;
   /** The input's placeholder, or null. Prose, not an example value. */
   readonly placeholder: string | null;
-  /** What the control starts at, or null. */
+  /** What the control starts at, or null. On a `list`, the entries joined by newlines. */
   readonly defaultValue: string | null;
   /** The options for a `select`, or null for every other widget. */
   readonly choices: readonly string[] | null;
-  /** The shortest acceptable value, or null. */
+  /** The shortest acceptable value — or entry, on a `list` — or null. */
   readonly minLength: number | null;
-  /** The longest acceptable value, or null. */
+  /** The longest acceptable value — or entry, on a `list` — or null. */
   readonly maxLength: number | null;
-  /** The pattern a value must match, in ECMA-262 syntax, or null. */
+  /** The pattern a value — or every entry, on a `list` — must match, in ECMA-262 syntax, or null. */
   readonly pattern: string | null;
+  /** The fewest entries a `list` may hold, or null. Absent on a contract with no lists. */
+  readonly minItems?: number | null;
+  /** The most entries a `list` may hold, or null. Absent on a contract with no lists. */
+  readonly maxItems?: number | null;
 }
 
 /** What is wrong with which fields, keyed by field name. Absent means nothing is. */
@@ -96,12 +111,33 @@ export interface SchemaFieldsProps {
   readonly className?: string;
 }
 
-/** The `type` each non-select widget gives its input. */
-const INPUT_TYPE: Record<Exclude<SchemaWidget, "select">, string> = {
+/** The `type` each single-line widget gives its input. */
+const INPUT_TYPE: Record<Exclude<SchemaWidget, "select" | "list">, string> = {
   text: "text",
   url: "url",
   secret: "password",
 };
+
+/** How many lines a list control shows before it scrolls. */
+export const LIST_ROWS = 5;
+
+/**
+ * The entries a `list` control's value holds, one per line.
+ *
+ * The one piece of *reading* this primitive does, exported so the form that submits a list
+ * splits it exactly as the control draws it: by line, trimmed, blank lines dropped. A comma is
+ * accepted as a separator too, because a list pasted from somewhere else arrives that way and
+ * a form that refused it would be teaching a reader this control's rule the hard way.
+ *
+ * @param value What the textarea holds.
+ * @returns The entries, in order.
+ */
+export function listEntries(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
 
 /**
  * The fields, one control each, in order.
@@ -130,7 +166,7 @@ export function SchemaFields({ fields, idPrefix, errors = {}, className }: Schem
  * @param props.spec The field.
  * @param props.id The control's id.
  * @param props.error What the service said is wrong with it, if anything.
- * @returns A text field or a select.
+ * @returns A text field, a select, or a multi-line field.
  */
 export function SchemaField({
   spec,
@@ -161,6 +197,22 @@ export function SchemaField({
           </option>
         ))}
       </SelectField>
+    );
+  }
+
+  if (spec.widget === "list") {
+    return (
+      <TextAreaField
+        {...common}
+        autoComplete="off"
+        defaultValue={spec.defaultValue ?? undefined}
+        // Names are read character by character, and a list of them is not prose to check
+        // the spelling of.
+        mono
+        placeholder={spec.placeholder ?? undefined}
+        rows={LIST_ROWS}
+        spellCheck={false}
+      />
     );
   }
 

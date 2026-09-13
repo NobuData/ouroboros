@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.34.2",
+    "version": "0.34.3",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -73,6 +73,10 @@
     {
       "name": "backlog",
       "description": "**The intake screen's own surface** (mockup 03,\n[#113](https://github.com/NobuData/ouroboros/issues/113)) — the backlog Ouroboros\nmirrors from GitHub, how fresh it is, and the one control that refreshes it now.\n\nWhat fills it is a poller\n([#102](https://github.com/NobuData/ouroboros/issues/102)) rather than anything a client\ncalls: a jittered cycle walks every enabled repository of every workspace that has a\ntoken and writes the rows, the watermark and the freshness stamp in one transaction. So\nthe operations here are a *read* of that loop's state and a *nudge* to it, and neither\none writes an issue.\n\nReading the status is every member's, `viewer` included. Starting a cycle is `owner`,\n`admin` or `member`, because it spends the workspace's hourly GitHub budget — the one\nthing in this family that costs anything."
+    },
+    {
+      "name": "sources",
+      "description": "**Where a workspace's tickets come from — the pluggable intake layer's face**\n(Q.4, [#141](https://github.com/NobuData/ouroboros/issues/141), epic\n[#128](https://github.com/NobuData/ouroboros/issues/128)). A *source* is one configured\ntracker: a GitHub account and its repositories today, a Jira site or a Linear team when\ntheir providers land. The sync loop behind it\n([#139](https://github.com/NobuData/ouroboros/issues/139)) polls every `active` source\nthrough one `TicketSourceProvider` interface and writes canonical tickets; these\noperations are how a source is added, configured, credentialled, tested, synced on\ndemand and paused.\n\n**The form is the provider's.** `GET /api/v1/sources/catalog` answers each connectable\nkind with the fields its provider declares, so a client draws the add-source form from\nthat list and knows nothing about any tracker — a provider registered tomorrow is in\ntomorrow's catalog with a working form. The `config` a client sends back is keyed by\nthose field names; the one field marked `secret` is routed to the vault and never stored\nas a setting.\n\n**The credential is never echoed.** Every resource carries `credentialMask` — `••••`\nwhile one is stored, `null` while none is — and nothing here answers with a stored\ncredential's value. `POST /api/v1/sources/{id}/credentials` is write-only: its answer is\nthe source with a masked echo of what was just stored, composed from the request and\nnothing read back.\n\nReading is every member's, `viewer` included. Adding, configuring, credentialling,\ntesting, syncing and pausing are `owner` or `admin` — testing and syncing because each\nspends a credential's budget against somebody else's API."
     },
     {
       "name": "github",
@@ -2560,6 +2564,1252 @@
           },
           "429": {
             "description": "`estimation_rate_limited` — this **workspace** has asked for more than 30 estimates\nin the last minute, whoever asked, and `details.retryAfterSeconds` says how long\nuntil the window has room. Every request that reaches this operation counts,\nincluding the ones refused `409`: a caller pressing the same button repeatedly is\ncollecting conflicts, and a limit that only counted accepted work would not see\nthem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "This workspace's ticket sources",
+        "description": "One page of the trackers this workspace has configured\n([#141](https://github.com/NobuData/ouroboros/issues/141)), ordered by display name —\nthe settings list, with its kind badge and its status dot.\n\n**The credential is not in this payload and cannot be.** The rows come through\n`ticket_sources_public`, a view with no credential column, and each entry carries\n`credentialMask` in its place — `••••` while a credential is stored and `null` while\nnone is. Nothing is decrypted to answer a listing.\n\n**`status` is the loop's word, and `statusReason` is its sentence.** `active` is\npolled; `paused` is a person's choice; `error` is the sync's report, with the honest\nreason beside it — `rate limited until 14:20 UTC`, `credentials rejected (401)` — in\nthe same four-word taxonomy every provider fails in. An `error` source is not polled\nagain until somebody acts: a new credential, new settings, an explicit resume or a\nmanual sync each say *try again*.\n\n**Any member may read it**, viewers included. Every write below is `owner` or `admin`.",
+        "operationId": "listTicketSources",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page. Empty for a workspace that has configured nothing — the settings\nsurface's guidance state, not a failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSourcePage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "5eed001a-0000-4000-8000-000000000001",
+                      "kind": "github",
+                      "displayName": "GitHub · acme-robotics",
+                      "config": {
+                        "login": "acme-robotics",
+                        "repos": [
+                          "helios-firmware",
+                          "helios-console",
+                          "helios-telemetry",
+                          "atlas-scheduler"
+                        ]
+                      },
+                      "status": "active",
+                      "statusReason": null,
+                      "credentialMask": "••••",
+                      "syncedAt": "2026-09-12T10:00:00.000Z",
+                      "createdAt": "2026-09-01T09:00:00.000Z",
+                      "updatedAt": "2026-09-12T10:00:00.000Z"
+                    },
+                    {
+                      "id": "5eed001a-0000-4000-8000-000000000002",
+                      "kind": "jira",
+                      "displayName": "Jira · PROJ",
+                      "config": {
+                        "base_url": "https://acme-robotics.atlassian.net",
+                        "project_keys": [
+                          "PROJ"
+                        ]
+                      },
+                      "status": "paused",
+                      "statusReason": null,
+                      "credentialMask": null,
+                      "syncedAt": null,
+                      "createdAt": "2026-09-01T09:00:00.000Z",
+                      "updatedAt": "2026-09-01T09:00:00.000Z"
+                    }
+                  ],
+                  "total": 2,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `limit` or `offset` is out of range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Add a ticket source",
+        "description": "Connect a tracker ([#141](https://github.com/NobuData/ouroboros/issues/141)). The\nbody's `config` is keyed by the field names the catalog declares for `kind`, and it\nis judged against the provider's **own schema** before anything is stored — every\nviolation at once, keyed by field, as `422 ticket_source_config_invalid`. The field\nmarked `secret` is split off and sealed in the vault against the new row's id; the\nrest lands in `config`.\n\n**Nothing is asked of the tracker here.** The add stores what was typed; **Test\nconnection** (`POST /api/v1/sources/{id}/test`) is the round-trip, and it is a\nseparate step so a source can be configured before its token exists. The new source is\n`active`, so the loop polls it on its next cycle — and says honestly, on the row, if\nthe tracker refused.\n\n`owner` or `admin`.",
+        "operationId": "createTicketSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketSourceCreate"
+              },
+              "example": {
+                "kind": "github",
+                "displayName": "GitHub · acme-robotics",
+                "config": {
+                  "login": "acme-robotics",
+                  "repos": [
+                    "helios-firmware",
+                    "helios-console"
+                  ],
+                  "token": "github_pat_11AAAAAAA_exampleOnlyNotARealToken"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The source as stored. `credentialMask` echoes the last four characters of the\ncredential this request carried — `••••oken` — composed from the request, never\nread back; every later read answers `••••`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSource"
+                },
+                "example": {
+                  "id": "5eed001a-0000-4000-8000-000000000001",
+                  "kind": "github",
+                  "displayName": "GitHub · acme-robotics",
+                  "config": {
+                    "login": "acme-robotics",
+                    "repos": [
+                      "helios-firmware",
+                      "helios-console"
+                    ]
+                  },
+                  "status": "active",
+                  "statusReason": null,
+                  "credentialMask": "••••oken",
+                  "syncedAt": null,
+                  "createdAt": "2026-09-12T10:00:00.000Z",
+                  "updatedAt": "2026-09-12T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Writing a ticket source is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ticket_source_name_taken` — this workspace already has a source with that display\nname. Two sources called *GitHub* in one list is a list nobody can read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body's shape: a kind outside the five, a blank or\nover-long name, a `config` that is not an object of strings and lists of strings.\nOr `ticket_source_config_invalid` — the shape was fine and the provider's schema\nrefused it; `details.fields` names every field with its sentences, in the same\n`{field: [sentences]}` form as `validation_failed`, so a form has one renderer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "schema": {
+                    "summary": "The provider's schema refused two fields",
+                    "value": {
+                      "code": "ticket_source_config_invalid",
+                      "message": "The configuration does not satisfy this provider's schema. See `details.fields`.",
+                      "details": {
+                        "fields": {
+                          "login": [
+                            "GitHub account is not in the expected format"
+                          ],
+                          "repos": [
+                            "Repositories needs at least 1 entry"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`ticket_source_kind_unsupported` — this build has no provider for the source's\nkind, and `details.registered` lists the ones it has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/catalog": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "The kinds this build can connect, each with its form",
+        "description": "The provider registry, crossing the wire\n([#141](https://github.com/NobuData/ouroboros/issues/141)). One entry per registered\nkind, in the order `ticket_sources.kind`'s CHECK declares them, each with the\n`title` the add form uses as its heading and the `fields` it draws — derived once, in\nthis service, from the provider's own `configSchema()`.\n\n**A kind that is not here is not connectable in this build**, and the settings surface\nshows it as *coming soon* rather than offering a form. The acceptance criterion this\nanswers is *\"the provider form renders from provider-declared config schema\"*: there is\nno per-kind form anywhere, and a provider that declares its schema gets one free.\n\nAny member. The catalog names no credential and no workspace fact.",
+        "operationId": "readTicketSourceCatalog",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The catalog. Empty only in a build that registers no provider at all.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSourceCatalog"
+                },
+                "example": {
+                  "kinds": [
+                    {
+                      "kind": "github",
+                      "title": "Connect a GitHub account",
+                      "capabilities": {
+                        "webhooks": false,
+                        "labels": true,
+                        "bidirectionalWrites": false
+                      },
+                      "fields": [
+                        {
+                          "name": "login",
+                          "label": "GitHub account",
+                          "widget": "text",
+                          "required": true,
+                          "help": "The organization or user whose repositories to watch, as it appears in a URL.",
+                          "placeholder": "The account name — not a URL",
+                          "defaultValue": null,
+                          "choices": null,
+                          "minLength": 1,
+                          "maxLength": 39,
+                          "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$",
+                          "minItems": null,
+                          "maxItems": null
+                        },
+                        {
+                          "name": "repos",
+                          "label": "Repositories",
+                          "widget": "list",
+                          "required": true,
+                          "help": "One repository name per line, without the account — helios-firmware, not acme/helios-firmware.",
+                          "placeholder": "One repository per line",
+                          "defaultValue": null,
+                          "choices": null,
+                          "minLength": 1,
+                          "maxLength": 100,
+                          "pattern": "^(?!\\.\\.?$)[A-Za-z0-9._-]{1,100}$",
+                          "minItems": 1,
+                          "maxItems": 50
+                        },
+                        {
+                          "name": "token",
+                          "label": "Personal access token",
+                          "widget": "secret",
+                          "required": true,
+                          "help": "Read access to issues on the repositories above. Sealed in the vault the moment it is stored and never shown again.",
+                          "placeholder": "Pasted, never typed — a fine-grained or classic token",
+                          "defaultValue": null,
+                          "choices": null,
+                          "minLength": 1,
+                          "maxLength": 4096,
+                          "pattern": null,
+                          "minItems": null,
+                          "maxItems": null
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "One ticket source",
+        "description": "The source, credential masked — see the listing. Any member.",
+        "operationId": "readTicketSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSource"
+                },
+                "example": {
+                  "id": "5eed001a-0000-4000-8000-000000000001",
+                  "kind": "github",
+                  "displayName": "GitHub · acme-robotics",
+                  "config": {
+                    "login": "acme-robotics",
+                    "repos": [
+                      "helios-firmware",
+                      "helios-console",
+                      "helios-telemetry",
+                      "atlas-scheduler"
+                    ]
+                  },
+                  "status": "active",
+                  "statusReason": null,
+                  "credentialMask": "••••",
+                  "syncedAt": "2026-09-12T10:00:00.000Z",
+                  "createdAt": "2026-09-01T09:00:00.000Z",
+                  "updatedAt": "2026-09-12T10:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ticket_source_not_found` — no source with that id in this workspace, whether or\nnot another workspace has one. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Change a source's name, settings or status",
+        "description": "Send what changed ([#141](https://github.com/NobuData/ouroboros/issues/141)). A body\ncarrying nothing changes nothing and reads back the source as it is.\n\n**`config` is replaced whole**, not merged: the settings form submits every field it\ndraws, and a merge would have no way to say *clear this optional setting*. It is judged\nagainst the provider's schema **without its secret field** — an edit does not resubmit\nthe credential, and `POST /api/v1/sources/{id}/credentials` is where that changes.\n\n**`status` takes two of the column's three values.** `paused` stops the loop polling\nthis source; `active` resumes it, and clears an `error` with its reason. `error` is the\nloop's own report and cannot be set by a client — a source painted red with no reason\nunder it is the state V031 exists to make impossible.\n\n**A change is a reason to try again.** New `config` on an `error` source resumes it\nwithout `status` having to say so; a `paused` source stays paused through an edit,\nbecause pausing was a choice too.\n\n`owner` or `admin`.",
+        "operationId": "updateTicketSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketSourcePatch"
+              },
+              "examples": {
+                "pause": {
+                  "summary": "Pause polling",
+                  "value": {
+                    "status": "paused"
+                  }
+                },
+                "repos": {
+                  "summary": "Watch one more repository",
+                  "value": {
+                    "config": {
+                      "login": "acme-robotics",
+                      "repos": [
+                        "helios-firmware",
+                        "helios-console",
+                        "atlas-scheduler"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The source after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSource"
+                },
+                "example": {
+                  "id": "5eed001a-0000-4000-8000-000000000001",
+                  "kind": "github",
+                  "displayName": "GitHub · acme-robotics",
+                  "config": {
+                    "login": "acme-robotics",
+                    "repos": [
+                      "helios-firmware",
+                      "helios-console",
+                      "helios-telemetry",
+                      "atlas-scheduler"
+                    ]
+                  },
+                  "status": "paused",
+                  "statusReason": null,
+                  "credentialMask": "••••",
+                  "syncedAt": "2026-09-12T10:00:00.000Z",
+                  "createdAt": "2026-09-01T09:00:00.000Z",
+                  "updatedAt": "2026-09-12T10:05:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Writing a ticket source is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ticket_source_not_found` — no source with that id in this workspace, whether or\nnot another workspace has one. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ticket_source_name_taken` — the new display name is another source's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, or the body's shape is wrong. Or\n`ticket_source_config_invalid` — the provider's schema refused the new settings;\n`details.fields` says which.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`ticket_source_kind_unsupported` — this build has no provider for the source's\nkind, and `details.registered` lists the ones it has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}/credentials": {
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Store a source's credential",
+        "description": "Write-only ([#141](https://github.com/NobuData/ouroboros/issues/141)): the credential\ngoes in, is judged against the schema's secret field — its own `minLength`,\n`maxLength` and `pattern` — is sealed in the vault against this source's id, and\nreplaces whatever was stored. **Nothing here, and nothing anywhere in this API, answers\nwith a stored credential's value.** What comes back is the source with a masked echo —\n`••••` and the last four characters of what this request carried — so whoever pasted a\ntoken can see it took.\n\n`200` rather than `201`: nothing is created. A `POST` rather than a `PUT` for the\nreason every credential-bearing operation in this API is one: the value travels in a\nbody, never in a request line, a history or a `Referer`.\n\n**An `error` source is resumed.** A new credential is the fix for the one failure a\nperson fixes by rotating, and the next sync says honestly whether it was the fix for\nthis one. A `paused` source stays paused.\n\n`owner` or `admin`.",
+        "operationId": "setTicketSourceCredentials",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketSourceCredentials"
+              },
+              "example": {
+                "secret": "github_pat_11AAAAAAA_exampleOnlyNotARealToken"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The source, with a masked echo of what was just stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSource"
+                },
+                "example": {
+                  "id": "5eed001a-0000-4000-8000-000000000001",
+                  "kind": "github",
+                  "displayName": "GitHub · acme-robotics",
+                  "config": {
+                    "login": "acme-robotics",
+                    "repos": [
+                      "helios-firmware",
+                      "helios-console",
+                      "helios-telemetry",
+                      "atlas-scheduler"
+                    ]
+                  },
+                  "status": "active",
+                  "statusReason": null,
+                  "credentialMask": "••••oken",
+                  "syncedAt": "2026-09-12T10:00:00.000Z",
+                  "createdAt": "2026-09-01T09:00:00.000Z",
+                  "updatedAt": "2026-09-12T10:06:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Writing a ticket source is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ticket_source_not_found` — no source with that id in this workspace, whether or\nnot another workspace has one. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ticket_source_credentials_unsupported` — this source's provider declares no\ncredential field, so there is nothing to store one as.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, or `secret` is absent, blank or over\n4096 characters. Or `ticket_source_config_invalid` — the schema's own rules for\nthe secret field refused it, under `details.fields`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`ticket_source_kind_unsupported` — this build has no provider for the source's\nkind, and `details.registered` lists the ones it has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}/test": {
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Ask the provider whether this source works",
+        "description": "**Test connection** ([#141](https://github.com/NobuData/ouroboros/issues/141)): the\nstored settings and the stored credential, through the provider's own `validateConfig`\n— a real round-trip, one `GET /repos/{owner}/{repo}` per enabled repository for the\nGitHub kind — so the answer is *can this token see these repositories*, not *is this\nshaped right*.\n\n**A tracker that refused is a `200`.** A refused token, a repository the token cannot\nsee, a rate limit and a closed socket are the states the form exists to render, so they\ncome back as `status: \"failed\"` with the class and the provider's own words. The only\nrefusals this operation answers itself are about the *request*: no such source, no\nprovider for its kind.\n\n**Nothing is written.** `status` and `statusReason` on the row belong to the sync loop\n— written by a sync, cleared by the next that succeeds — and a test that wrote `error`\nwould stop the loop over a probe pressed while the tracker was down. The credential is\nopened for the length of this one call and dropped.\n\n`owner` or `admin`: a test spends a credential's budget.",
+        "operationId": "testTicketSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the provider found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSourceTest"
+                },
+                "examples": {
+                  "ok": {
+                    "summary": "The token sees every repository",
+                    "value": {
+                      "sourceId": "5eed001a-0000-4000-8000-000000000001",
+                      "checkedAt": "2026-09-12T10:07:00.000Z",
+                      "status": "ok",
+                      "errorClass": null,
+                      "detail": "acme-robotics · 4 repositories",
+                      "reason": null
+                    }
+                  },
+                  "refused": {
+                    "summary": "The token was refused",
+                    "value": {
+                      "sourceId": "5eed001a-0000-4000-8000-000000000001",
+                      "checkedAt": "2026-09-12T10:07:00.000Z",
+                      "status": "failed",
+                      "errorClass": "auth",
+                      "detail": "GitHub refused the token (401)",
+                      "reason": "credentials rejected"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Writing a ticket source is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ticket_source_not_found` — no source with that id in this workspace, whether or\nnot another workspace has one. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`ticket_source_kind_unsupported` — this build has no provider for the source's\nkind, and `details.registered` lists the ones it has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}/sync": {
+      "post": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Sync this source now",
+        "description": "The manual trigger ([#141](https://github.com/NobuData/ouroboros/issues/141)) — one\nsource, on demand, outside the loop's cycle. What a person presses after adding a\nsource, after fixing one, or after filing a ticket they want mirrored now.\n\n**`202`, and the body is the status as it stood at acceptance.** The sync outlives this\nresponse, so `running` is `true` and `syncedAt` is still the *previous* sync's. What a\nclient watches for is `syncedAt` advancing on\n`GET /api/v1/sources/{id}/status`.\n\n**Three refusals, all `409`, in the order a person would want to hear them.**\n`ticket_source_paused` — the source is paused, and syncing it would override that\nchoice with less ceremony than the pause took; resume it first.\n`ticket_source_sync_running` — a sync of this source is in flight, from a cycle or a\nclick; watch the status. `ticket_source_sync_too_soon` — this source was synced within\nthe last 30 seconds, measured from that sync's start whoever caused it, and another\nwould spend the same requests for the same answer; wait `details.retryAfterSeconds`.\n\n**An `error` source is synced.** The loop's own filter is `active`, so a source that\nfailed is not polled again until somebody acts — and this is somebody acting. A success\nclears the error; a failure restates it honestly.\n\n`owner` or `admin`: a sync spends a credential's budget.",
+        "operationId": "syncTicketSource",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted — a sync has started. The body is the status at that moment, with\n`running: true` and `retryAfterSeconds` set to the full minimum interval.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSourceStatusReport"
+                },
+                "example": {
+                  "sourceId": "5eed001a-0000-4000-8000-000000000001",
+                  "status": "active",
+                  "statusReason": null,
+                  "syncedAt": "2026-09-12T10:00:00.000Z",
+                  "running": true,
+                  "retryAfterSeconds": 30,
+                  "lastSync": {
+                    "startedAt": "2026-09-12T10:00:00.000Z",
+                    "outcome": "synced",
+                    "imported": 2,
+                    "updated": 1,
+                    "unchanged": 6,
+                    "skippedClosed": 0,
+                    "enqueued": 2,
+                    "hasMore": false,
+                    "errorClass": null,
+                    "reason": null
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Writing a ticket source is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ticket_source_not_found` — no source with that id in this workspace, whether or\nnot another workspace has one. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ticket_source_paused`, `ticket_source_sync_running` or\n`ticket_source_sync_too_soon` — see above. Only the last carries\n`details.retryAfterSeconds`; how long a running sync will take is not knowable in\nadvance, and a made-up countdown is worse than none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "paused": {
+                    "summary": "The source is paused",
+                    "value": {
+                      "code": "ticket_source_paused",
+                      "message": "This source is paused. Resume it before syncing it.",
+                      "details": {
+                        "sourceId": "5eed001a-0000-4000-8000-000000000001"
+                      }
+                    }
+                  },
+                  "running": {
+                    "summary": "A sync is in flight",
+                    "value": {
+                      "code": "ticket_source_sync_running",
+                      "message": "A sync of this source is already running. It will finish on its own.",
+                      "details": {
+                        "sourceId": "5eed001a-0000-4000-8000-000000000001"
+                      }
+                    }
+                  },
+                  "too_soon": {
+                    "summary": "One ran a moment ago",
+                    "value": {
+                      "code": "ticket_source_sync_too_soon",
+                      "message": "This source was synced less than 30 seconds ago. Try again shortly.",
+                      "details": {
+                        "retryAfterSeconds": 22
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`ticket_source_kind_unsupported` — this build has no provider for the source's\nkind, and `details.registered` lists the ones it has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources/{id}/status": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "How this source's sync stands",
+        "description": "The settings row's second line ([#141](https://github.com/NobuData/ouroboros/issues/141)):\n*synced 40s ago*, or the honest reason it is not fresher.\n\n**Two halves, and only one survives a restart.** `status`, `statusReason` and\n`syncedAt` are columns — what the last sync that *happened* wrote. `running`,\n`retryAfterSeconds` and `lastSync` are the loop's memory of this process: a fresh\nprocess answers `lastSync: null` rather than inventing a result it never saw.\n\n`retryAfterSeconds` is what lets a client draw **Sync now** as waiting rather than\noffer a press the trigger will refuse. Any member.",
+        "operationId": "readTicketSourceStatus",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SourceId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report. Never a `404` for a source that exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketSourceStatusReport"
+                },
+                "examples": {
+                  "fresh": {
+                    "summary": "Synced a moment ago, nothing to do",
+                    "value": {
+                      "sourceId": "5eed001a-0000-4000-8000-000000000001",
+                      "status": "active",
+                      "statusReason": null,
+                      "syncedAt": "2026-09-12T10:00:00.000Z",
+                      "running": false,
+                      "retryAfterSeconds": 18,
+                      "lastSync": {
+                        "startedAt": "2026-09-12T10:00:00.000Z",
+                        "outcome": "synced",
+                        "imported": 0,
+                        "updated": 0,
+                        "unchanged": 9,
+                        "skippedClosed": 0,
+                        "enqueued": 0,
+                        "hasMore": false,
+                        "errorClass": null,
+                        "reason": null
+                      }
+                    }
+                  },
+                  "rate_limited": {
+                    "summary": "The tracker refused — the row says until when",
+                    "value": {
+                      "sourceId": "5eed001a-0000-4000-8000-000000000002",
+                      "status": "error",
+                      "statusReason": "rate limited until 14:20 UTC",
+                      "syncedAt": "2026-09-12T09:30:00.000Z",
+                      "running": false,
+                      "retryAfterSeconds": null,
+                      "lastSync": {
+                        "startedAt": "2026-09-12T10:00:00.000Z",
+                        "outcome": "failed",
+                        "imported": 0,
+                        "updated": 0,
+                        "unchanged": 0,
+                        "skippedClosed": 0,
+                        "enqueued": 0,
+                        "hasMore": false,
+                        "errorClass": "rate_limit",
+                        "reason": "rate limited until 14:20 UTC"
+                      }
+                    }
+                  },
+                  "never": {
+                    "summary": "A fresh process, and a source never synced",
+                    "value": {
+                      "sourceId": "5eed001a-0000-4000-8000-000000000003",
+                      "status": "active",
+                      "statusReason": null,
+                      "syncedAt": null,
+                      "running": false,
+                      "retryAfterSeconds": null,
+                      "lastSync": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ticket_source_not_found` — no source with that id in this workspace, whether or\nnot another workspace has one. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10675,6 +11925,17 @@
         },
         "example": "5eed000c-0000-4000-8000-000000000001"
       },
+      "SourceId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "A ticket source's id. A source of another workspace answers `404`, never `403`:\nconfirming that an identifier names something real is the whole of what enumerating\nidentifiers is for, and a source row carries a sealed credential.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed001a-0000-4000-8000-000000000001"
+      },
       "EscalationRuleId": {
         "name": "id",
         "in": "path",
@@ -17497,6 +18758,692 @@
             "examples": [
               "llama4:scout"
             ]
+          }
+        }
+      },
+      "TicketSourceKind": {
+        "type": "string",
+        "title": "TicketSourceKind",
+        "enum": [
+          "github",
+          "gitlab",
+          "jira",
+          "linear",
+          "custom"
+        ],
+        "description": "Which tracker a source is — `ticket_sources.kind`'s five values (V030, decision\n**P6**). The registry resolves a provider by it; a kind with no provider in a build is\nan honest `501` on every operation that reaches one, and absent from the catalog.\n`custom` is what a provider written outside this repository registers as.",
+        "examples": [
+          "github"
+        ]
+      },
+      "TicketSourceStatus": {
+        "type": "string",
+        "title": "TicketSourceStatus",
+        "enum": [
+          "active",
+          "paused",
+          "error"
+        ],
+        "description": "`active` — the loop polls it. `paused` — a person's choice. `error` — the sync's\nreport, always with a `statusReason` beside it, and not polled again until somebody\nacts. Three states rather than a boolean precisely so a source that is failing cannot\nbe confused with one somebody switched off.",
+        "examples": [
+          "active"
+        ]
+      },
+      "TicketSourceErrorClass": {
+        "type": "string",
+        "title": "TicketSourceErrorClass",
+        "enum": [
+          "auth",
+          "rate_limit",
+          "not_found",
+          "upstream"
+        ],
+        "description": "The four words every provider is allowed to fail in\n([#139](https://github.com/NobuData/ouroboros/issues/139)): the credential was refused;\nthe tracker is working and refusing anyway; the project or repository is not there, or\ncannot be seen; the tracker answered with its own failure, or did not answer. Each\nbecomes a sentence on the row — `credentials rejected`, `rate limited until 14:20 UTC`,\n`project or repository not found`, `tracker unavailable` — composed by this service, so\nthe four read the same whichever tracker produced them.",
+        "examples": [
+          "rate_limit"
+        ]
+      },
+      "TicketSourceCapabilities": {
+        "type": "object",
+        "title": "TicketSourceCapabilities",
+        "description": "What a provider can do — its own `capabilities()`, copied onto the catalog entry\nunchanged. Three flags, all present: a total shape, so no client has to decide what an\nabsent flag means. `webhooks` says whether the provider accepts deliveries; `labels`\nwhether the concept exists at the tracker at all (the difference between an empty\nchip-set because nothing matched and one because there is nothing to match);\n`bidirectionalWrites` is reserved and `false` on every provider this build ships.",
+        "additionalProperties": false,
+        "required": [
+          "webhooks",
+          "labels",
+          "bidirectionalWrites"
+        ],
+        "properties": {
+          "webhooks": {
+            "type": "boolean",
+            "examples": [
+              false
+            ]
+          },
+          "labels": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          },
+          "bidirectionalWrites": {
+            "type": "boolean",
+            "examples": [
+              false
+            ]
+          }
+        }
+      },
+      "TicketSourceFormWidget": {
+        "type": "string",
+        "title": "TicketSourceFormWidget",
+        "enum": [
+          "text",
+          "url",
+          "secret",
+          "select",
+          "list"
+        ],
+        "description": "How one form field is drawn. The model-provider dialect's four, plus `list` — a list\nof strings, one entry per line, the one field type a tracker needs that a model\nprovider never did (a repository list, a set of project keys). **Derived** from the\nprovider's schema rather than declared by it, so a fifth widget cannot be invented per\nprovider.",
+        "examples": [
+          "list"
+        ]
+      },
+      "TicketSourceFormField": {
+        "type": "object",
+        "title": "TicketSourceFormField",
+        "description": "One field of the add-source form, as the form renders it. `ProviderFormField`'s\neleven members plus two, so one form primitive draws both. Every optional keyword is\nan explicit `null`. On a `list` field, `minLength`, `maxLength` and `pattern` describe\n**each entry** and `minItems`/`maxItems` bound the list; on every other widget the last\ntwo are `null`.\n\nThe credential is the field whose `widget` is `secret`. At most one per entry; it is\nsubmitted in `config` like every other field and routed to the vault by the service,\nnever stored as a setting.",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "label",
+          "widget",
+          "required",
+          "help",
+          "placeholder",
+          "defaultValue",
+          "choices",
+          "minLength",
+          "maxLength",
+          "pattern",
+          "minItems",
+          "maxItems"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The property name — what the submitted value is keyed by in `config`.",
+            "examples": [
+              "repos"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "What the `<label>` says.",
+            "examples": [
+              "Repositories"
+            ]
+          },
+          "widget": {
+            "$ref": "#/components/schemas/TicketSourceFormWidget"
+          },
+          "required": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          },
+          "help": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The help line under the control, or null."
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The control's placeholder, or null. Prose, not an example value."
+          },
+          "defaultValue": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the control starts at, or null. Never set on the secret field or a list."
+          },
+          "choices": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "The options for a `select`, or null for every other widget."
+          },
+          "minLength": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The shortest acceptable value — or entry, on a list — or null."
+          },
+          "maxLength": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The longest acceptable value — or entry, on a list — or null."
+          },
+          "pattern": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A regular expression a value — or every entry, on a list — must match, in ECMA-262 syntax, or null."
+          },
+          "minItems": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The fewest entries a `list` may hold, or null on every other widget."
+          },
+          "maxItems": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The most entries a `list` may hold, or null on every other widget."
+          }
+        }
+      },
+      "TicketSourceCatalogEntry": {
+        "type": "object",
+        "title": "TicketSourceCatalogEntry",
+        "description": "One connectable kind — a tile in the add-source picker, and the form behind it. The\n`title` is the form's heading, straight from the provider's schema; `fields` is what\nthe form draws, in the schema's own property order.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "title",
+          "fields",
+          "capabilities"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TicketSourceKind"
+          },
+          "title": {
+            "type": "string",
+            "examples": [
+              "Connect a GitHub account"
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketSourceFormField"
+            }
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/TicketSourceCapabilities"
+          }
+        }
+      },
+      "TicketSourceCatalog": {
+        "type": "object",
+        "title": "TicketSourceCatalog",
+        "description": "Every kind this build can connect, in `ticket_sources.kind`'s declaration order. Empty\nonly in a build that registers no provider at all.",
+        "additionalProperties": false,
+        "required": [
+          "kinds"
+        ],
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketSourceCatalogEntry"
+            }
+          }
+        }
+      },
+      "TicketSourceConfigSubmission": {
+        "type": "object",
+        "title": "TicketSourceConfigSubmission",
+        "description": "A provider's settings as a form submits them, keyed by the catalog's field names.\nEach value is a string, or a list of strings for a `list` field. At most twenty\nsettings; a string at most 2048 characters; a list at most a hundred entries. What each\nfield *means* — and which one is the credential — is the provider's schema, and the\nservice holds the submission to it.",
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 2048
+            },
+            {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "string",
+                "maxLength": 2048
+              }
+            }
+          ]
+        },
+        "maxProperties": 20,
+        "examples": [
+          {
+            "login": "acme-robotics",
+            "repos": [
+              "helios-firmware",
+              "helios-console"
+            ],
+            "token": "github_pat_11AAAAAAA_exampleOnlyNotARealToken"
+          }
+        ]
+      },
+      "TicketSourceConfig": {
+        "type": "object",
+        "title": "TicketSourceConfig",
+        "description": "A provider's settings as stored — `ticket_sources.config`, minus the credential, which\nnever enters this column. An open object, deliberately: its keys are the provider's\nschema's, and a client draws them from the catalog's fields rather than from a shape\nwritten here.",
+        "additionalProperties": true,
+        "examples": [
+          {
+            "login": "acme-robotics",
+            "repos": [
+              "helios-firmware",
+              "helios-console"
+            ]
+          }
+        ]
+      },
+      "TicketSource": {
+        "type": "object",
+        "title": "TicketSource",
+        "description": "One configured tracker, as the settings list draws it — the kind badge, the status dot,\nthe honest reason, and a masked credential. See the `sources` tag for what\n`credentialMask` does and does not say.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "displayName",
+          "config",
+          "status",
+          "statusReason",
+          "credentialMask",
+          "syncedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TicketSourceKind"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "What the list calls it. Unique per workspace.",
+            "examples": [
+              "GitHub · acme-robotics"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/TicketSourceConfig"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TicketSourceStatus"
+          },
+          "statusReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "description": "Why it is `error`, in the loop's words, or null.",
+            "examples": [
+              "rate limited until 14:20 UTC"
+            ]
+          },
+          "credentialMask": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`••••` while a credential is stored and `null` while none is. On the answer to a\nwrite that carried one, `••••` and its last four characters — composed from the\nrequest, never read back.",
+            "examples": [
+              "••••"
+            ]
+          },
+          "syncedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was last synced successfully, or null."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TicketSourcePage": {
+        "type": "object",
+        "title": "TicketSourcePage",
+        "description": "One page of a workspace's ticket sources, ordered by display name.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketSource"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              2
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              25
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              0
+            ]
+          }
+        }
+      },
+      "TicketSourceCreate": {
+        "type": "object",
+        "title": "TicketSourceCreate",
+        "description": "What an add sends: the kind, the list's heading, and the provider's own settings —\nthe credential among them, under the field the catalog marks `secret`.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "displayName",
+          "config"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TicketSourceKind"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The list's heading. Trimmed and non-blank, and unique per workspace.",
+            "examples": [
+              "GitHub · acme-robotics"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/TicketSourceConfigSubmission"
+          }
+        }
+      },
+      "TicketSourcePatch": {
+        "type": "object",
+        "title": "TicketSourcePatch",
+        "description": "What may change about a source: send what changed. `config` is replaced whole and\njudged without the schema's secret field; `status` takes `active` or `paused`, never\nthe loop's own `error`.",
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "examples": [
+              "GitHub · acme-robotics"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/TicketSourceConfigSubmission"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused"
+            ],
+            "examples": [
+              "paused"
+            ]
+          }
+        }
+      },
+      "TicketSourceCredentials": {
+        "type": "object",
+        "title": "TicketSourceCredentials",
+        "description": "The credential a source stores, exactly as typed — trimmed by nobody. Judged against\nthe provider schema's secret field, sealed, and never echoed.",
+        "additionalProperties": false,
+        "required": [
+          "secret"
+        ],
+        "properties": {
+          "secret": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "writeOnly": true
+          }
+        }
+      },
+      "TicketSourceTest": {
+        "type": "object",
+        "title": "TicketSourceTest",
+        "description": "What **Test connection** found: a pass with the provider's own words for what it\nsaw — `acme-robotics · 4 repositories` — or a failure with its class, the provider's\nwords for what went wrong, and the taxonomy's sentence for the class. `detail` never\ncarries a credential; the SPI holds every provider to that.",
+        "additionalProperties": false,
+        "required": [
+          "sourceId",
+          "checkedAt",
+          "status",
+          "errorClass",
+          "detail",
+          "reason"
+        ],
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed"
+            ]
+          },
+          "errorClass": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketSourceErrorClass"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which of the four a failure was, or null on a pass."
+          },
+          "detail": {
+            "type": "string",
+            "description": "The provider's own phrase.",
+            "examples": [
+              "acme-robotics · 4 repositories"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The taxonomy's sentence for the class — the words the row would carry — or null on a pass.",
+            "examples": [
+              "credentials rejected"
+            ]
+          }
+        }
+      },
+      "TicketSourceSyncResult": {
+        "type": "object",
+        "title": "TicketSourceSyncResult",
+        "description": "What one completed sync did. `synced` — the provider answered and the page was stored;\n`failed` — it reported one of the four classes; `skipped` — the loop did not reach the\nprovider at all (no provider for the kind in this build, or a sync of the same source\nalready in flight). Counts are zero on a failure or a skip; `reason` carries the\nfailure's sentence or the skip's, and null on a success.",
+        "additionalProperties": false,
+        "required": [
+          "startedAt",
+          "outcome",
+          "imported",
+          "updated",
+          "unchanged",
+          "skippedClosed",
+          "enqueued",
+          "hasMore",
+          "errorClass",
+          "reason"
+        ],
+        "properties": {
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "synced",
+              "failed",
+              "skipped"
+            ]
+          },
+          "imported": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unchanged": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skippedClosed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "enqueued": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "errorClass": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketSourceErrorClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TicketSourceStatusReport": {
+        "type": "object",
+        "title": "TicketSourceStatusReport",
+        "description": "How one source's sync stands. `status`, `statusReason` and `syncedAt` are the row's\nand survive a restart; `running`, `retryAfterSeconds` and `lastSync` are this\nprocess's memory and do not.",
+        "additionalProperties": false,
+        "required": [
+          "sourceId",
+          "status",
+          "statusReason",
+          "syncedAt",
+          "running",
+          "retryAfterSeconds",
+          "lastSync"
+        ],
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TicketSourceStatus"
+          },
+          "statusReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "syncedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "running": {
+            "type": "boolean",
+            "description": "Whether a sync of this source is in flight right now."
+          },
+          "retryAfterSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Seconds until a manual sync would be accepted, or null when one would be accepted\nnow — what lets a client draw **Sync now** as waiting rather than offer a press the\ntrigger will refuse."
+          },
+          "lastSync": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketSourceSyncResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the most recent sync in this process did, or null when it has done none."
           }
         }
       },

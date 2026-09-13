@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   DASHBOARD_PATH,
+  DASHBOARD_QUEUE_HASH,
   ISSUES_PATH,
   LOGIN_PATH,
   MODELS_PATH,
   PROVIDERS_PATH,
   REGISTRY_PATH,
   RETURN_TO_PARAM,
-  DASHBOARD_QUEUE_HASH,
   ROUTING_MATRIX_HASH,
   ROUTING_RULES_HASH,
+  SETTINGS_PATH,
+  SOURCES_PATH,
   loginPath,
   safeReturnTo,
 } from "@/app/paths";
@@ -54,6 +56,15 @@ describe("the paths themselves", () => {
     // **Models** lit on the third page of the section as well.
     expect(REGISTRY_PATH).toBe("/models/registry");
     expect(REGISTRY_PATH.startsWith(`${MODELS_PATH}/`)).toBe(true);
+  });
+
+  it("put the ticket sources under the Settings section, which is decision S2's mount point (#141)", () => {
+    // The sidebar's **Settings** entry leads to `/settings`, which redirects to the section's
+    // one built tab until #491 builds the hub; the tab is under it so the entry stays lit
+    // there and BS.1's mounting of the surface moves no URL.
+    expect(SETTINGS_PATH).toBe("/settings");
+    expect(SOURCES_PATH).toBe("/settings/sources");
+    expect(SOURCES_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
   });
 
   it("give each Models surface a segment of its own", () => {

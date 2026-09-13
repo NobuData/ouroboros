@@ -16,13 +16,15 @@
  * providers/github.*             the GitHub provider — the first conforming plugin
  * ```
  *
- * **It declares no controller, and that is deliberate.** The source-management API — add,
- * configure, pause, test, sync, status — is Q.4's
- * ([#141](https://github.com/NobuData/ouroboros/issues/141)), and it will live with the
- * settings surface it serves. What this module owns is the cycle those routes will call, which
- * is `BacklogSyncModule`'s division of labour exactly: a module with a loop and no routes, and
- * a module with routes and no loop. Keeping them apart is what preserves this module's one
- * property — nothing an HTTP request does can reach inside a cycle.
+ * **It declares one controller since Q.4** ([#141](https://github.com/NobuData/ouroboros/issues/141)):
+ * `sources.controller.ts`, the source-management API — add, configure, pause, credentials,
+ * test, sync, status. Q.2 shipped this module with no routes and named the division of labour
+ * it wanted kept — *nothing an HTTP request does can reach inside a cycle* — and the routes keep
+ * it: `SourcesService` reaches the loop through two public members, `syncSource` for one source
+ * on demand and the three read-only accessors a status report is composed from, and the
+ * cycle's own machinery stays private. The request's statements are `sources.repository.ts`,
+ * workspace-scoped; the loop's stay in `ticket-sources.repository.ts`, unscoped, and the one
+ * statement that reads a sealed credential is still that file's.
  *
  * **{@link TICKET_SOURCE_PROVIDERS} is the registration point, and this is the file that
  * changes when a build gains a tracker.** Q.3
@@ -76,6 +78,9 @@ import {
   GITHUB_SOURCE_BUDGET_PROVIDER,
   GithubTicketSourceProvider,
 } from "./providers/github.provider";
+import { SourcesController } from "./sources.controller";
+import { SourcesRepository } from "./sources.repository";
+import { SourcesService } from "./sources.service";
 import { TICKET_SOURCE_PROVIDERS, TicketSourceRegistry } from "./ticket-source.registry";
 import { TicketSourcesRepository } from "./ticket-sources.repository";
 import { TicketSourcesScheduler } from "./ticket-sources.scheduler";
@@ -85,11 +90,14 @@ import { LoggingTicketIntake, TICKET_INTAKE } from "./ticket.intake";
 
 @Module({
   imports: [DbModule, VaultModule, GithubModule, ScheduleModule.forRoot()],
+  controllers: [SourcesController],
   providers: [
     TicketSourcesService,
     TicketSourcesRepository,
     TicketSourcesScheduler,
     TicketSourceRegistry,
+    SourcesService,
+    SourcesRepository,
     GithubTicketSourceProvider,
     GITHUB_SOURCE_BUDGET_PROVIDER,
     {

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { SelectField, TextField, Toggle } from "@/app/ui";
+import { SelectField, TextAreaField, TextField, Toggle } from "@/app/ui";
 
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 
@@ -87,6 +87,30 @@ describe("the text field", () => {
       "placeholder",
       "acme.ouroboros.dev",
     );
+  });
+});
+
+describe("the multi-line field (#141)", () => {
+  it("is a textarea in the input's box, with the multiline modifier and its own frame", () => {
+    render(<TextAreaField id="repos" label="Repositories" name="repos" hint="One per line." />);
+
+    const repos = screen.getByLabelText("Repositories");
+
+    expect(repos.tagName).toBe("TEXTAREA");
+    expect(repos).toHaveClass("ou-input", "ou-input--multiline");
+    expect(repos).not.toHaveClass("ou-input--mono");
+    expect(repos).toHaveAttribute("name", "repos");
+    expect(repos).toHaveAccessibleDescription("One per line.");
+  });
+
+  it("reads character by character when told to, and marks its own error invalid", () => {
+    render(<TextAreaField id="repos" label="Repositories" mono error="Too many." />);
+
+    const repos = screen.getByLabelText("Repositories");
+
+    expect(repos).toHaveClass("ou-input--mono");
+    expect(repos).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("Too many.");
   });
 });
 

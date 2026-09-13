@@ -18,8 +18,8 @@ import {
   NO_REPOS_TITLE,
   NO_TOKEN_MEMBER_NOTE,
   NO_TOKEN_TITLE,
+  OPEN_SETTINGS_HREF,
   OPEN_SETTINGS_LABEL,
-  OPEN_SETTINGS_SOON,
   PAUSE_HEADLINE,
   SYNC_UNREAD_HEADLINE,
   firstSyncProgress,
@@ -50,6 +50,7 @@ import {
   selectLabel,
 } from "@/app/issues/table";
 import { type HeadOutcome, queueLabel } from "@/app/issues/view";
+import { SOURCES_PATH } from "@/app/paths";
 import { DEFAULT_POLL_SECONDS, type PollAnswer } from "@/app/poll";
 
 import {
@@ -712,16 +713,16 @@ describe("the guidance states (#120)", () => {
     stop();
   });
 
-  it("tells an admin to connect GitHub over a workspace with no token, with the control labelled rather than linked nowhere", async () => {
+  it("sends an admin to the ticket-source settings over a workspace with no token, which is where #141 built them", async () => {
     await mounted({ listing: nothing(), sync: paused("not_configured") });
 
     expect(screen.getByText(NO_TOKEN_TITLE)).toHaveClass("ou-empty__title");
 
-    const control = screen.getByRole("button", { name: OPEN_SETTINGS_LABEL });
+    const control = screen.getByRole("link", { name: OPEN_SETTINGS_LABEL });
 
-    expect(control).toHaveAttribute("aria-disabled", "true");
-    expect(control).toHaveAttribute("title", OPEN_SETTINGS_SOON);
-    expect(screen.queryByRole("link")).toBeNull();
+    expect(control).toHaveAttribute("href", OPEN_SETTINGS_HREF);
+    expect(control).toHaveAttribute("href", SOURCES_PATH);
+    expect(screen.queryByRole("button", { name: OPEN_SETTINGS_LABEL })).toBeNull();
     // Said once: the empty state is the explanation, so no banner repeats it.
     expect(screen.queryByText(PAUSE_HEADLINE.not_configured)).toBeNull();
   });
@@ -731,7 +732,7 @@ describe("the guidance states (#120)", () => {
 
     expect(screen.getByText(NO_TOKEN_TITLE)).toBeInTheDocument();
     expect(screen.getByText(NO_TOKEN_MEMBER_NOTE)).toHaveClass("issues-guidance__note");
-    expect(screen.queryByRole("button", { name: OPEN_SETTINGS_LABEL })).toBeNull();
+    expect(screen.queryByRole("link", { name: OPEN_SETTINGS_LABEL })).toBeNull();
   });
 
   it("sends an admin to sign-in's step 2, opened on this workspace, over a token pointed at nothing", async () => {

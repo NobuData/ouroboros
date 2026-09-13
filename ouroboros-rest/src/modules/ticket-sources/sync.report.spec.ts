@@ -1,4 +1,5 @@
 import {
+  SOURCE_SKIPPED_IN_FLIGHT,
   SOURCE_SKIPPED_UNSUPPORTED,
   SOURCE_SKIPS,
   SOURCE_SKIP_MESSAGES,
@@ -54,20 +55,30 @@ function report(sources: readonly SourceSyncOutcome[]): SyncCycleReport {
 }
 
 describe("the skip vocabulary", () => {
-  it("has exactly one word, because the SPI absorbed the rest", () => {
+  it("has exactly two words, because the SPI absorbed the rest", () => {
     // `backlog-sync/sync.report.ts` needs six reasons because that module *is* the GitHub
-    // client. Every question of that shape is behind `TicketSourceProvider` here, and a second
-    // word appearing in this list would mean the loop had learned something about a tracker.
-    expect([...SOURCE_SKIPS]).toStrictEqual([SOURCE_SKIPPED_UNSUPPORTED]);
+    // client. Every question of that shape is behind `TicketSourceProvider` here, and a word
+    // appearing in this list that named a tracker's state would mean the loop had learned
+    // something about a tracker. Neither of these does: one is a property of the build, and
+    // the other — Q.4's — of the loop having two callers.
+    expect([...SOURCE_SKIPS]).toStrictEqual([SOURCE_SKIPPED_UNSUPPORTED, SOURCE_SKIPPED_IN_FLIGHT]);
   });
 
   it.each(SOURCE_SKIPS)("writes a sentence for %s that a person can act on", (skip) => {
     const message = SOURCE_SKIP_MESSAGES[skip];
 
     expect(message.trim()).not.toBe("");
-    // Says what is true — the source is configured, and nothing is polling it — rather than
-    // implying the workspace did something wrong.
-    expect(message).toContain("configured");
+    // Says what is true rather than implying the workspace did something wrong: no *failed*,
+    // no *error*, no *invalid*.
+    expect(message).not.toMatch(/fail|error|invalid/i);
+  });
+
+  it("says of an unsupported kind that the source is configured, and nothing is polling it", () => {
+    expect(SOURCE_SKIP_MESSAGES[SOURCE_SKIPPED_UNSUPPORTED]).toContain("configured");
+  });
+
+  it("says of an in-flight source that a sync was already running", () => {
+    expect(SOURCE_SKIP_MESSAGES[SOURCE_SKIPPED_IN_FLIGHT]).toContain("already running");
   });
 });
 

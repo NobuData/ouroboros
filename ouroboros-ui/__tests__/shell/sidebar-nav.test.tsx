@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DASHBOARD_PATH, ISSUES_PATH, MODELS_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, ISSUES_PATH, MODELS_PATH, SETTINGS_PATH } from "@/app/paths";
 import { focusStops } from "@/app/shell/focus-trap";
 import type { NavEntry } from "@/app/shell/nav";
 import { INBOX_BADGE_SOURCE, SEEDED_NAV_ENTRIES } from "@/app/shell/nav-modules";
@@ -182,9 +182,10 @@ describe("what the sidebar links to", () => {
   it("links only to routes that exist", () => {
     render(<SidebarNav />);
 
-    // The three screens that are built: the dashboard (#45), Issues (#115) and Models (#200).
-    // Every other entry is a screen nobody has built, and a link to one would be a 404 in the
-    // product's primary navigation. The count is asserted too, so a fourth link cannot appear
+    // The four screens that are built: the dashboard (#45), Issues (#115), Models (#200) and
+    // Settings (#141, whose `/settings` redirects to its one built tab until #491). Every
+    // other entry is a screen nobody has built, and a link to one would be a 404 in the
+    // product's primary navigation. The count is asserted too, so a fifth link cannot appear
     // without somebody deciding it should.
     const links = screen.getAllByRole("link");
 
@@ -192,6 +193,7 @@ describe("what the sidebar links to", () => {
       DASHBOARD_PATH,
       ISSUES_PATH,
       MODELS_PATH,
+      SETTINGS_PATH,
     ]);
   });
 

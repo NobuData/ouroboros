@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { SOURCES_PATH } from "@/app/paths";
+
 import { WORKSPACE_PARAM } from "@/app/login/view";
 import { DEFAULT_FILTER, isFiltered } from "@/app/issues/filter";
 import {
@@ -10,7 +12,7 @@ import {
   FIRST_SYNC_TITLE,
   NO_REPOS_TITLE,
   NO_TOKEN_TITLE,
-  OPEN_SETTINGS_SOON,
+  OPEN_SETTINGS_HREF,
   PAUSE_HEADLINE,
   SYNC_UNREAD_HEADLINE,
   UNEXPLAINED_PAUSE,
@@ -202,8 +204,9 @@ describe("the copy", () => {
     expect(firstSyncProgress(1)).toBe("First sync running — 1 open issue so far…");
   });
 
-  it("names the issue that unblocks the settings control, rather than linking nowhere", () => {
-    expect(OPEN_SETTINGS_SOON).toContain("#141");
+  it("sends the settings control to the ticket-source surface #141 built, through app/paths", () => {
+    expect(OPEN_SETTINGS_HREF).toBe(SOURCES_PATH);
+    expect(OPEN_SETTINGS_HREF).toBe("/settings/sources");
   });
 
   it("sends Choose repos to sign-in's step 2, opened on the workspace", () => {

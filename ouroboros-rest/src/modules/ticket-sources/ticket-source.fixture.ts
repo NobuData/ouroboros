@@ -27,8 +27,14 @@
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs.
  */
 
+import {
+  PLACEHOLDER_ANNOTATION,
+  PROVIDER_CONFIG_DIALECT,
+  SECRET_ANNOTATION,
+} from "../providers/provider.config";
 import type { SyncSource } from "./ticket-sources.repository";
 import type { EstimableTicket, TicketIntake } from "./ticket.intake";
+import type { TicketSourceConfigSchema } from "./ticket-source.config";
 import { TicketSourceError } from "./ticket-source.errors";
 import type {
   CanonicalTicket,
@@ -182,6 +188,61 @@ export const NO_CAPABILITIES: TicketSourceCapabilities = Object.freeze({
   bidirectionalWrites: false,
 });
 
+/**
+ * The schema {@link scriptedProvider} declares — one of every widget the dialect has.
+ *
+ * Q.4's ([#141](https://github.com/NobuData/ouroboros/issues/141)) acceptance criterion is
+ * that the settings form renders *"from provider-declared config schema — verified by pointing
+ * the same form component at the in-memory fake provider's schema"*. Q.5's fake is not built
+ * yet, so this is the schema the criterion is held against on this side of the wire: a text
+ * field, a `uri` field, a `select`, a list and a secret — a shape no shipping provider has, which
+ * is what makes a catalog that renders it a catalog that renders anything.
+ */
+export const FIXTURE_SCHEMA: TicketSourceConfigSchema = {
+  $schema: PROVIDER_CONFIG_DIALECT,
+  type: "object",
+  title: "Connect the fixture tracker",
+  properties: {
+    site: {
+      type: "string",
+      title: "Site",
+      description: "Where the tracker answers.",
+      format: "uri",
+      minLength: 1,
+    },
+    project: {
+      type: "string",
+      title: "Project key",
+      minLength: 1,
+      maxLength: 16,
+      pattern: "^[A-Z][A-Z0-9]*$",
+      [PLACEHOLDER_ANNOTATION]: "Upper-case, as the tracker spells it",
+    },
+    region: {
+      type: "string",
+      title: "Region",
+      enum: ["eu", "us"],
+      default: "eu",
+    },
+    boards: {
+      type: "array",
+      title: "Boards",
+      description: "One board per line.",
+      items: { type: "string", minLength: 1, maxLength: 32 },
+      minItems: 1,
+      maxItems: 5,
+    },
+    apiToken: {
+      type: "string",
+      title: "API token",
+      minLength: 8,
+      [SECRET_ANNOTATION]: true,
+    },
+  },
+  required: ["site", "project", "boards", "apiToken"],
+  additionalProperties: false,
+};
+
 /** What {@link scriptedProvider} is told to do, and what it writes down. */
 export interface ScriptedProvider extends TicketSourceProvider {
   /** Every context it was handed, in call order — for asserting what the loop opened. */
@@ -204,6 +265,8 @@ export interface ProviderScript {
   fails?: unknown;
   /** What `validateConfig` answers. */
   validation?: TicketSourceValidation;
+  /** What `configSchema` answers. {@link FIXTURE_SCHEMA} unless a spec is about the gate. */
+  schema?: TicketSourceConfigSchema;
 }
 
 /**
@@ -262,6 +325,7 @@ export function scriptedProvider(script: ProviderScript = {}): ScriptedProvider 
     members,
     cursors,
     capabilities: () => ({ ...NO_CAPABILITIES, ...script.capabilities }),
+    configSchema: () => script.schema ?? FIXTURE_SCHEMA,
     validateConfig: () =>
       Promise.resolve(script.validation ?? { status: "ok", detail: "1 repository" }),
     fullSync: async (context) => answer("fullSync", context),

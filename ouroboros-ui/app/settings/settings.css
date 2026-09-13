@@ -1,0 +1,61 @@
+/*
+ * The settings section's frame — mockup 17's chrome, on the #16 tokens
+ * ([#141](https://github.com/NobuData/ouroboros/issues/141), ahead of BS.1 #491).
+ *
+ * The measurements are `app/models/models.css`'s frame rules, so a settings page and a models
+ * page in the same product start their content on the same line and draw the same tab row in
+ * the same place. Two sheets rather than one shared frame sheet because each section's frame
+ * is that section's to grow — BS.1 adds a save bar to this one and Models adds nothing — and a
+ * shared sheet would make every growth a change to both.
+ */
+
+/* ---------- the page frame ---------- */
+
+.settings {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.settings__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-9);
+}
+
+/*
+ * The floor is what keeps the promise sentence from wrapping to one word a line beside the
+ * head's action at the narrow end of the pane; the action drops under it instead.
+ */
+.settings__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.settings__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+.settings__sub {
+  max-width: 88ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+/*
+ * The tab set's placement, and only its placement — the row itself is the CP.4 primitive's.
+ * See `app/models/models.css` for why the inline margins undo the frame's own padding.
+ */
+.settings__subnav {
+  margin: calc(var(--sp-4) * -1) calc(var(--sp-10) * -1) var(--sp-9);
+  padding: 0 var(--sp-10);
+}

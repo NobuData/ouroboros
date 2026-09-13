@@ -7,6 +7,7 @@ import {
   elapsedOfSeconds,
   latencyOfMs,
   moneyOfCents,
+  relativeAgo,
 } from "@/app/format";
 
 /**
@@ -257,5 +258,25 @@ describe("article", () => {
   it("reads the first letter whatever its case", () => {
     expect(article("Owner")).toBe("an");
     expect(article("Member")).toBe("a");
+  });
+});
+
+describe("relativeAgo", () => {
+  const NOW = new Date("2026-08-23T10:00:12.004Z");
+
+  it("spells the mockups' own relative times", () => {
+    // The provider cards' *last used 3m ago* (#228) and the ticket-source rows' *synced 40s
+    // ago* (#141) are one phrase, which is why the function lives here rather than in either.
+    expect(relativeAgo("2026-08-23T09:59:31.004Z", NOW)).toBe("41s ago");
+    expect(relativeAgo("2026-08-23T09:57:12.004Z", NOW)).toBe("3m ago");
+    expect(relativeAgo("2026-08-23T09:34:12.004Z", NOW)).toBe("26m ago");
+    expect(relativeAgo("2026-08-23T08:48:12.004Z", NOW)).toBe("1h 12m ago");
+    expect(relativeAgo("2026-08-23T08:00:12.004Z", NOW)).toBe("2h ago");
+    expect(relativeAgo("2026-08-20T10:00:12.004Z", NOW)).toBe("3d ago");
+  });
+
+  it("draws a future instant as now rather than as a negative, and a bad one as itself", () => {
+    expect(relativeAgo("2026-08-23T10:05:00.000Z", NOW)).toBe("0s ago");
+    expect(relativeAgo("not a date", NOW)).toBe("not a date");
   });
 });

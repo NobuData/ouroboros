@@ -700,6 +700,18 @@
 }
 
 /*
+ * The `list` widget's control (#141): a textarea takes the input's box and adds a height —
+ * five lines, in rem so the preference moves it — and a vertical resize handle. `field: inherit`
+ * is not needed; the input rule already sets the face, and a textarea inherits nothing else a
+ * form control should not.
+ */
+.ou-input--multiline {
+  min-height: 6.5rem;
+  line-height: var(--lh-body);
+  resize: vertical;
+}
+
+/*
  * A schema-driven form's fields, as one column.
  *
  * The renderer (`schema-form.tsx`) draws a field per entry of a list it did not write, so the

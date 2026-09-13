@@ -24,12 +24,13 @@
 > [add-provider flow](#the-add-provider-flow)
 > ([#231](https://github.com/NobuData/ouroboros/issues/231))
 > and the [credential audit trail](#the-credential-audit-trail)
-> ([#225](https://github.com/NobuData/ouroboros/issues/225)) —
+> ([#225](https://github.com/NobuData/ouroboros/issues/225)), and, under Settings,
+> [ticket sources](#ticket-sources) ([#141](https://github.com/NobuData/ouroboros/issues/141)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
-> the three that are built — the dashboard, Issues and Models — is labelled *soon* rather than
-> linked.
+> the four that are built — the dashboard, Issues, Models and Settings — is labelled *soon*
+> rather than linked.
 
 ## Purpose
 
@@ -208,9 +209,11 @@ ouroboros-ui/
 │   ├── theme.ts             # the theme engine: vocabulary, DOM ops, boot script
 │   ├── theme-provider.tsx   # ThemeProvider / useTheme()
 │   ├── env.ts               # OURO_REST_URL, read and validated
-│   ├── paths.ts             # the two routes this application redirects to
+│   ├── paths.ts             # every route more than one module has to agree about
 │   ├── browser.ts           # window and localStorage, read in the way that cannot throw
 │   ├── media-query.ts       # useMediaQuery() — asking CSS a question from React
+│   ├── format.ts            # relativeAgo() — the one clock-to-words rule
+│   ├── catalog-tiles.ts     # a picker's tiles — live entries and honest *coming soon* ones
 │   ├── api/                 # the two clients for ouroboros-rest
 │   │   ├── schema.d.ts      #   generated from the contract by `yarn api:sync`
 │   │   ├── client.ts        #   the wrapper: cookie · X-Ouro-Tenant · ApiError
@@ -234,6 +237,7 @@ ouroboros-ui/
 │   │   ├── reading.ts       #   Reading<T> + attempt() — a read allowed to fail
 │   │   ├── routing.ts       #   routing.providers() — the model page's health strip
 │   │   ├── audit.ts         #   audit.events() — the credential trail, org-scoped
+│   │   ├── sources.ts       #   sources.* — /api/v1/sources, the catalog, test, sync, status
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
@@ -242,7 +246,8 @@ ouroboros-ui/
 │   │   ├── chip.tsx         #   Chip (status · model) + EffortChip
 │   │   ├── badge.tsx        #   Tag (metadata) + Badge (a count)
 │   │   ├── table.tsx        #   Table, inside its own scroll container
-│   │   ├── field.tsx        #   TextField · SelectField · Toggle
+│   │   ├── field.tsx        #   TextField · TextAreaField · SelectField · Toggle
+│   │   ├── schema-form.tsx  #   SchemaFields — a form drawn from a provider's declared fields
 │   │   ├── empty-state.tsx  #   EmptyState — a surface that is not ready
 │   │   ├── eyebrow.tsx      #   Eyebrow — the caption above a title
 │   │   ├── page-subnav.tsx  #   PageSubnav + SubnavSoon — a section's tab row
@@ -268,6 +273,17 @@ ouroboros-ui/
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
 │   ├── providers/           # mockup 07's Audit log action and the sheet behind it · #225
+│   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
+│   │   ├── view.ts          #   the seven tabs, one live; the eyebrow
+│   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath
+│   ├── sources/             # ticket sources — the section's first built tab · #141
+│   │   ├── view.ts          #   the status pill, the summary, the sync line, every label
+│   │   ├── catalog.ts       #   the kind picker's tiles, and a submission's shape
+│   │   ├── data.ts          #   readSources() — the list, the catalog and every status
+│   │   ├── actions.ts       #   the Server Actions: add · configure · credentials · test · sync · pause
+│   │   ├── add-source.tsx   #   the add-source flow: pick a kind, fill its form, done
+│   │   ├── configure-source.tsx # the settings form and the write-only credential form
+│   │   └── source-row.tsx   #   one source, its controls, and the honest reason it stopped
 │   │   ├── view.ts          #   the four ways a trail lies, and what stops each
 │   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
 │   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
@@ -288,7 +304,7 @@ ouroboros-ui/
 
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
 contribute nothing to the URL, so the dashboard is `/dashboard`, model routing is
-`/models` and sign-in is `/login`.
+`/models`, ticket sources are `/settings/sources` and sign-in is `/login`.
 `/` belongs to no module and is a redirect to the dashboard, kept so that everything
 already pointing at it still arrives. `(app)`
 renders its screens inside the [app shell](#app-shell); `(auth)` is a pass-through, because
@@ -2473,6 +2489,65 @@ connection that has reported nothing gets the honest empty state the contract gu
 (`empty` is non-null exactly when `candidates` is), naming the connection and linking to
 Providers & keys.
 
+## Ticket sources
+
+`/settings/sources` ([#141](https://github.com/NobuData/ouroboros/issues/141)) is where a
+workspace says where its tickets come from — mockup 17's **Ticket sources** section, mounted
+as the first built tab of the settings frame. The sidebar's **Settings** entry is live and
+leads to `/settings`, which redirects here until BS.1
+([#491](https://github.com/NobuData/ouroboros/issues/491)) builds the hub; the other six
+tabs — Workspace, Members, Policies, Integrations, Audit, Danger zone — are drawn in the tab
+row and say honestly that they arrive with #491.
+
+```
+SETTINGS · acme-robotics
+Ticket sources                                                          [ + Add source ]
+Where this workspace's tickets come from. Connect a tracker, test it before
+trusting it, and see honestly why syncing has stopped.
+──────────────────────────────────────────────────────────────────────────────────────────
+ Workspace soon  Members soon  Policies soon  Sources  Integrations soon  Audit soon  Danger zone soon
+                                             ▔▔▔▔▔▔▔
+[GH] GitHub · acme-robotics   GitHub  ● active
+     acme-robotics · 4 repositories
+     synced 40s ago · last sync imported 2 · updated 1 · unchanged 6
+                                   [Test connection] [Sync now] [Pause] [Configure]
+[GH] GitHub · helios-labs      GitHub  ● error
+     helios-labs · 1 repository
+     rate limited until 14:20 UTC
+                                   [Test connection] [Sync now] [Resume] [Configure]
+```
+
+**Every row is the service's words.** [`app/sources/view.ts`](app/sources/view.ts) turns a
+`TicketSource` and its `TicketSourceStatusReport` into the pill, the summary and the second
+line, and nothing here composes a reason: `rate limited until 14:20 UTC` is V031's
+`statusReason`, printed as it arrived, and a `running` report is what turns the pill into the
+pulsing *syncing*. The summary — `acme-robotics · 4 repositories` — is read off the provider's
+own catalog fields, so a kind this module has never heard of still gets a sentence; when the
+catalog could not be read it degrades to the stored keys and says so once, in the banner.
+
+**The form is not GitHub's.** The add-source flow
+([`add-source.tsx`](app/sources/add-source.tsx)) draws its kind picker from
+`GET /api/v1/sources/catalog` — GitHub live, and Jira, Linear and GitLab as *coming soon*
+tiles that name the v2 ticket each arrives with — and then draws the chosen kind's form from
+the fields that entry declares, through the same `SchemaFields` the model-provider dialog uses,
+now with a `list` widget for the repositories or projects a tracker is scoped to. The
+acceptance criterion is that no GitHub form is hard-coded, and the proof is the suite pointing
+the same component at the fake provider's schema and reading the fake provider's form off it.
+
+**A credential goes in and never comes out.** The configure dialog
+([`configure-source.tsx`](app/sources/configure-source.tsx)) is two forms: the settings,
+starting at what the row holds, and a write-only credential box beside the mask the service
+answers — `••••` and, once something has just been stored, its last four characters. The input
+is cleared after the store, the dialog never receives a value to show, and the test asserts no
+token-shaped string is in its markup.
+
+**The controls are the service's answers.** *Test connection* prints what `validateConfig`
+found, tick or reason, and writes nothing; *Sync now* accepts a `202` and polls the status
+until `running` clears, and prints the service's own refusal for a paused source or one synced
+under thirty seconds ago; *Pause* and *Resume* are the one `PATCH` of `status`. A member sees
+every row and every control, each inert with its reason in the tooltip; `owner` and `admin`
+may press them. The intake screen's *no token* guidance (#120's amendment) links here.
+
 ## The polling store
 
 The page's cards and the header's two pills all want the same freshness, and
@@ -3127,6 +3202,7 @@ provider cards [#228](https://github.com/NobuData/ouroboros/issues/228) ·
 the add-provider flow [#231](https://github.com/NobuData/ouroboros/issues/231) ·
 caps, the strip and the states [#232](https://github.com/NobuData/ouroboros/issues/232) ·
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
+ticket sources [#141](https://github.com/NobuData/ouroboros/issues/141) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

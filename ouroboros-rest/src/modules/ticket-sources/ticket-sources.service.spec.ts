@@ -630,3 +630,111 @@ describe("the cycle", () => {
     }
   });
 });
+
+describe("the second caller — a source synced on demand", () => {
+  /** A provider whose sync waits until a spec lets it answer. */
+  function heldProvider() {
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const provider = scriptedProvider();
+
+    return {
+      provider: {
+        ...provider,
+        fullSync: async (context: Parameters<typeof provider.fullSync>[0]) => {
+          await held;
+
+          return provider.fullSync(context);
+        },
+      } as TicketSourceProvider,
+      release: () => release?.(),
+    };
+  }
+
+  it("syncs one source outside any cycle, and remembers what it did and when", async () => {
+    jest.useFakeTimers().setSystemTime(FIXTURE_NOW);
+
+    try {
+      const provider = scriptedProvider({ pages: [page([githubTicket()])] });
+      const { service } = build({ providers: [provider], written: { imported: 1 } });
+
+      const started = service.syncSource(githubSource());
+
+      expect(started).toBeDefined();
+      expect(service.isSyncing(FIXTURE_GITHUB_SOURCE)).toBe(true);
+
+      const outcome = await started;
+
+      expect(service.isSyncing(FIXTURE_GITHUB_SOURCE)).toBe(false);
+      expect(outcome?.imported).toBe(1);
+      expect(service.lastOutcome(FIXTURE_GITHUB_SOURCE)).toBe(outcome);
+      expect(service.lastStartedAt(FIXTURE_GITHUB_SOURCE)).toStrictEqual(FIXTURE_NOW);
+      // Belongs to no cycle, so the cycle report does not claim it.
+      expect(service.lastCycle()).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("refuses to start a second sync of a source while one is running", async () => {
+    const { provider, release } = heldProvider();
+    const { service } = build({ providers: [provider] });
+
+    const first = service.syncSource(githubSource());
+    const second = service.syncSource(githubSource());
+
+    expect(first).toBeDefined();
+    expect(second).toBeUndefined();
+
+    release();
+    await first;
+
+    expect(service.syncSource(githubSource())).toBeDefined();
+  });
+
+  it("makes a cycle leave a source a manual sync is running, and say so", async () => {
+    const { provider, release } = heldProvider();
+    const { service } = build({ providers: [provider] });
+    const calls = (provider as ReturnType<typeof scriptedProvider>).calls;
+
+    const manual = service.syncSource(githubSource());
+    const report = await quietly(async () => service.cycle());
+
+    expect(report.sources).toHaveLength(1);
+    expect(report.sources[0]?.skipped).toBe("in_flight");
+
+    release();
+    await manual;
+
+    // The provider was reached once — by the manual sync — and the cycle did not reach it
+    // again for the same source.
+    expect(calls).toHaveLength(1);
+  });
+
+  it("never rejects a manual sync — a database failure is logged and the source is unmarked", async () => {
+    const { service } = build({ applyFails: new Error("connection reset") });
+
+    const transcript = await transcriptOf(async () => {
+      const outcome = await service.syncSource(githubSource());
+
+      expect(outcome).toBeUndefined();
+    });
+
+    expect(transcript).toContain("could not be completed");
+    expect(service.isSyncing(FIXTURE_GITHUB_SOURCE)).toBe(false);
+    expect(service.lastOutcome(FIXTURE_GITHUB_SOURCE)).toBeUndefined();
+  });
+
+  it("records a cycle's syncs the same way, so status reads one memory for both callers", async () => {
+    const { service } = build({ written: { updated: 2 } });
+
+    await service.cycle();
+
+    expect(service.lastOutcome(FIXTURE_GITHUB_SOURCE)?.updated).toBe(2);
+    expect(service.lastStartedAt(FIXTURE_GITHUB_SOURCE)).toStrictEqual(
+      service.lastCycle()?.startedAt,
+    );
+  });
+});

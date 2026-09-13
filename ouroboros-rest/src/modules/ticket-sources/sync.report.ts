@@ -16,9 +16,11 @@
  * {@link import("./ticket-source.errors").TicketSourceError}, whose four classes become a
  * status and a sentence in `ticket-source.errors.ts`.
  *
- * What is left is the one state no provider can report, because it is a state in which no
+ * What is left is the state no provider can report, because it is a state in which no
  * provider was reached: **there is no provider for this kind in this build**. That is
- * {@link SOURCE_SKIPPED_UNSUPPORTED}, and it is the only word this file adds.
+ * {@link SOURCE_SKIPPED_UNSUPPORTED}. Q.4 added a second of the same shape — a source whose
+ * sync was already running when the cycle reached it, {@link SOURCE_SKIPPED_IN_FLIGHT} — and
+ * those two are the whole of the vocabulary this file adds.
  *
  * ---------------------------------------------------------------------------
  * **A skip and a failure are different things, and the difference is who has to act.**
@@ -53,11 +55,26 @@ import type { TicketSourceErrorClass } from "./ticket-source.errors";
  */
 export const SOURCE_SKIPPED_UNSUPPORTED = "unsupported_kind";
 
-/** Why a source was not polled at all. One value today; see this file's header. */
-export type SourceSkip = typeof SOURCE_SKIPPED_UNSUPPORTED;
+/**
+ * A sync of this source was already in flight when the cycle reached it.
+ *
+ * Q.4's ([#141](https://github.com/NobuData/ouroboros/issues/141)) manual trigger is a second
+ * caller of the loop, per source rather than per cycle, and the one rule both callers keep is
+ * that a source is never synced twice at once — two syncs of one source race each other's
+ * upserts and spend one credential's budget twice for one answer. A cycle that finds a manual
+ * sync running says so here and leaves the row to it; the manual trigger finds a cycle running
+ * and answers `409` instead. Not a failure, and not a state a person configured.
+ */
+export const SOURCE_SKIPPED_IN_FLIGHT = "in_flight";
+
+/** Why a source was not polled at all. See this file's header. */
+export type SourceSkip = typeof SOURCE_SKIPPED_UNSUPPORTED | typeof SOURCE_SKIPPED_IN_FLIGHT;
 
 /** Every value {@link SourceSkip} can hold, for a test that wants to iterate them. */
-export const SOURCE_SKIPS = [SOURCE_SKIPPED_UNSUPPORTED] as const satisfies readonly SourceSkip[];
+export const SOURCE_SKIPS = [
+  SOURCE_SKIPPED_UNSUPPORTED,
+  SOURCE_SKIPPED_IN_FLIGHT,
+] as const satisfies readonly SourceSkip[];
 
 /**
  * What a person reads for each skip.
@@ -68,6 +85,8 @@ export const SOURCE_SKIPS = [SOURCE_SKIPPED_UNSUPPORTED] as const satisfies read
 export const SOURCE_SKIP_MESSAGES: Readonly<Record<SourceSkip, string>> = Object.freeze({
   [SOURCE_SKIPPED_UNSUPPORTED]:
     "This build has no provider for that tracker yet, so the source is configured and not polled.",
+  [SOURCE_SKIPPED_IN_FLIGHT]:
+    "A sync of this source was already running, so this cycle left it to finish.",
 });
 
 /** What a provider reported when a sync failed. */

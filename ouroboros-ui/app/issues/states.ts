@@ -35,7 +35,7 @@
 import type { BacklogListing, SyncStatus } from "@/app/api/backlog";
 import type { Reading } from "@/app/api/reading";
 import { WORKSPACE_PARAM } from "@/app/login/view";
-import { LOGIN_PATH } from "@/app/paths";
+import { LOGIN_PATH, SOURCES_PATH } from "@/app/paths";
 
 import { emptyKind } from "./table";
 
@@ -230,17 +230,16 @@ export const NO_TOKEN_NOTE =
 export const OPEN_SETTINGS_LABEL = "Open settings";
 
 /**
- * Why the control cannot act yet — its tooltip, and the whole of its honesty.
+ * Where the control goes — the ticket-source settings surface
+ * ([#141](https://github.com/NobuData/ouroboros/issues/141)), which is what the ticket's
+ * amendment points it at.
  *
- * The ticket's amendment points the control at the ticket-source settings surface of
- * [#141](https://github.com/NobuData/ouroboros/issues/141), which is not built; the sidebar's
- * **Settings** entry is still a *soon* row for the same reason. A control drawn inert with the
- * issue that unblocks it is what the dashboard does for the same situation, and what #49's
- * *no dead nav links* asks for: labelled rather than absent, and never a link to a `404`.
+ * It was drawn inert, with the issue that would unblock it as its tooltip, until that surface
+ * existed — #49's *no dead nav links*, applied to a button. Now it is a link, and the
+ * destination is `app/paths.ts`'s so the sidebar's Settings entry, the settings tab set and
+ * this control cannot come to disagree about where the sources live.
  */
-export const OPEN_SETTINGS_SOON =
-  "The settings screen for ticket sources is not built yet — it arrives with #141. Until " +
-  "then a GitHub token is set through the service's settings endpoint.";
+export const OPEN_SETTINGS_HREF = SOURCES_PATH;
 
 /**
  * What a reader who may not connect one is told instead of the control.

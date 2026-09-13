@@ -1,5 +1,16 @@
+import {
+  partitionSourceSubmission,
+  sourceConfigViolations,
+  sourceSchemaViolations,
+  sourceSecretField,
+} from "../ticket-source.config";
 import { TicketSourceError } from "../ticket-source.errors";
-import { MAX_ENABLED_REPOS, readGithubConfig } from "./github.config";
+import {
+  GITHUB_SOURCE_SCHEMA,
+  GITHUB_TOKEN_FIELD,
+  MAX_ENABLED_REPOS,
+  readGithubConfig,
+} from "./github.config";
 
 /**
  * The `github` kind's grammar, which is this provider's and nobody else's
@@ -128,5 +139,73 @@ describe("a GitHub source's configuration", () => {
     expect(readGithubConfig({ login: "acme-robotics", repos }).repos).toHaveLength(
       MAX_ENABLED_REPOS,
     );
+  });
+});
+
+describe("the declared schema", () => {
+  it("is in the dialect, so the registry admits it at boot", () => {
+    expect(sourceSchemaViolations(GITHUB_SOURCE_SCHEMA)).toStrictEqual([]);
+  });
+
+  it("declares the two keys the seed writes, and the token beside them", () => {
+    // The seed is the contract: a form drawn from this schema stores exactly the object the
+    // provider's own parse reads.
+    expect(Object.keys(GITHUB_SOURCE_SCHEMA.properties)).toStrictEqual([
+      "login",
+      "repos",
+      GITHUB_TOKEN_FIELD,
+    ]);
+    expect(GITHUB_SOURCE_SCHEMA.required).toStrictEqual(["login", "repos", GITHUB_TOKEN_FIELD]);
+  });
+
+  it("marks the token as the one field routed to the vault", () => {
+    expect(sourceSecretField(GITHUB_SOURCE_SCHEMA)).toBe(GITHUB_TOKEN_FIELD);
+  });
+
+  it("holds the form to the same grammar the parse enforces", () => {
+    // A login with a `/`, a repository of `..` and an empty list are refused by the schema
+    // before a request exists — the same three the parse would refuse a stored row for.
+    expect(
+      sourceConfigViolations(GITHUB_SOURCE_SCHEMA, {
+        login: "acme/robotics",
+        repos: [".."],
+        [GITHUB_TOKEN_FIELD]: "ghp_x",
+      }),
+    ).toStrictEqual({
+      login: ["GitHub account is not in the expected format"],
+      repos: ["Repositories is not in the expected format"],
+    });
+    expect(
+      sourceConfigViolations(GITHUB_SOURCE_SCHEMA, {
+        login: "acme-robotics",
+        repos: [],
+        [GITHUB_TOKEN_FIELD]: "ghp_x",
+      }),
+    ).toStrictEqual({ repos: ["Repositories is required"] });
+  });
+
+  it("accepts what the parse accepts — `.github` included — and bounds the list where it does", () => {
+    expect(
+      sourceConfigViolations(GITHUB_SOURCE_SCHEMA, {
+        ...SEEDED,
+        repos: [...SEEDED.repos, ".github"],
+        [GITHUB_TOKEN_FIELD]: "ghp_x",
+      }),
+    ).toStrictEqual({});
+    expect(GITHUB_SOURCE_SCHEMA.properties.repos).toMatchObject({
+      type: "array",
+      minItems: 1,
+      maxItems: MAX_ENABLED_REPOS,
+    });
+  });
+
+  it("round-trips a form's submission into the object the parse reads", () => {
+    const parts = partitionSourceSubmission(GITHUB_SOURCE_SCHEMA, {
+      ...SEEDED,
+      [GITHUB_TOKEN_FIELD]: "ghp_x",
+    });
+
+    expect(readGithubConfig(parts.config)).toStrictEqual(SEEDED);
+    expect(parts.secret).toBe("ghp_x");
   });
 });

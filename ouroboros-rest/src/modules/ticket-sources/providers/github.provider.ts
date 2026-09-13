@@ -57,6 +57,7 @@ import { GITHUB_FAILURES, GithubApiError } from "../../github/github.errors";
 import { GithubRateLimiter, REMAINING_HEADER } from "../../github/github.rate-limit";
 import { LEGACY_TOKEN, TOKEN_PREFIXES } from "../../github/github.token";
 import { chunked } from "../../scheduling/cadence";
+import type { TicketSourceConfigSchema } from "../ticket-source.config";
 import { TicketSourceError, classifyHttpStatus } from "../ticket-source.errors";
 import type {
   CanonicalTicket,
@@ -66,7 +67,7 @@ import type {
   TicketSourceValidation,
   TicketSyncContext,
 } from "../ticket-source.provider";
-import { readGithubConfig, type GithubSourceConfig } from "./github.config";
+import { GITHUB_SOURCE_SCHEMA, readGithubConfig, type GithubSourceConfig } from "./github.config";
 import {
   ISSUES_ROUTE,
   cursorInstant,
@@ -169,6 +170,17 @@ export class GithubTicketSourceProvider implements TicketSourceProvider {
    */
   capabilities(): TicketSourceCapabilities {
     return { webhooks: false, labels: true, bidirectionalWrites: false };
+  }
+
+  /**
+   * The settings this provider takes, as a form — Q.4's add-source dialog.
+   *
+   * @returns `github.config.ts`'s {@link GITHUB_SOURCE_SCHEMA}: the account, the repository
+   *   list, and the token the management API routes to the vault. The same object every call,
+   *   which is what lets the registry judge it once.
+   */
+  configSchema(): TicketSourceConfigSchema {
+    return GITHUB_SOURCE_SCHEMA;
   }
 
   /**

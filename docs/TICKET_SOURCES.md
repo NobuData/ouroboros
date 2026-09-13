@@ -7,10 +7,12 @@
 > [`ticket-sources/providers/`](../ouroboros-rest/src/modules/ticket-sources/providers/). It is
 > the worked example for everything below — where a section describes a decision, that provider
 > is where you can read the decision being made.
-> [Q.4 (#141)](https://github.com/NobuData/ouroboros/issues/141) is the management API and
-> settings surface and [Q.5 (#142)](https://github.com/NobuData/ouroboros/issues/142) the
-> conformance kit. Everything below is true of the code as it stands; where a section describes
-> something a later ticket adds, it says so.
+> [Q.4 (#141)](https://github.com/NobuData/ouroboros/issues/141) added the **management API**
+> — `/api/v1/sources`, in `sources.*.ts` beside the loop — and the settings surface that
+> draws a provider's form from its own `configSchema()`.
+> [Q.5 (#142)](https://github.com/NobuData/ouroboros/issues/142) is the conformance kit.
+> Everything below is true of the code as it stands; where a section describes something a
+> later ticket adds, it says so.
 
 Ouroboros ingests tickets from a tracker. Which tracker is a plug-in decision — roadmap
 decision **P5** — and this document is the contract that decision rests on. If you can
@@ -72,6 +74,7 @@ interface TicketSourceProvider {
   readonly kind: TicketSourceKind;
 
   capabilities(): TicketSourceCapabilities;
+  configSchema(): TicketSourceConfigSchema;
 
   validateConfig(config: unknown, credentials: string | null): Promise<TicketSourceValidation>;
 
@@ -111,11 +114,63 @@ Three flags, all required. `false` is an answer; a partial record would let a ca
 They must be **stable**: two calls answer equal values. A capability that changed between two
 renders would show an affordance that then failed.
 
+### `configSchema()`
+
+The settings your provider takes, **as a form** (Q.4). `GET /api/v1/sources/catalog` turns it
+into an ordered list of fields, and the settings surface draws that list without knowing which
+tracker it is drawing — which is the whole reason the member exists: the acceptance criterion
+is *"no hardcoded GitHub form"*, and the proof is that the same form component, pointed at the
+test fixture's schema, draws the fixture's form.
+
+The dialect is
+[`ticket-source.config.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.config.ts):
+the flat object of string fields `providers/provider.config.ts` settled on for model providers
+— `text`, `select` (an `enum`), `secret` (the `x-ouroboros-secret` annotation), `minLength`,
+`maxLength`, `pattern`, `default` — plus **one addition**, a list of strings, because a tracker
+source is scoped to repositories or projects and a model provider never was:
+
+```ts
+configSchema(): TicketSourceConfigSchema {
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: {
+      site:     { type: "string", format: "uri", title: "Site" },
+      project:  { type: "string", pattern: "^[A-Z][A-Z0-9]*$", title: "Project key" },
+      boards:   { type: "array", items: { type: "string", maxLength: 32 }, minItems: 1, title: "Boards" },
+      apiToken: { type: "string", minLength: 8, "x-ouroboros-secret": true, title: "API token" },
+    },
+    required: ["site", "project", "boards", "apiToken"],
+  };
+}
+```
+
+A list's `minLength`, `maxLength` and `pattern` describe **each entry**; `minItems` and
+`maxItems` bound the list. The surface draws it as one entry per line.
+
+Three rules:
+
+* **Exactly one field is the secret**, and it is your credential. It is submitted with the rest
+  on `POST /api/v1/sources` and split off for the vault before anything is stored; what lands
+  in `config` — and what `validateConfig` and `TicketSyncContext.config` read — is everything
+  else. A provider that takes no credential declares no secret field, and
+  `POST …/credentials` answers `409 ticket_source_credentials_unsupported` for it.
+* **It must be stable.** The registry judges it once, at boot, and refuses a provider whose
+  schema is outside the dialect — a keyword the form cannot draw, a `required` naming no
+  property, a list whose items are not strings — with the same error class it uses for a
+  capabilities mismatch.
+* **A submission is checked against it before you are asked anything.** A `POST` or `PATCH`
+  whose settings violate the schema is `422 ticket_source_config_invalid`, with a sentence per
+  field under `details.fields`, and `validateConfig` is not called. Your validation is about
+  the tracker; the schema's is about the form.
+
 ### `validateConfig(config, credentials)`
 
-The **Test connection** button (Q.4). Called *before a row exists*, which is why it takes loose
-parts rather than a context: there is no `sourceId` to hand it, and the credential is a string
-somebody has just pasted.
+The **Test connection** button (Q.4). It takes loose parts rather than a context because the
+SPI lets it run before a row exists; what `POST /api/v1/sources/{id}/test` actually hands it
+is a stored row's settings and its opened credential, and it writes nothing back — `status` and
+`status_reason` are the loop's to set, and a probe pressed while the tracker was down must not
+stop the loop polling.
 
 It **never rejects for anything a tracker did**. A refusal, a timeout, a closed socket and a
 nonsense body are all *results*:
@@ -357,8 +412,11 @@ Three rules on your side:
 * **Do not log it**, and do not log anything derived from it.
 * **Do not put it in a `detail`.** See §4.
 
-On the loop's side: the sealed column is read by exactly one statement, opened by
-`VaultService` immediately before your call, and the reference is dropped in a `finally`. The
+On the loop's side: the sealed column's **value** is read by exactly one statement — the
+management API's list asks only whether it is null, and selects nothing else — opened by
+`VaultService` immediately before your call, and the reference is dropped in a `finally`.
+`GET /api/v1/sources` answers a mask, `••••`, and the response to storing a credential echoes
+that mask with the last four characters; no response ever carries the value. The
 envelope is AES-256-GCM under a per-tenant key, with the workspace id and the **source id**
 bound into the AAD — so a credential lifted from one source's row and pasted into another's
 fails to open rather than decrypting into somebody else's tracker.
@@ -522,7 +580,13 @@ So that you do not reimplement any of it:
 | [`ticket-source.errors.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.errors.ts) | the four classes, the status mapping, `statusReasonFor`, `classifyHttpStatus` |
 | [`ticket-source.registry.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.registry.ts) | lookup by kind, and the two misuses refused at boot |
 | [`ticket-sources.service.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-sources.service.ts) | the loop |
-| [`ticket-sources.repository.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-sources.repository.ts) | every statement, including the one that opens a credential |
+| [`ticket-sources.repository.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-sources.repository.ts) | the loop's statements, including the one that reads a sealed credential |
+| [`ticket-source.config.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.config.ts) | the `configSchema()` dialect — the model-provider form dialect plus a list of strings — and the submission rules over it |
+| [`sources.controller.ts`](../ouroboros-rest/src/modules/ticket-sources/sources.controller.ts) | `/api/v1/sources` (Q.4): members read, `owner`/`admin` write |
+| [`sources.service.ts`](../ouroboros-rest/src/modules/ticket-sources/sources.service.ts) | add · update · credentials · test · sync · status, with no `kind` in it |
+| [`sources.repository.ts`](../ouroboros-rest/src/modules/ticket-sources/sources.repository.ts) | the request's statements — workspace-scoped, over the view, plus the one presence bit |
+| [`sources.catalog.ts`](../ouroboros-rest/src/modules/ticket-sources/sources.catalog.ts) | `GET /sources/catalog`: every registered kind as form fields and capabilities |
+| [`sources.errors.ts`](../ouroboros-rest/src/modules/ticket-sources/sources.errors.ts) | the seven `ticket_source_*` codes the API answers |
 | [`ticket.intake.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket.intake.ts) | the estimation handoff, as a port |
 | [`ticket-sources.module.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-sources.module.ts) | the registration point |
 | [`providers/github.provider.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.provider.ts) | the GitHub provider (Q.3) — the worked example of every section above |

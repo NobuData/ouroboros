@@ -12,7 +12,7 @@ import {
   Workflow,
 } from "lucide-react";
 
-import { DASHBOARD_PATH, ISSUES_PATH, MODELS_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, ISSUES_PATH, MODELS_PATH, SETTINGS_PATH } from "@/app/paths";
 
 import type { NavEntry } from "./nav";
 import { registerNavEntry } from "./nav-registry";
@@ -160,15 +160,17 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     soonNote: "The needs-you inbox arrives with its own roadmap (mockup 16).",
     badgeSource: INBOX_BADGE_SOURCE,
   },
+  // Live since #141: the settings section has one built tab, Ticket sources
+  // (`app/(app)/settings/sources/page.tsx`), and `/settings` redirects to it until BS.1 (#491)
+  // builds the hub the row was waiting for. The route stays `SETTINGS_PATH` rather than the
+  // tab's own, so the entry lights on every settings URL and #491 changes nothing here.
   {
     id: "settings",
     label: "Settings",
-    route: "/settings",
+    route: SETTINGS_PATH,
     icon: Settings,
     group: "secondary",
     sort: 20,
-    status: "soon",
-    soonNote: "Workspace settings arrive with #491.",
   },
 ];
 

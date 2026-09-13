@@ -39,15 +39,17 @@ const SOURCE = readFileSync(join(__dirname, "ticket-source.provider.ts"), "utf8"
 );
 
 describe("the TicketSourceProvider SPI", () => {
-  it("declares the five members the issue enumerates and no sixth", () => {
+  it("declares the five members the issue enumerates, Q.4's configSchema, and no seventh", () => {
     // The issue's list: capabilities, validateConfig, fullSync, incrementalSync, mapTicket —
     // plus the optional webhookHandler on the sub-interface, and `kind` as the registry key.
-    // Asserted against a conforming double rather than against the type, because the useful
-    // failure is *an implementation that no longer satisfies the contract*.
+    // `configSchema` is the one member Q.2 named in advance as Q.4's to add (#141). Asserted
+    // against a conforming double rather than against the type, because the useful failure
+    // is *an implementation that no longer satisfies the contract*.
     const provider: TicketSourceProvider = scriptedProvider();
 
     expect(typeof provider.kind).toBe("string");
     expect(typeof provider.capabilities).toBe("function");
+    expect(typeof provider.configSchema).toBe("function");
     expect(typeof provider.validateConfig).toBe("function");
     expect(typeof provider.fullSync).toBe("function");
     expect(typeof provider.incrementalSync).toBe("function");
