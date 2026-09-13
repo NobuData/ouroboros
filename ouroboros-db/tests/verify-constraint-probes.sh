@@ -172,6 +172,16 @@
 # no single session can see it refuse anything while the numbering trigger fires first, so its
 # marker is constraints.sql's catalogue assertion rather than a refused row.
 #
+# #143 (R.1) adds the queue's workflow pin. T.6 will execute exactly the version a queue item
+# pins, and the trigger service that writes the pin re-checks none of the rules that keep it an
+# audit record rather than a guess. One mutation per rule V032 declares:
+#
+#   R.1 scope bullet                             mutation
+#   ------------------------------------------   ------------------------------------------
+#   a pinned version is one V029 could number    drop queue_items_workflow_version_positive
+#   the reason is a rung of resolution order     drop queue_items_workflow_pin_reason_valid
+#   a pinned version always carries its reason   drop queue_items_workflow_version_reasoned
+#
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
 #   ouroboros-db/tests/verify-constraint-probes.sh --runner docker
@@ -813,6 +823,26 @@ expect_red 'a workflow may hold one version number twice' \
 expect_red 'a workflow may hold two drafts' \
   'a workflow has at most one draft, and the second is refused by the database rather than by the editor .*workflow_versions_one_draft_idx did not fire' \
   'drop index ouroboros.workflow_versions_one_draft_idx;'
+
+# ---------------------------------------------------------------------------
+# The queue's workflow pin (#143: queue items carry a workflow and a version pin).
+#
+# A pin is what T.6 will execute, so one that can name version 0, carry a reason outside R.1's
+# resolution order, or be stored with no account of how it was chosen is an audit record that
+# audits nothing — and the service that writes it trusts all three rules rather than re-checking
+# them.
+# ---------------------------------------------------------------------------
+expect_red 'a queue pin may name version 0' \
+  'queue_items\.workflow_version is a version V029 could have numbered, so it starts at 1 .*queue_items_workflow_version_positive did not fire' \
+  'alter table ouroboros.queue_items drop constraint queue_items_workflow_version_positive;'
+
+expect_red 'a queue pin reason accepts anything' \
+  'queue_items\.workflow_pin_reason is one of the five rungs of the resolution order .*queue_items_workflow_pin_reason_valid did not fire' \
+  'alter table ouroboros.queue_items drop constraint queue_items_workflow_pin_reason_valid;'
+
+expect_red 'a pinned version may be unexplained' \
+  'a pinned version always carries the reason that chose it .*queue_items_workflow_version_reasoned did not fire' \
+  'alter table ouroboros.queue_items drop constraint queue_items_workflow_version_reasoned;'
 
 printf '\n'
 if check_summary; then

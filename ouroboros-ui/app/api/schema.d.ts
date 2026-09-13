@@ -873,13 +873,22 @@ export interface paths {
          *     publishes, in the order to append them: positions are handed out down the list, so the
          *     queue reads the way the person built the selection.
          *
-         *     **`workflow` is one of the fixed set** — `standard-fix`, `docs-loop`, `feature-loop`,
-         *     `deps-refresh` (decision K5) — and applies to every issue in the request. Omit it and
-         *     each issue is queued under the workflow **its own estimate suggested**, which is the
-         *     difference between *Queue 3 selected* and *Queue → standard-fix*.
+         *     **`workflow` names one of this workspace's active workflows** — the list *Assign
+         *     workflow ▾* offers — and applies to every issue in the request. It is an explicit choice,
+         *     and it wins over every trigger. Omit it and each issue is **claimed by trigger**: every
+         *     active workflow with a published version whose trigger (decision P8 — effort ≤, labels,
+         *     source) the issue satisfies is a match, the match with the most conditions wins, and a
+         *     tie goes to the alphabetically first slug. When nothing matches, the issue is queued
+         *     under the workflow **its own estimate suggested**. That is the difference between *Queue
+         *     3 selected* and *Queue → standard-fix*.
          *
-         *     **Only `sized` issues can be queued.** A queue row copies an effort, a workflow tag and
-         *     an `est_minutes` off the estimate in force, and there is nothing honest to write for an
+         *     **Every item is pinned.** `workflowVersion` is the version of that workflow in force at
+         *     the moment of queueing — what a run will execute — or `null` when it has nothing
+         *     published, and `workflowPinReason` says which of the rules above chose it. A publish or a
+         *     pause after queueing does not move a pin.
+         *
+         *     **Only `sized` issues can be queued.** A queue row copies an effort, a suggested workflow
+         *     and an `est_minutes` off the estimate in force, and there is nothing honest to write for an
          *     issue nobody has sized. `estimating` is refused rather than waited for: a request that
          *     blocked on an engine call would be a timeout, and the button can be pressed again when
          *     the pill changes.
@@ -4816,7 +4825,24 @@ export interface components {
             issueNumber: number;
             issueTitle: string;
             effort: components["schemas"]["QueueEffort"];
+            /** @description The workflow the issue is queued under — a slug, and the slug half of its pin. */
             workflowTag: string;
+            /**
+             * @description The version of `workflowTag` that was in force when the issue was queued — the
+             *     version a run of it will execute. `null` when that workflow had nothing published to
+             *     pin, or the item was queued before pinning existed. A publish, pause or archive after
+             *     queueing does not move it.
+             */
+            workflowVersion: number | null;
+            /**
+             * @description Why `workflowTag` claimed the issue: `explicit` — the queue request named it;
+             *     `predicate` — exactly one active workflow's trigger matched; `most_specific` —
+             *     several matched and this one's trigger carried the most conditions; `alphabetical` —
+             *     the most specific tied and this slug sorts first; `suggested` — nothing matched, so
+             *     the estimate's own suggestion stood. `null` for an item queued before pinning existed.
+             * @enum {string|null}
+             */
+            workflowPinReason: "explicit" | "predicate" | "most_specific" | "alphabetical" | "suggested" | null;
             /**
              * @description Place in the queue; `1` is next. Positions are dense by the writer's convention
              *     rather than by constraint, so do not compute a queue length from the last one.
@@ -10843,6 +10869,8 @@ export interface operations {
                      *           "issueTitle": "Watchdog reset on I²C bus lockup",
                      *           "effort": "m",
                      *           "workflowTag": "standard-fix",
+                     *           "workflowVersion": 14,
+                     *           "workflowPinReason": "predicate",
                      *           "position": 1,
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-08-13T01:37:41.000Z"
@@ -10853,6 +10881,8 @@ export interface operations {
                      *           "issueTitle": "Telemetry: split ingest into a worker pool",
                      *           "effort": "m",
                      *           "workflowTag": "feature-loop",
+                     *           "workflowVersion": null,
+                     *           "workflowPinReason": null,
                      *           "position": 12,
                      *           "estMinutes": null,
                      *           "enqueuedAt": "2026-08-13T13:37:41.000Z"
@@ -11343,6 +11373,8 @@ export interface operations {
                      *           "issueTitle": "Watchdog reset on I²C bus lockup",
                      *           "effort": "m",
                      *           "workflowTag": "standard-fix",
+                     *           "workflowVersion": 14,
+                     *           "workflowPinReason": "predicate",
                      *           "position": 1,
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-08-13T01:37:41.000Z"
@@ -11353,6 +11385,8 @@ export interface operations {
                      *           "issueTitle": "Expose battery health over BLE GATT",
                      *           "effort": "l",
                      *           "workflowTag": "feature-loop",
+                     *           "workflowVersion": 1,
+                     *           "workflowPinReason": "predicate",
                      *           "position": 2,
                      *           "estMinutes": 90,
                      *           "enqueuedAt": "2026-08-13T02:37:41.000Z"
@@ -11927,6 +11961,8 @@ export interface operations {
                      *           "issueTitle": "Watchdog reset on I²C bus lockup",
                      *           "effort": "m",
                      *           "workflowTag": "standard-fix",
+                     *           "workflowVersion": 14,
+                     *           "workflowPinReason": "explicit",
                      *           "position": 4,
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z"
@@ -11937,6 +11973,8 @@ export interface operations {
                      *           "issueTitle": "Motor PID integral windup on wheel stall",
                      *           "effort": "m",
                      *           "workflowTag": "standard-fix",
+                     *           "workflowVersion": 14,
+                     *           "workflowPinReason": "explicit",
                      *           "position": 5,
                      *           "estMinutes": 50,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z"
@@ -11947,6 +11985,8 @@ export interface operations {
                      *           "issueTitle": "Add CRC32 to config persistence layer",
                      *           "effort": "s",
                      *           "workflowTag": "standard-fix",
+                     *           "workflowVersion": 14,
+                     *           "workflowPinReason": "explicit",
                      *           "position": 6,
                      *           "estMinutes": 30,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z"

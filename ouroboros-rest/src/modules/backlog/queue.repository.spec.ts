@@ -51,6 +51,8 @@ function appendRow(overrides: Partial<QueueAppendRow> = {}): QueueAppendRow {
     issueTitle: "Watchdog reset on I²C bus lockup",
     effort: "m",
     workflowTag: "standard-fix",
+    workflowVersion: 14,
+    workflowPinReason: "predicate",
     estMinutes: 45,
     ...overrides,
   };
@@ -118,6 +120,16 @@ describe("the backlog queue repository", () => {
       await queue.selection(WORKSPACE, [ISSUE]);
 
       expect(database.statements[0].sql).toContain("'est_minutes'");
+    });
+
+    it("reads the issue's labels, which a workflow trigger's labels condition needs", async () => {
+      // R.1 (#143): the trigger service evaluates the canonical ticket, and GitHub's cache is
+      // where this endpoint's tickets come from.
+      await queue.selection(WORKSPACE, [ISSUE]);
+
+      expect(database.statements[0].sql).toContain(
+        '"ouroboros"."github_issues"."labels" as "labels"',
+      );
     });
 
     it("asks for exactly the ids it was given", async () => {
@@ -210,6 +222,24 @@ describe("the backlog queue repository", () => {
       const insert = database.statements.find((statement) => statement.sql.startsWith("insert"));
 
       expect(insert?.parameters.filter((value) => value === WORKSPACE)).toHaveLength(2);
+    });
+
+    it("writes the pin — the version in force and the reason — onto every row", async () => {
+      database.answers({ rows: [{ last: 0 }] });
+
+      await queue.append(WORKSPACE, [
+        appendRow(),
+        appendRow({ issueNumber: 484, workflowVersion: null, workflowPinReason: "explicit" }),
+      ]);
+
+      const insert = database.statements.find((statement) => statement.sql.startsWith("insert"));
+
+      expect(insert?.sql).toContain('"workflow_version"');
+      expect(insert?.sql).toContain('"workflow_pin_reason"');
+      expect(insert?.parameters).toContain(14);
+      expect(insert?.parameters).toContain("predicate");
+      expect(insert?.parameters).toContain("explicit");
+      expect(insert?.parameters).toContain(null);
     });
 
     it("returns the rows it wrote, so nothing has to be read back", async () => {

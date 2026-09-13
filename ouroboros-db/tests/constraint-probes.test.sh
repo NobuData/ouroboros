@@ -5,8 +5,8 @@
 # The script itself needs a migrated PostgreSQL, so what it does to a schema is asserted
 # where a database exists: the `ci/db` step that runs it. Its scope is #69's dashboard
 # read-model, #221's provider tables, #193's routing invariants, #583's registry rules,
-# #104's intake schema and #137's workflow studio, and every rule any of the six names is
-# checked below against the migrations that create it. What is asserted here is everything it decides *before* it connects — the
+# #104's intake schema, #137's workflow studio and #143's queue pin, and every rule any of the
+# seven names is checked below against the migrations that create it. What is asserted here is everything it decides *before* it connects — the
 # arguments it accepts,
 # the ones it refuses, and its refusal to reach for a database with no password in the
 # environment — so the module's suite keeps covering it without a daemon or a network.
@@ -113,7 +113,10 @@ for probe_constraint in \
   github_issues_labels_shape \
   github_repos_issues_cursor_after_sync \
   issue_estimates_issue_version_key \
-  issue_estimates_provenance
+  issue_estimates_provenance \
+  queue_items_workflow_version_positive \
+  queue_items_workflow_pin_reason_valid \
+  queue_items_workflow_version_reasoned
 do
   check_contains "$PROBES" "drop constraint $probe_constraint" \
     "the suite mutates $probe_constraint"

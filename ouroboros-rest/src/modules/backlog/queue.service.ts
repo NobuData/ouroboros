@@ -16,15 +16,19 @@
  *     render three failures for one press.
  *
  *   * **A queue row is copied from the estimate in force, never recomputed.** The effort chip,
- *     the workflow tag when the request names none, and `est_minutes` all come off the same
- *     latest-wins row — `est_minutes` from `breakdown.est_minutes`, which is the ticket's own
- *     criterion. `queue.resources.ts` holds the two reconciliations that copy needs.
+ *     the suggested workflow and `est_minutes` all come off the same latest-wins row —
+ *     `est_minutes` from `breakdown.est_minutes`, which is the ticket's own criterion.
+ *     `queue.resources.ts` holds the two reconciliations that copy needs.
  *
- *   * **An explicit `workflow` wins; otherwise each issue keeps its own.** *Queue →
- *     standard-fix* sends one tag for the selection and *Queue 3 selected* sends none, in which
- *     case each row is queued under the workflow its own estimate suggested. That is the whole
- *     of the rule today; the amendment on the ticket records that #143's trigger evaluation
- *     will fill the default by predicate instead, with an explicit choice still winning.
+ *   * **An explicit `workflow` wins; otherwise a trigger claims each issue, and every row is
+ *     pinned.** *Queue → standard-fix* sends one tag for the selection and *Queue 3 selected*
+ *     sends none. Either way R.1's trigger service
+ *     ([#143](https://github.com/NobuData/ouroboros/issues/143)) decides the row's workflow: the
+ *     named one, or the most specific active workflow whose trigger the issue satisfies — its
+ *     effort, its labels, its source — or, when nothing matches, the workflow its own estimate
+ *     suggested. The row stores the version of that workflow in force *now* and which rule chose
+ *     it (`workflow_version`, `workflow_pin_reason`, V032), and the rules themselves are
+ *     `workflows/trigger.evaluation.ts`'.
  *
  * ---------------------------------------------------------------------------
  * **A named workflow is checked against the workspace's registry, and P.4 is why**
@@ -38,7 +42,8 @@
  * names a workflow the workspace does not have cannot succeed for any selection, and refusing
  * it before touching `github_issues` keeps one failure one answer.
  *
- * **Only an explicit tag is checked.** A row queued under *each issue's own* copies
+ * **Only an explicit tag is checked.** A row queued with no explicit choice is claimed by a
+ * trigger — which only an active workflow can carry — or, when none matches, copies
  * `suggested_workflow` off the estimate in force, and that value was already held to the
  * offered vocabulary — by the engine, at the moment the estimate was made, against the same
  * registry (`estimation/estimation.context.ts`). Re-checking it here would refuse a stored
@@ -50,6 +55,7 @@
 import { Injectable } from "@nestjs/common";
 
 import { WorkflowRegistryService } from "../workflows/registry.service";
+import { TriggerService, type QueuedTicket, type WorkflowPin } from "../workflows/trigger.service";
 import {
   QUEUE_ISSUE_PROBLEMS,
   queueIssuesConflict,
@@ -86,10 +92,13 @@ export class BacklogQueueService {
    * @param workflows - P.4's registry, for the one check that is not about the issues. The same
    *   service `estimation.context.ts` offers the engine, so what a menu lists, what an estimate
    *   may suggest and what this accepts are one answer.
+   * @param triggers - R.1's trigger service: which workflow claims each issue, and the version
+   *   it is pinned at.
    */
   constructor(
     private readonly queue: BacklogQueueRepository,
     private readonly workflows: WorkflowRegistryService,
+    private readonly triggers: TriggerService,
   ) {}
 
   /**
@@ -99,8 +108,9 @@ export class BacklogQueueService {
    *   scoped by it, so an id belonging to another workspace is simply not found.
    * @param body - The issues, in the order to append them, and the workflow they all run under
    *   when one is named.
-   * @returns The created queue items in queue order, and their combined estimate — the number
-   *   the selection action bar renders as *"est. 1h 10m combined autonomous work"*.
+   * @returns The created queue items in queue order, each pinned to a workflow version, and
+   *   their combined estimate — the number the selection action bar renders as *"est. 1h 10m
+   *   combined autonomous work"*.
    * @throws {NotFoundError} `queue_issues_not_found` — an id names no issue in this workspace,
    *   including one that names an issue in another.
    * @throws {InvalidRequestError} `queue_workflow_unknown` — the request named a workflow this
@@ -128,7 +138,15 @@ export class BacklogQueueService {
       throw queueIssuesConflict(conflicts);
     }
 
-    const rows = queueable.map((issue) => appendRow(issue, body.workflow));
+    // After every refusal, so a request that is going to be refused never reads a workflow; and
+    // once, before the write, so the append's position retries reuse one snapshot of the pins.
+    // The pins come back in `queueable`'s order, which is what pairs them by index.
+    const pins = await this.triggers.pin(
+      organizationId,
+      queueable.map(queuedTicket),
+      body.workflow,
+    );
+    const rows = queueable.map((issue, index) => appendRow(issue, pins[index]));
 
     try {
       return queuedSelection(await this.queue.append(organizationId, rows));
@@ -311,20 +329,38 @@ function ordered(issueIds: readonly string[], found: readonly QueueCandidate[]):
 }
 
 /**
- * One queue row, from one sized issue.
+ * What R.1's trigger service evaluates for one issue.
+ *
+ * @param issue - A sized issue and the estimate in force.
+ * @returns Its canonical facts — `github` as the source, because every issue this endpoint
+ *   queues is a row of GitHub's issue cache — and the workflow its estimate suggested.
+ */
+function queuedTicket(issue: QueueableIssue): QueuedTicket {
+  return {
+    source: "github",
+    labels: issue.labels,
+    effort: issue.effort,
+    suggestedWorkflow: issue.suggestedWorkflow,
+  };
+}
+
+/**
+ * One queue row, from one sized issue and the workflow pinned on it.
  *
  * @param issue - The issue and the estimate in force.
- * @param workflow - The tag the request named, or `undefined` for the issue's own suggestion.
- * @returns The row to append. Every value is copied — see `queue.resources.ts` for the two
+ * @param pin - The workflow that claimed it, the version in force and the reason.
+ * @returns The row to append. Every other value is copied — see `queue.resources.ts` for the two
  *   places a copy has to reconcile two migrations' bounds.
  */
-function appendRow(issue: QueueableIssue, workflow: string | undefined): QueueAppendRow {
+function appendRow(issue: QueueableIssue, pin: WorkflowPin): QueueAppendRow {
   return {
     githubRepoId: issue.githubRepoId,
     issueNumber: issue.number,
     issueTitle: issue.title,
     effort: queueEffort(issue.effort),
-    workflowTag: workflow ?? issue.suggestedWorkflow,
+    workflowTag: pin.slug,
+    workflowVersion: pin.version,
+    workflowPinReason: pin.reason,
     estMinutes: queueEstMinutes(issue.estMinutes),
   };
 }

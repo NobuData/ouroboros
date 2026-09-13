@@ -8,6 +8,8 @@ import { WorkflowPublishGate } from "./publish.gate";
 import { WorkflowRegistryService } from "./registry.service";
 import { WorkflowStatsRepository } from "./stats.repository";
 import { WorkflowStatsService } from "./stats.service";
+import { TriggerRepository } from "./trigger.repository";
+import { TriggerService } from "./trigger.service";
 import { WorkflowsController } from "./workflows.controller";
 import { WorkflowsModule } from "./workflows.module";
 import { WorkflowsRepository } from "./workflows.repository";
@@ -21,9 +23,10 @@ import { WorkflowsService } from "./workflows.service";
  * The exports are asserted rather than assumed, because they are the ticket's internal contract
  * for consumers: P.3 ([#134](https://github.com/NobuData/ouroboros/issues/134)) composes its
  * rail payload from `WorkflowStatsService`, and `BacklogModule` and `EstimationModule` already
- * read the vocabulary through `WorkflowRegistryService`. An export removed in a refactor sends
- * the next consumer back to writing its own derivation, which is the drift this module exists
- * to prevent.
+ * read the vocabulary through `WorkflowRegistryService`, and `BacklogModule`'s queue write pins
+ * each item through `TriggerService` (R.1, [#143](https://github.com/NobuData/ouroboros/issues/143)).
+ * An export removed in a refactor sends the next consumer back to writing its own derivation,
+ * which is the drift this module exists to prevent.
  */
 
 describe("the workflows module", () => {
@@ -41,6 +44,8 @@ describe("the workflows module", () => {
     expect(moduleRef.get(WorkflowsController)).toBeInstanceOf(WorkflowsController);
     expect(moduleRef.get(WorkflowCatalogService)).toBeInstanceOf(WorkflowCatalogService);
     expect(moduleRef.get(WorkflowCatalogRepository)).toBeInstanceOf(WorkflowCatalogRepository);
+    expect(moduleRef.get(TriggerService)).toBeInstanceOf(TriggerService);
+    expect(moduleRef.get(TriggerRepository)).toBeInstanceOf(TriggerRepository);
 
     await moduleRef.close();
   });
@@ -59,13 +64,13 @@ describe("the workflows module", () => {
     await moduleRef.close();
   });
 
-  it("exports the two services, and not the repository", () => {
+  it("exports the three services, and not the repositories", () => {
     // A consumer that reached past them would be a consumer that had skipped the honesty
-    // rules — the captions, the null share, the bootstrap vocabulary — which are the whole of
-    // what those two files are.
+    // rules — the captions, the null share, the bootstrap vocabulary, which workflows may claim
+    // a ticket — which are the whole of what those files are.
     const exports = Reflect.getMetadata("exports", WorkflowsModule) as unknown[] | undefined;
 
-    expect(exports).toEqual([WorkflowStatsService, WorkflowRegistryService]);
+    expect(exports).toEqual([WorkflowStatsService, WorkflowRegistryService, TriggerService]);
   });
 
   it("declares the lifecycle controller, and only that one", () => {

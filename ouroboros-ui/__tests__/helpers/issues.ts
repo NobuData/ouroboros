@@ -375,6 +375,8 @@ export function queuedSelection(count = SELECTED_TRIO.length, estMinutes = 45 * 
       issueTitle: `Seeded issue ${index + 1}`,
       effort: "m" as const,
       workflowTag: "standard-fix",
+      workflowVersion: 14,
+      workflowPinReason: "explicit" as const,
       position: index + 4,
       estMinutes: 45,
       enqueuedAt: "2026-09-10T15:41:12.000Z",

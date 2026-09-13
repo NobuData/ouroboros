@@ -3818,6 +3818,7 @@ ouroboros-rest/
 │       │                   #   registry.service.ts — which workflows a workspace may name
 │       │                   #   the lifecycle API: /api/v1/workflows, 7 operations   · #134
 │       │                   #   draft.etag.ts — the If-Match guard; publish.gate.ts — zod + engine
+│       │                   #   trigger.* — which workflow claims a queued ticket, and its pin · #143
 │       │                   #   validates against ../../schemas/workflow-dsl/v1.json
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
