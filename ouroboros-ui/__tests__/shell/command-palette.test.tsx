@@ -273,8 +273,8 @@ describe("running an action", () => {
   it("does nothing at all on a row that leads nowhere", () => {
     const box = open();
 
-    type(box, "workflows");
-    fireEvent.click(screen.getByRole("option", { name: /Go to Workflows/ }));
+    type(box, "build farm");
+    fireEvent.click(screen.getByRole("option", { name: /Go to Build Farm/ }));
 
     expect(push).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
@@ -346,22 +346,22 @@ describe("a source that searches, which is what #93 registers", () => {
 
 describe("a screen nobody has built", () => {
   it("is listed, and says what it is waiting for", () => {
-    // Dropping the row would answer "Workflows" with no matches — a claim that there is no such
-    // screen rather than the truth, which is that it is not built yet (§ 3.5). (Issues was this
-    // suite's example until #115 built that screen.)
+    // Dropping the row would answer "Build Farm" with no matches — a claim that there is no
+    // such screen rather than the truth, which is that it is not built yet (§ 3.5). (Issues was
+    // this suite's example until #115 built that screen, and Workflows until #147.)
     const box = open();
 
-    type(box, "workflows");
+    type(box, "build farm");
 
     expect(
-      screen.getByRole("option", { name: /The workflow builder arrives with its own roadmap/ }),
+      screen.getByRole("option", { name: /The build farm arrives with its own roadmap/ }),
     ).toBeInTheDocument();
   });
 
   it("is marked, so nothing announces it as something to press", () => {
     open();
 
-    expect(screen.getByRole("option", { name: /Go to Workflows/ })).toHaveAttribute(
+    expect(screen.getByRole("option", { name: /Go to Build Farm/ })).toHaveAttribute(
       "aria-disabled",
       "true",
     );

@@ -1,7 +1,14 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DASHBOARD_PATH, ISSUES_PATH, MODELS_PATH, SETTINGS_PATH } from "@/app/paths";
+import {
+  DASHBOARD_PATH,
+  ISSUES_PATH,
+  MODELS_PATH,
+  SETTINGS_PATH,
+  WORKFLOWS_PATH,
+  workflowPath,
+} from "@/app/paths";
 import { focusStops } from "@/app/shell/focus-trap";
 import type { NavEntry } from "@/app/shell/nav";
 import { INBOX_BADGE_SOURCE, SEEDED_NAV_ENTRIES } from "@/app/shell/nav-modules";
@@ -182,16 +189,17 @@ describe("what the sidebar links to", () => {
   it("links only to routes that exist", () => {
     render(<SidebarNav />);
 
-    // The four screens that are built: the dashboard (#45), Issues (#115), Models (#200) and
-    // Settings (#141, whose `/settings` redirects to its one built tab until #491). Every
-    // other entry is a screen nobody has built, and a link to one would be a 404 in the
-    // product's primary navigation. The count is asserted too, so a fifth link cannot appear
-    // without somebody deciding it should.
+    // The five screens that are built: the dashboard (#45), Issues (#115), Workflows (#147),
+    // Models (#200) and Settings (#141, whose `/settings` redirects to its one built tab until
+    // #491). Every other entry is a screen nobody has built, and a link to one would be a 404
+    // in the product's primary navigation. The count is asserted too, so a sixth link cannot
+    // appear without somebody deciding it should.
     const links = screen.getAllByRole("link");
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       DASHBOARD_PATH,
       ISSUES_PATH,
+      WORKFLOWS_PATH,
       MODELS_PATH,
       SETTINGS_PATH,
     ]);
@@ -266,13 +274,26 @@ describe("the active entry", () => {
   });
 
   it("never highlights an entry whose screen does not exist", () => {
-    // /workflows is a real path in the registry and an unbuilt one in the product. Until the
-    // workflow builder lands it must not light up, or the shell claims a page that is not there.
-    // (This case named /issues until #115 built that screen.)
-    path.current = "/workflows";
+    // /build-farm is a real path in the registry and an unbuilt one in the product. Until the
+    // build farm lands it must not light up, or the shell claims a page that is not there.
+    // (This case named /issues until #115 built that screen, and /workflows until #147.)
+    path.current = "/build-farm";
     const { container } = render(<SidebarNav />);
 
     expect(container.querySelectorAll(".shell-nav__item--active")).toHaveLength(0);
+  });
+
+  it("lights Workflows on its own route and on a workflow beneath it, now that #147 has built the studio", () => {
+    // Section matching (§ 1.2): `/workflows/standard-fix` is a studio URL, and the entry stays
+    // lit there — which is what the studio's rail relies on when it links each workflow.
+    for (const current of [WORKFLOWS_PATH, workflowPath("standard-fix")]) {
+      path.current = current;
+      const { container, unmount } = render(<SidebarNav />);
+
+      expect(container.querySelectorAll(".shell-nav__item--active")).toHaveLength(1);
+      expect(screen.getByRole("link", { name: "Workflows" })).toHaveAttribute("aria-current", "page");
+      unmount();
+    }
   });
 
   it("lights Issues on its own route, now that #115 has built the screen", () => {

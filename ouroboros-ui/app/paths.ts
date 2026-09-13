@@ -118,6 +118,38 @@ export const SOURCES_PATH = `${SETTINGS_PATH}/sources`;
 export const REGISTRY_PATH = `${MODELS_PATH}/registry`;
 
 /**
+ * The workflow studio ([#147](https://github.com/NobuData/ouroboros/issues/147)) — mockup 04.
+ *
+ * Written down here for the reason every other route in this file is: three modules have to
+ * agree about it and none of them can import the others. The sidebar's registry entry
+ * (`app/shell/nav-modules.ts`) names it as the **Workflows** destination, the dashboard's
+ * *Edit workflows* (`app/dashboard/dashboard-screen.tsx`) links to it, and the studio's own
+ * rail links each workflow beneath it through {@link workflowPath} — so `isActiveRoute` in
+ * `app/shell/nav.ts`, which matches everything under an entry's route, keeps **Workflows** lit
+ * on `/workflows/standard-fix` as well as here.
+ *
+ * This retires the `/workflows` placeholder #49 held for it, the amendment that roadmap
+ * recorded when it was filed.
+ */
+export const WORKFLOWS_PATH = "/workflows";
+
+/**
+ * The studio, opened on one workflow — `/workflows/standard-fix`.
+ *
+ * A path segment rather than a query parameter, because a workflow is a *thing* the studio is
+ * looking at rather than a filter over one page: the rail links here, and a link to a workflow
+ * is what the ticket means by *linkable*.
+ *
+ * @param slug The workflow's slug. Lower-case kebab by the contract, and encoded anyway: a
+ *   segment built from a value is a segment built from input, and the encoding is what keeps
+ *   a slug that somehow carried a `/` or a `?` from reading as a different route.
+ * @returns The path.
+ */
+export function workflowPath(slug: string): string {
+  return `${WORKFLOWS_PATH}/${encodeURIComponent(slug)}`;
+}
+
+/**
  * The routing matrix's heading, as an element id — where a **Used by** chip naming a route
  * goes ([#593](https://github.com/NobuData/ouroboros/issues/593)).
  *

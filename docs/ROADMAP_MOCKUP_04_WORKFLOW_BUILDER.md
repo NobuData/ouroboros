@@ -1200,7 +1200,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| S.1 | #147 | 🟡 Open | ouroboros-ui: [S.1] Studio route, page head & workflow rail | `(app)/workflows`: head, seg control, actions, rail with states | mvp, workflow, ui, design | N (after #41, P.3, BA-D.5) | Y | M | ouroboros-ui |
+| S.1 | #147 | 🟢 Done | ouroboros-ui: [S.1] Studio route, page head & workflow rail | `(app)/workflows`: head, seg control, actions, rail with states | mvp, workflow, ui, design | N (after #41, P.3, BA-D.5) | Y | M | ouroboros-ui |
 | S.2 | #148 | 🟡 Open | ouroboros-ui: [S.2] Canvas foundation on React Flow | Themed React Flow: dot-grid, pan/zoom, controlled graph state | mvp, workflow, ui, design | N (after P.2, S.1) | Y | L | ouroboros-ui |
 | S.3 | #149 | 🟡 Open | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
 | S.4 | #150 | 🟡 Open | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
@@ -1211,7 +1211,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue S.1 — ouroboros-ui: [S.1] Studio route, page head & workflow rail
 
-> **GitHub issue:** #147 · **Status:** 🟡 Open · **Parent epic:** #130
+> **GitHub issue:** #147 · **Status:** 🟢 Done · **Parent epic:** #130
 
 - **Problem Statement:** The studio frame — head (name, subline with trigger
   summary/last-edited/version/usage), segmented Visual/Code/Copilot control,
@@ -1235,6 +1235,57 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 "Runs when a sized issue with effort ≤ M is queued · v14 · used by 61% of runs"
 rail: ▌standard-fix 6·auto-merge │ feature-loop │ deps-refresh │ docs-loop │ hotfix-p0 ● │ +New
 ```
+
+- **Decided in-issue and shipped 2026-09-13 as `ouroboros-ui/app/(app)/workflows/{page,
+  loading}.tsx`, `app/(app)/workflows/[slug]/page.tsx`, `app/api/workflows.ts`,
+  `app/workflows/{view,states,data,create,create-actions}.ts`,
+  `app/workflows/{studio-frame,studio-subnav,studio-screen,studio-skeleton,studio-banner,
+  workflow-rail,new-workflow}.tsx` and `app/workflows/workflows.css` (`ouroboros-ui` 0.59.0):**
+
+  * **Two routes, one screen.** `/workflows` opens on the rail's first entry, the way the
+    mockup opens on `standard-fix`; `/workflows/:slug` is the same screen opened on a named
+    workflow, which is what the rail links to. A redirect from the landing to the first
+    workflow's URL was rejected: it would cost a second round of reads on the product's
+    most-pressed sidebar entry for a URL the rail already offers.
+  * **The slug is resolved against the rail, not sent to the service.** `GET /workflows/{id}`
+    takes an id and the URL carries a slug; the rail is the bridge, so a slug the workspace
+    does not have costs no request and draws the studio's own *No such workflow* state beside
+    the rail — not `notFound()`, whose boundary would replace the pane with a page that has no
+    rail on it, which is exactly what a reader who followed a stale link needs next.
+  * **The trigger sentence is composed on every render and stored nowhere.** `view.ts`'s
+    `triggerSentence` reads the definition's root `trigger` defensively (a draft is stored
+    unvalidated, so `{}` has to render) and writes *Runs when a sized issue with effort ≤ M
+    is queued*; the version in force is described first, the draft only when nothing is in
+    force, and a document with no trigger says so rather than claiming a predicate. Every other
+    head value is served: `currentVersion`, P.4's `usageCaption`, and `draft.updatedAt` as
+    *Last edited*, measured against the instant the page was read.
+  * **The segmented control is the CP.4 `PageSubnav`**, per the shell addendum, with Visual
+    live and Code / Copilot as `SubnavSoon` naming #169 and #565 — the ticket's own honesty
+    obligation, and the two amendments recorded on it.
+  * **Browse templates, Dry run and Publish vN+1 are drawn and inert, each with the issue
+    it waits for as its reason** (#159, #152, #152). There is no onboarding placeholder route
+    to send Browse templates to — #49's placeholders were never pages — so the honest
+    rendering is the product's one way of switching a control off. *Dry run* drops the
+    mockup's `#485`: a number this page did not compute is not one it may print. Publish is
+    drawn for `owner`/`admin` and nobody else; a member is told so once, by role.
+  * **The rail is served, never recomposed.** Names and captions are printed as P.4 composed
+    them — so the seeded rail reads `12 stages · auto-merge` and `used by 42% of runs`, the
+    two strings P.5 recorded as diverging from the mockup — with the selected entry carrying
+    `aria-current` and the accent gradient, and the paused one its err-dot beside a caption
+    that already says *paused*.
+  * **The create dialog takes a name and a slug, and the slug follows the name.** The service's
+    derivation is restated client-side so the slug box shows what would be derived until the
+    reader edits it (emptying it hands it back); collisions are caught live against the rail
+    and `409 workflow_slug_taken` lands under the same box; the slug is always sent because it
+    was shown, and it is the one thing `PATCH` cannot change. On success the page lands on
+    `/workflows/<slug>` as the service stored it.
+  * **The dashboard's *Edit workflows* became a link and the sidebar's row went live on the
+    same commit**, for the reason #200 gave for Models: a route that exists and a navigation
+    that still refuses to point at it is the same dead end from the other side.
+  * **What this ticket deliberately left where it was:** the intake assign menu still lists
+    the built-in four (`app/issues/bar.ts`). The #118 amendment row below assigns the swap to
+    S.1, but this issue's own scope does not name it, and it is a change to another surface
+    with its own suites; it remains an open UI-only change now that the endpoint exists.
 
 ### Issue S.2 — ouroboros-ui: [S.2] Canvas foundation on React Flow
 
@@ -1624,14 +1675,14 @@ on 2026-08-09; no new work created:
 
 | Issue | Amendment |
 |---|---|
-| #49 | `/workflows` placeholder retired by S.1 (#147) |
+| #49 | `/workflows` placeholder retired by S.1 (#147). **Retired 2026-09-13**: `app/(app)/workflows/page.tsx` and `app/(app)/workflows/[slug]/page.tsx` are the studio, the sidebar's **Workflows** row is a link, and the dashboard's *Edit workflows* links there too |
 | #56 | e2e suite gains the studio leg S.8 (#154) |
 | #64 | DASH-F.1 `runs` gains P.4 (#135) as a consumer — no schema change |
 | #99 | INTAKE-K.1 `github_issues` **replaced** by the canonical ticket model Q.1 (#138) — **overtaken 2026-09-08**: `#99` shipped `V014`, so Q.1 became the *generalizing* migration the issue's own scope anticipated for that case. Landed 2026-09-12 as `V030`, and **additively**: `ticket_sources` and `tickets` are created with every constraint the canonical model needs, and `github_issues` is left exactly as it was found. The cut-over — the sync writing `tickets`, `issue_estimates` re-pointing at `tickets.id`, `github_issues` retiring — belongs to Q.2 (#139) and Q.3 (#140), which are the tickets that change the *writer* |
 | #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) — **overtaken 2026-09-08**: Epic K was built after all (`#99`, `#100`, `#101` all shipped), so Q.3 *refactors* the GitHub client behind the SPI rather than writing it. The boundary the amendment asked for landed with #101: `github.octokit.ts` is the only file that may import `@octokit/*`, lint-enforced |
 | #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) — **overtaken 2026-09-08**: `#102` shipped, so Q.2's scheduler generalizes a working loop and Q.3 *moves* GitHub's specifics rather than writing them. They are already one file each: the `since` cursor and the `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in `issue.mapping.ts`, and the estimation handoff behind an injectable token. **Q.2 landed 2026-09-12** and the generalized loop is `ouroboros-rest/src/modules/ticket-sources/`, beside `backlog-sync/` rather than in place of it: the two coexist for one release, the new one writing `tickets` and reaching nothing until a provider is registered, and Q.3 is what retires the GitHub-specific one |
 | #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143). **Landed 2026-09-12 for P.4's half**: the body holds `workflow` to a *slug* and `queue.service.ts` holds it to the workspace's registry (`422 queue_workflow_unknown`), replacing decision K5's `@IsIn`. Stored tags keep resolving. **R.1's half landed 2026-09-13** (#143): with no explicit `workflow` each issue is claimed by trigger, falling back to its estimate's suggestion, and every new row carries `workflow_version` + `workflow_pin_reason` (V032) |
-| #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135). **Half landed 2026-09-12**: the REST vocabulary *is* the registry, so what the menu must list is defined and enforced. The UI list is still the built-in four as a fallback — swapping it for a read of P.3's `GET /api/v1/workflows` is S.1's (#147). **That endpoint exists as of 2026-09-12** (#134), so the swap is now a UI change with nothing left to wait for |
+| #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135). **Half landed 2026-09-12**: the REST vocabulary *is* the registry, so what the menu must list is defined and enforced. The UI list is still the built-in four as a fallback — swapping it for a read of P.3's `GET /api/v1/workflows` is S.1's (#147). **That endpoint exists as of 2026-09-12** (#134), so the swap is now a UI change with nothing left to wait for. **S.1 landed 2026-09-13 without it**: the studio reads the rail through `app/api/workflows.ts`, which is the read the menu would share, but the menu's built-in four stand and the swap stays an open UI-only change — see S.1's shipped notes |
 | #120 | INTAKE-N.6 no-token guidance retargets the sources settings surface Q.4 (#141) |
 | #124 | INTAKE-O.3 **superseded** — scope absorbed by P.1/P.4 (#132/#135); recommend closing. **Absorbed 2026-09-12**: `WorkflowRegistryService` is the registry both surfaces read — the assign vocabulary and `estimation.context.ts`'s `workflowTags`. A workspace with no workflow entities is still offered K5's four (`BOOTSTRAP_WORKFLOW_SLUGS`), because V029's tables have no writer until P.3/#136 and an empty vocabulary would take the shipped intake pipeline offline |
 

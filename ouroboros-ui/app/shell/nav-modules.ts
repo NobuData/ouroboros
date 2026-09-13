@@ -12,7 +12,13 @@ import {
   Workflow,
 } from "lucide-react";
 
-import { DASHBOARD_PATH, ISSUES_PATH, MODELS_PATH, SETTINGS_PATH } from "@/app/paths";
+import {
+  DASHBOARD_PATH,
+  ISSUES_PATH,
+  MODELS_PATH,
+  SETTINGS_PATH,
+  WORKFLOWS_PATH,
+} from "@/app/paths";
 
 import type { NavEntry } from "./nav";
 import { registerNavEntry } from "./nav-registry";
@@ -32,17 +38,17 @@ import { registerNavEntry } from "./nav-registry";
  * icon set is **lucide** (ISC, tree-shakable), which § 1.2 proposes and this issue records as
  * the decision.
  *
- * Every destination except the dashboard, Issues and Models is a screen that does not exist
- * yet: the placeholder routes are #49 and each real screen arrives with its own roadmap issue.
- * Rather than link to a 404, those entries are `"soon"` and render as labelled, non-interactive
- * rows — the design system's honesty rule (§ 3.5): a surface that is not ready is *labelled*,
- * never dead. Each note names the issue that turns the row into a link, so the tooltip is a
- * usable answer to "when?" rather than the word *soon* on its own.
+ * Every destination except the dashboard, Issues, Workflows and Models is a screen that does
+ * not exist yet: the placeholder routes are #49 and each real screen arrives with its own
+ * roadmap issue. Rather than link to a 404, those entries are `"soon"` and render as labelled,
+ * non-interactive rows — the design system's honesty rule (§ 3.5): a surface that is not
+ * ready is *labelled*, never dead. Each note names the issue that turns the row into a link,
+ * so the tooltip is a usable answer to "when?" rather than the word *soon* on its own.
  *
- * **Models was the first of the nine to be answered, and Issues the second.** #200 built
- * `/models` and #115 built `/issues`, so both notes have become routes — which is exactly the
- * transition each remaining note promises, and the reason the notes name issues rather than
- * saying *soon* and stopping.
+ * **Models was the first of the nine to be answered, Issues the second, and Workflows the
+ * third.** #200 built `/models`, #115 built `/issues` and #147 built `/workflows`, so each
+ * note has become a route — which is exactly the transition each remaining note promises,
+ * and the reason the notes name issues rather than saying *soon* and stopping.
  */
 
 /**
@@ -77,15 +83,18 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     group: "primary",
     sort: 20,
   },
+  // Live since #147: the studio route is built (`app/(app)/workflows/page.tsx`), so the row
+  // that named the roadmap it was waiting for is a link — the amendment mockup 04's roadmap
+  // recorded on #49, acted on. `WORKFLOWS_PATH` rather than a workflow's own URL, so the entry
+  // lights on every studio URL (`/workflows/standard-fix` included) and the code and copilot
+  // views (#169, #565) change nothing here.
   {
     id: "workflows",
     label: "Workflows",
-    route: "/workflows",
+    route: WORKFLOWS_PATH,
     icon: Workflow,
     group: "primary",
     sort: 30,
-    status: "soon",
-    soonNote: "The workflow builder arrives with its own roadmap (mockup 04).",
   },
   // Live since #200: the routing frame is built (`app/(app)/models/(routing)/page.tsx`), so the row
   // that named the issue it was waiting for is a link. The entry stays seeded here rather
