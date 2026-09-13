@@ -1,99 +1,61 @@
 import { ApiHarness } from "../../testing/harness.fixture";
 import { SCHEMA_NAME } from "../db/schema";
-import { httpError } from "../github/github.fixture";
-import { GithubRateLimiter } from "../github/github.rate-limit";
-import { VaultService } from "../vault/vault.service";
-import { GithubTicketSourceProvider } from "./providers/github.provider";
 import {
-  SOURCE_LOGIN,
-  SOURCE_REPO,
-  SOURCE_TOKEN,
-  issuePayload,
-  pullRequestPayload,
-  recordingFactory,
-  scriptedOctokit,
-  type OctokitScript,
-} from "./providers/github.provider.fixture";
-import { TicketSourceError } from "./ticket-source.errors";
-import {
-  FIXTURE_CREDENTIAL,
-  githubTicket,
-  jiraTicket,
-  page,
-  scriptedProvider,
-  type ScriptedProvider,
-} from "./ticket-source.fixture";
-import type { TicketSourceProvider } from "./ticket-source.provider";
+  IN_MEMORY_EPOCH,
+  IN_MEMORY_PROJECT,
+  InMemoryTicketSourceProvider,
+  InMemoryTracker,
+  inMemoryCursor,
+  readInMemoryCursor,
+} from "./providers/in-memory.provider.fixture";
+import { FIXTURE_CREDENTIAL } from "./ticket-source.fixture";
 import { TicketSourceRegistry } from "./ticket-source.registry";
-import { TicketSourcesRepository } from "./ticket-sources.repository";
 import { TicketSourcesService } from "./ticket-sources.service";
+import { cycleWith, insertSource, sourceRow, ticketsOf } from "./ticket-sync.integration.fixture";
 
 /**
- * The loop against a migrated database ([#139](https://github.com/NobuData/ouroboros/issues/139)).
+ * The loop against a migrated database ([#139](https://github.com/NobuData/ouroboros/issues/139)),
+ * on the in-memory provider ([#142](https://github.com/NobuData/ouroboros/issues/142)).
  *
- * The unit suites run this code over recorded statements, and that is exactly what makes this
- * one necessary. Six things can only be asserted here, and five of them are acceptance
- * criteria:
+ * The unit suites run this code over recorded statements, and that is exactly what makes this one
+ * necessary. Six things can only be asserted here, and five of them are acceptance criteria:
  *
- *   * **A canonical row survives V030's constraints** — for a GitHub-shaped ticket *and* for a
- *     Jira-shaped one with no repository, which is decision **P6**'s own criterion. A unit test
- *     cannot say whether the row a provider produced is a row the server accepts.
- *   * **A re-sync touches no rows.** The *touches no rows* half is a claim about `updated_at`,
- *     which only `tickets_touch_updated_at` can move — so only a database can prove it did not.
- *   * **A cursor round-trips.** Stored, read back, handed to `incrementalSync` unchanged — a
- *     trip through a `text` column and V030's two CHECKs that no unit test crosses.
+ *   * **A canonical row survives V030's constraints** — for a ticket whose key is its display form
+ *     *and* for one of another kind with no body, no labels and an account id for an author, which
+ *     is decision **P6**'s own criterion. A unit test cannot say whether a row is one the server
+ *     accepts.
+ *   * **A re-sync touches no rows.** The *touches no rows* half is a claim about `updated_at`, which
+ *     only `tickets_touch_updated_at` can move — so only a database can prove it did not.
+ *   * **A cursor round-trips.** Stored, read back, handed to `incrementalSync` unchanged — a trip
+ *     through a `text` column and V030's two CHECKs that no unit test crosses.
  *   * **A failure lands in `status` and V031's `status_reason`**, through
  *     `ticket_sources_status_reason_present`, and a later success clears both.
- *   * **The credential is sealed by the real vault and opened by the loop** — so what a
- *     provider receives is what an administrator actually pasted, and
- *     `ticket_sources_credentials_sealed` is what the column would have refused otherwise.
+ *   * **The credential is sealed by the real vault and opened by the loop** — so what a provider
+ *     receives is what an administrator actually pasted.
  *   * **`ticket_sources_public` really is the read path**, and the one statement that names the
  *     table is the one that opens the secret.
  *
  * ---------------------------------------------------------------------------
- * **Most cases rebuild the registry with a scripted provider**, because what is under test in
- * them is the loop and the schema beneath it rather than a tracker — so the provider is the
- * double the unit suites use and the assertions are about what reached PostgreSQL.
+ * **Every case runs on `InMemoryTicketSourceProvider`, and nothing here imports Octokit.** That is
+ * Q.5's third acceptance criterion — *the core intake harness runs entirely on the fake* — and it
+ * is a better harness for the loop than the double it replaces, because the fake has behaviour: a
+ * tracker that refuses a token it does not recognise, serves a record that closed before anybody saw
+ * it, and resumes after the cursor it wrote. So the credential case proves the opened value by the
+ * tracker *accepting* it, and the cursor case by what the tracker's access log was asked.
+ * `.dependency-cruiser.cjs`'s `ticket-source-core-tests-run-on-the-fake` makes an Octokit, GitHub
+ * fixture or GitHub provider import here a lint failure.
  *
- * **The last block is different, and it is Q.3's first acceptance criterion**
- * ([#140](https://github.com/NobuData/ouroboros/issues/140)): *"the intake MVP criteria for
- * sync … all hold when running through the SPI"*. There the **real** `GithubTicketSourceProvider`
- * is registered over a scripted GitHub, so a cold import, a no-change poll, an upstream edit
- * and a close are asserted against V030's columns with nothing standing in but the network.
+ * **GitHub end to end is `providers/github.provider.integration-spec.ts`** — Q.3's criterion that the
+ * intake MVP holds through the SPI, moved beside the provider it is about.
  *
- * The cycle is driven from the injector rather than by waiting for the scheduler; the loop's
- * own behaviour is `ticket-sources.scheduler.spec.ts`'s, under fake timers. The harness is
- * started with a day-long interval so the application's own loop cannot fire a competing cycle
- * mid-test.
+ * The cycle is driven from the injector rather than by waiting for the scheduler; the loop's own
+ * timing is `ticket-sources.scheduler.spec.ts`'s, under fake timers. The harness is started with a
+ * day-long interval so the application's own loop cannot fire a competing cycle mid-test.
  *
  * ```bash
  * yarn test:integration
  * ```
  */
-
-/** One canonical row, as an assertion reads it. */
-interface StoredTicket {
-  external_id: string;
-  external_key: string;
-  external_url: string;
-  title: string;
-  body: string | null;
-  state: string;
-  labels: string[];
-  author: string | null;
-  meta: Record<string, unknown>;
-  sizing_status: string;
-  synced_at: Date;
-  updated_at: Date;
-}
-
-/** The source's own columns, after a cycle. */
-interface StoredSource {
-  status: string;
-  status_reason: string | null;
-  sync_cursor: string | null;
-  synced_at: Date | null;
-}
 
 describe("the ticket source sync, against a migrated database", () => {
   let api: ApiHarness;
@@ -107,306 +69,236 @@ describe("the ticket source sync, against a migrated database", () => {
 
   afterEach(() => api.truncate());
 
+  /** The settings every source here is configured with — the in-memory kind's grammar. */
+  const CONFIG = { project: IN_MEMORY_PROJECT };
+
   /**
-   * A workspace with one source of the given kind.
+   * A workspace with one source mirroring the in-memory tracker's project.
    *
-   * Written directly rather than through an API, because the source-management routes are
-   * Q.4's ([#141](https://github.com/NobuData/ouroboros/issues/141)) — this ticket ships the
-   * loop, and the rows it reads have no other writer yet.
-   *
-   * @param kind - Which tracker.
-   * @param sealed - A sealed credential to store, or nothing.
+   * @param kind - Which kind the row claims. `custom` is the in-memory provider's own.
+   * @param options - A credential to seal, or a cursor from an earlier sync.
    * @returns The workspace and the source.
    */
-  async function source(
-    kind: "github" | "jira",
-    sealed?: string,
-  ): Promise<{ organizationId: string; sourceId: string }> {
-    const owner = await api.signIn();
-    const workspace = await api.workspace(owner);
-
-    const { rows } = await api.sql.query<{ id: string }>(
-      `insert into ${SCHEMA_NAME}.ticket_sources
-         (organization_id, kind, display_name, config, credentials_encrypted)
-       values ($1, $2, $3, $4::jsonb, $5)
-       returning id`,
-      [
-        workspace.id,
-        kind,
-        `${kind} · harness`,
-        JSON.stringify({ project_keys: ["PROJ"] }),
-        sealed ?? null,
-      ],
-    );
-
-    return { organizationId: workspace.id, sourceId: rows[0].id };
+  function source(
+    kind: "custom" | "jira" = "custom",
+    options: { credential?: string; cursor?: string } = {},
+  ) {
+    return insertSource(api, { kind, config: CONFIG, ...options });
   }
 
   /**
-   * Run one cycle with these providers registered.
+   * A tracker serving its project to anybody — so a source with no credential still syncs, and the
+   * credential cases can be about the credential alone.
    *
-   * The registry is constructed here rather than overridden in the module, because the
-   * providers differ per test and a Nest override is per application.
-   *
-   * @param providers - What to register.
-   * @returns The cycle's report.
+   * @returns The tracker.
    */
-  async function cycleWith(providers: readonly TicketSourceProvider[]) {
-    const service = new TicketSourcesService(
-      api.nest.get(TicketSourcesRepository),
-      new TicketSourceRegistry(providers),
-      api.nest.get(VaultService),
-      { accept: () => Promise.resolve() },
-    );
-
-    return service.cycle();
-  }
-
-  /**
-   * A workspace with one **GitHub** source, configured and credentialed for real.
-   *
-   * Separate from {@link source} because the GitHub provider parses `config` — the Jira-shaped
-   * `project_keys` that helper writes is not a grammar it can read — and because the provider
-   * requires a token, which has to be sealed by the real vault against this source's id.
-   *
-   * @param repos - The enabled repositories.
-   * @returns The workspace and the source.
-   */
-  async function githubSource(
-    repos: readonly string[] = [SOURCE_REPO],
-  ): Promise<{ organizationId: string; sourceId: string }> {
-    const owner = await api.signIn();
-    const workspace = await api.workspace(owner);
-
-    const { rows } = await api.sql.query<{ id: string }>(
-      `insert into ${SCHEMA_NAME}.ticket_sources
-         (organization_id, kind, display_name, config)
-       values ($1, 'github', 'GitHub · acme-robotics', $2::jsonb)
-       returning id`,
-      [workspace.id, JSON.stringify({ login: SOURCE_LOGIN, repos: [...repos] })],
-    );
-    const sourceId = rows[0].id;
-    const sealed = await api.nest
-      .get(VaultService)
-      .encryptText(workspace.id, sourceId, SOURCE_TOKEN);
-
-    await api.sql.query(
-      `update ${SCHEMA_NAME}.ticket_sources set credentials_encrypted = $2 where id = $1`,
-      [sourceId, sealed],
-    );
-
-    return { organizationId: workspace.id, sourceId };
-  }
-
-  /**
-   * The real GitHub provider over a scripted GitHub.
-   *
-   * @param script - What each repository answers.
-   * @returns The provider, registered the way `ticket-sources.module.ts` registers it.
-   */
-  function githubProvider(script: OctokitScript): GithubTicketSourceProvider {
-    return new GithubTicketSourceProvider(
-      recordingFactory(scriptedOctokit(script)).factory,
-      new GithubRateLimiter(),
-    );
-  }
-
-  /** Every ticket stored for one source. */
-  async function ticketsOf(sourceId: string): Promise<StoredTicket[]> {
-    const { rows } = await api.sql.query<StoredTicket>(
-      `select external_id, external_key, external_url, title, body, state, labels, author,
-              meta, sizing_status, synced_at, updated_at
-         from ${SCHEMA_NAME}.tickets where source_id = $1 order by external_id`,
-      [sourceId],
-    );
-
-    return rows;
-  }
-
-  /** The source's own columns, read through the view a read path uses. */
-  async function sourceRow(sourceId: string): Promise<StoredSource> {
-    const { rows } = await api.sql.query<StoredSource>(
-      `select status, status_reason, sync_cursor, synced_at
-         from ${SCHEMA_NAME}.ticket_sources_public where id = $1`,
-      [sourceId],
-    );
-
-    return rows[0];
+  function publicTracker(): InMemoryTracker {
+    return new InMemoryTracker({ token: null });
   }
 
   describe("a first sync", () => {
-    it("stores a GitHub-shaped ticket the server accepts", async () => {
-      const { sourceId } = await source("github");
-      const provider = scriptedProvider({ pages: [page([githubTicket()])] });
+    it("stores a canonical ticket the server accepts", async () => {
+      const { sourceId } = await source();
+      const tracker = publicTracker();
 
-      const report = await cycleWith([provider]);
+      tracker.file({
+        summary: "Watchdog timer resets during I2C bus recovery",
+        description: "The watchdog fires while the bus is being recovered.",
+        tags: ["bug", "i2c", "watchdog"],
+        reporter: "field-support",
+      });
+
+      const report = await cycleWith(api, [new InMemoryTicketSourceProvider(tracker)]);
 
       expect(report.sources[0]?.imported).toBe(1);
 
-      const [stored] = await ticketsOf(sourceId);
+      const [stored] = await ticketsOf(api, sourceId);
 
-      expect(stored.external_id).toBe("485");
-      expect(stored.external_key).toBe("#485");
-      expect(stored.labels).toStrictEqual(["bug", "i2c", "watchdog"]);
-      expect(stored.meta).toStrictEqual({
-        github: { repo_id: "dfff0000-0000-0000-0000-00000000000a" },
+      expect(stored).toMatchObject({
+        external_id: "10001",
+        external_key: "PROJ-1",
+        external_url: "https://tracker.example.invalid/browse/PROJ-1",
+        labels: ["bug", "i2c", "watchdog"],
+        author: "field-support",
+        meta: { custom: { project: "PROJ", status: "todo" } },
+        // V014's vocabulary and default, verbatim, so the estimation pipeline needs no change.
+        sizing_status: "unsized",
       });
-      // V014's vocabulary and default, verbatim, so the estimation pipeline needs no change.
-      expect(stored.sizing_status).toBe("unsized");
     });
 
-    it("stores a Jira-shaped ticket with no repository, which is decision P6's criterion", async () => {
-      // The row V014's shape could not have held: a text identity that is not the display key,
-      // no repository anywhere, a null body and an account id where a login would have been.
+    it("stores a ticket whose key is not its identity, with no body, no labels and no repository — decision P6's criterion", async () => {
+      // The row V014's shape could not have held: a text identity that is not the display key, no
+      // repository anywhere, a null body and an account id where a login would have been.
       const { sourceId } = await source("jira");
-      const provider = scriptedProvider({ kind: "jira", pages: [page([jiraTicket()])] });
+      const tracker = publicTracker();
 
-      await cycleWith([provider]);
+      tracker.file({
+        summary: "Calibration drifts after firmware rollback",
+        reporter: "5b10a2844c20165700ede21g",
+      });
 
-      const [stored] = await ticketsOf(sourceId);
+      await cycleWith(api, [new InMemoryTicketSourceProvider(tracker, { kind: "jira" })]);
 
-      expect(stored.external_id).toBe("10042");
-      expect(stored.external_key).toBe("PROJ-142");
+      const [stored] = await ticketsOf(api, sourceId);
+
+      expect(stored.external_id).toBe("10001");
+      expect(stored.external_key).toBe("PROJ-1");
       expect(stored.body).toBeNull();
       expect(stored.labels).toStrictEqual([]);
-      // V014's `author_login` pattern would have refused this; V030 deliberately carries no
-      // login grammar.
+      // V014's `author_login` pattern would have refused this; V030 deliberately carries no login
+      // grammar.
       expect(stored.author).toBe("5b10a2844c20165700ede21g");
       expect(JSON.stringify(stored.meta)).not.toContain("repo");
     });
 
-    it("takes a source with no cursor through fullSync and stores what came back", async () => {
-      const { sourceId } = await source("github");
-      const provider = scriptedProvider({
-        pages: [page([githubTicket()], { nextCursor: "2026-09-11T09:00:00Z" })],
-      });
+    it("takes a source with no cursor through fullSync and stores the cursor it answered", async () => {
+      const { sourceId } = await source();
+      const tracker = publicTracker();
+      const record = tracker.file({ summary: "Watchdog timer resets during I2C bus recovery" });
 
-      await cycleWith([provider]);
+      await cycleWith(api, [new InMemoryTicketSourceProvider(tracker)]);
 
-      expect(provider.members).toStrictEqual(["fullSync"]);
-      expect((await sourceRow(sourceId)).sync_cursor).toBe("2026-09-11T09:00:00Z");
-      expect((await sourceRow(sourceId)).synced_at).not.toBeNull();
+      // A cold import is a listing of open records from the beginning — the tracker's log is where
+      // the loop's full-or-incremental decision shows.
+      expect(tracker.requests).toStrictEqual([
+        { operation: "list", project: "PROJ", openOnly: true, after: null },
+      ]);
+      expect(await sourceRow(api, sourceId)).toMatchObject({ sync_cursor: inMemoryCursor(record) });
+      expect((await sourceRow(api, sourceId)).synced_at).not.toBeNull();
     });
 
     it("does not store a closed ticket it has never seen", async () => {
-      const { sourceId } = await source("github");
+      const tracker = publicTracker();
+      const seen = tracker.file({ summary: "Mirrored by an earlier sync" });
+      const closed = tracker.file({
+        summary: "Opened and closed between two polls",
+        status: "done",
+      });
+      // A source that has synced before, up to `seen` — so the next sync is incremental and asks
+      // for every record, closed ones included.
+      const { sourceId } = await source("custom", { cursor: inMemoryCursor(seen) });
 
-      const report = await cycleWith([
-        scriptedProvider({ pages: [page([githubTicket({ state: "closed" })])] }),
-      ]);
+      const report = await cycleWith(api, [new InMemoryTicketSourceProvider(tracker)]);
 
       expect(report.sources[0]?.skippedClosed).toBe(1);
-      expect(await ticketsOf(sourceId)).toStrictEqual([]);
-      // And the source is still stamped: *"we looked and nothing had changed"* is what the
-      // freshness tag claims.
-      expect((await sourceRow(sourceId)).synced_at).not.toBeNull();
+      expect(await ticketsOf(api, sourceId)).toStrictEqual([]);
+      // And the source still moved on: *"we looked, and there was nothing to store"* is what the
+      // watermark records.
+      expect((await sourceRow(api, sourceId)).sync_cursor).toBe(inMemoryCursor(closed));
     });
   });
 
   describe("a second sync", () => {
-    /**
-     * Sync once, then again with whatever the second page says.
-     *
-     * @param first - The first page.
-     * @param second - The second.
-     * @returns The source, the provider and both reports.
-     */
-    async function twice(
-      first: ReturnType<typeof page>,
-      second: ReturnType<typeof page>,
-      kind: "github" | "jira" = "github",
-    ): Promise<{ sourceId: string; provider: ScriptedProvider }> {
-      const { sourceId } = await source(kind);
-      const provider = scriptedProvider({ kind, pages: [first, second] });
-
-      await cycleWith([provider]);
-      await cycleWith([provider]);
-
-      return { sourceId, provider };
-    }
-
     it("hands the stored cursor back to incrementalSync, unchanged", async () => {
-      // The round trip a unit test cannot make: through V030's `text` column, its two CHECKs,
-      // and back out. The value is deliberately not a timestamp.
-      const cursor = "opaque::page-token::7f3a";
-      const { provider } = await twice(page([], { nextCursor: cursor }), page());
+      // The round trip a unit test cannot make: through V030's `text` column, its two CHECKs, and
+      // back out. The value is deliberately not something the loop could read as a date.
+      const { sourceId } = await source();
+      const tracker = publicTracker();
+      const record = tracker.file({ summary: "Watchdog timer resets during I2C bus recovery" });
+      const provider = new InMemoryTicketSourceProvider(tracker);
 
-      expect(provider.members).toStrictEqual(["fullSync", "incrementalSync"]);
-      expect(provider.cursors).toStrictEqual([undefined, cursor]);
+      await cycleWith(api, [provider]);
+      await cycleWith(api, [provider]);
+
+      const cursor = (await sourceRow(api, sourceId)).sync_cursor;
+
+      expect(cursor).toBe(inMemoryCursor(record));
+      expect(Number.isNaN(new Date(String(cursor)).getTime())).toBe(true);
+      expect(tracker.requests.map((request) => request.after)).toStrictEqual([
+        null,
+        readInMemoryCursor(inMemoryCursor(record)),
+      ]);
     });
 
-    it("touches no row when nothing upstream changed", async () => {
-      // The idempotence criterion, and the one assertion in this file that only a database can
-      // settle: `tickets_touch_updated_at` is unconditional, so a row whose `updated_at` did
-      // not move is a row on which no statement ran. `synced_at` is checked beside it because
-      // the loop sets that column too — if the update had been issued, *both* would have moved,
-      // and comparing one alone could not tell a skipped write from a rewritten one.
-      const { sourceId } = await source("github");
-      const provider = scriptedProvider({ pages: [page([githubTicket()])] });
+    it("touches no row when a sync reads an unchanged ticket again", async () => {
+      // The idempotence criterion, and the one assertion in this file only a database can settle:
+      // `tickets_touch_updated_at` is unconditional, so a row whose `updated_at` did not move is a
+      // row on which no statement ran. `synced_at` is checked beside it because the loop sets that
+      // column too — if the update had been issued, *both* would have moved.
+      const { sourceId } = await source();
+      const tracker = publicTracker();
 
-      await cycleWith([provider]);
+      tracker.file({ summary: "Watchdog timer resets during I2C bus recovery" });
 
-      const [first] = await ticketsOf(sourceId);
+      const provider = new InMemoryTicketSourceProvider(tracker);
 
-      await cycleWith([provider]);
+      await cycleWith(api, [provider]);
 
-      const [second] = await ticketsOf(sourceId);
+      const [first] = await ticketsOf(api, sourceId);
 
+      // The watermark put back behind the record, so the next sync reads it again — which is what
+      // an inclusive cursor does on every poll, and the case the loop's comparison exists for.
+      await api.sql.query(
+        `update ${SCHEMA_NAME}.ticket_sources set sync_cursor = $2 where id = $1`,
+        [sourceId, inMemoryCursor({ updated: IN_MEMORY_EPOCH.toISOString(), id: "0" })],
+      );
+
+      const report = await cycleWith(api, [provider]);
+      const [second] = await ticketsOf(api, sourceId);
+
+      expect(report.sources[0]).toMatchObject({ imported: 0, updated: 0, unchanged: 1 });
       expect(second.updated_at).toStrictEqual(first.updated_at);
       expect(second.synced_at).toStrictEqual(first.synced_at);
     });
 
     it("rewrites a ticket whose title the tracker changed", async () => {
-      const { sourceId } = await source("github");
+      const { sourceId } = await source();
+      const tracker = publicTracker();
+      const record = tracker.file({ summary: "Watchdog timer resets during I2C bus recovery" });
+      const provider = new InMemoryTicketSourceProvider(tracker);
 
-      await cycleWith([scriptedProvider({ pages: [page([githubTicket()])] })]);
+      await cycleWith(api, [provider]);
 
-      const [first] = await ticketsOf(sourceId);
+      const [first] = await ticketsOf(api, sourceId);
 
-      await cycleWith([
-        scriptedProvider({ pages: [page([githubTicket({ title: "Watchdog resets, revised" })])] }),
-      ]);
+      tracker.edit(record.id, { summary: "Watchdog resets, revised" });
+      await cycleWith(api, [provider]);
 
-      const [second] = await ticketsOf(sourceId);
+      const [second] = await ticketsOf(api, sourceId);
 
       expect(second.title).toBe("Watchdog resets, revised");
-      // The other half of the case above: a row the tracker really changed *does* move, which
-      // is what makes the unchanged case an assertion rather than a tautology.
+      // The other half of the case above: a row the tracker really changed *does* move, which is
+      // what makes the unchanged case an assertion rather than a tautology.
       expect(second.updated_at.getTime()).toBeGreaterThan(first.updated_at.getTime());
     });
 
     it("flips state when a ticket closes upstream", async () => {
-      const { sourceId } = await twice(
-        page([githubTicket()]),
-        page([githubTicket({ state: "closed" })]),
-      );
+      const { sourceId } = await source();
+      const tracker = publicTracker();
+      const record = tracker.file({ summary: "Watchdog timer resets during I2C bus recovery" });
+      const provider = new InMemoryTicketSourceProvider(tracker);
 
-      expect((await ticketsOf(sourceId))[0].state).toBe("closed");
+      await cycleWith(api, [provider]);
+      tracker.transition(record.id, "done");
+      await cycleWith(api, [provider]);
+
+      expect((await ticketsOf(api, sourceId))[0].state).toBe("closed");
     });
   });
 
   describe("two sources", () => {
     it("let the same external key mean two different tickets", async () => {
-      // V030's acceptance criterion, exercised by the writer rather than by a fixture: identity
-      // is `(source_id, external_id)`, and `PROJ-142` in two Jira sites is two tickets.
+      // V030's acceptance criterion, exercised by the writer rather than by a fixture: identity is
+      // `(source_id, external_id)`, and `PROJ-1` in two sites is two tickets.
       const owner = await api.signIn();
       const workspace = await api.workspace(owner);
 
       const { rows } = await api.sql.query<{ id: string }>(
-        `insert into ${SCHEMA_NAME}.ticket_sources (organization_id, kind, display_name)
-         values ($1, 'jira', 'Jira · one'), ($1, 'jira', 'Jira · two')
+        `insert into ${SCHEMA_NAME}.ticket_sources (organization_id, kind, display_name, config)
+         values ($1, 'jira', 'Jira · one', $2::jsonb), ($1, 'jira', 'Jira · two', $2::jsonb)
          returning id`,
-        [workspace.id],
+        [workspace.id, JSON.stringify(CONFIG)],
       );
+      const tracker = publicTracker();
 
-      // One provider for the kind, two sources through it — which is exactly the shape two
-      // Jira sites in one workspace takes.
-      const provider = scriptedProvider({ kind: "jira", pages: [page([jiraTicket()])] });
+      tracker.file({ summary: "Calibration drifts after firmware rollback" });
 
-      await cycleWith([provider]);
+      // One provider for the kind, two sources through it — which is exactly the shape two Jira
+      // sites in one workspace takes.
+      await cycleWith(api, [new InMemoryTicketSourceProvider(tracker, { kind: "jira" })]);
 
       for (const row of rows) {
-        expect((await ticketsOf(row.id))[0]?.external_key).toBe("PROJ-142");
+        expect((await ticketsOf(api, row.id))[0]?.external_key).toBe("PROJ-1");
       }
 
       const { rows: all } = await api.sql.query<{ count: string }>(
@@ -419,16 +311,13 @@ describe("the ticket source sync, against a migrated database", () => {
 
   describe("a failure", () => {
     it("writes an honest reason onto the source, through V031's CHECK", async () => {
-      const { sourceId } = await source("github");
-      const failure = new TicketSourceError(
-        "rate_limit",
-        "429",
-        new Date("2026-09-12T14:20:00.000Z"),
-      );
+      const { sourceId } = await source();
+      const tracker = publicTracker();
 
-      await cycleWith([scriptedProvider({ fails: failure })]);
+      tracker.refuse("rate_limit", new Date("2026-09-12T14:20:00.000Z"));
+      await cycleWith(api, [new InMemoryTicketSourceProvider(tracker)]);
 
-      expect(await sourceRow(sourceId)).toMatchObject({
+      expect(await sourceRow(api, sourceId)).toMatchObject({
         status: "error",
         status_reason: "rate limited until 14:20 UTC",
         // Never stamped: a poll that did not happen must not claim freshness.
@@ -437,77 +326,94 @@ describe("the ticket source sync, against a migrated database", () => {
     });
 
     it("is cleared by the next sync that succeeds", async () => {
-      // The one moment a source's recovery is knowable is the moment a sync succeeds, so the
-      // stamp and the status move in the same transaction.
-      const { sourceId } = await source("github");
+      // The one moment a source's recovery is knowable is the moment a sync succeeds, so the stamp
+      // and the status move in the same transaction.
+      const { sourceId } = await source();
+      const tracker = publicTracker();
+      const provider = new InMemoryTicketSourceProvider(tracker);
 
-      await cycleWith([scriptedProvider({ fails: new TicketSourceError("auth", "401") })]);
+      tracker.file({ summary: "Watchdog timer resets during I2C bus recovery" });
+      tracker.refuse("auth");
+      await cycleWith(api, [provider]);
 
-      expect((await sourceRow(sourceId)).status).toBe("error");
+      expect(await sourceRow(api, sourceId)).toMatchObject({
+        status: "error",
+        status_reason: "credentials rejected (401)",
+      });
 
-      // The failed source is now `error`, and the loop's filter is `active` — so it has to be
-      // put back before it can recover, which is Q.4's pause/resume affordance in miniature.
+      // The failed source is now `error`, and the loop's filter is `active` — so it has to be put
+      // back before it can recover, which is Q.4's pause and resume affordance in miniature.
       await api.sql.query(
         `update ${SCHEMA_NAME}.ticket_sources set status = 'active' where id = $1`,
         [sourceId],
       );
+      tracker.recover();
+      await cycleWith(api, [provider]);
 
-      await cycleWith([scriptedProvider({ pages: [page([githubTicket()])] })]);
-
-      expect(await sourceRow(sourceId)).toMatchObject({ status: "active", status_reason: null });
+      expect(await sourceRow(api, sourceId)).toMatchObject({
+        status: "active",
+        status_reason: null,
+      });
+      expect(await ticketsOf(api, sourceId)).toHaveLength(1);
     });
 
     it("does not poll a source somebody paused", async () => {
-      const { sourceId } = await source("github");
+      const { sourceId } = await source();
 
       await api.sql.query(
         `update ${SCHEMA_NAME}.ticket_sources set status = 'paused' where id = $1`,
         [sourceId],
       );
 
-      const provider = scriptedProvider({ pages: [page([githubTicket()])] });
-      const report = await cycleWith([provider]);
+      const tracker = publicTracker();
+      const report = await cycleWith(api, [new InMemoryTicketSourceProvider(tracker)]);
 
       expect(report.sources).toStrictEqual([]);
-      expect(provider.calls).toStrictEqual([]);
+      expect(tracker.requests).toStrictEqual([]);
     });
   });
 
   describe("the credential", () => {
     it("is sealed by the real vault and reaches the provider opened", async () => {
       // What an administrator pasted, through `VaultService.encryptText` and
-      // `ticket_sources_credentials_sealed`, out again inside one provider call. The record id
-      // is the source id, which is what the AAD binds — so this also proves the loop seals and
-      // opens against the same pair.
-      const owner = await api.signIn();
-      const workspace = await api.workspace(owner);
+      // `ticket_sources_credentials_sealed`, out again inside one provider call. The tracker only
+      // answers the token it was set up with, so a sync that stores a ticket is a sync that was
+      // handed exactly that token.
+      const tracker = new InMemoryTracker({ token: FIXTURE_CREDENTIAL });
 
-      const { rows } = await api.sql.query<{ id: string }>(
-        `insert into ${SCHEMA_NAME}.ticket_sources (organization_id, kind, display_name)
-         values ($1, 'github', 'GitHub · sealed') returning id`,
-        [workspace.id],
-      );
-      const sourceId = rows[0].id;
-      const sealed = await api.nest
-        .get(VaultService)
-        .encryptText(workspace.id, sourceId, FIXTURE_CREDENTIAL);
+      tracker.file({ summary: "Watchdog timer resets during I2C bus recovery" });
 
-      await api.sql.query(
-        `update ${SCHEMA_NAME}.ticket_sources set credentials_encrypted = $2 where id = $1`,
-        [sourceId, sealed],
-      );
+      const { sourceId } = await source("custom", { credential: FIXTURE_CREDENTIAL });
 
-      const provider = scriptedProvider();
+      await cycleWith(api, [new InMemoryTicketSourceProvider(tracker)]);
 
-      await cycleWith([provider]);
+      expect(await sourceRow(api, sourceId)).toMatchObject({
+        status: "active",
+        status_reason: null,
+      });
+      expect(await ticketsOf(api, sourceId)).toHaveLength(1);
+    });
 
-      expect(provider.calls[0]?.credentials).toBe(FIXTURE_CREDENTIAL);
+    it("that the tracker does not recognise is refused as auth", async () => {
+      // The other half of the case above: a sealed value that opens to something else fails, so the
+      // success there is about the value rather than about there being one.
+      const tracker = new InMemoryTracker({ token: FIXTURE_CREDENTIAL });
+      const { sourceId } = await source("custom", {
+        credential: "imt_a_different_credential_entirely_0000",
+      });
+
+      await cycleWith(api, [new InMemoryTicketSourceProvider(tracker)]);
+
+      expect(await sourceRow(api, sourceId)).toMatchObject({
+        status: "error",
+        status_reason: "credentials rejected (401)",
+      });
     });
 
     it("is absent from the view every read path selects", async () => {
       // V030's mechanism, asserted where it can be: the column is not in the view at all, so a
       // `select *` through it cannot reach one.
-      await source("github");
+      await source();
 
       const { rows } = await api.sql.query<{ column_name: string }>(
         `select column_name from information_schema.columns
@@ -522,168 +428,27 @@ describe("the ticket source sync, against a migrated database", () => {
     it("is null on a source nobody has credentialed, and the sync still runs", async () => {
       // A tracker serving public projects needs none, and a source exists before anybody has
       // finished configuring it.
-      const { sourceId } = await source("github");
-      const provider = scriptedProvider({ pages: [page([githubTicket()])] });
+      const { sourceId } = await source();
+      const tracker = publicTracker();
 
-      await cycleWith([provider]);
+      tracker.file({ summary: "Watchdog timer resets during I2C bus recovery" });
+      await cycleWith(api, [new InMemoryTicketSourceProvider(tracker)]);
 
-      expect(provider.calls[0]?.credentials).toBeNull();
-      expect(await ticketsOf(sourceId)).toHaveLength(1);
+      expect(await ticketsOf(api, sourceId)).toHaveLength(1);
     });
   });
 
   describe("the module as it ships", () => {
     it("registers the GitHub provider, and skips a kind it has none for", async () => {
-      // The honest state of this build, end to end: `github` resolves, `jira` does not, and the
-      // row of a kind nothing can reach is skipped and left alone rather than marked failed.
+      // The honest state of this build, end to end: `github` resolves, `jira` does not, and the row
+      // of a kind nothing can reach is skipped and left alone rather than marked failed. The
+      // in-memory provider is a fixture and is registered by suites, never by the module.
       const { sourceId } = await source("jira");
       const report = await api.nest.get(TicketSourcesService).cycle();
 
       expect(api.nest.get(TicketSourceRegistry).kinds()).toStrictEqual(["github"]);
       expect(report.sources[0]?.skipped).toBe("unsupported_kind");
-      expect(await sourceRow(sourceId)).toMatchObject({ status: "active", synced_at: null });
-    });
-  });
-
-  describe("the GitHub provider, end to end", () => {
-    it("lands every open issue on a cold import, with pull requests excluded", async () => {
-      // The intake MVP's first sync criterion, through the SPI and into V030's columns.
-      const { sourceId } = await githubSource();
-
-      await cycleWith([
-        githubProvider({
-          issues: {
-            [SOURCE_REPO]: [
-              [
-                issuePayload({ number: 1 }),
-                pullRequestPayload({ number: 2 }),
-                issuePayload({ number: 3 }),
-              ],
-            ],
-          },
-        }),
-      ]);
-
-      const stored = await ticketsOf(sourceId);
-
-      expect(stored.map((ticket) => ticket.external_key)).toStrictEqual(["#1", "#3"]);
-      expect(stored[0]).toMatchObject({
-        external_url: "https://github.com/acme-robotics/helios-firmware/issues/1",
-        state: "open",
-        labels: ["bug", "i2c"],
-        author: "field-support",
-        meta: { github: { owner: SOURCE_LOGIN, repo: SOURCE_REPO } },
-        sizing_status: "unsized",
-      });
-    });
-
-    it("records a watermark the next cycle resumes from", async () => {
-      const { sourceId } = await githubSource();
-
-      await cycleWith([githubProvider({ issues: { [SOURCE_REPO]: [[issuePayload()]] } })]);
-
-      // What the page saw, not this host's clock — see `watermarkOf`.
-      expect(await sourceRow(sourceId)).toMatchObject({
-        sync_cursor: "2026-09-11T09:00:00.000Z",
-        status: "active",
-        status_reason: null,
-      });
-    });
-
-    it("touches no row on a poll that found the same issue again", async () => {
-      // GitHub's `since` is inclusive, so the boundary issue comes back on every poll. The row
-      // must not move: `tickets_touch_updated_at` is unconditional, so an `updated_at` that
-      // stayed put is a statement that was never issued.
-      const { sourceId } = await githubSource();
-      const provider = githubProvider({ issues: { [SOURCE_REPO]: [[issuePayload()]] } });
-
-      await cycleWith([provider]);
-
-      const [first] = await ticketsOf(sourceId);
-
-      await cycleWith([provider]);
-
-      const [second] = await ticketsOf(sourceId);
-
-      expect(second.updated_at).toStrictEqual(first.updated_at);
-      expect(second.synced_at).toStrictEqual(first.synced_at);
-    });
-
-    it("shows an upstream edit within one poll", async () => {
-      const { sourceId } = await githubSource();
-
-      await cycleWith([githubProvider({ issues: { [SOURCE_REPO]: [[issuePayload()]] } })]);
-      await cycleWith([
-        githubProvider({
-          issues: {
-            [SOURCE_REPO]: [
-              [
-                issuePayload({
-                  title: "Watchdog resets, revised",
-                  updated_at: "2026-09-12T09:00:00Z",
-                }),
-              ],
-            ],
-          },
-        }),
-      ]);
-
-      expect((await ticketsOf(sourceId))[0].title).toBe("Watchdog resets, revised");
-    });
-
-    it("flips state when an issue is closed upstream", async () => {
-      const { sourceId } = await githubSource();
-
-      await cycleWith([githubProvider({ issues: { [SOURCE_REPO]: [[issuePayload()]] } })]);
-      await cycleWith([
-        githubProvider({
-          issues: {
-            [SOURCE_REPO]: [
-              [issuePayload({ state: "closed", updated_at: "2026-09-12T09:00:00Z" })],
-            ],
-          },
-        }),
-      ]);
-
-      expect((await ticketsOf(sourceId))[0].state).toBe("closed");
-    });
-
-    it("records a spent rate limit as a status with a resume time", async () => {
-      // Q.3's fourth acceptance criterion, through V031's column: what a settings page renders
-      // is composed from the class, and the *when* is the one piece of provider knowledge that
-      // reaches a person unchanged.
-      const { sourceId } = await githubSource();
-
-      await cycleWith([
-        githubProvider({
-          issuesFail: {
-            [SOURCE_REPO]: httpError(403, {
-              "x-ratelimit-remaining": "0",
-              "x-ratelimit-limit": "5000",
-              "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 900),
-              "retry-after": "900",
-            }),
-          },
-        }),
-      ]);
-
-      const row = await sourceRow(sourceId);
-
-      expect(row.status).toBe("error");
-      expect(row.status_reason).toMatch(/^rate limited until \d{2}:\d{2} UTC$/);
-      // A failed sync is not stamped: "synced 40s ago" must never claim a sync that failed.
-      expect(row.synced_at).toBeNull();
-    });
-
-    it("marks a repository it cannot see as an error a person can act on", async () => {
-      const { sourceId } = await githubSource(["no-such-repo"]);
-
-      await cycleWith([githubProvider({ issuesFail: { "no-such-repo": httpError(404) } })]);
-
-      expect(await sourceRow(sourceId)).toMatchObject({
-        status: "error",
-        status_reason: "project or repository not found",
-      });
+      expect(await sourceRow(api, sourceId)).toMatchObject({ status: "active", synced_at: null });
     });
   });
 });

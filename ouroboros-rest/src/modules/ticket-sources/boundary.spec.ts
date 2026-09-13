@@ -178,6 +178,70 @@ describe("the ticket source boundary", () => {
     expect(result.exitCode).not.toBe(0);
   });
 
+  it("fails the build on a core intake suite, the kit or a shared fixture reaching for GitHub", () => {
+    // Q.5's third acceptance criterion — *"the core intake harness runs entirely on the fake: no
+    // Octokit import in those tests"* ([#142](https://github.com/NobuData/ouroboros/issues/142)) —
+    // as a tree. Three ways of reaching for GitHub, from the three kinds of file the rule covers.
+    const result = cruiseFixture({
+      [A_PROVIDER]: A_PROVIDER_SOURCE,
+      "src/modules/github/github.fixture.ts": "export const httpError = 1;\n",
+      "src/modules/ticket-sources/ticket-sources.integration-spec.ts":
+        'import { GithubTicketSourceProvider } from "./providers/github.provider";\n\n' +
+        "export const a = GithubTicketSourceProvider;\n",
+      "src/modules/ticket-sources/conformance.fixture.ts":
+        'import { httpError } from "../github/github.fixture";\n\nexport const a = httpError;\n',
+      "src/modules/ticket-sources/ticket-sync.integration.fixture.ts":
+        'import { Octokit } from "@octokit/rest";\n\nexport const a = Octokit;\n',
+    });
+
+    for (const file of [
+      "ticket-sources.integration-spec.ts",
+      "conformance.fixture.ts",
+      "ticket-sync.integration.fixture.ts",
+    ]) {
+      expect(result.output).toMatch(
+        new RegExp(
+          `ticket-source-core-tests-run-on-the-fake: src/modules/ticket-sources/${file.replaceAll(".", "\\.")}`,
+        ),
+      );
+    }
+
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  it("allows GitHub's own suites, beside the provider, to reach for GitHub", () => {
+    const result = cruiseFixture({
+      [A_PROVIDER]: A_PROVIDER_SOURCE,
+      "src/modules/github/github.fixture.ts": "export const httpError = 1;\n",
+      "src/modules/ticket-sources/providers/github.provider.integration-spec.ts":
+        'import { httpError } from "../../github/github.fixture";\n' +
+        'import { GithubTicketSourceProvider } from "./github.provider";\n\n' +
+        "export const a = [httpError, GithubTicketSourceProvider];\n",
+    });
+
+    expect(result.output).toContain("no dependency violations found");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("allows the management API's suites and the module's wiring spec to name GitHub, as Q.4 does", () => {
+    // Q.4's criterion is *"add GitHub source → test → sync → tickets appear"*, and the module spec
+    // asserts what the registration point registers. Both are about GitHub by name.
+    const result = cruiseFixture({
+      [A_PROVIDER]: A_PROVIDER_SOURCE,
+      "src/modules/github/github.fixture.ts": "export const httpError = 1;\n",
+      "src/modules/ticket-sources/sources.integration-spec.ts":
+        'import { httpError } from "../github/github.fixture";\n' +
+        'import { GithubTicketSourceProvider } from "./providers/github.provider";\n\n' +
+        "export const a = [httpError, GithubTicketSourceProvider];\n",
+      "src/modules/ticket-sources/ticket-sources.module.spec.ts":
+        'import { GithubTicketSourceProvider } from "./providers/github.provider";\n\n' +
+        "export const a = GithubTicketSourceProvider;\n",
+    });
+
+    expect(result.output).toContain("no dependency violations found");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("is what `yarn lint` runs, or none of the above is a build failure", () => {
     // The other half of the criterion — *"fails CI"*. Rules that CI does not execute are a
     // file, not a gate.

@@ -45,8 +45,9 @@
  * is to not issue the update. Most trackers' cursors are inclusive, so every incremental sync
  * re-reads the ticket sitting exactly on the watermark; writing it would move a timestamp
  * nothing had changed. It is also what makes a re-sync **idempotent**, which is a property
- * Q.5's conformance kit ([#142](https://github.com/NobuData/ouroboros/issues/142)) will require
- * of every provider and which this loop has to make available to be required.
+ * Q.5's conformance kit ([#142](https://github.com/NobuData/ouroboros/issues/142)) requires of
+ * every provider and which this loop has to make available to be required — the kit's mirror
+ * calls {@link differs} itself, so the two cannot disagree about what a write is.
  *
  * ## A closed ticket this mirror has never seen is not stored
  *
@@ -133,8 +134,15 @@ export interface SyncWritten {
   readonly estimable: readonly EstimableTicket[];
 }
 
-/** The mirrored columns, as a comparison reads them. */
-interface StoredTicket {
+/**
+ * The mirrored columns, as a comparison reads them.
+ *
+ * Exported beside {@link differs} for Q.5's conformance kit
+ * ([#142](https://github.com/NobuData/ouroboros/issues/142)), whose in-memory mirror stores rows
+ * in this shape so that *"a re-sync writes nothing"* is judged by the loop's own predicate
+ * rather than by a copy of it.
+ */
+export interface StoredTicket {
   id: string;
   external_id: string;
   external_key: string;
@@ -501,11 +509,14 @@ function handoff(
  *
  * `external_id` is not compared: it is the key the two were matched on, so it cannot differ.
  *
+ * Exported for Q.5's conformance kit, which replays a provider's pages into an in-memory mirror
+ * and counts a write exactly where this predicate says the loop would issue one.
+ *
  * @param stored - The row as it is.
  * @param ticket - The ticket as the tracker now has it.
  * @returns `true` when the two differ in any mirrored column.
  */
-function differs(stored: StoredTicket, ticket: CanonicalTicket): boolean {
+export function differs(stored: StoredTicket, ticket: CanonicalTicket): boolean {
   return (
     stored.external_key !== ticket.externalKey ||
     stored.external_url !== ticket.externalUrl ||

@@ -10,8 +10,10 @@
  * **It ships registered with nothing, and that is the honest state of this build.**
  *
  * Q.3 ([#140](https://github.com/NobuData/ouroboros/issues/140)) adds GitHub by adding one line
- * to `ticket-sources.module.ts`; Q.5 ([#142](https://github.com/NobuData/ouroboros/issues/142))
- * adds the in-memory fake beside it, and T.2–T.4 add Jira, Linear and GitLab the same way. Until
+ * to `ticket-sources.module.ts`, and T.2–T.4 add Jira, Linear and GitLab the same way — each
+ * after passing Q.5's ([#142](https://github.com/NobuData/ouroboros/issues/142)) conformance
+ * kit. The in-memory fake Q.5 added is a fixture, registered by the suites that need it and never
+ * by the module. Until
  * they do, {@link TicketSourceRegistry.get} answers `501` for every kind — which is exactly what
  * this build can truthfully say about a `jira` row: V030 accepts it, `R__dev_seed_sources.sql`
  * seeds one, and nothing here knows how to reach it yet. `ModelProviderRegistry` shipped with

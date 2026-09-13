@@ -10,7 +10,9 @@
 > [Q.4 (#141)](https://github.com/NobuData/ouroboros/issues/141) added the **management API**
 > — `/api/v1/sources`, in `sources.*.ts` beside the loop — and the settings surface that
 > draws a provider's form from its own `configSchema()`.
-> [Q.5 (#142)](https://github.com/NobuData/ouroboros/issues/142) is the conformance kit.
+> [Q.5 (#142)](https://github.com/NobuData/ouroboros/issues/142) added the **conformance kit**,
+> [`conformance.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.fixture.ts),
+> and the in-memory provider that passes it beside GitHub's — see §8, *The conformance kit*.
 > Everything below is true of the code as it stands; where a section describes something a
 > later ticket adds, it says so.
 
@@ -538,6 +540,64 @@ Three levels, and the first two are yours:
    taxonomy, and the webhook shape if you declare one. *Pluggable* is a claim until a second
    implementation passes the same tests.
 
+### The conformance kit
+
+One spec file beside your provider, supplying the provider and its recordings — no database, no
+Nest module, and no reading of the loop:
+
+```ts
+// providers/yourtracker.conformance.spec.ts
+describeTicketSourceConformance("YourTrackerProvider", () => {
+  const tracker = recordedTracker(PAYLOADS);        // your stand-in transport, fresh for every case
+  const provider = new YourTrackerProvider(tracker.client);
+
+  return {
+    provider,
+    context: { sourceId, organizationId, config: { project: "PROJ" }, credentials: TOKEN },
+    rejectedConfigs: [{ name: "a lower-case key", config: { project: "proj" } }],
+    mappings: [{ name: "an open ticket", raw: PAYLOADS[0], expected: OPEN_TICKET }],
+    unmappable: [{ name: "no title", raw: { id: "1" } }],
+    backlog: [OPEN_TICKET],                         // what a cold import leaves in the mirror
+    changeUpstream: () => tracker.record(EDIT, CLOSE, NEW_TICKET),
+    changedBacklog: [EDITED, CLOSED, NEW],          // what the mirror holds after syncing that
+    refuse: { auth: …, rate_limit: …, not_found: …, upstream: … },
+    webhook: null,                                  // or a signed delivery, its tickets, a forged one
+  };
+});
+```
+
+| leg | what it asserts |
+|---|---|
+| kind and capabilities | a V030 kind; three stable boolean flags; `webhooks` agrees with the member; `bidirectionalWrites` is `false` until a write member exists |
+| config | the schema is in the dialect, stable, and accepted by the registry; the form renders one labelled field per property; your sample settings and credential pass your own form; each rejected configuration is a *failed result* from `validateConfig` and `not_found` from a sync |
+| error taxonomy | one recorded refusal per class — no exemptions — classified the same by **Test connection** and by a sync, with the credential in no `detail` and no status reason |
+| mapping | every recorded payload maps to exactly the ticket you wrote out; all eleven fields present, `null` rather than missing; at least one recording with no body and one with no author; unreadable payloads refused as `upstream` |
+| sync | a cold import mirrors your backlog and leaves a cursor; syncing the same cursor again **writes nothing** and moves nothing; your recorded change — which must close a ticket — arrives through `incrementalSync`, advances the cursor, and never carries a ticket older than the copy the mirror holds |
+| credentials | nothing reachable from the provider's fields contains the credential after a sync |
+| webhooks | when declared: a signed delivery maps exactly, and unsigned and forged ones are refused as `auth` |
+
+**Write the expected tickets out in full.** The only way to check a mapping is to state its answer;
+a derived expectation agrees with whatever the mapping did.
+
+**The sync legs replay into a mirror that applies the loop's own rules.** A closed ticket the mirror
+has never seen is not stored, and `ticket-sources.repository.ts`'s `differs` decides what counts as
+a write — so *idempotent* is counted rather than trusted. The kit never reads your cursor: a cursor
+that moved backwards shows up as a ticket older than the one the mirror already holds.
+
+Two harnesses are already written to copy from:
+
+* [`providers/in-memory.provider.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/in-memory.provider.fixture.ts)
+  — `InMemoryTicketSourceProvider`, a fixture-driven fake over an in-memory tracker, and a
+  webhook-capable twin. It passes the kit, and it is what the loop's integration suite runs on:
+  no Octokit in the core intake tests, which `.dependency-cruiser.cjs`'s
+  `ticket-source-core-tests-run-on-the-fake` enforces.
+* [`providers/github.conformance.spec.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.conformance.spec.ts)
+  — the kit over recorded GitHub payloads, through a stand-in that honours `state` and `since`.
+
+**Registering a provider without taking the kit fails the build.** `conformance.fixture.spec.ts`
+reads `ticket-sources.module.ts` and requires `providers/<name>.conformance.spec.ts` for every
+provider it imports.
+
 ---
 
 ## 9. What the loop guarantees you
@@ -592,6 +652,8 @@ So that you do not reimplement any of it:
 | [`providers/github.provider.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.provider.ts) | the GitHub provider (Q.3) — the worked example of every section above |
 | [`providers/github.config.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.config.ts) | its `config` grammar: `{ login, repos[] }` |
 | [`providers/github.mapping.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.mapping.ts) | its `mapTicket`, testable with no network |
+| [`conformance.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.fixture.ts) | the conformance kit (Q.5) — `describeTicketSourceConformance` and the checks it is built from |
+| [`providers/in-memory.provider.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/in-memory.provider.fixture.ts) | the in-memory tracker and provider the kit and the core intake harness run on |
 | [`V030__canonical_tickets.sql`](../ouroboros-db/migrations/V030__canonical_tickets.sql) | `ticket_sources`, `tickets`, `ticket_sources_public` |
 | [`V031__ticket_source_status_reason.sql`](../ouroboros-db/migrations/V031__ticket_source_status_reason.sql) | `status_reason` |
 
