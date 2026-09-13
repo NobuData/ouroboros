@@ -26,7 +26,7 @@
  *     `409` the studio can act on.
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 
 import type { Transaction } from "kysely";
 
@@ -90,9 +90,6 @@ const BLANK_CANVAS: Record<string, unknown> = {};
 
 @Injectable()
 export class WorkflowsService {
-  /** Where a publish that the engine did not second is recorded — see {@link publish}. */
-  private readonly logger = new Logger(WorkflowsService.name);
-
   /**
    * @param workflows - The lifecycle's statements, all org-scoped or resolved through one.
    * @param stats - P.4's derivation. The rail's shape is its, and this service does not define
@@ -312,16 +309,6 @@ export class WorkflowsService {
     const verdict = await this.gate.check(draft.definition);
 
     if (verdict.findings.length > 0) throw definitionInvalid(verdict.findings);
-
-    if (!verdict.engineConsulted) {
-      // The one line per publish an operator reads at the default level, and the reason
-      // `publish.gate.ts` logs the mechanism at `debug` instead: this is the caller, so this is
-      // what knows *which* workflow went out un-seconded.
-      this.logger.warn(
-        `Workflow ${workflow.slug} was published on the DSL validator's verdict alone: ` +
-          "ouroboros-engine did not second it. See publish.gate.ts (#144).",
-      );
-    }
 
     return this.database.transaction(async (trx) => {
       // Locked for the numbering, not for the tenancy — `require` above already answered that.

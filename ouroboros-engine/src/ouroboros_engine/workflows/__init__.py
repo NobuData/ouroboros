@@ -21,6 +21,12 @@ all three are asserted in CI:
   ``dsl.validator`` — so the two can be read side by side, which is the defence a test suite
   cannot provide on its own.
 
+Three modules have no TypeScript twin, because they are R.2's
+(`#144 <https://github.com/NobuData/ouroboros/issues/144>`_) and only this service answers them:
+``contract`` is the wire shape of ``/v0/workflows/validate`` and ``/v0/workflows/dry-run``,
+``predicates`` is the one evaluator every predicate in the DSL is tested with, and ``simulate``
+is the dry-run walk.
+
 The one thing this package deliberately does not carry is the YAML projection. Mockup 05's
 code view is rendered by the service that serves the canvas; a second renderer here would be
 a second thing to keep in step for no reader.

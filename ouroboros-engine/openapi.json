@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -80,7 +80,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.6.0"
+                  "version": "0.6.1"
                 }
               }
             }
@@ -109,7 +109,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.6.0",
+                  "version": "0.6.1",
                   "uptime_seconds": 1234.567
                 }
               }
@@ -161,7 +161,7 @@
                       "note": "hello from ouroboros-rest"
                     }
                   },
-                  "engine_version": "0.6.0"
+                  "engine_version": "0.6.1"
                 }
               }
             }
@@ -261,6 +261,515 @@
                       "risk: m effort -> medium"
                     ]
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/v0/workflows/validate": {
+      "post": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Validate a workflow definition",
+        "description": "The engine's opinion on a workflow definition — R.2\n([#144](https://github.com/NobuData/ouroboros/issues/144)), and the second half of the\npublish gate ([#134](https://github.com/NobuData/ouroboros/issues/134)).\n\n`ouroboros-rest` validates with zod before it asks, so the question this answers is\nwhether **the component that will execute a definition reads it the same way**. Both\nvalidators implement the published DSL (`schemas/workflow-dsl/v1.json`) and both are\nheld to the same golden verdicts in CI, so the first disagreement between them is a red\npipeline rather than a run that fails months after publishing.\n\n**Every finding is anchored.** `path` is an RFC 6901 JSON Pointer into the document, and\n`node_id` or `edge` names the stage or the connection when there is one, so the studio\ncan select what a finding is about. An absent anchor is omitted, never `null`.\n\n**An invalid definition is a `200`.** The request carried a definition and the findings\nare the answer; `findings` empty is the green verdict. A `422` is reserved for a request\nthat is not one — no `definition`, or a property this operation does not declare.\n\n**Warnings are not findings.** Decision **P7**'s unknown-reference warnings need a\ncatalogue this operation does not take, so `findings` is the verdict's errors and\nnothing else.",
+        "operationId": "validateWorkflow",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowValidateRequest"
+              },
+              "example": {
+                "definition": {
+                  "dsl_version": "1.0",
+                  "trigger": {
+                    "event": "ticket_queued",
+                    "conditions": {}
+                  },
+                  "nodes": [
+                    {
+                      "id": "start",
+                      "type": "trigger",
+                      "title": "Issue queued",
+                      "position": {
+                        "x": 0,
+                        "y": 0
+                      },
+                      "config": {}
+                    },
+                    {
+                      "id": "done",
+                      "type": "term",
+                      "title": "Needs review",
+                      "position": {
+                        "x": 240,
+                        "y": 0
+                      },
+                      "config": {
+                        "action": "needs_review",
+                        "options": {}
+                      }
+                    },
+                    {
+                      "id": "orphan",
+                      "type": "term",
+                      "title": "Back to queue",
+                      "position": {
+                        "x": 240,
+                        "y": 120
+                      },
+                      "config": {
+                        "action": "back_to_queue",
+                        "options": {}
+                      }
+                    }
+                  ],
+                  "edges": [
+                    {
+                      "from": "start",
+                      "to": "done",
+                      "kind": "default"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The findings — here, a terminal nothing leads to, anchored to the node the canvas\nselects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowValidation"
+                },
+                "example": {
+                  "findings": [
+                    {
+                      "code": "node.unreachable",
+                      "message": "No path of edges reaches this stage from the trigger.",
+                      "path": "/nodes/2",
+                      "node_id": "orphan"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/v0/workflows/dry-run": {
+      "post": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Simulate a workflow for one ticket",
+        "description": "The studio's **Dry run with issue #485** — a real simulator rather than a preview\nanimation ([#144](https://github.com/NobuData/ouroboros/issues/144)). The definition is\nvalidated first; a valid one is walked for the ticket, with the trigger tested against\nthe ticket and its estimate and every routing decision explained.\n\n**Zero model calls, zero provider calls.** The simulator explains structure and routing;\nit does not do work. Nothing is fetched either — the ticket is what the caller sends.\n\nHow the walk goes, exactly:\n\n1. **The trigger's conditions are tested**, every present one ANDed. When they do not\n   hold no run starts, and the trigger is the only step.\n2. **Stages are visited breadth-first, each stage's edges in document order.** The same\n   definition and ticket produce the same walk, every time.\n3. **A `default` edge is always taken; a `branch` edge is taken when its condition\n   holds.** A stage two taken edges reach is walked once, and both edges are\n   highlighted.\n4. **A fork reports every branch**, taken or not, with the reason — a dry run shows the\n   road not taken. **A gate is annotated** with what it requires.\n5. **A loop is reported, never walked**, with `max_retries`: the retry bound of the model\n   stage it returns to, or `null` when that stage declares none.\n6. **Check results are assumed green.** They are produced by a run, so a `checks`\n   condition is evaluated as though every check passed, and marked `assumed: true`.\n\nA definition that does not validate is answered with its `findings` — the ones\n`POST /v0/workflows/validate` answers — and `steps`, `verdicts` and `highlight_path`\nempty.",
+        "operationId": "dryRunWorkflow",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDryRunRequest"
+              },
+              "example": {
+                "definition": {
+                  "dsl_version": "1.0",
+                  "trigger": {
+                    "event": "ticket_queued",
+                    "conditions": {
+                      "effort_lte": "m"
+                    }
+                  },
+                  "nodes": [
+                    {
+                      "id": "issue-queued",
+                      "type": "trigger",
+                      "title": "Issue queued",
+                      "position": {
+                        "x": 24,
+                        "y": 40
+                      },
+                      "config": {}
+                    },
+                    {
+                      "id": "effort-recheck",
+                      "type": "flow",
+                      "title": "Effort re-check",
+                      "position": {
+                        "x": 306,
+                        "y": 40
+                      },
+                      "config": {
+                        "kind": "decision",
+                        "predicate": {
+                          "kind": "effort",
+                          "op": "lte",
+                          "value": "m"
+                        }
+                      }
+                    },
+                    {
+                      "id": "implement",
+                      "type": "llm",
+                      "title": "Code the change",
+                      "position": {
+                        "x": 588,
+                        "y": 230
+                      },
+                      "config": {
+                        "mode": "skill",
+                        "skill": "zephyr-conventions",
+                        "prompt_template": "Implement the fix.\nIssue: {{issue.title}}",
+                        "routing": {
+                          "inherit_task": "implement"
+                        },
+                        "limits": {
+                          "max_retries": 2,
+                          "token_budget": 400000
+                        },
+                        "permissions": {
+                          "push_fixup": true,
+                          "touch_ci": false
+                        }
+                      }
+                    },
+                    {
+                      "id": "back-to-queue",
+                      "type": "term",
+                      "title": "Back to queue",
+                      "position": {
+                        "x": 306,
+                        "y": 230
+                      },
+                      "config": {
+                        "action": "back_to_queue",
+                        "options": {}
+                      }
+                    },
+                    {
+                      "id": "checks-green",
+                      "type": "flow",
+                      "title": "Checks green?",
+                      "position": {
+                        "x": 306,
+                        "y": 420
+                      },
+                      "config": {
+                        "kind": "gate",
+                        "predicate": {
+                          "kind": "checks",
+                          "op": "all_passed"
+                        }
+                      }
+                    },
+                    {
+                      "id": "open-pr",
+                      "type": "term",
+                      "title": "Open PR & auto-merge",
+                      "position": {
+                        "x": 588,
+                        "y": 420
+                      },
+                      "config": {
+                        "action": "open_pr_automerge",
+                        "options": {
+                          "merge_method": "squash",
+                          "delete_branch": true
+                        }
+                      }
+                    }
+                  ],
+                  "edges": [
+                    {
+                      "from": "issue-queued",
+                      "to": "effort-recheck",
+                      "kind": "default"
+                    },
+                    {
+                      "from": "effort-recheck",
+                      "to": "implement",
+                      "kind": "branch",
+                      "label": "≤ M ↓",
+                      "condition": {
+                        "kind": "effort",
+                        "op": "lte",
+                        "value": "m"
+                      }
+                    },
+                    {
+                      "from": "effort-recheck",
+                      "to": "back-to-queue",
+                      "kind": "branch",
+                      "label": "> M ↘",
+                      "condition": {
+                        "kind": "effort",
+                        "op": "gt",
+                        "value": "m"
+                      }
+                    },
+                    {
+                      "from": "implement",
+                      "to": "checks-green",
+                      "kind": "default"
+                    },
+                    {
+                      "from": "checks-green",
+                      "to": "open-pr",
+                      "kind": "branch",
+                      "label": "pass →",
+                      "condition": {
+                        "kind": "checks",
+                        "op": "all_passed"
+                      }
+                    },
+                    {
+                      "from": "checks-green",
+                      "to": "implement",
+                      "kind": "loop",
+                      "label": "fail ↺",
+                      "condition": {
+                        "kind": "checks",
+                        "op": "any_failed"
+                      }
+                    }
+                  ]
+                },
+                "ticket": {
+                  "external_key": "#485",
+                  "source": "github",
+                  "labels": [
+                    "bug",
+                    "i2c",
+                    "watchdog",
+                    "priority-high"
+                  ],
+                  "estimate": {
+                    "effort": "m"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The walk — mockup 04's graph cut down to six stages, for the seeded `#485`: the trigger\nfires, the decision takes `≤ M ↓` and explains why `> M ↘` is not taken, the gate\nassumes green, and the ouroboros loop back to `implement` is reported with its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDryRun"
+                },
+                "example": {
+                  "findings": [],
+                  "steps": [
+                    {
+                      "node_id": "issue-queued",
+                      "type": "trigger",
+                      "title": "Issue queued",
+                      "verdict": "matched",
+                      "annotation": "Starts a run when a ticket is queued with effort ≤ M.",
+                      "evaluation": {
+                        "holds": true,
+                        "assumed": false,
+                        "explanation": "The trigger fires for #485: #485 is effort M, and M ≤ M."
+                      },
+                      "edges": [
+                        {
+                          "from": "issue-queued",
+                          "to": "effort-recheck",
+                          "kind": "default",
+                          "label": null,
+                          "outcome": "taken",
+                          "explanation": "Taken: a default edge is always followed.",
+                          "evaluation": null,
+                          "max_retries": null
+                        }
+                      ]
+                    },
+                    {
+                      "node_id": "effort-recheck",
+                      "type": "flow",
+                      "title": "Effort re-check",
+                      "verdict": "reached",
+                      "annotation": "A decision on: effort ≤ M. Every branch out of it is reported, taken or not.",
+                      "evaluation": {
+                        "holds": true,
+                        "assumed": false,
+                        "explanation": "#485 is effort M, and M ≤ M."
+                      },
+                      "edges": [
+                        {
+                          "from": "effort-recheck",
+                          "to": "implement",
+                          "kind": "branch",
+                          "label": "≤ M ↓",
+                          "outcome": "taken",
+                          "explanation": "Taken: #485 is effort M, and M ≤ M.",
+                          "evaluation": {
+                            "holds": true,
+                            "assumed": false,
+                            "explanation": "#485 is effort M, and M ≤ M."
+                          },
+                          "max_retries": null
+                        },
+                        {
+                          "from": "effort-recheck",
+                          "to": "back-to-queue",
+                          "kind": "branch",
+                          "label": "> M ↘",
+                          "outcome": "not_taken",
+                          "explanation": "Not taken: #485 is effort M, and M is not > M.",
+                          "evaluation": {
+                            "holds": false,
+                            "assumed": false,
+                            "explanation": "#485 is effort M, and M is not > M."
+                          },
+                          "max_retries": null
+                        }
+                      ]
+                    },
+                    {
+                      "node_id": "implement",
+                      "type": "llm",
+                      "title": "Code the change",
+                      "verdict": "reached",
+                      "annotation": "A model stage: loads the skill `zephyr-conventions` before its prompt, on the model the `implement` task routes to, with at most 2 retries and a 400000-token budget. Not invoked — a dry run makes no model call.",
+                      "evaluation": null,
+                      "edges": [
+                        {
+                          "from": "implement",
+                          "to": "checks-green",
+                          "kind": "default",
+                          "label": null,
+                          "outcome": "taken",
+                          "explanation": "Taken: a default edge is always followed.",
+                          "evaluation": null,
+                          "max_retries": null
+                        }
+                      ]
+                    },
+                    {
+                      "node_id": "checks-green",
+                      "type": "flow",
+                      "title": "Checks green?",
+                      "verdict": "reached",
+                      "annotation": "A gate. Requires: every check passing.",
+                      "evaluation": {
+                        "holds": true,
+                        "assumed": true,
+                        "explanation": "A dry run has no check results, so it assumes every check passes."
+                      },
+                      "edges": [
+                        {
+                          "from": "checks-green",
+                          "to": "open-pr",
+                          "kind": "branch",
+                          "label": "pass →",
+                          "outcome": "taken",
+                          "explanation": "Taken: a dry run has no check results, so it assumes every check passes.",
+                          "evaluation": {
+                            "holds": true,
+                            "assumed": true,
+                            "explanation": "A dry run has no check results, so it assumes every check passes."
+                          },
+                          "max_retries": null
+                        },
+                        {
+                          "from": "checks-green",
+                          "to": "implement",
+                          "kind": "loop",
+                          "label": "fail ↺",
+                          "outcome": "loop",
+                          "explanation": "Loops back to `implement`; it is bounded by the 2 retries `implement` allows. It would not be followed: a dry run has no check results, so it assumes no check fails. A dry run reports a loop and never walks it.",
+                          "evaluation": {
+                            "holds": false,
+                            "assumed": true,
+                            "explanation": "A dry run has no check results, so it assumes no check fails."
+                          },
+                          "max_retries": 2
+                        }
+                      ]
+                    },
+                    {
+                      "node_id": "open-pr",
+                      "type": "term",
+                      "title": "Open PR & auto-merge",
+                      "verdict": "ended",
+                      "annotation": "Ends the run by opening a pull request and auto-merging it with a `squash` merge, deleting the branch. Not performed — a dry run opens nothing.",
+                      "evaluation": null,
+                      "edges": []
+                    }
+                  ],
+                  "verdicts": [
+                    {
+                      "node_id": "issue-queued",
+                      "verdict": "matched",
+                      "explanation": "The trigger fires for #485: #485 is effort M, and M ≤ M."
+                    },
+                    {
+                      "node_id": "effort-recheck",
+                      "verdict": "reached",
+                      "explanation": "Reached from `issue-queued`."
+                    },
+                    {
+                      "node_id": "implement",
+                      "verdict": "reached",
+                      "explanation": "Reached from `effort-recheck`."
+                    },
+                    {
+                      "node_id": "back-to-queue",
+                      "verdict": "not_reached",
+                      "explanation": "Not reached: the branch from `effort-recheck` is not taken, because #485 is effort M, and M is not > M."
+                    },
+                    {
+                      "node_id": "checks-green",
+                      "verdict": "reached",
+                      "explanation": "Reached from `implement`."
+                    },
+                    {
+                      "node_id": "open-pr",
+                      "verdict": "ended",
+                      "explanation": "Reached from `checks-green`; the simulated run ends here."
+                    }
+                  ],
+                  "highlight_path": [
+                    {
+                      "from": "issue-queued",
+                      "to": "effort-recheck"
+                    },
+                    {
+                      "from": "effort-recheck",
+                      "to": "implement"
+                    },
+                    {
+                      "from": "implement",
+                      "to": "checks-green"
+                    },
+                    {
+                      "from": "checks-green",
+                      "to": "open-pr"
+                    }
+                  ]
                 }
               }
             }
@@ -807,6 +1316,521 @@
           "trace": {
             "$ref": "#/components/schemas/Trace",
             "description": "What produced the estimate, and from what."
+          }
+        }
+      },
+      "EdgeRef": {
+        "type": "object",
+        "title": "EdgeRef",
+        "description": "An edge, named the way the document names one — by its ordered pair. A document allows\nat most one edge per pair, so the pair is an edge's identity and what the canvas keys it\nby.",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "The id of the node the edge leaves.",
+            "examples": [
+              "effort-recheck"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "description": "The id of the node the edge arrives at.",
+            "examples": [
+              "plan"
+            ]
+          }
+        }
+      },
+      "WorkflowFinding": {
+        "type": "object",
+        "title": "WorkflowFinding",
+        "description": "One thing wrong with a definition, anchored where the canvas can select it — the DSL's\nown diagnostic (`docs/WORKFLOW_DSL.md` § 8) with its node anchor spelled `node_id`.\n`node_id` and `edge` are omitted, never `null`, when a finding has no such anchor: a\nfinding about the document as a whole and one whose anchor failed to resolve are not\nthe same payload.",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "path"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Which rule broke — one of the DSL's error codes, the vocabulary both validators\nshare. What a caller branches on.",
+            "examples": [
+              "node.unreachable"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What a person should read. Presentation, never contract.",
+            "examples": [
+              "No path of edges reaches this stage from the trigger."
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "An RFC 6901 JSON Pointer to the offending value; `\"\"` is the document itself.",
+            "examples": [
+              "/nodes/2"
+            ]
+          },
+          "node_id": {
+            "type": "string",
+            "description": "The id of the node the finding anchors to.",
+            "examples": [
+              "orphan"
+            ]
+          },
+          "edge": {
+            "$ref": "#/components/schemas/EdgeRef",
+            "description": "The edge the finding anchors to."
+          }
+        }
+      },
+      "WorkflowValidateRequest": {
+        "type": "object",
+        "title": "WorkflowValidateRequest",
+        "description": "The body of a `POST /v0/workflows/validate` request. Closed — a property not listed here\nis refused rather than dropped.",
+        "additionalProperties": false,
+        "required": [
+          "definition"
+        ],
+        "properties": {
+          "definition": {
+            "description": "The definition exactly as it is stored — a P.2 document\n(`schemas/workflow-dsl/v1.json`). Any JSON value is accepted here, because whether it\nis a workflow is the validator's question: a value that is not one is answered with a\n`document.malformed` finding rather than refused."
+          }
+        }
+      },
+      "WorkflowValidation": {
+        "type": "object",
+        "title": "WorkflowValidation",
+        "description": "The body of a `POST /v0/workflows/validate` response.",
+        "additionalProperties": false,
+        "required": [
+          "findings"
+        ],
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowFinding"
+            },
+            "description": "Every error, in document order — by path, numeric segments compared as numbers.\nEmpty is the green verdict; there is no separate flag."
+          }
+        }
+      },
+      "TicketEstimate": {
+        "type": "object",
+        "title": "TicketEstimate",
+        "description": "The part of a ticket's latest estimate a predicate reads.",
+        "additionalProperties": false,
+        "required": [
+          "effort"
+        ],
+        "properties": {
+          "effort": {
+            "type": "string",
+            "enum": [
+              "xs",
+              "s",
+              "m",
+              "l",
+              "xl"
+            ],
+            "description": "How much work it is, in `issue_estimates.effort`'s vocabulary.",
+            "examples": [
+              "m"
+            ]
+          }
+        }
+      },
+      "DryRunTicket": {
+        "type": "object",
+        "title": "DryRunTicket",
+        "description": "The ticket a dry run is about, and as much of it as a predicate can test: the three\nthings the trigger's conditions and the DSL's predicates read, plus the key every\nexplanation names the ticket by. Nothing is fetched — the engine holds no tickets, and a\nsimulator that went looking for one would be making provider calls.",
+        "additionalProperties": false,
+        "required": [
+          "external_key",
+          "source",
+          "labels",
+          "estimate"
+        ],
+        "properties": {
+          "external_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "The display form, as V030's `tickets.external_key` holds it.",
+            "examples": [
+              "#485"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "github",
+              "gitlab",
+              "jira",
+              "linear"
+            ],
+            "description": "Which kind of tracker the ticket came from, as `ticket_sources.kind` spells it.",
+            "examples": [
+              "github"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "description": "The tracker's label names — V030's bounds — compared exactly as the tracker spells\nthem.",
+            "examples": [
+              [
+                "bug",
+                "i2c",
+                "watchdog",
+                "priority-high"
+              ]
+            ]
+          },
+          "estimate": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest estimate, or `null` for a ticket nobody has sized. Required rather than\noptional, so *unsized* is something the caller states. An unsized ticket satisfies\nno effort comparison."
+          }
+        }
+      },
+      "WorkflowDryRunRequest": {
+        "type": "object",
+        "title": "WorkflowDryRunRequest",
+        "description": "The body of a `POST /v0/workflows/dry-run` request. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "definition",
+          "ticket"
+        ],
+        "properties": {
+          "definition": {
+            "description": "The definition to walk, exactly as it is stored. Validated first, by the same\nvalidator `POST /v0/workflows/validate` answers with."
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/DryRunTicket",
+            "description": "The ticket to walk it for."
+          }
+        }
+      },
+      "PredicateEvaluation": {
+        "type": "object",
+        "title": "PredicateEvaluation",
+        "description": "One predicate — a trigger's conditions, a fork's test, an edge's condition — tested against the ticket.",
+        "additionalProperties": false,
+        "required": [
+          "holds",
+          "assumed",
+          "explanation"
+        ],
+        "properties": {
+          "holds": {
+            "type": "boolean",
+            "description": "Whether it holds.",
+            "examples": [
+              true
+            ]
+          },
+          "assumed": {
+            "type": "boolean",
+            "description": "`true` when the predicate reads what only a run produces — check results — and\n`holds` is the simulator's stated green-path assumption rather than a fact about the\nticket.",
+            "examples": [
+              false
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why, in one sentence.",
+            "examples": [
+              "#485 is effort M, and M ≤ M."
+            ]
+          }
+        }
+      },
+      "DryRunEdge": {
+        "type": "object",
+        "title": "DryRunEdge",
+        "description": "One edge out of a stage on the walk, and what the walk did with it.",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to",
+          "kind",
+          "label",
+          "outcome",
+          "explanation",
+          "evaluation",
+          "max_retries"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "The id of the stage the edge leaves.",
+            "examples": [
+              "effort-recheck"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "description": "The id of the stage it arrives at.",
+            "examples": [
+              "back-to-queue"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "default",
+              "branch",
+              "loop"
+            ],
+            "description": "The edge's kind, as the document says.",
+            "examples": [
+              "branch"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the canvas prints beside it, or `null`.",
+            "examples": [
+              "> M ↘"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "taken",
+              "not_taken",
+              "loop"
+            ],
+            "description": "Whether the walk followed it. `loop` is its own outcome: a loop is reported with its\nretry bound and never walked, which is a different statement from *this branch's\ncondition does not hold*.",
+            "examples": [
+              "not_taken"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why, in a sentence or two. For a branch that is not taken, this is the road not\ntaken, explained.",
+            "examples": [
+              "Not taken: #485 is effort M, and M is not > M."
+            ]
+          },
+          "evaluation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PredicateEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edge's condition tested against the ticket, or `null` when it has none."
+          },
+          "max_retries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "For a loop, the retry bound — the `limits.max_retries` of the model stage it returns\nto. `null` for every other edge, and for a loop into a stage that declares no limit.",
+            "examples": [
+              2
+            ]
+          }
+        }
+      },
+      "DryRunStep": {
+        "type": "object",
+        "title": "DryRunStep",
+        "description": "One stage the walk reached, in the order it reached them.",
+        "additionalProperties": false,
+        "required": [
+          "node_id",
+          "type",
+          "title",
+          "verdict",
+          "annotation",
+          "evaluation",
+          "edges"
+        ],
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "description": "The stage's id.",
+            "examples": [
+              "effort-recheck"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "trigger",
+              "llm",
+              "infra",
+              "flow",
+              "term"
+            ],
+            "description": "Which of the DSL's five node types it is.",
+            "examples": [
+              "flow"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "What the canvas prints as its name.",
+            "examples": [
+              "Effort re-check"
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "not_matched",
+              "reached",
+              "halted",
+              "ended"
+            ],
+            "description": "What the walk concluded: `matched` or `not_matched` for the trigger, `ended` for a\nterminal, `reached` for a stage the walk left, and `halted` for one no edge out of\nwhich is taken.",
+            "examples": [
+              "reached"
+            ]
+          },
+          "annotation": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the stage would do or require — a gate's requirements, a model stage's routing\nand limits — always said without doing it.",
+            "examples": [
+              "A decision on: effort ≤ M. Every branch out of it is reported, taken or not."
+            ]
+          },
+          "evaluation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PredicateEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The trigger's conditions or a fork's predicate, tested; `null` for any other stage."
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DryRunEdge"
+            },
+            "description": "Every edge out of the stage, in document order, each with its outcome."
+          }
+        }
+      },
+      "NodeVerdict": {
+        "type": "object",
+        "title": "NodeVerdict",
+        "description": "What the walk concluded about one stage, walked or not.",
+        "additionalProperties": false,
+        "required": [
+          "node_id",
+          "verdict",
+          "explanation"
+        ],
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "description": "The stage's id.",
+            "examples": [
+              "back-to-queue"
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "not_matched",
+              "reached",
+              "halted",
+              "ended",
+              "not_reached"
+            ],
+            "description": "A step's verdict for a stage the walk reached, and `not_reached` for one it did not.",
+            "examples": [
+              "not_reached"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why — naming the stage that reached it, or the edge that did not.",
+            "examples": [
+              "Reached from `issue-queued`."
+            ]
+          }
+        }
+      },
+      "WorkflowDryRun": {
+        "type": "object",
+        "title": "WorkflowDryRun",
+        "description": "The body of a `POST /v0/workflows/dry-run` response.",
+        "additionalProperties": false,
+        "required": [
+          "findings",
+          "steps",
+          "verdicts",
+          "highlight_path"
+        ],
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowFinding"
+            },
+            "description": "The definition's errors. Non-empty means it did not validate and nothing was walked,\nso the three lists beside it are empty."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DryRunStep"
+            },
+            "description": "The ordered walk."
+          },
+          "verdicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeVerdict"
+            },
+            "description": "One verdict per stage, in document order."
+          },
+          "highlight_path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EdgeRef"
+            },
+            "description": "Every edge the walk took, in the order it took them — the segments the canvas draws\nin the accent treatment."
           }
         }
       },

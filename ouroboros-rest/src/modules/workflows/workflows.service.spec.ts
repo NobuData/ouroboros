@@ -538,16 +538,6 @@ describe("publishing", () => {
 
     await expect(service.publish(WORKSPACE, WORKFLOW, {}, PERSON, AT)).rejects.toBe(failure);
   });
-
-  it("records a publish the engine did not second", async () => {
-    const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-    const { service, gate } = harness();
-    gate.check.mockResolvedValue({ findings: [], engineConsulted: false });
-
-    await service.publish(WORKSPACE, WORKFLOW, {}, PERSON, AT);
-
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("standard-fix"));
-  });
 });
 
 describe("the history", () => {

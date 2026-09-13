@@ -23,9 +23,7 @@
  *   * **Nothing the engine says reaches a client.** Every failure becomes
  *     {@link engineUnavailable}, and the engine's own body is never read on a failure path.
  *     Its error envelope is written for this service, and its `401` in particular must not
- *     become a `401` here (`engine.errors.ts`). The one status that is read as an *answer*
- *     rather than a failure is a `404`, and only where a caller asked for it — see
- *     {@link EngineClient.validateWorkflow}, which is the whole of that exception.
+ *     become a `401` here (`engine.errors.ts`).
  *   * **The diagnosis goes to the log.** The URL, the status, the failing code and the
  *     validation failure are all in the service log, where an operator inside the cluster
  *     reads them, and none of them are in the answer.
@@ -103,16 +101,6 @@ export const MAX_ATTEMPTS = 2;
 
 /** The status the engine answers when the two sides hold different shared secrets. */
 const ENGINE_UNAUTHORIZED = 401;
-
-/**
- * The status the engine answers for a path it does not route.
- *
- * FastAPI matches a route before it reads the shared secret, so this is what an engine build
- * that predates an operation answers — with or without a key. See
- * {@link EngineClient.validateWorkflow}, the one caller that is allowed to read it as an
- * answer rather than as a failure.
- */
-const ENGINE_NOT_FOUND = 404;
 
 /** The typed client every engine call goes through. */
 @Injectable()
@@ -218,33 +206,25 @@ export class EngineClient {
    * Publishing behind both is what stops the first disagreement between them being a run that
    * fails months later.
    *
-   * **`undefined` means the engine does not publish this route**, which is the state of every
-   * build until R.2 ([#144](https://github.com/NobuData/ouroboros/issues/144)) lands. It is
-   * the one status this client reads as an answer rather than as a failure, and the tolerance
-   * is deliberately that narrow: an engine that is *down*, refusing, or answering off-contract
-   * is still `engine_unavailable`, so a publish is refused rather than waved through by an
-   * outage. What is lost when the route is absent is a **redundant** check — `dsl.parity.spec.ts`
-   * holds the two validators to the same verdict on every committed fixture, so the engine's
-   * opinion is defence in depth rather than the only gate — and the loss is reported at `warn`
-   * with the URL, so an operator seeing publishes go through un-seconded can find out why.
+   * **Every failure refuses the publish.** Until R.2
+   * ([#144](https://github.com/NobuData/ouroboros/issues/144)) published the route, a `404` here
+   * was read as *this engine build predates the operation* and the gate went on without it. The
+   * engine publishes it now, and the two services deploy together (`/v0`'s rule), so a `404` is
+   * an engine this deployment is misconfigured against — `engine_unavailable`, like an engine
+   * that is down, refusing or answering off-contract. A gate that published un-seconded through
+   * an outage would be a gate with a hole in it.
    *
    * @param definition - The document about to be published, exactly as it is stored.
-   * @returns The findings, empty when the engine is content; `undefined` when this engine
-   *   build does not serve the route.
-   * @throws {UpstreamError} `engine_unavailable` for every other way this can fail — see
+   * @returns The findings, empty when the engine is content.
+   * @throws {UpstreamError} `engine_unavailable` for every way this can fail — see
    *   {@link call}.
    */
-  async validateWorkflow(definition: unknown): Promise<EngineWorkflowValidation | undefined> {
-    return this.call(
-      ENGINE_WORKFLOW_VALIDATE_ROUTE,
-      engineWorkflowValidationSchema,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(workflowValidateRequestBody(definition)),
-      },
-      { absentWhenUnpublished: true },
-    );
+  async validateWorkflow(definition: unknown): Promise<EngineWorkflowValidation> {
+    return this.call(ENGINE_WORKFLOW_VALIDATE_ROUTE, engineWorkflowValidationSchema, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(workflowValidateRequestBody(definition)),
+    });
   }
 
   /**
@@ -253,28 +233,12 @@ export class EngineClient {
    * @param route - A route relative to `OURO_ENGINE_URL`, from `engine.contract.ts`.
    * @param schema - What the answer must be. Parsed rather than asserted; see that file.
    * @param init - Method, headers and body for anything that is not a plain `GET`.
-   * @param options - `absentWhenUnpublished` makes a `404` answer `undefined` instead of
-   *   throwing — for a caller that can act on *this engine does not serve that route yet*.
-   *   Nothing else changes: every other failure is still one answer.
-   * @returns The parsed body, in this service's names — or `undefined` for the one case
-   *   above.
+   * @returns The parsed body, in this service's names.
    * @throws {UpstreamError} `engine_unavailable` for a transport failure, a deadline, a
    *   non-2xx status, a body that is not JSON, or a body that is not the contract. One
    *   answer, because a client can act on exactly one of them.
    */
-  private async call<T>(route: string, schema: ZodType<T>, init?: RequestInit): Promise<T>;
-  private async call<T>(
-    route: string,
-    schema: ZodType<T>,
-    init: RequestInit,
-    options: { readonly absentWhenUnpublished: true },
-  ): Promise<T | undefined>;
-  private async call<T>(
-    route: string,
-    schema: ZodType<T>,
-    init: RequestInit = {},
-    options: { readonly absentWhenUnpublished?: boolean } = {},
-  ): Promise<T | undefined> {
+  private async call<T>(route: string, schema: ZodType<T>, init: RequestInit = {}): Promise<T> {
     const url = engineRouteUrl(this.config.engineUrl, route);
     const response = await this.send(url, init);
 
@@ -284,19 +248,6 @@ export class EngineClient {
       // API's. Cancelling gives the socket back to undici's pool immediately rather than
       // when the garbage collector gets to it.
       await response.body?.cancel();
-
-      if (options.absentWhenUnpublished === true && response.status === ENGINE_NOT_FOUND) {
-        // The one status a caller may read as an answer, and only where it asked to. See
-        // `validateWorkflow`: an engine that predates an operation is a deployment state, not
-        // a failure, and the caller that opted in is the one that knows what to do without it.
-        this.logger.warn(
-          `${this.describe(init)} ${url} answered 404: this ouroboros-engine build does not ` +
-            "publish the route. The caller was told the operation is unavailable rather than " +
-            "that it failed.",
-        );
-
-        return undefined;
-      }
 
       if (response.status === ENGINE_UNAUTHORIZED) {
         // Named separately because it is the one failure here that is *this deployment's*

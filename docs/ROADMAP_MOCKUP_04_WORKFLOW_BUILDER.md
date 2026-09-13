@@ -461,7 +461,9 @@ draft PUT (etag) ─▶ autosave · publish POST ─▶ [zod ✓][engine ✓] �
     `502 engine_unavailable` and the publish is refused. What a `404` costs is a **redundant**
     check — `dsl.parity.spec.ts` holds the two validators to one verdict over every committed
     fixture — and `engine.contract.spec.ts` carries a tripwire that goes red the day the engine
-    publishes the operation, so the tolerance and the test are replaced together.
+    publishes the operation, so the tolerance and the test are replaced together. **Retired by
+    R.2 (#144):** the engine publishes the route, and a `404` is now `engine_unavailable` like
+    any other refusal.
   * **The slug cannot be changed, and `archived` is the only delete.** The slug is the bridge a
     stored `runs.workflow_tag` resolves through (decision **F8**, V029), so renaming it would
     silently re-point every closed run that carried it; a hard `DELETE` would have to mean
@@ -967,7 +969,7 @@ conformance(provider) ─▶ config ✓ · sync/cursor ✓ · mapping ✓ · err
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | R.1 | #143 | 🟡 Open | ouroboros-rest: [R.1] Trigger evaluation service | `ticket_queued` events matched to workflows via P8 predicates | mvp, workflow, rest | N (after P.3, Q.1) | Y | M | ouroboros-rest |
-| R.2 | #144 | 🟡 Open | ouroboros-engine: [R.2] Definition validation & dry-run simulator | `/v0/workflows/validate` + `/dry-run`: walk the graph, no LLM calls | mvp, workflow, engine | N (after P.2, #52) | Y | L | ouroboros-engine |
+| R.2 | #144 | 🟢 Done | ouroboros-engine: [R.2] Definition validation & dry-run simulator | `/v0/workflows/validate` + `/dry-run`: walk the graph, no LLM calls | mvp, workflow, engine | N (after P.2, #52) | Y | L | ouroboros-engine |
 | R.3 | #145 | 🟡 Open | ouroboros-rest: [R.3] Stage catalog endpoint | Node-type registry (config schemas, defaults) driving Add-stage & inspector | mvp, workflow, rest | N (after P.2) | Y | S | ouroboros-rest |
 | R.4 | #146 | 🟡 Open | ouroboros-rest: [R.4] Studio integration tests | Publish gate, trigger matrix, dry-run contract, catalog | mvp, workflow, rest, ci | N (after R.1–R.3) | Y | M | ouroboros-rest |
 
@@ -1001,7 +1003,7 @@ ticket_queued(#485, effort M) ─▶ predicates: standard-fix(≤M ✓) feature-
 
 ### Issue R.2 — ouroboros-engine: [R.2] Definition validation & dry-run simulator
 
-> **GitHub issue:** #144 · **Status:** 🟡 Open · **Parent epic:** #129
+> **GitHub issue:** #144 · **Status:** 🟢 Done · **Parent epic:** #129
 
 - **Problem Statement:** Publish needs a second, execution-side opinion, and the
   head's "Dry run with issue #485" needs a real simulator — the engine must
@@ -1027,6 +1029,47 @@ POST /v0/workflows/dry-run {definition, ticket:#485}
  ─▶ trigger ✓ (M ≤ M) ─▶ walk: analyze → decision[≤M↓ | >M↘ explained] → plan → implement
  ─▶ {steps[], findings[], highlight_path[]}   (no LLM calls — simulator only)
 ```
+
+- **Decided in-issue and shipped as `ouroboros-engine/src/ouroboros_engine/workflows/{contract,
+  predicates,simulate}.py`, `api/workflows.py`, the two operations in
+  `ouroboros-engine/openapi.yaml`, and the retirement of P.3's `404` tolerance in
+  `ouroboros-rest`:**
+
+  * **A finding is P.2's diagnostic, renamed at one boundary.** `code` and `path` are the DSL's,
+    the node anchor travels as `node_id` — the issue's name, and the one `engine.contract.ts`
+    already parsed — and an absent anchor is omitted rather than sent as `null`. Decision
+    **P7**'s warnings are not findings: neither request carries a catalogue, and a gate that had
+    to filter by severity would be a gate that forgot to.
+  * **An invalid definition is a `200` carrying findings, not a `422`.** The request carried a
+    definition, so the findings are the answer; `422` is kept for a request that is not one. The
+    dry run answers the same findings and walks nothing.
+  * **The ticket is sent, never fetched** — `{external_key, source, labels, estimate: {effort} |
+    null}`, which is what the trigger's conditions and the predicates read plus the key every
+    explanation names. A simulator that looked a ticket up would be making provider calls.
+    *Unsized* is `null`, and satisfies no effort comparison.
+  * **One evaluator, as P.2 intended.** The trigger's `effort_lte`, `labels` and `source` are
+    rewritten into the `effort`, `labels` (`all`) and `source` (`in`) predicates they mean, and a
+    parametrised suite asserts both readings agree for every input.
+  * **The walk is breadth-first from the trigger, each stage's edges in document order.** A
+    `default` edge is taken, a `branch` edge when its condition holds, and a stage two taken edges
+    reach is walked once with both edges highlighted. A trigger that does not fire is the only
+    step. Forks report every branch with the reason it was or was not taken.
+  * **Where the issue was silent — past a gate, around a loop — the simulator states its
+    assumption.** Check results come from a run, so a `checks` predicate is evaluated on the green
+    path and marked `assumed: true`; that is what carries `#485` past `checks-green` to `open-pr`.
+    A loop is reported with outcome `loop` and never walked; its bound is the `limits.max_retries`
+    of the model stage it returns to (`2` for `implement`), and `null` for a stage declaring none.
+  * **Per-node verdicts** are `matched`/`not_matched` for the trigger, `reached`, `halted` (reached,
+    and no edge out is taken), `ended` for a terminal, and `not_reached` — each with a sentence
+    naming the edge that did or did not bring the walk there.
+  * **Zero calls is asserted twice.** Statically, no module the dry run executes imports the
+    control-plane client, the estimator, a socket, an HTTP library or `subprocess`; at runtime,
+    spies on `ControlPlaneClient`, `socket` and the installed estimator fail the request if
+    touched. Determinism is asserted in-process and across interpreters with different
+    `PYTHONHASHSEED`s.
+  * **P.3's `404` tolerance is retired**, as its tripwire asked: `EngineClient.validateWorkflow`
+    answers findings or throws `engine_unavailable`, the gate has no un-seconded path, and the
+    integration stub publishes the route. `ouroboros-engine` 0.6.1, `ouroboros-rest` 0.34.4.
 
 ### Issue R.3 — ouroboros-rest: [R.3] Stage catalog endpoint
 
