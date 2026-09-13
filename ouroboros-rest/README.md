@@ -2636,19 +2636,57 @@ provider threw is *failed*: `status` and `status_reason` are written and `synced
 A source that synced has its rows, its cursor, its stamp and its status written in one
 transaction, which is also what clears a previous failure.
 
-**It runs beside `backlog-sync/` rather than in place of it.** That loop is GitHub-shaped and
-fills `github_issues`; this one is source-agnostic and fills `tickets`. Q.3
-([#140](https://github.com/NobuData/ouroboros/issues/140)) is the ticket that turns the first
-into a provider behind the second and retires it. In this release
-`TICKET_SOURCE_PROVIDERS` is bound to an empty list, so a cycle reads a handful of rows, skips
-every one and makes no outbound request — which is the honest state of a build that has shipped
-the interface and not the implementations, and the same thing `ModelProviderRegistry` did when
-it shipped with one adapter and five `501`s.
+### The GitHub provider
 
-The estimation handoff is a port, `TICKET_INTAKE`, bound to a placeholder that logs. The
-pipeline is real but keyed on `github_issues.id`, so handing it a `tickets.id` would be a log
-full of misses; re-pointing `issue_estimates` is the cut-over, which is Q.3's. `ticket.intake.ts`
-carries the argument.
+**`github` is the first registered kind** ([#140](https://github.com/NobuData/ouroboros/issues/140)),
+and it is the proof that the SPI can carry a real integration: everything the backlog poller
+does, behind four members the loop would call on a Jira provider just the same.
+
+| member | what it does |
+|---|---|
+| `validateConfig` | one `GET /repos/{owner}/{repo}` per enabled repository — Q.4's **Test connection** as a real round-trip, answering `acme-robotics · 4 repositories`. It never rejects: a bad config, a refusal and a closed socket are all results, because a form's error state must not depend on somebody remembering a `try` |
+| `fullSync` | `state=open`, no watermark. A backlog is what is *open*; a cold import that dragged in a decade of closed issues is a first sync nobody wants |
+| `incrementalSync` | `state=all&since=<cursor>`. `all` rather than `open` is the whole of how a close reaches the mirror — an issue that stops being listed would sit there open forever |
+| `mapTicket` | `#485` → `{ externalId: "485", externalKey: "#485", … }`, with the repository read out of the issue's own `html_url` so a recorded payload produces the whole row, `meta` included |
+
+**Pull requests are dropped before a row exists.** The issues endpoint answers both, the only
+discriminator is the presence of a `pull_request` key, and a PR in the backlog is a bug users
+see immediately.
+
+**Configuration is `{ login, repos[] }`** — the shape `R__dev_seed_sources.sql` already writes,
+and the enabled-repo scoping the intake epic asks for. It is parsed by the provider and by
+nothing else: `ticket_sources.config` is `unknown` in the core, deliberately, because a type
+spelled there would be GitHub's grammar under a neutral name.
+
+**One page, divided.** A sync answers at most 500 tickets, and the budget is *divided* across
+the enabled repositories rather than spent first-come — so every repository is asked on every
+cycle, which is what lets the cursor be the **weakest frontier** across them. A repository cut
+short means the watermark stops at its last ticket rather than at the newest on the page;
+advancing past it would leave tickets nobody has fetched behind a `since` that no longer finds
+them.
+
+**No `@octokit/*` import is added.** The provider takes `OCTOKIT_FACTORY`, the injectable seam
+K.3 cut ([#101](https://github.com/NobuData/ouroboros/issues/101)), so
+`src/modules/github/github.octokit.ts` is still the only file in the service that may name the
+library — and `no-octokit-outside-the-seam` refuses it inside `providers/` too, which
+`ticket-sources/boundary.spec.ts` asserts by adding the violation.
+
+**Its rate guard is its own.** `GithubModule`'s single `GithubRateLimiter` watches the
+workspace's *settings* token, which the backlog poller spends and which
+`/api/v1/backlog/sync-status` reads to explain a pause. A source's credential is a different
+token, so the provider gets a second instance: sharing them would let one source's exhausted
+budget make the backlog page say `rate_limited` about a token that is fine. Exhaustion throws
+`rate_limit` with a resume time, which V031's column renders as `rate limited until 14:20 UTC`.
+
+**It runs beside `backlog-sync/` rather than in place of it.** That loop is GitHub-shaped and
+fills `github_issues`; this one is source-agnostic and fills `tickets`. Retiring the first is
+the **cut-over**, and it is not this release: re-pointing `issue_estimates` at `tickets.id` is a
+migration in `ouroboros-db`, and until it happens the intake screens still read
+`github_issues`.
+
+The estimation handoff is a port, `TICKET_INTAKE`, bound to a placeholder that logs, for the
+same reason. The pipeline is real but keyed on `github_issues.id`, so handing it a `tickets.id`
+would be a log full of misses. `ticket.intake.ts` carries the argument.
 
 The cadence is `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, shared with the backlog sync on purpose:
 one knob for one question — *how often does Ouroboros ask a tracker what changed* — for the one
@@ -3593,6 +3631,7 @@ ouroboros-rest/
 │       │                   #   POST /backlog/{id}/estimate · /backlog/estimate-all (#108)
 │       │                   #   member+ · admin+ · 30/min per workspace, sliding
 │       ├── ticket-sources/ # the TicketSourceProvider SPI, registry, sync loop · #139
+│       │   └── providers/  # the GitHub provider — the first conforming plugin · #140
 │       │                   #   providers/ is where a provider lives — lint-enforced,
 │       │                   #   and empty until Q.3 (#140) registers the GitHub one
 │       │                   #   no controller — the management API is Q.4 (#141)

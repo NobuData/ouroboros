@@ -1,10 +1,14 @@
 # Ticket sources — writing a `TicketSourceProvider`
 
 > **Status:** the SPI, the registry and the sync loop shipped with
-> [Q.2 (#139)](https://github.com/NobuData/ouroboros/issues/139). **No provider is registered
-> in this build.** [Q.3 (#140)](https://github.com/NobuData/ouroboros/issues/140) is the GitHub
-> provider, [Q.4 (#141)](https://github.com/NobuData/ouroboros/issues/141) the management API
-> and settings surface, [Q.5 (#142)](https://github.com/NobuData/ouroboros/issues/142) the
+> [Q.2 (#139)](https://github.com/NobuData/ouroboros/issues/139), and
+> [Q.3 (#140)](https://github.com/NobuData/ouroboros/issues/140) registered the **first
+> provider**: `github`, in
+> [`ticket-sources/providers/`](../ouroboros-rest/src/modules/ticket-sources/providers/). It is
+> the worked example for everything below — where a section describes a decision, that provider
+> is where you can read the decision being made.
+> [Q.4 (#141)](https://github.com/NobuData/ouroboros/issues/141) is the management API and
+> settings surface and [Q.5 (#142)](https://github.com/NobuData/ouroboros/issues/142) the
 > conformance kit. Everything below is true of the code as it stands; where a section describes
 > something a later ticket adds, it says so.
 
@@ -455,8 +459,8 @@ One line, in
 ```ts
 {
   provide: TICKET_SOURCE_PROVIDERS,
-  useFactory: (yours: YourTrackerProvider) => [yours],
-  inject: [YourTrackerProvider],
+  useFactory: (github: GithubTicketSourceProvider, yours: YourTrackerProvider) => [github, yours],
+  inject: [GithubTicketSourceProvider, YourTrackerProvider],
 }
 ```
 
@@ -521,6 +525,9 @@ So that you do not reimplement any of it:
 | [`ticket-sources.repository.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-sources.repository.ts) | every statement, including the one that opens a credential |
 | [`ticket.intake.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket.intake.ts) | the estimation handoff, as a port |
 | [`ticket-sources.module.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-sources.module.ts) | the registration point |
+| [`providers/github.provider.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.provider.ts) | the GitHub provider (Q.3) — the worked example of every section above |
+| [`providers/github.config.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.config.ts) | its `config` grammar: `{ login, repos[] }` |
+| [`providers/github.mapping.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.mapping.ts) | its `mapTicket`, testable with no network |
 | [`V030__canonical_tickets.sql`](../ouroboros-db/migrations/V030__canonical_tickets.sql) | `ticket_sources`, `tickets`, `ticket_sources_public` |
 | [`V031__ticket_source_status_reason.sql`](../ouroboros-db/migrations/V031__ticket_source_status_reason.sql) | `status_reason` |
 

@@ -11,9 +11,16 @@
  * The third rule is the same sentence about a different SDK. The amendment posted on K.3
  * (#101) on 2026-08-09 requires that Octokit not be imported outside the module that owns the
  * GitHub provider, *"and that boundary is lint-enforced in CI"* — so it is a rule here rather
- * than a paragraph in a README. `src/modules/github/github.octokit.ts` is the seam; when Q.3
- * (#140) turns the GitHub client into the first `TicketSourceProvider`, the seam moves and
- * this rule's `pathNot` moves with it.
+ * than a paragraph in a README. `src/modules/github/github.octokit.ts` is the seam, and it is
+ * still the only file in the service that may name the library.
+ *
+ * That last sentence is where this file's own prediction was overtaken. It said the seam would
+ * move into `providers/` when Q.3 (#140) turned the GitHub client into a
+ * `TicketSourceProvider`. Q.3 landed with K.3 and K.4 already shipped, so the provider *reuses*
+ * `GithubClient` instead of cutting a second one — nothing moved, the `pathNot` stayed a single
+ * file, and `providers/` is not an exemption from this rule either.
+ * `ticket-sources/boundary.spec.ts` asserts both halves of that: the seam passes, and the same
+ * import inside `providers/` fails.
  *
  * The fourth and fifth rules are the same sentence again, for the ticket-source SPI that Q.2
  * (#139) landed — and they are the rules that ticket's *first* acceptance criterion asks for
@@ -23,9 +30,9 @@
  * `if (source.kind === 'github')` to the sync loop because it was quicker"*, and the import is
  * what that line needs before it can be written.
  *
- * `src/modules/ticket-sources/providers/` does not exist yet — Q.3 (#140) creates it with the
- * GitHub provider — and the rule is here anyway, because a boundary added after the first
- * thing crosses it is a boundary that has to be argued rather than enforced.
+ * `src/modules/ticket-sources/providers/` holds the GitHub provider since Q.3 (#140). Both
+ * rules predate it, because a boundary added after the first thing crosses it is a boundary
+ * that has to be argued rather than enforced.
  *
  * `providers/boundary.spec.ts`, `github/boundary.spec.ts` and
  * `ticket-sources/boundary.spec.ts` prove the rules bite: each
@@ -119,8 +126,9 @@ module.exports = {
         "A tracker's SDK belongs behind the TicketSourceProvider SPI (decision P5, #139). " +
         "Import it from src/modules/ticket-sources/providers/ and expose what the sync loop " +
         "needs through the interface. @octokit is governed by no-octokit-outside-the-seam " +
-        "rather than by this rule, because K.3 gave it a seam before this SPI existed; Q.3 " +
-        "(#140) moves that rule's pathNot into providers/ and the two become one.",
+        "rather than by this rule, because K.3 gave it a seam before this SPI existed, and " +
+        "Q.3 (#140) left it there: the GitHub provider reuses K.3's client instead of " +
+        "importing the library, so the seam is still one file and stricter than this rule.",
       from: { path: "^src/", pathNot: "^src/modules/ticket-sources/providers/" },
       to: {
         path:
