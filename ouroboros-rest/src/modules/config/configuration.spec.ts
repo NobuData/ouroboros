@@ -97,6 +97,9 @@ describe("the development defaults", () => {
       estimationConfidenceFloor: DEFAULT_ESTIMATION_CONFIDENCE_FLOOR,
       estimationStaleSeconds: DEFAULT_ESTIMATION_STALE_SECONDS,
       estimationSweepIntervalSeconds: DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+      // Commented out in the template (#145): a checkout suggests no skills until an operator
+      // lists some, or until the skills registry (#410) replaces the variable.
+      workflowSkillSuggestions: [],
     });
   });
 });
@@ -739,5 +742,78 @@ describe("ConfigurationError", () => {
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe("ConfigurationError");
     expect(error.message).toBe("PORT: nope");
+  });
+});
+
+describe("OURO_WORKFLOW_SKILL_SUGGESTIONS", () => {
+  /**
+   * The skill names the stage catalog suggests
+   * ([#145](https://github.com/NobuData/ouroboros/issues/145), decision **P7**) — configuration
+   * until the skills registry ([#410](https://github.com/NobuData/ouroboros/issues/410)) exists.
+   *
+   * Suggestions, never an enumeration: nothing here constrains what a workflow may name. What
+   * this variable is held to is that everything it suggests is a name a workflow *could* hold.
+   */
+  it("is unset in the template, which suggests nothing", () => {
+    expect(loadConfiguration(testEnvironment()).workflowSkillSuggestions).toEqual([]);
+  });
+
+  it("reads a comma-separated list, in the order written", () => {
+    expect(
+      loadConfiguration(
+        testEnvironment({ OURO_WORKFLOW_SKILL_SUGGESTIONS: "zephyr-conventions,repo-map" }),
+      ).workflowSkillSuggestions,
+    ).toEqual(["zephyr-conventions", "repo-map"]);
+  });
+
+  it("trims each name, and ignores blank entries and a trailing separator", () => {
+    expect(
+      loadConfiguration(
+        testEnvironment({ OURO_WORKFLOW_SKILL_SUGGESTIONS: " repo-map , ,zephyr-conventions," }),
+      ).workflowSkillSuggestions,
+    ).toEqual(["repo-map", "zephyr-conventions"]);
+  });
+
+  it("reads a blank value as nothing to suggest rather than as a mistake", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_WORKFLOW_SKILL_SUGGESTIONS: "" }))
+        .workflowSkillSuggestions,
+    ).toEqual([]);
+  });
+
+  it("accepts a name exactly as long as a workflow may reference", () => {
+    const longest = "s".repeat(128);
+
+    expect(
+      loadConfiguration(testEnvironment({ OURO_WORKFLOW_SKILL_SUGGESTIONS: longest }))
+        .workflowSkillSuggestions,
+    ).toEqual([longest]);
+  });
+
+  it("refuses to start on a name longer than a workflow may reference, without echoing it", () => {
+    const tooLong = "s".repeat(129);
+    const failure = failureFor(testEnvironment({ OURO_WORKFLOW_SKILL_SUGGESTIONS: tooLong }));
+
+    expect(failure).toContain(VARIABLES.workflowSkillSuggestions);
+    expect(failure).toContain("at most 128 characters");
+    expect(failure).not.toContain(tooLong);
+  });
+
+  it("refuses to start on a name listed twice, without echoing it", () => {
+    const failure = failureFor(
+      testEnvironment({ OURO_WORKFLOW_SKILL_SUGGESTIONS: "repo-map,zephyr-conventions,repo-map" }),
+    );
+
+    expect(failure).toContain(VARIABLES.workflowSkillSuggestions);
+    expect(failure).toContain("listed twice");
+    expect(failure).not.toContain("repo-map");
+  });
+
+  it("is frozen, so no reader can add a suggestion for every workspace", () => {
+    const { workflowSkillSuggestions } = loadConfiguration(
+      testEnvironment({ OURO_WORKFLOW_SKILL_SUGGESTIONS: "repo-map" }),
+    );
+
+    expect(Object.isFrozen(workflowSkillSuggestions)).toBe(true);
   });
 });

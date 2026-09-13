@@ -22,9 +22,11 @@
  * applied to it afterwards by `dsl.validator.ts`. The engine's `dsl.py` is the same two
  * stages in the same order, which is what makes the two files reviewable side by side.
  *
- * Nothing here reads the committed JSON Schema at runtime. The service validates with zod
- * and ships without the file; the schema is the *published* contract, and the conformance
- * suite is where the two meet.
+ * Nothing here reads the committed JSON Schema at runtime. The service validates with zod; the
+ * schema is the *published* contract, and the conformance suite is where the two meet. The
+ * container does carry the file since R.3
+ * ([#145](https://github.com/NobuData/ouroboros/issues/145)) — `catalog.schema.ts` serves each
+ * node type's config schema from it — but it is served to the inspector, never validated with.
  */
 
 import { z } from "zod";

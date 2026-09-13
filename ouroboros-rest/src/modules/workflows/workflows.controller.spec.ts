@@ -1,7 +1,9 @@
+import { PATH_METADATA } from "@nestjs/common/constants";
 import { Reflector } from "@nestjs/core";
 
 import { ADMINISTRATORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
 import { TENANT_OPTIONAL } from "../tenancy/tenant.decorators";
+import type { WorkflowCatalogService } from "./catalog.service";
 import { WorkflowsController } from "./workflows.controller";
 import type { WorkflowsService } from "./workflows.service";
 
@@ -32,6 +34,7 @@ const PRINCIPAL = { user: { id: "user-1" } } as never;
 
 describe("the workflows controller", () => {
   let service: jest.Mocked<WorkflowsService>;
+  let catalog: jest.Mocked<Pick<WorkflowCatalogService, "catalog">>;
   let controller: WorkflowsController;
   let reflector: Reflector;
 
@@ -46,7 +49,9 @@ describe("the workflows controller", () => {
       versions: jest.fn().mockResolvedValue({ items: [], total: 0, limit: 25, offset: 0 }),
     } as unknown as jest.Mocked<WorkflowsService>;
 
-    controller = new WorkflowsController(service);
+    catalog = { catalog: jest.fn().mockResolvedValue({ nodeTypes: [] }) };
+
+    controller = new WorkflowsController(service, catalog as unknown as WorkflowCatalogService);
     reflector = new Reflector();
   });
 
@@ -61,6 +66,12 @@ describe("the workflows controller", () => {
       await controller.create(TENANT, { name: "Standard Fix" });
 
       expect(service.create).toHaveBeenCalledWith("acme-robotics-id", { name: "Standard Fix" });
+    });
+
+    it("hands the stage catalog the workspace", async () => {
+      await controller.catalog(TENANT);
+
+      expect(catalog.catalog).toHaveBeenCalledWith("acme-robotics-id");
     });
 
     it("hands the detail the version the query named", async () => {
@@ -133,6 +144,7 @@ describe("the workflows controller", () => {
       for (const handler of [
         controller.list,
         controller.create,
+        controller.catalog,
         controller.read,
         controller.update,
         controller.saveDraft,
@@ -147,6 +159,7 @@ describe("the workflows controller", () => {
   describe("the role policy", () => {
     it.each([
       ["the rail", () => controller.list],
+      ["the stage catalog", () => controller.catalog],
       ["the detail", () => controller.read],
       ["the history", () => controller.versions],
     ])("leaves %s open to every member, viewers included", (_name, handler) => {
@@ -163,6 +176,23 @@ describe("the workflows controller", () => {
       // `CONTRIBUTORS` would be the wrong list: a `member` is somebody who works here, and
       // publishing changes what every future run of this workspace does.
       expect(reflector.get<string[]>(REQUIRED_ROLES, handler())).toEqual([...ADMINISTRATORS]);
+    });
+  });
+
+  describe("the route table", () => {
+    it("serves the stage catalog at `catalog`", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, WorkflowsController.prototype.catalog)).toBe(
+        "catalog",
+      );
+    });
+
+    it("declares the catalog before the detail, so `catalog` is never read as an id", () => {
+      // Nest registers handlers in declaration order and Express matches in registration order:
+      // moved below `read`, `GET …/catalog` would be the detail's `422` for a non-uuid id.
+      const handlers = Object.getOwnPropertyNames(WorkflowsController.prototype);
+
+      expect(handlers.indexOf("catalog")).toBeGreaterThan(-1);
+      expect(handlers.indexOf("catalog")).toBeLessThan(handlers.indexOf("read"));
     });
   });
 

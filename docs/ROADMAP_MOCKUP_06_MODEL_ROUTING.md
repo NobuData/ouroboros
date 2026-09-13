@@ -2222,7 +2222,7 @@ Plus **4 amendments** — comments posted and the `routing` label applied on
 | #49 | The `/models` placeholder is superseded and **retired** by AA.1 (#200) — landed 2026-08-24; #49's own scope note in `ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md` records it |
 | #56 | The e2e suite gains the routing leg AA.7 (#206), including the rule-toggle → simulate assertion and shell checks |
 | #106 | INTAKE-L.2's estimator drops its `model_defaults` map and resolves via routing (Z.4, #197) — trace says *resolved*, never *invoked*. **Half landed 2026-09-08 with #106**: the estimator holds no config map at all — it reads the caller's `model_defaults` and its `routed-model` trace line says *resolved, not invoked* on every estimate, asserted by a test. **The remaining half is the gateway's and travels with L.3 (#107)**: filling that map from `POST /api/v1/routing/simulate` instead of from configuration, and carrying the resolved primary's alias plus resolution as the value. Nothing in the engine changes when it does — the map was always the caller's |
-| #145 | WF-R.3's stage catalog serves task-kind names from the Y.2 (#190) registry; DSL `route.task` validates against it. **Still open**: waits on the workflow module, which is #133 → #145 |
+| #145 | WF-R.3's stage catalog serves task-kind names from the Y.2 (#190) registry; DSL `route.task` validates against it. **Done** (#145): `GET /api/v1/workflows/catalog` suggests the workspace's `task_kinds` in matrix order, and checked against that catalogue an unknown `inherit_task` is a P7 warning — advisory, so publish does not refuse it |
 
 ## References
 

@@ -3408,6 +3408,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflows/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The stage catalog — node types, their config schemas and defaults
+         * @description What mockup 04's **Add stage ▾** menu and the inspector render from — R.3
+         *     ([#145](https://github.com/NobuData/ouroboros/issues/145)). Hard-coding node types in the
+         *     UI would fork the DSL, so they cross the wire instead.
+         *
+         *     **One entry per node type the published DSL schema declares**, in its order: the menu
+         *     `label`, the `glyph` and treatment `class` mockup 04 draws the node with (`.node.<class>`),
+         *     the `configSchema` the inspector renders its form from, and the `defaults` a freshly
+         *     dropped node contains. A node type added to the DSL appears here with a working form and a
+         *     neutral presentation, and no UI change.
+         *
+         *     **`configSchema` is the published artifact, not a copy.** It is read at boot from
+         *     [`schemas/workflow-dsl/v1.json`](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json)
+         *     — the file both validators are held to — and served self-contained: the definition
+         *     `configSchemaRef` names, plus a `$defs` holding exactly the definitions it references,
+         *     under their published names, so every reference inside it resolves against it.
+         *
+         *     **Defaults decide only what has an obvious answer.** A model stage is dropped without a
+         *     prompt template, a routing choice or its permissions (decision **P9**), so the validator
+         *     flags it until the author supplies them; every other type's defaults validate as they
+         *     stand.
+         *
+         *     **`suggestions` are advice, never an enumeration** (decision **P7**). `taskRoutes` is this
+         *     workspace's task kinds in the routing matrix's order; `skills` is the deployment's
+         *     `OURO_WORKFLOW_SKILL_SUGGESTIONS` until the skills registry exists. A workflow naming a
+         *     name that is not suggested still saves and publishes — the inspector flags it as a
+         *     warning.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["readWorkflowStageCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflows/{id}": {
         parameters: {
             query?: never;
@@ -9340,6 +9391,84 @@ export interface components {
              * @example SELECT 1 failed (ECONNREFUSED)
              */
             message?: string;
+        };
+        /**
+         * WorkflowStageCatalog
+         * @description The stage catalog ([#145](https://github.com/NobuData/ouroboros/issues/145)): every node
+         *     type the published DSL schema declares, and this workspace's advisory suggestions.
+         */
+        WorkflowStageCatalog: {
+            /**
+             * @description The `$id` of the published schema every `configSchema` was read from.
+             * @example https://ouroboros.build/schemas/workflow-dsl/v1.json
+             */
+            schemaId: string;
+            /** @description Every node type, in the order the schema's `type` enum lists them. */
+            nodeTypes: components["schemas"]["WorkflowStageType"][];
+            suggestions: components["schemas"]["WorkflowStageSuggestions"];
+        };
+        /**
+         * WorkflowStageType
+         * @description One node type — an **Add stage ▾** menu item, and the form the inspector draws for it.
+         */
+        WorkflowStageType: {
+            /**
+             * @description The value a node's `type` carries.
+             * @example llm
+             */
+            type: string;
+            /**
+             * @description What the Add-stage menu calls it.
+             * @example Model stage
+             */
+            label: string;
+            /**
+             * @description The glyph mockup 04 prints in the node's type line.
+             * @example ◆
+             */
+            glyph: string;
+            /**
+             * @description The node's treatment class — mockup 04's `.node.<class>`. A type the service has no
+             *     presentation for is served its own name here and a neutral `□` glyph.
+             * @example llm
+             */
+            class: string;
+            /**
+             * @description Where `configSchema` lives in the published schema.
+             * @example https://ouroboros.build/schemas/workflow-dsl/v1.json#/$defs/llm_config
+             */
+            configSchemaRef: string;
+            /**
+             * @description A JSON Schema 2020-12 document for the node's `config` — the published definition,
+             *     with a `$defs` holding the definitions it references under their published names.
+             *     Deliberately unconstrained here, for `WorkflowDefinition`'s reason: the grammar has
+             *     one owner, and restating it would be a third copy.
+             */
+            configSchema: Record<string, never>;
+            defaults: components["schemas"]["WorkflowStageDefaults"];
+        };
+        /**
+         * WorkflowStageDefaults
+         * @description What a freshly dropped node of this type contains. The canvas supplies `id` and
+         *     `position`. Not necessarily valid: a model stage leaves its prompt template, routing and
+         *     permissions for the author to decide.
+         */
+        WorkflowStageDefaults: {
+            /** @example Model stage */
+            title: string;
+            /** @description The node's starting `config`. */
+            config: Record<string, never>;
+        };
+        /**
+         * WorkflowStageSuggestions
+         * @description Names the inspector offers — advice, never an enumeration (decision **P7**). An empty list
+         *     means nothing to suggest.
+         */
+        WorkflowStageSuggestions: {
+            /** @description The deployment's `OURO_WORKFLOW_SKILL_SUGGESTIONS`, until the skills registry exists. */
+            skills: string[];
+            /** @description This workspace's task kinds (`task_kinds`), in the routing matrix's order. */
+            taskRoutes: string[];
         };
         /**
          * WorkflowDefinition
@@ -23728,6 +23857,271 @@ export interface operations {
              *     name yields none.
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readWorkflowStageCatalog: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The catalog. The example shows two of the five node types, as the service serves
+             *     them.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "schemaId": "https://ouroboros.build/schemas/workflow-dsl/v1.json",
+                     *       "nodeTypes": [
+                     *         {
+                     *           "label": "Trigger",
+                     *           "glyph": "▸",
+                     *           "class": "trigger",
+                     *           "defaults": {
+                     *             "title": "Issue queued",
+                     *             "config": {}
+                     *           },
+                     *           "type": "trigger",
+                     *           "configSchemaRef": "https://ouroboros.build/schemas/workflow-dsl/v1.json#/$defs/trigger_config",
+                     *           "configSchema": {
+                     *             "$schema": "https://json-schema.org/draft/2020-12/schema",
+                     *             "description": "The trigger node configures nothing: its predicate is the document's own `trigger`. Closed and empty so that a field put here is an error rather than a second place to look.",
+                     *             "type": "object",
+                     *             "additionalProperties": false,
+                     *             "properties": {}
+                     *           }
+                     *         },
+                     *         {
+                     *           "label": "Terminal",
+                     *           "glyph": "●",
+                     *           "class": "term",
+                     *           "defaults": {
+                     *             "title": "Needs review",
+                     *             "config": {
+                     *               "action": "needs_review",
+                     *               "options": {}
+                     *             }
+                     *           },
+                     *           "type": "term",
+                     *           "configSchemaRef": "https://ouroboros.build/schemas/workflow-dsl/v1.json#/$defs/term_config",
+                     *           "configSchema": {
+                     *             "$schema": "https://json-schema.org/draft/2020-12/schema",
+                     *             "description": "Where a run ends. Options are per action and closed, so adding one is an edit to this file rather than a field that quietly appears.",
+                     *             "type": "object",
+                     *             "required": [
+                     *               "action",
+                     *               "options"
+                     *             ],
+                     *             "properties": {
+                     *               "action": {
+                     *                 "enum": [
+                     *                   "open_pr_automerge",
+                     *                   "back_to_queue",
+                     *                   "needs_review"
+                     *                 ]
+                     *               },
+                     *               "options": {
+                     *                 "type": "object"
+                     *               }
+                     *             },
+                     *             "allOf": [
+                     *               {
+                     *                 "if": {
+                     *                   "required": [
+                     *                     "action"
+                     *                   ],
+                     *                   "properties": {
+                     *                     "action": {
+                     *                       "const": "open_pr_automerge"
+                     *                     }
+                     *                   }
+                     *                 },
+                     *                 "then": {
+                     *                   "properties": {
+                     *                     "options": {
+                     *                       "type": "object",
+                     *                       "additionalProperties": false,
+                     *                       "required": [
+                     *                         "merge_method",
+                     *                         "delete_branch"
+                     *                       ],
+                     *                       "properties": {
+                     *                         "merge_method": {
+                     *                           "enum": [
+                     *                             "squash",
+                     *                             "merge",
+                     *                             "rebase"
+                     *                           ]
+                     *                         },
+                     *                         "delete_branch": {
+                     *                           "type": "boolean"
+                     *                         }
+                     *                       }
+                     *                     }
+                     *                   }
+                     *                 }
+                     *               },
+                     *               {
+                     *                 "if": {
+                     *                   "required": [
+                     *                     "action"
+                     *                   ],
+                     *                   "properties": {
+                     *                     "action": {
+                     *                       "const": "back_to_queue"
+                     *                     }
+                     *                   }
+                     *                 },
+                     *                 "then": {
+                     *                   "properties": {
+                     *                     "options": {
+                     *                       "type": "object",
+                     *                       "additionalProperties": false,
+                     *                       "properties": {}
+                     *                     }
+                     *                   }
+                     *                 }
+                     *               },
+                     *               {
+                     *                 "if": {
+                     *                   "required": [
+                     *                     "action"
+                     *                   ],
+                     *                   "properties": {
+                     *                     "action": {
+                     *                       "const": "needs_review"
+                     *                     }
+                     *                   }
+                     *                 },
+                     *                 "then": {
+                     *                   "properties": {
+                     *                     "options": {
+                     *                       "type": "object",
+                     *                       "additionalProperties": false,
+                     *                       "properties": {}
+                     *                     }
+                     *                   }
+                     *                 }
+                     *               }
+                     *             ],
+                     *             "unevaluatedProperties": false
+                     *           }
+                     *         }
+                     *       ],
+                     *       "suggestions": {
+                     *         "skills": [
+                     *           "repo-map",
+                     *           "zephyr-conventions"
+                     *         ],
+                     *         "taskRoutes": [
+                     *           "analyze",
+                     *           "estimate",
+                     *           "plan",
+                     *           "implement",
+                     *           "test-gen",
+                     *           "review",
+                     *           "docs",
+                     *           "commit-msg"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowStageCatalog"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of. The two are deliberately one answer.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

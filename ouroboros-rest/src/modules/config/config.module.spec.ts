@@ -48,6 +48,7 @@ describe("AppConfigService", () => {
     expect(config.vaultMasterKey).toBe("b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=");
     expect(config.corsOrigins).toEqual(["http://localhost:3000"]);
     expect(config.dashboardPollSeconds).toBe(15);
+    expect(config.workflowSkillSuggestions).toEqual([]);
   });
 
   it("reassembles the whole configuration it was registered with", () => {

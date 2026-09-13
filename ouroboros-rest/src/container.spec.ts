@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+
+import { PUBLISHED_DSL_SCHEMA_PATH } from "./modules/workflows/catalog.schema";
 
 import { DEFAULT_PORT } from "./modules/config/configuration";
 import { HEALTH_LIVE_PATH, HEALTH_READY_PATH } from "./modules/health/health.paths";
@@ -271,6 +273,18 @@ describe("the Dockerfile", () => {
     );
   });
 
+  it("copies the published workflow DSL schema to where the stage catalog resolves it", () => {
+    // #145: `catalog.schema.ts` reads the schema four directories above `dist/modules/workflows`
+    // — the repository root in a checkout, `/app` here. Derived from the reader's own constant
+    // rather than restated, so moving the reader moves this assertion with it.
+    const fromRoot = relative(join(MODULE_DIR, ".."), PUBLISHED_DSL_SCHEMA_PATH);
+
+    expect(fromRoot).toBe("schemas/workflow-dsl/v1.json");
+    expect(stage("runtime")).toMatch(
+      new RegExp(`^COPY --chown=nestjs:nestjs ${quote(fromRoot)} \\./${quote(fromRoot)}$`, "m"),
+    );
+  });
+
   it("starts the compiled entry point the manifest's own start script names", () => {
     // `yarn start` and the container must run the same file; the container's path is the
     // manifest's, one directory deeper, because node_modules is hoisted to /app.
@@ -366,6 +380,13 @@ describe("the build context", () => {
       expect(DOCKERIGNORE).toMatch(new RegExp(`^!${quote(path)}$`, "m"));
     },
   );
+
+  it("admits the published workflow DSL schema the runtime stage copies, and not its fixtures", () => {
+    // One file, named: admitting `schemas` or `schemas/workflow-dsl` would carry the golden
+    // fixtures into the context, which the image has no use for.
+    expect(DOCKERIGNORE).toMatch(/^!schemas\/workflow-dsl\/v1\.json$/m);
+    expect(DOCKERIGNORE).not.toMatch(/^!schemas(?:\/workflow-dsl)?\/?$/m);
+  });
 
   it("admits a manifest for every sibling workspace the deps stage copies", () => {
     // Same drift as the COPY lines, one file over: an admitted path that is not copied is

@@ -18,7 +18,12 @@
  * workflows.dto        what a request may contain, as class-validator classes
  * workflows.errors     every code this API answers with, and the V029 constraints it translates
  * workflows.service    the rules: the 404, the guard, the gate, the transactions
- * workflows.controller the seven routes
+ * workflows.controller the eight routes
+ * catalog.schema       the published DSL schema, read as per-type config schemas               · #145
+ * catalog.presentation the mockup's glyphs and classes, and what a dropped node contains
+ * catalog.repository   the workspace's task kinds, for the task-route suggestions
+ * catalog.resources    the catalog's wire shapes, and the suggestions as a P7 catalogue
+ * catalog.service      WorkflowCatalogService — the node types built once, suggestions per request
  * ```
  *
  * ---------------------------------------------------------------------------
@@ -56,6 +61,11 @@
  * import is the answer to *who can reach `workflows`, `workflow_versions` and `runs`*, and
  * `DbModule` is deliberately non-global so the question has one.
  *
+ * **The published DSL schema is a provider** (R.3,
+ * [#145](https://github.com/NobuData/ouroboros/issues/145)), read once by a factory so the
+ * process fails at boot, naming the path, when a build forgot to ship it — and so a suite can
+ * hand `WorkflowCatalogService` a schema with a synthetic node type instead.
+ *
  * The `dsl.*` files are deliberately **not** providers. They are pure functions over a
  * document — `validateWorkflowDocument` and the YAML projection — and a caller imports the
  * function rather than injecting a class, exactly as it did before this module existed.
@@ -65,6 +75,9 @@ import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
+import { WorkflowCatalogRepository } from "./catalog.repository";
+import { readPublishedDslSchema } from "./catalog.schema";
+import { PUBLISHED_DSL_SCHEMA, WorkflowCatalogService } from "./catalog.service";
 import { WorkflowPublishGate } from "./publish.gate";
 import { WorkflowRegistryService } from "./registry.service";
 import { WorkflowStatsRepository } from "./stats.repository";
@@ -83,6 +96,9 @@ import { WorkflowsService } from "./workflows.service";
     WorkflowStatsService,
     WorkflowRegistryService,
     WorkflowStatsRepository,
+    WorkflowCatalogService,
+    WorkflowCatalogRepository,
+    { provide: PUBLISHED_DSL_SCHEMA, useFactory: () => readPublishedDslSchema() },
   ],
   // The two services are exported and the repositories are not, for the reason this file's
   // header gives: a consumer that reached past them would be a consumer that had skipped the
