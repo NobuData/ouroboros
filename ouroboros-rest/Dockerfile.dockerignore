@@ -27,6 +27,10 @@
 !ouroboros-engine/package.json
 !ouroboros-ui/package.json
 
+# The published workflow DSL schema — one file, not its directory (#145). The runtime stage
+# copies it for the stage catalog; the golden fixtures beside it are test data and stay out.
+!schemas/workflow-dsl/v1.json
+
 # This module.
 !ouroboros-rest
 

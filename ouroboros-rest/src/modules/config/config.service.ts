@@ -125,6 +125,16 @@ export class AppConfigService {
   }
 
   /**
+   * The skill names the stage catalog suggests — `OURO_WORKFLOW_SKILL_SUGGESTIONS`.
+   *
+   * Read by one thing: `WorkflowCatalogService` in `src/modules/workflows/`. Advisory by
+   * decision **P7**, and empty for an installation that configured none.
+   */
+  get workflowSkillSuggestions(): readonly string[] {
+    return this.config.getOrThrow<readonly string[]>("workflowSkillSuggestions");
+  }
+
+  /**
    * The bind-interface override, when set — `OURO_LISTEN_HOST`.
    *
    * `get` rather than `getOrThrow`: unset is the normal posture, and the only stack that
@@ -264,6 +274,7 @@ export class AppConfigService {
       estimationStaleSeconds: this.estimationStaleSeconds,
       estimationSweepIntervalSeconds: this.estimationSweepIntervalSeconds,
       localProviderUrls: this.localProviderUrls,
+      workflowSkillSuggestions: this.workflowSkillSuggestions,
     };
   }
 

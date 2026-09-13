@@ -139,6 +139,14 @@ COPY --from=build --chown=nestjs:nestjs /app/ouroboros-rest/package.json ./ourob
 COPY --from=build --chown=nestjs:nestjs /app/ouroboros-rest/openapi.json ./ouroboros-rest/openapi.json
 COPY --from=build --chown=nestjs:nestjs /app/ouroboros-rest/openapi.yaml ./ouroboros-rest/openapi.yaml
 
+# The published workflow DSL schema (#145) — from the build context rather than the build stage,
+# because nothing compiles against it. src/modules/workflows/catalog.schema.ts resolves it four
+# directories above dist/modules/workflows/, which is /app, and serves each node type's config
+# schema from it at GET /api/v1/workflows/catalog. It is the artifact both validators are held
+# to, so the image carries that file rather than a copy the service would have to keep in step;
+# an image without it fails at boot, naming the path.
+COPY --chown=nestjs:nestjs schemas/workflow-dsl/v1.json ./schemas/workflow-dsl/v1.json
+
 USER nestjs
 EXPOSE 4000
 

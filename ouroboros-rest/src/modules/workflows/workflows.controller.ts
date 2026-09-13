@@ -10,11 +10,16 @@
  * session acting in no workspace is a `400 organization_required` before any handler runs.
  *
  * **Reading is every member's, writing is an administrator's.** The ticket's role policy, and
- * it is spelled the way the roles guard wants it: the three reads carry no `@Roles()`, which is
+ * it is spelled the way the roles guard wants it: the four reads carry no `@Roles()`, which is
  * *every member including a `viewer`* — a viewer is a role that exists to be able to look at a
  * workflow — and the four writes carry `@Roles(...ADMINISTRATORS)`. `CONTRIBUTORS` would have
  * been the wrong list: a `member` is somebody who works here, and publishing changes what every
  * future run of this workspace does.
+ *
+ * **`catalog` is declared before `:id`, and the order is the route.** Express matches in
+ * registration order and Nest registers handlers in declaration order, so a `GET …/catalog`
+ * declared below `GET …/:id` would be answered by the detail — as a `422` for an id that is
+ * not a uuid. `workflows.controller.spec.ts` holds the order.
  *
  * **`If-Match` is a header, and it is read here rather than in a DTO.** A precondition is not a
  * field of the body — there is nothing for `class-validator` to say about it, and a DTO that
@@ -44,6 +49,8 @@ import type { Organization } from "../db/schema";
 import { PageQuery, type Page } from "../tenancy/pagination";
 import { ADMINISTRATORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
+import type { StageCatalog } from "./catalog.resources";
+import { WorkflowCatalogService } from "./catalog.service";
 import {
   CreateWorkflowBody,
   PublishWorkflowBody,
@@ -63,7 +70,14 @@ import { WorkflowsService, type WorkflowRail } from "./workflows.service";
 
 @Controller("workflows")
 export class WorkflowsController {
-  constructor(private readonly workflows: WorkflowsService) {}
+  /**
+   * @param workflows - The lifecycle's rules.
+   * @param stages - The stage catalog (R.3).
+   */
+  constructor(
+    private readonly workflows: WorkflowsService,
+    private readonly stages: WorkflowCatalogService,
+  ) {}
 
   /**
    * `GET /api/v1/workflows` — the rail.
@@ -95,6 +109,25 @@ export class WorkflowsController {
     @Body() body: CreateWorkflowBody,
   ): Promise<WorkflowDetail> {
     return this.workflows.create(tenant.id, body);
+  }
+
+  /**
+   * `GET /api/v1/workflows/catalog` — the stage catalog (R.3,
+   * [#145](https://github.com/NobuData/ouroboros/issues/145)).
+   *
+   * What **Add stage ▾** and the inspector render from: every node type the published DSL
+   * schema declares, with its glyph, treatment class, config schema and defaults, and the
+   * workspace's skill and task-route suggestions. Every member may read it — a viewer's
+   * inspector draws the same forms, read-only.
+   *
+   * Declared above `read` on purpose; see this file's header.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @returns The catalog.
+   */
+  @Get("catalog")
+  catalog(@CurrentTenant() tenant: Organization): Promise<StageCatalog> {
+    return this.stages.catalog(tenant.id);
   }
 
   /**

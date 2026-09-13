@@ -38,6 +38,7 @@ schemas/
 |---|---|---|
 | [`ouroboros-rest/src/modules/workflows/`](../ouroboros-rest/src/modules/workflows) | zod validator + YAML projection — save, publish, code view | `dsl.parity.spec.ts` (the recorded verdicts) and `dsl.conformance.spec.ts` (ajv over `v1.json`) |
 | [`ouroboros-engine/src/ouroboros_engine/workflows/`](../ouroboros-engine/src/ouroboros_engine/workflows) | pydantic validator — R.2's `validate` and dry-run | `tests/test_workflows_parity.py` and `tests/test_workflows_conformance.py` |
+| [`ouroboros-rest/src/modules/workflows/catalog.*`](../ouroboros-rest/src/modules/workflows) | the stage catalog (R.3) — serves each node type's config schema out of `v1.json` itself, at runtime | `catalog.schema.spec.ts` (served schemas classify every fixture's configs as `v1.json`'s definitions do) |
 | [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) | the specification a person reads | Worked examples taken from these fixtures |
 
 **Neither module imports the other, and no third process compares two outputs.** Each reads
@@ -53,6 +54,9 @@ on the pull request that makes it.
 
 1. Edit `v1.json` **and** both validators, in one change.
 2. Add or edit the fixture that demonstrates the rule, and its case in `expected.json`.
+   A new **node type** also wants a presentation in
+   `ouroboros-rest/src/modules/workflows/catalog.presentation.ts`: until it has one, the stage
+   catalog serves it with a neutral glyph and `catalog.presentation.spec.ts` is red.
 3. Run both suites. `expected.json` is reviewed and frozen, not regenerated: a change to it is a
    change to the contract, and both halves have to be green on the new one.
 

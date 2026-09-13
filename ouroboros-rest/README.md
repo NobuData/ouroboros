@@ -111,6 +111,7 @@ $ curl http://localhost:4000/api/v1
 | `PUT /api/v1/workflows/{id}/draft`                  | The canvas's autosave, guarded by an `If-Match` draft etag — a stale one is a `409`, never an overwrite |
 | `POST /api/v1/workflows/{id}/publish`               | The next immutable version, behind the zod **and** engine validators; a finding is a `422` and nothing is written |
 | `GET /api/v1/workflows/{id}/versions`               | The version history, newest first, without the documents |
+| `GET /api/v1/workflows/catalog`                     | [The stage catalog](#the-stage-catalog) (#145) — every node type's glyph, class, config schema and defaults, and advisory skill and task-route suggestions |
 | `GET POST /api/v1/sources`                          | [Ticket sources](#pluggable-ticket-sources) (#141) — the workspace's list with masks, never values; add one, checked against its kind's schema |
 | `GET /api/v1/sources/catalog`                       | Every registered kind as the form it takes — `configSchema()` rendered to fields — plus its capabilities |
 | `GET PATCH /api/v1/sources/{id}`                    | One source; rename, change its settings, pause or resume it — `owner`/`admin` only |
@@ -246,6 +247,7 @@ service never starts half-configured.
 | `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
 | `OURO_LISTEN_HOST`          | Bind-interface override — set only by the e2e stack ([#647](https://github.com/NobuData/ouroboros/issues/647)); unset, `NODE_ENV` decides as always |     no — unset     | exactly `127.0.0.1` or `0.0.0.0`                                            |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
+| `OURO_WORKFLOW_SKILL_SUGGESTIONS` | Skill names the [stage catalog](#the-stage-catalog) suggests to the workflow inspector ([#145](https://github.com/NobuData/ouroboros/issues/145)) — advice, never an enumeration |     no — unset     | comma-separated names, each at most 128 characters, none listed twice |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
 | `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` | Seconds before a cloud provider's key validation is redone — deliberately much slower, because it asks a vendor rather than the operator's own machine |     no — 900      | a whole number of seconds, 60–86400 |
 | `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` | Seconds between [backlog sync](#the-backlog-sync) cycles ([#102](https://github.com/NobuData/ouroboros/issues/102)) — jittered ±25%, and what the intake page's freshness tag counts from. Since [#139](https://github.com/NobuData/ouroboros/issues/139) the [ticket-source loop](#pluggable-ticket-sources) shares it: one knob for *how often does Ouroboros ask a tracker what changed*, for the one release in which two loops ask it |     no — 300      | a whole number of seconds, 60–86400 |
@@ -2581,6 +2583,49 @@ be the one they meant to build on.
 `CONTRIBUTORS` was the wrong list here: a `member` is somebody who works here, and publishing
 changes what every future run of the workspace does.
 
+
+
+## The stage catalog
+
+**`GET /api/v1/workflows/catalog` is what Add stage ▾ and the inspector render from**
+([#145](https://github.com/NobuData/ouroboros/issues/145)). Hard-coding node types in the UI would
+fork the DSL — the schema saying one thing and the form another — so the node types, their forms
+and their defaults cross the wire instead. Any member may read it.
+
+```
+GET /api/v1/workflows/catalog
+ ─▶ { schemaId: https://ouroboros.build/schemas/workflow-dsl/v1.json,
+      nodeTypes: [ {type: trigger, label, glyph: ▸, class: trigger, configSchemaRef, configSchema, defaults},
+                   {type: llm … ◆}, {type: infra … ▣}, {type: flow … ◇}, {type: term … ●} ],
+      suggestions: { skills: OURO_WORKFLOW_SKILL_SUGGESTIONS, taskRoutes: task_kinds in matrix order } }
+```
+
+| Field | Where it comes from |
+| --- | --- |
+| `nodeTypes[].type`, and their order | `$defs.node.properties.type.enum` in the published schema |
+| `configSchema`, `configSchemaRef` | The definition `$defs.node.allOf` dispatches that type to, served with a `$defs` holding exactly the definitions it reaches — the parsed file itself, read once at boot (`catalog.schema.ts`) |
+| `label`, `glyph`, `class` | `catalog.presentation.ts` — mockup 04's `.node.<class>` treatments, held to the mockup by its spec |
+| `defaults` | `catalog.presentation.ts` — a model stage omits `prompt_template`, `routing` and `permissions` (decision **P9**) and is flagged until the author decides them; every other type's defaults validate |
+| `suggestions.taskRoutes` | The workspace's `task_kinds`, by `sort_order` — registry data, so the DSL, the catalog and the routing matrix share one vocabulary (decision **M3**) |
+| `suggestions.skills` | `OURO_WORKFLOW_SKILL_SUGGESTIONS`, until the skills registry ([#410](https://github.com/NobuData/ouroboros/issues/410)) |
+
+**The config schemas are the published artifact, not a copy.** The service reads
+`schemas/workflow-dsl/v1.json` — the file `dsl.conformance.spec.ts` compiles — and the container
+carries it at `/app/schemas/workflow-dsl/v1.json`. `catalog.schema.spec.ts` asserts that the served
+keywords are the file's parsed values by identity, and that each served schema classifies every
+golden fixture's configs exactly as the definition inside `v1.json` does.
+
+**A node type added to the DSL needs no UI change.** Add it to the `type` enum, give it a
+`<type>_config` definition and its `allOf` branch, and it is served with a working form and a
+neutral presentation — `□`, its own name as label and class, an empty config. `catalog.fixture.ts`
+does exactly that with a synthetic `sandbox` type. `catalog.presentation.spec.ts` then fails until
+the type is drawn a glyph, so a shipping type never keeps the placeholder.
+
+**Suggestions are advice** (decision **P7**). Nothing constrains a stored reference: a draft or a
+publish naming an unlisted skill succeeds, and `toDslCatalogue(suggestions)` is the catalogue the
+inspector validates with, so an unknown name comes back as a `reference.unknown_*` **warning**. An
+empty list means *nothing to suggest*, and is left out of that catalogue rather than flagging every
+name.
 
 ## Pluggable ticket sources
 

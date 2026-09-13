@@ -2,6 +2,8 @@ import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
+import { WorkflowCatalogRepository } from "./catalog.repository";
+import { PUBLISHED_DSL_SCHEMA, WorkflowCatalogService } from "./catalog.service";
 import { WorkflowPublishGate } from "./publish.gate";
 import { WorkflowRegistryService } from "./registry.service";
 import { WorkflowStatsRepository } from "./stats.repository";
@@ -37,6 +39,22 @@ describe("the workflows module", () => {
     expect(moduleRef.get(WorkflowsRepository)).toBeInstanceOf(WorkflowsRepository);
     expect(moduleRef.get(WorkflowPublishGate)).toBeInstanceOf(WorkflowPublishGate);
     expect(moduleRef.get(WorkflowsController)).toBeInstanceOf(WorkflowsController);
+    expect(moduleRef.get(WorkflowCatalogService)).toBeInstanceOf(WorkflowCatalogService);
+    expect(moduleRef.get(WorkflowCatalogRepository)).toBeInstanceOf(WorkflowCatalogRepository);
+
+    await moduleRef.close();
+  });
+
+  it("provides the published DSL schema, read from the committed file at boot", async () => {
+    // The stage catalog (R.3, #145) serves config schemas out of this document, so a container
+    // built without the file fails here — at boot — rather than on the first Add-stage menu.
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfigurationModule.forRoot(testConfiguration()), WorkflowsModule],
+    }).compile();
+
+    expect(moduleRef.get<{ $id: string }>(PUBLISHED_DSL_SCHEMA).$id).toBe(
+      "https://ouroboros.build/schemas/workflow-dsl/v1.json",
+    );
 
     await moduleRef.close();
   });

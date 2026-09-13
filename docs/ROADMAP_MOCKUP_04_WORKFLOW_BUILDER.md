@@ -970,7 +970,7 @@ conformance(provider) ─▶ config ✓ · sync/cursor ✓ · mapping ✓ · err
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | R.1 | #143 | 🟡 Open | ouroboros-rest: [R.1] Trigger evaluation service | `ticket_queued` events matched to workflows via P8 predicates | mvp, workflow, rest | N (after P.3, Q.1) | Y | M | ouroboros-rest |
 | R.2 | #144 | 🟢 Done | ouroboros-engine: [R.2] Definition validation & dry-run simulator | `/v0/workflows/validate` + `/dry-run`: walk the graph, no LLM calls | mvp, workflow, engine | N (after P.2, #52) | Y | L | ouroboros-engine |
-| R.3 | #145 | 🟡 Open | ouroboros-rest: [R.3] Stage catalog endpoint | Node-type registry (config schemas, defaults) driving Add-stage & inspector | mvp, workflow, rest | N (after P.2) | Y | S | ouroboros-rest |
+| R.3 | #145 | 🟢 Done | ouroboros-rest: [R.3] Stage catalog endpoint | Node-type registry (config schemas, defaults) driving Add-stage & inspector | mvp, workflow, rest | N (after P.2) | Y | S | ouroboros-rest |
 | R.4 | #146 | 🟡 Open | ouroboros-rest: [R.4] Studio integration tests | Publish gate, trigger matrix, dry-run contract, catalog | mvp, workflow, rest, ci | N (after R.1–R.3) | Y | M | ouroboros-rest |
 
 ### Issue R.1 — ouroboros-rest: [R.1] Trigger evaluation service
@@ -1073,7 +1073,7 @@ POST /v0/workflows/dry-run {definition, ticket:#485}
 
 ### Issue R.3 — ouroboros-rest: [R.3] Stage catalog endpoint
 
-> **GitHub issue:** #145 · **Status:** 🟡 Open · **Parent epic:** #129
+> **GitHub issue:** #145 · **Status:** 🟢 Done · **Parent epic:** #129
 
 - **Problem Statement:** "Add stage ▾" and the inspector need to know what node
   types exist, their config schemas, and their defaults — hardcoding that in the
@@ -1093,6 +1093,36 @@ POST /v0/workflows/dry-run {definition, ticket:#485}
 GET /catalog ─▶ [{type: llm, glyph: ◆, class: model, config_schema, defaults},
                  {type: flow, glyph: ◇, …}, …] ─▶ Add-stage menu + inspector forms
 ```
+
+- **Decided in-issue and shipped as `ouroboros-rest/src/modules/workflows/catalog.{schema,
+  presentation,repository,resources,service}.ts`, `GET /api/v1/workflows/catalog` in
+  `openapi.yaml`, and `OURO_WORKFLOW_SKILL_SUGGESTIONS`:**
+
+  * **The config schemas are `v1.json` itself.** The service reads the published schema at
+    boot — the file `dsl.conformance.spec.ts` compiles — and finds each type's config through the
+    node's own `allOf` dispatch rather than by name. Each is served self-contained: the
+    definition plus a `$defs` of exactly what it reaches, under the published names, so every
+    `$ref` resolves unchanged. The suite asserts identity with the parsed file and agreement with
+    `v1.json`'s definitions over every golden fixture's configs. The container now carries
+    `/app/schemas/workflow-dsl/v1.json`, one file, admitted by name.
+  * **The classes are the mockup's, not the diagram's.** Mockup 04 draws `.node.trigger ▸`,
+    `.node.llm ◆`, `.node.infra ▣`, `.node.flow ◇` and `.node.term ●`; the diagram above
+    abbreviates two classes and draws the terminal as `■`. The presentation suite reads the
+    mockup. Fields are camelCase like the rest of the API (`configSchema`, `taskRoutes`).
+  * **A new node type needs no UI change**, proven with a synthetic `sandbox` type added to a
+    clone of the schema: it is served with its config schema, a neutral `□` presentation named
+    for itself, and an empty config. The presentation suite goes red for a *committed* type
+    without a glyph, so the placeholder never ships.
+  * **Defaults decide only the obvious.** A model stage is dropped with the inspector's mode and
+    limits, and without `prompt_template`, `routing` or `permissions` — decision **P9** forbids
+    defaulting the last. Every other type's defaults validate, and a document of dropped
+    defaults publishes.
+  * **Task routes are registry data** (the M3 amendment): the session workspace's `task_kinds`,
+    matrix order. **Skills are configuration** until #410. Both are suggestions: a draft and a
+    publish naming unknown names succeed, and `toDslCatalogue(suggestions)` turns them into the
+    P7 catalogue whose misses are warnings. An empty list is *nothing to suggest* and is left
+    out of that catalogue. The marketplace section (mockup 23) waits for #798's data.
+  * `ouroboros-rest` 0.34.5.
 
 ### Issue R.4 — ouroboros-rest: [R.4] Studio integration tests
 
