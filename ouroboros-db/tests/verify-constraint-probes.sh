@@ -153,6 +153,25 @@
 # returns the older estimate. So this probe's marker is must_reject's wrong-rule-fired
 # message rather than its accepted-row one, as the bundled-price probe's above is.
 #
+# #137 (P.6) adds the workflow studio's half, and its argument is the plainest in this file: a
+# run pins the version it executed (decision P1), so the rules that keep a published version
+# what it was are the contract every surface over mockup 04 is written against rather than
+# re-checks. One mutation per rule that ticket's scope names:
+#
+#   P.6 scope bullet                             mutation
+#   ------------------------------------------   ------------------------------------------
+#   an UPDATE on a published version must fail  drop trigger workflow_versions_no_update
+#   status vocabulary                            drop workflows_status_valid
+#   version monotonicity per workflow            drop trigger workflow_versions_next_version
+#   version uniqueness per workflow              drop workflow_versions_workflow_version_key
+#   the one-draft-per-workflow rule              drop index workflow_versions_one_draft_idx
+#
+# Two of them are triggers and one is a partial unique index, so three of the five are not
+# `alter table … drop constraint` at all. The version key is dropped with `cascade`, because the
+# current-version pointer's composite foreign key stands on it; and like the estimate key above,
+# no single session can see it refuse anything while the numbering trigger fires first, so its
+# marker is constraints.sql's catalogue assertion rather than a refused row.
+#
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
 #   ouroboros-db/tests/verify-constraint-probes.sh --runner docker
@@ -309,7 +328,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -742,6 +761,58 @@ expect_red 'an issue may hold one estimate version twice' \
 expect_red 'an estimate may name no estimator' \
   'decision K10: an estimate whose trace names no estimator does not get to exist .*issue_estimates_provenance did not fire' \
   'alter table ouroboros.issue_estimates drop constraint issue_estimates_provenance;'
+
+# ---------------------------------------------------------------------------
+# The workflow studio's rules (#137: version immutability, the status vocabulary, version
+# uniqueness and monotonicity per workflow, the one-draft rule).
+#
+# Decision P1 is the contract everything downstream of mockup 04 trusts: a run pins the
+# version it executed, so *"what did this loop actually do"* has an answer only while a
+# published version cannot change. Every one of these fails quietly rather than loudly if its
+# rule goes — a migration that drops the immutability trigger leaves every publish working and
+# every pinned run meaning something new, a lost numbering trigger lets `v14` be followed by
+# `v17`, a lost draft index gives the studio two drafts and no way to choose — and none of the
+# services written against them re-checks any of it.
+#
+# Every marker below is the whole of the assertion's failure line, constraint or trigger name
+# included where the assertion carries one, for the reason the routing and registry markers
+# are: it is what proves each probe is watching the object its label names.
+# ---------------------------------------------------------------------------
+
+# A trigger, so dropped with `drop trigger`. The probe is `must_raise` rather than
+# `must_reject`, because the refusal is `restrict_violation` raised by a function rather than a
+# constraint firing, so its accepted message names no object — the statement is the evidence.
+expect_red 'a published workflow version may be revised' \
+  'the definition of a published version cannot be edited \(statement was accepted\)' \
+  'drop trigger workflow_versions_no_update on ouroboros.workflow_versions;'
+
+expect_red 'workflows.status accepts anything' \
+  'status has three values and draft is not one of them .*workflows_status_valid did not fire' \
+  'alter table ouroboros.workflows drop constraint workflows_status_valid;'
+
+# Monotonicity, and density with it: one trigger holds a published version to exactly one above
+# the highest, and it is the rule that makes `v14` mean the fourteenth publish.
+expect_red 'a workflow may publish any version number it likes' \
+  'the first version a workflow publishes is 1, not whatever number the writer felt like .*workflow_versions_next_version did not fire' \
+  'drop trigger workflow_versions_next_version on ouroboros.workflow_versions;'
+
+# The key underneath that trigger, which no single session can see refuse anything — the race
+# it exists for is two publishers that both computed max + 1. So constraints.sql asks the
+# catalogue for it by name and by shape, and that is the assertion this probe reads.
+#
+# `cascade`, because `workflows_current_version_fk` references this key and PostgreSQL will not
+# drop a unique constraint a foreign key stands on. Losing the pointer's key with it does not
+# blur the probe: the catalogue assertion comes before the first assertion about the pointer.
+expect_red 'a workflow may hold one version number twice' \
+  'workflow_versions_workflow_version_key: one version number per workflow, once' \
+  'alter table ouroboros.workflow_versions
+     drop constraint workflow_versions_workflow_version_key cascade;'
+
+# A partial unique **index** rather than a constraint — V029 chose the index so its name could
+# say the rule — so dropped with `drop index`.
+expect_red 'a workflow may hold two drafts' \
+  'a workflow has at most one draft, and the second is refused by the database rather than by the editor .*workflow_versions_one_draft_idx did not fire' \
+  'drop index ouroboros.workflow_versions_one_draft_idx;'
 
 printf '\n'
 if check_summary; then

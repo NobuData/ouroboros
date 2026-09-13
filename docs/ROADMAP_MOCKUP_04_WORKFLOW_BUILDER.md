@@ -228,7 +228,7 @@ issue below is assigned to its epic's milestone. Complexity chips: **XS · S · 
 | P.3 | #134 | 🟢 Done | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
 | P.4 | #135 | 🟢 Done | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
 | P.5 | #136 | 🟢 Done | ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity | Five workflows incl. standard-fix's full graph at v14 | mvp, workflow, db | N (after P.2) | Y | M | ouroboros-db |
-| P.6 | #137 | 🟡 Open | ouroboros-db: [P.6] Workflow constraints in ci/db | Version immutability, status vocab, definition-schema drift check | mvp, workflow, db, ci | N (after P.5, #24) | Y | XS | ouroboros-db, .github |
+| P.6 | #137 | 🟢 Done | ouroboros-db: [P.6] Workflow constraints in ci/db | Version immutability, status vocab, definition-schema drift check | mvp, workflow, db, ci | N (after P.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue P.1 — ouroboros-db: [P.1] Workflow & version schema
 
@@ -714,7 +714,7 @@ seeds: standard-fix v14 (12 nodes · 12 edges · loop-back) + 4 more workflows
 
 ### Issue P.6 — ouroboros-db: [P.6] Workflow constraints in ci/db
 
-> **GitHub issue:** #137 · **Status:** 🟡 Open · **Parent epic:** #127
+> **GitHub issue:** #137 · **Status:** 🟢 Done · **Parent epic:** #127
 
 - **Problem Statement:** Version immutability and definition validity are the
   contracts everything downstream trusts.
@@ -733,6 +733,18 @@ seeds: standard-fix v14 (12 nodes · 12 edges · loop-back) + 4 more workflows
   `constraints.sql` probes (immutability, status vocabulary, version uniqueness and density,
   the one-draft rule) and the `ci/db` **step** that makes the schema check a gate on a
   migration change rather than a rest-suite assertion.
+- **Landed 2026-09-13.** The four probes already stood in V029's section of `constraints.sql`
+  (#132); P.6 made them a gate. `verify-constraint-probes.sh` drops each rule in turn — the
+  immutability trigger, `workflows_status_valid`, the numbering trigger,
+  `workflow_versions_workflow_version_key` (with `cascade`, since the current-version pointer's
+  key stands on it) and the one-draft index — and requires the suite to go red naming its own
+  assertion. The version key gained a catalogue probe, because the numbering trigger pre-empts
+  it in any single session. The drift check is `ouroboros-db/scripts/workflow-dsl-drift.mjs`
+  over `tests/lib/seeded-definitions.sql`: the **stored** rows of the seeded database, v2–v13
+  included, validated with ajv against `v1.json` in a `ci/db` step of its own. `db.yml` now
+  watches `schemas/workflow-dsl/v1.json`, so a schema-only change runs it. The drift red is a
+  standing assertion in `tests/workflow-dsl-drift.test.sh`, which tightens a copy of the schema
+  and requires the fixtures to fail against it.
 - **Parallelism/Dependencies:** Needs P.5, #24.
 - **Technical Stack:** GitHub Actions, SQL, ajv (schema check).
 - **Epic:** P

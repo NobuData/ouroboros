@@ -275,6 +275,7 @@ on:
       - ".github/workflows/db.yml"
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
+      - "schemas/workflow-dsl/v1.json"
   push:
     branches: [main]
     paths:
@@ -284,6 +285,7 @@ on:
       - ".github/workflows/db.yml"
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
+      - "schemas/workflow-dsl/v1.json"
   workflow_dispatch:
 
 permissions:
@@ -371,6 +373,12 @@ jobs:
         run: |
           docker run --rm --network=host "$POSTGRES_IMAGE" \
             psql -v ON_ERROR_STOP=1 -f /tests/seed.sql
+
+      - name: Assert every seeded workflow definition still validates against the DSL schema
+        run: |
+          docker run --rm --network=host "$POSTGRES_IMAGE" \
+            psql -v ON_ERROR_STOP=1 -f /tests/lib/seeded-definitions.sql > seeded.json
+          ouroboros-db/scripts/workflow-dsl-drift.mjs seeded.json
 
   publish:
     name: publish/db
@@ -717,12 +725,19 @@ check_break 'a rest workflow that stops watching the image pins is reported' \
 # contract — and from the other validator — with no check saying so, which is the one failure
 # mode the shared-fixture design exists to prevent.
 check_break 'a rest workflow that stops watching the shared schemas is reported' \
-  'schemas/workflow-dsl/v1\.json runs engine\.yml rest\.yml' \
+  'schemas/workflow-dsl/v1\.json runs db\.yml engine\.yml rest\.yml' \
   'sed -i "/^      - \"schemas\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
 
 check_break 'an engine workflow that stops watching the shared schemas is reported' \
-  'schemas/workflow-dsl/v1\.json runs engine\.yml rest\.yml' \
+  'schemas/workflow-dsl/v1\.json runs db\.yml engine\.yml rest\.yml' \
   'sed -i "/^      - \"schemas\/\*\*\"$/d" "$root/.github/workflows/engine.yml"'
+
+# #137: ci/db validates every seeded workflow definition against that schema, so a db
+# workflow blind to it merges the one schema change that leaves the seeds behind without the
+# check that exists to catch it.
+check_break 'a db workflow blind to the DSL schema is reported' \
+  'schemas/workflow-dsl/v1\.json runs db\.yml engine\.yml rest\.yml' \
+  'sed -i "/schemas\/workflow-dsl\/v1.json/d" "$root/.github/workflows/db.yml"'
 
 # The workspace root, #13. A module that stops watching the lockfile it installs from
 # builds green against a resolution nobody asked for.
@@ -874,6 +889,16 @@ check_break 'a pass that never checks the applied schema against BetterAuth is r
 check_break 'a pass that never checks the snapshot for drift is reported' \
   'snapshot still describes what BetterAuth expects' \
   'sed -i "/betterauth-schema.mjs --check/d" "$root/.github/workflows/db.yml"'
+
+# The workflow schema drift check (#137), both halves dropped on their own: a query nobody
+# hands to the verb validates nothing, and a verb with no query reads no rows.
+check_break 'a pass that never reads the seeded workflow definitions is reported' \
+  'reads every seeded workflow definition' \
+  'sed -i "s|/tests/lib/seeded-definitions.sql|/tests/nothing.sql|" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never validates the seeded workflow definitions is reported' \
+  'validates every seeded workflow definition against the DSL schema' \
+  'sed -i "/workflow-dsl-drift.mjs/d" "$root/.github/workflows/db.yml"'
 
 check_break 'a drift check with no workspace installed under it is reported' \
   'installs the workspace' \

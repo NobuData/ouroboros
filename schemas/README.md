@@ -43,6 +43,7 @@ schemas/
 | [`ouroboros-rest/src/modules/workflows/code.*`](../ouroboros-rest/src/modules/workflows) | the code-view printer (U.1) — each valid document as mockup 05's TypeScript DSL | `code.printer.spec.ts` (every print is exactly `fixtures/code/<name>.loop.ts`, parses, and gives back the document's graph) |
 | [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) | the specification a person reads | Worked examples taken from these fixtures |
 | [`docs/WORKFLOW_CODE_DSL.md`](../docs/WORKFLOW_CODE_DSL.md) | the code-view language a person reads | Worked examples taken from `fixtures/code/` |
+| [`ouroboros-db/scripts/workflow-dsl-drift.mjs`](../ouroboros-db/scripts/workflow-dsl-drift.mjs) | `ci/db`'s drift check (P.6) — every seeded workflow definition, as stored, validated against `v1.json` with ajv | `ouroboros-db/tests/workflow-dsl-drift.test.sh` (green over the valid fixtures, red over an invalid one and over a tightened copy of the schema) |
 
 **Neither module imports the other, and no third process compares two outputs.** Each reads
 this directory from its own suite and asserts against the same `expected.json`. A rule added to
@@ -51,7 +52,10 @@ the whole reason the fixtures live above both modules rather than inside either.
 
 Both `ci/rest` and `ci/engine` watch `schemas/**`
 ([`scripts/verify-ci.sh`](../scripts/verify-ci.sh) asserts it), so an edit here runs both halves
-on the pull request that makes it.
+on the pull request that makes it. `ci/db` watches `workflow-dsl/v1.json` too, and only that
+file: its drift check validates the seeded workflow definitions against the schema, so a schema
+edit that leaves the seeds behind fails on the pull request that makes it rather than in the
+studio later.
 
 ## Changing a contract here
 
