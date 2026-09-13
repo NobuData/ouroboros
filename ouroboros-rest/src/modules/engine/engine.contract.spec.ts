@@ -415,15 +415,20 @@ describe("the engine's own specification", () => {
     expect(engineDocument().paths).toHaveProperty(`/${ENGINE_ESTIMATE_ROUTE}`);
   });
 
-  it("does not yet serve the workflow validation route, which is why the gate tolerates a 404", () => {
-    // **A tripwire, and it is meant to fail.** R.2
-    // ([#144](https://github.com/NobuData/ouroboros/issues/144)) is the engine half of P.3's
-    // publish gate and has not landed; until it does, `EngineClient.validateWorkflow` reads a
-    // `404` as *this build predates the route* and `publish.gate.ts` publishes on the DSL
-    // verdict alone. The day the engine publishes the operation, this assertion goes red — and
-    // what it is asking for is that the tolerance and this test be replaced together, by the
-    // positive assertion its siblings above make.
-    expect(engineDocument().paths).not.toHaveProperty(`/${ENGINE_WORKFLOW_VALIDATE_ROUTE}`);
+  it("serves the workflow validation route the publish gate calls", () => {
+    // Once a tripwire: until R.2 (#144) published this operation, `EngineClient` read a `404`
+    // from it as *this build predates the route* and the gate published on the DSL verdict
+    // alone. The engine publishes it now, so the tolerance went with the tripwire, and a `404`
+    // is `engine_unavailable` like any other refusal.
+    expect(engineDocument().paths).toHaveProperty(`/${ENGINE_WORKFLOW_VALIDATE_ROUTE}`);
+  });
+
+  it("leaves a finding's anchors optional, because the engine omits the ones it lacks", () => {
+    const schema = engineDocument().components.schemas.WorkflowFinding;
+
+    expect(Object.keys(schema.properties)).toEqual(expect.arrayContaining(["node_id", "edge"]));
+    expect(schema.required).not.toContain("node_id");
+    expect(schema.required).not.toContain("edge");
   });
 
   it.each([
@@ -448,6 +453,9 @@ describe("the engine's own specification", () => {
         "trace",
       ],
     ],
+    ["WorkflowValidateRequest", ["definition"]],
+    ["WorkflowValidation", ["findings"]],
+    ["WorkflowFinding", ["code", "message", "path"]],
   ])("describes %s with the fields this client reads", (name, fields) => {
     // The schemas above ignore what they do not know about, which is the compatibility rule
     // working — and is also what would let a *removed* field go unnoticed until a call

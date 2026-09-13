@@ -334,25 +334,15 @@ describe("validating a workflow definition", () => {
     });
   });
 
-  it("answers undefined for a 404, which is an engine that predates the route", async () => {
-    // The one status this client reads as an answer rather than a failure, and only where a
-    // caller asked for it. R.2 (#144) has not landed, so this is every build today.
-    const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-    const engine = alwaysAnswering(() => engineError(HttpStatus.NOT_FOUND, "not_found"));
-
-    await expect(clientWith(engine).validateWorkflow(DEFINITION)).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("does not publish the route"));
-
-    warn.mockRestore();
-  });
-
   it.each([
+    ["an engine build that does not publish the route", HttpStatus.NOT_FOUND],
     ["an engine that is unwell", HttpStatus.SERVICE_UNAVAILABLE],
     ["an engine holding the wrong secret", HttpStatus.UNAUTHORIZED],
     ["an engine that failed", HttpStatus.INTERNAL_SERVER_ERROR],
-  ])("still answers engine_unavailable for %s", async (_name, status) => {
-    // The tolerance above is exactly one status wide: an outage must refuse a publish rather
-    // than wave it through.
+  ])("answers engine_unavailable for %s", async (_name, status) => {
+    // Every refusal refuses the publish, a `404` included. Until R.2 (#144) published the route a
+    // `404` was read as *this build predates the operation*; now it can only be an engine this
+    // deployment is misconfigured against, and waving a publish through on it would be a hole.
     const engine = alwaysAnswering(() => engineError(status));
 
     await expect(clientWith(engine).validateWorkflow(DEFINITION)).rejects.toMatchObject({
@@ -364,16 +354,6 @@ describe("validating a workflow definition", () => {
     const engine = alwaysAnswering(() => jsonResponse({ ok: true }));
 
     await expect(clientWith(engine).validateWorkflow(DEFINITION)).rejects.toMatchObject({
-      response: { code: ENGINE_ERRORS.unavailable },
-    });
-  });
-
-  it("leaves the other routes intolerant of a 404", async () => {
-    // `absentWhenUnpublished` is opt-in per call. A `404` from the status route is an engine
-    // this deployment is misconfigured against, not an answer.
-    const engine = alwaysAnswering(() => engineError(HttpStatus.NOT_FOUND, "not_found"));
-
-    await expect(clientWith(engine).status()).rejects.toMatchObject({
       response: { code: ENGINE_ERRORS.unavailable },
     });
   });

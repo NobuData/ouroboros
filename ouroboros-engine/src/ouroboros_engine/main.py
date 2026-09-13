@@ -17,7 +17,7 @@ committed file this module loads rather than a document FastAPI derives from the
 
 from fastapi import FastAPI
 
-from ouroboros_engine.api import estimate, health, root, status, tasks
+from ouroboros_engine.api import estimate, health, root, status, tasks, workflows
 from ouroboros_engine.core.errors import register_error_handlers
 from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
@@ -125,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(status.router)
     app.include_router(tasks.router)
     app.include_router(estimate.router)
+    app.include_router(workflows.router)
     return app
 
 

@@ -85,6 +85,8 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `GET /v0/status` | yes | Version and uptime — what `ouroboros-rest`'s readiness probe reads |
 | `POST /v0/tasks/echo` | yes | The contract exemplar: `{task_kind, payload}` back as `{accepted, echo, engine_version}` |
 | `POST /v0/estimate` | yes | Size one issue: `{issue, context}` in, one version of K.2's estimate row out |
+| `POST /v0/workflows/validate` | yes | The engine's findings on a workflow definition — the publish gate's second opinion |
+| `POST /v0/workflows/dry-run` | yes | Walk a definition for one ticket: ordered steps, a verdict per stage, the path to highlight — no model or provider call |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
 ```console
@@ -95,13 +97,13 @@ $ curl -s localhost:8000/v0/status && echo
 {"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.6.0","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.6.1","uptime_seconds":42.5}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
     -d '{"task_kind":"echo","payload":{"note":"hello"}}' \
     localhost:8000/v0/tasks/echo && echo
-{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.6.0"}
+{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.6.1"}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
@@ -215,9 +217,9 @@ in [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) and published as
 neither owns it. `ouroboros_engine.workflows` is that schema written in pydantic, plus the
 structural rules a schema cannot express.
 
-There are **no routes yet.** `POST /v0/workflows/validate` and the dry-run simulator are R.2
-([#144](https://github.com/NobuData/ouroboros/issues/144)); what lands here is the language and
-its verdict, so that R.2 is a router over a validator rather than a validator behind a route.
+Two routes read it — R.2's ([#144](https://github.com/NobuData/ouroboros/issues/144)),
+[below](#validating-and-simulating-a-workflow) — and both are routers over this validator rather
+than validators of their own.
 
 ```python
 verdict = validate_workflow_document(definition, catalogue)
@@ -253,6 +255,61 @@ The two implementations are also written to **mirror each other file for file** 
 `structure.py`/`dsl.structure.ts`, `references.py`/`dsl.references.ts`,
 `validate.py`/`dsl.validator.ts` — so they can be read side by side. That is the defence a test
 suite cannot provide.
+
+### Validating and simulating a workflow
+
+`POST /v0/workflows/validate` is the publish gate's second opinion
+([#134](https://github.com/NobuData/ouroboros/issues/134)): `ouroboros-rest` validates with zod,
+then asks the component that will execute a definition whether it reads it the same way.
+`POST /v0/workflows/dry-run` is the studio's *Dry run with issue #485* — a real walk of the graph
+for one ticket, with **zero model calls and zero provider calls**
+([#144](https://github.com/NobuData/ouroboros/issues/144)).
+
+```console
+$ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
+    -H 'content-type: application/json' \
+    -d '{"definition":{"dsl_version":"1.0","trigger":{"event":"ticket_queued","conditions":{}},
+         "nodes":[{"id":"start","type":"trigger","title":"Issue queued",
+                   "position":{"x":0,"y":0},"config":{}}],"edges":[]}}' \
+    localhost:8000/v0/workflows/validate && echo
+{"findings":[{"code":"document.no_terminal","message":"A workflow needs at least one terminal node; no path through this one ends.","path":"/nodes"}]}
+```
+
+**Findings are the verdict's errors, anchored.** Each carries the DSL's `code` and an RFC 6901
+`path`, plus `node_id` or `edge` when it is about a stage or a connection — omitted, never `null`,
+when it is not — so the canvas can select what a finding is about. An invalid definition is a
+`200` with findings; a `422` means the *request* was not one. Decision **P7**'s warnings are not
+findings, because neither operation takes a catalogue.
+
+**The dry run** validates first and, for a valid definition, walks it for the ticket the caller
+sends — `{external_key, source, labels, estimate: {effort} | null}`; nothing is fetched. It answers
+`steps` (the ordered walk), `verdicts` (one per stage, in document order) and `highlight_path`
+(the edges the canvas draws in the accent treatment), and every decision carries a sentence
+saying why.
+
+| Rule | What the walk does |
+|---|---|
+| Trigger | Every present condition, ANDed, tested against the ticket and its estimate. When it does not fire, no run starts and the trigger is the only step. |
+| Order | Breadth-first from the trigger, each stage's edges in document order — the same input is the same walk in every process. |
+| `default` and `branch` edges | A `default` edge is taken; a `branch` edge when its condition holds. A stage two taken edges reach is walked once. |
+| Decisions | Every branch is reported, taken or not, with the reason — the road not taken, explained. |
+| Gates | Annotated with what they require. |
+| Loops | Reported with `outcome: "loop"` and never walked. `max_retries` is the `limits.max_retries` of the model stage the loop returns to, or `null` when that stage declares none. |
+| `checks` predicates | Check results come from a run, so the walk assumes the green path and marks the evaluation `assumed: true`. |
+| Effort | Ordered `xs` < `s` < `m` < `l` < `xl`. An unsized ticket (`estimate: null`) satisfies no comparison. |
+| Labels | Compared exactly as the tracker spells them. |
+
+For the seeded `standard-fix` and `#485` the walk is `issue-queued → analyze → effort-recheck →
+plan → implement → build → test → review → checks-green → open-pr` — mockup 04's accent path, then
+on to the terminal — with `split` explained as not taken (*#485 is effort M, and M is not > M*) and
+the `fail ↺` loop reported with its bound of 2.
+
+**"No calls" is asserted, not claimed.** `tests/test_workflows_simulate.py` fails if any module a
+dry run executes imports the control-plane client, the estimator, a socket, an HTTP library or
+`subprocess`, and `tests/test_api_workflows.py` runs both operations with `ControlPlaneClient`,
+`socket` and the installed estimator replaced by spies that fail the request if touched. The walk
+is also what the Build Analyzer's counterfactual simulation (#523) and the deep dry run's pre-check
+(#562) reuse, which is why it is a function of the typed document and the ticket and nothing else.
 
 ## The API specification
 
@@ -471,6 +528,7 @@ ouroboros-engine/
 │   │   ├── status.py   #   GET /v0/status
 │   │   ├── tasks.py    #   POST /v0/tasks/echo — the contract exemplar
 │   │   ├── estimate.py #   POST /v0/estimate — size one issue                   · #105
+│   │   ├── workflows.py#   POST /v0/workflows/validate · /dry-run               · #144
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
@@ -491,7 +549,10 @@ ouroboros-engine/
 │   │   ├── issues.py   #   pydantic's error types → the DSL's codes
 │   │   ├── structure.py#   the graph rules a JSON Schema cannot express
 │   │   ├── references.py#  decision P7's warnings, over a catalogue the caller gives
-│   │   └── validate.py #   the four stages, in the order both validators run them
+│   │   ├── validate.py #   the four stages, in the order both validators run them
+│   │   ├── contract.py #   R.2's wire shapes — findings, the ticket, the walk   · #144
+│   │   ├── predicates.py#  one evaluator for the trigger, forks and edges      · #144
+│   │   └── simulate.py #   the dry-run walk — deterministic, and spends nothing · #144
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
@@ -583,6 +644,7 @@ task execution [#54](https://github.com/NobuData/ouroboros/issues/54) ·
 estimation contract [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 heuristic estimator [#106](https://github.com/NobuData/ouroboros/issues/106) ·
 the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
+workflow validation and the dry-run simulator [#144](https://github.com/NobuData/ouroboros/issues/144) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 

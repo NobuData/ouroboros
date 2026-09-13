@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**174 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**175 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
-| 🟡 **In progress** | P7 | **9** of 43 |
+| 🟡 **In progress** | P7 | **10** of 43 |
 | — **Not started** | P8–P17 | 0 of 246 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1342,7 +1342,7 @@ the blockquote above that records what it did and what it did differently.
 | 172 | **P.5** | ✅ [#136](https://github.com/NobuData/ouroboros/issues/136) | Studio dev seeds — mockup-04 parity | ouroboros-db | M | P.2 |
 | 173 | **Q.3** | ✅ [#140](https://github.com/NobuData/ouroboros/issues/140) | GitHub provider (first conforming plugin) | ouroboros-rest | M | Q.2 |
 | 174 | **Q.4** | ✅ [#141](https://github.com/NobuData/ouroboros/issues/141) | Source management API & settings UI | ouroboros-rest, ouroboros-ui | M | C.3, Q.2 |
-| 175 | **R.2** | [#144](https://github.com/NobuData/ouroboros/issues/144) | Definition validation & dry-run simulator | ouroboros-engine | L | 6.3, P.2 |
+| 175 | **R.2** | ✅ [#144](https://github.com/NobuData/ouroboros/issues/144) | Definition validation & dry-run simulator | ouroboros-engine | L | 6.3, P.2 |
 | 176 | **R.3** | [#145](https://github.com/NobuData/ouroboros/issues/145) | Stage catalog endpoint | ouroboros-rest | S | P.2 |
 | 177 | **U.1** | [#165](https://github.com/NobuData/ouroboros/issues/165) | TS-DSL grammar spec & deterministic printer | ouroboros-rest, docs | L | P.2 |
 | 178 | **P.6** | [#137](https://github.com/NobuData/ouroboros/issues/137) | Workflow constraints in ci/db | ouroboros-db, .github | XS | 3.6, P.5 |

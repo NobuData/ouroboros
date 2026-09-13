@@ -351,13 +351,12 @@ export function estimateRequestBody(request: EstimateRequest): Record<string, un
  * ([#144](https://github.com/NobuData/ouroboros/issues/144)), and the second half of P.3's
  * publish gate ([#134](https://github.com/NobuData/ouroboros/issues/134)).
  *
- * **This is the one route in this file mirrored from a specification rather than from a
- * served document.** #144 states the operation and its answer — `POST /v0/workflows/validate
- * {definition}` → `{findings: [{node_id, code, message}]}` — and the engine build in this
- * repository does not publish it yet, which `engine.contract.spec.ts` asserts outright so
- * that the day it does is the day this comment has to be revisited. Until then
- * {@link EngineClient.validateWorkflow} treats a `404` as *this engine predates R.2* rather
- * than as a failure; see that method for why that is safe and what it costs.
+ * Mirrored from `ouroboros-engine/openapi.yaml`'s `WorkflowValidateRequest` and
+ * `WorkflowValidation`, like every other route in this file, and `engine.contract.spec.ts`
+ * asserts the route and the fields read below. The engine publishes `POST
+ * /v0/workflows/dry-run` beside it, which nothing in this service calls yet — the studio's
+ * dry-run flow (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)) is what will, and
+ * mirrors that operation when it does.
  */
 export const ENGINE_WORKFLOW_VALIDATE_ROUTE = `${ENGINE_API_VERSION}/workflows/validate`;
 
@@ -405,8 +404,9 @@ const engineEdgeAnchorSchema = z
 /**
  * One finding, as it arrives.
  *
- * `code` and `message` are required and everything else is optional, which is #144's own
- * shape read strictly: a finding that anchors to nothing is a finding about the document,
+ * `code` and `message` are required and everything else is optional, which is the engine's
+ * `WorkflowFinding` read leniently — it always sends `path`, and leaves out `node_id` and `edge`
+ * when a finding has no such anchor: a finding that anchors to nothing is a finding about the document,
  * and a validator that had to invent a node id to report one would anchor it to the wrong
  * place. `null` is admitted beside absence for each optional field, because a Python service
  * serialising a dataclass sends `null` for an unset field far more often than it omits it,

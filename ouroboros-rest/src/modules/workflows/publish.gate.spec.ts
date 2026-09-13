@@ -1,5 +1,3 @@
-import { Logger } from "@nestjs/common";
-
 import type { EngineClient } from "../engine/engine.client";
 import { readFixture } from "./dsl.golden.fixture";
 import { WorkflowPublishGate } from "./publish.gate";
@@ -14,10 +12,10 @@ import { WorkflowPublishGate } from "./publish.gate";
  * **The verdict is the conjunction.** A finding from either validator is a finding, and only
  * an empty list may publish.
  *
- * **The tolerance is exactly one status wide.** An engine build that does not publish R.2's
- * route ([#144](https://github.com/NobuData/ouroboros/issues/144)) is a deployment state and
- * the publish proceeds on the DSL verdict; an engine that is *down* is an
- * `engine_unavailable` that refuses it.
+ * **An engine that cannot answer refuses the publish.** Whatever the reason — down, refusing,
+ * or a build that does not publish R.2's route
+ * ([#144](https://github.com/NobuData/ouroboros/issues/144)) — the gate never publishes a
+ * version on the DSL verdict alone.
  *
  * The documents are the committed fixtures rather than documents written here:
  * `schemas/workflow-dsl/fixtures/valid/standard-fix.json` *is* mockup 04's canvas, node for
@@ -142,25 +140,9 @@ describe("the publish gate", () => {
     expect(finding).not.toHaveProperty("path");
   });
 
-  it("passes, un-seconded, when the engine build does not publish the route", async () => {
-    // The state of every build until #144 lands. What is lost is a redundant check — the two
-    // validators are held to one verdict by `dsl.parity.spec.ts` — and it is reported, which
-    // is the second half of this assertion: a gate that quietly halved itself would be worse
-    // than one that refused. At `debug` here and at `warn` in the caller, which is what knows
-    // which workflow was published.
-    const debug = jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
-    const { client } = engineAnswering(jest.fn().mockResolvedValue(undefined));
-
-    const verdict = await new WorkflowPublishGate(client).check(STANDARD_FIX);
-
-    expect(verdict.findings).toEqual([]);
-    expect(verdict.engineConsulted).toBe(false);
-    expect(debug).toHaveBeenCalledWith(expect.stringContaining("/v0/workflows/validate"));
-  });
-
   it("does not swallow an engine that is unwell", async () => {
-    // The tolerance is one status wide. An outage must refuse a publish rather than wave it
-    // through, which is the difference between *cannot ask* and *asked and got nothing*.
+    // An outage must refuse a publish rather than wave it through: the engine's reading is part
+    // of the verdict, not a bonus on top of it.
     const failure = new Error("engine_unavailable");
     const { client } = engineAnswering(jest.fn().mockRejectedValue(failure));
 

@@ -2550,14 +2550,14 @@ never says the same thing twice in two vocabularies. Each finding carries `sourc
 `engine`), that validator's own `code`, and an anchor — `node`, `edge`, or a `path` JSON
 Pointer — so the studio can select the offending node when somebody clicks one.
 
-**R.2 ([#144](https://github.com/NobuData/ouroboros/issues/144)) has not landed, and the
-tolerance for that is exactly one status wide.** `EngineClient.validateWorkflow` reads a `404` as
-*this engine build predates the route*, logs it at `warn`, and the publish proceeds on the zod
-verdict; an engine that is **down**, refusing, or answering off-contract is still
-`502 engine_unavailable` and the publish is refused. What a `404` costs is a *redundant* check —
-`dsl.parity.spec.ts` holds the two validators to one verdict over every committed fixture — and
-`engine.contract.spec.ts` carries a tripwire that goes red the day the engine publishes the
-operation, so the tolerance and the test are replaced together.
+**The engine leg is not optional.** R.2 ([#144](https://github.com/NobuData/ouroboros/issues/144))
+publishes `POST /v0/workflows/validate`, so an engine that cannot answer it — **down**, refusing,
+answering off-contract, or a build that does not serve the route at all — is
+`502 engine_unavailable`, and the publish is refused. Until R.2 landed, a `404` was read as *this
+engine build predates the route* and the publish went ahead on the zod verdict; that tolerance was
+retired together with the tripwire in `engine.contract.spec.ts` that was written to ask for exactly
+that. The integration harness's engine stub publishes the route too, answering green and recording
+what the gate sent.
 
 **Publishing copies the draft rather than promoting it.** V029 permits either; copying is what
 leaves the canvas with a draft to autosave into and an etag that did not move, so *edit →

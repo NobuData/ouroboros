@@ -259,6 +259,11 @@ For a `checks` predicate, **an absent `names` means every check the run produced
 pins — a workflow that hard-coded fourteen names would be wrong the first time a repository
 added one.
 
+**How a dry run evaluates a predicate** — without a run, so on the green path for `checks` and with
+an unsized ticket satisfying no effort comparison — is `ouroboros-engine`'s simulator
+([#144](https://github.com/NobuData/ouroboros/issues/144)), documented in
+[`ouroboros-engine/README.md`](../ouroboros-engine/README.md#validating-and-simulating-a-workflow).
+
 ---
 
 ## 6. Edges

@@ -37,6 +37,23 @@ from ouroboros_engine.estimation.contract import (
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
 from ouroboros_engine.main import _PUBLIC_PATHS, create_app
 from ouroboros_engine.settings import Settings
+from ouroboros_engine.workflows.contract import (
+    DryRunEdge,
+    DryRunStep,
+    DryRunTicket,
+    EdgeRef,
+    NodeVerdict,
+    PredicateEvaluation,
+    TicketEstimate,
+    WorkflowDryRun,
+    WorkflowDryRunRequest,
+    WorkflowFinding,
+    WorkflowValidateRequest,
+    WorkflowValidation,
+    findings_from,
+)
+from ouroboros_engine.workflows.simulate import dry_run
+from ouroboros_engine.workflows.validate import validate_workflow_document
 
 #: The module root, where both specification files are committed — resolved from this
 #: file rather than the working directory, like every other path in the suite.
@@ -58,6 +75,18 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "Breakdown": Breakdown,
     "Trace": Trace,
     "Estimate": Estimate,
+    "EdgeRef": EdgeRef,
+    "WorkflowFinding": WorkflowFinding,
+    "WorkflowValidateRequest": WorkflowValidateRequest,
+    "WorkflowValidation": WorkflowValidation,
+    "TicketEstimate": TicketEstimate,
+    "DryRunTicket": DryRunTicket,
+    "WorkflowDryRunRequest": WorkflowDryRunRequest,
+    "PredicateEvaluation": PredicateEvaluation,
+    "DryRunEdge": DryRunEdge,
+    "DryRunStep": DryRunStep,
+    "NodeVerdict": NodeVerdict,
+    "WorkflowDryRun": WorkflowDryRun,
     "Error": ErrorEnvelope,
 }
 
@@ -378,12 +407,16 @@ def test_a_documented_schema_carries_the_fields_the_model_returns(
     # generated document byte for byte would drag the titles and docstring dumps this
     # specification exists to be rid of back into it. This is the part that can silently
     # rot — a field added to a model, or removed from one.
+    #
+    # Compared under the wire name: a field whose Python name is not its JSON name (`from`, a
+    # keyword, travels as `from_`) is documented as the caller sees it.
     schema = document["components"]["schemas"][name]
     model = _DOCUMENTED_MODELS[name]
+    fields = {spec.alias or field: spec for field, spec in model.model_fields.items()}
 
-    assert set(schema["properties"]) == set(model.model_fields)
+    assert set(schema["properties"]) == set(fields)
     assert set(schema["required"]) == {
-        field for field, spec in model.model_fields.items() if spec.is_required()
+        field for field, spec in fields.items() if spec.is_required()
     }
 
 
@@ -416,6 +449,36 @@ def test_the_documented_estimate_is_the_one_the_installed_estimator_gives(
     documented = operation["responses"]["200"]["content"]["application/json"]["example"]
 
     answer = HeuristicEstimator().estimate(EstimateRequest.model_validate(sent))
+
+    assert answer.model_dump(mode="json") == documented
+
+
+def test_the_documented_validation_is_the_one_the_validator_gives(
+    document: dict,
+) -> None:
+    # The request and response examples on `POST /v0/workflows/validate` are one worked case,
+    # like the estimate's: the finding documented is the finding that document gets.
+    operation = document["paths"]["/v0/workflows/validate"]["post"]
+    sent = operation["requestBody"]["content"]["application/json"]["example"]
+    documented = operation["responses"]["200"]["content"]["application/json"]["example"]
+
+    request = WorkflowValidateRequest.model_validate(sent)
+    verdict = validate_workflow_document(request.definition)
+    answer = WorkflowValidation(findings=findings_from(verdict))
+
+    assert answer.model_dump(mode="json") == documented
+
+
+def test_the_documented_dry_run_is_the_walk_the_simulator_gives(document: dict) -> None:
+    # Every explanation in the documented walk is a sentence the simulator writes, so a change
+    # to a rule in `workflows.predicates` or `workflows.simulate` moves the answer without
+    # touching this document — which is the drift this catches.
+    operation = document["paths"]["/v0/workflows/dry-run"]["post"]
+    sent = operation["requestBody"]["content"]["application/json"]["example"]
+    documented = operation["responses"]["200"]["content"]["application/json"]["example"]
+
+    request = WorkflowDryRunRequest.model_validate(sent)
+    answer = dry_run(request.definition, request.ticket)
 
     assert answer.model_dump(mode="json") == documented
 

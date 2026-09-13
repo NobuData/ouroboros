@@ -18,11 +18,12 @@ mirrors it (#35). The engine's test suite fails when the routes, the response mo
 the version drift from what that document claims (``tests/test_openapi.py``), which is
 what keeps a hand-written contract honest.
 
-Three routers are under the prefix today: :mod:`ouroboros_engine.api.status`, which reports
+Four routers are under the prefix today: :mod:`ouroboros_engine.api.status`, which reports
 which build is answering, :mod:`ouroboros_engine.api.tasks`, which carries the
-request/response exemplar the rest of the contract is written to, and
+request/response exemplar the rest of the contract is written to,
 :mod:`ouroboros_engine.api.estimate`, which sizes an issue — the first operation the gateway
-calls for an answer rather than for a round trip.
+calls for an answer rather than for a round trip — and :mod:`ouroboros_engine.api.workflows`,
+which validates a workflow definition and walks it for a ticket without running anything.
 
 The estimate operation is also where the rule above gets its first real test: the estimator
 behind it is replaced twice (L.2, then O.2) and the contract it answers through is not

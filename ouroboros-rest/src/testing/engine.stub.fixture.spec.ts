@@ -1,11 +1,15 @@
 import { ENGINE_ESTIMATE_BODY, ESTIMATE_REQUEST } from "../modules/engine/engine.fixture";
-import { estimateRequestBody } from "../modules/engine/engine.contract";
+import {
+  estimateRequestBody,
+  workflowValidateRequestBody,
+} from "../modules/engine/engine.contract";
 import { INTERNAL_KEY_HEADER } from "../modules/engine/engine.contract";
 import {
   ENGINE_STUB_SECRET,
   ESTIMATE_PATH,
   LIVENESS_PATH,
   STATUS_PATH,
+  WORKFLOW_VALIDATE_PATH,
   contractViolation,
   engineFailure,
   estimateAnswer,
@@ -248,6 +252,76 @@ describe("the contract-faithful engine stub", () => {
       expect(engine.requests).toEqual([]);
       expect(engine.violations).toEqual([]);
       expect((await estimate()).status).toBe(200);
+    });
+  });
+
+  describe("the workflow validation route", () => {
+    /** A definition. What it holds is the engine's business, and never the stub's. */
+    const DEFINITION = { dsl_version: "1.0", nodes: [], edges: [] };
+
+    /**
+     * Ask the stub to validate, the way `EngineClient.validateWorkflow` asks.
+     *
+     * @param body - The request body. Defaults to a well-formed one.
+     * @returns The status and the parsed body.
+     */
+    async function validate(
+      body: unknown = workflowValidateRequestBody(DEFINITION),
+    ): Promise<{ status: number; body: Record<string, unknown> }> {
+      const response = await fetch(`${engine.url}${WORKFLOW_VALIDATE_PATH}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", [INTERNAL_KEY_HEADER]: ENGINE_STUB_SECRET },
+        body: JSON.stringify(body),
+      });
+
+      return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+    }
+
+    it("is published, answers green, and records what the gate sent", async () => {
+      expect(await validate()).toEqual({ status: 200, body: { findings: [] } });
+      expect(engine.validations).toEqual([{ definition: DEFINITION }]);
+      expect(engine.requests).toEqual([]);
+      expect(engine.violations).toEqual([]);
+    });
+
+    it("refuses a body the engine's WorkflowValidateRequest does not describe", async () => {
+      const refused = await validate({ document: DEFINITION });
+
+      expect(refused.status).toBe(422);
+      expect(engine.validations).toEqual([]);
+      expect(engine.violations).toHaveLength(1);
+      expect(engine.violations[0]).toContain(`The body of POST ${WORKFLOW_VALIDATE_PATH}`);
+      expect(engine.violations[0]).toContain("WorkflowValidateRequest schema");
+    });
+
+    it("still requires the shared secret", async () => {
+      const response = await fetch(`${engine.url}${WORKFLOW_VALIDATE_PATH}`, {
+        method: "POST",
+        body: JSON.stringify(workflowValidateRequestBody(DEFINITION)),
+      });
+
+      expect(response.status).toBe(401);
+      expect(engine.violations).toEqual([
+        `POST ${WORKFLOW_VALIDATE_PATH} arrived with no ${INTERNAL_KEY_HEADER}`,
+      ]);
+    });
+
+    it("forgets its validations on reset", async () => {
+      await validate();
+
+      engine.reset();
+
+      expect(engine.validations).toEqual([]);
+    });
+
+    it("holds this service's request translation and its own answer to the engine's schemas", () => {
+      expect(
+        contractViolation("validateRequest", workflowValidateRequestBody(DEFINITION)),
+      ).toBeUndefined();
+      expect(contractViolation("validation", { findings: [] })).toBeUndefined();
+      expect(
+        contractViolation("validation", { findings: [{ code: "node.unreachable" }] }),
+      ).toContain("WorkflowValidation schema");
     });
   });
 

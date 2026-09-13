@@ -43,17 +43,18 @@
  * depend on the model registry in order to produce diagnostics that could not change the
  * answer.
  *
- * **An engine that does not publish the route.** R.2
- * ([#144](https://github.com/NobuData/ouroboros/issues/144)) is the engine half and has not
- * landed; until it does, `EngineClient.validateWorkflow` answers `undefined` and this gate
- * records the second opinion as *unavailable* rather than refusing every publish in the
- * product. That tolerance is exactly one status wide — an engine that is down, refusing or
- * answering off-contract still fails the publish with `engine_unavailable` — and it costs a
- * redundant check rather than the only one, because `dsl.parity.spec.ts` holds the two
- * validators to the same verdict over every committed fixture.
+ * ## What refuses a publish without being a finding
+ *
+ * **An engine that cannot answer.** The engine leg is not optional. An engine that is down,
+ * refusing, answering off-contract — or not publishing `POST /v0/workflows/validate` at all — is
+ * `engine_unavailable`, and the publish is refused rather than waved through. Until R.2
+ * ([#144](https://github.com/NobuData/ouroboros/issues/144)) landed, that last case was tolerated
+ * and the gate published on the zod verdict alone; the engine serves the route now and the two
+ * services deploy together, so the tolerance was retired alongside the tripwire in
+ * `engine.contract.spec.ts` that asked for exactly that.
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 
 import { EngineClient } from "../engine/engine.client";
 import type { DslDiagnostic } from "./dsl.errors";
@@ -100,24 +101,15 @@ export interface PublishVerdict {
   /**
    * Whether the engine's opinion is part of the verdict.
    *
-   * `false` when the zod stage refused before the engine was asked, and `false` when the
-   * engine build does not publish the route. It is reported rather than inferred so that
-   * `workflows.service.ts` can log *which* gate let a version through, and so a suite can
-   * assert the second stage really ran.
+   * `false` exactly when the zod stage refused before the engine was asked, so a verdict with
+   * no findings always carries `true` — reported rather than inferred, so a suite can assert
+   * the second stage really ran.
    */
   readonly engineConsulted: boolean;
 }
 
 @Injectable()
 export class WorkflowPublishGate {
-  /**
-   * Where the *mechanism* of an un-seconded publish is recorded.
-   *
-   * `debug`, deliberately — see {@link check}. The line an operator reads at the default level
-   * is the caller's, because it names the workflow.
-   */
-  private readonly logger = new Logger(WorkflowPublishGate.name);
-
   /**
    * @param engine - The typed engine client, from the non-global `EngineModule`.
    */
@@ -130,8 +122,8 @@ export class WorkflowPublishGate {
    *   way: the thing being judged has to be the thing that becomes immutable.
    * @returns The verdict. `findings` empty means the caller may write a version; anything else
    *   means it must write nothing.
-   * @throws {UpstreamError} `engine_unavailable` when the engine publishes the route and could
-   *   not answer — a publish is refused rather than waved through by an outage.
+   * @throws {UpstreamError} `engine_unavailable` when the engine could not answer, whatever the
+   *   reason — a publish is refused rather than waved through by an outage.
    */
   async check(definition: unknown): Promise<PublishVerdict> {
     const verdict = validateWorkflowDocument(definition);
@@ -144,22 +136,6 @@ export class WorkflowPublishGate {
     }
 
     const second = await this.engine.validateWorkflow(definition);
-
-    if (second === undefined) {
-      // `debug` rather than `warn`, and the level is the division of labour: **the caller is
-      // what must not be silent**, because it is what knows which workflow was published, and
-      // `workflows.service.ts` warns on `engineConsulted: false` for exactly that reason. One
-      // line per publish at `warn` is right; two is a line an operator learns to skip. This
-      // one carries the mechanism, for whoever turns the level up after reading the other.
-      this.logger.debug(
-        "ouroboros-engine does not publish POST /v0/workflows/validate, so the engine half of " +
-          "the gate was skipped (#144). The two validators are held to one verdict by " +
-          "dsl.parity.spec.ts; the engine's reading is a second opinion this build cannot ask " +
-          "for.",
-      );
-
-      return { findings: [], engineConsulted: false };
-    }
 
     return {
       findings: second.findings.map((finding) => ({

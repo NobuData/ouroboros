@@ -11,7 +11,7 @@ carries the internal key on every request and is what a test of a route uses;
 is a default the other has to opt out of — a test says which side of the boundary it is
 standing on by which fixture it asks for.
 
-The estimation fixtures at the bottom are here rather than in one of the suites because
+The estimation and workflow fixtures at the bottom are here rather than in one of the suites because
 three of them read the same two values: the route's tests, the contract's tests and the
 estimator's. Both are the mockup's own issue and the mockup's own estimate — ``#485`` and
 the *AI Work Breakdown* panel beside it (``docs/mockups/03-issues.html``) — so a test that
@@ -35,6 +35,8 @@ from ouroboros_engine.estimation.contract import (
     Trace,
 )
 from ouroboros_engine.settings import Settings
+from ouroboros_engine.workflows.contract import DryRunTicket, TicketEstimate
+from workflows_golden import read_fixture
 
 #: Every environment variable ouroboros_engine.settings declares an alias for. This is
 #: the one list the tests work from, so a setting added without being isolated here
@@ -277,3 +279,39 @@ def mockup_estimate() -> Estimate:
             signals=["3 similar closed issues", "driver map", "HIL test index"],
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Workflows — the seeded canvas, and the seeded ticket a dry run walks it for
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def ticket_485() -> DryRunTicket:
+    """The seeded ``#485``, as ``POST /v0/workflows/dry-run`` reads it.
+
+    Every value is the development seed's, so the walk a test asserts is the walk the studio's
+    *Dry run with issue #485* shows against a seeded database: the four labels
+    ``R__dev_seed_intake.sql`` gives the issue, the ``m`` its estimate carries, and ``github``,
+    the kind of the source ``R__dev_seed_sources.sql`` configures for acme-robotics.
+
+    Returns:
+        A :class:`ouroboros_engine.workflows.contract.DryRunTicket`.
+    """
+    return DryRunTicket(
+        external_key="#485",
+        source="github",
+        labels=["bug", "i2c", "watchdog", "priority-high"],
+        estimate=TicketEstimate(effort="m"),
+    )
+
+
+@pytest.fixture
+def standard_fix() -> dict:
+    """Mockup 04's canvas — ``standard-fix`` v14, which the development seed stores verbatim.
+
+    Returns:
+        ``schemas/workflow-dsl/fixtures/valid/standard-fix.json``, parsed afresh for each test,
+        so a test that edits its copy cannot change what the next one reads.
+    """
+    return read_fixture("valid/standard-fix.json")

@@ -24,11 +24,12 @@
  *
  *   * **Every response this stub serves is validated against the committed L.1 schema** —
  *     `ouroboros-engine/openapi.yaml`, the same document `engine.contract.spec.ts` reads, and
- *     the document the engine itself serves verbatim rather than generates. `Estimate` for a
- *     `200`, `Error` for anything else. A test that means to answer off-contract says so
+ *     the document the engine itself serves verbatim rather than generates. `Estimate` or
+ *     `WorkflowValidation` for a `200`, `Error` for anything else. A test that means to answer off-contract says so
  *     ({@link EngineAnswer.offContract}); a test that did not mean to gets a `500` and a line
  *     in {@link EngineStub.violations}.
- *   * **Every request it receives is validated too**, against `EstimateRequest`. That half is
+ *   * **Every request it receives is validated too**, against `EstimateRequest` or
+ *     `WorkflowValidateRequest`. That half is
  *     about the *caller*: `estimateRequestBody` translating one key wrongly is a `422` here
  *     with the field named, rather than an estimate that happens to come back anyway because
  *     the fake never looked.
@@ -66,7 +67,11 @@ import addFormats from "ajv-formats";
 import { parse } from "yaml";
 
 import { DEVELOPMENT_ENVIRONMENT } from "../modules/config/configuration.fixture";
-import { ENGINE_ESTIMATE_ROUTE, INTERNAL_KEY_HEADER } from "../modules/engine/engine.contract";
+import {
+  ENGINE_ESTIMATE_ROUTE,
+  ENGINE_WORKFLOW_VALIDATE_ROUTE,
+  INTERNAL_KEY_HEADER,
+} from "../modules/engine/engine.contract";
 import { ENGINE_ESTIMATE_BODY, ENGINE_STATUS_BODY } from "../modules/engine/engine.fixture";
 
 /**
@@ -87,6 +92,12 @@ export const LIVENESS_PATH = "/healthz";
 
 /** The engine's build-identity route. */
 export const STATUS_PATH = "/v0/status";
+
+/** The engine's workflow validation route — R.2 (#144), the publish gate's second opinion. */
+export const WORKFLOW_VALIDATE_PATH = `/${ENGINE_WORKFLOW_VALIDATE_ROUTE}`;
+
+/** What every well-formed validation is answered with: a definition the engine is content with. */
+const GREEN_VALIDATION: EngineAnswer = { status: 200, body: { findings: [] } };
 
 /** One answer the stub is to give. */
 export interface EngineAnswer {
@@ -126,6 +137,14 @@ export interface EngineStub {
    * was called* about a call the engine rejected.
    */
   readonly requests: Record<string, unknown>[];
+  /**
+   * Every workflow validation request body it accepted, in order — what the publish gate sent.
+   *
+   * Always answered green. The findings the engine would report are its own suite's to assert
+   * (`ouroboros-engine/tests/test_api_workflows.py`), and a stub that invented some would be a
+   * third validator nobody holds to the golden fixtures.
+   */
+  readonly validations: Record<string, unknown>[];
   /**
    * Everything this stub was asked to do that the contract does not allow, in order.
    *
@@ -210,6 +229,10 @@ interface Contract {
   readonly liveness: CompiledSchema;
   /** `ServiceStatus` — what `GET /v0/status` may carry. */
   readonly status: CompiledSchema;
+  /** `WorkflowValidateRequest` — what the publish gate may send. */
+  readonly validateRequest: CompiledSchema;
+  /** `WorkflowValidation` — what a validation `200` may carry. */
+  readonly validation: CompiledSchema;
 }
 
 /** Compiled once per process; the document does not change under a run. */
@@ -280,6 +303,8 @@ function contract(): Contract {
     failure: bind("Error"),
     liveness: bind("Liveness"),
     status: bind("ServiceStatus"),
+    validateRequest: bind("WorkflowValidateRequest"),
+    validation: bind("WorkflowValidation"),
   };
 
   return compiled;
@@ -344,6 +369,7 @@ export async function startEngineStub(
   }
 
   const requests: Record<string, unknown>[] = [];
+  const validations: Record<string, unknown>[] = [];
   const violations: string[] = [];
   let responder: EngineResponder = () => fallback;
 
@@ -359,7 +385,7 @@ export async function startEngineStub(
           key: headerOf(request, INTERNAL_KEY_HEADER),
           raw: Buffer.concat(chunks).toString("utf8"),
         },
-        { secret, requests, violations, responder: (attempt) => responder(attempt) },
+        { secret, requests, validations, violations, responder: (attempt) => responder(attempt) },
       );
 
       response.writeHead(answer.status, { "content-type": "application/json" });
@@ -374,12 +400,14 @@ export async function startEngineStub(
   return {
     url: `http://127.0.0.1:${String(port)}`,
     requests,
+    validations,
     violations,
     respond: (next) => {
       responder = next;
     },
     reset: () => {
       requests.length = 0;
+      validations.length = 0;
       violations.length = 0;
       responder = () => fallback;
     },
@@ -396,6 +424,8 @@ interface Exchange {
   readonly secret: string;
   /** Where an accepted estimate request is recorded. */
   readonly requests: Record<string, unknown>[];
+  /** Where an accepted workflow validation request is recorded. */
+  readonly validations: Record<string, unknown>[];
   /** Where a breach of the contract is recorded. */
   readonly violations: string[];
   /** What the test scripted. */
@@ -416,7 +446,7 @@ interface Exchange {
  * @returns The answer to serve.
  */
 function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
-  const { method, path, key, raw } = incoming;
+  const { method, path, key } = incoming;
 
   if (method === "GET" && path === LIVENESS_PATH) {
     // Open, per #51: a probe holds no secret.
@@ -424,7 +454,8 @@ function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
   }
 
   const published =
-    (method === "POST" && path === ESTIMATE_PATH) || (method === "GET" && path === STATUS_PATH);
+    (method === "POST" && (path === ESTIMATE_PATH || path === WORKFLOW_VALIDATE_PATH)) ||
+    (method === "GET" && path === STATUS_PATH);
 
   if (!published) {
     exchange.violations.push(`${method} ${path} is not a route ouroboros-engine publishes`);
@@ -451,27 +482,65 @@ function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
     return served({ status: 200, body: ENGINE_STATUS_BODY }, "status", exchange);
   }
 
+  if (path === WORKFLOW_VALIDATE_PATH) {
+    const validation = acceptedBody(incoming, "validateRequest", exchange);
+
+    if ("refusal" in validation) {
+      return validation.refusal;
+    }
+
+    exchange.validations.push(validation.accepted);
+
+    return served(GREEN_VALIDATION, "validation", exchange);
+  }
+
+  const estimate = acceptedBody(incoming, "request", exchange);
+
+  if ("refusal" in estimate) {
+    return estimate.refusal;
+  }
+
+  exchange.requests.push(estimate.accepted);
+
+  return served(exchange.responder(exchange.requests.length), "estimate", exchange);
+}
+
+/**
+ * Parse a request body and hold it to the schema its operation reads.
+ *
+ * Both ways a body can be refused are recorded as violations — one that is not JSON, and one that
+ * is not the contract — because either is this service sending something the engine would refuse.
+ *
+ * @param incoming - The request, reduced.
+ * @param schema - Which request schema the operation reads.
+ * @param exchange - The stub's state, for the record.
+ * @returns The accepted body, or the `422` to answer with instead.
+ */
+function acceptedBody(
+  incoming: Incoming,
+  schema: "request" | "validateRequest",
+  exchange: Exchange,
+): { accepted: Record<string, unknown> } | { refusal: EngineAnswer } {
+  const route = `${incoming.method} ${incoming.path}`;
   let body: unknown;
 
   try {
-    body = JSON.parse(raw);
+    body = JSON.parse(incoming.raw);
   } catch {
-    exchange.violations.push(`POST ${ESTIMATE_PATH} carried a body that is not JSON`);
+    exchange.violations.push(`${route} carried a body that is not JSON`);
 
-    return unprocessable("The request body is not JSON.");
+    return { refusal: unprocessable("The request body is not JSON.") };
   }
 
-  const refused = contractViolation("request", body);
+  const refused = contractViolation(schema, body);
 
   if (refused !== undefined) {
-    exchange.violations.push(`The body of POST ${ESTIMATE_PATH} ${refused}`);
+    exchange.violations.push(`The body of ${route} ${refused}`);
 
-    return unprocessable(refused);
+    return { refusal: unprocessable(refused) };
   }
 
-  exchange.requests.push(body as Record<string, unknown>);
-
-  return served(exchange.responder(exchange.requests.length), "estimate", exchange);
+  return { accepted: body as Record<string, unknown> };
 }
 
 /**
@@ -484,7 +553,7 @@ function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
  */
 function served(
   answer: EngineAnswer,
-  schema: "estimate" | "liveness" | "status",
+  schema: "estimate" | "liveness" | "status" | "validation",
   exchange: Exchange,
 ): EngineAnswer {
   if (answer.offContract === true) {

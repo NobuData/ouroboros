@@ -6,7 +6,6 @@ import { bodyOf } from "../../testing/integration.fixture";
 import { startEngineStub, type EngineStub } from "../../testing/engine.stub.fixture";
 import type { Page } from "../tenancy/pagination";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
-import { ENGINE_WORKFLOW_VALIDATE_ROUTE } from "../engine/engine.contract";
 import type { WorkflowStats } from "./stats.resources";
 import type {
   WorkflowDetail,
@@ -38,14 +37,12 @@ import type { WorkflowRail } from "./workflows.service";
  *     deleted from the controller leaves every one of them green.
  *   * **Cross-org ids are `404`**, over every route, from a workspace that really exists.
  *
- * **The engine stub answers `404` to the validate route, and that is the point of it being
- * here.** R.2 ([#144](https://github.com/NobuData/ouroboros/issues/144)) has not landed, so
- * the stub — which serves exactly what `ouroboros-engine/openapi.yaml` publishes and nothing
- * else — refuses the path the way the real engine would today. So this suite exercises the
- * gate's documented tolerance against a real socket rather than against a mock, and
- * {@link EngineStub.violations} is asserted to hold *that one line and no other*: the day the
- * engine publishes the operation, the violation disappears and this expectation asks to be
- * updated alongside the tolerance.
+ * **The publish gate's engine leg runs against a real socket.** The engine stub serves exactly
+ * what `ouroboros-engine/openapi.yaml` publishes — R.2's validate route
+ * ([#144](https://github.com/NobuData/ouroboros/issues/144)) included, answered green — so a
+ * publish here is seconded the way it is in a deployment, {@link EngineStub.validations} records
+ * the document the gate sent, and {@link EngineStub.violations} is asserted empty after every
+ * test.
  *
  * The definitions are the committed DSL fixtures rather than documents written here:
  * `schemas/workflow-dsl/fixtures/valid/standard-fix.json` *is* mockup 04's canvas, node for
@@ -78,9 +75,6 @@ const STANDARD_FIX_STAGES = (STANDARD_FIX.nodes as unknown[]).length;
 
 const WORKFLOWS = "/api/v1/workflows";
 
-/** The violation the stub records for every call to a route the engine does not publish yet. */
-const UNPUBLISHED_VALIDATE = `POST /${ENGINE_WORKFLOW_VALIDATE_ROUTE} is not a route ouroboros-engine publishes`;
-
 describe("the workflow lifecycle, against a migrated database", () => {
   let api: ApiHarness;
   let engine: EngineStub;
@@ -106,9 +100,8 @@ describe("the workflow lifecycle, against a migrated database", () => {
 
     await api.truncate();
 
-    // The only thing this service may do to the engine that its committed contract does not
-    // describe is ask for R.2's route — see this file's header.
-    expect([...unfaithful].filter((line) => line !== UNPUBLISHED_VALIDATE)).toEqual([]);
+    // Nothing this service asks of the engine may go beyond the engine's committed contract.
+    expect([...unfaithful]).toEqual([]);
   });
 
   /** A workspace, its owner, and the header that names it. */
@@ -413,16 +406,16 @@ describe("the workflow lifecycle, against a migrated database", () => {
       expect(bodyOf<{ code: string }>(response).code).toBe("workflow_draft_absent");
     });
 
-    it("asks the engine for a second opinion, and survives a build that has no answer", async () => {
-      // The documented tolerance, against a real socket: the stub serves exactly what
-      // `ouroboros-engine/openapi.yaml` publishes, and R.2's route is not in it yet (#144).
+    it("asks the engine for a second opinion on exactly the document it publishes", async () => {
+      // Against a real socket: the stub serves R.2's route (#144) as the engine's committed
+      // contract describes it, so the gate's engine leg is exercised rather than mocked.
       const place = await bench();
       const created = await create(place);
 
       await saveDraft(place, created.id, created.draft.etag, STANDARD_FIX);
       await publish(place, created.id);
 
-      expect(engine.violations).toContain(UNPUBLISHED_VALIDATE);
+      expect(engine.validations).toEqual([{ definition: STANDARD_FIX }]);
     });
   });
 
