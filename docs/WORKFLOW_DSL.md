@@ -139,6 +139,39 @@ object than by three fields set to wildcards.
 position, and its `config` is closed and empty. One home for the predicate; the canvas renders
 the root's condition as the node's chip.
 
+### Which workflow claims a queued ticket
+
+R.1 ([#143](https://github.com/NobuData/ouroboros/issues/143)) evaluates triggers when an issue is
+queued, in `ouroboros-rest/src/modules/workflows/trigger.evaluation.ts`. Matching is exactly the
+engine's dry-run reading (`predicates.py`, `evaluate_trigger`): conditions ANDed, `effort_lte` by
+position in `xs < s < m < l < xl` with an unsized ticket satisfying none, `labels` requiring all of
+them compared exactly, `source` by equality.
+
+Only **active** workflows with a **published** version are candidates — a paused workflow never
+matches, and a draft-only one has nothing to pin. The resolution order, and the reason each rung
+records on the queue item (`queue_items.workflow_pin_reason`):
+
+| Rung | Rule | Reason |
+|---|---|---|
+| 1 | The request named a workflow. A person's choice wins over every predicate. | `explicit` |
+| 2 | Exactly one candidate's trigger matched. | `predicate` |
+| 3 | Several matched; one has strictly the highest **specificity**. | `most_specific` |
+| 4 | Several tie at the highest specificity; the lowest slug in code-point order wins. | `alphabetical` |
+| 5 | Nothing matched; the estimate's own suggestion stands. | `suggested` |
+
+**Specificity** is how many constraints a ticket had to satisfy: `effort_lte` counts one, `source`
+counts one, and each *distinct* label counts one. An empty `conditions` object scores 0, so a
+catch-all loses to any match that says more — and still beats the estimate's suggestion, because it
+is a match.
+
+"Explicit wins" is among the workflows a workspace **offers**: a paused or unknown slug is refused
+by the queue write (`422 queue_workflow_unknown`) before triggers are consulted.
+
+The chosen workflow is stored with its **version in force** as a pin (`workflow_tag` +
+`workflow_version`), or a `null` version when that workflow has nothing published. A pin is a
+snapshot: a later publish, pause or archive does not move it, and the executor re-checks both when it
+claims the item.
+
 ---
 
 ## 4. Nodes

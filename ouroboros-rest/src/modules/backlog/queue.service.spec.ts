@@ -1,6 +1,7 @@
 import { UNIQUE_VIOLATION } from "../tenancy/constraints";
 import type { QueueItem } from "../db/schema";
 import type { WorkflowRegistryService } from "../workflows/registry.service";
+import type { QueuedTicket, TriggerService, WorkflowPin } from "../workflows/trigger.service";
 import { QUEUE_ERRORS } from "./queue.errors";
 import type { BacklogQueueRepository, QueueCandidate } from "./queue.repository";
 import { BacklogQueueService } from "./queue.service";
@@ -23,6 +24,11 @@ import { BacklogQueueService } from "./queue.service";
  * amendment absorbed from [#124](https://github.com/NobuData/ouroboros/issues/124) made it a
  * workspace's own workflows.
  *
+ * And R.1 ([#143](https://github.com/NobuData/ouroboros/issues/143)) put the workflow itself
+ * behind **the trigger service**: this write hands it every issue's facts once, after every
+ * refusal, and stores the slug, version and reason it answers. Which workflow wins is
+ * `workflows/trigger.evaluation.spec.ts`'; that this write asks, and stores the answer, is here.
+ *
  * The repository is a double, so what is asserted here is the *rules* — which id is refused,
  * with which code, in which order, and what is handed to the write. What the statements say is
  * `queue.repository.spec.ts`'.
@@ -44,6 +50,7 @@ function candidate(overrides: Partial<QueueCandidate> = {}): QueueCandidate {
     title: "Watchdog reset on I²C bus lockup",
     githubRepoId: REPO,
     sizingStatus: "sized",
+    labels: ["bug"],
     effort: "m",
     suggestedWorkflow: "standard-fix",
     estMinutes: 45,
@@ -79,6 +86,8 @@ function written(position: number, overrides: Partial<QueueItem> = {}): QueueIte
     issue_title: "Watchdog reset on I²C bus lockup",
     effort: "m",
     workflow_tag: "standard-fix",
+    workflow_version: null,
+    workflow_pin_reason: "suggested",
     position,
     est_minutes: 45,
     enqueued_at: new Date("2026-09-10T15:41:12.000Z"),
@@ -111,6 +120,47 @@ function registry(slugs: string[] = ["standard-fix", "docs-loop", "feature-loop"
   };
 }
 
+/** One call the trigger service received. */
+interface PinRequest {
+  readonly organizationId: string;
+  readonly tickets: readonly QueuedTicket[];
+  readonly explicit: string | undefined;
+}
+
+/**
+ * What the real trigger service answers for a workspace with no workflows: the explicit choice,
+ * or each issue's own suggestion, with nothing published to pin.
+ *
+ * @param ticket - One issue being queued.
+ * @param explicit - The workflow the request named, if any.
+ * @returns The pin.
+ */
+function bootstrapPin(ticket: QueuedTicket, explicit: string | undefined): WorkflowPin {
+  return explicit === undefined
+    ? { slug: ticket.suggestedWorkflow, version: null, reason: "suggested", matched: [] }
+    : { slug: explicit, version: null, reason: "explicit", matched: [] };
+}
+
+/**
+ * R.1's trigger service, as a double that pins whatever a case decides.
+ *
+ * @param decide - The pin for one ticket. {@link bootstrapPin} by default.
+ * @returns The double, and every request it received.
+ */
+function triggers(decide: typeof bootstrapPin = bootstrapPin) {
+  const requests: PinRequest[] = [];
+
+  return {
+    requests,
+    service: {
+      pin: (organizationId: string, tickets: readonly QueuedTicket[], explicit?: string) => {
+        requests.push({ organizationId, tickets, explicit });
+        return Promise.resolve(tickets.map((ticket) => decide(ticket, explicit)));
+      },
+    } as unknown as TriggerService,
+  };
+}
+
 /**
  * A `pg` refusal, as the driver hands one up.
  *
@@ -123,6 +173,7 @@ function refusal(constraint: string): Error {
 
 describe("the bulk queue write", () => {
   let repository: jest.Mocked<BacklogQueueRepository>;
+  let pins: ReturnType<typeof triggers>;
   let queue: BacklogQueueService;
 
   beforeEach(() => {
@@ -132,7 +183,8 @@ describe("the bulk queue write", () => {
       append: jest.fn().mockResolvedValue([written(1)]),
     } as unknown as jest.Mocked<BacklogQueueRepository>;
 
-    queue = new BacklogQueueService(repository, registry().service);
+    pins = triggers();
+    queue = new BacklogQueueService(repository, registry().service, pins.service);
   });
 
   describe("the happy path", () => {
@@ -181,9 +233,113 @@ describe("the bulk queue write", () => {
           issueTitle: "Watchdog reset on I²C bus lockup",
           effort: "m",
           workflowTag: "standard-fix",
+          workflowVersion: null,
+          workflowPinReason: "suggested",
           estMinutes: 45,
         },
       ]);
+    });
+  });
+
+  describe("the pin", () => {
+    it("hands the trigger service every issue's facts, once, for the tenant's workspace", async () => {
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485, ISSUE_484, ISSUE_491] });
+
+      expect(pins.requests).toEqual([
+        {
+          organizationId: WORKSPACE,
+          explicit: undefined,
+          tickets: [
+            { source: "github", labels: ["bug"], effort: "m", suggestedWorkflow: "standard-fix" },
+            { source: "github", labels: ["bug"], effort: "m", suggestedWorkflow: "standard-fix" },
+            { source: "github", labels: ["bug"], effort: "s", suggestedWorkflow: "standard-fix" },
+          ],
+        },
+      ]);
+    });
+
+    it("hands it the workflow the request named", async () => {
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "deps-refresh" });
+
+      expect(pins.requests.map((request) => request.explicit)).toEqual(["deps-refresh"]);
+    });
+
+    it("stores the slug, the version and the reason it chose on each row, in order", async () => {
+      // `#485` is a bug the default trigger claims; `#484` carries `docs` and a more specific
+      // trigger wins it.
+      pins = triggers((ticket) =>
+        ticket.labels.includes("docs")
+          ? { slug: "docs-loop", version: 2, reason: "most_specific", matched: [] }
+          : { slug: "standard-fix", version: 14, reason: "predicate", matched: [] },
+      );
+      queue = new BacklogQueueService(repository, registry().service, pins.service);
+      repository.selection.mockResolvedValue([
+        candidate(),
+        candidate({ id: ISSUE_484, number: 484, labels: ["docs"] }),
+      ]);
+
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485, ISSUE_484] });
+
+      const [, rows] = repository.append.mock.calls[0];
+      expect(
+        rows.map((row) => [
+          row.issueNumber,
+          row.workflowTag,
+          row.workflowVersion,
+          row.workflowPinReason,
+        ]),
+      ).toEqual([
+        [485, "standard-fix", 14, "predicate"],
+        [484, "docs-loop", 2, "most_specific"],
+      ]);
+    });
+
+    it("is not asked about a selection that is refused as unknown", async () => {
+      repository.selection.mockResolvedValue([]);
+
+      await expect(
+        queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] }),
+      ).rejects.toMatchObject({ code: QUEUE_ERRORS.notFound });
+      expect(pins.requests).toEqual([]);
+    });
+
+    it("is not asked about a selection that is refused as unsized", async () => {
+      repository.selection.mockResolvedValue([candidate({ sizingStatus: "unsized" })]);
+
+      await expect(
+        queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] }),
+      ).rejects.toMatchObject({ code: QUEUE_ERRORS.notQueueable });
+      expect(pins.requests).toEqual([]);
+    });
+
+    it("is not asked about a selection the queue already holds", async () => {
+      repository.queuedNumbers.mockResolvedValue([485]);
+
+      await expect(
+        queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] }),
+      ).rejects.toMatchObject({ code: QUEUE_ERRORS.conflict });
+      expect(pins.requests).toEqual([]);
+    });
+
+    it("is not asked about a workflow the registry refuses", async () => {
+      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service, pins.service);
+
+      await expect(
+        queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "hotfix-p0" }),
+      ).rejects.toMatchObject({ response: { code: QUEUE_ERRORS.workflowUnknown } });
+      expect(pins.requests).toEqual([]);
+    });
+
+    it("is asked once even when the insert loses a race and the conflict is re-read", async () => {
+      // The pin is a snapshot taken before the write; answering the race is a second read of the
+      // queue, not a second evaluation.
+      repository.append.mockRejectedValue(refusal("queue_items_organization_issue_key"));
+      repository.queuedNumbers.mockResolvedValueOnce([]).mockResolvedValueOnce([485]);
+
+      await expect(
+        queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] }),
+      ).rejects.toMatchObject({ code: QUEUE_ERRORS.conflict });
+      expect(pins.requests).toHaveLength(1);
     });
   });
 
@@ -223,7 +379,7 @@ describe("the bulk queue write", () => {
       // The amendment's whole point: the vocabulary is the workspace's registry, so a slug no
       // installation shares is as valid as `standard-fix` in the workspace that owns it.
       const workflows = registry(["release-train"]);
-      queue = new BacklogQueueService(repository, workflows.service);
+      queue = new BacklogQueueService(repository, workflows.service, pins.service);
       repository.selection.mockResolvedValue([candidate()]);
 
       await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "release-train" });
@@ -234,7 +390,7 @@ describe("the bulk queue write", () => {
     });
 
     it("refuses one the workspace does not have, naming the vocabulary", async () => {
-      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service);
+      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service, pins.service);
 
       await expect(
         queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "midnight-loop" }),
@@ -249,7 +405,7 @@ describe("the bulk queue write", () => {
     it("refuses it before reading the selection, and writes nothing", async () => {
       // A request naming a workflow the workspace does not have cannot succeed for *any*
       // selection, so refusing it first keeps one failure one answer — and costs no statement.
-      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service);
+      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service, pins.service);
 
       await expect(
         queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "midnight-loop" }),
@@ -265,7 +421,7 @@ describe("the bulk queue write", () => {
       // stored estimate for naming a workflow that has since been renamed — which is exactly
       // the history decision F8 keeps readable.
       const workflows = registry(["release-train"]);
-      queue = new BacklogQueueService(repository, workflows.service);
+      queue = new BacklogQueueService(repository, workflows.service, pins.service);
       repository.selection.mockResolvedValue([candidate({ suggestedWorkflow: "standard-fix" })]);
 
       await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] });

@@ -10114,6 +10114,131 @@ select pg_temp.must_hold(
   'and nothing this section created is left behind either');
 
 -- ===========================================================================
+-- V032 — queue_items.workflow_version and workflow_pin_reason, the pin (#143)
+-- ===========================================================================
+--
+-- R.1's criterion is that queue items carry a workflow and a version pin. What the schema owns
+-- of that is asserted here: a row queued before R.1 still reads, a pin may have nothing in force
+-- to name, every rung of the resolution order is storable — and a version V029 could not have
+-- numbered, a reason outside the resolution order, or a version with no reason is refused.
+-- *Which* workflow claims a ticket is a rule over rows rather than a constraint, and is asserted
+-- in `ouroboros-rest/src/modules/workflows/trigger.evaluation.spec.ts`.
+--
+-- Its own workspace and repository: every section above deleted what it made.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt")
+  values ('org-pins', 'Pin Works', 'pin-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled)
+  values ('e0320000-0000-0000-0000-00000000000a', 'org-pins', 'pin-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch)
+  values ('e0320000-0000-0000-0000-00000000000b', 'e0320000-0000-0000-0000-00000000000a',
+          'pin-firmware', true, 'main');
+
+-- --- a row queued before R.1 still reads -----------------------------------------
+--
+-- Both columns arrived nullable with no default, so every row V009 already held reads as queued
+-- before pinning existed — and so does a writer that has not learned the columns yet.
+insert into ouroboros.queue_items
+    (id, organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag,
+     position)
+  values
+  ('e0320000-0000-0000-0000-000000000485', 'org-pins', 'e0320000-0000-0000-0000-00000000000b',
+   485, 'Watchdog reset on I²C bus lockup', 'm', 'standard-fix', 1);
+
+select pg_temp.must_hold(
+  (select workflow_version is null and workflow_pin_reason is null from ouroboros.queue_items
+    where id = 'e0320000-0000-0000-0000-000000000485'),
+  'a queue row written without a pin reads as queued before R.1 — version and reason both null');
+
+-- --- every rung of the resolution order, pinned ----------------------------------
+--
+-- One row per reason. `#486` is an explicit choice of a workflow with nothing published, which is
+-- a reason and no version; `#490` is a bootstrap workspace's suggestion, the same shape.
+insert into ouroboros.queue_items
+    (id, organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag,
+     position, workflow_version, workflow_pin_reason)
+  values
+  ('e0320000-0000-0000-0000-000000000486', 'org-pins', 'e0320000-0000-0000-0000-00000000000b',
+   486, 'Expose battery health over BLE GATT', 'l', 'release-train', 2, null, 'explicit'),
+  ('e0320000-0000-0000-0000-000000000487', 'org-pins', 'e0320000-0000-0000-0000-00000000000b',
+   487, 'Fix flaky CAN-bus telemetry test', 'm', 'standard-fix', 3, 14, 'predicate'),
+  ('e0320000-0000-0000-0000-000000000488', 'org-pins', 'e0320000-0000-0000-0000-00000000000b',
+   488, 'Typo sweep in operator manual', 'xs', 'docs-loop', 4, 2, 'most_specific'),
+  ('e0320000-0000-0000-0000-000000000489', 'org-pins', 'e0320000-0000-0000-0000-00000000000b',
+   489, 'Bump MQTT client', 's', 'deps-refresh', 5, 1, 'alphabetical'),
+  ('e0320000-0000-0000-0000-000000000490', 'org-pins', 'e0320000-0000-0000-0000-00000000000b',
+   490, 'Add OTA rollback on failed checksum', 'm', 'standard-fix', 6, null, 'suggested');
+
+select pg_temp.must_hold(
+  (select count(distinct workflow_pin_reason) = 5 from ouroboros.queue_items
+    where organization_id = 'org-pins'),
+  'every rung of R.1''s resolution order is a reason queue_items stores');
+
+select pg_temp.must_hold(
+  (select workflow_version is null and workflow_pin_reason = 'explicit'
+     from ouroboros.queue_items where id = 'e0320000-0000-0000-0000-000000000486'),
+  'a pin may name a workflow with nothing published — a reason, and no version');
+
+select pg_temp.must_hold(
+  (select workflow_version = 14 and workflow_pin_reason = 'predicate'
+     from ouroboros.queue_items where id = 'e0320000-0000-0000-0000-000000000487'),
+  'and a pinned version is stored beside the reason that chose it');
+
+-- --- what a pin cannot be ----------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set workflow_version = 0
+     where id = 'e0320000-0000-0000-0000-000000000487'$$,
+  'queue_items.workflow_version is a version V029 could have numbered, so it starts at 1',
+  'queue_items_workflow_version_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set workflow_pin_reason = 'newest'
+     where id = 'e0320000-0000-0000-0000-000000000487'$$,
+  'queue_items.workflow_pin_reason is one of the five rungs of the resolution order',
+  'queue_items_workflow_pin_reason_valid');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set workflow_pin_reason = 'Explicit'
+     where id = 'e0320000-0000-0000-0000-000000000486'$$,
+  'and it is spelled exactly as the resolution order spells it',
+  'queue_items_workflow_pin_reason_valid');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set workflow_pin_reason = null
+     where id = 'e0320000-0000-0000-0000-000000000487'$$,
+  'a pinned version always carries the reason that chose it',
+  'queue_items_workflow_version_reasoned');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set workflow_version = 3
+     where id = 'e0320000-0000-0000-0000-000000000485'$$,
+  'and a row queued before R.1 cannot be given a version without a reason',
+  'queue_items_workflow_version_reasoned');
+
+-- --- the pin references nothing ----------------------------------------------------
+--
+-- Decision F8, kept: a workflow renamed or archived after its issues were queued leaves each pin
+-- as a fact about the past, which a foreign key on either half would turn into a refused delete.
+select pg_temp.must_hold(
+  (select count(*) = 0 from pg_constraint
+    where conrelid = 'ouroboros.queue_items'::regclass and contype = 'f'
+      and conkey && array[
+        (select attnum from pg_attribute
+          where attrelid = 'ouroboros.queue_items'::regclass and attname = 'workflow_tag'),
+        (select attnum from pg_attribute
+          where attrelid = 'ouroboros.queue_items'::regclass and attname = 'workflow_version')
+      ]::smallint[]),
+  'neither half of the pin is a foreign key — decision F8');
+
+delete from ouroboros.organization where "id" = 'org-pins';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.queue_items where organization_id = 'org-pins'),
+  'and nothing this section created is left behind');
+
+-- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)
 -- ===========================================================================
 --

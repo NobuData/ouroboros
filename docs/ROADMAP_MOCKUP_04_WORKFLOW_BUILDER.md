@@ -980,14 +980,14 @@ conformance(provider) ─▶ config ✓ · sync/cursor ✓ · mapping ✓ · err
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| R.1 | #143 | 🟡 Open | ouroboros-rest: [R.1] Trigger evaluation service | `ticket_queued` events matched to workflows via P8 predicates | mvp, workflow, rest | N (after P.3, Q.1) | Y | M | ouroboros-rest |
+| R.1 | #143 | 🟢 Done | ouroboros-rest: [R.1] Trigger evaluation service | `ticket_queued` events matched to workflows via P8 predicates | mvp, workflow, rest | N (after P.3, Q.1) | Y | M | ouroboros-rest |
 | R.2 | #144 | 🟢 Done | ouroboros-engine: [R.2] Definition validation & dry-run simulator | `/v0/workflows/validate` + `/dry-run`: walk the graph, no LLM calls | mvp, workflow, engine | N (after P.2, #52) | Y | L | ouroboros-engine |
 | R.3 | #145 | 🟢 Done | ouroboros-rest: [R.3] Stage catalog endpoint | Node-type registry (config schemas, defaults) driving Add-stage & inspector | mvp, workflow, rest | N (after P.2) | Y | S | ouroboros-rest |
 | R.4 | #146 | 🟡 Open | ouroboros-rest: [R.4] Studio integration tests | Publish gate, trigger matrix, dry-run contract, catalog | mvp, workflow, rest, ci | N (after R.1–R.3) | Y | M | ouroboros-rest |
 
 ### Issue R.1 — ouroboros-rest: [R.1] Trigger evaluation service
 
-> **GitHub issue:** #143 · **Status:** 🟡 Open · **Parent epic:** #129
+> **GitHub issue:** #143 · **Status:** 🟢 Done · **Parent epic:** #129
 
 - **Problem Statement:** "Runs when a sized issue with effort ≤ M is queued" must
   be a real evaluation: when a ticket is queued (INTAKE-M.3), which workflow
@@ -1012,6 +1012,38 @@ conformance(provider) ─▶ config ✓ · sync/cursor ✓ · mapping ✓ · err
 ticket_queued(#485, effort M) ─▶ predicates: standard-fix(≤M ✓) feature-loop(>M ✗) hotfix(paused ✗)
    ─▶ pin {workflow: standard-fix, version: 14} on queue item
 ```
+
+- **Decided in-issue and shipped as `ouroboros-rest/src/modules/workflows/trigger.{evaluation,
+  repository,service}.ts`, `ouroboros-db/migrations/V032__queue_items_workflow_pin.sql`, and the
+  queue write's call to it in `backlog/queue.service.ts`:**
+
+  * **The pin is `(workflow_tag, workflow_version)`, plus `workflow_pin_reason`.** The issue's
+    `workflow_slug` is the column the queue already had: V029 bounded slugs to what a tag holds
+    and P.4 made every new tag a slug, so a second column held equal to the first by a CHECK was
+    declined. A null reason marks a row queued before R.1.
+  * **The resolution order is recorded per row**: `explicit`, then `predicate` (one match),
+    `most_specific` (strictly the most constraints), `alphabetical` (code-point order among the
+    tied), and `suggested` (nothing matched — the estimate's suggestion, the queue's behaviour
+    before R.1). Specificity counts `effort_lte`, `source` and each distinct label once, so a
+    catch-all scores 0 and still beats the suggestion. Documented in `docs/WORKFLOW_DSL.md` §3.
+  * **Candidates are active workflows with a published version.** Paused and archived never
+    match; a draft-only workflow has nothing to pin, so an explicit choice of one pins
+    `version: null`, as does a bootstrap workspace's fallback. "Explicit wins" is among offered
+    workflows — a paused slug is still `422 queue_workflow_unknown`.
+  * **Ticket facts come from the `github_issues` row** (`source: github`, its labels) and the
+    estimate in force, because the queue write is still keyed on GitHub's cache. The evaluator
+    takes the canonical `{source, labels, effort}` shape, so the `tickets` cut-over changes only
+    the caller.
+  * **Matching mirrors the engine's `evaluate_trigger`** — ANDed, effort by rank with an unsized
+    ticket satisfying none, all labels compared exactly, source by equality — asserted as a
+    25-case effort matrix plus label and source matrices in `trigger.evaluation.spec.ts`.
+  * **One org-scoped read per queue write**, selecting only `definition -> 'trigger'`, after every
+    refusal and outside the insert's transaction: the pin is a snapshot of what was in force when
+    the button was pressed, and T.6 re-checks status and version when it claims an item. A stored
+    trigger that fails the DSL schema is skipped with a warning rather than failing the write.
+  * **The pin is on the wire** as `workflowVersion` + `workflowPinReason` on `QueueItemSummary`
+    (`POST /backlog/queue`, `GET /queue`, `GET /dashboard`). `ouroboros-rest` 0.34.8,
+    `ouroboros-ui` 0.58.2 (schema sync only).
 
 ### Issue R.2 — ouroboros-engine: [R.2] Definition validation & dry-run simulator
 
@@ -1598,7 +1630,7 @@ on 2026-08-09; no new work created:
 | #99 | INTAKE-K.1 `github_issues` **replaced** by the canonical ticket model Q.1 (#138) — **overtaken 2026-09-08**: `#99` shipped `V014`, so Q.1 became the *generalizing* migration the issue's own scope anticipated for that case. Landed 2026-09-12 as `V030`, and **additively**: `ticket_sources` and `tickets` are created with every constraint the canonical model needs, and `github_issues` is left exactly as it was found. The cut-over — the sync writing `tickets`, `issue_estimates` re-pointing at `tickets.id`, `github_issues` retiring — belongs to Q.2 (#139) and Q.3 (#140), which are the tickets that change the *writer* |
 | #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) — **overtaken 2026-09-08**: Epic K was built after all (`#99`, `#100`, `#101` all shipped), so Q.3 *refactors* the GitHub client behind the SPI rather than writing it. The boundary the amendment asked for landed with #101: `github.octokit.ts` is the only file that may import `@octokit/*`, lint-enforced |
 | #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) — **overtaken 2026-09-08**: `#102` shipped, so Q.2's scheduler generalizes a working loop and Q.3 *moves* GitHub's specifics rather than writing them. They are already one file each: the `since` cursor and the `state`/`sort` choice in `backlog-sync.service.ts`, pagination and PR filtering in `issue.mapping.ts`, and the estimation handoff behind an injectable token. **Q.2 landed 2026-09-12** and the generalized loop is `ouroboros-rest/src/modules/ticket-sources/`, beside `backlog-sync/` rather than in place of it: the two coexist for one release, the new one writing `tickets` and reaching nothing until a provider is registered, and Q.3 is what retires the GitHub-specific one |
-| #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143). **Landed 2026-09-12 for P.4's half**: the body holds `workflow` to a *slug* and `queue.service.ts` holds it to the workspace's registry (`422 queue_workflow_unknown`), replacing decision K5's `@IsIn`. Stored tags keep resolving |
+| #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143). **Landed 2026-09-12 for P.4's half**: the body holds `workflow` to a *slug* and `queue.service.ts` holds it to the workspace's registry (`422 queue_workflow_unknown`), replacing decision K5's `@IsIn`. Stored tags keep resolving. **R.1's half landed 2026-09-13** (#143): with no explicit `workflow` each issue is claimed by trigger, falling back to its estimate's suggestion, and every new row carries `workflow_version` + `workflow_pin_reason` (V032) |
 | #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135). **Half landed 2026-09-12**: the REST vocabulary *is* the registry, so what the menu must list is defined and enforced. The UI list is still the built-in four as a fallback — swapping it for a read of P.3's `GET /api/v1/workflows` is S.1's (#147). **That endpoint exists as of 2026-09-12** (#134), so the swap is now a UI change with nothing left to wait for |
 | #120 | INTAKE-N.6 no-token guidance retargets the sources settings surface Q.4 (#141) |
 | #124 | INTAKE-O.3 **superseded** — scope absorbed by P.1/P.4 (#132/#135); recommend closing. **Absorbed 2026-09-12**: `WorkflowRegistryService` is the registry both surfaces read — the assign vocabulary and `estimation.context.ts`'s `workflowTags`. A workspace with no workflow entities is still offered K5's four (`BOOTSTRAP_WORKFLOW_SLUGS`), because V029's tables have no writer until P.3/#136 and an empty vocabulary would take the shipped intake pipeline offline |

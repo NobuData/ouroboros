@@ -45,7 +45,14 @@ import { Injectable } from "@nestjs/common";
 import { sql, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import type { Database, EstimateEffort, NewQueueItem, QueueItem, SizingStatus } from "../db/schema";
+import type {
+  Database,
+  EstimateEffort,
+  NewQueueItem,
+  QueueItem,
+  QueueWorkflowPinReason,
+  SizingStatus,
+} from "../db/schema";
 import { UNIQUE_VIOLATION, isDatabaseFailure } from "../tenancy/constraints";
 
 /** V009's two unique keys, by the names the migration gives them. */
@@ -74,6 +81,12 @@ export interface QueueCandidate {
   readonly githubRepoId: string;
   /** Where the issue is in the sizing pipeline. Only `sized` may be queued. */
   readonly sizingStatus: SizingStatus;
+  /**
+   * GitHub's labels on the issue, as last synced — what a workflow trigger's `labels` condition
+   * reads when R.1 ([#143](https://github.com/NobuData/ouroboros/issues/143)) decides which
+   * workflow claims it.
+   */
+  readonly labels: readonly string[];
   /** The effort of the estimate in force, or `null` for an issue carrying no estimate. */
   readonly effort: EstimateEffort | null;
   /** The workflow that estimate suggested — the default when the request names none. */
@@ -88,7 +101,12 @@ export interface QueueAppendRow {
   readonly issueNumber: number;
   readonly issueTitle: string;
   readonly effort: NewQueueItem["effort"];
+  /** The slug R.1's trigger service chose — the slug half of the pin. */
   readonly workflowTag: string;
+  /** The version of that workflow in force, or `null` when it has nothing published (V032). */
+  readonly workflowVersion: number | null;
+  /** Which rung of R.1's resolution order chose it. Always set by this writer. */
+  readonly workflowPinReason: QueueWorkflowPinReason;
   /** The minutes to store, or `null` — reconciled by `queue.resources.ts`, never invented here. */
   readonly estMinutes: number | null;
 }
@@ -148,6 +166,7 @@ export class BacklogQueueRepository {
         "github_issues.title as title",
         "github_issues.github_repo_id as githubRepoId",
         "github_issues.sizing_status as sizingStatus",
+        "github_issues.labels as labels",
         "estimate.effort as effort",
         "estimate.suggestedWorkflow as suggestedWorkflow",
         "estimate.estMinutes as estMinutes",
@@ -208,6 +227,8 @@ export class BacklogQueueRepository {
                 issue_title: row.issueTitle,
                 effort: row.effort,
                 workflow_tag: row.workflowTag,
+                workflow_version: row.workflowVersion,
+                workflow_pin_reason: row.workflowPinReason,
                 position: from + index,
                 est_minutes: row.estMinutes,
               })),

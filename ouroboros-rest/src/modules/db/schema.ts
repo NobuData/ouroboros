@@ -794,6 +794,31 @@ export type QueueEffort = "xs" | "s" | "m" | "l" | "xl";
 export const QUEUE_EFFORTS = ["xs", "s", "m", "l", "xl"] as const satisfies readonly QueueEffort[];
 
 /**
+ * `queue_items.workflow_pin_reason` — why the queued workflow claimed the issue (V032,
+ * [#143](https://github.com/NobuData/ouroboros/issues/143)).
+ *
+ * One word per rung of R.1's resolution order, which `workflows/trigger.evaluation.ts` documents
+ * and decides:
+ *
+ *   * `explicit` — the request named the workflow, and a person's choice wins over any predicate.
+ *   * `predicate` — exactly one active workflow's trigger matched.
+ *   * `most_specific` — several matched, and one carried strictly the most conditions.
+ *   * `alphabetical` — the most specific tied, and the lowest slug won.
+ *   * `suggested` — nothing matched, so the estimate's own suggestion stood.
+ */
+export type QueueWorkflowPinReason =
+  "explicit" | "predicate" | "most_specific" | "alphabetical" | "suggested";
+
+/** The five, in resolution order — what the CHECK declares and a test iterates. */
+export const QUEUE_WORKFLOW_PIN_REASONS = [
+  "explicit",
+  "predicate",
+  "most_specific",
+  "alphabetical",
+  "suggested",
+] as const satisfies readonly QueueWorkflowPinReason[];
+
+/**
  * `ouroboros.queue_items` — the ordered, estimable per-workspace issue queue (V009,
  * [#65](https://github.com/NobuData/ouroboros/issues/65)).
  *
@@ -810,7 +835,27 @@ export interface QueueItemsTable {
   issue_number: number;
   issue_title: string;
   effort: QueueEffort;
+  /**
+   * The workflow the issue is queued under — a slug, opaque by decision **F8**. Since R.1
+   * ([#143](https://github.com/NobuData/ouroboros/issues/143)) it is also the slug half of the
+   * pin, with {@link QueueItemsTable.workflow_version} the version half: V032 explains why there
+   * is no separate `workflow_slug` column.
+   */
   workflow_tag: string;
+  /**
+   * The version of {@link QueueItemsTable.workflow_tag} in force when the issue was queued — the
+   * pin T.6 will execute (V032).
+   *
+   * `null` when that workflow had nothing published to pin, and on every row queued before R.1.
+   * A later publish does not move it.
+   */
+  workflow_version: number | null;
+  /**
+   * Why that workflow claimed the issue, or `null` for a row queued before R.1 (V032). Never
+   * `null` when {@link QueueItemsTable.workflow_version} is set —
+   * `queue_items_workflow_version_reasoned`.
+   */
+  workflow_pin_reason: QueueWorkflowPinReason | null;
   /**
    * Place in the queue; `1` is next.
    *
@@ -2766,6 +2811,8 @@ export const TABLE_COLUMNS = {
     "enqueued_at",
     "created_at",
     "updated_at",
+    "workflow_version",
+    "workflow_pin_reason",
   ],
   token_usage: [
     "id",

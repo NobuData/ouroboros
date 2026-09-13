@@ -25,7 +25,14 @@
  *     declared.
  */
 
-import type { ActiveRunStatus, QueueEffort, QueueItem, Run, RunStatus } from "../db/schema";
+import type {
+  ActiveRunStatus,
+  QueueEffort,
+  QueueItem,
+  QueueWorkflowPinReason,
+  Run,
+  RunStatus,
+} from "../db/schema";
 import { ACTIVE_RUN_STATUSES } from "../db/schema";
 
 /**
@@ -78,6 +85,19 @@ export interface QueueItemSummary {
   /** The size chip — one of the five, lower-case, which is the class the UI stamps. */
   readonly effort: QueueEffort;
   readonly workflowTag: string;
+  /**
+   * The version of {@link QueueItemSummary.workflowTag} pinned when the issue was queued — what a
+   * run of it will execute ([#143](https://github.com/NobuData/ouroboros/issues/143)).
+   *
+   * `null` when that workflow had nothing published to pin, or the row predates pinning. A
+   * publish after queueing does not move it.
+   */
+  readonly workflowVersion: number | null;
+  /**
+   * Why that workflow claimed the issue — `explicit`, `predicate`, `most_specific`,
+   * `alphabetical` or `suggested` — or `null` for a row queued before pinning existed.
+   */
+  readonly workflowPinReason: QueueWorkflowPinReason | null;
   /** Place in the queue; `1` is next. Dense by the writer's convention, not by constraint. */
   readonly position: number;
   /**
@@ -325,6 +345,8 @@ export function queueItemSummary(row: QueueItem): QueueItemSummary {
     issueTitle: row.issue_title,
     effort: row.effort,
     workflowTag: row.workflow_tag,
+    workflowVersion: row.workflow_version,
+    workflowPinReason: row.workflow_pin_reason,
     position: row.position,
     estMinutes: row.est_minutes,
     enqueuedAt: at(row.enqueued_at),

@@ -53,6 +53,8 @@ const QUEUED: QueueItem = {
   issue_title: "Telemetry: split ingest into a worker pool",
   effort: "m",
   workflow_tag: "feature-loop",
+  workflow_version: null,
+  workflow_pin_reason: null,
   position: 12,
   est_minutes: null,
   enqueued_at: new Date("2026-08-13T13:37:41.000Z"),
@@ -123,9 +125,24 @@ describe("a queued issue", () => {
       issueTitle: "Telemetry: split ingest into a worker pool",
       effort: "m",
       workflowTag: "feature-loop",
+      workflowVersion: null,
+      workflowPinReason: null,
       position: 12,
       estMinutes: null,
       enqueuedAt: "2026-08-13T13:37:41.000Z",
+    });
+  });
+
+  it("carries the pin through — the version in force and the reason — without reinterpreting it", () => {
+    // R.1 ([#143](https://github.com/NobuData/ouroboros/issues/143)): the version a run will
+    // execute, and why the workflow claimed the issue. The fixture above is a row queued before
+    // pinning existed, which is both nulls.
+    expect(
+      queueItemSummary({ ...QUEUED, workflow_version: 14, workflow_pin_reason: "most_specific" }),
+    ).toMatchObject({
+      workflowTag: "feature-loop",
+      workflowVersion: 14,
+      workflowPinReason: "most_specific",
     });
   });
 });

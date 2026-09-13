@@ -255,6 +255,51 @@ describe("the bulk queue action, against a migrated database", () => {
   });
 
   describe("the workflow", () => {
+    /**
+     * A workflow with published versions, one of them in force, written straight into the tables.
+     *
+     * `workflows.integration-spec.ts`' shape and its reason: what these cases are about is the
+     * trigger the version in force carries, and P.3's create goes through a publish gate that asks
+     * the engine for a second opinion nothing here needs.
+     *
+     * @param where - Whose workspace.
+     * @param slug - The workflow's slug.
+     * @param conditions - Its trigger's conditions, published identically in every version.
+     * @param options - Its status, how many versions to publish, and which one is in force.
+     */
+    async function publishedWorkflow(
+      where: SeededWorkspace,
+      slug: string,
+      conditions: Record<string, unknown>,
+      options: { status?: string; versions?: number; inForce?: number } = {},
+    ): Promise<void> {
+      const versions = options.versions ?? 1;
+      const { rows } = await api.sql.query<{ id: string }>(
+        `insert into ${SCHEMA_NAME}.workflows (organization_id, slug, name, status)
+         values ($1, $2, $2, $3) returning id`,
+        [where.id, slug, options.status ?? "active"],
+      );
+      const definition = JSON.stringify({
+        dsl_version: "1.0",
+        trigger: { event: "ticket_queued", conditions },
+        nodes: [],
+        edges: [],
+      });
+
+      for (let version = 1; version <= versions; version += 1) {
+        await api.sql.query(
+          `insert into ${SCHEMA_NAME}.workflow_versions (workflow_id, version, definition, published_at)
+           values ($1, $2, $3::jsonb, now())`,
+          [rows[0].id, version, definition],
+        );
+      }
+
+      await api.sql.query(
+        `update ${SCHEMA_NAME}.workflows set current_version = $2 where id = $1`,
+        [rows[0].id, options.inForce ?? versions],
+      );
+    }
+
     it("uses the one the request names for every issue", async () => {
       const { workspace, owner } = await backlog();
       // `#488` suggests `docs-loop` and `#486` suggests `feature-loop`; both are overridden.
@@ -268,6 +313,12 @@ describe("the bulk queue action, against a migrated database", () => {
         "deps-refresh",
         "deps-refresh",
       ]);
+      // A bootstrap workspace's built-in has nothing published, so the pin says why and names
+      // no version.
+      expect(queued.items.map((item) => [item.workflowVersion, item.workflowPinReason])).toEqual([
+        [null, "explicit"],
+        [null, "explicit"],
+      ]);
     });
 
     it("uses each issue's own suggestion when the request names none", async () => {
@@ -277,6 +328,111 @@ describe("the bulk queue action, against a migrated database", () => {
       const queued = bodyOf<QueuedSelection>(await queue(owner, workspace, { issueIds }));
 
       expect(queued.items.map((item) => item.workflowTag)).toEqual(["docs-loop", "feature-loop"]);
+      expect(queued.items.map((item) => [item.workflowVersion, item.workflowPinReason])).toEqual([
+        [null, "suggested"],
+        [null, "suggested"],
+      ]);
+    });
+
+    it("lets a published workflow's trigger claim an issue, pinned at the version in force", async () => {
+      // R.1 (#143) end to end: `#491` is S and `quick-fix` runs for effort ≤ S, while `#485` is M
+      // and keeps its estimate's suggestion. Two versions exist and v1 is in force — a pin names
+      // the pointer, never the newest row.
+      const { workspace, owner } = await backlog();
+      await publishedWorkflow(
+        workspace,
+        "quick-fix",
+        { effort_lte: "s" },
+        { versions: 2, inForce: 1 },
+      );
+
+      const queued = bodyOf<QueuedSelection>(
+        await queue(owner, workspace, { issueIds: await idsOf(workspace, [491, 485]) }),
+      );
+
+      expect(
+        queued.items.map((item) => [
+          item.issueNumber,
+          item.workflowVersion,
+          item.workflowPinReason,
+        ]),
+      ).toEqual([
+        [491, 1, "predicate"],
+        [485, null, "suggested"],
+      ]);
+      expect(queued.items[0].workflowTag).toBe("quick-fix");
+      expect(queued.items[1].workflowTag).not.toBe("quick-fix");
+
+      // Stored, not only answered: the pin is what T.6 will read.
+      const { rows } = await api.sql.query<{
+        workflow_tag: string;
+        workflow_version: number | null;
+        workflow_pin_reason: string | null;
+      }>(
+        `select workflow_tag, workflow_version, workflow_pin_reason from ${SCHEMA_NAME}.queue_items
+          where organization_id = $1 and issue_number = 491`,
+        [workspace.id],
+      );
+      expect(rows).toEqual([
+        { workflow_tag: "quick-fix", workflow_version: 1, workflow_pin_reason: "predicate" },
+      ]);
+    });
+
+    it("lets an explicit choice win over a trigger that would have claimed the issue", async () => {
+      const { workspace, owner } = await backlog();
+      await publishedWorkflow(workspace, "catch-all", {});
+      await publishedWorkflow(
+        workspace,
+        "docs-sweep",
+        { labels: ["nothing-carries-this"] },
+        { versions: 3 },
+      );
+
+      const queued = bodyOf<QueuedSelection>(
+        await queue(owner, workspace, {
+          issueIds: await idsOf(workspace, [485]),
+          workflow: "docs-sweep",
+        }),
+      );
+
+      expect(
+        queued.items.map((item) => [
+          item.workflowTag,
+          item.workflowVersion,
+          item.workflowPinReason,
+        ]),
+      ).toEqual([["docs-sweep", 3, "explicit"]]);
+    });
+
+    it("never lets a paused workflow's trigger claim an issue, however well it fits", async () => {
+      // A catch-all would claim every ticket if pausing did not take it out of the candidates.
+      const { workspace, owner } = await backlog();
+      await publishedWorkflow(workspace, "hotfix-p0", {}, { status: "paused" });
+
+      const queued = bodyOf<QueuedSelection>(
+        await queue(owner, workspace, { issueIds: await idsOf(workspace, [485]) }),
+      );
+
+      expect(queued.items[0].workflowTag).not.toBe("hotfix-p0");
+      expect(queued.items[0].workflowPinReason).toBe("suggested");
+    });
+
+    it("never lets another workspace's workflow claim this workspace's issue", async () => {
+      // The ticket's cross-org criterion, through the router and a real database: the rival's
+      // catch-all fires for every ticket it can see, and this workspace's are not among them.
+      const { workspace, owner } = await backlog();
+      const rival = await backlog("rival@ouroboros.invalid");
+      await publishedWorkflow(rival.workspace, "rival-fix", {});
+
+      const queued = bodyOf<QueuedSelection>(
+        await queue(owner, workspace, { issueIds: await idsOf(workspace, [485]) }),
+      );
+
+      expect(queued.items[0].workflowTag).not.toBe("rival-fix");
+      expect([queued.items[0].workflowVersion, queued.items[0].workflowPinReason]).toEqual([
+        null,
+        "suggested",
+      ]);
     });
 
     it("refuses a workflow this workspace does not have, and writes nothing", async () => {
@@ -326,6 +482,11 @@ describe("the bulk queue action, against a migrated database", () => {
         }),
       );
       expect(queued.items.map((item) => item.workflowTag)).toEqual(["release-train"]);
+      // Active, and never published: chosen explicitly, it pins no version rather than an
+      // invented one.
+      expect(queued.items.map((item) => [item.workflowVersion, item.workflowPinReason])).toEqual([
+        [null, "explicit"],
+      ]);
 
       const response = await queue(
         owner,

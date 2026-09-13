@@ -96,6 +96,8 @@ const QUEUED: QueueItem = {
   issue_title: "Watchdog reset on I²C bus lockup",
   effort: "m",
   workflow_tag: "standard-fix",
+  workflow_version: 14,
+  workflow_pin_reason: "predicate",
   position: 1,
   est_minutes: 45,
   enqueued_at: new Date("2026-08-13T01:37:41.000Z"),

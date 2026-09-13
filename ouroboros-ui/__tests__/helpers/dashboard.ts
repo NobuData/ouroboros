@@ -301,6 +301,9 @@ export function queueItem(over: Partial<QueueItemSummary> = {}): QueueItemSummar
     issueTitle: "Watchdog reset on I²C bus lockup",
     effort: "m",
     workflowTag: "standard-fix",
+    // The dashboard seed's rows predate pinning (#143), so they carry neither half of a pin.
+    workflowVersion: null,
+    workflowPinReason: null,
     position: 1,
     estMinutes: 45,
     enqueuedAt: enqueuedHoursAgo(12),

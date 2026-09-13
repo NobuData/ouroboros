@@ -24,6 +24,9 @@
  * catalog.repository   the workspace's task kinds, for the task-route suggestions
  * catalog.resources    the catalog's wire shapes, and the suggestions as a P7 catalogue
  * catalog.service      WorkflowCatalogService — the node types built once, suggestions per request
+ * trigger.evaluation   which workflow claims a queued ticket, as pure functions                · #143
+ * trigger.repository   the workspace's workflows with the trigger of the version in force
+ * trigger.service      TriggerService — the pin a queue write stores on each item
  * ```
  *
  * ---------------------------------------------------------------------------
@@ -40,7 +43,7 @@
  * about a workflow*. `EngineClient` is the only provider it exports, and `publish.gate.ts` is
  * the only thing here that injects it.
  *
- * **It exports two services**, in `PricingModule`'s pattern and for its reason — the second
+ * **It exports three services**, in `PricingModule`'s pattern and for its reason — the second
  * caller is the point:
  *
  *   * {@link WorkflowStatsService} is P.3's rail payload and, through it, S.1's head
@@ -52,6 +55,10 @@
  *     [#124](https://github.com/NobuData/ouroboros/issues/124): the vocabulary
  *     `BacklogModule`'s queue write validates against and `EstimationModule` offers the
  *     engine. Both used to read a constant; both now read a workspace.
+ *   * {@link TriggerService} is R.1 ([#143](https://github.com/NobuData/ouroboros/issues/143)):
+ *     which workflow claims each ticket `BacklogModule`'s queue write is about to store, and the
+ *     version it is pinned at. It lives here because a trigger is part of a workflow's published
+ *     definition, and evaluating one is this module's language.
  *
  * The repositories stay private. A consumer that reached past the services would be a consumer
  * that had skipped the honesty rules — the captions, the null share, the bootstrap vocabulary,
@@ -82,6 +89,8 @@ import { WorkflowPublishGate } from "./publish.gate";
 import { WorkflowRegistryService } from "./registry.service";
 import { WorkflowStatsRepository } from "./stats.repository";
 import { WorkflowStatsService } from "./stats.service";
+import { TriggerRepository } from "./trigger.repository";
+import { TriggerService } from "./trigger.service";
 import { WorkflowsController } from "./workflows.controller";
 import { WorkflowsRepository } from "./workflows.repository";
 import { WorkflowsService } from "./workflows.service";
@@ -98,11 +107,13 @@ import { WorkflowsService } from "./workflows.service";
     WorkflowStatsRepository,
     WorkflowCatalogService,
     WorkflowCatalogRepository,
+    TriggerService,
+    TriggerRepository,
     { provide: PUBLISHED_DSL_SCHEMA, useFactory: () => readPublishedDslSchema() },
   ],
-  // The two services are exported and the repositories are not, for the reason this file's
+  // The three services are exported and the repositories are not, for the reason this file's
   // header gives: a consumer that reached past them would be a consumer that had skipped the
   // honesty rules those services are the whole of.
-  exports: [WorkflowStatsService, WorkflowRegistryService],
+  exports: [WorkflowStatsService, WorkflowRegistryService, TriggerService],
 })
 export class WorkflowsModule {}

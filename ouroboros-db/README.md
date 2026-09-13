@@ -427,6 +427,19 @@
 > CHECK is for the second. `ticket_sources_public` gains the column — it is the opposite of a
 > secret — appended last, so `V030`'s ten keep their ordinals.
 
+> `V032` ([#143](https://github.com/NobuData/ouroboros/issues/143)) adds
+> [`queue_items.workflow_version` and `queue_items.workflow_pin_reason`](migrations/V032__queue_items_workflow_pin.sql)
+> — the pin R.1's trigger service stores on every queued issue: which version of the workflow
+> in `workflow_tag` was in force at the moment of queueing, and which rung of the resolution
+> order chose it (`explicit`, `predicate`, `most_specific`, `alphabetical`, `suggested`).
+>
+> There is **no `workflow_slug` column**: `workflow_tag` already holds the slug, and a second
+> column a CHECK held equal to it would store nothing new. The version is nullable because a
+> workflow with nothing published has nothing to pin, and every row queued before R.1 reads with
+> both columns null. A version without a reason is refused; a reason without a version is allowed
+> on purpose. Neither half is a foreign key (decision F8), and nothing ties the pin to
+> `workflows.current_version` — a later publish moves the pointer and must not move the pin.
+
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
 > migration *below* its current version — which `validate` rejects, and `migrate`
@@ -1515,6 +1528,7 @@ ouroboros-db/
 │   ├── V029__workflows_versions.sql     # workflows + workflow_versions — the studio's entities, immutable after publish — #132
 │   ├── V030__canonical_tickets.sql      # ticket_sources + tickets — the source-agnostic intake model, additive — #138
 │   ├── V031__ticket_source_status_reason.sql  # ticket_sources.status_reason — the sentence behind the status dot — #139
+│   ├── V032__queue_items_workflow_pin.sql  # queue_items.workflow_version + workflow_pin_reason — the pin R.1 stores — #143
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
