@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**176 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**179 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
-| 🟡 **In progress** | P7 | **11** of 43 |
+| 🟡 **In progress** | P7 | **14** of 43 |
 | — **Not started** | P8–P17 | 0 of 246 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1321,7 +1321,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **43 issues** · 137 complexity points · order **#166–#208** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md`, `ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`, + the held-back registry tail
-> **Status:** 🟡 **In progress** — 9 of 43 issues closed
+> **Status:** 🟡 **In progress** — 14 of 43 issues closed
 
 **Goal.** Define the workflow domain and its immutable versioning, the DSL JSON Schema shared by REST and engine, the pluggable `TicketSourceProvider` SPI, validation/triggers/dry-run, the authoring studio (mockup 04), and the code projection with proven round-trip (mockup 05).
 
@@ -1346,7 +1346,7 @@ the blockquote above that records what it did and what it did differently.
 | 176 | **R.3** | ✅ [#145](https://github.com/NobuData/ouroboros/issues/145) | Stage catalog endpoint | ouroboros-rest | S | P.2 |
 | 177 | **U.1** | ✅ [#165](https://github.com/NobuData/ouroboros/issues/165) | TS-DSL grammar spec & deterministic printer | ouroboros-rest, docs | L | P.2 |
 | 178 | **P.6** | ✅ [#137](https://github.com/NobuData/ouroboros/issues/137) | Workflow constraints in ci/db | ouroboros-db, .github | XS | 3.6, P.5 |
-| 179 | **Q.5** | [#142](https://github.com/NobuData/ouroboros/issues/142) | Provider conformance kit | ouroboros-rest | M | Q.3 |
+| 179 | **Q.5** | ✅ [#142](https://github.com/NobuData/ouroboros/issues/142) | Provider conformance kit | ouroboros-rest | M | Q.3 |
 | 180 | **R.1** | [#143](https://github.com/NobuData/ouroboros/issues/143) | Trigger evaluation service | ouroboros-rest | M | P.3, Q.1 |
 | 181 | **S.1** | [#147](https://github.com/NobuData/ouroboros/issues/147) | Studio route, page head & workflow rail | ouroboros-ui | M | 5.3, D.5, P.3 |
 | 182 | **U.2** | [#166](https://github.com/NobuData/ouroboros/issues/166) | TS-DSL parser (closed grammar) | ouroboros-rest | L | U.1 |

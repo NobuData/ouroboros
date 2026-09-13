@@ -767,7 +767,7 @@ abstraction + GitHub; T.2–T.4 add providers without core changes.
 | Q.2 | #139 | 🟢 Done | ouroboros-rest: [Q.2] TicketSourceProvider SPI & registry | Provider interface, lifecycle, capability flags, secret handling | mvp, sources, rest | N (after Q.1) | Y | L | ouroboros-rest |
 | Q.3 | #140 | 🟡 Open | ouroboros-rest: [Q.3] GitHub provider (first conforming plugin) | INTAKE-K.3/K.4 behavior behind the SPI (both shipped 2026-09-08 — a refactor); cursor sync; PR filtering | mvp, sources, intake, rest | N (after Q.2) | Y | M | ouroboros-rest |
 | Q.4 | #141 | 🟢 Done | ouroboros-rest: [Q.4] Source management API & settings UI | Add/configure/pause sources per org; masked credentials; status | mvp, sources, rest, ui | N (after Q.2, BA-C.3) | Y | M | ouroboros-rest, ouroboros-ui |
-| Q.5 | #142 | 🟡 Open | ouroboros-rest: [Q.5] Provider conformance kit | Contract test suite + in-memory fake provider proving pluggability | mvp, sources, rest, ci | N (after Q.3) | Y | M | ouroboros-rest |
+| Q.5 | #142 | 🟢 Done | ouroboros-rest: [Q.5] Provider conformance kit | Contract test suite + in-memory fake provider proving pluggability | mvp, sources, rest, ci | N (after Q.3) | Y | M | ouroboros-rest |
 
 ### Issue Q.1 — ouroboros-db: [Q.1] Canonical ticket model
 
@@ -951,7 +951,7 @@ Settings ▸ Ticket sources
 
 ### Issue Q.5 — ouroboros-rest: [Q.5] Provider conformance kit
 
-> **GitHub issue:** #142 · **Status:** 🟡 Open · **Parent epic:** #128
+> **GitHub issue:** #142 · **Status:** 🟢 Done · **Parent epic:** #128
 
 - **Problem Statement:** "Pluggable" is a claim until a second implementation
   passes the same tests; the kit is the contract's teeth — and the on-ramp for

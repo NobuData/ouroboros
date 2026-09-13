@@ -34,6 +34,13 @@
  * rules predate it, because a boundary added after the first thing crosses it is a boundary
  * that has to be argued rather than enforced.
  *
+ * The sixth rule is Q.5's (#142) third acceptance criterion — *"the core intake harness runs
+ * entirely on the fake: no Octokit import in those tests"* — and it points the other way from
+ * the rest: not at what production code may import, but at what the loop's own suites, the
+ * conformance kit and the fixtures they share may. A core suite that reached for GitHub's
+ * provider or K.3's Octokit stand-in would let a GitHub-shaped assumption in the loop pass its
+ * own tests, which is the decay the SPI exists to prevent, arriving through the tests instead.
+ *
  * `providers/boundary.spec.ts`, `github/boundary.spec.ts` and
  * `ticket-sources/boundary.spec.ts` prove the rules bite: each
  * builds a tree containing exactly the violation its rule describes, cruises it with *this*
@@ -134,6 +141,29 @@ module.exports = {
         path:
           "(^|node_modules/)(@gitbeaker|@linear/sdk|gitlab|jira-client|jira\\.js|" +
           "node-gitlab|jira-connector)(/|$)",
+      },
+    },
+    {
+      name: "ticket-source-core-tests-run-on-the-fake",
+      severity: "error",
+      comment:
+        "The ticket-source loop's own suites, the conformance kit and the fixtures they share " +
+        "run on the in-memory provider (Q.5, #142) — no Octokit, no GitHub fixture, no GitHub " +
+        "provider — so a GitHub-shaped assumption in the core cannot pass its own tests for the " +
+        "wrong reason. GitHub's suites live beside the provider in providers/. Three Q.4 " +
+        "suites are exempt because they name GitHub on purpose: the management API's " +
+        "(sources.*), the module's wiring spec, and the config dialect's, whose gate admits " +
+        "the real GitHub schema.",
+      from: {
+        path: "^src/modules/ticket-sources/[^/]+(\\.spec|-spec|\\.fixture)\\.ts$",
+        pathNot:
+          "^src/modules/ticket-sources/" +
+          "(sources\\.[^/]+|ticket-sources\\.module\\.spec\\.ts|ticket-source\\.config\\.spec\\.ts)$",
+      },
+      to: {
+        path:
+          "(^|node_modules/)@octokit(/|$)|^src/modules/github/|" +
+          "^src/modules/ticket-sources/providers/github\\.",
       },
     },
 

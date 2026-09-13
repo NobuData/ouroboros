@@ -87,8 +87,8 @@ export type TicketSourceErrorClass = "auth" | "rate_limit" | "not_found" | "upst
  * The four as values, in the order the issue lists them.
  *
  * Iterated by the suites, and by Q.5's conformance kit
- * ([#142](https://github.com/NobuData/ouroboros/issues/142)), which will require a recorded
- * fixture for each of them from every provider.
+ * ([#142](https://github.com/NobuData/ouroboros/issues/142)), which requires a recorded refusal
+ * of each from every provider — its harness's `refuse` is a total record over this list.
  */
 export const TICKET_SOURCE_ERROR_CLASSES = [
   "auth",

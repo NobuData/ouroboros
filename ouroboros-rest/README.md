@@ -2831,6 +2831,44 @@ the backlog button's, with the same 30-second `backlog/debounce.ts` behind the t
 each is somebody acting on exactly the thing that failed. A `paused` row stays paused through a
 settings edit; pausing was a choice too.
 
+### The conformance kit
+
+**`describeTicketSourceConformance` is what *pluggable* means here** (Q.5,
+[#142](https://github.com/NobuData/ouroboros/issues/142)): one reusable suite every provider takes,
+in `ticket-sources/conformance.fixture.ts`, given a provider and its recordings and nothing else.
+It runs in `yarn test`, so `ci/rest` runs it on every change — against `GithubTicketSourceProvider`
+over recorded payloads, and against both in-memory providers.
+
+```
+describeTicketSourceConformance(provider, recordings)
+  ├─ config validation        accepted and rejected shapes
+  ├─ full + incremental sync  cursor never regresses · re-sync writes nothing
+  ├─ canonical mapping        every field populated or explicitly null
+  ├─ error taxonomy           auth · rate_limit · not_found · upstream
+  └─ webhook shape            when capabilities() declares it
+```
+
+**It has been watched failing.** Each rule is a function returning sentences, so
+`conformance.fixture.spec.ts` runs every one against a provider broken on purpose — a key collapsed
+onto the identity, a field dropped instead of nulled, a cursor that goes backwards, a `hasMore` that
+never settles, a webhook that accepts forgeries. The same file reads `ticket-sources.module.ts` and
+fails when a registered provider has no `providers/<name>.conformance.spec.ts`, so T.2–T.4 cannot
+ship a provider that skipped it.
+
+**Writes are counted with the loop's own predicate.** Pages replay into an in-memory mirror that
+stores rows as `applySync` does and asks `ticket-sources.repository.ts`'s `differs` whether to write,
+so *re-running an unchanged cursor writes nothing* is a number — and a cursor that moved backwards
+shows up as a ticket older than the mirror's copy, without the kit ever reading a cursor.
+
+**The core intake harness runs on the fake.** `providers/in-memory.provider.fixture.ts` is a tracker
+— records, a clock, a token kept only as a digest, an access log — and a provider over it with a
+four-word workflow, a `<updated>~<id>` cursor and signed webhooks. `ticket-sources.integration-spec.ts`
+runs the loop against a migrated database on it alone, and GitHub end to end moved beside its
+provider as `providers/github.provider.integration-spec.ts`. `ticket-source-core-tests-run-on-the-fake`
+in `.dependency-cruiser.cjs` makes an Octokit, GitHub-fixture or GitHub-provider import from a core
+suite, the kit or their fixtures a lint failure, and `ticket-sources/boundary.spec.ts` watches it
+fail.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`

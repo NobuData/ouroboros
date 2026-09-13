@@ -9,14 +9,13 @@
  *
  * ---------------------------------------------------------------------------
  * **This is not Q.5's fake, and the difference matters.**
- * [#142](https://github.com/NobuData/ouroboros/issues/142) asks for an
- * `InMemoryTicketSourceProvider` that *"passes the kit and powers core-intake tests without
- * network"* — a provider with behaviour, held to the same contract as GitHub's, and the
- * on-ramp for T.2–T.4 and for community providers. {@link scriptedProvider} below is a
- * **test double**: it returns whatever a spec queued and records what it was asked. It is
- * exactly enough to prove the loop dispatches, upserts, stamps and reports correctly, and it
- * is deliberately not enough to prove a provider *conforms* — which is the job Q.5 exists to
- * do and which this file must not pre-empt with something weaker.
+ * [#142](https://github.com/NobuData/ouroboros/issues/142) added that as
+ * `providers/in-memory.provider.fixture.ts`'s `InMemoryTicketSourceProvider` — a provider with
+ * behaviour, held to the same contract as GitHub's by `conformance.fixture.ts`, and what the
+ * loop's integration suite runs on. {@link scriptedProvider} below is a **test double**: it
+ * returns whatever a spec queued and records what it was asked. It is exactly enough to prove
+ * the loop dispatches, upserts, stamps and reports correctly in the unit suites, and it is
+ * deliberately not enough to prove a provider *conforms* — which is the kit's job.
  *
  * **Two shapes, always.** Every fixture here comes in a GitHub flavour and a Jira flavour,
  * because decision **P6** is the thing under test in half these suites and a fixture set where
@@ -193,8 +192,9 @@ export const NO_CAPABILITIES: TicketSourceCapabilities = Object.freeze({
  *
  * Q.4's ([#141](https://github.com/NobuData/ouroboros/issues/141)) acceptance criterion is
  * that the settings form renders *"from provider-declared config schema — verified by pointing
- * the same form component at the in-memory fake provider's schema"*. Q.5's fake is not built
- * yet, so this is the schema the criterion is held against on this side of the wire: a text
+ * the same form component at the in-memory fake provider's schema"*. Q.5's fake
+ * (`providers/in-memory.provider.fixture.ts`) declares a deliberately small schema, so this is
+ * still the one the criterion is held against on this side of the wire: a text
  * field, a `uri` field, a `select`, a list and a secret — a shape no shipping provider has, which
  * is what makes a catalog that renders it a catalog that renders anything.
  */
