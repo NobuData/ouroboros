@@ -25,7 +25,8 @@ schemas/
         ├── valid/               # documents that validate
         ├── invalid/             # one document per rule, each breaking exactly that rule
         ├── catalogues/          # decision P7's vocabularies, for the reference-warning cases
-        └── yaml/                # the YAML projection of each valid document (mockup 05)
+        ├── yaml/                # the YAML projection of each valid document (P.2's round-trip proof)
+        └── code/                # the TypeScript projection of each valid document (mockup 05, U.1)
 ```
 
 `v1.json` describes the whole **1.x line**. Adding an optional field appends a minor to its
@@ -39,7 +40,9 @@ schemas/
 | [`ouroboros-rest/src/modules/workflows/`](../ouroboros-rest/src/modules/workflows) | zod validator + YAML projection — save, publish, code view | `dsl.parity.spec.ts` (the recorded verdicts) and `dsl.conformance.spec.ts` (ajv over `v1.json`) |
 | [`ouroboros-engine/src/ouroboros_engine/workflows/`](../ouroboros-engine/src/ouroboros_engine/workflows) | pydantic validator — R.2's `validate` and dry-run | `tests/test_workflows_parity.py` and `tests/test_workflows_conformance.py` |
 | [`ouroboros-rest/src/modules/workflows/catalog.*`](../ouroboros-rest/src/modules/workflows) | the stage catalog (R.3) — serves each node type's config schema out of `v1.json` itself, at runtime | `catalog.schema.spec.ts` (served schemas classify every fixture's configs as `v1.json`'s definitions do) |
+| [`ouroboros-rest/src/modules/workflows/code.*`](../ouroboros-rest/src/modules/workflows) | the code-view printer (U.1) — each valid document as mockup 05's TypeScript DSL | `code.printer.spec.ts` (every print is exactly `fixtures/code/<name>.loop.ts`, parses, and gives back the document's graph) |
 | [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) | the specification a person reads | Worked examples taken from these fixtures |
+| [`docs/WORKFLOW_CODE_DSL.md`](../docs/WORKFLOW_CODE_DSL.md) | the code-view language a person reads | Worked examples taken from `fixtures/code/` |
 
 **Neither module imports the other, and no third process compares two outputs.** Each reads
 this directory from its own suite and asserts against the same `expected.json`. A rule added to

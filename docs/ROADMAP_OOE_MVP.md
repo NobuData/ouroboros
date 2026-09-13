@@ -1344,7 +1344,7 @@ the blockquote above that records what it did and what it did differently.
 | 174 | **Q.4** | ✅ [#141](https://github.com/NobuData/ouroboros/issues/141) | Source management API & settings UI | ouroboros-rest, ouroboros-ui | M | C.3, Q.2 |
 | 175 | **R.2** | ✅ [#144](https://github.com/NobuData/ouroboros/issues/144) | Definition validation & dry-run simulator | ouroboros-engine | L | 6.3, P.2 |
 | 176 | **R.3** | ✅ [#145](https://github.com/NobuData/ouroboros/issues/145) | Stage catalog endpoint | ouroboros-rest | S | P.2 |
-| 177 | **U.1** | [#165](https://github.com/NobuData/ouroboros/issues/165) | TS-DSL grammar spec & deterministic printer | ouroboros-rest, docs | L | P.2 |
+| 177 | **U.1** | ✅ [#165](https://github.com/NobuData/ouroboros/issues/165) | TS-DSL grammar spec & deterministic printer | ouroboros-rest, docs | L | P.2 |
 | 178 | **P.6** | [#137](https://github.com/NobuData/ouroboros/issues/137) | Workflow constraints in ci/db | ouroboros-db, .github | XS | 3.6, P.5 |
 | 179 | **Q.5** | [#142](https://github.com/NobuData/ouroboros/issues/142) | Provider conformance kit | ouroboros-rest | M | Q.3 |
 | 180 | **R.1** | [#143](https://github.com/NobuData/ouroboros/issues/143) | Trigger evaluation service | ouroboros-rest | M | P.3, Q.1 |

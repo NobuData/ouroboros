@@ -197,14 +197,14 @@ chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| U.1 | #165 | 🟡 Open | ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer | Closed grammar doc + canonical JSON → TypeScript projection | mvp, workflow, code-view, rest | N (after WF-P.2) | Y | L | ouroboros-rest, docs |
+| U.1 | #165 | 🟢 Done | ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer | Closed grammar doc + canonical JSON → TypeScript projection | mvp, workflow, code-view, rest | N (after WF-P.2) | Y | L | ouroboros-rest, docs |
 | U.2 | #166 | 🟡 Open | ouroboros-rest: [U.2] TS-DSL parser (closed grammar) | TypeScript compiler API parse back to canonical JSON; anchored errors | mvp, workflow, code-view, rest | N (after U.1) | Y | L | ouroboros-rest |
 | U.3 | #167 | 🟡 Open | ouroboros-rest: [U.3] Code view & save endpoints | `GET /code`, `PUT /code` (parse→draft, etag), tree/tabs payloads | mvp, workflow, code-view, rest | N (after U.2, WF-P.3) | Y | M | ouroboros-rest |
 | U.4 | #168 | 🟡 Open | ouroboros-rest: [U.4] Round-trip property & parity tests | `parse∘print = id`, mockup-parity fixture, cross-editor concurrency | mvp, workflow, code-view, rest, ci | N (after U.3) | Y | M | ouroboros-rest |
 
 ### Issue U.1 — ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer
 
-> **GitHub issue:** #165 · **Status:** 🟡 Open · **Parent epic:** #161
+> **GitHub issue:** #165 · **Status:** 🟢 Done · **Parent epic:** #161
 
 - **Problem Statement:** The code view's language must be specified before
   anything renders it: which TypeScript forms are legal, how every canonical-
@@ -233,6 +233,19 @@ chips: **XS · S · M · L**.
 - **Parallelism/Dependencies:** Needs WF-P.2. Blocks U.2, U.3, V.4.
 - **Technical Stack:** TypeScript compiler API (printer/AST), docs.
 - **Epic:** U
+- **Delivered (2026-09-13):** the grammar is
+  [`WORKFLOW_CODE_DSL.md`](WORKFLOW_CODE_DSL.md) and the printer is
+  `ouroboros-rest/src/modules/workflows/code.printer.ts`. Two decisions were taken in-issue.
+  **Stage calls are named by node type, with the id as the first argument**
+  (`llm("analyze", {…})`), so the grammar stays closed. **Positions, edge labels and edge order
+  ride in a trailing `// @ouroboros/layout v1` comment block** rather than a sidecar. The mockup's
+  listing can't be printed losslessly from the seeded `standard-fix` (nine calls for twelve
+  nodes, `cache`/`flakes`/`template` values DSL v1 has no field for, task routes where the
+  seed pins models), so the committed golden file is the real print
+  (`schemas/workflow-dsl/fixtures/code/standard-fix.loop.ts`). The mockup's idioms are kept, and
+  §10 of the grammar lists every line that differs and why. U.4's *mockup-parity fixture* is
+  that golden. `ts.createPrinter` could not produce the format, so the compiler API checks every
+  print instead.
 
 ```
 canonical JSON (WF-P.2) ──print──▶ defineLoop("standard-fix", { trigger, stages[…] })
