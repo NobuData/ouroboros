@@ -10,16 +10,16 @@
  * session acting in no workspace is a `400 organization_required` before any handler runs.
  *
  * **Reading is every member's, writing is an administrator's.** The ticket's role policy, and
- * it is spelled the way the roles guard wants it: the four reads carry no `@Roles()`, which is
+ * it is spelled the way the roles guard wants it: the five reads carry no `@Roles()`, which is
  * *every member including a `viewer`* — a viewer is a role that exists to be able to look at a
  * workflow — and the four writes carry `@Roles(...ADMINISTRATORS)`. `CONTRIBUTORS` would have
  * been the wrong list: a `member` is somebody who works here, and publishing changes what every
  * future run of this workspace does.
  *
- * **`catalog` is declared before `:id`, and the order is the route.** Express matches in
- * registration order and Nest registers handlers in declaration order, so a `GET …/catalog`
- * declared below `GET …/:id` would be answered by the detail — as a `422` for an id that is
- * not a uuid. `workflows.controller.spec.ts` holds the order.
+ * **`catalog` and `code-symbols` are declared before `:id`, and the order is the route.** Express
+ * matches in registration order and Nest registers handlers in declaration order, so a
+ * `GET …/catalog` declared below `GET …/:id` would be answered by the detail — as a `422` for an
+ * id that is not a uuid. `workflows.controller.spec.ts` holds the order.
  *
  * **`If-Match` is a header, and it is read here rather than in a DTO.** A precondition is not a
  * field of the body — there is nothing for `class-validator` to say about it, and a DTO that
@@ -51,6 +51,7 @@ import { ADMINISTRATORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
 import type { StageCatalog } from "./catalog.resources";
 import { WorkflowCatalogService } from "./catalog.service";
+import type { CodeSymbolTable } from "./code.symbols";
 import {
   CreateWorkflowBody,
   PublishWorkflowBody,
@@ -128,6 +129,24 @@ export class WorkflowsController {
   @Get("catalog")
   catalog(@CurrentTenant() tenant: Organization): Promise<StageCatalog> {
     return this.stages.catalog(tenant.id);
+  }
+
+  /**
+   * `GET /api/v1/workflows/code-symbols` — the code editor's symbol table (W.1,
+   * [#177](https://github.com/NobuData/ouroboros/issues/177)).
+   *
+   * What mockup 05's completions and hover cards read: the grammar's scopes and symbols, each
+   * type, value and doc read from the published schema, and the workspace's task-route and skill
+   * suggestions. Every member may read it, for the reason the catalog gives.
+   *
+   * Declared above `read` on purpose; see this file's header.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @returns The table.
+   */
+  @Get("code-symbols")
+  codeSymbols(@CurrentTenant() tenant: Organization): Promise<CodeSymbolTable> {
+    return this.stages.codeSymbols(tenant.id);
   }
 
   /**

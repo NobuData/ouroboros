@@ -9,25 +9,28 @@ import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME } from "../db/schema";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { toDslCatalogue, type StageCatalog } from "./catalog.resources";
+import type { CodeSymbolTable } from "./code.symbols";
 import { DslWarningCode } from "./dsl.errors";
 import { validateWorkflowDocument } from "./dsl.validator";
 import type { WorkflowDetail } from "./workflows.resources";
 
 /**
  * The stage catalog, against a migrated database — R.3
- * ([#145](https://github.com/NobuData/ouroboros/issues/145)).
+ * ([#145](https://github.com/NobuData/ouroboros/issues/145)) — and the code view's symbol table
+ * served beside it — W.1 ([#177](https://github.com/NobuData/ouroboros/issues/177)).
  *
  * The unit suites hold each layer to its rules: the schema reader to `v1.json`, the
  * presentations to mockup 04, the statement to its workspace predicate. What only this suite can
  * certify is the route as a client meets it:
  *
  *   * **It is served at `catalog`**, and not swallowed by `GET /api/v1/workflows/{id}` — which
- *     would answer a `422` for an id that is not a uuid.
+ *     would answer a `422` for an id that is not a uuid. The same for `code-symbols`.
  *   * **Every member reads it**, `viewer` included, and a stranger or a session acting in no
  *     workspace does not.
  *   * **The config schemas compile and accept mockup 04's canvas**, and defaults a canvas drops
  *     make a document that publishes.
- *   * **Task routes are this workspace's `task_kinds`**, in matrix order, and never another's.
+ *   * **Task routes are this workspace's `task_kinds`**, in matrix order, and never another's —
+ *     in the catalog's suggestions and in the code editor's completions alike.
  *   * **An unknown skill or model is a warning path, not a `4xx`**: a draft and a publish naming
  *     both succeed, and the suggestions, as a catalogue, answer `valid` with a warning.
  *
@@ -61,6 +64,7 @@ function standardFix(): { nodes: { id: string; type: string; config: Record<stri
 const SKILLS = ["repo-map", "zephyr-conventions"];
 
 const CATALOG = "/api/v1/workflows/catalog";
+const CODE_SYMBOLS = "/api/v1/workflows/code-symbols";
 const WORKFLOWS = "/api/v1/workflows";
 
 describe("the stage catalog, against a migrated database", () => {
@@ -143,6 +147,11 @@ describe("the stage catalog, against a migrated database", () => {
   /** Read the catalog as somebody. */
   async function catalog(person: Person, place: Bench): Promise<StageCatalog> {
     return bodyOf<StageCatalog>(await as(person, place)("get", CATALOG).expect(200));
+  }
+
+  /** Read the code symbol table as somebody. */
+  async function codeSymbols(person: Person, place: Bench): Promise<CodeSymbolTable> {
+    return bodyOf<CodeSymbolTable>(await as(person, place)("get", CODE_SYMBOLS).expect(200));
   }
 
   describe("who may read it", () => {
@@ -316,6 +325,84 @@ describe("the stage catalog, against a migrated database", () => {
       expect(verdict.warnings.map((warning) => warning.code)).toEqual([
         DslWarningCode.REFERENCE_UNKNOWN_SKILL,
       ]);
+    });
+  });
+
+  describe("the code symbol table", () => {
+    /**
+     * The labels a table offers at a scope.
+     *
+     * @param table - The served table.
+     * @param scope - The scope.
+     * @returns The labels, or `undefined` for a scope it does not have.
+     */
+    function offered(table: CodeSymbolTable, scope: string): string[] | undefined {
+      return table.scopes.find((entry) => entry.scope === scope)?.completions.map((c) => c.label);
+    }
+
+    it("refuses a stranger, and a session acting in no workspace", async () => {
+      await api.anonymous("get", CODE_SYMBOLS).expect(401);
+
+      const nomad = await api.signIn();
+      const response = await api.as(nomad)("get", CODE_SYMBOLS).expect(400);
+
+      expect(bodyOf<{ code: string }>(response).code).toBe("organization_required");
+    });
+
+    it("answers an owner, a member and a viewer with the same table", async () => {
+      const place = await bench();
+      const member = await api.signIn({ email: "member@ouroboros.invalid" });
+      const viewer = await api.signIn({ email: "viewer@ouroboros.invalid" });
+      await api.join(place.id, member, "member");
+      await api.join(place.id, viewer, "viewer");
+
+      const owners = await codeSymbols(place.owner, place);
+
+      expect(await codeSymbols(member, place)).toEqual(owners);
+      expect(await codeSymbols(viewer, place)).toEqual(owners);
+    });
+
+    it("is read from the published schema, with mockup 05's route.task card", async () => {
+      const place = await bench();
+
+      const table = await codeSymbols(place.owner, place);
+
+      expect(table.schemaId).toBe(SCHEMA.$id);
+      expect(table.symbols.find((symbol) => symbol.symbol === "route.task")).toEqual({
+        symbol: "route.task",
+        signature: [
+          { text: "route.task", role: "name" },
+          { text: "(name: ", role: "text" },
+          { text: "TaskKind", role: "type" },
+          { text: "): ", role: "text" },
+          { text: "ModelRoute", role: "type" },
+        ],
+        doc: "Resolves the model assigned to a task kind in Model Routing.",
+      });
+    });
+
+    it("offers this workspace's task kinds and the configured skills, and no other workspace's", async () => {
+      const first = await bench("first@ouroboros.invalid");
+      const second = await bench("second@ouroboros.invalid");
+      await seedTaskKinds(first.id, ["implement", "analyze"]);
+      await seedTaskKinds(second.id, ["docs"]);
+
+      const table = await codeSymbols(first.owner, first);
+
+      expect(offered(table, "route.task")).toEqual(["implement", "analyze"]);
+      expect(offered(table, "stage.llm.skill")).toEqual(SKILLS);
+      expect(offered(await codeSymbols(second.owner, second), "route.task")).toEqual(["docs"]);
+    });
+
+    it("offers the same task routes as the catalog's suggestions", async () => {
+      const place = await bench();
+      await seedTaskKinds(place.id, ["analyze", "plan"]);
+
+      const { suggestions } = await catalog(place.owner, place);
+
+      expect(offered(await codeSymbols(place.owner, place), "route.task")).toEqual(
+        suggestions.taskRoutes,
+      );
     });
   });
 });

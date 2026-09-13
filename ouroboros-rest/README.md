@@ -2677,6 +2677,44 @@ inspector validates with, so an unknown name comes back as a `reference.unknown_
 empty list means *nothing to suggest*, and is left out of that catalogue rather than flagging every
 name.
 
+### The code symbol table
+
+**`GET /api/v1/workflows/code-symbols` is what the code editor completes and documents from** (W.1,
+[#177](https://github.com/NobuData/ouroboros/issues/177)). Decision **C5** asks for editor
+intelligence from what is already on disk rather than from a language server, and most of it is
+already in this module: the grammar's tables and the published schema.
+
+```
+GET /api/v1/workflows/code-symbols
+ ─▶ { schemaId,
+      scopes:  [ {scope: stage.llm.options,  completions: [{label: tokenBudget, kind: property, symbol: stage.llm.tokenBudget}, …]},
+                 {scope: stage.openPr.merge, completions: [squash, merge, rebase]},
+                 {scope: route.task,         completions: [this workspace's task kinds, each suggestion: true]}, … ],
+      symbols: [ {symbol: route.task, signature: route.task(name: TaskKind): ModelRoute,
+                  doc: "Resolves the model assigned to a task kind in Model Routing."}, … ] }
+```
+
+| Part | Where it comes from |
+| --- | --- |
+| Scope and symbol names, option keys and their order, predicate methods, effort constants | `code.grammar.ts`, the tables the printer and parser already read |
+| Where each word lives in the schema | `code.grammar.ts`' pointer tables: `STAGE_OPTION_FIELDS`, `ROUTE_SIGNATURES` and the rest |
+| Types, enum values and docs | `schemas/workflow-dsl/v1.json`, read at boot by `code.symbols.schema.ts` |
+| `route.task` and `stage.llm.skill` suggestions | The stage catalog's suggestions, from the same read (`WorkflowCatalogService.codeSymbols`) |
+
+**Nothing is invented.** A doc is a schema `description`, verbatim. A symbol whose location has
+none has a signature and no doc, and the editor shows no card for a name the table does not list.
+Mockup 05's Types card adds *"Falls back to the tenant default chain."* Routing has no such chain
+(an unrouted task kind is `route_not_found`), so the served doc is the first sentence, which
+`v1.json` carries as `inherit_task`'s description.
+
+**A change at a source surfaces with no other edit.** A key added to `STAGE_OPTIONS` is offered,
+with a name-only card until it points into the schema. A value added to a schema `enum` is offered
+wherever its key takes it, and a description added to the schema becomes the doc. A value the
+grammar cannot spell, such as `effort.XXL`, is not offered, because the parser would refuse it. A
+pointer the schema no longer has fails the service at boot. `code.symbols.spec.ts` proves each, and
+`schemas/workflow-dsl/fixtures/code-symbols/table.json` is the golden answer `ouroboros-ui`'s suites
+are written against.
+
 ## Pluggable ticket sources
 
 **Ingestion is a plug-in decision** (roadmap decision **P5**), and

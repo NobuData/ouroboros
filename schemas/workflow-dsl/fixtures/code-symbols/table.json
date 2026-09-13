@@ -1,0 +1,2339 @@
+{
+  "schemaId": "https://ouroboros.build/schemas/workflow-dsl/v1.json",
+  "scopes": [
+    {
+      "scope": "loop.options",
+      "completions": [
+        {
+          "label": "dsl",
+          "kind": "property",
+          "symbol": "loop.dsl"
+        },
+        {
+          "label": "trigger",
+          "kind": "property",
+          "symbol": "loop.trigger"
+        },
+        {
+          "label": "stages",
+          "kind": "property",
+          "symbol": "loop.stages"
+        }
+      ]
+    },
+    {
+      "scope": "loop.dsl",
+      "completions": [
+        {
+          "label": "1.0",
+          "kind": "value"
+        }
+      ]
+    },
+    {
+      "scope": "trigger.options",
+      "completions": [
+        {
+          "label": "on",
+          "kind": "property",
+          "symbol": "trigger.on"
+        },
+        {
+          "label": "when",
+          "kind": "property",
+          "symbol": "trigger.when"
+        }
+      ]
+    },
+    {
+      "scope": "trigger.on",
+      "completions": [
+        {
+          "label": "issue.queued",
+          "kind": "value"
+        }
+      ]
+    },
+    {
+      "scope": "trigger.when",
+      "completions": [
+        {
+          "label": "(i) => i.effort.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.labels.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.source.",
+          "kind": "snippet"
+        }
+      ]
+    },
+    {
+      "scope": "loop.stages",
+      "completions": [
+        {
+          "label": "trigger",
+          "kind": "function",
+          "symbol": "stage.trigger"
+        },
+        {
+          "label": "llm",
+          "kind": "function",
+          "symbol": "stage.llm"
+        },
+        {
+          "label": "infra",
+          "kind": "function",
+          "symbol": "stage.infra"
+        },
+        {
+          "label": "decision",
+          "kind": "function",
+          "symbol": "stage.decision"
+        },
+        {
+          "label": "gate",
+          "kind": "function",
+          "symbol": "stage.gate"
+        },
+        {
+          "label": "openPr",
+          "kind": "function",
+          "symbol": "stage.openPr"
+        },
+        {
+          "label": "backToQueue",
+          "kind": "function",
+          "symbol": "stage.backToQueue"
+        },
+        {
+          "label": "needsReview",
+          "kind": "function",
+          "symbol": "stage.needsReview"
+        }
+      ]
+    },
+    {
+      "scope": "stage.trigger.options",
+      "completions": [
+        {
+          "label": "title",
+          "kind": "property",
+          "symbol": "stage.trigger.title"
+        },
+        {
+          "label": "description",
+          "kind": "property",
+          "symbol": "stage.trigger.description"
+        },
+        {
+          "label": "next",
+          "kind": "property",
+          "symbol": "stage.trigger.next"
+        },
+        {
+          "label": "branches",
+          "kind": "property",
+          "symbol": "stage.trigger.branches"
+        },
+        {
+          "label": "onFail",
+          "kind": "property",
+          "symbol": "stage.trigger.onFail"
+        }
+      ]
+    },
+    {
+      "scope": "stage.llm.options",
+      "completions": [
+        {
+          "label": "title",
+          "kind": "property",
+          "symbol": "stage.llm.title"
+        },
+        {
+          "label": "description",
+          "kind": "property",
+          "symbol": "stage.llm.description"
+        },
+        {
+          "label": "skill",
+          "kind": "property",
+          "symbol": "stage.llm.skill"
+        },
+        {
+          "label": "model",
+          "kind": "property",
+          "symbol": "stage.llm.model"
+        },
+        {
+          "label": "retries",
+          "kind": "property",
+          "symbol": "stage.llm.retries"
+        },
+        {
+          "label": "tokenBudget",
+          "kind": "property",
+          "symbol": "stage.llm.tokenBudget"
+        },
+        {
+          "label": "permissions",
+          "kind": "property",
+          "symbol": "stage.llm.permissions"
+        },
+        {
+          "label": "prompt",
+          "kind": "property",
+          "symbol": "stage.llm.prompt"
+        },
+        {
+          "label": "next",
+          "kind": "property",
+          "symbol": "stage.llm.next"
+        },
+        {
+          "label": "branches",
+          "kind": "property",
+          "symbol": "stage.llm.branches"
+        },
+        {
+          "label": "onFail",
+          "kind": "property",
+          "symbol": "stage.llm.onFail"
+        }
+      ]
+    },
+    {
+      "scope": "stage.llm.model",
+      "completions": [
+        {
+          "label": "route.task(\"\")",
+          "kind": "snippet",
+          "symbol": "route.task"
+        },
+        {
+          "label": "route.model(\"\")",
+          "kind": "snippet",
+          "symbol": "route.model"
+        }
+      ]
+    },
+    {
+      "scope": "stage.infra.options",
+      "completions": [
+        {
+          "label": "title",
+          "kind": "property",
+          "symbol": "stage.infra.title"
+        },
+        {
+          "label": "description",
+          "kind": "property",
+          "symbol": "stage.infra.description"
+        },
+        {
+          "label": "farm",
+          "kind": "property",
+          "symbol": "stage.infra.farm"
+        },
+        {
+          "label": "cmd",
+          "kind": "property",
+          "symbol": "stage.infra.cmd"
+        },
+        {
+          "label": "next",
+          "kind": "property",
+          "symbol": "stage.infra.next"
+        },
+        {
+          "label": "branches",
+          "kind": "property",
+          "symbol": "stage.infra.branches"
+        },
+        {
+          "label": "onFail",
+          "kind": "property",
+          "symbol": "stage.infra.onFail"
+        }
+      ]
+    },
+    {
+      "scope": "stage.decision.options",
+      "completions": [
+        {
+          "label": "title",
+          "kind": "property",
+          "symbol": "stage.decision.title"
+        },
+        {
+          "label": "description",
+          "kind": "property",
+          "symbol": "stage.decision.description"
+        },
+        {
+          "label": "require",
+          "kind": "property",
+          "symbol": "stage.decision.require"
+        },
+        {
+          "label": "when",
+          "kind": "property",
+          "symbol": "stage.decision.when"
+        },
+        {
+          "label": "next",
+          "kind": "property",
+          "symbol": "stage.decision.next"
+        },
+        {
+          "label": "branches",
+          "kind": "property",
+          "symbol": "stage.decision.branches"
+        },
+        {
+          "label": "onFail",
+          "kind": "property",
+          "symbol": "stage.decision.onFail"
+        }
+      ]
+    },
+    {
+      "scope": "stage.decision.when",
+      "completions": [
+        {
+          "label": "() => true",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.effort.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.labels.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.source.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.checks.",
+          "kind": "snippet"
+        }
+      ]
+    },
+    {
+      "scope": "stage.gate.options",
+      "completions": [
+        {
+          "label": "title",
+          "kind": "property",
+          "symbol": "stage.gate.title"
+        },
+        {
+          "label": "description",
+          "kind": "property",
+          "symbol": "stage.gate.description"
+        },
+        {
+          "label": "require",
+          "kind": "property",
+          "symbol": "stage.gate.require"
+        },
+        {
+          "label": "when",
+          "kind": "property",
+          "symbol": "stage.gate.when"
+        },
+        {
+          "label": "next",
+          "kind": "property",
+          "symbol": "stage.gate.next"
+        },
+        {
+          "label": "branches",
+          "kind": "property",
+          "symbol": "stage.gate.branches"
+        },
+        {
+          "label": "onFail",
+          "kind": "property",
+          "symbol": "stage.gate.onFail"
+        }
+      ]
+    },
+    {
+      "scope": "stage.gate.when",
+      "completions": [
+        {
+          "label": "() => true",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.effort.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.labels.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.source.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.checks.",
+          "kind": "snippet"
+        }
+      ]
+    },
+    {
+      "scope": "stage.openPr.options",
+      "completions": [
+        {
+          "label": "title",
+          "kind": "property",
+          "symbol": "stage.openPr.title"
+        },
+        {
+          "label": "description",
+          "kind": "property",
+          "symbol": "stage.openPr.description"
+        },
+        {
+          "label": "merge",
+          "kind": "property",
+          "symbol": "stage.openPr.merge"
+        },
+        {
+          "label": "deleteBranch",
+          "kind": "property",
+          "symbol": "stage.openPr.deleteBranch"
+        }
+      ]
+    },
+    {
+      "scope": "stage.openPr.merge",
+      "completions": [
+        {
+          "label": "squash",
+          "kind": "value"
+        },
+        {
+          "label": "merge",
+          "kind": "value"
+        },
+        {
+          "label": "rebase",
+          "kind": "value"
+        }
+      ]
+    },
+    {
+      "scope": "stage.openPr.deleteBranch",
+      "completions": [
+        {
+          "label": "true",
+          "kind": "constant"
+        },
+        {
+          "label": "false",
+          "kind": "constant"
+        }
+      ]
+    },
+    {
+      "scope": "stage.backToQueue.options",
+      "completions": [
+        {
+          "label": "title",
+          "kind": "property",
+          "symbol": "stage.backToQueue.title"
+        },
+        {
+          "label": "description",
+          "kind": "property",
+          "symbol": "stage.backToQueue.description"
+        }
+      ]
+    },
+    {
+      "scope": "stage.needsReview.options",
+      "completions": [
+        {
+          "label": "title",
+          "kind": "property",
+          "symbol": "stage.needsReview.title"
+        },
+        {
+          "label": "description",
+          "kind": "property",
+          "symbol": "stage.needsReview.description"
+        }
+      ]
+    },
+    {
+      "scope": "permissions.options",
+      "completions": [
+        {
+          "label": "pushFixup",
+          "kind": "property",
+          "symbol": "permissions.pushFixup"
+        },
+        {
+          "label": "touchCi",
+          "kind": "property",
+          "symbol": "permissions.touchCi"
+        }
+      ]
+    },
+    {
+      "scope": "permissions.pushFixup",
+      "completions": [
+        {
+          "label": "true",
+          "kind": "constant"
+        },
+        {
+          "label": "false",
+          "kind": "constant"
+        }
+      ]
+    },
+    {
+      "scope": "permissions.touchCi",
+      "completions": [
+        {
+          "label": "true",
+          "kind": "constant"
+        },
+        {
+          "label": "false",
+          "kind": "constant"
+        }
+      ]
+    },
+    {
+      "scope": "edge.options",
+      "completions": [
+        {
+          "label": "to",
+          "kind": "property",
+          "symbol": "edge.to"
+        },
+        {
+          "label": "when",
+          "kind": "property",
+          "symbol": "edge.when"
+        }
+      ]
+    },
+    {
+      "scope": "edge.when",
+      "completions": [
+        {
+          "label": "() => true",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.effort.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.labels.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.source.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.checks.",
+          "kind": "snippet"
+        }
+      ]
+    },
+    {
+      "scope": "route.methods",
+      "completions": [
+        {
+          "label": "task",
+          "kind": "method",
+          "symbol": "route.task"
+        },
+        {
+          "label": "model",
+          "kind": "method",
+          "symbol": "route.model"
+        }
+      ]
+    },
+    {
+      "scope": "effort.constants",
+      "completions": [
+        {
+          "label": "XS",
+          "kind": "constant",
+          "symbol": "effort.XS"
+        },
+        {
+          "label": "S",
+          "kind": "constant",
+          "symbol": "effort.S"
+        },
+        {
+          "label": "M",
+          "kind": "constant",
+          "symbol": "effort.M"
+        },
+        {
+          "label": "L",
+          "kind": "constant",
+          "symbol": "effort.L"
+        },
+        {
+          "label": "XL",
+          "kind": "constant",
+          "symbol": "effort.XL"
+        }
+      ]
+    },
+    {
+      "scope": "predicate.subjects",
+      "completions": [
+        {
+          "label": "effort",
+          "kind": "property"
+        },
+        {
+          "label": "labels",
+          "kind": "property"
+        },
+        {
+          "label": "source",
+          "kind": "property"
+        },
+        {
+          "label": "checks",
+          "kind": "property"
+        }
+      ]
+    },
+    {
+      "scope": "predicate.effort",
+      "completions": [
+        {
+          "label": "lt",
+          "kind": "method",
+          "symbol": "predicate.effort.lt"
+        },
+        {
+          "label": "lte",
+          "kind": "method",
+          "symbol": "predicate.effort.lte"
+        },
+        {
+          "label": "eq",
+          "kind": "method",
+          "symbol": "predicate.effort.eq"
+        },
+        {
+          "label": "gte",
+          "kind": "method",
+          "symbol": "predicate.effort.gte"
+        },
+        {
+          "label": "gt",
+          "kind": "method",
+          "symbol": "predicate.effort.gt"
+        }
+      ]
+    },
+    {
+      "scope": "predicate.labels",
+      "completions": [
+        {
+          "label": "any",
+          "kind": "method",
+          "symbol": "predicate.labels.any"
+        },
+        {
+          "label": "all",
+          "kind": "method",
+          "symbol": "predicate.labels.all"
+        },
+        {
+          "label": "none",
+          "kind": "method",
+          "symbol": "predicate.labels.none"
+        }
+      ]
+    },
+    {
+      "scope": "predicate.source",
+      "completions": [
+        {
+          "label": "in",
+          "kind": "method",
+          "symbol": "predicate.source.in"
+        },
+        {
+          "label": "notIn",
+          "kind": "method",
+          "symbol": "predicate.source.notIn"
+        }
+      ]
+    },
+    {
+      "scope": "predicate.checks",
+      "completions": [
+        {
+          "label": "allPassed",
+          "kind": "method",
+          "symbol": "predicate.checks.allPassed"
+        },
+        {
+          "label": "anyFailed",
+          "kind": "method",
+          "symbol": "predicate.checks.anyFailed"
+        }
+      ]
+    },
+    {
+      "scope": "condition.subjects",
+      "completions": [
+        {
+          "label": "effort",
+          "kind": "property"
+        },
+        {
+          "label": "labels",
+          "kind": "property"
+        },
+        {
+          "label": "source",
+          "kind": "property"
+        }
+      ]
+    },
+    {
+      "scope": "condition.effort",
+      "completions": [
+        {
+          "label": "lte",
+          "kind": "method",
+          "symbol": "condition.effort.lte"
+        }
+      ]
+    },
+    {
+      "scope": "condition.labels",
+      "completions": [
+        {
+          "label": "all",
+          "kind": "method",
+          "symbol": "condition.labels.all"
+        }
+      ]
+    },
+    {
+      "scope": "condition.source",
+      "completions": [
+        {
+          "label": "is",
+          "kind": "method",
+          "symbol": "condition.source.is"
+        }
+      ]
+    },
+    {
+      "scope": "source.values",
+      "completions": [
+        {
+          "label": "github",
+          "kind": "value"
+        },
+        {
+          "label": "gitlab",
+          "kind": "value"
+        },
+        {
+          "label": "jira",
+          "kind": "value"
+        },
+        {
+          "label": "linear",
+          "kind": "value"
+        }
+      ]
+    },
+    {
+      "scope": "stage.llm.skill",
+      "completions": [
+        {
+          "label": "repo-map",
+          "kind": "value",
+          "suggestion": true
+        },
+        {
+          "label": "zephyr-conventions",
+          "kind": "value",
+          "suggestion": true
+        }
+      ]
+    },
+    {
+      "scope": "route.task",
+      "completions": [
+        {
+          "label": "analyze",
+          "kind": "value",
+          "suggestion": true
+        },
+        {
+          "label": "plan",
+          "kind": "value",
+          "suggestion": true
+        },
+        {
+          "label": "implement",
+          "kind": "value",
+          "suggestion": true
+        },
+        {
+          "label": "review",
+          "kind": "value",
+          "suggestion": true
+        }
+      ]
+    }
+  ],
+  "symbols": [
+    {
+      "symbol": "defineLoop",
+      "signature": [
+        {
+          "text": "defineLoop",
+          "role": "name"
+        },
+        {
+          "text": "(slug, options)",
+          "role": "text"
+        }
+      ],
+      "doc": "The canonical JSON document a workflow version stores in workflow_versions.definition (V029). Decision P3: one artifact, published as a schema, so the canvas, the code view, the validator, the dry-run simulator and the eventual interpreter read the same thing rather than each inventing a parser. This file describes the whole 1.x line; a 2.x document needs a v2.json beside it. See docs/WORKFLOW_DSL.md."
+    },
+    {
+      "symbol": "loop.dsl",
+      "signature": [
+        {
+          "text": "dsl",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "\"1.0\"",
+          "role": "type"
+        }
+      ],
+      "doc": "Which minor of the 1.x line this document is written against. Every minor this file knows is listed; adding an optional field appends a minor here, a breaking change starts v2.json."
+    },
+    {
+      "symbol": "loop.trigger",
+      "signature": [
+        {
+          "text": "trigger",
+          "role": "name"
+        }
+      ],
+      "doc": "What starts a run, as decision P8 structures it: a named event and a closed set of conditions, ANDed. Held at the document root rather than in the trigger node's config, so the predicate has one home and the node carries only what the canvas draws."
+    },
+    {
+      "symbol": "loop.stages",
+      "signature": [
+        {
+          "text": "stages",
+          "role": "name"
+        }
+      ],
+      "doc": "Every stage on the canvas, in no significant order — the graph is the edges, not the array."
+    },
+    {
+      "symbol": "trigger.on",
+      "signature": [
+        {
+          "text": "on",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "\"issue.queued\"",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "trigger.when",
+      "signature": [
+        {
+          "text": "when",
+          "role": "name"
+        }
+      ],
+      "doc": "All present conditions must hold. An empty object is a trigger that fires on every occurrence of the event, which is a thing an author may legitimately mean."
+    },
+    {
+      "symbol": "stage.trigger",
+      "signature": [
+        {
+          "text": "trigger",
+          "role": "name"
+        },
+        {
+          "text": "(id: ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        },
+        {
+          "text": ", options)",
+          "role": "text"
+        }
+      ],
+      "doc": "The trigger node configures nothing: its predicate is the document's own `trigger`. Closed and empty so that a field put here is an error rather than a second place to look."
+    },
+    {
+      "symbol": "stage.trigger.title",
+      "signature": [
+        {
+          "text": "title",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.trigger.description",
+      "signature": [
+        {
+          "text": "description",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.trigger.next",
+      "signature": [
+        {
+          "text": "next",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.trigger.branches",
+      "signature": [
+        {
+          "text": "branches",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.trigger.onFail",
+      "signature": [
+        {
+          "text": "onFail",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.llm",
+      "signature": [
+        {
+          "text": "llm",
+          "role": "name"
+        },
+        {
+          "text": "(id: ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        },
+        {
+          "text": ", options)",
+          "role": "text"
+        }
+      ],
+      "doc": "A model stage — the inspector's exact field set (mockup 04)."
+    },
+    {
+      "symbol": "stage.llm.title",
+      "signature": [
+        {
+          "text": "title",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.llm.description",
+      "signature": [
+        {
+          "text": "description",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.llm.skill",
+      "signature": [
+        {
+          "text": "skill",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ],
+      "doc": "A skill name, a model identifier or a task-route name. Decision P7: these are validated strings, never foreign keys — the model registry and the skills catalogue do not exist yet, and an unknown one is a warning at validation rather than a refusal at save."
+    },
+    {
+      "symbol": "stage.llm.model",
+      "signature": [
+        {
+          "text": "model",
+          "role": "name"
+        }
+      ],
+      "doc": "The inspector's Model routing radios. Exactly one of the two: inherit the route configured for a task name, or pin an opaque model identifier."
+    },
+    {
+      "symbol": "stage.llm.retries",
+      "signature": [
+        {
+          "text": "retries",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "integer",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.llm.tokenBudget",
+      "signature": [
+        {
+          "text": "tokenBudget",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "integer",
+          "role": "type"
+        }
+      ],
+      "doc": "Tokens, as a number. The inspector renders 400000 as `400k`; the formatting is the UI's and never the document's."
+    },
+    {
+      "symbol": "stage.llm.permissions",
+      "signature": [
+        {
+          "text": "permissions",
+          "role": "name"
+        }
+      ],
+      "doc": "Decision P9: enforced declarations. Both are required and neither defaults, because a permission nobody decided is a permission nobody can be held to. Enforcement itself lands with the interpreter (T.6)."
+    },
+    {
+      "symbol": "stage.llm.prompt",
+      "signature": [
+        {
+          "text": "prompt",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ],
+      "doc": "The stage prompt, with {{…}} placeholders resolved from the run context."
+    },
+    {
+      "symbol": "stage.llm.next",
+      "signature": [
+        {
+          "text": "next",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.llm.branches",
+      "signature": [
+        {
+          "text": "branches",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.llm.onFail",
+      "signature": [
+        {
+          "text": "onFail",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.infra",
+      "signature": [
+        {
+          "text": "infra",
+          "role": "name"
+        },
+        {
+          "text": "(id: ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        },
+        {
+          "text": ", options)",
+          "role": "text"
+        }
+      ],
+      "doc": "A build-farm or test stage. Both fields are optional: a stage with neither runs the repository's default command on the default pool, which is a deployment decision rather than a document one."
+    },
+    {
+      "symbol": "stage.infra.title",
+      "signature": [
+        {
+          "text": "title",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.infra.description",
+      "signature": [
+        {
+          "text": "description",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.infra.farm",
+      "signature": [
+        {
+          "text": "farm",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ],
+      "doc": "A skill name, a model identifier or a task-route name. Decision P7: these are validated strings, never foreign keys — the model registry and the skills catalogue do not exist yet, and an unknown one is a warning at validation rather than a refusal at save."
+    },
+    {
+      "symbol": "stage.infra.cmd",
+      "signature": [
+        {
+          "text": "cmd",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.infra.next",
+      "signature": [
+        {
+          "text": "next",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.infra.branches",
+      "signature": [
+        {
+          "text": "branches",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.infra.onFail",
+      "signature": [
+        {
+          "text": "onFail",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.decision",
+      "signature": [
+        {
+          "text": "decision",
+          "role": "name"
+        },
+        {
+          "text": "(id: ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        },
+        {
+          "text": ", options)",
+          "role": "text"
+        }
+      ],
+      "doc": "A fork in the graph. `decision` diverges, `gate` holds — the difference is topological and is what the edges say; both carry a predicate and neither restricts which kind."
+    },
+    {
+      "symbol": "stage.decision.title",
+      "signature": [
+        {
+          "text": "title",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.decision.description",
+      "signature": [
+        {
+          "text": "description",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.decision.require",
+      "signature": [
+        {
+          "text": "require",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        }
+      ],
+      "doc": "Which checks are required. Absent means every check the run produced — the mockup's `required checks: 14` is a count of what a repository declares, not a list this document pins."
+    },
+    {
+      "symbol": "stage.decision.when",
+      "signature": [
+        {
+          "text": "when",
+          "role": "name"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "stage.decision.next",
+      "signature": [
+        {
+          "text": "next",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.decision.branches",
+      "signature": [
+        {
+          "text": "branches",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.decision.onFail",
+      "signature": [
+        {
+          "text": "onFail",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.gate",
+      "signature": [
+        {
+          "text": "gate",
+          "role": "name"
+        },
+        {
+          "text": "(id: ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        },
+        {
+          "text": ", options)",
+          "role": "text"
+        }
+      ],
+      "doc": "A fork in the graph. `decision` diverges, `gate` holds — the difference is topological and is what the edges say; both carry a predicate and neither restricts which kind."
+    },
+    {
+      "symbol": "stage.gate.title",
+      "signature": [
+        {
+          "text": "title",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.gate.description",
+      "signature": [
+        {
+          "text": "description",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.gate.require",
+      "signature": [
+        {
+          "text": "require",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        }
+      ],
+      "doc": "Which checks are required. Absent means every check the run produced — the mockup's `required checks: 14` is a count of what a repository declares, not a list this document pins."
+    },
+    {
+      "symbol": "stage.gate.when",
+      "signature": [
+        {
+          "text": "when",
+          "role": "name"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "stage.gate.next",
+      "signature": [
+        {
+          "text": "next",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.gate.branches",
+      "signature": [
+        {
+          "text": "branches",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.gate.onFail",
+      "signature": [
+        {
+          "text": "onFail",
+          "role": "name"
+        }
+      ],
+      "doc": "One connection. `default` is the plain path, `branch` is one outcome of a flow node and carries the predicate that selects it, `loop` is the ouroboros edge the mockup draws dashed — gate fail back to implement."
+    },
+    {
+      "symbol": "stage.openPr",
+      "signature": [
+        {
+          "text": "openPr",
+          "role": "name"
+        },
+        {
+          "text": "(id: ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        },
+        {
+          "text": ", options)",
+          "role": "text"
+        }
+      ],
+      "doc": "Where a run ends. Options are per action and closed, so adding one is an edit to this file rather than a field that quietly appears."
+    },
+    {
+      "symbol": "stage.openPr.title",
+      "signature": [
+        {
+          "text": "title",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.openPr.description",
+      "signature": [
+        {
+          "text": "description",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.openPr.merge",
+      "signature": [
+        {
+          "text": "merge",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "\"squash\" | \"merge\" | \"rebase\"",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.openPr.deleteBranch",
+      "signature": [
+        {
+          "text": "deleteBranch",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "boolean",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.backToQueue",
+      "signature": [
+        {
+          "text": "backToQueue",
+          "role": "name"
+        },
+        {
+          "text": "(id: ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        },
+        {
+          "text": ", options)",
+          "role": "text"
+        }
+      ],
+      "doc": "Where a run ends. Options are per action and closed, so adding one is an edit to this file rather than a field that quietly appears."
+    },
+    {
+      "symbol": "stage.backToQueue.title",
+      "signature": [
+        {
+          "text": "title",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.backToQueue.description",
+      "signature": [
+        {
+          "text": "description",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.needsReview",
+      "signature": [
+        {
+          "text": "needsReview",
+          "role": "name"
+        },
+        {
+          "text": "(id: ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        },
+        {
+          "text": ", options)",
+          "role": "text"
+        }
+      ],
+      "doc": "Where a run ends. Options are per action and closed, so adding one is an edit to this file rather than a field that quietly appears."
+    },
+    {
+      "symbol": "stage.needsReview.title",
+      "signature": [
+        {
+          "text": "title",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "stage.needsReview.description",
+      "signature": [
+        {
+          "text": "description",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "permissions.pushFixup",
+      "signature": [
+        {
+          "text": "pushFixup",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "boolean",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "permissions.touchCi",
+      "signature": [
+        {
+          "text": "touchCi",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "boolean",
+          "role": "type"
+        }
+      ]
+    },
+    {
+      "symbol": "edge.to",
+      "signature": [
+        {
+          "text": "to",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "string",
+          "role": "type"
+        }
+      ],
+      "doc": "A stable, human-readable identifier for one node, unique within the document. Edges reference it, and a run journal records it, so it is a slug rather than a generated id."
+    },
+    {
+      "symbol": "edge.when",
+      "signature": [
+        {
+          "text": "when",
+          "role": "name"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "route.task",
+      "signature": [
+        {
+          "text": "route.task",
+          "role": "name"
+        },
+        {
+          "text": "(name: ",
+          "role": "text"
+        },
+        {
+          "text": "TaskKind",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "ModelRoute",
+          "role": "type"
+        }
+      ],
+      "doc": "Resolves the model assigned to a task kind in Model Routing."
+    },
+    {
+      "symbol": "route.model",
+      "signature": [
+        {
+          "text": "route.model",
+          "role": "name"
+        },
+        {
+          "text": "(name: ",
+          "role": "text"
+        },
+        {
+          "text": "ModelId",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "ModelRoute",
+          "role": "type"
+        }
+      ],
+      "doc": "Pins the stage to one opaque model identifier instead of a task kind's route."
+    },
+    {
+      "symbol": "effort.XS",
+      "signature": [
+        {
+          "text": "effort.XS",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        }
+      ],
+      "doc": "How much work a ticket is, in the vocabulary issue_estimates.effort stores and the mockup's chips render."
+    },
+    {
+      "symbol": "effort.S",
+      "signature": [
+        {
+          "text": "effort.S",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        }
+      ],
+      "doc": "How much work a ticket is, in the vocabulary issue_estimates.effort stores and the mockup's chips render."
+    },
+    {
+      "symbol": "effort.M",
+      "signature": [
+        {
+          "text": "effort.M",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        }
+      ],
+      "doc": "How much work a ticket is, in the vocabulary issue_estimates.effort stores and the mockup's chips render."
+    },
+    {
+      "symbol": "effort.L",
+      "signature": [
+        {
+          "text": "effort.L",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        }
+      ],
+      "doc": "How much work a ticket is, in the vocabulary issue_estimates.effort stores and the mockup's chips render."
+    },
+    {
+      "symbol": "effort.XL",
+      "signature": [
+        {
+          "text": "effort.XL",
+          "role": "name"
+        },
+        {
+          "text": ": ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        }
+      ],
+      "doc": "How much work a ticket is, in the vocabulary issue_estimates.effort stores and the mockup's chips render."
+    },
+    {
+      "symbol": "predicate.effort.lt",
+      "signature": [
+        {
+          "text": "effort.lt",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "value: ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.effort.lte",
+      "signature": [
+        {
+          "text": "effort.lte",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "value: ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.effort.eq",
+      "signature": [
+        {
+          "text": "effort.eq",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "value: ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.effort.gte",
+      "signature": [
+        {
+          "text": "effort.gte",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "value: ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.effort.gt",
+      "signature": [
+        {
+          "text": "effort.gt",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "value: ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.labels.any",
+      "signature": [
+        {
+          "text": "labels.any",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "values: ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.labels.all",
+      "signature": [
+        {
+          "text": "labels.all",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "values: ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.labels.none",
+      "signature": [
+        {
+          "text": "labels.none",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "values: ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.source.in",
+      "signature": [
+        {
+          "text": "source.in",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "values: ",
+          "role": "text"
+        },
+        {
+          "text": "SourceKind[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.source.notIn",
+      "signature": [
+        {
+          "text": "source.notIn",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "values: ",
+          "role": "text"
+        },
+        {
+          "text": "SourceKind[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.checks.allPassed",
+      "signature": [
+        {
+          "text": "checks.allPassed",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "names?: ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.checks.anyFailed",
+      "signature": [
+        {
+          "text": "checks.anyFailed",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "names?: ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "condition.effort.lte",
+      "signature": [
+        {
+          "text": "effort.lte",
+          "role": "name"
+        },
+        {
+          "text": "(value: ",
+          "role": "text"
+        },
+        {
+          "text": "Effort",
+          "role": "type"
+        },
+        {
+          "text": ")",
+          "role": "text"
+        }
+      ],
+      "doc": "How much work a ticket is, in the vocabulary issue_estimates.effort stores and the mockup's chips render."
+    },
+    {
+      "symbol": "condition.labels.all",
+      "signature": [
+        {
+          "text": "labels.all",
+          "role": "name"
+        },
+        {
+          "text": "(values: ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        },
+        {
+          "text": ")",
+          "role": "text"
+        }
+      ]
+    },
+    {
+      "symbol": "condition.source.is",
+      "signature": [
+        {
+          "text": "source.is",
+          "role": "name"
+        },
+        {
+          "text": "(value: ",
+          "role": "text"
+        },
+        {
+          "text": "SourceKind",
+          "role": "type"
+        },
+        {
+          "text": ")",
+          "role": "text"
+        }
+      ],
+      "doc": "Which tracker a ticket came from, in the vocabulary ticket_sources.kind stores (V030)."
+    }
+  ]
+}

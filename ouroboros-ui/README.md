@@ -2650,6 +2650,44 @@ Loading is [`app/workflows/studio-skeleton.tsx`](app/workflows/studio-skeleton.t
 skeleton for both routes, at the frame's own geometry, with the title and subline as bars
 because — unlike the routing page's — both depend on the reads.
 
+### Code intelligence — completions and hover docs
+
+The code editor itself is V.2's ([#170](https://github.com/NobuData/ouroboros/issues/170)) and is
+not mounted yet. What W.1 ([#177](https://github.com/NobuData/ouroboros/issues/177)) ships is the
+intelligence that editor mounts, in [`app/workflows/code/`](app/workflows/code):
+
+```ts
+const table = await workflows.codeSymbols();           // server-side, passed to the editor's client component
+new EditorView({ extensions: [basicSetup, dslIntelligence(table)] });
+```
+
+| Module | What it does |
+|---|---|
+| `context.ts` | Names the cursor's place — `stage.llm.options`, `route.task`, `predicate.effort` — with a small scanner that skips strings, template literals and comments and never fails on a half-typed file |
+| `completions.ts` | The CodeMirror completion source: the scope's entries and no others, string values quoted, workspace names labelled *suggested* |
+| `hover.ts` | The CodeMirror hover tooltip: the card for a described symbol, and **no tooltip at all** for anything else |
+| `hover-doc.tsx` | `HoverDocCard`, mockup 05's Types card, for the panel V.5 ([#173](https://github.com/NobuData/ouroboros/issues/173)) mounts; the tooltip builds the same markup |
+| `intelligence.ts` | Both, as one extension |
+
+**The table is the service's**, `GET /api/v1/workflows/code-symbols`. Nothing in this directory
+knows an option key, an enum value or a doc, so a key added to the grammar is offered with no change
+here. What `context.ts` does know is the grammar's *shape*: that `stages` holds stage calls, that
+`branches` holds edge entries, that `route.` and an arrow's parameter start member chains.
+
+**The card says only what the schema says.** Its doc line is the schema's `description`, verbatim;
+a symbol with none draws no doc line, and a name the table does not describe draws no card. The
+mockup's *"Falls back to the tenant default chain."* is not drawn, because routing has no such
+chain.
+
+The suites in `__tests__/workflows/code/` run against the shared golden files: the table
+`ouroboros-rest` asserts it serves (`schemas/workflow-dsl/fixtures/code-symbols/table.json`) and the
+printer's `standard-fix.loop.ts`. Both themes are proven as the primitives' are: identical markup
+under both palettes, and every hue a token both palettes define (`code-styles.test.ts`).
+
+`@codemirror/state`, `@codemirror/view` and `@codemirror/autocomplete` (MIT) arrive with this
+directory. No route imports it yet, so no page's bundle grows until V.2 mounts the editor and
+records the delta (decision **C1**).
+
 ## The polling store
 
 The page's cards and the header's two pills all want the same freshness, and

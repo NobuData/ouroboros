@@ -15,6 +15,11 @@ name: ouroboros-ui · ci
 # request that renames a field there and nowhere else must still run these checks: the
 # suite fails while the generated types are stale, and without this path it would never
 # be queued to say so.
+#
+# Two of the workflow DSL fixture directories are here because of #177. The code editor's
+# completion and hover suites read the symbol table ouroboros-rest serves (fixtures/code-symbols/)
+# and the printer's golden files (fixtures/code/), so a change there must run the suite that reads
+# them. The rest of schemas/ is the two validators' business, and stays off this filter.
 
 on:
   pull_request:
@@ -22,6 +27,8 @@ on:
     paths:
       - "ouroboros-ui/**"
       - "ouroboros-rest/openapi.json"
+      - "schemas/workflow-dsl/fixtures/code-symbols/**"
+      - "schemas/workflow-dsl/fixtures/code/**"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/ui.yml"
@@ -34,6 +41,8 @@ on:
     paths:
       - "ouroboros-ui/**"
       - "ouroboros-rest/openapi.json"
+      - "schemas/workflow-dsl/fixtures/code-symbols/**"
+      - "schemas/workflow-dsl/fixtures/code/**"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/ui.yml"

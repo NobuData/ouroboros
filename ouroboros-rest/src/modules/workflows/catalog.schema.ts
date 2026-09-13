@@ -94,10 +94,12 @@ export interface NodeTypeSchema {
 /**
  * Is this a JSON object — not an array, not `null`?
  *
+ * Exported for `code.symbols.schema.ts`, which reads the same document.
+ *
  * @param value - Anything parsed from JSON.
  * @returns Whether it can be read as a keyword map.
  */
-function isObject(value: unknown): value is Record<string, unknown> {
+export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

@@ -98,6 +98,26 @@ export type WorkflowDefinition = components["schemas"]["WorkflowDefinition"];
  */
 export type CreateWorkflowRequest = components["schemas"]["CreateWorkflowRequest"];
 
+/**
+ * The code editor's symbol table — W.1
+ * ([#177](https://github.com/NobuData/ouroboros/issues/177)): what to offer at each place in a
+ * workflow file, and what a hover card says about each symbol, read by the service from the
+ * grammar and the published schema, with the workspace's task routes and skills as suggestions.
+ */
+export type CodeSymbolTable = components["schemas"]["WorkflowCodeSymbolTable"];
+
+/** Everything offered at one place in a file. */
+export type CodeScope = components["schemas"]["WorkflowCodeScope"];
+
+/** One completion. */
+export type CodeCompletion = components["schemas"]["WorkflowCodeCompletion"];
+
+/** What a hover card says about one symbol. */
+export type CodeSymbol = components["schemas"]["WorkflowCodeSymbol"];
+
+/** One run of a signature, and its colour. */
+export type CodeSignaturePart = components["schemas"]["WorkflowCodeSignaturePart"];
+
 /** Workflows, as `ouroboros-rest` serves them. */
 export const workflows = {
   /**

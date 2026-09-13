@@ -103,6 +103,70 @@ describe("the stage catalog service", () => {
     });
   });
 
+  describe("the code symbol table", () => {
+    /**
+     * The labels a table offers at a scope.
+     *
+     * @param table - The served table.
+     * @param scope - The scope.
+     * @returns The labels, or `undefined` for a scope it does not have.
+     */
+    function offered(
+      table: Awaited<ReturnType<WorkflowCatalogService["codeSymbols"]>>,
+      scope: string,
+    ): string[] | undefined {
+      return table.scopes.find((entry) => entry.scope === scope)?.completions.map((c) => c.label);
+    }
+
+    it("offers the workspace's task kinds and the configured skills, from one read", async () => {
+      const table = await service().codeSymbols(WORKSPACE);
+
+      expect(repository.taskKindNames).toHaveBeenCalledTimes(1);
+      expect(repository.taskKindNames).toHaveBeenCalledWith(WORKSPACE);
+      expect(offered(table, "route.task")).toEqual(["analyze", "implement"]);
+      expect(offered(table, "stage.llm.skill")).toEqual(["repo-map", "zephyr-conventions"]);
+    });
+
+    it("builds the grammar's half once, not per request", async () => {
+      const subject = service();
+
+      const first = await subject.codeSymbols(WORKSPACE);
+      const second = await subject.codeSymbols("another-workspace");
+
+      expect(second.symbols).toBe(first.symbols);
+    });
+
+    it("offers the same task routes the stage catalog suggests", async () => {
+      const subject = service();
+
+      const { suggestions } = await subject.catalog(WORKSPACE);
+
+      expect(offered(await subject.codeSymbols(WORKSPACE), "route.task")).toEqual(
+        suggestions.taskRoutes,
+      );
+    });
+
+    it("serves the schema it was given, so a value added there is offered", async () => {
+      const schema = structuredClone(readPublishedDslSchema()) as {
+        $defs: { source_kind: { enum: string[] } };
+      };
+      schema.$defs.source_kind.enum.push("bugzilla");
+
+      const table = await service(schema).codeSymbols(WORKSPACE);
+
+      expect(offered(table, "source.values")).toContain("bugzilla");
+    });
+
+    it("fails at construction for a schema missing a location the grammar points at", () => {
+      const schema = structuredClone(readPublishedDslSchema()) as {
+        $defs: Record<string, unknown>;
+      };
+      delete schema.$defs.infra_config;
+
+      expect(() => service(schema)).toThrow(DslSchemaError);
+    });
+  });
+
   it("fails at construction for a schema it cannot read node types from", () => {
     expect(() => service({ $id: "https://ouroboros.build/schemas/workflow-dsl/v1.json" })).toThrow(
       DslSchemaError,

@@ -619,6 +619,11 @@ and every idiom the mockup uses that the document can carry is kept.
 **The status bar is not printed code.** Its `LSP ready` becomes `DSL analyzer` under decision
 **C5**, which is the editor's (#174) and not this grammar's.
 
+**Neither is the Types card.** Its `route.task(name: TaskKind): ModelRoute` is served by #177,
+with the schema's first sentence as its doc. The mockup's second, *"Falls back to the tenant
+default chain"*, describes a fallback routing does not have: an unrouted task kind is
+`route_not_found`.
+
 ---
 
 ## 11. What builds on this
@@ -629,7 +634,7 @@ and every idiom the mockup uses that the document can carry is kept.
 | **#167**, the endpoints | `printWorkflowCode(slug, document)` for `GET /code`. The printer takes valid documents only, and a draft is not validated, so #167 decides what the code view shows for a draft that doesn't print. |
 | **#168**, the property tests | The bijection in [§2](#2-what-the-grammar-promises), over generated documents. |
 | **#170**, highlighting | The token classes: keywords, strings, numbers, callees, comments. |
-| **#177**, completions | `STAGE_CALLEES`, `STAGE_OPTIONS`, `PREDICATE_METHODS`, `EFFORT_CONSTANTS`, `ROUTE_METHODS`. |
+| **#177**, completions and hover docs | `STAGE_CALLEES`, `STAGE_OPTIONS`, `PREDICATE_METHODS`, `EFFORT_CONSTANTS`, `ROUTE_METHODS`, and the schema pointers `code.grammar.ts` keeps beside them (`STAGE_OPTION_FIELDS`, `ROUTE_SIGNATURES` and the rest). `GET /api/v1/workflows/code-symbols` reads each word's type, values and doc from `v1.json` through them (`code.symbols.ts`). |
 | **#178**, the span map | `PrintedWorkflowCode.spans`: for each node, in node order, the 1-based first and last line of its stage call. |
 
 ```ts

@@ -45,12 +45,16 @@ make_fixture() {
   # starts a PostgreSQL and applies ouroboros-db's Flyway project to it, so a migration is
   # one of that module's test inputs — and its unit suite compares the harness's image pins
   # against docker-compose.yml. It watches schemas/ since #133, for the reason engine.yml
-  # below does. Held in a variable because the two workflows are otherwise identical, and
-  # the shared template is what makes that visible.
+  # below does. ouroboros-ui watches two of the DSL's fixture directories since #177, because
+  # its code editor suites read the symbol table and the printer's golden files. Held in a
+  # variable because the two workflows are otherwise identical, and the shared template is what
+  # makes that visible.
   for module in ui rest; do
-    data_tier=''
+    module_inputs='
+      - "schemas/workflow-dsl/fixtures/code-symbols/**"
+      - "schemas/workflow-dsl/fixtures/code/**"'
     if [ "$module" = rest ]; then
-      data_tier='
+      module_inputs='
       - "ouroboros-db/migrations/**"
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
@@ -65,7 +69,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "ouroboros-$module/**"$data_tier
+      - "ouroboros-$module/**"$module_inputs
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/$module.yml"
@@ -76,7 +80,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "ouroboros-$module/**"$data_tier
+      - "ouroboros-$module/**"$module_inputs
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/$module.yml"
