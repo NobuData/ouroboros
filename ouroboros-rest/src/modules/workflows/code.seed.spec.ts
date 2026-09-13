@@ -3,10 +3,12 @@
  * ([#165](https://github.com/NobuData/ouroboros/issues/165)).
  *
  * The issue's third acceptance criterion is that all five seeded workflows print, and re-parse
- * cleanly — the full parse is #166's, verified jointly — so this reads every definition out of
- * `R__dev_seed_workflows.sql` (through `dsl.seed.fixture.ts`, which `dsl.seed.spec.ts` shares)
- * and holds each print to what the compiler reads back: no syntax error, byte-identical on
- * every print, and the same graph — positions, edge kinds, labels and order — as the document.
+ * cleanly, so this reads every definition out of `R__dev_seed_workflows.sql` (through
+ * `dsl.seed.fixture.ts`, which `dsl.seed.spec.ts` shares) and holds each print to what the
+ * compiler reads back: no syntax error, byte-identical on every print, and the same graph —
+ * positions, edge kinds, labels and order — as the document. U.2's parser
+ * ([#166](https://github.com/NobuData/ouroboros/issues/166)) then reads each print back into the
+ * very document the seed stores, which is that issue's golden-fixture criterion.
  *
  * `standard-fix` v14 is also the draft the code view opens (the seed copies it), so its print
  * is held to the committed golden file as well.
@@ -15,6 +17,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { parseWorkflowCode } from "./code.parser";
 import { printWorkflowCode } from "./code.printer";
 import {
   graphOf,
@@ -47,6 +50,14 @@ describe.each(SEED_DOCUMENT_TAGS)("%s — %s", (tag, _about, slug) => {
 
     expect(recovered.slug).toBe(slug);
     expect(recovered.trigger).toStrictEqual(document.trigger);
+  });
+
+  it("parses back into exactly the document the seed stores", () => {
+    expect(parseWorkflowCode(printed.text)).toStrictEqual({
+      slug,
+      document: seededDocuments(tag)[0],
+      errors: [],
+    });
   });
 });
 
