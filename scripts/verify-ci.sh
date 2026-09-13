@@ -226,6 +226,13 @@ check_route ouroboros-rest/package.json 'db.yml rest.yml'
 check_route schemas/workflow-dsl/v1.json 'db.yml engine.yml rest.yml'
 check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml'
 
+# The sixth (#177), and the first that reaches ci/ui. The code editor's completion and hover
+# suites run against two of these golden files: the symbol table ouroboros-rest serves, and the
+# printer's standard-fix.loop.ts. A change to either has to run the UI suite that reads it as well
+# as the REST suite that writes it. The rest of the fixture set stays the validators' alone.
+check_route schemas/workflow-dsl/fixtures/code-symbols/table.json 'engine.yml rest.yml ui.yml'
+check_route schemas/workflow-dsl/fixtures/code/standard-fix.loop.ts 'engine.yml rest.yml ui.yml'
+
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.
 check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'

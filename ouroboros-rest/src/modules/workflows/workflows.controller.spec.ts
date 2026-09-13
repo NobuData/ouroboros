@@ -34,7 +34,7 @@ const PRINCIPAL = { user: { id: "user-1" } } as never;
 
 describe("the workflows controller", () => {
   let service: jest.Mocked<WorkflowsService>;
-  let catalog: jest.Mocked<Pick<WorkflowCatalogService, "catalog">>;
+  let catalog: jest.Mocked<Pick<WorkflowCatalogService, "catalog" | "codeSymbols">>;
   let controller: WorkflowsController;
   let reflector: Reflector;
 
@@ -49,7 +49,10 @@ describe("the workflows controller", () => {
       versions: jest.fn().mockResolvedValue({ items: [], total: 0, limit: 25, offset: 0 }),
     } as unknown as jest.Mocked<WorkflowsService>;
 
-    catalog = { catalog: jest.fn().mockResolvedValue({ nodeTypes: [] }) };
+    catalog = {
+      catalog: jest.fn().mockResolvedValue({ nodeTypes: [] }),
+      codeSymbols: jest.fn().mockResolvedValue({ scopes: [], symbols: [] }),
+    };
 
     controller = new WorkflowsController(service, catalog as unknown as WorkflowCatalogService);
     reflector = new Reflector();
@@ -72,6 +75,12 @@ describe("the workflows controller", () => {
       await controller.catalog(TENANT);
 
       expect(catalog.catalog).toHaveBeenCalledWith("acme-robotics-id");
+    });
+
+    it("hands the code symbol table the workspace", async () => {
+      await controller.codeSymbols(TENANT);
+
+      expect(catalog.codeSymbols).toHaveBeenCalledWith("acme-robotics-id");
     });
 
     it("hands the detail the version the query named", async () => {
@@ -145,6 +154,7 @@ describe("the workflows controller", () => {
         controller.list,
         controller.create,
         controller.catalog,
+        controller.codeSymbols,
         controller.read,
         controller.update,
         controller.saveDraft,
@@ -160,6 +170,7 @@ describe("the workflows controller", () => {
     it.each([
       ["the rail", () => controller.list],
       ["the stage catalog", () => controller.catalog],
+      ["the code symbol table", () => controller.codeSymbols],
       ["the detail", () => controller.read],
       ["the history", () => controller.versions],
     ])("leaves %s open to every member, viewers included", (_name, handler) => {
@@ -193,6 +204,16 @@ describe("the workflows controller", () => {
 
       expect(handlers.indexOf("catalog")).toBeGreaterThan(-1);
       expect(handlers.indexOf("catalog")).toBeLessThan(handlers.indexOf("read"));
+    });
+
+    it("serves the code symbol table at `code-symbols`, before the detail", () => {
+      const handlers = Object.getOwnPropertyNames(WorkflowsController.prototype);
+
+      expect(Reflect.getMetadata(PATH_METADATA, WorkflowsController.prototype.codeSymbols)).toBe(
+        "code-symbols",
+      );
+      expect(handlers.indexOf("codeSymbols")).toBeGreaterThan(-1);
+      expect(handlers.indexOf("codeSymbols")).toBeLessThan(handlers.indexOf("read"));
     });
   });
 

@@ -192,12 +192,22 @@
             {
               "additionalProperties": false,
               "required": ["inherit_task"],
-              "properties": { "inherit_task": { "$ref": "#/$defs/reference" } }
+              "properties": {
+                "inherit_task": {
+                  "description": "Resolves the model assigned to a task kind in Model Routing.",
+                  "$ref": "#/$defs/reference"
+                }
+              }
             },
             {
               "additionalProperties": false,
               "required": ["pinned_model"],
-              "properties": { "pinned_model": { "$ref": "#/$defs/reference" } }
+              "properties": {
+                "pinned_model": {
+                  "description": "Pins the stage to one opaque model identifier instead of a task kind's route.",
+                  "$ref": "#/$defs/reference"
+                }
+              }
             }
           ]
         },

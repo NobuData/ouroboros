@@ -1,0 +1,44 @@
+/*
+ * The workflow code editor's hover-doc card — W.1 (#177).
+ *
+ * Mockup 05's `.hover-doc` (docs/mockups/05-workflow-code.html): a mono card on the surface with
+ * a strong border, the symbol in the model hue, types in the accent, and the doc line faint and
+ * italic. `HoverDocCard` draws it in the Types panel and `hover.ts` builds the same markup for the
+ * editor's hover tooltip, both from the classes in `hover-doc-classes.ts`.
+ *
+ * Every colour is a token, so the light and dark renderings are the token sheet's, and every size
+ * is rem so the font-size preference scales the card. The mockup's shadow is drawn in `--scrim`,
+ * the one token that is the ground's own colour at depth.
+ */
+
+.code-hover-doc {
+  max-width: 28rem;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: 0 var(--sp-3) var(--sp-9) calc(var(--sp-3) * -1) var(--scrim);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+  overflow-wrap: anywhere;
+}
+
+.code-hover-doc__signature {
+  white-space: pre-wrap;
+}
+
+.code-hover-doc__name {
+  color: var(--model);
+}
+
+.code-hover-doc__type {
+  color: var(--accent);
+}
+
+.code-hover-doc__doc {
+  margin: 0;
+  color: var(--ink-faint);
+  font-style: italic;
+}

@@ -183,6 +183,167 @@ export const STAGE_OPTIONS = {
   needsReview: [...COMMON_OPTIONS],
 } as const satisfies Record<StageCallee, readonly string[]>;
 
+/*
+ * ---------------------------------------------------------------------------
+ * Where the grammar's words live in the published schema — W.1
+ * ([#177](https://github.com/NobuData/ouroboros/issues/177)).
+ *
+ * The editor's completions and hover cards say what a symbol is: its type, the values it takes,
+ * and its documentation. None of that is written here. These tables only point, as JSON Pointers
+ * into `schemas/workflow-dsl/v1.json`, and `code.symbols.ts` reads the type, the `enum` and the
+ * `description` from the schema. A symbol whose schema location has no description gets no doc,
+ * never a sentence composed for it. `code.symbols.spec.ts` resolves every pointer below against
+ * the committed schema.
+ */
+
+/** Model stage fields. */
+const LLM_FIELD = "/$defs/llm_config/properties";
+
+/** A model stage's routing — the `model: route.task(…)` option. */
+export const ROUTING_FIELD = `${LLM_FIELD}/routing`;
+
+/** Build-farm stage fields. */
+const INFRA_FIELD = "/$defs/infra_config/properties";
+
+/** The options an `open_pr_automerge` terminal carries. */
+const OPEN_PR_OPTION_FIELD = "/$defs/term_config/allOf/0/then/properties/options/properties";
+
+/** A node's own fields, which every stage call carries first. */
+const NODE_FIELD = "/$defs/node/properties";
+
+/** One connection. `next`, `branches` and `onFail` are all spellings of edges. */
+const EDGE_FIELD = "/$defs/edge";
+
+/** The root document. Its description is `defineLoop`'s doc. */
+export const DEFINE_LOOP_FIELD = "";
+
+/** A node's id — the first argument of every stage call. */
+export const NODE_ID_FIELD = `${NODE_FIELD}/id`;
+
+/** A structured predicate — what a flow node's and an edge's `when` spell. */
+export const PREDICATE_FIELD = "/$defs/predicate";
+
+/** The trigger's conditions, one property per condition `when` conjoins. */
+export const TRIGGER_CONDITIONS_FIELD = "/$defs/trigger/properties/conditions/properties";
+
+/** The effort vocabulary `effort.M` spells. */
+export const EFFORT_FIELD = "/$defs/effort";
+
+/** The tracker vocabulary a `source` predicate lists. */
+export const SOURCE_KIND_FIELD = "/$defs/source_kind";
+
+/** A model stage's permission flags — `PERMISSION_KEYS`' keys are its property names. */
+export const PERMISSIONS_FIELD = `${LLM_FIELD}/permissions/properties`;
+
+/** `defineLoop`'s options. */
+export const DEFINE_LOOP_FIELDS = {
+  dsl: "/properties/dsl_version",
+  trigger: "/$defs/trigger",
+  stages: "/properties/nodes",
+} as const satisfies Record<(typeof DEFINE_LOOP_OPTIONS)[number], string>;
+
+/** The `trigger: {…}` option's keys. */
+export const TRIGGER_FIELDS = {
+  on: "/$defs/trigger/properties/event",
+  when: "/$defs/trigger/properties/conditions",
+} as const satisfies Record<(typeof TRIGGER_OPTIONS)[number], string>;
+
+/** The keys of one `branches` or `onFail` entry. */
+export const EDGE_ENTRY_FIELDS = {
+  to: `${EDGE_FIELD}/properties/to`,
+  when: `${EDGE_FIELD}/properties/condition`,
+} as const satisfies Record<(typeof EDGE_ENTRY_OPTIONS)[number], string>;
+
+/** Where each stage callee's node type is configured — the doc card a callee shows. */
+export const STAGE_CALLEE_FIELDS = {
+  trigger: "/$defs/trigger_config",
+  llm: "/$defs/llm_config",
+  infra: "/$defs/infra_config",
+  decision: "/$defs/flow_config",
+  gate: "/$defs/flow_config",
+  openPr: "/$defs/term_config",
+  backToQueue: "/$defs/term_config",
+  needsReview: "/$defs/term_config",
+} as const satisfies Record<StageCallee, string>;
+
+/** `title` and `description`, on every stage. */
+const COMMON_OPTION_FIELDS = {
+  title: `${NODE_FIELD}/title`,
+  description: `${NODE_FIELD}/description`,
+} as const;
+
+/** The edge options, on every stage that may have outgoing edges. */
+const EDGE_OPTION_FIELDS = { next: EDGE_FIELD, branches: EDGE_FIELD, onFail: EDGE_FIELD } as const;
+
+/** A flow node's two predicate spellings: `require` is named checks, `when` any predicate. */
+const FLOW_OPTION_FIELDS = {
+  require: `${PREDICATE_FIELD}/allOf/3/then/properties/names`,
+  when: "/$defs/flow_config/properties/predicate",
+} as const;
+
+/**
+ * Where each stage option's value lives in the schema, by callee.
+ *
+ * **Partial on purpose.** A key added to {@link STAGE_OPTIONS} is offered as a completion with no
+ * edit here; it simply has no type and no doc until it points somewhere. The spec holds today's
+ * table to full coverage, so a real addition is still noticed.
+ */
+export const STAGE_OPTION_FIELDS = {
+  trigger: { ...COMMON_OPTION_FIELDS, ...EDGE_OPTION_FIELDS },
+  llm: {
+    ...COMMON_OPTION_FIELDS,
+    skill: `${LLM_FIELD}/skill`,
+    model: `${LLM_FIELD}/routing`,
+    retries: `${LLM_FIELD}/limits/properties/max_retries`,
+    tokenBudget: `${LLM_FIELD}/limits/properties/token_budget`,
+    permissions: `${LLM_FIELD}/permissions`,
+    prompt: `${LLM_FIELD}/prompt_template`,
+    ...EDGE_OPTION_FIELDS,
+  },
+  infra: {
+    ...COMMON_OPTION_FIELDS,
+    farm: `${INFRA_FIELD}/runner_pool`,
+    cmd: `${INFRA_FIELD}/command`,
+    ...EDGE_OPTION_FIELDS,
+  },
+  decision: { ...COMMON_OPTION_FIELDS, ...FLOW_OPTION_FIELDS, ...EDGE_OPTION_FIELDS },
+  gate: { ...COMMON_OPTION_FIELDS, ...FLOW_OPTION_FIELDS, ...EDGE_OPTION_FIELDS },
+  openPr: {
+    ...COMMON_OPTION_FIELDS,
+    merge: `${OPEN_PR_OPTION_FIELD}/merge_method`,
+    deleteBranch: `${OPEN_PR_OPTION_FIELD}/delete_branch`,
+  },
+  backToQueue: { ...COMMON_OPTION_FIELDS },
+  needsReview: { ...COMMON_OPTION_FIELDS },
+} as const satisfies {
+  readonly [C in StageCallee]: Partial<Record<(typeof STAGE_OPTIONS)[C][number], string>>;
+};
+
+/** The type `route.task(…)` and `route.model(…)` both answer — mockup 05's Types card. */
+export const ROUTE_RESULT_TYPE = "ModelRoute";
+
+/**
+ * `route.task(name: TaskKind): ModelRoute` and its sibling, as signatures.
+ *
+ * The parameter and type names are the SDK's words, which mockup 05 prints; the doc each card
+ * shows is the `description` at `field`.
+ */
+export const ROUTE_SIGNATURES = {
+  inherit_task: {
+    parameter: "name",
+    type: "TaskKind",
+    field: `${LLM_FIELD}/routing/oneOf/0/properties/inherit_task`,
+  },
+  pinned_model: {
+    parameter: "name",
+    type: "ModelId",
+    field: `${LLM_FIELD}/routing/oneOf/1/properties/pinned_model`,
+  },
+} as const satisfies Record<
+  keyof LlmConfig["routing"],
+  { parameter: string; type: string; field: string }
+>;
+
 /** One level of indentation. */
 export const INDENT = "  ";
 

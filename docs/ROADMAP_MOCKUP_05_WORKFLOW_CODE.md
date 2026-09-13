@@ -569,13 +569,13 @@ e2e: parity ✓ · code→visual→code round-trip ✓ · publish ✓ · diagnos
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| W.1 | #177 | 🟡 Open | ouroboros-ui: [W.1] Schema-driven completions & hover docs | CM6 sources from WF-P.2 schema + WF-R.3 catalog; the Types card data | mvp, workflow, code-view, ui | N (after U.1, WF-R.3) | Y | M | ouroboros-ui, ouroboros-rest |
+| W.1 | #177 | 🟢 Done | ouroboros-ui: [W.1] Schema-driven completions & hover docs | CM6 sources from WF-P.2 schema + WF-R.3 catalog; the Types card data | mvp, workflow, code-view, ui | N (after U.1, WF-R.3) | Y | M | ouroboros-ui, ouroboros-rest |
 | W.2 | #178 | 🟡 Open | ouroboros-rest: [W.2] Diagnostics & Loop Checks payload | Map validation findings to code ranges; checks panel contract | mvp, workflow, code-view, rest | N (after U.2, WF-R.2) | Y | M | ouroboros-rest |
 | W.3 | #179 | 🟡 Open | ouroboros-rest: [W.3] Intelligence integration tests | Completion/hover/diagnostic fixtures, range-mapping accuracy | mvp, workflow, code-view, rest, ci | N (after W.1, W.2) | Y | S | ouroboros-rest |
 
 ### Issue W.1 — ouroboros-ui: [W.1] Schema-driven completions & hover docs
 
-> **GitHub issue:** #177 · **Status:** 🟡 Open · **Parent epic:** #163
+> **GitHub issue:** #177 · **Status:** 🟢 Done · **Parent epic:** #163
 
 - **Problem Statement:** The mockup promises editor intelligence (completions
   implied, the `route.task` hover-doc explicit); MVP delivers it from what we
@@ -593,6 +593,17 @@ e2e: parity ✓ · code→visual→code round-trip ✓ · publish ✓ · diagnos
 - **Parallelism/Dependencies:** Needs U.1, WF-R.3. Feeds V.5.
 - **Technical Stack:** CM6 autocomplete/hover, generated symbol table.
 - **Epic:** W
+- **Delivered (2026-09-13):** `GET /api/v1/workflows/code-symbols` serves the symbol table. It is
+  built at boot from `code.grammar.ts` and `v1.json` and merged per request with the stage catalog's
+  suggestions (`ouroboros-rest/src/modules/workflows/code.symbols.ts`). The CodeMirror completion
+  and hover sources and `HoverDocCard` are in `ouroboros-ui/app/workflows/code/`. Three decisions
+  were taken in-issue. **The table is a REST endpoint, not a build artifact**, because task routes
+  are per workspace and are read beside the catalog's. **The `route.task` card keeps the mockup's
+  signature and first sentence only.** Its *"Falls back to the tenant default chain."* describes a
+  fallback routing does not have (an unrouted task kind is `route_not_found`), and the doc is now
+  `inherit_task`'s `description` in `v1.json`. **The UI pieces ship unmounted**: V.2 (#170) mounts
+  `dslIntelligence(table)` in the editor and V.5 (#173) the card. The golden table is
+  `schemas/workflow-dsl/fixtures/code-symbols/table.json`.
 
 ```
 catalog+schema ─▶ symbol table ─▶ completions (stages · options · enums · routes · skills)

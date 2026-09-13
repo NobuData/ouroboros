@@ -3468,6 +3468,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflows/code-symbols": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The code editor's symbol table — completions and hover docs
+         * @description What mockup 05's code editor completes and documents from — W.1
+         *     ([#177](https://github.com/NobuData/ouroboros/issues/177)). Decision **C5**: editor
+         *     intelligence from what is already known statically, not from a language server.
+         *
+         *     **Scopes** say what to offer at each place in a workflow file: `stage.llm.options` is a
+         *     model stage's option keys and nothing else, `stage.openPr.merge` its merge methods,
+         *     `predicate.effort` the methods after `i.effort.`. **Symbols** say what a hover card
+         *     shows: a signature in coloured runs and, when the schema has one, a doc line.
+         *
+         *     **Nothing is invented.** The grammar names the words and where each lives in
+         *     [`schemas/workflow-dsl/v1.json`](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json),
+         *     and every type, value and `doc` is read from that schema at boot. A symbol whose schema
+         *     location has no description has no `doc`, and a name the table does not list has no
+         *     card.
+         *
+         *     **Suggestions are advice** (decision **P7**). `route.task` offers this workspace's task
+         *     kinds in the routing matrix's order and `stage.llm.skill` the deployment's
+         *     `OURO_WORKFLOW_SKILL_SUGGESTIONS`, each marked `suggestion: true`. They are the names the
+         *     stage catalog suggests, from the same read.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["readWorkflowCodeSymbols"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflows/{id}": {
         parameters: {
             query?: never;
@@ -9495,6 +9539,92 @@ export interface components {
             skills: string[];
             /** @description This workspace's task kinds (`task_kinds`), in the routing matrix's order. */
             taskRoutes: string[];
+        };
+        /**
+         * WorkflowCodeSymbolTable
+         * @description The code editor's symbol table — W.1
+         *     ([#177](https://github.com/NobuData/ouroboros/issues/177)): what to offer at each place in a
+         *     workflow file, and what a hover card says about each symbol.
+         */
+        WorkflowCodeSymbolTable: {
+            /**
+             * @description The `$id` of the published schema every type, value and doc was read from.
+             * @example https://ouroboros.build/schemas/workflow-dsl/v1.json
+             */
+            schemaId: string;
+            /** @description What to offer, by place, in the order the grammar and the schema list them. */
+            scopes: components["schemas"]["WorkflowCodeScope"][];
+            /** @description What a hover card says, by symbol. */
+            symbols: components["schemas"]["WorkflowCodeSymbol"][];
+        };
+        /**
+         * WorkflowCodeScope
+         * @description Everything offered at one place in a workflow file. `<base>.options` is a key position —
+         *     the base is `loop`, `trigger`, `stage.<callee>`, `permissions` or `edge` — and
+         *     `<base>.<key>` is that key's value. `route.methods`, `effort.constants`,
+         *     `predicate.subjects`, `predicate.<kind>`, `condition.subjects` and `condition.<subject>`
+         *     follow a member chain; `route.task` and `source.values` are inside a call.
+         */
+        WorkflowCodeScope: {
+            /** @example stage.llm.options */
+            scope: string;
+            /** @description What is offered there, in order. Empty for a suggestion scope with nothing to suggest. */
+            completions: components["schemas"]["WorkflowCodeCompletion"][];
+        };
+        /**
+         * WorkflowCodeCompletion
+         * @description One thing offered at a scope.
+         */
+        WorkflowCodeCompletion: {
+            /**
+             * @description The text shown and inserted.
+             * @example tokenBudget
+             */
+            label: string;
+            /**
+             * @description How it is drawn and inserted. A `value` is a string the editor quotes unless the
+             *     cursor is already inside quotes; every other kind is inserted as written.
+             * @enum {string}
+             */
+            kind: "function" | "method" | "property" | "constant" | "value" | "snippet";
+            /**
+             * @description The symbol whose card describes it. Absent when nothing does.
+             * @example stage.llm.tokenBudget
+             */
+            symbol?: string;
+            /**
+             * @description Present, and `true`, on a workspace name offered as advice (decision **P7**): a
+             *     name that is not offered is still one a file may use.
+             */
+            suggestion?: boolean;
+        };
+        /**
+         * WorkflowCodeSymbol
+         * @description What a hover card says about one symbol.
+         */
+        WorkflowCodeSymbol: {
+            /** @example route.task */
+            symbol: string;
+            /** @description The signature, in coloured runs — `route.task(name: TaskKind): ModelRoute`. */
+            signature: components["schemas"]["WorkflowCodeSignaturePart"][];
+            /**
+             * @description The schema's `description`, verbatim. Absent when the schema has none — never composed.
+             * @example Resolves the model assigned to a task kind in Model Routing.
+             */
+            doc?: string;
+        };
+        /**
+         * WorkflowCodeSignaturePart
+         * @description One run of a signature.
+         */
+        WorkflowCodeSignaturePart: {
+            /** @example TaskKind */
+            text: string;
+            /**
+             * @description `name` is mockup 05's `sig-fn` colour, `type` its `sig-ty`, and `text` plain.
+             * @enum {string}
+             */
+            role: "name" | "type" | "text";
         };
         /**
          * WorkflowDefinition
@@ -24130,6 +24260,210 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["WorkflowStageCatalog"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readWorkflowCodeSymbols: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The table. The example shows three of its scopes and two of its symbols. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "schemaId": "https://ouroboros.build/schemas/workflow-dsl/v1.json",
+                     *       "scopes": [
+                     *         {
+                     *           "scope": "stage.openPr.merge",
+                     *           "completions": [
+                     *             {
+                     *               "label": "squash",
+                     *               "kind": "value"
+                     *             },
+                     *             {
+                     *               "label": "merge",
+                     *               "kind": "value"
+                     *             },
+                     *             {
+                     *               "label": "rebase",
+                     *               "kind": "value"
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "scope": "stage.llm.model",
+                     *           "completions": [
+                     *             {
+                     *               "label": "route.task(\"\")",
+                     *               "kind": "snippet",
+                     *               "symbol": "route.task"
+                     *             },
+                     *             {
+                     *               "label": "route.model(\"\")",
+                     *               "kind": "snippet",
+                     *               "symbol": "route.model"
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "scope": "route.task",
+                     *           "completions": [
+                     *             {
+                     *               "label": "analyze",
+                     *               "kind": "value",
+                     *               "suggestion": true
+                     *             },
+                     *             {
+                     *               "label": "implement",
+                     *               "kind": "value",
+                     *               "suggestion": true
+                     *             }
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "symbols": [
+                     *         {
+                     *           "symbol": "route.task",
+                     *           "signature": [
+                     *             {
+                     *               "text": "route.task",
+                     *               "role": "name"
+                     *             },
+                     *             {
+                     *               "text": "(name: ",
+                     *               "role": "text"
+                     *             },
+                     *             {
+                     *               "text": "TaskKind",
+                     *               "role": "type"
+                     *             },
+                     *             {
+                     *               "text": "): ",
+                     *               "role": "text"
+                     *             },
+                     *             {
+                     *               "text": "ModelRoute",
+                     *               "role": "type"
+                     *             }
+                     *           ],
+                     *           "doc": "Resolves the model assigned to a task kind in Model Routing."
+                     *         },
+                     *         {
+                     *           "symbol": "stage.llm.retries",
+                     *           "signature": [
+                     *             {
+                     *               "text": "retries",
+                     *               "role": "name"
+                     *             },
+                     *             {
+                     *               "text": ": ",
+                     *               "role": "text"
+                     *             },
+                     *             {
+                     *               "text": "integer",
+                     *               "role": "type"
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkflowCodeSymbolTable"];
                 };
             };
             /**
