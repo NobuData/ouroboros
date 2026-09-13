@@ -39,9 +39,18 @@
 import type {
   ProviderCatalogEntry,
   ProviderConnection,
-  ProviderConnectionKind,
   ProviderFormField,
 } from "@/app/api/providers";
+import {
+  type Announcement,
+  COMING_SOON_LABEL,
+  type LiveTile as GenericLiveTile,
+  NEEDS_NOTHING,
+  type SoonTile,
+  catalogTiles as genericTiles,
+  monogramOf,
+  needsOf,
+} from "@/app/catalog-tiles";
 
 /* ------------------------------------------------------------------------------ the tiles */
 
@@ -60,16 +69,6 @@ export const KIND_LABELS: Readonly<Partial<Record<string, string>>> = {
   cursor: "Cursor",
 };
 
-/** A kind the catalog promises and this build does not have. */
-export interface Announcement {
-  /** The kind, as its adapter will register it. What retires the announcement. */
-  readonly kind: string;
-  /** What the tile says. */
-  readonly label: string;
-  /** Where it comes from — the issue, named so *soon* is an answer to *when?*. */
-  readonly source: string;
-}
-
 /**
  * The three kinds mockup 07's dashed card promises, and the ticket that delivers them.
  *
@@ -83,32 +82,20 @@ export const COMING_SOON: readonly Announcement[] = [
   { kind: "bedrock", label: "AWS Bedrock", source: "AF.3 (#236)" },
 ];
 
-/** What every tile says on its badge while its kind is not live. */
-export const COMING_SOON_LABEL = "coming soon";
+/**
+ * The tile machinery is `app/catalog-tiles.ts`'s since Q.4
+ * ([#141](https://github.com/NobuData/ouroboros/issues/141)), where the add-source dialog
+ * draws the same three rules over its own catalog; re-exported here so this module's callers
+ * and its suite keep one import, and the shapes below are that module's, closed over this
+ * catalog's entry.
+ */
+export { COMING_SOON_LABEL, NEEDS_NOTHING, monogramOf, needsOf, type Announcement };
 
 /** A tile for a kind this build can connect. */
-export interface LiveTile {
-  readonly live: true;
-  readonly kind: ProviderConnectionKind;
-  /** The tile's heading. */
-  readonly label: string;
-  /** Two letters for the monogram box. */
-  readonly monogram: string;
-  /** What the form will ask for, in a line — so a reader knows what to have ready. */
-  readonly needs: string;
-  /** The entry, which is the form. */
-  readonly entry: ProviderCatalogEntry;
-}
+export type LiveTile = GenericLiveTile<ProviderCatalogEntry>;
 
 /** A tile for a kind that is promised and not here. Draws nothing interactive. */
-export interface SoonTile {
-  readonly live: false;
-  readonly kind: string;
-  readonly label: string;
-  readonly monogram: string;
-  /** Where it comes from. */
-  readonly source: string;
-}
+export type { SoonTile };
 
 /** One tile in the catalog. */
 export type CatalogTile = LiveTile | SoonTile;
@@ -124,39 +111,6 @@ export function labelOf(kind: string): string {
 }
 
 /**
- * Two letters for a tile's monogram box.
- *
- * Derived from the label rather than chosen per provider — the mockup's `AN`, `CU`, `GH`,
- * `VL`, `OL` are AE.2's ([#228](https://github.com/NobuData/ouroboros/issues/228)) to draw
- * with their tints; a tile in a picker needs only to be tellable from its neighbours.
- *
- * @param label The tile's label.
- * @returns Its first two letters or digits, upper-cased; `?` for a label with none.
- */
-export function monogramOf(label: string): string {
-  const letters = label.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase();
-
-  return letters.length === 0 ? "?" : letters;
-}
-
-/** What a tile says a form with no fields would ask for. Unreachable in the dialect; total anyway. */
-export const NEEDS_NOTHING = "Nothing to fill in";
-
-/**
- * What a form will ask for, in a line — *Base URL · API key (optional)*.
- *
- * @param fields The entry's fields.
- * @returns The labels joined, each optional one saying so.
- */
-export function needsOf(fields: readonly ProviderFormField[]): string {
-  if (fields.length === 0) return NEEDS_NOTHING;
-
-  return fields
-    .map((field) => (field.required ? field.label : `${field.label} (optional)`))
-    .join(" · ");
-}
-
-/**
  * The tiles to draw: one per live entry, in the service's order, then one per announcement
  * whose kind is not among them.
  *
@@ -169,33 +123,7 @@ export function catalogTiles(
   entries: readonly ProviderCatalogEntry[],
   announcements: readonly Announcement[] = COMING_SOON,
 ): CatalogTile[] {
-  const live = new Set<string>(entries.map((entry) => entry.kind));
-
-  return [
-    ...entries.map((entry): LiveTile => {
-      const label = labelOf(entry.kind);
-
-      return {
-        live: true,
-        kind: entry.kind,
-        label,
-        monogram: monogramOf(label),
-        needs: needsOf(entry.fields),
-        entry,
-      };
-    }),
-    ...announcements
-      .filter((announcement) => !live.has(announcement.kind))
-      .map(
-        (announcement): SoonTile => ({
-          live: false,
-          kind: announcement.kind,
-          label: announcement.label,
-          monogram: monogramOf(announcement.label),
-          source: announcement.source,
-        }),
-      ),
-  ];
+  return genericTiles(entries, labelOf, announcements);
 }
 
 /* ------------------------------------------------------------------------------- the form */

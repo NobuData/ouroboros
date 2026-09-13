@@ -69,15 +69,18 @@
  * a tracker at. The issue's *"optional, declared through `capabilities()`"*, as a type.
  *
  * ---------------------------------------------------------------------------
+ * **`configSchema()` is Q.4's member, and it arrived the way this file said it would.**
+ *
+ * Q.2 left it out on purpose — *"a schema dialect invented with no form rendering it would be a
+ * dialect nothing had ever checked"* — and named the shape it should take when a form existed:
+ * `providers/provider.config.ts`'s. Q.4 ([#141](https://github.com/NobuData/ouroboros/issues/141))
+ * is that form, and {@link TicketSourceProvider.configSchema} is that member: the same dialect,
+ * widened by one field type in `ticket-source.config.ts`, checked by `TicketSourceRegistry` at
+ * boot, and rendered by `GET /api/v1/sources/catalog` into the fields the settings surface
+ * draws. A member and a registry assertion, not a reshape — exactly as promised.
+ *
  * **What is deliberately not on this interface.**
  *
- *   * **No `configSchema()`.** Q.4's acceptance criterion is that its form renders *"from
- *     provider-declared config schema (no hardcoded GitHub form)"*, and that member is
- *     therefore Q.4's to add — in the shape `providers/provider.config.ts` already settled on
- *     for model providers, which is the dialect it should reuse. It is left out here because
- *     the issue enumerates this interface's members and that is not among them, and because a
- *     schema dialect invented with no form rendering it would be a dialect nothing had ever
- *     checked. Adding it is a member and a registry assertion, not a reshape.
  *   * **No `deleteTicket`, no write path.** {@link TicketSourceCapabilities.bidirectionalWrites}
  *     is declared and no member is behind it, exactly as `providers/provider.adapter.ts`
  *     reserves `invocation`: the flag exists now so the interface a v2 ticket needs is an
@@ -86,6 +89,7 @@
  */
 
 import type { TicketSourceKind, TicketState } from "../db/schema";
+import type { TicketSourceConfigSchema } from "./ticket-source.config";
 import type { TicketSourceErrorClass } from "./ticket-source.errors";
 
 /**
@@ -352,9 +356,10 @@ export interface TicketPage {
 /**
  * The SPI. Everything the intake loop is allowed to know about a tracker.
  *
- * Five members plus a key, and every one of them is something a surface does: Q.4's settings
- * list is {@link kind} and {@link capabilities}, its **Test connection** button is
- * {@link validateConfig}, and the two sync members are what fills mockup 03's backlog.
+ * Six members plus a key, and every one of them is something a surface does: Q.4's settings
+ * list is {@link kind} and {@link capabilities}, its add-source form is {@link configSchema},
+ * its **Test connection** button is {@link validateConfig}, and the two sync members are what
+ * fills mockup 03's backlog.
  * {@link mapTicket} is the one with no surface behind it, and it is a member rather than an
  * implementation detail for a reason the issue gives: *"the raw → canonical mapping, testable
  * in isolation"* — a mapping reachable only through a network call is a mapping tested through
@@ -377,6 +382,23 @@ export interface TicketSourceProvider {
    *   and because `TicketSourceRegistry` checks the webhook flag once, at boot.
    */
   capabilities(): TicketSourceCapabilities;
+
+  /**
+   * The settings this provider takes, as a form.
+   *
+   * Q.4's ([#141](https://github.com/NobuData/ouroboros/issues/141)) *"provider form renders
+   * from provider-declared config schema (no hardcoded GitHub form)"*, as the member that makes
+   * it possible: `GET /api/v1/sources/catalog` turns this into an ordered list of fields, and
+   * the settings surface draws that list without knowing which tracker it is drawing.
+   *
+   * @returns The schema, in `ticket-source.config.ts`'s dialect — `provider.config.ts`'s flat
+   *   object of string fields, plus a list of strings for the one thing a tracker needs that a
+   *   model provider does not. The field marked `x-ouroboros-secret` is the credential: it is
+   *   submitted with the rest and routed to the vault, never stored as a setting. Must be
+   *   **stable** — two calls answer equal schemas — because `TicketSourceRegistry` judges it
+   *   once, at boot, and refuses a provider whose schema the form could not draw.
+   */
+  configSchema(): TicketSourceConfigSchema;
 
   /**
    * Check a configuration and credential against the live tracker.

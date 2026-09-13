@@ -1,0 +1,407 @@
+/*
+ * The ticket-sources page ([#141](https://github.com/NobuData/ouroboros/issues/141)) — mockup
+ * 17's source list, its add dialog and its configure dialog, on the #16 tokens.
+ *
+ * Nothing here fixes a position or draws a scrim: the dialogs are `.shell-overlay`'s, and the
+ * tab row is the CP.4 primitive's. What this sheet owns is the row — one flex line per
+ * source, monogram · identity · actions — and the two dialogs' insides. Every colour is a
+ * token and every length a token or a rem, so the font-size preference moves all of it;
+ * hairlines stay in px because a border that grows with the type is a different border.
+ */
+
+/* ---------- the page's states ---------- */
+
+.sources-readonly {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-9);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.sources-readonly__head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.sources-banner {
+  margin: 0 0 var(--sp-8);
+}
+
+.sources-list__seat {
+  min-height: 14rem;
+}
+
+.sources-guidance {
+  min-height: 14rem;
+}
+
+.sources-guidance__note {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the list ---------- */
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * A row is a card without the primitive's padding rhythm: the monogram, the identity and the
+ * actions sit on one line and wrap to two at the narrow end of the pane.
+ */
+.sources-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-6) var(--sp-7);
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/* Not in play: the dashed treatment every admin page gives a thing somebody switched off. */
+.sources-row--paused {
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+}
+
+/* Failing: in play and struggling, so the frame stays solid and takes the error hue. */
+.sources-row--error {
+  border-color: var(--err-line);
+}
+
+.sources-row__monogram {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.625rem;
+  height: 2.625rem;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 700;
+  letter-spacing: var(--tr-wide);
+}
+
+.sources-row__identity {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 16rem;
+}
+
+.sources-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.sources-row__name {
+  margin: 0;
+  font-family: var(--f-disp);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.sources-row__summary {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The second line: the freshness, or the honest reason. Mono, because it is a fact. */
+.sources-row__sync {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.sources-row__sync--ok {
+  color: var(--ok);
+}
+
+.sources-row__sync--neutral {
+  color: var(--ink-faint);
+}
+
+.sources-row__sync--err {
+  color: var(--err);
+}
+
+.sources-row__sync--accent {
+  color: var(--accent);
+}
+
+.sources-row__last {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.sources-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.sources-row__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  max-width: 34rem;
+}
+
+/* The notes the controls draw: the test's answer, the sync's progress, a refusal. */
+.sources-row__note {
+  flex-basis: 100%;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.sources-row__note:empty {
+  display: none;
+}
+
+.sources-row__note--ok {
+  color: var(--ok);
+}
+
+.sources-row__note--err {
+  color: var(--err);
+}
+
+.sources-row__note--pending {
+  color: var(--ink-mut);
+}
+
+.sources-row__glyph {
+  font-family: var(--f-ui);
+}
+
+/* ---------- the add dialog ---------- */
+
+.sources-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sources-catalog__tile {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  width: 100%;
+  padding: var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sources-catalog__tile:hover {
+  border-color: var(--accent);
+}
+
+/*
+ * The promised tile: a dashed hairline on no ground, muted ink, an arrow cursor — and the
+ * words beside the label, so the state is not the treatment alone.
+ */
+.sources-catalog__tile--soon {
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--ink-mut);
+  cursor: default;
+}
+
+.sources-catalog__monogram {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.625rem;
+  height: 2.625rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 700;
+  letter-spacing: var(--tr-wide);
+}
+
+.sources-catalog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.sources-catalog__label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+  font-family: var(--f-disp);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.sources-catalog__needs {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.sources-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.sources-add__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+}
+
+.sources-add__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.sources-add__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the configure dialog ---------- */
+
+.sources-configure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-9);
+}
+
+.sources-configure__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding-top: var(--sp-7);
+  border-top: 1px solid var(--line);
+}
+
+.sources-configure__heading {
+  margin: 0;
+  font-family: var(--f-disp);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.sources-configure__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the skeleton ---------- */
+
+.sources-skeleton__action {
+  display: block;
+  width: 8rem;
+  height: 2.25rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.sources-skeleton__row {
+  align-items: center;
+}
+
+.sources-skeleton__monogram {
+  display: block;
+  width: 2.625rem;
+  height: 2.625rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.sources-skeleton__bar {
+  display: block;
+  width: 24rem;
+  max-width: 100%;
+  height: var(--sp-5);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.sources-skeleton__bar--name {
+  width: 14rem;
+  height: var(--sp-6);
+}
+
+.sources-skeleton__bar--short {
+  width: 8rem;
+}
+
+.sources-skeleton__button {
+  display: block;
+  width: 7rem;
+  height: 1.75rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sources-skeleton__action,
+  .sources-skeleton__monogram,
+  .sources-skeleton__bar,
+  .sources-skeleton__button {
+    animation: sources-skeleton-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes sources-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
+}

@@ -19,8 +19,8 @@ import {
   NO_TOKEN_MEMBER_NOTE,
   NO_TOKEN_NOTE,
   NO_TOKEN_TITLE,
+  OPEN_SETTINGS_HREF,
   OPEN_SETTINGS_LABEL,
-  OPEN_SETTINGS_SOON,
   chooseReposHref,
 } from "./states";
 import { NOTHING_MIRRORED, NOTHING_MIRRORED_NOTE, NO_MATCHES, NO_MATCHES_NOTE } from "./table";
@@ -80,7 +80,7 @@ export function Guidance({
       return (
         <EmptyState className="issues-guidance" note={NO_TOKEN_NOTE} title={NO_TOKEN_TITLE}>
           {mayAdminister ? (
-            <Button reason={OPEN_SETTINGS_SOON} size="sm" tone="primary">
+            <Button href={OPEN_SETTINGS_HREF} size="sm" tone="primary">
               {OPEN_SETTINGS_LABEL}
             </Button>
           ) : (

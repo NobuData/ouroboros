@@ -266,3 +266,41 @@ export function latencyOfMs(ms: number): string {
 export function article(word: string): "a" | "an" {
   return /^[aeiou]/i.test(word) ? "an" : "a";
 }
+
+/** Seconds in a minute, minutes in an hour, hours in a day. */
+const SECOND_MS = 1000;
+const MINUTE_MS = 60 * SECOND_MS;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * How long ago an instant was, in the mockups' own spellings — `41s ago`, `3m ago`,
+ * `1h 12m ago`, `3d ago`.
+ *
+ * Written for the provider cards' *last used 3m ago*
+ * ([#228](https://github.com/NobuData/ouroboros/issues/228)) and lifted here when the
+ * ticket-source rows' *synced 40s ago* ([#141](https://github.com/NobuData/ouroboros/issues/141))
+ * wanted the same phrase: two spellings of *ago* on two admin pages would be two things a
+ * reader has to learn mean the same.
+ *
+ * Measured from the instant the page was read, which the reader passes down rather than each
+ * row reading a clock: a server render and its hydration then agree about every figure, and a
+ * suite can hold the arithmetic still.
+ *
+ * @param iso The instant, ISO 8601.
+ * @param now The instant the page was read.
+ * @returns The phrase. An instant in the future — a clock skew — is drawn as `0s ago` rather
+ *   than as a negative, and an unparseable one as the value itself.
+ */
+export function relativeAgo(iso: string, now: Date): string {
+  const then = new Date(iso);
+
+  if (Number.isNaN(then.getTime())) return iso;
+
+  const elapsed = Math.max(0, now.getTime() - then.getTime());
+
+  if (elapsed < MINUTE_MS) return `${Math.floor(elapsed / SECOND_MS)}s ago`;
+  if (elapsed < DAY_MS) return `${durationOfMinutes(Math.floor(elapsed / MINUTE_MS))} ago`;
+
+  return `${Math.floor(elapsed / DAY_MS)}d ago`;
+}

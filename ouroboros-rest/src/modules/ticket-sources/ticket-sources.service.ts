@@ -67,6 +67,18 @@
  * The property `backlog-sync/sync.report.ts` insisted on, kept here with a smaller vocabulary
  * because the SPI absorbed most of it. Every active source appears in the cycle report with
  * exactly one of: numbers, a skip, or a failure class and the sentence a person will read.
+ *
+ * ## Two callers, one rule: a source is never synced twice at once
+ *
+ * Since Q.4 ([#141](https://github.com/NobuData/ouroboros/issues/141)) the cycle is not the
+ * only caller. `POST /api/v1/sources/{id}/sync` drives {@link TicketSourcesService.syncSource}
+ * for one source, on demand, whatever its status — which is how a source the loop has stopped
+ * polling because it is `error` gets its retry the moment somebody has fixed what was wrong.
+ * What keeps the two callers from colliding is {@link inFlight}: every sync marks its source
+ * on the way in and clears it on the way out, the cycle leaves a marked source to whoever is
+ * syncing it (reported as `in_flight`, never silently), and a manual sync of a marked source is
+ * refused before it starts. The mark and the check are one synchronous step in both callers,
+ * which is what makes *"never twice"* a property rather than a timing.
  */
 
 import { Inject, Injectable, Logger } from "@nestjs/common";
@@ -76,6 +88,7 @@ import { chunked } from "../scheduling/cadence";
 import { VaultService } from "../vault/vault.service";
 import { SOURCE_CONCURRENCY } from "./cadence";
 import {
+  SOURCE_SKIPPED_IN_FLIGHT,
   SOURCE_SKIPPED_UNSUPPORTED,
   SOURCE_SKIP_MESSAGES,
   type SourceSyncOutcome,
@@ -123,6 +136,29 @@ export class TicketSourcesService {
   private lastReport?: SyncCycleReport;
 
   /**
+   * The sources a sync is running for right now, by id. See this file's header.
+   */
+  private readonly inFlight = new Set<string>();
+
+  /**
+   * When each source's most recent sync began, by id — whoever began it.
+   *
+   * What the manual trigger's minimum-interval guard is measured from. Held here rather than
+   * in the trigger, because a cycle starts syncs too and a guard that only counted manual
+   * starts would let a click land a second later than a cycle for the same answer.
+   */
+  private readonly lastStarted = new Map<string, Date>();
+
+  /**
+   * What each source's most recent completed sync did, by id.
+   *
+   * The per-source half of {@link lastReport}: `GET /api/v1/sources/{id}/status` answers *"what
+   * happened last time"* from this, and a manual sync — which belongs to no cycle — is only
+   * visible here. In memory, so it does not survive a restart; what does is the row.
+   */
+  private readonly lastOutcomes = new Map<string, SourceSyncOutcome>();
+
+  /**
    * @param sources - The statements. The only thing here that touches the database.
    * @param registry - Where a provider comes from, and the only thing here that knows a kind.
    * @param vault - What opens a sealed credential. Injected rather than reached through the
@@ -150,6 +186,74 @@ export class TicketSourcesService {
   }
 
   /**
+   * What one source's most recent completed sync did.
+   *
+   * @param sourceId - The source.
+   * @returns The outcome, or `undefined` when no sync of it has completed in this process —
+   *   which is a different fact from *it found nothing*, and the status surface renders them
+   *   differently.
+   */
+  lastOutcome(sourceId: string): SourceSyncOutcome | undefined {
+    return this.lastOutcomes.get(sourceId);
+  }
+
+  /**
+   * When one source's most recent sync began, whoever began it.
+   *
+   * @param sourceId - The source.
+   * @returns The instant, or `undefined` when this process has started none.
+   */
+  lastStartedAt(sourceId: string): Date | undefined {
+    return this.lastStarted.get(sourceId);
+  }
+
+  /**
+   * Whether a sync of one source is running right now.
+   *
+   * @param sourceId - The source.
+   * @returns `true` while one is, the cycle's or a trigger's alike.
+   */
+  isSyncing(sourceId: string): boolean {
+    return this.inFlight.has(sourceId);
+  }
+
+  /**
+   * Sync one source now, outside any cycle — Q.4's manual trigger.
+   *
+   * **The check and the start are one synchronous step.** Nothing is awaited between reading
+   * {@link inFlight} and the `sync` call that marks it, so two requests arriving in the same
+   * tick of the event loop cannot both be the one that started — which is what makes the
+   * trigger's `409` a property rather than a race. `ticket-sources.scheduler.ts`'s `runNow`
+   * makes the same argument about cycles.
+   *
+   * The source's status is deliberately not consulted here. A paused source is refused by the
+   * management API before this is reached; an `error` source is exactly what this exists for —
+   * the loop's own filter is `active`, so a source that failed is never polled again until
+   * somebody acts, and pressing **Sync now** is somebody acting.
+   *
+   * @param source - The source, as the management API read it through the view.
+   * @returns The sync, for a caller that wants to await it — or `undefined` when one was
+   *   already running for this source. **The promise never rejects**: a provider's failure is
+   *   an outcome, and this deployment's own database failing is logged here, because a manual
+   *   sync outlives the request that started it and an unhandled rejection would be the
+   *   process's rather than the request's.
+   */
+  syncSource(source: SyncSource): Promise<SourceSyncOutcome | undefined> | undefined {
+    if (this.inFlight.has(source.sourceId)) {
+      return undefined;
+    }
+
+    return this.sync(source, new Date()).catch((error: unknown) => {
+      this.logger.error(
+        `${source.displayName}: a manual sync could not be completed.`,
+        describeForLog(error),
+      );
+
+      return undefined;
+    });
+  }
+
+  /**
    * One cycle: every active source in every workspace.
    *
    * @returns What each source did. Never rejects for anything a provider did — those are
@@ -167,8 +271,17 @@ export class TicketSourcesService {
     // Chunked rather than `Promise.all` over everything: `cadence.ts` argues the bound, and the
     // shape is `scheduling/cadence.ts`'s, shared with the two loops that came before.
     for (const run of chunked(active, SOURCE_CONCURRENCY)) {
+      // Judged per chunk, synchronously with the calls it gates, rather than once over the
+      // whole list: a manual sync can start while an earlier chunk is awaited, and a filter
+      // computed before that would hand the same source to both callers.
       outcomes.push(
-        ...(await Promise.all(run.map(async (source) => this.sync(source, startedAt)))),
+        ...(await Promise.all(
+          run.map(async (source) =>
+            this.inFlight.has(source.sourceId)
+              ? Promise.resolve(this.leave(source))
+              : this.sync(source, startedAt),
+          ),
+        )),
       );
     }
 
@@ -184,6 +297,44 @@ export class TicketSourcesService {
   }
 
   /**
+   * Leave a source to the sync already running for it.
+   *
+   * @param source - The source the cycle found marked.
+   * @returns A skip, so the cycle's report still names every active source.
+   */
+  private leave(source: SyncSource): SourceSyncOutcome {
+    this.logger.debug(`${source.displayName}: ${SOURCE_SKIP_MESSAGES[SOURCE_SKIPPED_IN_FLIGHT]}`);
+
+    return { ...identityOf(source), ...NOTHING, skipped: SOURCE_SKIPPED_IN_FLIGHT };
+  }
+
+  /**
+   * Sync one source, marked as in flight for the duration.
+   *
+   * The mark is set before the first `await` — an `async` function runs synchronously to that
+   * point — which is what lets both callers check-and-mark in one step. See this file's header.
+   *
+   * @param source - The source, as a read found it.
+   * @param syncedAt - The clock: the cycle's, or the trigger's instant.
+   * @returns What happened. Never rejects for anything a provider did; a database failure
+   *   propagates, and is the caller's to log.
+   */
+  private async sync(source: SyncSource, syncedAt: Date): Promise<SourceSyncOutcome> {
+    this.inFlight.add(source.sourceId);
+    this.lastStarted.set(source.sourceId, syncedAt);
+
+    try {
+      const outcome = await this.syncUnmarked(source, syncedAt);
+
+      this.lastOutcomes.set(source.sourceId, outcome);
+
+      return outcome;
+    } finally {
+      this.inFlight.delete(source.sourceId);
+    }
+  }
+
+  /**
    * Sync one source.
    *
    * @param source - The source, as the cross-workspace read found it.
@@ -191,7 +342,7 @@ export class TicketSourcesService {
    * @returns What happened — numbers, a skip, or a failure. Never rejects: every branch below
    *   turns what it caught into one of the three.
    */
-  private async sync(source: SyncSource, syncedAt: Date): Promise<SourceSyncOutcome> {
+  private async syncUnmarked(source: SyncSource, syncedAt: Date): Promise<SourceSyncOutcome> {
     const provider = this.registry.find(source.kind);
 
     if (provider === undefined) {

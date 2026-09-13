@@ -1,4 +1,9 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
 
 import { cx } from "./class-names";
 
@@ -157,6 +162,50 @@ export function TextField({
         // The field's own error marks the control invalid; a caller with a refusal of its own
         // to report — the login screen's domain form — keeps saying so through the attribute
         // it passed, which the spread above must not be allowed to lose.
+        aria-invalid={error !== undefined ? true : callerInvalid}
+      />
+    </FieldFrame>
+  );
+}
+
+/** What a multi-line field takes, beyond the attributes a `<textarea>` takes. */
+export type TextAreaFieldProps = Omit<FieldFrameProps, "children"> &
+  Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "className" | "id"> & {
+    /** Whether the value is read character by character — a list of names, an identifier. */
+    readonly mono?: boolean;
+  };
+
+/**
+ * A multi-line field — the `list` widget's control, and the one primitive here that is not an
+ * `<input>`.
+ *
+ * Added with the ticket-source settings form ([#141](https://github.com/NobuData/ouroboros/issues/141)),
+ * whose *one repository per line* is a value no single-line input can hold honestly. The
+ * frame, the hint and the error are {@link TextField}'s, so a list field reads exactly as its
+ * neighbours do; what differs is the control and the `--multiline` modifier that gives it a
+ * height and a resize handle.
+ *
+ * @param props See {@link TextAreaFieldProps}.
+ * @returns The field.
+ */
+export function TextAreaField({
+  id,
+  label,
+  hint,
+  error,
+  className,
+  mono,
+  "aria-describedby": callerDescribedBy,
+  "aria-invalid": callerInvalid,
+  ...rest
+}: TextAreaFieldProps) {
+  return (
+    <FieldFrame id={id} label={label} hint={hint} error={error} className={className}>
+      <textarea
+        {...rest}
+        id={id}
+        className={cx("ou-input", "ou-input--multiline", mono && "ou-input--mono")}
+        aria-describedby={describedBy(id, hint !== undefined, error !== undefined, callerDescribedBy)}
         aria-invalid={error !== undefined ? true : callerInvalid}
       />
     </FieldFrame>

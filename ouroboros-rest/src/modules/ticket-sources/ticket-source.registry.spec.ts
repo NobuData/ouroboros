@@ -2,7 +2,12 @@ import { Test } from "@nestjs/testing";
 
 import { TICKET_SOURCE_KINDS } from "../db/schema";
 import { NotImplementedError } from "../errors/error.envelope";
-import { NO_CAPABILITIES, scriptedProvider, webhookProvider } from "./ticket-source.fixture";
+import {
+  FIXTURE_SCHEMA,
+  NO_CAPABILITIES,
+  scriptedProvider,
+  webhookProvider,
+} from "./ticket-source.fixture";
 import type { TicketSourceProvider } from "./ticket-source.provider";
 import {
   TICKET_SOURCE_PROVIDERS,
@@ -175,5 +180,31 @@ describe("TicketSourceRegistry", () => {
     const registry = await registryOf([]);
 
     expect(() => registry.webhookCapable("jira")).toThrow(NotImplementedError);
+  });
+
+  it("stops the process at boot when a provider's schema is outside the dialect", async () => {
+    // Q.4's assertion: a schema the settings form could not draw is a provider nobody can
+    // configure, and the moment to find out is boot rather than the first press of **+ Add
+    // source**. Every violation is named at once, so one boot failure fixes the whole schema.
+    const provider = scriptedProvider({
+      schema: { ...FIXTURE_SCHEMA, required: ["site", "lanes"], title: "" },
+    });
+
+    await expect(registryOf([provider])).rejects.toThrow(
+      /Provider "github" declares a config schema outside the dialect: .*title must be a non-empty string.*lanes/,
+    );
+  });
+
+  it("stops the process at boot when a provider has no schema member at all", async () => {
+    // A provider compiled against Q.2's copy of the interface. Refused with a sentence naming
+    // the kind rather than a `TypeError` naming nothing.
+    const legacy = {
+      ...scriptedProvider(),
+      configSchema: undefined,
+    } as unknown as TicketSourceProvider;
+
+    await expect(registryOf([legacy])).rejects.toThrow(
+      'Provider "github" declares a config schema outside the dialect: schema must be an object',
+    );
   });
 });

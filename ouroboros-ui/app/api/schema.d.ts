@@ -1116,6 +1116,274 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This workspace's ticket sources
+         * @description One page of the trackers this workspace has configured
+         *     ([#141](https://github.com/NobuData/ouroboros/issues/141)), ordered by display name —
+         *     the settings list, with its kind badge and its status dot.
+         *
+         *     **The credential is not in this payload and cannot be.** The rows come through
+         *     `ticket_sources_public`, a view with no credential column, and each entry carries
+         *     `credentialMask` in its place — `••••` while a credential is stored and `null` while
+         *     none is. Nothing is decrypted to answer a listing.
+         *
+         *     **`status` is the loop's word, and `statusReason` is its sentence.** `active` is
+         *     polled; `paused` is a person's choice; `error` is the sync's report, with the honest
+         *     reason beside it — `rate limited until 14:20 UTC`, `credentials rejected (401)` — in
+         *     the same four-word taxonomy every provider fails in. An `error` source is not polled
+         *     again until somebody acts: a new credential, new settings, an explicit resume or a
+         *     manual sync each say *try again*.
+         *
+         *     **Any member may read it**, viewers included. Every write below is `owner` or `admin`.
+         */
+        get: operations["listTicketSources"];
+        put?: never;
+        /**
+         * Add a ticket source
+         * @description Connect a tracker ([#141](https://github.com/NobuData/ouroboros/issues/141)). The
+         *     body's `config` is keyed by the field names the catalog declares for `kind`, and it
+         *     is judged against the provider's **own schema** before anything is stored — every
+         *     violation at once, keyed by field, as `422 ticket_source_config_invalid`. The field
+         *     marked `secret` is split off and sealed in the vault against the new row's id; the
+         *     rest lands in `config`.
+         *
+         *     **Nothing is asked of the tracker here.** The add stores what was typed; **Test
+         *     connection** (`POST /api/v1/sources/{id}/test`) is the round-trip, and it is a
+         *     separate step so a source can be configured before its token exists. The new source is
+         *     `active`, so the loop polls it on its next cycle — and says honestly, on the row, if
+         *     the tracker refused.
+         *
+         *     `owner` or `admin`.
+         */
+        post: operations["createTicketSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The kinds this build can connect, each with its form
+         * @description The provider registry, crossing the wire
+         *     ([#141](https://github.com/NobuData/ouroboros/issues/141)). One entry per registered
+         *     kind, in the order `ticket_sources.kind`'s CHECK declares them, each with the
+         *     `title` the add form uses as its heading and the `fields` it draws — derived once, in
+         *     this service, from the provider's own `configSchema()`.
+         *
+         *     **A kind that is not here is not connectable in this build**, and the settings surface
+         *     shows it as *coming soon* rather than offering a form. The acceptance criterion this
+         *     answers is *"the provider form renders from provider-declared config schema"*: there is
+         *     no per-kind form anywhere, and a provider that declares its schema gets one free.
+         *
+         *     Any member. The catalog names no credential and no workspace fact.
+         */
+        get: operations["readTicketSourceCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One ticket source
+         * @description The source, credential masked — see the listing. Any member.
+         */
+        get: operations["readTicketSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a source's name, settings or status
+         * @description Send what changed ([#141](https://github.com/NobuData/ouroboros/issues/141)). A body
+         *     carrying nothing changes nothing and reads back the source as it is.
+         *
+         *     **`config` is replaced whole**, not merged: the settings form submits every field it
+         *     draws, and a merge would have no way to say *clear this optional setting*. It is judged
+         *     against the provider's schema **without its secret field** — an edit does not resubmit
+         *     the credential, and `POST /api/v1/sources/{id}/credentials` is where that changes.
+         *
+         *     **`status` takes two of the column's three values.** `paused` stops the loop polling
+         *     this source; `active` resumes it, and clears an `error` with its reason. `error` is the
+         *     loop's own report and cannot be set by a client — a source painted red with no reason
+         *     under it is the state V031 exists to make impossible.
+         *
+         *     **A change is a reason to try again.** New `config` on an `error` source resumes it
+         *     without `status` having to say so; a `paused` source stays paused through an edit,
+         *     because pausing was a choice too.
+         *
+         *     `owner` or `admin`.
+         */
+        patch: operations["updateTicketSource"];
+        trace?: never;
+    };
+    "/api/v1/sources/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Store a source's credential
+         * @description Write-only ([#141](https://github.com/NobuData/ouroboros/issues/141)): the credential
+         *     goes in, is judged against the schema's secret field — its own `minLength`,
+         *     `maxLength` and `pattern` — is sealed in the vault against this source's id, and
+         *     replaces whatever was stored. **Nothing here, and nothing anywhere in this API, answers
+         *     with a stored credential's value.** What comes back is the source with a masked echo —
+         *     `••••` and the last four characters of what this request carried — so whoever pasted a
+         *     token can see it took.
+         *
+         *     `200` rather than `201`: nothing is created. A `POST` rather than a `PUT` for the
+         *     reason every credential-bearing operation in this API is one: the value travels in a
+         *     body, never in a request line, a history or a `Referer`.
+         *
+         *     **An `error` source is resumed.** A new credential is the fix for the one failure a
+         *     person fixes by rotating, and the next sync says honestly whether it was the fix for
+         *     this one. A `paused` source stays paused.
+         *
+         *     `owner` or `admin`.
+         */
+        post: operations["setTicketSourceCredentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the provider whether this source works
+         * @description **Test connection** ([#141](https://github.com/NobuData/ouroboros/issues/141)): the
+         *     stored settings and the stored credential, through the provider's own `validateConfig`
+         *     — a real round-trip, one `GET /repos/{owner}/{repo}` per enabled repository for the
+         *     GitHub kind — so the answer is *can this token see these repositories*, not *is this
+         *     shaped right*.
+         *
+         *     **A tracker that refused is a `200`.** A refused token, a repository the token cannot
+         *     see, a rate limit and a closed socket are the states the form exists to render, so they
+         *     come back as `status: "failed"` with the class and the provider's own words. The only
+         *     refusals this operation answers itself are about the *request*: no such source, no
+         *     provider for its kind.
+         *
+         *     **Nothing is written.** `status` and `statusReason` on the row belong to the sync loop
+         *     — written by a sync, cleared by the next that succeeds — and a test that wrote `error`
+         *     would stop the loop over a probe pressed while the tracker was down. The credential is
+         *     opened for the length of this one call and dropped.
+         *
+         *     `owner` or `admin`: a test spends a credential's budget.
+         */
+        post: operations["testTicketSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync this source now
+         * @description The manual trigger ([#141](https://github.com/NobuData/ouroboros/issues/141)) — one
+         *     source, on demand, outside the loop's cycle. What a person presses after adding a
+         *     source, after fixing one, or after filing a ticket they want mirrored now.
+         *
+         *     **`202`, and the body is the status as it stood at acceptance.** The sync outlives this
+         *     response, so `running` is `true` and `syncedAt` is still the *previous* sync's. What a
+         *     client watches for is `syncedAt` advancing on
+         *     `GET /api/v1/sources/{id}/status`.
+         *
+         *     **Three refusals, all `409`, in the order a person would want to hear them.**
+         *     `ticket_source_paused` — the source is paused, and syncing it would override that
+         *     choice with less ceremony than the pause took; resume it first.
+         *     `ticket_source_sync_running` — a sync of this source is in flight, from a cycle or a
+         *     click; watch the status. `ticket_source_sync_too_soon` — this source was synced within
+         *     the last 30 seconds, measured from that sync's start whoever caused it, and another
+         *     would spend the same requests for the same answer; wait `details.retryAfterSeconds`.
+         *
+         *     **An `error` source is synced.** The loop's own filter is `active`, so a source that
+         *     failed is not polled again until somebody acts — and this is somebody acting. A success
+         *     clears the error; a failure restates it honestly.
+         *
+         *     `owner` or `admin`: a sync spends a credential's budget.
+         */
+        post: operations["syncTicketSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sources/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How this source's sync stands
+         * @description The settings row's second line ([#141](https://github.com/NobuData/ouroboros/issues/141)):
+         *     *synced 40s ago*, or the honest reason it is not fresher.
+         *
+         *     **Two halves, and only one survives a restart.** `status`, `statusReason` and
+         *     `syncedAt` are columns — what the last sync that *happened* wrote. `running`,
+         *     `retryAfterSeconds` and `lastSync` are the loop's memory of this process: a fresh
+         *     process answers `lastSync: null` rather than inventing a result it never saw.
+         *
+         *     `retryAfterSeconds` is what lets a client draw **Sync now** as waiting rather than
+         *     offer a press the trigger will refuse. Any member.
+         */
+        get: operations["readTicketSourceStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/auto-merge": {
         parameters: {
             query?: never;
@@ -7771,6 +8039,332 @@ export interface components {
             modelId: string;
         };
         /**
+         * TicketSourceKind
+         * @description Which tracker a source is — `ticket_sources.kind`'s five values (V030, decision
+         *     **P6**). The registry resolves a provider by it; a kind with no provider in a build is
+         *     an honest `501` on every operation that reaches one, and absent from the catalog.
+         *     `custom` is what a provider written outside this repository registers as.
+         * @example github
+         * @enum {string}
+         */
+        TicketSourceKind: "github" | "gitlab" | "jira" | "linear" | "custom";
+        /**
+         * TicketSourceStatus
+         * @description `active` — the loop polls it. `paused` — a person's choice. `error` — the sync's
+         *     report, always with a `statusReason` beside it, and not polled again until somebody
+         *     acts. Three states rather than a boolean precisely so a source that is failing cannot
+         *     be confused with one somebody switched off.
+         * @example active
+         * @enum {string}
+         */
+        TicketSourceStatus: "active" | "paused" | "error";
+        /**
+         * TicketSourceErrorClass
+         * @description The four words every provider is allowed to fail in
+         *     ([#139](https://github.com/NobuData/ouroboros/issues/139)): the credential was refused;
+         *     the tracker is working and refusing anyway; the project or repository is not there, or
+         *     cannot be seen; the tracker answered with its own failure, or did not answer. Each
+         *     becomes a sentence on the row — `credentials rejected`, `rate limited until 14:20 UTC`,
+         *     `project or repository not found`, `tracker unavailable` — composed by this service, so
+         *     the four read the same whichever tracker produced them.
+         * @example rate_limit
+         * @enum {string}
+         */
+        TicketSourceErrorClass: "auth" | "rate_limit" | "not_found" | "upstream";
+        /**
+         * TicketSourceCapabilities
+         * @description What a provider can do — its own `capabilities()`, copied onto the catalog entry
+         *     unchanged. Three flags, all present: a total shape, so no client has to decide what an
+         *     absent flag means. `webhooks` says whether the provider accepts deliveries; `labels`
+         *     whether the concept exists at the tracker at all (the difference between an empty
+         *     chip-set because nothing matched and one because there is nothing to match);
+         *     `bidirectionalWrites` is reserved and `false` on every provider this build ships.
+         */
+        TicketSourceCapabilities: {
+            /** @example false */
+            webhooks: boolean;
+            /** @example true */
+            labels: boolean;
+            /** @example false */
+            bidirectionalWrites: boolean;
+        };
+        /**
+         * TicketSourceFormWidget
+         * @description How one form field is drawn. The model-provider dialect's four, plus `list` — a list
+         *     of strings, one entry per line, the one field type a tracker needs that a model
+         *     provider never did (a repository list, a set of project keys). **Derived** from the
+         *     provider's schema rather than declared by it, so a fifth widget cannot be invented per
+         *     provider.
+         * @example list
+         * @enum {string}
+         */
+        TicketSourceFormWidget: "text" | "url" | "secret" | "select" | "list";
+        /**
+         * TicketSourceFormField
+         * @description One field of the add-source form, as the form renders it. `ProviderFormField`'s
+         *     eleven members plus two, so one form primitive draws both. Every optional keyword is
+         *     an explicit `null`. On a `list` field, `minLength`, `maxLength` and `pattern` describe
+         *     **each entry** and `minItems`/`maxItems` bound the list; on every other widget the last
+         *     two are `null`.
+         *
+         *     The credential is the field whose `widget` is `secret`. At most one per entry; it is
+         *     submitted in `config` like every other field and routed to the vault by the service,
+         *     never stored as a setting.
+         */
+        TicketSourceFormField: {
+            /**
+             * @description The property name — what the submitted value is keyed by in `config`.
+             * @example repos
+             */
+            name: string;
+            /**
+             * @description What the `<label>` says.
+             * @example Repositories
+             */
+            label: string;
+            widget: components["schemas"]["TicketSourceFormWidget"];
+            /** @example true */
+            required: boolean;
+            /** @description The help line under the control, or null. */
+            help: string | null;
+            /** @description The control's placeholder, or null. Prose, not an example value. */
+            placeholder: string | null;
+            /** @description What the control starts at, or null. Never set on the secret field or a list. */
+            defaultValue: string | null;
+            /** @description The options for a `select`, or null for every other widget. */
+            choices: string[] | null;
+            /** @description The shortest acceptable value — or entry, on a list — or null. */
+            minLength: number | null;
+            /** @description The longest acceptable value — or entry, on a list — or null. */
+            maxLength: number | null;
+            /** @description A regular expression a value — or every entry, on a list — must match, in ECMA-262 syntax, or null. */
+            pattern: string | null;
+            /** @description The fewest entries a `list` may hold, or null on every other widget. */
+            minItems: number | null;
+            /** @description The most entries a `list` may hold, or null on every other widget. */
+            maxItems: number | null;
+        };
+        /**
+         * TicketSourceCatalogEntry
+         * @description One connectable kind — a tile in the add-source picker, and the form behind it. The
+         *     `title` is the form's heading, straight from the provider's schema; `fields` is what
+         *     the form draws, in the schema's own property order.
+         */
+        TicketSourceCatalogEntry: {
+            kind: components["schemas"]["TicketSourceKind"];
+            /** @example Connect a GitHub account */
+            title: string;
+            fields: components["schemas"]["TicketSourceFormField"][];
+            capabilities: components["schemas"]["TicketSourceCapabilities"];
+        };
+        /**
+         * TicketSourceCatalog
+         * @description Every kind this build can connect, in `ticket_sources.kind`'s declaration order. Empty
+         *     only in a build that registers no provider at all.
+         */
+        TicketSourceCatalog: {
+            kinds: components["schemas"]["TicketSourceCatalogEntry"][];
+        };
+        /**
+         * TicketSourceConfigSubmission
+         * @description A provider's settings as a form submits them, keyed by the catalog's field names.
+         *     Each value is a string, or a list of strings for a `list` field. At most twenty
+         *     settings; a string at most 2048 characters; a list at most a hundred entries. What each
+         *     field *means* — and which one is the credential — is the provider's schema, and the
+         *     service holds the submission to it.
+         * @example {
+         *       "login": "acme-robotics",
+         *       "repos": [
+         *         "helios-firmware",
+         *         "helios-console"
+         *       ],
+         *       "token": "github_pat_11AAAAAAA_exampleOnlyNotARealToken"
+         *     }
+         */
+        TicketSourceConfigSubmission: {
+            [key: string]: string | string[];
+        };
+        /**
+         * TicketSourceConfig
+         * @description A provider's settings as stored — `ticket_sources.config`, minus the credential, which
+         *     never enters this column. An open object, deliberately: its keys are the provider's
+         *     schema's, and a client draws them from the catalog's fields rather than from a shape
+         *     written here.
+         * @example {
+         *       "login": "acme-robotics",
+         *       "repos": [
+         *         "helios-firmware",
+         *         "helios-console"
+         *       ]
+         *     }
+         */
+        TicketSourceConfig: {
+            [key: string]: unknown;
+        };
+        /**
+         * TicketSource
+         * @description One configured tracker, as the settings list draws it — the kind badge, the status dot,
+         *     the honest reason, and a masked credential. See the `sources` tag for what
+         *     `credentialMask` does and does not say.
+         */
+        TicketSource: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["TicketSourceKind"];
+            /**
+             * @description What the list calls it. Unique per workspace.
+             * @example GitHub · acme-robotics
+             */
+            displayName: string;
+            config: components["schemas"]["TicketSourceConfig"];
+            status: components["schemas"]["TicketSourceStatus"];
+            /**
+             * @description Why it is `error`, in the loop's words, or null.
+             * @example rate limited until 14:20 UTC
+             */
+            statusReason: string | null;
+            /**
+             * @description `••••` while a credential is stored and `null` while none is. On the answer to a
+             *     write that carried one, `••••` and its last four characters — composed from the
+             *     request, never read back.
+             * @example ••••
+             */
+            credentialMask: string | null;
+            /**
+             * Format: date-time
+             * @description When it was last synced successfully, or null.
+             */
+            syncedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * TicketSourcePage
+         * @description One page of a workspace's ticket sources, ordered by display name.
+         */
+        TicketSourcePage: {
+            items: components["schemas"]["TicketSource"][];
+            /** @example 2 */
+            total: number;
+            /** @example 25 */
+            limit: number;
+            /** @example 0 */
+            offset: number;
+        };
+        /**
+         * TicketSourceCreate
+         * @description What an add sends: the kind, the list's heading, and the provider's own settings —
+         *     the credential among them, under the field the catalog marks `secret`.
+         */
+        TicketSourceCreate: {
+            kind: components["schemas"]["TicketSourceKind"];
+            /**
+             * @description The list's heading. Trimmed and non-blank, and unique per workspace.
+             * @example GitHub · acme-robotics
+             */
+            displayName: string;
+            config: components["schemas"]["TicketSourceConfigSubmission"];
+        };
+        /**
+         * TicketSourcePatch
+         * @description What may change about a source: send what changed. `config` is replaced whole and
+         *     judged without the schema's secret field; `status` takes `active` or `paused`, never
+         *     the loop's own `error`.
+         */
+        TicketSourcePatch: {
+            /** @example GitHub · acme-robotics */
+            displayName?: string;
+            config?: components["schemas"]["TicketSourceConfigSubmission"];
+            /**
+             * @example paused
+             * @enum {string}
+             */
+            status?: "active" | "paused";
+        };
+        /**
+         * TicketSourceCredentials
+         * @description The credential a source stores, exactly as typed — trimmed by nobody. Judged against
+         *     the provider schema's secret field, sealed, and never echoed.
+         */
+        TicketSourceCredentials: {
+            secret: string;
+        };
+        /**
+         * TicketSourceTest
+         * @description What **Test connection** found: a pass with the provider's own words for what it
+         *     saw — `acme-robotics · 4 repositories` — or a failure with its class, the provider's
+         *     words for what went wrong, and the taxonomy's sentence for the class. `detail` never
+         *     carries a credential; the SPI holds every provider to that.
+         */
+        TicketSourceTest: {
+            /** Format: uuid */
+            sourceId: string;
+            /** Format: date-time */
+            checkedAt: string;
+            /** @enum {string} */
+            status: "ok" | "failed";
+            /** @description Which of the four a failure was, or null on a pass. */
+            errorClass: components["schemas"]["TicketSourceErrorClass"] | null;
+            /**
+             * @description The provider's own phrase.
+             * @example acme-robotics · 4 repositories
+             */
+            detail: string;
+            /**
+             * @description The taxonomy's sentence for the class — the words the row would carry — or null on a pass.
+             * @example credentials rejected
+             */
+            reason: string | null;
+        };
+        /**
+         * TicketSourceSyncResult
+         * @description What one completed sync did. `synced` — the provider answered and the page was stored;
+         *     `failed` — it reported one of the four classes; `skipped` — the loop did not reach the
+         *     provider at all (no provider for the kind in this build, or a sync of the same source
+         *     already in flight). Counts are zero on a failure or a skip; `reason` carries the
+         *     failure's sentence or the skip's, and null on a success.
+         */
+        TicketSourceSyncResult: {
+            /** Format: date-time */
+            startedAt: string;
+            /** @enum {string} */
+            outcome: "synced" | "failed" | "skipped";
+            imported: number;
+            updated: number;
+            unchanged: number;
+            skippedClosed: number;
+            enqueued: number;
+            hasMore: boolean;
+            errorClass: components["schemas"]["TicketSourceErrorClass"] | null;
+            reason: string | null;
+        };
+        /**
+         * TicketSourceStatusReport
+         * @description How one source's sync stands. `status`, `statusReason` and `syncedAt` are the row's
+         *     and survive a restart; `running`, `retryAfterSeconds` and `lastSync` are this
+         *     process's memory and do not.
+         */
+        TicketSourceStatusReport: {
+            /** Format: uuid */
+            sourceId: string;
+            status: components["schemas"]["TicketSourceStatus"];
+            statusReason: string | null;
+            /** Format: date-time */
+            syncedAt: string | null;
+            /** @description Whether a sync of this source is in flight right now. */
+            running: boolean;
+            /**
+             * @description Seconds until a manual sync would be accepted, or null when one would be accepted
+             *     now — what lets a client draw **Sync now** as waiting rather than offer a press the
+             *     trigger will refuse.
+             */
+            retryAfterSeconds: number | null;
+            /** @description What the most recent sync in this process did, or null when it has done none. */
+            lastSync: components["schemas"]["TicketSourceSyncResult"] | null;
+        };
+        /**
          * SyncStatus
          * @description The backlog sync as an intake screen renders it
          *     ([#113](https://github.com/NobuData/ouroboros/issues/113)): one freshness instant, one
@@ -9229,6 +9823,13 @@ export interface components {
          * @example 5eed000c-0000-4000-8000-000000000001
          */
         ConnectionId: string;
+        /**
+         * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+         *     confirming that an identifier names something real is the whole of what enumerating
+         *     identifiers is for, and a source row carries a sealed credential.
+         * @example 5eed001a-0000-4000-8000-000000000001
+         */
+        SourceId: string;
         /**
          * @description The escalation rule's id. It must belong to the workspace the session is acting in;
          *     another workspace's answers `404`, exactly as an id that names nothing does.
@@ -11989,6 +12590,1513 @@ export interface operations {
              *     them.
              */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listTicketSources: {
+        parameters: {
+            query?: {
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The page. Empty for a workspace that has configured nothing — the settings
+             *     surface's guidance state, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "5eed001a-0000-4000-8000-000000000001",
+                     *           "kind": "github",
+                     *           "displayName": "GitHub · acme-robotics",
+                     *           "config": {
+                     *             "login": "acme-robotics",
+                     *             "repos": [
+                     *               "helios-firmware",
+                     *               "helios-console",
+                     *               "helios-telemetry",
+                     *               "atlas-scheduler"
+                     *             ]
+                     *           },
+                     *           "status": "active",
+                     *           "statusReason": null,
+                     *           "credentialMask": "••••",
+                     *           "syncedAt": "2026-09-12T10:00:00.000Z",
+                     *           "createdAt": "2026-09-01T09:00:00.000Z",
+                     *           "updatedAt": "2026-09-12T10:00:00.000Z"
+                     *         },
+                     *         {
+                     *           "id": "5eed001a-0000-4000-8000-000000000002",
+                     *           "kind": "jira",
+                     *           "displayName": "Jira · PROJ",
+                     *           "config": {
+                     *             "base_url": "https://acme-robotics.atlassian.net",
+                     *             "project_keys": [
+                     *               "PROJ"
+                     *             ]
+                     *           },
+                     *           "status": "paused",
+                     *           "statusReason": null,
+                     *           "credentialMask": null,
+                     *           "syncedAt": null,
+                     *           "createdAt": "2026-09-01T09:00:00.000Z",
+                     *           "updatedAt": "2026-09-01T09:00:00.000Z"
+                     *         }
+                     *       ],
+                     *       "total": 2,
+                     *       "limit": 25,
+                     *       "offset": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TicketSourcePage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `limit` or `offset` is out of range. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createTicketSource: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "kind": "github",
+                 *       "displayName": "GitHub · acme-robotics",
+                 *       "config": {
+                 *         "login": "acme-robotics",
+                 *         "repos": [
+                 *           "helios-firmware",
+                 *           "helios-console"
+                 *         ],
+                 *         "token": "github_pat_11AAAAAAA_exampleOnlyNotARealToken"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["TicketSourceCreate"];
+            };
+        };
+        responses: {
+            /**
+             * @description The source as stored. `credentialMask` echoes the last four characters of the
+             *     credential this request carried — `••••oken` — composed from the request, never
+             *     read back; every later read answers `••••`.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed001a-0000-4000-8000-000000000001",
+                     *       "kind": "github",
+                     *       "displayName": "GitHub · acme-robotics",
+                     *       "config": {
+                     *         "login": "acme-robotics",
+                     *         "repos": [
+                     *           "helios-firmware",
+                     *           "helios-console"
+                     *         ]
+                     *       },
+                     *       "status": "active",
+                     *       "statusReason": null,
+                     *       "credentialMask": "••••oken",
+                     *       "syncedAt": null,
+                     *       "createdAt": "2026-09-12T10:00:00.000Z",
+                     *       "updatedAt": "2026-09-12T10:00:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TicketSource"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Writing a ticket source is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_name_taken` — this workspace already has a source with that display
+             *     name. Two sources called *GitHub* in one list is a list nobody can read.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body's shape: a kind outside the five, a blank or
+             *     over-long name, a `config` that is not an object of strings and lists of strings.
+             *     Or `ticket_source_config_invalid` — the shape was fine and the provider's schema
+             *     refused it; `details.fields` names every field with its sentences, in the same
+             *     `{field: [sentences]}` form as `validation_failed`, so a form has one renderer.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_kind_unsupported` — this build has no provider for the source's
+             *     kind, and `details.registered` lists the ones it has.
+             */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readTicketSourceCatalog: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The catalog. Empty only in a build that registers no provider at all. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "kinds": [
+                     *         {
+                     *           "kind": "github",
+                     *           "title": "Connect a GitHub account",
+                     *           "capabilities": {
+                     *             "webhooks": false,
+                     *             "labels": true,
+                     *             "bidirectionalWrites": false
+                     *           },
+                     *           "fields": [
+                     *             {
+                     *               "name": "login",
+                     *               "label": "GitHub account",
+                     *               "widget": "text",
+                     *               "required": true,
+                     *               "help": "The organization or user whose repositories to watch, as it appears in a URL.",
+                     *               "placeholder": "The account name — not a URL",
+                     *               "defaultValue": null,
+                     *               "choices": null,
+                     *               "minLength": 1,
+                     *               "maxLength": 39,
+                     *               "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$",
+                     *               "minItems": null,
+                     *               "maxItems": null
+                     *             },
+                     *             {
+                     *               "name": "repos",
+                     *               "label": "Repositories",
+                     *               "widget": "list",
+                     *               "required": true,
+                     *               "help": "One repository name per line, without the account — helios-firmware, not acme/helios-firmware.",
+                     *               "placeholder": "One repository per line",
+                     *               "defaultValue": null,
+                     *               "choices": null,
+                     *               "minLength": 1,
+                     *               "maxLength": 100,
+                     *               "pattern": "^(?!\\.\\.?$)[A-Za-z0-9._-]{1,100}$",
+                     *               "minItems": 1,
+                     *               "maxItems": 50
+                     *             },
+                     *             {
+                     *               "name": "token",
+                     *               "label": "Personal access token",
+                     *               "widget": "secret",
+                     *               "required": true,
+                     *               "help": "Read access to issues on the repositories above. Sealed in the vault the moment it is stored and never shown again.",
+                     *               "placeholder": "Pasted, never typed — a fine-grained or classic token",
+                     *               "defaultValue": null,
+                     *               "choices": null,
+                     *               "minLength": 1,
+                     *               "maxLength": 4096,
+                     *               "pattern": null,
+                     *               "minItems": null,
+                     *               "maxItems": null
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TicketSourceCatalog"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readTicketSource: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+                 *     confirming that an identifier names something real is the whole of what enumerating
+                 *     identifiers is for, and a source row carries a sealed credential.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The source. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed001a-0000-4000-8000-000000000001",
+                     *       "kind": "github",
+                     *       "displayName": "GitHub · acme-robotics",
+                     *       "config": {
+                     *         "login": "acme-robotics",
+                     *         "repos": [
+                     *           "helios-firmware",
+                     *           "helios-console",
+                     *           "helios-telemetry",
+                     *           "atlas-scheduler"
+                     *         ]
+                     *       },
+                     *       "status": "active",
+                     *       "statusReason": null,
+                     *       "credentialMask": "••••",
+                     *       "syncedAt": "2026-09-12T10:00:00.000Z",
+                     *       "createdAt": "2026-09-01T09:00:00.000Z",
+                     *       "updatedAt": "2026-09-12T10:00:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TicketSource"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_not_found` — no source with that id in this workspace, whether or
+             *     not another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateTicketSource: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+                 *     confirming that an identifier names something real is the whole of what enumerating
+                 *     identifiers is for, and a source row carries a sealed credential.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketSourcePatch"];
+            };
+        };
+        responses: {
+            /** @description The source after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed001a-0000-4000-8000-000000000001",
+                     *       "kind": "github",
+                     *       "displayName": "GitHub · acme-robotics",
+                     *       "config": {
+                     *         "login": "acme-robotics",
+                     *         "repos": [
+                     *           "helios-firmware",
+                     *           "helios-console",
+                     *           "helios-telemetry",
+                     *           "atlas-scheduler"
+                     *         ]
+                     *       },
+                     *       "status": "paused",
+                     *       "statusReason": null,
+                     *       "credentialMask": "••••",
+                     *       "syncedAt": "2026-09-12T10:00:00.000Z",
+                     *       "createdAt": "2026-09-01T09:00:00.000Z",
+                     *       "updatedAt": "2026-09-12T10:05:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TicketSource"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Writing a ticket source is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_not_found` — no source with that id in this workspace, whether or
+             *     not another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `ticket_source_name_taken` — the new display name is another source's. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `id` is not a uuid, or the body's shape is wrong. Or
+             *     `ticket_source_config_invalid` — the provider's schema refused the new settings;
+             *     `details.fields` says which.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_kind_unsupported` — this build has no provider for the source's
+             *     kind, and `details.registered` lists the ones it has.
+             */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setTicketSourceCredentials: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+                 *     confirming that an identifier names something real is the whole of what enumerating
+                 *     identifiers is for, and a source row carries a sealed credential.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "secret": "github_pat_11AAAAAAA_exampleOnlyNotARealToken"
+                 *     }
+                 */
+                "application/json": components["schemas"]["TicketSourceCredentials"];
+            };
+        };
+        responses: {
+            /** @description The source, with a masked echo of what was just stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed001a-0000-4000-8000-000000000001",
+                     *       "kind": "github",
+                     *       "displayName": "GitHub · acme-robotics",
+                     *       "config": {
+                     *         "login": "acme-robotics",
+                     *         "repos": [
+                     *           "helios-firmware",
+                     *           "helios-console",
+                     *           "helios-telemetry",
+                     *           "atlas-scheduler"
+                     *         ]
+                     *       },
+                     *       "status": "active",
+                     *       "statusReason": null,
+                     *       "credentialMask": "••••oken",
+                     *       "syncedAt": "2026-09-12T10:00:00.000Z",
+                     *       "createdAt": "2026-09-01T09:00:00.000Z",
+                     *       "updatedAt": "2026-09-12T10:06:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TicketSource"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Writing a ticket source is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_not_found` — no source with that id in this workspace, whether or
+             *     not another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_credentials_unsupported` — this source's provider declares no
+             *     credential field, so there is nothing to store one as.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `id` is not a uuid, or `secret` is absent, blank or over
+             *     4096 characters. Or `ticket_source_config_invalid` — the schema's own rules for
+             *     the secret field refused it, under `details.fields`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_kind_unsupported` — this build has no provider for the source's
+             *     kind, and `details.registered` lists the ones it has.
+             */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    testTicketSource: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+                 *     confirming that an identifier names something real is the whole of what enumerating
+                 *     identifiers is for, and a source row carries a sealed credential.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the provider found. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketSourceTest"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Writing a ticket source is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_not_found` — no source with that id in this workspace, whether or
+             *     not another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_kind_unsupported` — this build has no provider for the source's
+             *     kind, and `details.registered` lists the ones it has.
+             */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    syncTicketSource: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+                 *     confirming that an identifier names something real is the whole of what enumerating
+                 *     identifiers is for, and a source row carries a sealed credential.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Accepted — a sync has started. The body is the status at that moment, with
+             *     `running: true` and `retryAfterSeconds` set to the full minimum interval.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "sourceId": "5eed001a-0000-4000-8000-000000000001",
+                     *       "status": "active",
+                     *       "statusReason": null,
+                     *       "syncedAt": "2026-09-12T10:00:00.000Z",
+                     *       "running": true,
+                     *       "retryAfterSeconds": 30,
+                     *       "lastSync": {
+                     *         "startedAt": "2026-09-12T10:00:00.000Z",
+                     *         "outcome": "synced",
+                     *         "imported": 2,
+                     *         "updated": 1,
+                     *         "unchanged": 6,
+                     *         "skippedClosed": 0,
+                     *         "enqueued": 2,
+                     *         "hasMore": false,
+                     *         "errorClass": null,
+                     *         "reason": null
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TicketSourceStatusReport"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Writing a ticket source is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_not_found` — no source with that id in this workspace, whether or
+             *     not another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_paused`, `ticket_source_sync_running` or
+             *     `ticket_source_sync_too_soon` — see above. Only the last carries
+             *     `details.retryAfterSeconds`; how long a running sync will take is not knowable in
+             *     advance, and a made-up countdown is worse than none.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_kind_unsupported` — this build has no provider for the source's
+             *     kind, and `details.registered` lists the ones it has.
+             */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readTicketSourceStatus: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+                 *     confirming that an identifier names something real is the whole of what enumerating
+                 *     identifiers is for, and a source row carries a sealed credential.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report. Never a `404` for a source that exists. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketSourceStatusReport"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_not_found` — no source with that id in this workspace, whether or
+             *     not another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

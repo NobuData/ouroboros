@@ -67,15 +67,19 @@ export {
 } from "./retry-banner";
 export {
   SelectField,
+  TextAreaField,
   TextField,
   Toggle,
   type SelectFieldProps,
+  type TextAreaFieldProps,
   type TextFieldProps,
   type ToggleProps,
 } from "./field";
 export {
+  LIST_ROWS,
   SchemaField,
   SchemaFields,
+  listEntries,
   type SchemaFieldErrors,
   type SchemaFieldSpec,
   type SchemaFieldsProps,

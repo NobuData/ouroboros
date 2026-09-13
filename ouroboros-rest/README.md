@@ -111,6 +111,13 @@ $ curl http://localhost:4000/api/v1
 | `PUT /api/v1/workflows/{id}/draft`                  | The canvas's autosave, guarded by an `If-Match` draft etag — a stale one is a `409`, never an overwrite |
 | `POST /api/v1/workflows/{id}/publish`               | The next immutable version, behind the zod **and** engine validators; a finding is a `422` and nothing is written |
 | `GET /api/v1/workflows/{id}/versions`               | The version history, newest first, without the documents |
+| `GET POST /api/v1/sources`                          | [Ticket sources](#pluggable-ticket-sources) (#141) — the workspace's list with masks, never values; add one, checked against its kind's schema |
+| `GET /api/v1/sources/catalog`                       | Every registered kind as the form it takes — `configSchema()` rendered to fields — plus its capabilities |
+| `GET PATCH /api/v1/sources/{id}`                    | One source; rename, change its settings, pause or resume it — `owner`/`admin` only |
+| `POST /api/v1/sources/{id}/credentials`             | Store a credential — write-only; the answer carries the mask                        |
+| `POST /api/v1/sources/{id}/test`                    | `validateConfig` over the stored settings and the opened credential; writes nothing |
+| `POST /api/v1/sources/{id}/sync`                    | One source, now — `202`, or a `409` for paused, running, or sooner than 30s |
+| `GET /api/v1/sources/{id}/status`                   | The row plus the loop's memory: `running`, `retryAfterSeconds`, the last cycle's counts |
 | `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list yours, create one                  |
 | `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
 | `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
@@ -2623,11 +2630,12 @@ from the **class** rather than from a provider's `detail`, which is what stops a
 body — request headers and all — from reaching a page. The `detail` still reaches the log,
 where the audience is an operator.
 
-**The credential is opened for one call.** The sealed column is read by exactly one statement
-in `ticket-sources.repository.ts`; everything else selects `ticket_sources_public`, which does
-not carry it. `VaultService` opens it immediately before the provider call and the reference is
-dropped in a `finally`. Nothing logs it, and the suite asserts that against a captured
-transcript with a credential-shaped fixture rather than by reading the code.
+**The credential is opened for one call.** The sealed column's value is read by exactly one
+statement in `ticket-sources.repository.ts`; everything else selects `ticket_sources_public`,
+which does not carry it, and the one management statement that names the table asks only
+whether the column is null. `VaultService` opens it immediately before the provider call and
+the reference is dropped in a `finally`. Nothing logs it, and the suite asserts that against a
+captured transcript with a credential-shaped fixture rather than by reading the code.
 
 **Three outcomes, and only two touch the row.** A source whose kind has no provider in this
 build is *skipped* — reported, logged once at `debug`, row untouched, because a missing provider
@@ -2691,6 +2699,62 @@ would be a log full of misses. `ticket.intake.ts` carries the argument.
 The cadence is `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, shared with the backlog sync on purpose:
 one knob for one question — *how often does Ouroboros ask a tracker what changed* — for the one
 release in which there are two loops asking it.
+
+### Managing sources
+
+**`/api/v1/sources` is the settings surface's API** (Q.4,
+[#141](https://github.com/NobuData/ouroboros/issues/141)), and it sits *beside* the loop the
+way `backlog/` sits beside `backlog-sync/`: `sources.controller.ts`, `sources.service.ts` and
+`sources.repository.ts` are a person's statements, every one scoped by the workspace first,
+while `ticket-sources.repository.ts` stays a timer's. Members read; `owner` and `admin` write.
+
+```
+GET   /api/v1/sources                     the page — kind, settings, status, reason, mask, syncedAt
+GET   /api/v1/sources/catalog             every registered kind: its form fields and capabilities
+GET   /api/v1/sources/{id}
+GET   /api/v1/sources/{id}/status         the row + the loop's memory: running, retryAfterSeconds, lastSync
+
+POST  /api/v1/sources                     201  settings checked against the kind's schema; the secret to the vault
+PATCH /api/v1/sources/{id}                     rename · new settings · status: active | paused
+POST  /api/v1/sources/{id}/credentials    200  write-only — the answer is the resource, with the mask
+POST  /api/v1/sources/{id}/test           200  validateConfig over the stored row; writes nothing
+POST  /api/v1/sources/{id}/sync           202  the status at acceptance, running: true
+  ─▶ 409  ticket_source_paused · ticket_source_sync_running · ticket_source_sync_too_soon (details.retryAfterSeconds)
+  ─▶ 501  ticket_source_kind_unsupported   a row whose kind has no provider in this build
+```
+
+**The form is the provider's.** `GET /sources/catalog` renders each provider's `configSchema()`
+into an ordered field list through `ticket-source.config.ts` — `provider.config.ts`'s dialect
+for model providers, plus a `list` of strings for the repositories or projects a tracker source
+is scoped to — and `sources.catalog.spec.ts` holds the catalog, the service and the controller
+to zero `kind` literals. A `POST` or `PATCH` is checked against the same schema before anything
+is written; a violation is `422 ticket_source_config_invalid` with a sentence per field under
+`details.fields`, the envelope the provider forms already use, and the provider is not asked.
+
+**A credential goes in and never comes out.** The field marked `x-ouroboros-secret` travels in
+the `POST /sources` body beside the settings and is split off for the vault before the row is
+written. Every read answers `credentialMask` — `••••` while one is stored — and the response to
+storing one echoes the mask with the last four characters, computed from the plaintext at that
+moment and nowhere later: the management repository's one statement against the table selects
+`credentials_encrypted is not null` and nothing else. `sources.integration-spec.ts` searches
+every response body for the token it stored, and `sources.service.spec.ts` the log transcript.
+
+**A test writes nothing.** `provider-connections` writes a test's result to the connection's
+status because that status *is* the routing signal; here `status` and V031's reason are the
+loop's — written by a sync, cleared by the next one that succeeds — and a probe pressed while
+the tracker was down must not stop the loop polling. `POST …/test` opens the stored credential
+through the loop's own `sealedCredential`, hands it to `validateConfig`, and answers what came
+back. A credential the vault cannot open is a *failed* result of class `auth`, not a `500`.
+
+**A manual sync is the loop's cycle for one row.** `TicketSourcesService.syncSource` marks the
+source in flight — a scheduled cycle that arrives meanwhile leaves it alone and says so in its
+report as `in_flight` — and the `202` carries the status at acceptance. The three refusals are
+the backlog button's, with the same 30-second `backlog/debounce.ts` behind the third.
+
+**A change is a reason to try again.** New settings, a new credential and an explicit
+`status: "active"` each move an `error` row back to `active` with its reason cleared, because
+each is somebody acting on exactly the thing that failed. A `paused` row stays paused through a
+settings edit; pausing was a choice too.
 
 ## BetterAuth
 
@@ -3631,6 +3695,7 @@ ouroboros-rest/
 │       │                   #   POST /backlog/{id}/estimate · /backlog/estimate-all (#108)
 │       │                   #   member+ · admin+ · 30/min per workspace, sliding
 │       ├── ticket-sources/ # the TicketSourceProvider SPI, registry, sync loop · #139
+│       │   ├── sources.*   # the management API — /api/v1/sources, the catalog, test, sync · #141
 │       │   └── providers/  # the GitHub provider — the first conforming plugin · #140
 │       │                   #   providers/ is where a provider lives — lint-enforced,
 │       │                   #   and empty until Q.3 (#140) registers the GitHub one

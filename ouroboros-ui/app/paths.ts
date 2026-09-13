@@ -75,6 +75,34 @@ export const MODELS_PATH = "/models";
 export const PROVIDERS_PATH = `${MODELS_PATH}/providers`;
 
 /**
+ * Workspace settings ([#491](https://github.com/NobuData/ouroboros/issues/491)) — mockup 17.
+ *
+ * The administration hub, and the route the sidebar's **Settings** entry leads to. Until BS.1
+ * builds the hub itself, `app/(app)/settings/page.tsx` redirects here to the section's one
+ * built tab, {@link SOURCES_PATH} — a redirect rather than a placeholder, because a settings
+ * entry that leads to a working surface is more honest than one that leads to *soon*.
+ */
+export const SETTINGS_PATH = "/settings";
+
+/**
+ * Ticket sources ([#141](https://github.com/NobuData/ouroboros/issues/141)) — the settings
+ * section's first tab.
+ *
+ * **Spelled from {@link SETTINGS_PATH} rather than beside it**, for {@link PROVIDERS_PATH}'s
+ * reason: the sidebar highlights the entry whose route the URL is under, so a sources page at
+ * `/sources` would be a settings surface on which the **Settings** entry went dark. It is also
+ * the URL decision S2 of the Workspace Settings roadmap wants — the surface mounts as a tab
+ * under `/settings` when BS.1 builds the frame, and a URL that is already under it moves
+ * nowhere on that day.
+ *
+ * Three modules agree about it and none can import the others: the sidebar's registry entry,
+ * the settings tab set (`app/settings/settings-subnav.tsx`), and the intake screen's no-token
+ * guidance (`app/issues/guidance.tsx`), whose **Open settings** control #120's amendment points
+ * here.
+ */
+export const SOURCES_PATH = `${SETTINGS_PATH}/sources`;
+
+/**
  * The model registry ([#591](https://github.com/NobuData/ouroboros/issues/591)) — mockup 21.
  *
  * The third Models surface, and spelled from {@link MODELS_PATH} for the reason

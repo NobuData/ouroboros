@@ -8,6 +8,9 @@ import { NotImplementedError } from "../errors/error.envelope";
 import { OCTOKIT_FACTORY, type OctokitFactory } from "../github/github.client.factory";
 import { GithubRateLimiter } from "../github/github.rate-limit";
 import { GithubTicketSourceProvider } from "./providers/github.provider";
+import { SourcesController } from "./sources.controller";
+import { SourcesRepository } from "./sources.repository";
+import { SourcesService } from "./sources.service";
 import { TICKET_SOURCE_PROVIDERS, TicketSourceRegistry } from "./ticket-source.registry";
 import { TicketSourcesModule } from "./ticket-sources.module";
 import { TicketSourcesRepository } from "./ticket-sources.repository";
@@ -57,13 +60,18 @@ describe("the ticket sources module", () => {
     expect(module.get(TicketSourceRegistry)).toBeInstanceOf(TicketSourceRegistry);
   });
 
-  it("declares no controller — the source management API is Q.4's", async () => {
-    // Keeping the routes out is what preserves this module's one property: nothing an HTTP
-    // request does can reach inside a cycle. Asserted over the decorator's metadata, which is
-    // what Nest itself reads.
-    await build();
+  it("declares the one controller Q.4 added — the source management API, and nothing else", async () => {
+    // Q.2 shipped this module with no routes and named the property it wanted kept: nothing an
+    // HTTP request does can reach inside a cycle. The routes keep it by reaching the loop
+    // through `syncSource` and three read-only accessors — see `sources.service.ts` — so the
+    // controller list is one entry, and a second one would want the same argument made again.
+    const module = await build();
 
-    expect(Reflect.getMetadata("controllers", TicketSourcesModule)).toBeUndefined();
+    expect(Reflect.getMetadata("controllers", TicketSourcesModule)).toStrictEqual([
+      SourcesController,
+    ]);
+    expect(module.get(SourcesService)).toBeInstanceOf(SourcesService);
+    expect(module.get(SourcesRepository)).toBeInstanceOf(SourcesRepository);
   });
 
   it("registers the GitHub provider, and only it", async () => {
