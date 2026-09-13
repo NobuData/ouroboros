@@ -1,0 +1,28 @@
+import { defineLoop, trigger, needsReview } from "@ouroboros/sdk";
+
+const retries = 3;
+
+export default defineLoop("stray-statement", {
+  dsl: "1.0",
+  trigger: {
+    on: "issue.queued",
+  },
+  stages: [
+    trigger("start", {
+      title: "Issue queued",
+      next: "done",
+    }),
+    needsReview("done", {
+      title: "Needs review",
+    }),
+  ],
+});
+
+// Round-trips with the visual canvas: every node on the graph is one
+// stage call above, and `onFail` is the declared back-edge that
+// closes the loop. Publishing writes the next version for both editors.
+
+// @ouroboros/layout v1 — generated; the canvas owns these lines
+// node start 0 0
+// node done 240 0
+// edge start done

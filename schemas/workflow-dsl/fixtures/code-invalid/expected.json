@@ -1,0 +1,47 @@
+{
+  "about": "Workflow files the code-view parser (U.2, #166) must refuse, and the errors it must report for each: the code and the 1-based range, never the message. Lines count line feeds only; endColumn is exclusive.",
+  "cases": [
+    {
+      "name": "unknown-stage-call",
+      "about": "A stage call the closed grammar does not have: review(…) where a terminal is needsReview(…).",
+      "file": "code-invalid/unknown-stage-call.loop.ts",
+      "errors": [
+        { "code": "code_out_of_grammar", "line": 13, "column": 5, "endLine": 13, "endColumn": 11 }
+      ]
+    },
+    {
+      "name": "malformed-predicate",
+      "about": "A trigger condition written with a comparison operator rather than one of the grammar's tests.",
+      "file": "code-invalid/malformed-predicate.loop.ts",
+      "errors": [
+        { "code": "code_out_of_grammar", "line": 7, "column": 27, "endLine": 7, "endColumn": 29 }
+      ]
+    },
+    {
+      "name": "stray-statement",
+      "about": "A statement outside the header and defineLoop, which a parser that ran the file would execute.",
+      "file": "code-invalid/stray-statement.loop.ts",
+      "errors": [
+        { "code": "code_out_of_grammar", "line": 3, "column": 1, "endLine": 3, "endColumn": 19 }
+      ]
+    },
+    {
+      "name": "missing-position",
+      "about": "A stage with no node line in the layout block, so nothing says where the canvas draws it.",
+      "file": "code-invalid/missing-position.loop.ts",
+      "errors": [
+        { "code": "code_layout_invalid", "line": 13, "column": 17, "endLine": 13, "endColumn": 23 }
+      ]
+    },
+    {
+      "name": "three-mistakes",
+      "about": "A name the SDK does not export, a missing comma and an option a terminal does not take, reported from one parse.",
+      "file": "code-invalid/three-mistakes.loop.ts",
+      "errors": [
+        { "code": "code_out_of_grammar", "line": 1, "column": 44, "endLine": 1, "endColumn": 49 },
+        { "code": "code_syntax_error", "line": 11, "column": 7, "endLine": 11, "endColumn": 11 },
+        { "code": "code_out_of_grammar", "line": 15, "column": 7, "endLine": 15, "endColumn": 14 }
+      ]
+    }
+  ]
+}

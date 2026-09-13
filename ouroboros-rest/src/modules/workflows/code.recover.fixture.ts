@@ -17,9 +17,10 @@
  * **This is not the parser.** It reads what the grammar's printer writes and throws at the
  * first thing it does not recognise; it reports nothing anchored, accepts nothing
  * non-canonical, and recovers a model stage's strings but not the rest of its config. The
- * closed-grammar parser with anchored errors is U.2
- * ([#166](https://github.com/NobuData/ouroboros/issues/166)), whose suite supersedes this one's
- * use of it. `*.fixture.ts` is left out of the build, so none of this ships.
+ * closed-grammar parser with anchored errors is `code.parser.ts`, U.2
+ * ([#166](https://github.com/NobuData/ouroboros/issues/166)). This reader stays as the printer
+ * suites' independent oracle: a printer and a parser that agreed because they shared code would
+ * prove nothing about either. `*.fixture.ts` is left out of the build, so none of this ships.
  */
 
 import ts from "typescript";

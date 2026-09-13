@@ -1,13 +1,14 @@
 # The workflow code language
 
-> **Issue:** [#165](https://github.com/NobuData/ouroboros/issues/165) — *[U.1] TS-DSL grammar spec
-> & deterministic printer* · **Roadmap:**
+> **Issues:** [#165](https://github.com/NobuData/ouroboros/issues/165) — *[U.1] TS-DSL grammar spec
+> & deterministic printer* and [#166](https://github.com/NobuData/ouroboros/issues/166) — *[U.2]
+> TS-DSL parser* · **Roadmap:**
 > [`ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`](ROADMAP_MOCKUP_05_WORKFLOW_CODE.md), decisions **C2**
 > and **C4** · **Builds on:** [`WORKFLOW_DSL.md`](WORKFLOW_DSL.md) (#133) · **Design:**
 > [`mockups/05-workflow-code.html`](mockups/05-workflow-code.html) · **Implementation:**
 > [`ouroboros-rest/src/modules/workflows/code.*`](../ouroboros-rest/src/modules/workflows) ·
 > **Golden files:** [`schemas/workflow-dsl/fixtures/code/`](../schemas/workflow-dsl/fixtures/code)
-> · **Written:** 2026-09-13
+> and [`code-invalid/`](../schemas/workflow-dsl/fixtures/code-invalid) · **Written:** 2026-09-13
 
 Mockup 05 shows a workflow as TypeScript: `defineLoop("standard-fix", { trigger, stages })`. This
 document is that language. It is **closed**: it says exactly which TypeScript a workflow file may
@@ -40,6 +41,7 @@ the diagnostics span map (#178). The vocabulary they share lives in one file,
 10. [Against mockup 05](#10-against-mockup-05)
 11. [What builds on this](#11-what-builds-on-this)
 12. [Known limits](#12-known-limits)
+13. [Reading a file back](#13-reading-a-file-back)
 
 ---
 
@@ -623,7 +625,7 @@ and every idiom the mockup uses that the document can carry is kept.
 
 | Issue | Inherits |
 |---|---|
-| **#166**, the parser | This grammar, and `code.grammar.ts`'s tables read backwards. It decides how non-canonical input is treated (a one-member `next` list, a `when` spelling of a named `all_passed`, imports out of order): accepted and normalised, or refused with an anchored `code_out_of_grammar`. It also decides what a stale layout line means (a node the calls no longer have, an edge nobody declares). `readLayout` already reports each unreadable line with its number. |
+| **#166**, the parser | This grammar, and `code.grammar.ts`'s tables read backwards, as `parseWorkflowCode`. [§13](#13-reading-a-file-back) records what it accepts and normalises, what it refuses and with which code, and what a stale layout line means. |
 | **#167**, the endpoints | `printWorkflowCode(slug, document)` for `GET /code`. The printer takes valid documents only, and a draft is not validated, so #167 decides what the code view shows for a draft that doesn't print. |
 | **#168**, the property tests | The bijection in [§2](#2-what-the-grammar-promises), over generated documents. |
 | **#170**, highlighting | The token classes: keywords, strings, numbers, callees, comments. |
@@ -657,3 +659,111 @@ Stated rather than discovered.
 * **String bounds are the DSL's**, counted in UTF-16 code units in `ouroboros-rest`
   ([`WORKFLOW_DSL.md` §12](WORKFLOW_DSL.md#12-known-limits)). Escaping never changes a string's
   value, only its spelling.
+
+---
+
+## 13. Reading a file back
+
+`parseWorkflowCode(text)` in
+[`code.parser.ts`](../ouroboros-rest/src/modules/workflows/code.parser.ts) is the printer run
+backwards (#166). It returns the workflow's slug and the canonical document the text spells, or
+every error that stopped it. It never throws.
+
+```ts
+const { slug, document, errors } = parseWorkflowCode(text);
+// errors empty: slug "standard-fix", document { dsl_version, trigger, nodes, edges }
+// otherwise:    [{ code: "code_out_of_grammar", line: 13, column: 5, endLine: 13, endColumn: 11,
+//                  message: "`review` is not a stage call. A stage is `trigger`, `llm`, …",
+//                  hint: "Supported in the full SDK (v2) — see …/issues/180" }]
+```
+
+**Nothing is evaluated.** `ts.createSourceFile` builds a syntax tree and the parser walks it.
+Nothing is emitted, run, resolved or imported, and a predicate's arrow function is read as syntax,
+never called. `code.parser.static.spec.ts` scans the parser's own module graph for `eval`,
+`Function`, `require`, dynamic `import()` and any package besides `typescript` and `zod`. It also
+parses a file whose every statement would leave a mark if it ran, and checks that none is left.
+`typescript` is a runtime dependency of `ouroboros-rest` for this parser alone.
+
+### 13.1 Shape, not semantics
+
+The parser answers *what document does this text spell?* `validateWorkflowDocument` then answers
+*is that a workflow?*, with the codes and JSON Pointers the canvas already gets. The line between
+the two:
+
+| The parser refuses | The parser reads, and the validator reports |
+|---|---|
+| A construct the grammar has no spelling for: an unknown callee, an option its callee does not take, a second import | A stage nothing reaches, a duplicate id, an edge to a stage that doesn't exist |
+| A value spelled as the wrong kind of literal: `retries: "2"`, `title: issueTitle` | A value of the right kind that the schema refuses: `retries: 99`, `merge: "fast-forward"`, `require: []` |
+| A call with the wrong number of arguments | An absent option: no `title`, a model stage with no `model`, a branch with no `when` |
+| A spelling a closed table lacks: `effort.XXL`, `route.pool(…)`, `on: "issue.closed"` | An unsupported `dsl`, a source outside the vocabulary |
+
+So a missing option is left out of the document rather than reported. The validator names it
+with a JSON Pointer, and #178's span map takes it to the stage's lines.
+
+### 13.2 Errors
+
+| Code | Means | `hint` |
+|---|---|---|
+| `code_syntax_error` | The text is not TypeScript. The message is the compiler's. | none |
+| `code_out_of_grammar` | The text is TypeScript that the closed grammar has no spelling for. | always: *Supported in the full SDK (v2)*, pointing at #180 |
+| `code_layout_invalid` | The layout block is missing, has a line it can't read, or gives a stage no position. | none |
+
+Every error is anchored to a range: a 1-based `line` and `column`, and `endLine` and `endColumn`
+just past its last character. **Lines count line feeds only**, as the span map does, and `\r\n` or
+`\r` endings read as `\n`, so a file saved on Windows reports the same positions. Columns count
+UTF-16 code units. Errors are listed in the order a reader meets them.
+
+**Every problem comes back from one pass.** The compiler recovers from a syntax error and reports
+each one, and the walk records each grammar error and carries on with the next sibling. When the
+compiler fills a gap and the filler is out of grammar, the grammar error is dropped rather than
+reported as a second problem. A missing layout block isn't reported alongside a syntax error,
+because the tree can't then say where the code ends. A file nested so deeply that the compiler's
+recursive parser runs out of stack (thousands of brackets) gets one `code_syntax_error` at line 1,
+rather than an exception.
+[`fixtures/code-invalid/`](../schemas/workflow-dsl/fixtures/code-invalid) holds one file per kind of
+mistake, three of them together in one, and `expected.json` records each error's code and range.
+
+### 13.3 Accepted and normalised
+
+A file an author has edited rarely stays canonical. Where a spelling names the same document as
+the canonical one, it is accepted, and the next print writes the canonical form:
+
+* whitespace, comments, parentheses, trailing commas, and a stray `;`;
+* keys in any order: `defineLoop`'s, the trigger's, a stage's and an edge entry's;
+* strings in any quotes, backticks included when there is no `${…}`, string-literal keys, and a
+  prompt written as a quoted string;
+* numbers spelled any way the scanner reads them: `400000`, `400_000`, `0x61a80`;
+* the header's names in any order, unused names, missing names, or no header at all, since nothing
+  resolves them;
+* `next: ["a"]` for `next: "a"`;
+* `onFail: [{ to: "a", when: (i) => i.checks.anyFailed() }]` for `onFail: "a"`;
+* `when: (i) => i.checks.allPassed([…])` on a decision or gate for `require: […]`;
+* trigger conditions in any order or grouping, and `when: () => true` or `(i) => true` for a
+  trigger with no conditions;
+* a predicate's parameter under another name or without parentheses:
+  `ticket => ticket.effort.lte(effort.S)`.
+
+Everything else that §3 to §8 don't write is `code_out_of_grammar`. That includes `&&` or `||`
+inside a predicate, a block body, a typed or destructured parameter, `async`, optional chaining, an
+identifier where a literal belongs, a template substitution, a spread, a shorthand property, a
+computed key, `as`, and both `require` and `when` on one stage.
+
+### 13.4 The layout block, read
+
+The layout block gives each stage its position, and each edge its label and its place in the
+document's `edges`.
+
+* **The block is looked for after the last statement only**, so a prompt containing the marker
+  line is never mistaken for it.
+* **Lines may come in any order.** A node line is matched to its stage by id, and an edge line to
+  its edge by `from` and `to`.
+* **A stale line is ignored.** A node line for a stage the code no longer calls, or an edge line for
+  an edge no stage declares, describes nothing in the document. Deleting a stage or an edge in code
+  needs no edit to the block, and the next print drops the line.
+* **A stage with no node line is `code_layout_invalid`**, anchored at its id, because a position
+  has no default that wouldn't be invented. The author adds `// node <id> <x> <y>`. A file with no
+  block at all gets one error at its end, not one per stage.
+* **An edge with no edge line** has no label. It is placed after every edge that has a line, in the
+  order the stages declare edges: stage order, then `next`, `branches` and `onFail`.
+* **Two stages with one id, or two edges joining one pair,** take the lines that name them in order.
+  Both are validation errors, but each still gets a place.

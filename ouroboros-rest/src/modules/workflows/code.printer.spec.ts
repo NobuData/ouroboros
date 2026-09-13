@@ -14,6 +14,8 @@
  *   condition and label, in the document's order, the gate's back-edge included — is the
  *   document's graph.
  * * **It is TypeScript.** Every print is parsed by the compiler and produces no syntax error.
+ * * **It reads back.** Every constructed document's print is parsed by `code.parser.ts` (U.2,
+ *   [#166](https://github.com/NobuData/ouroboros/issues/166)) into that same document.
  */
 
 import { readFileSync } from "node:fs";
@@ -26,6 +28,7 @@ import {
   STAGE_OPTIONS,
   type StageCallee,
 } from "./code.grammar";
+import { parseWorkflowCode } from "./code.parser";
 import { calleeFor, printWorkflowCode, WorkflowCodePrintError } from "./code.printer";
 import {
   compilerLineCount,
@@ -82,6 +85,7 @@ function printLosslessly(slug: string, document: WorkflowDocument): string {
   expect(syntaxErrors(text)).toEqual([]);
   expect(recoverGraph(text)).toStrictEqual(graphOf(document));
   expect(compilerLineCount(text)).toBe(text.split("\n").length);
+  expect(parseWorkflowCode(text)).toStrictEqual({ slug, document, errors: [] });
 
   return text;
 }

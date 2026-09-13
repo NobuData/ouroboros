@@ -198,7 +198,7 @@ chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | U.1 | #165 | 🟢 Done | ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer | Closed grammar doc + canonical JSON → TypeScript projection | mvp, workflow, code-view, rest | N (after WF-P.2) | Y | L | ouroboros-rest, docs |
-| U.2 | #166 | 🟡 Open | ouroboros-rest: [U.2] TS-DSL parser (closed grammar) | TypeScript compiler API parse back to canonical JSON; anchored errors | mvp, workflow, code-view, rest | N (after U.1) | Y | L | ouroboros-rest |
+| U.2 | #166 | 🟢 Done | ouroboros-rest: [U.2] TS-DSL parser (closed grammar) | TypeScript compiler API parse back to canonical JSON; anchored errors | mvp, workflow, code-view, rest | N (after U.1) | Y | L | ouroboros-rest |
 | U.3 | #167 | 🟡 Open | ouroboros-rest: [U.3] Code view & save endpoints | `GET /code`, `PUT /code` (parse→draft, etag), tree/tabs payloads | mvp, workflow, code-view, rest | N (after U.2, WF-P.3) | Y | M | ouroboros-rest |
 | U.4 | #168 | 🟡 Open | ouroboros-rest: [U.4] Round-trip property & parity tests | `parse∘print = id`, mockup-parity fixture, cross-editor concurrency | mvp, workflow, code-view, rest, ci | N (after U.3) | Y | M | ouroboros-rest |
 
@@ -254,7 +254,7 @@ canonical JSON (WF-P.2) ──print──▶ defineLoop("standard-fix", { trigge
 
 ### Issue U.2 — ouroboros-rest: [U.2] TS-DSL parser (closed grammar)
 
-> **GitHub issue:** #166 · **Status:** 🟡 Open · **Parent epic:** #161
+> **GitHub issue:** #166 · **Status:** 🟢 Done · **Parent epic:** #161
 
 - **Problem Statement:** Edits must travel back: parse the constrained TS into
   canonical JSON with precise, line-anchored errors — and reject everything
@@ -275,6 +275,19 @@ canonical JSON (WF-P.2) ──print──▶ defineLoop("standard-fix", { trigge
 - **Parallelism/Dependencies:** Needs U.1. Blocks U.3, W.2.
 - **Technical Stack:** TypeScript compiler API (AST, no emit/exec).
 - **Epic:** U
+- **Delivered (2026-09-13):** `parseWorkflowCode` in
+  `ouroboros-rest/src/modules/workflows/code.parser.ts`, specified in
+  [`WORKFLOW_CODE_DSL.md` §13](WORKFLOW_CODE_DSL.md#13-reading-a-file-back). Each error carries
+  one of three codes and a 1-based line and column range: `code_syntax_error`,
+  `code_out_of_grammar` (with the full-SDK pointer to X.1), or `code_layout_invalid`. The error
+  fixtures are `schemas/workflow-dsl/fixtures/code-invalid/`. Three decisions were taken in-issue.
+  **Non-canonical spellings of the same document are accepted and normalised**, such as
+  formatting, key order, `next: ["a"]`, and a `when` in place of a named `require`. **Stale layout
+  lines are ignored, but a stage with no position is an error**, because a position has no default
+  that wouldn't be invented. **`typescript` moved to `ouroboros-rest`'s runtime dependencies**,
+  because U.3's `PUT /code` runs the parser in the served image. No evaluation is checked by
+  `code.parser.static.spec.ts`, which scans the parser's module graph, and by `no-eval` and
+  `no-new-func` lint rules over `code.*.ts`.
 
 ```
 TS text ─ ts.createSourceFile ─▶ AST walk (closed grammar) ─▶ canonical JSON

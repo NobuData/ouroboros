@@ -2407,10 +2407,30 @@ does, and a trailing layout block carries positions, edge labels and edge order.
 *valid* document: a draft is not validated, and a document the grammar has no spelling for is
 refused with `WorkflowCodePrintError` rather than printed as something it is not.
 
+**`parseWorkflowCode` reads a file back, statically** (U.2,
+[#166](https://github.com/NobuData/ouroboros/issues/166)). It builds a tree with
+`ts.createSourceFile` and walks it; nothing is emitted, run or imported. It returns the slug and
+the *candidate* document, or every error at once, each anchored to a line and column range:
+`code_syntax_error`, `code_out_of_grammar` (always with the pointer to the full-SDK decision, #180)
+or `code_layout_invalid`. It checks shape only. An unreachable stage parses, and
+`validateWorkflowDocument` is what refuses it. This parser is why `typescript` is a runtime
+dependency here rather than a development one.
+[`docs/WORKFLOW_CODE_DSL.md` §13](../docs/WORKFLOW_CODE_DSL.md#13-reading-a-file-back) lists what
+it accepts and normalises, and what a stale layout line means.
+
+```ts
+const { slug, document, errors } = parseWorkflowCode(text);
+// errors: [{ code: "code_out_of_grammar", line: 13, column: 5, endLine: 13, endColumn: 11, message, hint }]
+```
+
 | Suite | What it asserts |
 |---|---|
-| `code.printer.spec.ts` | Every valid fixture prints exactly `fixtures/code/<name>.loop.ts`. The print has no syntax error, and the graph `ts.createSourceFile` reads back (positions; each edge's kind, condition, label and order) is the document's. Also covers the constructs the golden files don't reach, and every refusal. |
-| `code.seed.spec.ts` | All six seeded definitions print, parse and give back their graph, and `standard-fix` v14 prints the golden file. |
+| `code.printer.spec.ts` | Every valid fixture prints exactly `fixtures/code/<name>.loop.ts`. The print has no syntax error, and the graph `ts.createSourceFile` reads back (positions; each edge's kind, condition, label and order) is the document's. Also covers the constructs the golden files don't reach, each of which also parses back into its document, and every refusal. |
+| `code.seed.spec.ts` | All six seeded definitions print, give back their graph and parse back into the stored document, and `standard-fix` v14 prints the golden file. |
+| `code.parser.spec.ts` | Every committed projection parses back to the JSON it was printed from, and prints back to the same bytes. Also covers the non-canonical spellings the parser accepts, what stale layout lines mean, and files that spell invalid workflows: those parse, and the validator reports them. |
+| `code.parser.errors.spec.ts` | Each file in `fixtures/code-invalid/` reports exactly the codes and ranges its `expected.json` records. Every refused construct is checked one at a time against the text its range covers, as are several errors from one parse and syntax errors that don't cascade. |
+| `code.parser.static.spec.ts` | The parser's module graph imports only `typescript` and `zod`, and never names `eval`, `Function` or `require`, imports at run time, or emits. A file that would leave a mark if it ran leaves none, and no file is read. |
+| `code.errors.spec.ts`, `code.reader.spec.ts` | Positions count line feeds only. Each literal reading returns its value or one anchored error. |
 | `code.predicates.spec.ts` | Every predicate form and trigger combination has exactly one spelling, and the compiler reads each spelling back into its structure. |
 | `code.literals.spec.ts`, `code.layout.spec.ts` | Strings, prompts, token budgets and coordinates survive the compiler. The layout block reads back exactly and reports each unreadable line by number. |
 

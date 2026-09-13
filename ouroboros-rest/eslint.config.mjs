@@ -201,6 +201,16 @@ export default tseslint.config(
   },
 
   {
+    // U.2's fourth acceptance criterion (#166), as a rule as well as a test: the code view's
+    // parser reads a workflow file as syntax and never runs it (decision C2).
+    // `code.parser.static.spec.ts` scans the parser's whole module graph for every way back in;
+    // these two rules refuse the two most obvious ones at lint time, in every file of the code
+    // projection.
+    files: ["src/modules/workflows/code.*.ts"],
+    rules: { "no-eval": "error", "no-new-func": "error" },
+  },
+
+  {
     // This file, the two jest configs and `jest.esm-transform.cjs` are configuration, not
     // application code: they are outside `tsconfig.json`'s `include`, so the type-aware
     // rules have no program to read them against. They are still linted and still

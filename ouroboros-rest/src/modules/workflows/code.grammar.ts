@@ -26,6 +26,15 @@ export const SDK_MODULE = "@ouroboros/sdk";
 /** The one top-level call a workflow file makes. */
 export const DEFINE_LOOP = "defineLoop";
 
+/** The keys of `defineLoop`'s options, in the order the printer writes them. */
+export const DEFINE_LOOP_OPTIONS = ["dsl", "trigger", "stages"] as const;
+
+/** The keys of the `trigger: {…}` option, in the order the printer writes them. */
+export const TRIGGER_OPTIONS = ["on", "when"] as const;
+
+/** The keys of one `branches` or `onFail` entry, in the order the printer writes them. */
+export const EDGE_ENTRY_OPTIONS = ["to", "when"] as const;
+
 /** The single parameter every predicate arrow function names. */
 export const PREDICATE_PARAMETER = "i";
 
