@@ -4,9 +4,9 @@
 #
 # The script itself needs a migrated PostgreSQL, so what it does to a schema is asserted
 # where a database exists: the `ci/db` step that runs it. Its scope is #69's dashboard
-# read-model, #221's provider tables, #193's routing invariants, #583's registry rules and
-# #104's intake schema, and every constraint any of the five names is checked below against
-# the migrations that create it. What is asserted here is everything it decides *before* it connects — the
+# read-model, #221's provider tables, #193's routing invariants, #583's registry rules,
+# #104's intake schema and #137's workflow studio, and every rule any of the six names is
+# checked below against the migrations that create it. What is asserted here is everything it decides *before* it connects — the
 # arguments it accepts,
 # the ones it refuses, and its refusal to reach for a database with no password in the
 # environment — so the module's suite keeps covering it without a daemon or a network.
@@ -300,6 +300,49 @@ for intake_invariant in \
 do
   check_contains "$CONSTRAINTS" "$intake_invariant" \
     "constraints.sql names $intake_invariant among the intake invariants"
+done
+
+# The workflow studio's half (#137). Two of its five rules are not constraints at all —
+# immutability and numbering are triggers, and the one-draft rule is a partial unique index —
+# so the loop above cannot find them by the statement that has to drop them. `alter table …
+# drop constraint` on either is an error, and a mutation that cannot be applied reports as a
+# probe that caught nothing.
+for probe_constraint in workflows_status_valid workflow_versions_workflow_version_key
+do
+  check_contains "$PROBES" "drop constraint $probe_constraint" \
+    "the suite mutates $probe_constraint"
+  check_contains "$MODULE_DIR/migrations/V029__workflows_versions.sql" \
+    "constraint $probe_constraint\b" "and V029 creates $probe_constraint"
+done
+
+for workflow_trigger in workflow_versions_no_update workflow_versions_next_version
+do
+  check_contains "$PROBES" "drop trigger $workflow_trigger on ouroboros\.workflow_versions" \
+    "$workflow_trigger is dropped with drop trigger, which is what it lives on"
+  check_contains "$MODULE_DIR/migrations/V029__workflows_versions.sql" \
+    "create trigger $workflow_trigger\b" "and V029 is where that trigger is created"
+done
+
+check_contains "$PROBES" 'drop index ouroboros\.workflow_versions_one_draft_idx' \
+  'the one-draft rule is dropped with drop index, which is what it lives on'
+check_contains "$MODULE_DIR/migrations/V029__workflows_versions.sql" \
+  'create unique index workflow_versions_one_draft_idx' \
+  'and V029 is where that partial unique index is created'
+
+# The version key carries the pointer's foreign key on it, so its drop has to cascade — and a
+# drop that does not would fail on its own statement rather than on the probe.
+check_contains "$PROBES" 'drop constraint workflow_versions_workflow_version_key cascade' \
+  'the version key is dropped with cascade, since the current-version pointer stands on it'
+
+for workflow_invariant in \
+  workflow_versions_no_update \
+  workflows_status_valid \
+  workflow_versions_next_version \
+  workflow_versions_workflow_version_key \
+  workflow_versions_one_draft_idx
+do
+  check_contains "$CONSTRAINTS" "$workflow_invariant" \
+    "constraints.sql names $workflow_invariant among the workflow invariants"
 done
 
 # Both ways in. Included, it is CG.5's section of constraints.sql and every runner that file

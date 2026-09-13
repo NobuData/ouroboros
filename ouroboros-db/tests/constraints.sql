@@ -8560,6 +8560,14 @@ select pg_temp.must_hold(
 -- trigger**, **slug uniqueness holds per organization and a stored `workflow_tag` resolves
 -- against it**, and **a second draft is refused by the database**.
 --
+-- P.6 (#137) is what turns those into a gate rather than a record. verify-constraint-probes.sh
+-- drops the immutability trigger, the status vocabulary, the numbering trigger, the version key
+-- and the one-draft index one at a time, and requires this section to go red naming the
+-- assertion that watches each. The version key, which the numbering trigger pre-empts in any
+-- single session, gets a catalogue probe of its own below for exactly that reason. The other
+-- half of that ticket lives outside this file: ci/db validates every seeded definition against
+-- the published DSL schema (scripts/workflow-dsl-drift.mjs).
+--
 -- Its own fixtures. `org-ghtoken` and its neighbour went with the V027 section, and this one
 -- needs a workspace with a repository under it anyway — the tag bridge is asserted against a
 -- real `runs` row rather than against a string, because *"existing run and queue tags resolve
@@ -8823,12 +8831,43 @@ select pg_temp.must_hold(
     where workflow_id = 'a9a00000-0000-0000-0000-000000000002'),
   'and it is counted per workflow, so a second workflow''s first publish is still v1');
 
+-- --- one version number per workflow, once (#137) ----------------------------------
+--
+-- P.6's version-uniqueness probe. The numbering trigger above is friendlier and fires first,
+-- so a single session can never see this key refuse anything: every duplicate it could stage
+-- is a number at or below the highest, which `workflow_versions_next_version` refuses by name
+-- before PostgreSQL reaches the index. And the case the key exists for is the one no session
+-- can stage alone — two publishers who both computed max + 1. So it is asked of the catalogue
+-- by name and by shape, then asked behaviourally with the trigger stood down for one statement:
+-- `V026`'s `issue_estimates_issue_version_key` probe, one domain over.
+select pg_temp.must_hold(
+  (select array_agg(a.attname::text order by k.ord) = array['workflow_id', 'version']
+     from pg_constraint c
+     join unnest(c.conkey) with ordinality as k(attnum, ord) on true
+     join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
+    where c.conrelid = 'ouroboros.workflow_versions'::regclass
+      and c.conname = 'workflow_versions_workflow_version_key'
+      and c.contype = 'u'),
+  'workflow_versions_workflow_version_key: one version number per workflow, once');
+
+alter table ouroboros.workflow_versions disable trigger workflow_versions_next_version;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+      values ('a9a00000-0000-0000-0000-000000000001', 2, '{}', now())$$,
+  'and with the numbering trigger stood down the key underneath still refuses a second v2',
+  'workflow_versions_workflow_version_key');
+
+alter table ouroboros.workflow_versions enable trigger workflow_versions_next_version;
+
 -- --- a published version cannot be revised ------------------------------------------
 --
 -- Acceptance criterion, and the one the whole design exists for: a run pins the version it
 -- executed, so editing a published definition would rewrite what that run did. Enforced by a
--- trigger rather than by a grant, because the development stack connects as the database
--- owner and a superuser bypasses every grant.
+-- trigger, `workflow_versions_no_update`, rather than by a grant, because the development stack
+-- connects as the database owner and a superuser bypasses every grant. The refusal it raises is
+-- `restrict_violation` from a function rather than a named constraint firing, so these are
+-- `must_raise` probes, and #137's mutation that drops the trigger is caught by the first of them.
 select pg_temp.must_raise(
   $$update ouroboros.workflow_versions set definition = '{"dsl_version": 1, "nodes": ["sneaked"]}'
      where workflow_id = 'a9a00000-0000-0000-0000-000000000001' and version = 1$$,

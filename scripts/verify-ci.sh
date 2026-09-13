@@ -217,7 +217,13 @@ check_route ouroboros-rest/package.json 'db.yml rest.yml'
 # because neither owns it, so both have to run when it moves: an edit reaching only one of them
 # would let the two validators stop agreeing without any check saying so, which is the single
 # failure mode that whole design exists to prevent.
-check_route schemas/workflow-dsl/v1.json 'engine.yml rest.yml'
+#
+# The schema itself reaches ci/db as well (#137), whose drift check validates every seeded
+# workflow definition against it: a schema edit that leaves the seeds behind touches nothing
+# under ouroboros-db/, and it is exactly the change that check exists to catch. The fixtures do
+# not — the seeds are validated against the schema, not against the golden cases — so the
+# expected-verdict file stays the two validators' alone.
+check_route schemas/workflow-dsl/v1.json 'db.yml engine.yml rest.yml'
 check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml'
 
 # …and no further. The rest of the module is ci/rest's business alone, which is what
@@ -412,6 +418,15 @@ check_contains "$DB_WORKFLOW" 'betterauth-schema\.mjs --applied' \
   'db.yml asserts the applied schema still satisfies BetterAuth'
 check_contains "$DB_WORKFLOW" 'betterauth-schema\.mjs --check' \
   'db.yml asserts the committed snapshot still describes what BetterAuth expects'
+
+# The workflow schema drift check (#137), both halves of it. The seeds are validated as stored
+# rows, so the step has to read them out of the seeded database and hand them to the verb — a
+# job running only the first half validates nothing, and one running only the second has no
+# rows to give it.
+check_contains "$DB_WORKFLOW" 'tests/lib/seeded-definitions\.sql' \
+  'db.yml reads every seeded workflow definition out of the seeded database'
+check_contains "$DB_WORKFLOW" 'workflow-dsl-drift\.mjs' \
+  'db.yml validates every seeded workflow definition against the DSL schema'
 
 # It reads the library out of the installed dependency, so the job has to install and
 # build. Without the build the check cannot load the configuration that decides the

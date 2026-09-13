@@ -1086,7 +1086,10 @@ price-coherence rules, price provenance and the reference-kind vocabulary; the
 `sizing_status` vocabulary, the `(github_repo_id, number)` key the backlog sync upserts on,
 the `labels` array-of-names shape, the sync cursor that cannot precede its own sync, the
 estimate-version trigger and the unique key beneath it, and decision **K10**'s mandatory
-trace provenance —
+trace provenance; and of the workflow studio
+([#137](https://github.com/NobuData/ouroboros/issues/137)), the trigger that keeps a published
+version immutable, the `workflows.status` vocabulary, the numbering trigger and the version key
+beneath it, and the one-draft index —
 and rewrites the expressions a rule lives in where no drop can falsify it: the two
 `token_usage_daily` computes its sums from, and the two tests inside `route_chain_intact()`
 that hold a chain dense from 1 and its floor inside it. For each, it requires the suite to
@@ -1209,18 +1212,54 @@ apply. Neither mode ever writes to a database.
 > which asserts every index the snapshot lists, by name — and the suite that reads this
 > file checks the two lists still agree.
 
+### The workflow schema drift check
+
+The workflow seed ([#136](https://github.com/NobuData/ouroboros/issues/136)) writes P.2
+documents into `workflow_versions.definition`, and
+[`schemas/workflow-dsl/v1.json`](../schemas/workflow-dsl/v1.json) is the language they are
+written in. A Flyway migration cannot read a file, so nothing joins the two at the moment
+either changes: a schema edit that tightens a rule leaves the seeds describing a language that
+no longer exists.
+
+[`scripts/workflow-dsl-drift.mjs`](scripts/workflow-dsl-drift.mjs) is the check that says so on
+the pull request ([#137](https://github.com/NobuData/ouroboros/issues/137)). It validates the
+**stored rows** — every version the seed wrote, v2–v13 of `standard-fix` included, which exist
+only as a `jsonb_set` and appear in the migration as no literal at all — with ajv, compiled
+exactly as `ouroboros-rest`'s conformance suite compiles the same schema.
+[`tests/lib/seeded-definitions.sql`](tests/lib/seeded-definitions.sql) reads them out as one
+JSON array, scoped to the seed's own `5eed001c…` ids so a draft made in the studio is not its
+business:
+
+```bash
+PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros_seed \
+  -f ouroboros-db/tests/lib/seeded-definitions.sql > seeded-definitions.json
+ouroboros-db/scripts/workflow-dsl-drift.mjs seeded-definitions.json
+```
+
+It wants a database migrated with `--config flyway.seed.toml`, and an empty result is red
+rather than green, because a drift check over nothing proves nothing. It is the schema and
+nothing more: the structural rules JSON Schema cannot state — one trigger, somewhere to end,
+every stage reachable — are `tests/seed.sql`'s, and P.2's full validator runs over the
+migration's documents in `ouroboros-rest`'s `dsl.seed.spec.ts`. `--schema PATH` validates
+against another copy of the schema, which is how
+[`tests/workflow-dsl-drift.test.sh`](tests/workflow-dsl-drift.test.sh) keeps *"red on drift"*
+a standing assertion rather than a one-off: it tightens a copy and requires the committed
+fixtures that pass the real one to fail against it.
+
 ## Continuous integration
 
 [`ci/db`](../.github/workflows/db.yml) is what runs all of the above on a pull request
 that touches this directory, the compose file, `.env.example`, the workflow itself, or the
 two things in `ouroboros-rest` that decide what BetterAuth expects — `src/auth/` and the
-`package.json` that pins the library
+`package.json` that pins the library — or the workflow DSL's
+[`schemas/workflow-dsl/v1.json`](../schemas/workflow-dsl/v1.json)
 ([#11](https://github.com/NobuData/ouroboros/issues/11) set the routing;
 [#24](https://github.com/NobuData/ouroboros/issues/24) added the live pass;
-[#710](https://github.com/NobuData/ouroboros/issues/710) added the last two, because a
-version bump touches no file in this directory and is exactly what the drift check exists
-to catch). It runs in two halves, cheap first — a misnamed migration is worth reporting
-before a database is waited on.
+[#710](https://github.com/NobuData/ouroboros/issues/710) added the two `ouroboros-rest`
+paths, because a version bump touches no file in this directory and is exactly what the drift
+check exists to catch; [#137](https://github.com/NobuData/ouroboros/issues/137) added the
+schema, for the same reason one directory over). It runs in two halves, cheap first — a
+misnamed migration is worth reporting before a database is waited on.
 
 | Step | What it proves | Needs a database |
 |---|---|---|
@@ -1229,7 +1268,7 @@ before a database is waited on.
 | `scripts/migrate` | Every migration applies, in order, to a database that has never seen them | yes |
 | `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
-| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)) and intake ([#104](https://github.com/NobuData/ouroboros/issues/104)) included | yes (copies of its own) |
+| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)), intake ([#104](https://github.com/NobuData/ouroboros/issues/104)) and the workflow studio ([#137](https://github.com/NobuData/ouroboros/issues/137)) included | yes (copies of its own) |
 | `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |

@@ -14,6 +14,14 @@ name: ouroboros-db · ci
 # is exact, so the lockfile cannot move `better-auth` on its own, and watching it would
 # run the whole data tier for every unrelated dependency change.
 
+#
+# The last entry is #137's, and it is the same argument again from the other direction. The
+# schema drift check validates every seeded workflow definition against the DSL's published
+# schema, and a schema edit that leaves the seeds behind touches no file under
+# `ouroboros-db/` — so without it the one pull request that drifts is the one this job never
+# runs on. The file itself rather than `schemas/**`: the check reads `v1.json` and nothing
+# else, and the golden fixtures beside it are ci/rest's and ci/engine's business.
+
 on:
   pull_request:
     branches: [main]
@@ -24,6 +32,7 @@ on:
       - ".github/workflows/db.yml"
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
+      - "schemas/workflow-dsl/v1.json"
   push:
     branches: [main]
     paths:
@@ -33,6 +42,7 @@ on:
       - ".github/workflows/db.yml"
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
+      - "schemas/workflow-dsl/v1.json"
   workflow_dispatch:
 
 permissions:
@@ -246,6 +256,11 @@ jobs:
       # requires the suite to go red *naming the assertion that caught it*. A probe that went
       # red for some other reason would otherwise read as a probe doing its job.
       #
+      # #137 adds the **workflow studio**'s five: the trigger that keeps a published version
+      # immutable, the status vocabulary, the numbering trigger and the version key beneath it,
+      # and the one-draft index. A run pins the version it executed, so these are the rules
+      # that keep *"what did that run do"* answerable.
+      #
       # The routing rows are #193's whole acceptance criterion — *"dropping any single
       # routing invariant turns it red"* — the registry rows are #583's, in its own
       # words: *"removing any one of the registry constraints turns it red"*, and the intake
@@ -356,6 +371,30 @@ jobs:
             "$POSTGRES_IMAGE" \
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
               -v ON_ERROR_STOP=1 -f /tests/seed.sql
+
+      # The schema drift check (#137, P.6). The step above proves the seed put the rows the
+      # mockups are drawn from where the documentation says; it does not ask whether the
+      # workflow definitions among them are still written in the language the studio reads.
+      # That is `schemas/workflow-dsl/v1.json`'s to decide, and a Flyway migration cannot read a
+      # file — so a schema change that tightens a rule leaves every seeded definition
+      # describing a language that no longer exists, and nothing else in this job would notice.
+      #
+      # The rows are read out of this seeded database rather than out of the migration's text,
+      # because v2–v13 of `standard-fix` exist nowhere else: they are a `jsonb_set` over one
+      # literal. The query writes nothing and is scoped to the seed's own ids. The verdict is
+      # ajv's over the committed schema, compiled the way ouroboros-rest's conformance suite
+      # compiles it — which is why this step, like the BetterAuth check, leans on the workspace
+      # installed at the top of the job. It adds about a second.
+      - name: Assert every seeded workflow definition still validates against the DSL schema
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/lib/seeded-definitions.sql \
+              > "$RUNNER_TEMP/seeded-definitions.json"
+          ouroboros-db/scripts/workflow-dsl-drift.mjs "$RUNNER_TEMP/seeded-definitions.json"
 
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is
