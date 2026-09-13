@@ -68,6 +68,11 @@ import { GithubRateLimiter } from "./github.rate-limit";
       useValue: ((token: string) => createOctokit({ token })) satisfies OctokitFactory,
     },
   ],
-  exports: [GithubCredentialsService, GithubClientFactory, GithubRateLimiter],
+  // `OCTOKIT_FACTORY` is exported since Q.3 ([#140](https://github.com/NobuData/ouroboros/issues/140)):
+  // the GitHub ticket-source provider needs a client for a *source's* credential rather than
+  // for this workspace's settings token, so `GithubClientFactory` — which reads the settings
+  // token — is not what it wants. Exporting the seam rather than letting a second module bind
+  // `createOctokit` itself is what keeps *"one line connects the library to the product"* true.
+  exports: [GithubCredentialsService, GithubClientFactory, GithubRateLimiter, OCTOKIT_FACTORY],
 })
 export class GithubModule {}

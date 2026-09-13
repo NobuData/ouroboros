@@ -14,12 +14,12 @@ import { MODULE_ROOT, cruise, cruiseFixture } from "../../testing/depcruise.fixt
  * rule that passes everything — and a rule whose regular expression has quietly stopped
  * matching looks identical to a codebase with no violations.
  *
- * **The directory under test does not exist yet**, and that is the point rather than a gap:
- * `src/modules/ticket-sources/providers/` arrives with Q.3
- * ([#140](https://github.com/NobuData/ouroboros/issues/140)), and a boundary added after the
- * first thing crosses it is a boundary that has to be argued rather than enforced. The fixture
- * trees create the files the rule is about, so the rule is exercised against exactly the
- * layout Q.3 will land into.
+ * `src/modules/ticket-sources/providers/` arrived with Q.3
+ * ([#140](https://github.com/NobuData/ouroboros/issues/140)) and holds the GitHub provider. The
+ * rules below were written before it existed — a boundary added after the first thing crosses
+ * it is a boundary that has to be argued rather than enforced — and the fixture trees still
+ * build their own files, so each case is a violation in isolation rather than a claim about
+ * whatever happens to be in the directory today.
  *
  * The harness is `testing/depcruise.fixture.ts`, shared with `providers/boundary.spec.ts`
  * (AC.1) and `github/boundary.spec.ts` (K.3) — a third copy would be a third thing that can
@@ -147,8 +147,14 @@ describe("the ticket source boundary", () => {
 
   it("leaves Octokit to the seam K.3 already gave it", () => {
     // Two rules naming one package would make the shipped GitHub client violate the new one
-    // the day it landed. `no-octokit-outside-the-seam` still owns `@octokit/*`, and Q.3 moves
-    // its `pathNot` into `providers/` when the client becomes a provider.
+    // the day it landed, so `no-octokit-outside-the-seam` still owns `@octokit/*` on its own.
+    //
+    // Q.3 ([#140](https://github.com/NobuData/ouroboros/issues/140)) was expected to move that
+    // rule's `pathNot` into `providers/`, and **did not**, because the premise changed: K.3 and
+    // K.4 had shipped by the time it was built, so `GithubTicketSourceProvider` *reuses*
+    // `GithubClient` rather than cutting a second client. One seam, one file, one rule — which
+    // is a stronger reading of this ticket's third criterion than moving the file would have
+    // been, and the next case is what makes that true rather than asserted.
     const result = cruiseFixture({
       "src/modules/github/github.octokit.ts":
         'import { Octokit } from "@octokit/rest";\n\nexport const client = Octokit;\n',
@@ -156,6 +162,20 @@ describe("the ticket source boundary", () => {
 
     expect(result.output).toContain("no dependency violations found");
     expect(result.exitCode).toBe(0);
+  });
+
+  it("fails the build on Octokit imported inside providers/, because the seam is one file", () => {
+    // Q.3's third acceptance criterion — *"no Octokit import exists outside the provider
+    // module (CI-enforced)"* — read the strict way: `providers/` is not an exemption either.
+    // A provider that reached for the library would be a second place the ES-module transform
+    // has to be kept working, and a second place a token could be handed to a constructor.
+    const result = cruiseFixture({
+      "src/modules/ticket-sources/providers/github.provider.ts":
+        'import { Octokit } from "@octokit/rest";\n\nexport const client = Octokit;\n',
+    });
+
+    expect(result.output).toContain("no-octokit-outside-the-seam");
+    expect(result.exitCode).not.toBe(0);
   });
 
   it("is what `yarn lint` runs, or none of the above is a build failure", () => {
