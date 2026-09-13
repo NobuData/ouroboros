@@ -528,6 +528,13 @@ text in both.
 The projection renders the **document**, never the verdict: a code view that showed diagnostics
 inline would be a second renderer of the diagnostic shape to keep in step with the inspector's.
 
+**The code view itself shows TypeScript, not YAML.** Mockup 05's editor shows
+`defineLoop("standard-fix", {...})`. U.1 ([#165](https://github.com/NobuData/ouroboros/issues/165))
+specifies that language in [`WORKFLOW_CODE_DSL.md`](WORKFLOW_CODE_DSL.md) and commits the
+printed form of each valid fixture under
+[`fixtures/code/`](../schemas/workflow-dsl/fixtures/code). The YAML projection stays as this
+document's proof that a text view of the document can be lossless.
+
 ---
 
 ## 11. Versioning

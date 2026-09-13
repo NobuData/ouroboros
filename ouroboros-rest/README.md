@@ -2389,6 +2389,36 @@ The fixture set is checked for completeness in both directions — every documen
 recorded case, and every code the validator can emit has a case behind it — so a rule added
 without a fixture fails before it can quietly go unasserted.
 
+### The code projection
+
+**Mockup 05's editor shows a workflow as TypeScript, and `printWorkflowCode` writes it** (U.1,
+[#165](https://github.com/NobuData/ouroboros/issues/165)). The language is closed, specified in
+[`docs/WORKFLOW_CODE_DSL.md`](../docs/WORKFLOW_CODE_DSL.md), and never evaluated.
+
+```ts
+const { text, spans } = printWorkflowCode("standard-fix", document);
+// text:  'import { defineLoop, effort, route, … } from "@ouroboros/sdk";\n\nexport default defineLoop(…'
+// spans: [{ node: "issue-queued", startLine: 10, endLine: 14 }, …]  — the node→line map #178 reads
+```
+
+**The printer is deterministic and lossless, and the compiler checks both.** The same document
+prints the same bytes whatever order its keys arrived in. The stage calls carry what the workflow
+does, and a trailing layout block carries positions, edge labels and edge order. The input is a
+*valid* document: a draft is not validated, and a document the grammar has no spelling for is
+refused with `WorkflowCodePrintError` rather than printed as something it is not.
+
+| Suite | What it asserts |
+|---|---|
+| `code.printer.spec.ts` | Every valid fixture prints exactly `fixtures/code/<name>.loop.ts`. The print has no syntax error, and the graph `ts.createSourceFile` reads back (positions; each edge's kind, condition, label and order) is the document's. Also covers the constructs the golden files don't reach, and every refusal. |
+| `code.seed.spec.ts` | All six seeded definitions print, parse and give back their graph, and `standard-fix` v14 prints the golden file. |
+| `code.predicates.spec.ts` | Every predicate form and trigger combination has exactly one spelling, and the compiler reads each spelling back into its structure. |
+| `code.literals.spec.ts`, `code.layout.spec.ts` | Strings, prompts, token budgets and coordinates survive the compiler. The layout block reads back exactly and reports each unreadable line by number. |
+
+**The seeded `standard-fix` doesn't print to mockup 05's 32-line listing.** The listing is drawn
+from a simpler document than the one the seed writes, so a byte-exact print would be a lossy one.
+[`docs/WORKFLOW_CODE_DSL.md` §10](../docs/WORKFLOW_CODE_DSL.md#10-against-mockup-05) records each
+line that differs and why.
+
 ## The workflow rail's statistics
 
 **Every string on mockup 04's rail is computed on the read, and none of them is stored** (P.4,

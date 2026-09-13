@@ -35,69 +35,17 @@
  * and a dry run of the seeded `#485`. Nothing here needs a database.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { readFixture } from "./dsl.golden.fixture";
+import { SEED_DOCUMENT_TAGS, seededDocuments, seedText } from "./dsl.seed.fixture";
 import { validateWorkflowDocument } from "./dsl.validator";
-
-/**
- * The seed migration, read from the sibling module.
- *
- * Resolved from `__dirname` rather than from the working directory, for
- * `migration.fixture.ts`' reason: `yarn test` runs from `ouroboros-rest/` and `turbo run test`
- * from the repository root, and a relative path would find the file under exactly one of them.
- */
-const SEED_PATH = resolve(
-  __dirname,
-  "../../../../ouroboros-db/migrations/R__dev_seed_workflows.sql",
-);
-
-/**
- * The dollar-quoted tag each document is written under, and what it is.
- *
- * Named rather than discovered, so that a document *removed* from the seed fails here too — a
- * scan for whatever happens to be in the file would quietly assert nothing about it.
- */
-const DOCUMENT_TAGS = [
-  ["standard_fix_v14", "mockup 04's canvas, and the version standard-fix runs"],
-  ["standard_fix_v1", "the six-node predecessor its first thirteen versions carry"],
-  ["feature_loop_v1", "feature-loop, the rail's 7 stages"],
-  ["deps_refresh_v1", "deps-refresh, the rail's one needs-review loop"],
-  ["docs_loop_v1", "docs-loop, the rail's shortest"],
-  ["hotfix_p0_v1", "hotfix-p0, the paused loop behind the rail's err-dot"],
-] as const;
-
-/** The seed's text, read once. */
-const seed = readFileSync(SEED_PATH, "utf8");
-
-/**
- * Every document written under one dollar-quoted tag, parsed.
- *
- * A tag opens and closes each block, so the odd-indexed pieces of a split on it are the
- * bodies. All of them are returned rather than the first: a tag used twice — the canvas was,
- * before the migration factored it into a CTE — must not be able to drift against itself.
- *
- * @param tag - The tag, without its dollar signs.
- * @returns One parsed document per block, in file order.
- * @throws {SyntaxError} When a block is not JSON, which is the failure this spec exists to
- *   catch and is more useful raised at the file than reported as an invalid document.
- */
-function documentsFor(tag: string): unknown[] {
-  const pieces = seed.split(`$${tag}$`);
-  const bodies: string[] = [];
-  for (let index = 1; index < pieces.length; index += 2) bodies.push(pieces[index]);
-
-  return bodies.map((body) => JSON.parse(body) as unknown);
-}
 
 describe("the development seed's workflow definitions", () => {
   it("names the migration this spec reads", () => {
-    expect(seed).toContain("R__dev_seed_workflows.sql");
+    expect(seedText()).toContain("R__dev_seed_workflows.sql");
   });
 
-  describe.each(DOCUMENT_TAGS)("%s — %s", (tag) => {
-    const documents = documentsFor(tag);
+  describe.each(SEED_DOCUMENT_TAGS)("%s — %s", (tag) => {
+    const documents = seededDocuments(tag);
 
     it("is written in the seed exactly once, or identically each time", () => {
       expect(documents.length).toBeGreaterThan(0);
@@ -122,7 +70,7 @@ describe("the development seed's workflow definitions", () => {
     // it. This is the other half of that trade: edit either one and this fails naming the
     // other. `schemas/workflow-dsl/fixtures/valid/standard-fix.json` is the canvas mockup 04
     // draws, node for node, and #133 froze it as a parity case.
-    expect(documentsFor("standard_fix_v14")[0]).toStrictEqual(
+    expect(seededDocuments("standard_fix_v14")[0]).toStrictEqual(
       readFixture("valid/standard-fix.json"),
     );
   });
