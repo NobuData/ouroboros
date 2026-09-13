@@ -1,3 +1,4 @@
+import { WORKFLOWS_PATH } from "@/app/paths";
 import { Button, type ButtonTone, Eyebrow, cx } from "@/app/ui";
 
 import { ActiveLoopsCard } from "./active-loops-card";
@@ -82,11 +83,17 @@ export function DashboardScreen({
           </p>
         </div>
         <div className="dash__actions">
-          {ACTIONS.map((action) => (
-            <Button key={action.id} tone={action.tone} reason={action.why}>
-              {action.label}
-            </Button>
-          ))}
+          {ACTIONS.map((action) =>
+            action.href !== undefined ? (
+              <Button href={action.href} key={action.id} tone={action.tone}>
+                {action.label}
+              </Button>
+            ) : (
+              <Button key={action.id} tone={action.tone} reason={action.why}>
+                {action.label}
+              </Button>
+            ),
+          )}
         </div>
       </div>
 
@@ -105,36 +112,58 @@ export function DashboardScreen({
   );
 }
 
-/** One of the page head's two actions. */
-interface Action {
+/** What every page-head action carries. */
+interface ActionBase {
   /** Stable identifier, and the React key. */
   readonly id: string;
   /** What the control says. */
   readonly label: string;
   /** Which of the button treatments it takes. */
   readonly tone: Extract<ButtonTone, "ghost" | "primary">;
-  /**
-   * Why it cannot act yet — its tooltip, and the whole of its honesty. Passing it to
-   * {@link Button} as `reason` is what makes the control inert: there is no way to switch
-   * one off in this product without saying what is missing.
-   */
-  readonly why: string;
 }
 
 /**
- * The mockup's two page-head actions, both inert.
+ * One of the page head's two actions: a link to a screen that exists, or an inert control
+ * saying why it cannot act yet.
+ *
+ * A union rather than two optional fields, so an action cannot be both — a link that also
+ * carried a reason would be the inert link `Button` refuses to render, for the reason its own
+ * note gives.
+ */
+type Action = ActionBase &
+  (
+    | {
+        /** Where it goes. Its presence is what makes the control a link. */
+        readonly href: string;
+        readonly why?: never;
+      }
+    | {
+        readonly href?: never;
+        /**
+         * Why it cannot act yet — its tooltip, and the whole of its honesty. Passing it to
+         * {@link Button} as `reason` is what makes the control inert: there is no way to
+         * switch one off in this product without saying what is missing.
+         */
+        readonly why: string;
+      }
+  );
+
+/**
+ * The mockup's two page-head actions: one a link, one inert.
  *
  * **#80 asks that these navigate to their [#49](https://github.com/NobuData/ouroboros/issues/49)
- * placeholders, and neither destination can yet do what its label offers.** *Edit workflows*
- * waits for the workflow builder (mockup 04), whose route #49 still holds. *Pull next issue* is
- * an action rather than a destination: the queue it would pull from is filled from the issues
- * screen since its selection bar landed
+ * placeholders.** *Edit workflows* waited for the workflow builder (mockup 04) and now links to
+ * it: S.1 ([#147](https://github.com/NobuData/ouroboros/issues/147)) built `/workflows`, so the
+ * control that named the roadmap it was waiting for is a link — the same transition the
+ * sidebar's row made on the same commit, and the reason the reason named a roadmap rather than
+ * saying *soon* and stopping. *Pull next issue* is an action rather than a destination: the
+ * queue it would pull from is filled from the issues screen since its selection bar landed
  * ([#118](https://github.com/NobuData/ouroboros/issues/118)), but pulling *from* it starts a
  * loop, and nothing can start a loop yet — so it carries that reason ({@link PULL_NEXT_SOON})
- * rather than linking to a screen that cannot do what the label offers. Both render *labelled*
- * rather than absent or linked to a `404`, which is what the sidebar does for a destination that
- * is not built and what #49 itself exists to prevent — "no dead nav links" is its first
- * acceptance criterion.
+ * rather than linking to a screen that cannot do what the label offers. An unbuilt destination
+ * renders *labelled* rather than absent or linked to a `404`, which is what the sidebar does
+ * and what #49 itself exists to prevent — "no dead nav links" is its first acceptance
+ * criterion.
  *
  * `aria-disabled` rather than `disabled`, deliberately: a disabled button leaves the tab
  * order and takes its own explanation with it, so the keyboard reader who most needs the
@@ -151,9 +180,7 @@ const ACTIONS: readonly Action[] = [
     id: "edit-workflows",
     label: "Edit workflows",
     tone: "ghost",
-    why:
-      "The workflow builder is not built yet — it arrives with its own roadmap (mockup 04), " +
-      "and #49 holds its placeholder route.",
+    href: WORKFLOWS_PATH,
   },
   {
     id: "pull-next",

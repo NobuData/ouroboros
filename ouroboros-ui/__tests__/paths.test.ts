@@ -13,8 +13,10 @@ import {
   ROUTING_RULES_HASH,
   SETTINGS_PATH,
   SOURCES_PATH,
+  WORKFLOWS_PATH,
   loginPath,
   safeReturnTo,
+  workflowPath,
 } from "@/app/paths";
 
 /**
@@ -65,6 +67,19 @@ describe("the paths themselves", () => {
     expect(SETTINGS_PATH).toBe("/settings");
     expect(SOURCES_PATH).toBe("/settings/sources");
     expect(SOURCES_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
+  });
+
+  it("give the workflow studio a section of its own, with each workflow beneath it (#147)", () => {
+    // The sidebar's **Workflows** entry leads to the section, and the studio's rail links each
+    // workflow under it — so section matching keeps the entry lit on both, for the reason the
+    // providers page sits under `/models`.
+    expect(WORKFLOWS_PATH).toBe("/workflows");
+    expect(workflowPath("standard-fix")).toBe("/workflows/standard-fix");
+    expect(workflowPath("standard-fix").startsWith(`${WORKFLOWS_PATH}/`)).toBe(true);
+  });
+
+  it("encode a workflow's slug, because a segment built from a value is built from input", () => {
+    expect(workflowPath("a/b?c")).toBe("/workflows/a%2Fb%3Fc");
   });
 
   it("give each Models surface a segment of its own", () => {

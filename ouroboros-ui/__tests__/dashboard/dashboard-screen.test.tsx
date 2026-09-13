@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
-import { ISSUES_PATH } from "@/app/paths";
+import { ISSUES_PATH, WORKFLOWS_PATH } from "@/app/paths";
 import {
   ACTIVITY_NOT_READ,
   NOT_READ,
@@ -179,19 +179,23 @@ describe("the page head", () => {
 });
 
 describe("the page head's actions", () => {
-  it("offers the mockup's two, and neither of them acts", () => {
-    // Neither can do what its label offers yet: the workflow builder is unbuilt, and pulling an
-    // issue needs the issues screen's selection (#117, #118). A control that appeared to pull
+  it("offers the mockup's two: a link to the studio, and a pull that does not act", () => {
+    // *Edit workflows* leads to the workflow studio since #147 built it — the transition its
+    // reason promised. *Pull next issue* cannot do what its label offers yet: pulling an issue
+    // starts a loop, and nothing can start one (#117, #118). A control that appeared to pull
     // one would be the one dishonest thing on a screen built to be honest.
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    const head = container.querySelector(".dash__actions");
-    const actions = within(head as HTMLElement).getAllByRole("button");
+    const head = container.querySelector(".dash__actions") as HTMLElement;
 
-    expect(actions.map((action) => action.textContent)).toEqual([
-      "Edit workflows",
-      "⟳ Pull next issue",
-    ]);
+    expect(within(head).getByRole("link", { name: "Edit workflows" })).toHaveAttribute(
+      "href",
+      WORKFLOWS_PATH,
+    );
+
+    const actions = within(head).getAllByRole("button");
+
+    expect(actions.map((action) => action.textContent)).toEqual(["⟳ Pull next issue"]);
     for (const action of actions) expect(action).toHaveAttribute("aria-disabled", "true");
   });
 
@@ -216,7 +220,9 @@ describe("the page head's actions", () => {
     // linked to a 404.
     render(<DashboardScreen readings={readings()} />);
 
+    // …and the head's *Edit workflows*, since #147 built the studio it names.
     expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      WORKFLOWS_PATH,
       ISSUES_PATH,
       ISSUES_PATH,
       ISSUES_PATH,

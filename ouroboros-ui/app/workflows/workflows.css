@@ -1,0 +1,466 @@
+/*
+ * The workflow studio — mockup 04's page frame (#147): the head, the segmented control as the
+ * CP.4 subnav, the `.wf-list` rail with its dashed tile, and the seat the canvas (#148) and
+ * the inspector (#150) will fill.
+ *
+ * The mockup is docs/mockups/04-workflow-builder.html over docs/mockups/assets/ouroboros.css.
+ * What is taken from it is the *anatomy* the design system requires of every module page
+ * (docs/DESIGN_SYSTEM_APP_SHELL.md § 2): page head, subnav, then the page's content — and the
+ * rail's own treatment, node for node. What is not taken from it is the topbar and sidebar
+ * markup — this page renders inside the app shell (#41) and starts at its page head — nor the
+ * `.seg` segmented control, which the shell compliance addendum renders as the CP.4 PageSubnav
+ * (app/ui/ui.css) so it sticks inside the pane like every other section's tab row.
+ *
+ * What is left here is what belongs to the **studio**: the gutter rhythm, the page head and
+ * the tab set's placement — the Models section's own measurements, so two module pages in one
+ * product start their content on the same line — the two-column grid, and one composition
+ * that is the studio's own rather than a primitive, because it names a domain concept
+ * (app/ui/index.ts § What belongs here): the rail, which is a workflow, its caption and its
+ * state.
+ *
+ * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated in
+ * docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every length that
+ * should follow the reader's font-size preference is rem — a spacing or radius token, or a
+ * rem literal where the design names a pixel size.
+ *
+ * The mockup's token names are its own; each maps onto the #16 sheet's: --border → --line,
+ * --border-strong → --line-strong, --mut → --ink-mut, --faint → --ink-faint, and its
+ * `rgba(61, 214, 245, 0.4)` accent rim and `--glow-soft` gradient stop are the sheet's own
+ * --accent-line and --accent-tint, which both palettes publish.
+ */
+
+/* ---------- the page frame ---------- */
+
+/*
+ * The pane is the scroll container and already centres the 1440px measure
+ * (app/shell/shell.css), so this contributes the gutter rhythm and nothing else. The
+ * measurements are the dashboard's and the routing page's.
+ */
+.studio {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.studio__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-9);
+}
+
+/*
+ * The floor is what keeps the subline from wrapping to one word a line beside three buttons
+ * at the narrow end of the pane; the buttons drop under it instead.
+ */
+.studio__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+/* The workflow's name — the mockup's `h1`, in the display face the page title already takes. */
+.studio__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The composed subline: the trigger sentence and the three facts. A measure, because it is
+ * prose; a paragraph's block margin zeroed and the column's own rhythm put in its place.
+ */
+.studio__sub {
+  max-width: 72ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.studio__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+/*
+ * The segmented control's placement, and only its placement — the row itself is the CP.4
+ * primitive's. The negative block-start pulls it up against the head; the inline margins are
+ * `.studio`'s own padding, undone and re-applied as padding so the sticky row spans the pane's
+ * full width while its segments still line up with the heading above them. A sticky element
+ * inset from the pane's edges leaves two gutters that scrolled content shows through.
+ */
+.studio__subnav {
+  margin: calc(var(--sp-4) * -1) calc(var(--sp-10) * -1) var(--sp-9);
+  padding: 0 var(--sp-10);
+}
+
+/* ---------- the states above the grid ---------- */
+
+/*
+ * The read-only note — one line under the tab set naming the reader's role. The grid's own
+ * bottom rhythm, so a member's page and an owner's page put the rail on the same line.
+ */
+.studio-readonly {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-9);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.studio-readonly__head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/*
+ * The failed-read banner's placement: above the grid, with the same bottom rhythm. The box
+ * itself is the design system's `.ou-retry`.
+ */
+.studio-failed {
+  margin: 0 0 var(--sp-9);
+}
+
+/* ---------- the studio grid ---------- */
+
+/*
+ * Mockup 04's `.studio`: the 220px rail beside the canvas. Two columns today rather than the
+ * mockup's three — the 300px inspector is S.4's (#150) and arrives as a third track when it
+ * arrives — with the canvas track floored at zero so a wide canvas scrolls inside its own
+ * wrapper rather than pushing the pane sideways (§ 1.3).
+ */
+.studio__grid {
+  display: grid;
+  grid-template-columns: 13.75rem minmax(0, 1fr);
+  gap: var(--sp-8);
+  align-items: start;
+}
+
+/*
+ * The seat the canvas will take: a card at the mockup's canvas height, so the page has a foot
+ * rather than ending under the rail, and so nothing moves by more than the canvas's own chrome
+ * when #148 fills it. `fill` on the card is what lets the empty state inside it take the
+ * height rather than sit as a short box at the top of a tall one.
+ */
+.studio__seat {
+  min-height: 40rem;
+}
+
+/* The development note under the empty seat, ruled off from it: it is for a developer, not a tenant. */
+.studio__dev {
+  margin: var(--sp-8) 0 0;
+  padding-block-start: var(--sp-6);
+  border-block-start: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the rail — mockup 04's .wf-list ---------- */
+
+.studio-rail {
+  min-width: 0;
+}
+
+/*
+ * A `ul`, so `margin`, `padding` and `list-style` are the user-agent defaults this has to
+ * undo. The mockup's 8px gap between items, and the same gap before the tile under them.
+ */
+.studio-rail__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  list-style: none;
+}
+
+.studio-rail__list > li {
+  min-width: 0;
+}
+
+/*
+ * One workflow — the mockup's `.wf-item`: a hairline box on the surface with a 3px rail on its
+ * left edge, which is the one length here written in px on purpose: it is a rule, and a rule
+ * that grew with the type would be a different rule.
+ */
+.studio-rail__item {
+  display: block;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.studio-rail__item:hover,
+.studio-rail__item:focus-visible {
+  border-color: var(--line-strong);
+}
+
+/*
+ * The selected workflow — the mockup's `.wf-item.active`: the rail in the accent, the rim in
+ * the accent's line, and the accent-gradient ground that fades to the surface past the
+ * midpoint. `aria-current="page"` carries the same fact to a reader who cannot see it.
+ */
+.studio-rail__item--active {
+  border-color: var(--accent-line);
+  border-left-color: var(--accent);
+  background: linear-gradient(90deg, var(--accent-tint), var(--surface) 55%);
+}
+
+/* The name and — for a paused workflow — the err-dot, on one line; the mockup's `.row.between`. */
+.studio-rail__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+/* The mockup's `.wf-name`: the display face, at the button size. It wraps rather than clips. */
+.studio-rail__name {
+  min-width: 0;
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  overflow-wrap: anywhere;
+}
+
+.studio-rail__item--active .studio-rail__name {
+  color: var(--accent);
+}
+
+/*
+ * The mockup's `.wf-cap`: the served caption — `12 stages · auto-merge`, `5 stages · paused` —
+ * in mono because every part of it is a value, and faint because the name is the subject. It
+ * wraps rather than the mockup's `nowrap`, so a long caption at the 150% font-scale step
+ * stays inside its tile instead of being clipped by it.
+ */
+.studio-rail__caption {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The mockup's `.dot.err` beside `hotfix-p0`: the paused state as a disc in the error hue. The
+ * caption already says *paused* in words, so the dot is a second signal and is hidden from the
+ * accessibility tree — hue is never the only signal (§ 3.4).
+ */
+.studio-rail__dot {
+  width: var(--sp-4);
+  height: var(--sp-4);
+  flex: none;
+  border-radius: var(--r-round);
+  background: var(--err);
+}
+
+/*
+ * The dashed tile — the mockup's `.wf-item.new` — drawn over the product's one button, so an
+ * inert tile keeps `Button`'s honesty (`aria-disabled`, the reason as its tooltip, no
+ * handler) and the rail draws the mockup's shape on top. Qualified by `.studio-rail` so the
+ * tile's own treatment wins over the primitive's ghost tone whichever sheet the bundle
+ * orders first; the hover is guarded on `aria-disabled` the way every hover in ui.css is.
+ */
+.studio-rail .studio-rail__new {
+  display: block;
+  width: 100%;
+  padding: var(--sp-6);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-align: center;
+  white-space: normal;
+}
+
+.studio-rail .studio-rail__new:hover:not([aria-disabled="true"]) {
+  border-color: var(--accent-deep);
+  color: var(--accent);
+}
+
+.studio-rail .studio-rail__new[aria-disabled="true"] {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+/*
+ * The mockup's own break: below it the rail becomes a row of wrapping tiles above the canvas
+ * rather than a column beside it, and each tile takes a share of the width with a floor that
+ * keeps a caption readable. The skeleton's rail takes the same break in its own section.
+ */
+@media (max-width: 68.75rem) {
+  .studio__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .studio-rail__list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .studio-rail__list > li {
+    flex: 1 1 10rem;
+  }
+}
+
+/* ---------- the create dialog (#147) ---------- */
+
+/*
+ * The dialog's form: the two fields, then the controls. The dialog around it is
+ * .shell-overlay's, so nothing here positions or sizes the panel; the fields are the #46
+ * primitives and nothing here restyles them.
+ */
+.studio-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/* The refusal, in the error hue, above the actions it explains. */
+.studio-create__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A line the dialog says about itself: the write in flight. */
+.studio-create__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The action row — the primary control leading, the way out beside it. */
+.studio-create__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- the loading skeleton (#147) ---------- */
+
+/*
+ * What `app/(app)/workflows/loading.tsx` draws while the two reads are in flight.
+ *
+ * **Every shape below is a region's own geometry, not a generic bar** (#86). The head's title
+ * and subline are bars at the title's and the subline's own height, because — unlike the
+ * routing page's — both depend on the reads; the three actions are at a button's box; the
+ * rail is five items at an item's height and the tile at the tile's, in the rail's own gap;
+ * the seat is the card's own floor. The eyebrow and the segmented control are not here at all:
+ * the skeleton draws them as themselves.
+ *
+ * It pulses only for a reader who has not asked for less motion, and it is hidden from the
+ * accessibility tree by the `aria-hidden` on its container — a screen reader is told the page
+ * is busy once, by the frame's own label, rather than read a column of empty bars.
+ */
+.studio-skeleton {
+  display: block;
+}
+
+/* The title, at `--t-2xl`'s own height. */
+.studio-skeleton__title {
+  display: block;
+  width: 14rem;
+  max-width: 100%;
+  height: var(--t-2xl);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The subline, at a line of body type, in the subline's own top margin. */
+.studio-skeleton__sub {
+  display: block;
+  width: 36rem;
+  max-width: 100%;
+  height: var(--sp-8);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The three head actions, at a default button's box. */
+.studio-skeleton__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+.studio-skeleton__action {
+  display: inline-block;
+  width: 9rem;
+  height: 2.375rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* The rail: `.studio-rail__list`'s column and gap. */
+.studio-skeleton__rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* One item, at `.studio-rail__item`'s height: its padding, a name line and a caption line. */
+.studio-skeleton__item {
+  display: block;
+  height: 3.5rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* The tile, at its own height and with its own dashed rim, so the rail ends where it will. */
+.studio-skeleton__new {
+  display: block;
+  height: 2.625rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+}
+
+/* The seat: the card's floor, on the inset well behind a dashed line — `.ou-empty--fill`'s own. */
+.studio-skeleton__seat {
+  display: block;
+  min-height: 40rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--inset);
+}
+
+/* The rail's own break, mirrored, so the skeleton's tiles wrap where the rail's will. */
+@media (max-width: 68.75rem) {
+  .studio-skeleton__rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .studio-skeleton__item,
+  .studio-skeleton__new {
+    flex: 1 1 10rem;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .studio-skeleton__title,
+  .studio-skeleton__sub,
+  .studio-skeleton__action,
+  .studio-skeleton__item,
+  .studio-skeleton__new,
+  .studio-skeleton__seat {
+    animation: studio-skeleton-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes studio-skeleton-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}

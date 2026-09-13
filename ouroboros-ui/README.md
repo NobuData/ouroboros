@@ -24,13 +24,15 @@
 > [add-provider flow](#the-add-provider-flow)
 > ([#231](https://github.com/NobuData/ouroboros/issues/231))
 > and the [credential audit trail](#the-credential-audit-trail)
-> ([#225](https://github.com/NobuData/ouroboros/issues/225)), and, under Settings,
-> [ticket sources](#ticket-sources) ([#141](https://github.com/NobuData/ouroboros/issues/141)) —
+> ([#225](https://github.com/NobuData/ouroboros/issues/225)), under Settings,
+> [ticket sources](#ticket-sources) ([#141](https://github.com/NobuData/ouroboros/issues/141)),
+> and the [workflow studio](#workflow-studio)
+> ([#147](https://github.com/NobuData/ouroboros/issues/147)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
-> the four that are built — the dashboard, Issues, Models and Settings — is labelled *soon*
-> rather than linked.
+> the five that are built — the dashboard, Issues, Workflows, Models and Settings — is
+> labelled *soon* rather than linked.
 
 ## Purpose
 
@@ -238,6 +240,7 @@ ouroboros-ui/
 │   │   ├── routing.ts       #   routing.providers() — the model page's health strip
 │   │   ├── audit.ts         #   audit.events() — the credential trail, org-scoped
 │   │   ├── sources.ts       #   sources.* — /api/v1/sources, the catalog, test, sync, status
+│   │   ├── workflows.ts     #   workflows.list() / read() / create() — the studio's share of P.3
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
@@ -287,6 +290,15 @@ ouroboros-ui/
 │   │   ├── view.ts          #   the four ways a trail lies, and what stops each
 │   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
 │   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
+│   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
+│   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
+│   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
+│   │   ├── data.ts          #   readStudio() — the rail, then the workflow the URL names
+│   │   ├── create.ts        #   the create dialog's decisions: slug derivation, the live checks
+│   │   ├── create-actions.ts #  the Server Action behind + New workflow
+│   │   ├── new-workflow.tsx #   the dashed tile and its dialog
+│   │   ├── workflow-rail.tsx #  the .wf-list rail: one link per workflow, the err-dot, the tile
+│   │   └── studio-screen.tsx #  the head, the segmented control, the rail and the canvas's seat
 │   ├── workshop/            # stories for surfaces whose page has not landed yet
 │   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
@@ -304,7 +316,8 @@ ouroboros-ui/
 
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
 contribute nothing to the URL, so the dashboard is `/dashboard`, model routing is
-`/models`, ticket sources are `/settings/sources` and sign-in is `/login`.
+`/models`, the workflow studio is `/workflows` (and `/workflows/<slug>` for one workflow),
+ticket sources are `/settings/sources` and sign-in is `/login`.
 `/` belongs to no module and is a redirect to the dashboard, kept so that everything
 already pointing at it still arrives. `(app)`
 renders its screens inside the [app shell](#app-shell); `(auth)` is a pass-through, because
@@ -2548,6 +2561,95 @@ under thirty seconds ago; *Pause* and *Resume* are the one `PATCH` of `status`. 
 every row and every control, each inert with its reason in the tooltip; `owner` and `admin`
 may press them. The intake screen's *no token* guidance (#120's amendment) links here.
 
+## Workflow Studio
+
+`/workflows` ([#147](https://github.com/NobuData/ouroboros/issues/147)) is
+[`docs/mockups/04-workflow-builder.html`](../docs/mockups/04-workflow-builder.html)'s
+**frame**: the page head bound to the selected workflow, the segmented **Visual** · Code ·
+Copilot control, the three actions, and the `.wf-list` rail down the left edge. It retires the
+`#49` placeholder this route was, and the sidebar's **Workflows** entry — and the dashboard's
+*Edit workflows* — became links on the same commit. Everything else in mockup 04's roadmap
+hangs off it: the canvas (S.2, [#148](https://github.com/NobuData/ouroboros/issues/148)) and
+the inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)) mount into the
+seat the frame reserves, and the draft, publish and dry-run flows (S.6,
+[#152](https://github.com/NobuData/ouroboros/issues/152)) are what its actions wait for.
+`/workflows/<slug>` is the same screen opened on a named workflow, which is what the rail
+links to.
+
+```
+WORKFLOW STUDIO
+standard-fix                                   [Browse templates] [Dry run] [Publish v15]
+Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 · used by 42% of runs.
+──────────────────────────────────────────────────────────────────────────────────────────
+ Visual   Code soon   Copilot soon
+ ▔▔▔▔▔▔
+▌standard-fix             ┌───────────────────────────────────────────────────────────┐
+│ 12 stages · auto-merge  │                                                           │
+│ feature-loop            │                 The canvas arrives next                   │
+│ 7 stages · auto-merge   │     The React Flow canvas is #148's and the inspector     │
+│ deps-refresh            │     beside it #150's. This frame is what they mount into. │
+│ 5 stages · needs review │                                                           │
+│ docs-loop               │                                                           │
+│ 4 stages · auto-merge   │                                                           │
+│ hotfix-p0            ●  │                                                           │
+│ 5 stages · paused       └───────────────────────────────────────────────────────────┘
+└ + New workflow
+```
+
+### Every value in the head is real, and one of them is derived
+
+The `<h1>` is the workflow's name, `v14` is its `currentVersion`, *used by 42% of runs* is
+P.4's ([#135](https://github.com/NobuData/ouroboros/issues/135)) `usageCaption` printed as
+served, and *Last edited 2h ago* is the draft's `updatedAt` measured against the instant the
+page was read. The one sentence the studio composes is the trigger's: the contract serves the
+predicate as structure — `{event: "ticket_queued", conditions: {effort_lte: "m"}}` — and
+[`app/workflows/view.ts`](app/workflows/view.ts)'s `triggerSentence` turns it into words on
+every render, stored nowhere. A definition with no trigger says so rather than claiming a
+predicate that does not exist. Two of the head's strings are not the mockup's, and both are
+the seed's doing (P.5, [#136](https://github.com/NobuData/ouroboros/issues/136)): the rail
+reads `12 stages` because a stage is a node and the seeded v14 is the mockup's own twelve-node
+canvas, and the usage reads `42%` because no integer count of the seeded runs rounds to `61%`.
+
+### The segmented control is the section's tab row
+
+The mockup draws `.seg` beside the actions; the shell specification renders it as the CP.4
+`PageSubnav`, sticky in the pane, because the three segments are sub-surfaces of one sidebar
+entry. **Visual** is the one built surface and links to the workflow's own URL; **Code** and
+**Copilot** are `SubnavSoon` — a span, out of the tab order, naming the issue that builds each
+([#169](https://github.com/NobuData/ouroboros/issues/169),
+[#565](https://github.com/NobuData/ouroboros/issues/565)) — which is the ticket's own honesty
+obligation: *they ship visibly disabled and labelled, not as buttons that quietly do nothing.*
+
+### The rail links, the tile creates
+
+Every entry is a link to `/workflows/<slug>`, so a workflow is linkable; the selected one
+carries `aria-current` and the mockup's accent gradient, the paused one its err-dot beside a
+caption that already says *paused*. The dashed **+ New workflow** tile
+([`app/workflows/new-workflow.tsx`](app/workflows/new-workflow.tsx)) opens a dialog taking a
+name and a slug — the slug following the name by the service's own derivation until the
+reader edits it, checked live against the rail, and sent explicitly because it is the one
+thing `PATCH` cannot change later. On success the page lands on the workflow it made. A
+member sees the tile inert with the reason, no **Publish**, and a note naming their role.
+
+### The three actions wait, and say for what
+
+**Browse templates**, **Dry run** and **Publish vN+1** are drawn where the mockup draws them
+and are inert with the issue each waits for as its reason
+([#159](https://github.com/NobuData/ouroboros/issues/159), #152, #152). **Publish** is drawn
+for an `owner` or `admin` and for nobody else, and its label counts from the version in force.
+
+### Every state the mockup does not show
+
+[`app/workflows/states.ts`](app/workflows/states.ts) decides five. A refused rail wears the
+DASH-I.7 banner over an empty seat; an empty workspace says so and points at the tile, with
+the development seed named for a developer; a URL naming a workflow the rail does not hold
+draws the studio's own *No such workflow* beside the rail rather than the framework's
+not-found page, because the rail is what a reader who followed a stale link needs next; a
+workflow whose own read failed keeps the rail's facts in the head and says which read failed.
+Loading is [`app/workflows/studio-skeleton.tsx`](app/workflows/studio-skeleton.tsx): one
+skeleton for both routes, at the frame's own geometry, with the title and subline as bars
+because — unlike the routing page's — both depend on the reads.
+
 ## The polling store
 
 The page's cards and the header's two pills all want the same freshness, and
@@ -3203,6 +3305,7 @@ the add-provider flow [#231](https://github.com/NobuData/ouroboros/issues/231) �
 caps, the strip and the states [#232](https://github.com/NobuData/ouroboros/issues/232) ·
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 ticket sources [#141](https://github.com/NobuData/ouroboros/issues/141) ·
+workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
