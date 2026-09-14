@@ -983,7 +983,7 @@ conformance(provider) ─▶ config ✓ · sync/cursor ✓ · mapping ✓ · err
 | R.1 | #143 | 🟢 Done | ouroboros-rest: [R.1] Trigger evaluation service | `ticket_queued` events matched to workflows via P8 predicates | mvp, workflow, rest | N (after P.3, Q.1) | Y | M | ouroboros-rest |
 | R.2 | #144 | 🟢 Done | ouroboros-engine: [R.2] Definition validation & dry-run simulator | `/v0/workflows/validate` + `/dry-run`: walk the graph, no LLM calls | mvp, workflow, engine | N (after P.2, #52) | Y | L | ouroboros-engine |
 | R.3 | #145 | 🟢 Done | ouroboros-rest: [R.3] Stage catalog endpoint | Node-type registry (config schemas, defaults) driving Add-stage & inspector | mvp, workflow, rest | N (after P.2) | Y | S | ouroboros-rest |
-| R.4 | #146 | 🟡 Open | ouroboros-rest: [R.4] Studio integration tests | Publish gate, trigger matrix, dry-run contract, catalog | mvp, workflow, rest, ci | N (after R.1–R.3) | Y | M | ouroboros-rest |
+| R.4 | #146 | 🟢 Done | ouroboros-rest: [R.4] Studio integration tests | Publish gate, trigger matrix, dry-run contract, catalog | mvp, workflow, rest, ci | N (after R.1–R.3) | Y | M | ouroboros-rest |
 
 ### Issue R.1 — ouroboros-rest: [R.1] Trigger evaluation service
 
@@ -1170,7 +1170,7 @@ GET /catalog ─▶ [{type: llm, glyph: ◆, class: model, config_schema, defaul
 
 ### Issue R.4 — ouroboros-rest: [R.4] Studio integration tests
 
-> **GitHub issue:** #146 · **Status:** 🟡 Open · **Parent epic:** #129
+> **GitHub issue:** #146 · **Status:** 🟢 Done · **Parent epic:** #129
 
 - **Problem Statement:** Publish gating, trigger precedence, and dry-run
   contracts are cross-service behavior needing harness coverage.
@@ -1187,6 +1187,46 @@ GET /catalog ─▶ [{type: llm, glyph: ◆, class: model, config_schema, defaul
 ```
 suites: publish gate ✓ · trigger matrix ✓ · dry-run contract ✓ · catalog ✓ · isolation ✓
 ```
+
+- **Decided in-issue and shipped as `ouroboros-rest/src/modules/workflows/studio.integration-spec.ts`,
+  `catalog.synthetic.integration-spec.ts`, `src/testing/workflow.fixture.ts`, and the engine stub's
+  two new routes:**
+
+  * **Dry-run fidelity is held at the contract, not at a caller.** Nothing in `ouroboros-rest`
+    calls `POST /v0/workflows/dry-run` yet — S.6 (#152) adds that call — so the stub publishes the
+    route, holds requests to `WorkflowDryRunRequest` and answers to `WorkflowDryRun`, and answers
+    by default with **the example the engine's own document commits to**, read from
+    `ouroboros-engine/openapi.yaml` rather than typed. The suite proves what REST *holds* fits what
+    the engine *takes*: the seeded `#485` is exactly the example's ticket, a stored canvas and that
+    ticket are a request the contract accepts, and REST's `triggerMatches` agrees with the
+    example's trigger verdict.
+  * **The engine can say no.** `respondToValidation` scripts findings or a failure under the same
+    contract check, so an engine finding is a `422` carrying `source: "engine"` and the node anchor,
+    an engine failure is `502 engine_unavailable`, and both write nothing — counted in
+    `workflow_versions`. Those are the cases that go red when the gate's engine leg is removed.
+  * **The trigger matrix is twenty cases through `POST /backlog/queue`**, each asserted on the
+    response and on the stored `queue_items` row: every effort bound, required and exact labels,
+    both sources, paused, archived and draft-only workflows, explicit choice, most-specific,
+    alphabetical (in code points — `fix-b` before `fixa`), repeated labels buying nothing, and the
+    pin naming the version in force. An unsized ticket and a non-GitHub source cannot reach the
+    queue write, so those stay in `trigger.evaluation.spec.ts`.
+  * **Isolation is enumerated from the route table.** Every `/api/v1/workflows` route has a case,
+    and a route without one fails the suite; every case also asserts the other workspace's rows are
+    byte-for-byte unchanged.
+  * **The synthetic node type is served by a running application**, through a `providers` seam on
+    `ApiHarness.start` that overrides `PUBLISHED_DSL_SCHEMA` and changes nothing else. It is offered
+    last with the neutral presentation, and its config schema — not its defaults — is what asks for
+    the required `image`.
+  * **Spot-verified by deliberate breakage, once each, then restored.** Removing the gate's engine
+    leg reddens exactly the four engine-dependent publish cases while the DSL-refused case stays
+    green. Dropping the workspace predicate from `WorkflowsRepository.find` reddens the four
+    `:id` routes that resolve through it (`PATCH` stays green: `rename` carries its own); from the
+    catalog read, `catalog` and `code-symbols`; from the stats rail, the rail and create; from the
+    trigger read, the queue suite's cross-workspace case.
+  * **`ci/rest` now watches `ouroboros-engine/openapi.yaml`**, because the stub validates against it:
+    a contract change that ran only `ci/engine` would otherwise leave the stub unchecked.
+    The two new suites add 45 cases and about 12 s to `yarn test:integration` (147.6 s → 159.2 s).
+    `ouroboros-rest` 0.34.11.
 
 ---
 

@@ -20,6 +20,11 @@ name: ouroboros-rest · ci
 # compiles it with ajv and asserts its zod validator classifies every golden fixture the way
 # the schema does. A rule edited there without this filter would run neither validator's
 # checks — which is the one way two validators quietly stop agreeing.
+#
+# ouroboros-engine/openapi.yaml is here because of R.4 (#146). The engine stub every integration
+# suite talks to holds each request it receives and each answer it serves to that document, read
+# at test time. An engine contract change that ran only ci/engine would leave this module's stub —
+# and every suite over it — green against a contract nobody re-checked it against.
 
 on:
   pull_request:
@@ -32,6 +37,7 @@ on:
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
       - "schemas/**"
+      - "ouroboros-engine/openapi.yaml"
       - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
@@ -48,6 +54,7 @@ on:
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
       - "schemas/**"
+      - "ouroboros-engine/openapi.yaml"
       - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
