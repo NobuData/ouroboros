@@ -193,19 +193,17 @@ export const WORKFLOW_FAILED_HEADLINE = "This workflow could not be read.";
 
 /* ------------------------------------------------------------------ the canvas's seat */
 
-/** What stands where the canvas will: a title and a note, by state. */
+/**
+ * The states in which the seat stands empty — every state but `populated`, which is the canvas
+ * (S.2, [#148](https://github.com/NobuData/ouroboros/issues/148)) and no seat at all.
+ */
+export type SeatState = Exclude<StudioState, { kind: "populated" }>;
+
+/** What stands where the canvas would: a title and a note, by state. */
 export interface SeatCopy {
   readonly title: string;
   readonly note: string;
 }
-
-/** The seat's title while the studio is a frame — the honest name for what is coming. */
-export const CANVAS_SOON_TITLE = "The canvas arrives next";
-
-/** …and which issues bring it. */
-export const CANVAS_SOON_NOTE =
-  "The React Flow canvas is #148's and the inspector beside it #150's. This frame — the " +
-  "head, the segmented control and the rail — is what they mount into.";
 
 /** The seat's title for a refused rail. */
 export const SEAT_FAILED_TITLE = "Nothing to draw";
@@ -248,12 +246,15 @@ export const SEAT_UNREAD_NOTE =
   "The definition could not be read, so there is nothing to draw. The banner above says why.";
 
 /**
- * What the seat says, for a state.
+ * What the seat says, for a state in which it stands empty.
  *
- * @param state The page's state.
+ * Total over {@link SeatState} and not over `StudioState`: a populated page has a canvas where
+ * the seat would be, and a sentence for it would be a sentence nothing draws.
+ *
+ * @param state The page's state, other than populated.
  * @returns The title and the note.
  */
-export function seatCopy(state: StudioState): SeatCopy {
+export function seatCopy(state: SeatState): SeatCopy {
   switch (state.kind) {
     case "failed":
       return { title: SEAT_FAILED_TITLE, note: SEAT_FAILED_NOTE };
@@ -263,8 +264,6 @@ export function seatCopy(state: StudioState): SeatCopy {
       return { title: SEAT_MISSING_TITLE, note: SEAT_MISSING_NOTE };
     case "unread":
       return { title: SEAT_UNREAD_TITLE, note: SEAT_UNREAD_NOTE };
-    case "populated":
-      return { title: CANVAS_SOON_TITLE, note: CANVAS_SOON_NOTE };
   }
 }
 

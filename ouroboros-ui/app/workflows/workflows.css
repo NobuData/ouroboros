@@ -1,7 +1,7 @@
 /*
  * The workflow studio — mockup 04's page frame (#147): the head, the segmented control as the
- * CP.4 subnav, the `.wf-list` rail with its dashed tile, and the seat the canvas (#148) and
- * the inspector (#150) will fill.
+ * CP.4 subnav, the `.wf-list` rail with its dashed tile, and the seat that stands where the
+ * canvas (#148, app/workflows/canvas/canvas.css) draws once there is a workflow to draw.
  *
  * The mockup is docs/mockups/04-workflow-builder.html over docs/mockups/assets/ouroboros.css.
  * What is taken from it is the *anatomy* the design system requires of every module page
@@ -137,10 +137,11 @@
 }
 
 /*
- * The seat the canvas will take: a card at the mockup's canvas height, so the page has a foot
- * rather than ending under the rail, and so nothing moves by more than the canvas's own chrome
- * when #148 fills it. `fill` on the card is what lets the empty state inside it take the
- * height rather than sit as a short box at the top of a tall one.
+ * The seat, in the four states with no workflow to draw: a card at the canvas's own floor
+ * (`.studio-canvas__stage`, canvas.css), so the page has a foot rather than ending under the
+ * rail, and so nothing moves by more than the canvas's chrome when a workflow is selected.
+ * `fill` on the card is what lets the empty state inside it take the height rather than sit
+ * as a short box at the top of a tall one.
  */
 .studio__seat {
   min-height: 40rem;

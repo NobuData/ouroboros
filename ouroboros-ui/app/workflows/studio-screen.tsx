@@ -2,10 +2,11 @@ import type { Role } from "@/app/api/membership";
 import type { WorkflowRailEntry } from "@/app/api/workflows";
 import { Button, Card, EmptyState } from "@/app/ui";
 
+import { StudioCanvas } from "./canvas/studio-canvas";
 import {
   DEV_SEED_NOTE,
   RAIL_FAILED_HEADLINE,
-  type StudioState,
+  type SeatState,
   WORKFLOW_FAILED_HEADLINE,
   readOnlyNote,
   seatCopy,
@@ -22,6 +23,7 @@ import {
   DRY_RUN_SOON,
   PUBLISH_SOON,
   type StudioReadings,
+  canvasDefinition,
   publishLabel,
 } from "./view";
 import { WorkflowRail } from "./workflow-rail";
@@ -52,13 +54,23 @@ import "./workflows.css";
  * trigger on every render and stored nowhere — the ticket's *head values are real* criterion,
  * with `view.ts` carrying the argument for each.
  *
+ * ### The canvas sits in the seat, when there is a workflow to draw
+ *
+ * A populated page mounts the React Flow canvas (S.2,
+ * [#148](https://github.com/NobuData/ouroboros/issues/148)) where the frame reserved its seat,
+ * open on the workflow's draft — or its version in force, or nothing, in that order
+ * (`view.ts`'s `canvasDefinition`). It is keyed by the workflow's id, so following the rail to
+ * another workflow is a new canvas rather than one re-derived under a reader's selection. The
+ * seat itself draws only in the four states that have no workflow to draw.
+ *
  * ### What this page does not pretend
  *
  * The frame is honest about being a frame. **Code** and **Copilot** are labelled *soon* rather
  * than linked to a `404`; **Browse templates**, **Dry run** and **Publish vN+1** are drawn
  * where the mockup draws them and are inert with the issue each waits for as its reason
  * (§ 3.5) — a control that cannot act says what is missing, never quietly does nothing. The
- * seat where the canvas will be says which issue fills it.
+ * canvas's own toolbar keeps the same rule for **Auto-layout** and **Add stage**, and says out
+ * loud that a move is not saved yet.
  *
  * ### The role decides what is drawn, and is explained
  *
@@ -139,7 +151,15 @@ export function StudioScreen({
 
       <div className="studio__grid">
         <WorkflowRail activeSlug={slug} entries={entries} mayAdminister={mayAdminister} />
-        <Seat state={state} />
+        {state.kind === "populated" ? (
+          <StudioCanvas
+            key={state.workflow.id}
+            definition={canvasDefinition(state.workflow)}
+            workflowId={state.workflow.id}
+          />
+        ) : (
+          <Seat state={state} />
+        )}
       </div>
     </StudioFrame>
   );
@@ -199,14 +219,15 @@ function ReadOnlyNote({ role }: Readonly<{ role: Role }>) {
 }
 
 /**
- * Where the canvas will be — a designed empty state rather than a blank region (§ 3.3), with
- * copy that differs by state because the states are different facts: *the canvas is coming*,
- * *nothing could be read*, *nothing exists yet*, *nothing is selected*.
+ * Where the canvas would be — a designed empty state rather than a blank region (§ 3.3), with
+ * copy that differs by state because the states are different facts: *nothing could be read*,
+ * *nothing exists yet*, *nothing is selected*, *this one could not be read*.
  *
- * @param props.state Which state the page is in, decided once by the screen.
+ * @param props.state Which state the page is in, decided once by the screen — any but
+ *   populated, which has a canvas instead.
  * @returns The seat.
  */
-function Seat({ state }: Readonly<{ state: StudioState }>) {
+function Seat({ state }: Readonly<{ state: SeatState }>) {
   const copy = seatCopy(state);
 
   return (

@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { membership, sessionUser } from "../helpers/login";
+import { shimReactFlow } from "../helpers/react-flow";
 import { readings } from "../helpers/workflows";
 
 /**
@@ -32,6 +33,11 @@ vi.mock("@/app/workflows/data", () => ({
 // banner wants the router too. Both are other suites' subjects.
 vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+
+// The populated page mounts the React Flow canvas (#148), which measures — see the helper.
+beforeAll(() => {
+  shimReactFlow();
+});
 
 const Landing = (await import("@/app/(app)/workflows/page")).default;
 const BySlug = (await import("@/app/(app)/workflows/[slug]/page")).default;

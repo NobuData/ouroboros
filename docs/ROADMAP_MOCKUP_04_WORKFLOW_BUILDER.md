@@ -1241,7 +1241,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | S.1 | #147 | 🟢 Done | ouroboros-ui: [S.1] Studio route, page head & workflow rail | `(app)/workflows`: head, seg control, actions, rail with states | mvp, workflow, ui, design | N (after #41, P.3, BA-D.5) | Y | M | ouroboros-ui |
-| S.2 | #148 | 🟡 Open | ouroboros-ui: [S.2] Canvas foundation on React Flow | Themed React Flow: dot-grid, pan/zoom, controlled graph state | mvp, workflow, ui, design | N (after P.2, S.1) | Y | L | ouroboros-ui |
+| S.2 | #148 | 🟢 Done | ouroboros-ui: [S.2] Canvas foundation on React Flow | Themed React Flow: dot-grid, pan/zoom, controlled graph state | mvp, workflow, ui, design | N (after P.2, S.1) | Y | L | ouroboros-ui |
 | S.3 | #149 | 🟡 Open | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
 | S.4 | #150 | 🟡 Open | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
 | S.5 | #151 | 🟡 Open | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
@@ -1329,7 +1329,7 @@ rail: ▌standard-fix 6·auto-merge │ feature-loop │ deps-refresh │ docs-l
 
 ### Issue S.2 — ouroboros-ui: [S.2] Canvas foundation on React Flow
 
-> **GitHub issue:** #148 · **Status:** 🟡 Open · **Parent epic:** #130
+> **GitHub issue:** #148 · **Status:** 🟢 Done · **Parent epic:** #130
 
 - **Problem Statement:** The canvas needs pan/zoom/drag/selection over a
   controlled graph bound to the draft definition — the React Flow adoption
@@ -1353,6 +1353,82 @@ rail: ▌standard-fix 6·auto-merge │ feature-loop │ deps-refresh │ docs-l
 definition.nodes/edges ⇄ ReactFlow(controlled) — positions round-trip to the draft
 dot-grid bg · ⌥-drag pan · zoom −/100%/+ · selection → inspector
 ```
+
+- **Decided in-issue and shipped 2026-09-13 as `ouroboros-ui/app/workflows/canvas/{graph,
+  viewport,view}.ts`, `{stage-node,studio-canvas}.tsx` and `canvas.css`, mounted by
+  `studio-screen.tsx` in the seat S.1 reserved, with `scripts/route-weight.mjs` as the
+  measurement (`ouroboros-ui` 0.61.0, `@xyflow/react` 12.11.6, MIT):**
+
+  * **Decision P2 is taken, and its cost is the record.** `README.md` § *The canvas is React
+    Flow, and that is a recorded exception* carries the measurement: the studio route grows from
+    60.7 kB to 120.5 kB gzipped (**+59.8 kB**, 192.9 kB uncompressed), almost all of it one
+    chunk — the library with its `d3-zoom`/`d3-drag`/`zustand` — that only the two studio routes
+    load. Next 16 prints no size table, so `scripts/route-weight.mjs` reads the build's own
+    client-reference manifest and gzips what the route names; it re-measures the delta on
+    demand and is what mockup 05's C1 (CodeMirror) will use. The roadmap's ~50 kB estimate was
+    about right.
+  * **The graph is controlled, and the projection is a pure module.** `graph.ts` turns the P.2
+    document into nodes and edges and turns positions back (`withPositions`), so *positions
+    round-trip* is an identity a unit test holds — the seeded document through the projection
+    and back **is** the seeded document — rather than a claim about a rendered page. A move is
+    written back when it **settles** (a drag ends, an arrow key lands), never on the way, and as
+    whole pixels, because a document holding `305.6000000000001` is noise in every diff and in
+    mockup 05's code view.
+  * **The document is read defensively and drawn as far as it can be.** A draft is stored
+    unvalidated, so `{}`, a node with no position, an edge naming a deleted stage and a `nodes`
+    that is not an array all open: the node is placed at the origin, the edge is not drawn, and
+    the publish gate is what names the fault. A canvas that refused a half-built document would
+    be the one place it could not be repaired.
+  * **One node type, four sides, and the loop arcs.** Every stage is one component with a
+    connection point per side; which side an edge uses is decided from where the two stages sit
+    (the dominant axis), so the mockup's snake — right along a row, down, left back along the
+    next — reads as drawn without the document carrying a side per edge. A **loop** prefers the
+    vertical axis: the gate's *fail ↺* leaves its top and lands on implement's bottom, as the
+    mockup draws the ouroboros, rather than sharing the gate's right side with *pass →*.
+  * **A plain drag selects; ⌥, space, the middle and the right button pan.** The mockup's hint
+    is *⌥ drag to pan*, so the left drag is the rubber band; space is React Flow's own default
+    and every other canvas's; the wheel and pinch zoom. **−/+** climb a ladder of presets
+    (50 · 75 · 100 · 125 · 150 · 200) rather than multiply by a factor, so a press from 100%
+    lands on a number a reader would name, and **100%** returns to *home* — the origin at actual
+    size, where the mockup's picture is — rather than resetting the zoom about wherever the
+    reader panned to, so one press always brings the picture back.
+  * **The viewport is the reader's, per workflow, in the browser.** Two people opening
+    `standard-fix` see the same picture (the document carries the positions); each keeps their
+    own place, in `localStorage` under the workflow's **id** through the same guarded accessor
+    the theme uses. It is applied in `onInit` rather than as `defaultViewport`, so the server
+    and the browser render one transform and hydration has nothing to disagree about; a key
+    that cannot be parsed, or a zoom outside the range, opens at home.
+  * **Selection is reported, and said out loud.** One stage or one edge is handed to whoever
+    mounts the canvas — S.4's inspector binding and S.5's edge editing — and the toolbar prints
+    the selection with the issue that edits it, which is also the one confirmation a keyboard
+    reader gets. React Flow's keyboard model is left on and named in the hint: Tab reaches each
+    stage and each edge, Enter selects, the arrows move, Escape clears.
+  * **Nothing the canvas cannot keep is offered.** Connecting is off, the delete key is unbound,
+    **Auto-layout** and **Add stage ▾** are inert naming #151, and a move is followed by *Moved,
+    not saved — autosave arrives with #152* — the honesty rule as a status line, because a page
+    that let a reader arrange twelve stages and reload would have lied by omission. The mockup's
+    *double-click edge to add stage* is not in the hint until it works.
+  * **Both themes from tokens, held to the library's own sheet.** Only `base.css` is imported,
+    never `style.css`, and every `--xy-*-default` it names is redefined on a token; the styles
+    suite reads the library's sheet and requires the list to match, so an upgrade that adds a
+    colour goes red rather than grey. `colorMode` is never set. The stage node is the mockup's
+    box and no more — the five treatments, the chips and the `.sel` glow are S.3's, and the
+    component is what S.3 replaces.
+  * **The suites render the real library.** jsdom measures nothing, so the shim React Flow's
+    testing guide gives (`__tests__/helpers/react-flow.ts`) stands in, and the suites open on
+    the committed `fixtures/valid/standard-fix.json` — the seed's own document — so *renders at
+    the mockup's positions* is asserted against the seed. That file joins `ci/ui`'s path filter,
+    with `verify-ci.sh` routing it (the memory's three edits). A drag through the library's own
+    handling is asserted to hand the document up once, at the end, and never mid-gesture. What
+    no suite can prove is a pixel: the picture and the 18px lattice were checked in Chrome in
+    both palettes, and the 60fps criterion measured there as main-thread cost per event —
+    under 2 ms at p95 for wheel zoom and for a button-drag pan over the seeded graph, against a
+    16.7 ms frame.
+  * **What this ticket left where it was:** the canvas's own document is held by the canvas.
+    S.4 and S.6 will lift the draft and the selection into a client component that holds
+    canvas and inspector together; the two callbacks (`onDefinitionChange`,
+    `onSelectionChange`) are the seam, and a new document is a new mount (the screen keys the
+    canvas by workflow id; S.6 keys by the draft's etag when it reloads one).
 
 ### Issue S.3 — ouroboros-ui: [S.3] Node & edge components
 

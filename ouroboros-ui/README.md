@@ -27,7 +27,9 @@
 > ([#225](https://github.com/NobuData/ouroboros/issues/225)), under Settings,
 > [ticket sources](#ticket-sources) ([#141](https://github.com/NobuData/ouroboros/issues/141)),
 > and the [workflow studio](#workflow-studio)
-> ([#147](https://github.com/NobuData/ouroboros/issues/147)) —
+> ([#147](https://github.com/NobuData/ouroboros/issues/147)) with its
+> [React Flow canvas](#the-canvas-is-react-flow-and-that-is-a-recorded-exception)
+> ([#148](https://github.com/NobuData/ouroboros/issues/148)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
@@ -55,7 +57,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Runtime | Node 24 |
 | API client | `openapi-typescript` (types) + `openapi-fetch` (calls), generated from `ouroboros-rest/openapi.json` — see [The generated client](#the-generated-client) |
 | Auth client | `better-auth` with the organization plugin, for `/api/auth/*` only — see [The two-client rule](#the-two-client-rule) |
-| Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives) |
+| Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives). One documented exception: the workflow canvas is [React Flow](#the-canvas-is-react-flow-and-that-is-a-recorded-exception) (decision P2, [#148](https://github.com/NobuData/ouroboros/issues/148)), themed entirely from the tokens |
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
 | Lint | ESLint flat config, plus stylelint on `app/**/*.css` — the px type ban (#648) that keeps every sheet scalable by the font-size preference |
@@ -2568,13 +2570,14 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 **frame**: the page head bound to the selected workflow, the segmented **Visual** · Code ·
 Copilot control, the three actions, and the `.wf-list` rail down the left edge. It retires the
 `#49` placeholder this route was, and the sidebar's **Workflows** entry — and the dashboard's
-*Edit workflows* — became links on the same commit. Everything else in mockup 04's roadmap
-hangs off it: the canvas (S.2, [#148](https://github.com/NobuData/ouroboros/issues/148)) and
-the inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)) mount into the
-seat the frame reserves, and the draft, publish and dry-run flows (S.6,
-[#152](https://github.com/NobuData/ouroboros/issues/152)) are what its actions wait for.
-`/workflows/<slug>` is the same screen opened on a named workflow, which is what the rail
-links to.
+*Edit workflows* — became links on the same commit. The
+[canvas](#the-canvas-is-react-flow-and-that-is-a-recorded-exception) (S.2,
+[#148](https://github.com/NobuData/ouroboros/issues/148)) sits in the seat the frame reserved
+for it; the inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)) will sit
+beside it, and the draft, publish and dry-run flows (S.6,
+[#152](https://github.com/NobuData/ouroboros/issues/152)) are what the head's actions — and the
+canvas's own *not saved* — wait for. `/workflows/<slug>` is the same screen opened on a named
+workflow, which is what the rail links to.
 
 ```
 WORKFLOW STUDIO
@@ -2583,17 +2586,19 @@ Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 �
 ──────────────────────────────────────────────────────────────────────────────────────────
  Visual   Code soon   Copilot soon
  ▔▔▔▔▔▔
-▌standard-fix             ┌───────────────────────────────────────────────────────────┐
-│ 12 stages · auto-merge  │                                                           │
-│ feature-loop            │                 The canvas arrives next                   │
-│ 7 stages · auto-merge   │     The React Flow canvas is #148's and the inspector     │
-│ deps-refresh            │     beside it #150's. This frame is what they mount into. │
-│ 5 stages · needs review │                                                           │
-│ docs-loop               │                                                           │
-│ 4 stages · auto-merge   │                                                           │
-│ hotfix-p0            ●  │                                                           │
-│ 5 stages · paused       └───────────────────────────────────────────────────────────┘
-└ + New workflow
+▌standard-fix             ┌ · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ┐
+│ 12 stages · auto-merge  · ┌TRIGGER──────┐  ┌MODEL────────┐  ┌FLOW─────────┐ ·
+│ feature-loop            · │Issue queued │─▶│Understand & │─▶│Effort       │ ·
+│ 7 stages · auto-merge   · └─────────────┘  │scope        │  │re-check     │ ·
+│ deps-refresh            ·                  └─────────────┘  └──────┬──────┘ ·
+│ 5 stages · needs review ·      ┌MODEL────────┐   > M ↘            │ ≤ M ↓ ·
+│ docs-loop               ·  ◀───│Split into   │◀──────────  ┌MODEL─▼───────┐ ·
+│ 4 stages · auto-merge   ·      │subtasks     │             │Write attack  │ ·
+│ hotfix-p0            ●  ·      └─────────────┘             │plan          │ ·
+│ 5 stages · paused       · · · · · · · · · · · · · · · · · · └──────────────┘ ·
+└ + New workflow          ├───────────────────────────────────────────────────────────┤
+                          │ [−][100%][+]  Auto-layout  Add stage ▾   ⌥ or space + drag to pan · … │
+                          └───────────────────────────────────────────────────────────┘
 ```
 
 ### Every value in the head is real, and one of them is derived
@@ -2646,9 +2651,83 @@ the development seed named for a developer; a URL naming a workflow the rail doe
 draws the studio's own *No such workflow* beside the rail rather than the framework's
 not-found page, because the rail is what a reader who followed a stale link needs next; a
 workflow whose own read failed keeps the rail's facts in the head and says which read failed.
-Loading is [`app/workflows/studio-skeleton.tsx`](app/workflows/studio-skeleton.tsx): one
-skeleton for both routes, at the frame's own geometry, with the title and subline as bars
-because — unlike the routing page's — both depend on the reads.
+The fifth, populated, is the canvas. Loading is
+[`app/workflows/studio-skeleton.tsx`](app/workflows/studio-skeleton.tsx): one skeleton for
+both routes, at the frame's own geometry, with the title and subline as bars because — unlike
+the routing page's — both depend on the reads.
+
+### The canvas is React Flow, and that is a recorded exception
+
+The canvas (S.2, [#148](https://github.com/NobuData/ouroboros/issues/148)) is mockup 04's
+`.canvas-card` — the dot-grid stage with the definition's stages and connections on it, and
+the toolbar beneath — built on [`@xyflow/react`](https://reactflow.dev/) (MIT, 12.x). That is
+mockup 04's roadmap decision **P2**, and it is the one exception to the rule in the
+[stack table](#stack) that this module takes no component framework. The alternative was
+weighed and is recorded there: the mockup is literally absolutely-positioned boxes and SVG
+paths, but pan, zoom, drag, rubber-band selection, keyboard navigation and a controlled graph
+are weeks of undifferentiated work, and the result would have been a worse React Flow. The
+trade is visible rather than assumed, so its cost is measured:
+
+| `/workflows/[slug]`, gzipped | before #148 | after | delta |
+|---|---:|---:|---:|
+| Everything the route loads (layouts + page) | 60.7 kB | 120.5 kB | **+59.8 kB** |
+| What the page adds over the shell | 5.4 kB | 65.2 kB | +59.8 kB |
+| The same, uncompressed | 14.8 kB | 207.7 kB | +192.9 kB |
+
+Almost all of it is one chunk — the library, its `d3-zoom`/`d3-drag` and `zustand`
+dependencies — that only the two studio routes load; no other page's bundle moves. The figures
+come from [`scripts/route-weight.mjs`](scripts/route-weight.mjs), which reads a finished
+`next build`'s client-reference manifest and gzips what the route names, because Next 16 prints
+no size table: `yarn build && node scripts/route-weight.mjs '/(app)/workflows/[slug]/page'`
+re-measures it, and the same script is what mockup 05's decision C1 will use for CodeMirror.
+
+**What the canvas does, and where each thing is decided.** The graph is
+**controlled**: [`app/workflows/canvas/graph.ts`](app/workflows/canvas/graph.ts) projects the
+P.2 document into React Flow's nodes and edges — one node per stage at the document's own
+position, one edge per connection between the sides the two positions decide, the loop edge
+arcing over the rows as the mockup's *fail ↺* does — and projects positions back
+(`withPositions`) when a move settles, so the seeded `standard-fix` opens at the mockup's
+exact positions and a drag ends with the document holding the new one, whole pixels, nothing
+else touched. A draft that is not yet a document is read defensively — a node with no position
+is placed at the origin, an edge naming a stage that is gone is not drawn — because the
+studio's job is to let a reader repair one, and validation is the publish gate's.
+[`viewport.ts`](app/workflows/canvas/viewport.ts) remembers where each reader is on each
+workflow in `localStorage` under the workflow's id, so following the rail away and back does
+not lose the place; home is the origin at 100%, where the mockup's picture is, and the
+toolbar's **100%** returns there. Its **−** and **+** climb a ladder of presets rather than a
+factor, so a press from 100% lands on 125% and not 120%.
+[`studio-canvas.tsx`](app/workflows/canvas/studio-canvas.tsx) mounts the library with a plain
+drag as a **selection** and panning on **⌥** or **space** with the drag (the mockup's own
+hint), or the middle or right button; the wheel and pinch zoom; React Flow's keyboard model —
+Tab to a stage or an edge, Enter to select, arrows to move, Escape to clear — is left on and
+named in the hint. A single selected stage or edge is reported to whoever mounts the canvas,
+which is the inspector's binding when S.4 lands; until then the toolbar says what is selected
+and which issue edits it. Nothing connects, adds or deletes yet: **Auto-layout** and
+**Add stage** are drawn inert naming #151, and a move is followed by *Moved, not saved —
+autosave arrives with #152*, because a page that let a reader arrange twelve stages and reload
+would have lied by omission.
+
+**Both themes from tokens, and no library colour leaks.** Only React Flow's structural sheet
+(`base.css`) is imported, never its default look, and every `--xy-*-default` it would fall
+back to is redefined on a token in [`canvas.css`](app/workflows/canvas/canvas.css);
+`__tests__/workflows/canvas/canvas-styles.test.ts` reads the library's own sheet and holds the
+list equal, so a library upgrade that adds a colour goes red there rather than grey on the
+canvas. The library's `colorMode` is never set: the tokens already switch with the palette.
+The node the canvas draws every stage as
+([`stage-node.tsx`](app/workflows/canvas/stage-node.tsx)) is deliberately the mockup's box and
+no more — the five treatments, the chips and the `.sel` glow are S.3's
+([#149](https://github.com/NobuData/ouroboros/issues/149)), and this is what S.3 replaces.
+
+The suites render the real library under jsdom through
+[`__tests__/helpers/react-flow.ts`](__tests__/helpers/react-flow.ts), the shim React Flow's
+own testing guide gives, and open on the committed
+`schemas/workflow-dsl/fixtures/valid/standard-fix.json` — the document the seed stores — so
+*the seeded graph renders at the mockup's positions* is asserted against the seed and not a
+second transcription of it. What jsdom cannot prove is a pixel: the dot grid's 18px lattice and
+the picture itself were checked in Chrome against the seeded workspace in both palettes, and
+the 60fps criterion was measured there as main-thread cost per interaction event — under 2 ms
+at the 95th percentile for both wheel zoom and a button-drag pan over the twelve-node graph,
+against a 16.7 ms frame — which is the part of *smooth* a script can measure.
 
 ### Code intelligence — completions and hover docs
 
@@ -3344,6 +3423,7 @@ caps, the strip and the states [#232](https://github.com/NobuData/ouroboros/issu
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 ticket sources [#141](https://github.com/NobuData/ouroboros/issues/141) ·
 workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
+the React Flow canvas [#148](https://github.com/NobuData/ouroboros/issues/148) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

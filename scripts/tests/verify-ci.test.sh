@@ -48,13 +48,15 @@ make_fixture() {
   # below does, and ouroboros-engine/openapi.yaml since #146, because its engine stub validates
   # every exchange against that document. ouroboros-ui watches two of the DSL's fixture
   # directories since #177, because its code editor suites read the symbol table and the
-  # printer's golden files. Held in a
+  # printer's golden files, and one fixture file since #148, because its canvas suites open
+  # the committed standard-fix. Held in a
   # variable because the two workflows are otherwise identical, and the shared template is what
   # makes that visible.
   for module in ui rest; do
     module_inputs='
       - "schemas/workflow-dsl/fixtures/code-symbols/**"
-      - "schemas/workflow-dsl/fixtures/code/**"'
+      - "schemas/workflow-dsl/fixtures/code/**"
+      - "schemas/workflow-dsl/fixtures/valid/standard-fix.json"'
     if [ "$module" = rest ]; then
       module_inputs='
       - "ouroboros-db/migrations/**"
