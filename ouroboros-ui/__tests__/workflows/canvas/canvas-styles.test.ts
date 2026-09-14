@@ -153,6 +153,15 @@ describe("the stage node", () => {
     expect(port).not.toMatch(/display:\s*none|width:\s*0|height:\s*0/);
   });
 
+  it("shows them, in the accent, under the pointer — only where a connection can be drawn (#151)", () => {
+    const shown = rule("\\.studio-canvas \\.react-flow__node:hover \\.studio-node__port\\.connectable");
+
+    expect(shown).toMatch(/opacity:\s*1/);
+    expect(shown).toMatch(/background:\s*var\(--accent\)/);
+    // A selected stage keeps the mockup's `.sel` picture; the keyboard connects from the inspector.
+    expect(CODE).not.toMatch(/\.selected \.studio-node__port/);
+  });
+
   it("sets the type line in mono small caps in the treatment's hue, and the title in the UI face", () => {
     const typeLine = rule("\\.studio-node__kind");
 
@@ -370,6 +379,40 @@ describe("the toolbar", () => {
 
   it("styles no primitive of the design system from here", () => {
     expect(CODE).not.toContain(".ou-");
+  });
+
+  it("says a refused edit on its own row, in the error hue (#151)", () => {
+    expect(rule("\\.studio-canvas__notice")).toMatch(/flex-basis:\s*100%/);
+    expect(rule("\\.studio-canvas__notice")).toMatch(/color:\s*var\(--err\)/);
+  });
+});
+
+describe("the stage menu (#151)", () => {
+  it("is the shell's menu box, on the surface inside a hairline", () => {
+    const panel = rule("\\.studio-stage-menu__panel");
+
+    expect(panel).toMatch(/background:\s*var\(--surface\)/);
+    expect(panel).toMatch(/border:\s*1px solid var\(--line\)/);
+    expect(panel).toMatch(/border-radius:\s*var\(--r-md\)/);
+  });
+
+  it("opens upward from the toolbar, which is the card's last row, and in the flow of the inspector", () => {
+    const up = rule("\\.studio-stage-menu__panel--up");
+
+    expect(up).toMatch(/position:\s*absolute/);
+    expect(up).toMatch(/bottom:\s*calc\(100% \+ var\(--sp-4\)\)/);
+    expect(rule("\\.studio-stage-menu__panel--inline")).not.toMatch(/position:\s*absolute/);
+  });
+
+  it("draws a row that would break a rule in a muted ink, with its reason in the warn hue", () => {
+    expect(rule('\\.studio-stage-menu__item\\[aria-disabled="true"\\]')).toMatch(/cursor:\s*not-allowed/);
+    expect(rule("\\.studio-stage-menu__reason")).toMatch(/color:\s*var\(--warn\)/);
+  });
+
+  it("marks the focused row as the shell's menus do", () => {
+    expect(rule("\\.studio-stage-menu__item:hover,\\s*\\.studio-stage-menu__item:focus-visible")).toMatch(
+      /background:\s*var\(--accent-wash\)/,
+    );
   });
 });
 

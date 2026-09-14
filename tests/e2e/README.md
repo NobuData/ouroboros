@@ -370,7 +370,11 @@ Leg 12's pair is of the **canvas region alone** rather than the page —
 ago*, measured from a draft stamp that moves with the clock, and the canvas is what #149's
 parity criterion is about. The pair draws **no accent path**: the mockup's four accent edges are
 an execution path, and nothing on the page draws one until S.6's dry run
-([#152](https://github.com/NobuData/ouroboros/issues/152)), which re-records the pair.
+([#152](https://github.com/NobuData/ouroboros/issues/152)), which re-records the pair. S.5
+([#151](https://github.com/NobuData/ouroboros/issues/151)) last re-recorded it, with the toolbar's editing
+controls (**Undo**, **Redo**, a live **Add stage ▾**), the mockup's whole hint, and the narrower canvas
+S.4's inspector track leaves (#150 had not re-recorded it). A selected stage shows no connection dots,
+because they appear only under the pointer, so *Implement* still wears the mockup's `.sel` picture.
 
 #### Refreshing them
 

@@ -203,6 +203,34 @@ export function standardFixDefinition(): WorkflowDefinition {
 }
 
 /**
+ * The workflows seed — `ouroboros-db/migrations/R__dev_seed_workflows.sql`, which stores `docs-loop`'s
+ * version 1 between `$docs_loop_v1$` dollar quotes.
+ */
+const WORKFLOWS_SEED = join(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "ouroboros-db",
+  "migrations",
+  "R__dev_seed_workflows.sql",
+);
+
+/**
+ * The seeded `docs-loop` v1 — the rail's shortest workflow, and the one S.5's scripted test builds from a
+ * blank canvas (#151). Read out of the seed rather than copied, for `standardFixDefinition`'s reason; the
+ * UI's CI is routed to run on a change to that migration (`.github/workflows/ui.yml`).
+ *
+ * @returns The document.
+ */
+export function docsLoopDefinition(): WorkflowDefinition {
+  const match = /\$docs_loop_v1\$([\s\S]*?)\$docs_loop_v1\$/.exec(readFileSync(WORKFLOWS_SEED, "utf8"));
+  if (match === null) throw new Error("the workflows seed no longer holds docs_loop_v1");
+
+  return JSON.parse(match[1]) as WorkflowDefinition;
+}
+
+/**
  * Mockup 04's active path — the four `.edge.active` segments it draws in the accent, from the
  * trigger through the effort re-check to implement — named the way the dry run's
  * `highlight_path` names edges.
@@ -296,6 +324,15 @@ const DSL_SCHEMA = join(import.meta.dirname, "..", "..", "..", "schemas", "workf
 
 /** The schema's `$id`, as the catalog echoes it. */
 export const DSL_SCHEMA_ID = "https://ouroboros.build/schemas/workflow-dsl/v1.json";
+
+/**
+ * The published DSL schema, whole — what a document is validated against at publish.
+ *
+ * @returns The schema, freshly parsed.
+ */
+export function dslSchema(): Record<string, unknown> {
+  return JSON.parse(readFileSync(DSL_SCHEMA, "utf8")) as Record<string, unknown>;
+}
 
 /**
  * One node type's config schema, self-contained as the catalog serves it: the definition, with a

@@ -1,7 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { EDGE_SELECTED_NOTE, NOTHING_SELECTED_TITLE } from "@/app/workflows/inspector/inspector";
+import { NOTHING_SELECTED_TITLE } from "@/app/workflows/inspector/inspector";
 
 import { shimReactFlow } from "../helpers/react-flow";
 import { inspectorReadings, standardFixDefinition } from "../helpers/workflows";
@@ -78,7 +78,7 @@ describe("the inspector follows the canvas's selection", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Code the change" })).toBeInTheDocument();
   });
 
-  it("explains an edge selection", async () => {
+  it("opens the edge's panel for an edge selection", async () => {
     const { container } = await open();
     const edge = container.querySelector('.react-flow__edge[data-id="checks-green→implement"]');
     if (edge === null) throw new Error("no loop edge");
@@ -86,7 +86,7 @@ describe("the inspector follows the canvas's selection", () => {
     fireEvent.click(edge);
     await settle();
 
-    expect(screen.getByText(EDGE_SELECTED_NOTE)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Checks green? → Code the change" })).toBeInTheDocument();
   });
 });
 
@@ -127,11 +127,13 @@ describe("Apply round-trips into the draft and the node's chips", () => {
 });
 
 describe("Delete stage", () => {
-  it("removes the stage and its edges from the canvas, and empties the panel", async () => {
+  it("removes the stage and its edges from the canvas once confirmed, and empties the panel", async () => {
     const { container } = await open();
 
     await select(container, "split");
     fireEvent.click(screen.getByRole("button", { name: "Delete stage" }));
+    await settle();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
     await settle();
 
     expect(stage(container, "split")).toBeNull();

@@ -11,6 +11,7 @@ import {
   JSON_NOTE,
   type JsonSchema,
   LIST_HINT,
+  NO_CONDITION,
   NO_OPTIONS_NOTE,
   OPERATOR_LABEL,
   PREDICATE_LABEL,
@@ -209,31 +210,6 @@ function GeneratedControl({
  */
 export function FlowForm({ idPrefix, config, onChange, schema, errors }: ConfigFormProps) {
   const kinds = schemaChoices(propertySchema(schema, "kind", schema), schema);
-  const predicateSchema = propertySchema(schema, "predicate", schema);
-  const predicateKinds = schemaChoices(propertySchema(predicateSchema, "kind", schema), schema);
-  const predicate = isRecord(config.predicate) ? config.predicate : {};
-  const kind = typeof predicate.kind === "string" ? predicate.kind : "";
-  const branch = branchSchema(predicateSchema, "kind", kind, schema);
-  const ops = schemaChoices(propertySchema(branch, "op", schema), schema);
-  const valueChoices = schemaChoices(propertySchema(branch, "value", schema), schema);
-  const valuesChoices = schemaChoices(propertySchema(branch, "values", schema), schema);
-  const properties = isRecord(branch.properties) ? Object.keys(branch.properties) : [];
-
-  const setPredicate = (next: ConfigRecord) => onChange(withValue(config, ["predicate"], next));
-
-  const choosePredicateKind = (next: string) => {
-    const nextBranch = branchSchema(predicateSchema, "kind", next, schema);
-    const nextOps = schemaChoices(propertySchema(nextBranch, "op", schema), schema);
-    const nextValues = schemaChoices(propertySchema(nextBranch, "value", schema), schema);
-    setPredicate({
-      kind: next,
-      ...(nextOps.length > 0 ? { op: nextOps[0] } : {}),
-      ...(nextValues.length > 0 ? { value: nextValues[0] } : {}),
-      ...(requiredProperties(nextBranch, schema).includes("values") ? { values: [] } : {}),
-    });
-  };
-
-  const valuesId = `${idPrefix}-values`;
 
   return (
     <>
@@ -250,109 +226,198 @@ export function FlowForm({ idPrefix, config, onChange, schema, errors }: ConfigF
         ))}
       </SelectField>
 
-      <fieldset className="studio-inspector__group">
-        <legend className="studio-inspector__section">{PREDICATE_LABEL}</legend>
+      <PredicateFields
+        errors={errors}
+        field="predicate"
+        idPrefix={idPrefix}
+        legend={PREDICATE_LABEL}
+        onChange={(next) => onChange(withValue(config, ["predicate"], next))}
+        predicate={isRecord(config.predicate) ? config.predicate : undefined}
+        root={schema}
+        schema={propertySchema(schema, "predicate", schema)}
+      />
+    </>
+  );
+}
 
+/** What the predicate builder takes. */
+export interface PredicateFieldsProps {
+  /** The prefix every control's id is built from. */
+  readonly idPrefix: string;
+  /** The key its messages are filed under, and its ids' middle — `predicate`, `condition`. */
+  readonly field: string;
+  /** The group's legend. */
+  readonly legend: string;
+  /** The predicate, or `undefined` for none. */
+  readonly predicate: ConfigRecord | undefined;
+  /** Told the new predicate, or `undefined` when *No condition* is chosen. */
+  readonly onChange: (predicate: ConfigRecord | undefined) => void;
+  /** The predicate's schema. */
+  readonly schema: JsonSchema;
+  /** The document its references resolve against. */
+  readonly root: JsonSchema;
+  /** What stops the draft from being applied, as `<field>.kind` and `<field>.values`. */
+  readonly errors: FieldMessages;
+  /**
+   * Whether *none* is a value — a loop edge's condition is optional (§ 6), a flow node's predicate
+   * and a branch's condition are not.
+   */
+  readonly optional?: boolean;
+}
+
+/**
+ * The structured predicate decision **P8** defines — what it tests, the operator, and the value or
+ * values — every choice read per predicate kind from the schema's `if`/`then` branches. A flow node's
+ * predicate (S.4) and an edge's condition (S.5, [#151](https://github.com/NobuData/ouroboros/issues/151))
+ * are one grammar (§ 5), so they are one builder.
+ *
+ * @param props See {@link PredicateFieldsProps}.
+ * @returns The group.
+ */
+export function PredicateFields({
+  idPrefix,
+  field,
+  legend,
+  predicate,
+  onChange,
+  schema,
+  root,
+  errors,
+  optional = false,
+}: PredicateFieldsProps) {
+  const value = predicate ?? {};
+  const predicateKinds = schemaChoices(propertySchema(schema, "kind", root), root);
+  const kind = typeof value.kind === "string" ? value.kind : "";
+  const branch = branchSchema(schema, "kind", kind, root);
+  const ops = schemaChoices(propertySchema(branch, "op", root), root);
+  const valueChoices = schemaChoices(propertySchema(branch, "value", root), root);
+  const valuesChoices = schemaChoices(propertySchema(branch, "values", root), root);
+  const properties = isRecord(branch.properties) ? Object.keys(branch.properties) : [];
+
+  const chooseKind = (next: string) => {
+    if (next === "") {
+      onChange(undefined);
+      return;
+    }
+
+    const nextBranch = branchSchema(schema, "kind", next, root);
+    const nextOps = schemaChoices(propertySchema(nextBranch, "op", root), root);
+    const nextValues = schemaChoices(propertySchema(nextBranch, "value", root), root);
+    onChange({
+      kind: next,
+      ...(nextOps.length > 0 ? { op: nextOps[0] } : {}),
+      ...(nextValues.length > 0 ? { value: nextValues[0] } : {}),
+      ...(requiredProperties(nextBranch, root).includes("values") ? { values: [] } : {}),
+    });
+  };
+
+  const id = `${idPrefix}-${field}`;
+  const valuesId = `${id}-values`;
+  const valuesError = errors[`${field}.values`];
+
+  return (
+    <fieldset className="studio-inspector__group">
+      <legend className="studio-inspector__section">{legend}</legend>
+
+      <SelectField
+        error={errors[`${field}.kind`]}
+        id={id}
+        label={fieldLabel("tests")}
+        onChange={(event) => chooseKind(event.target.value)}
+        value={kind}
+      >
+        {(optional || kind === "") && <option value="">{optional ? NO_CONDITION : "—"}</option>}
+        {predicateKinds.map((choice) => (
+          <option key={choice} value={choice}>
+            {fieldLabel(choice)}
+          </option>
+        ))}
+      </SelectField>
+
+      {ops.length > 0 && (
         <SelectField
-          error={errors["predicate.kind"]}
-          id={`${idPrefix}-predicate`}
-          label={fieldLabel("tests")}
-          onChange={(event) => choosePredicateKind(event.target.value)}
-          value={kind}
+          id={`${id}-op`}
+          label={OPERATOR_LABEL}
+          onChange={(event) => onChange({ ...value, op: event.target.value })}
+          value={typeof value.op === "string" ? value.op : ""}
         >
-          {kind === "" && <option value="">—</option>}
-          {predicateKinds.map((choice) => (
+          {ops.map((choice) => (
             <option key={choice} value={choice}>
-              {fieldLabel(choice)}
+              {choice.replaceAll("_", " ")}
             </option>
           ))}
         </SelectField>
+      )}
 
-        {ops.length > 0 && (
-          <SelectField
-            id={`${idPrefix}-op`}
-            label={OPERATOR_LABEL}
-            onChange={(event) => setPredicate({ ...predicate, op: event.target.value })}
-            value={typeof predicate.op === "string" ? predicate.op : ""}
-          >
-            {ops.map((choice) => (
-              <option key={choice} value={choice}>
-                {choice.replaceAll("_", " ")}
-              </option>
-            ))}
-          </SelectField>
-        )}
+      {valueChoices.length > 0 && (
+        <SelectField
+          id={`${id}-value`}
+          label={VALUE_LABEL}
+          onChange={(event) => onChange({ ...value, value: event.target.value })}
+          value={typeof value.value === "string" ? value.value : ""}
+        >
+          {valueChoices.map((choice) => (
+            <option key={choice} value={choice}>
+              {choice.toUpperCase()}
+            </option>
+          ))}
+        </SelectField>
+      )}
 
-        {valueChoices.length > 0 && (
-          <SelectField
-            id={`${idPrefix}-value`}
-            label={VALUE_LABEL}
-            onChange={(event) => setPredicate({ ...predicate, value: event.target.value })}
-            value={typeof predicate.value === "string" ? predicate.value : ""}
-          >
-            {valueChoices.map((choice) => (
-              <option key={choice} value={choice}>
-                {choice.toUpperCase()}
-              </option>
-            ))}
-          </SelectField>
-        )}
+      {properties.includes("values") && valuesChoices.length > 0 && (
+        <fieldset aria-describedby={describedBy([`${valuesId}-error`, valuesError !== undefined])} className="studio-inspector__group">
+          <legend className="studio-inspector__label">{VALUES_LABEL}</legend>
+          {valuesChoices.map((choice) => {
+            const values = Array.isArray(value.values) ? value.values : [];
+            const checked = values.includes(choice);
+            return (
+              <label className="studio-inspector__check" key={choice}>
+                <input
+                  checked={checked}
+                  onChange={() =>
+                    onChange({
+                      ...value,
+                      values: checked ? values.filter((entry) => entry !== choice) : [...values, choice],
+                    })
+                  }
+                  type="checkbox"
+                />
+                {choice}
+              </label>
+            );
+          })}
+          <ErrorLine id={`${valuesId}-error`} message={valuesError} />
+        </fieldset>
+      )}
 
-        {properties.includes("values") && valuesChoices.length > 0 && (
-          <fieldset aria-describedby={describedBy([`${valuesId}-error`, errors["predicate.values"] !== undefined])} className="studio-inspector__group">
-            <legend className="studio-inspector__label">{VALUES_LABEL}</legend>
-            {valuesChoices.map((choice) => {
-              const values = Array.isArray(predicate.values) ? predicate.values : [];
-              const checked = values.includes(choice);
-              return (
-                <label className="studio-inspector__check" key={choice}>
-                  <input
-                    checked={checked}
-                    onChange={() =>
-                      setPredicate({
-                        ...predicate,
-                        values: checked ? values.filter((entry) => entry !== choice) : [...values, choice],
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  {choice}
-                </label>
-              );
-            })}
-            <ErrorLine id={`${valuesId}-error`} message={errors["predicate.values"]} />
-          </fieldset>
-        )}
+      {properties.includes("values") && valuesChoices.length === 0 && (
+        <TextField
+          error={valuesError}
+          hint={LIST_HINT}
+          id={valuesId}
+          label={VALUES_LABEL}
+          mono
+          onChange={(event) => onChange({ ...value, values: [...splitList(event.target.value)] })}
+          value={Array.isArray(value.values) ? value.values.join(", ") : ""}
+        />
+      )}
 
-        {properties.includes("values") && valuesChoices.length === 0 && (
-          <TextField
-            error={errors["predicate.values"]}
-            hint={LIST_HINT}
-            id={valuesId}
-            label={VALUES_LABEL}
-            mono
-            onChange={(event) => setPredicate({ ...predicate, values: [...splitList(event.target.value)] })}
-            value={Array.isArray(predicate.values) ? predicate.values.join(", ") : ""}
-          />
-        )}
-
-        {properties.includes("names") && (
-          <TextField
-            hint={CHECK_NAMES_HINT}
-            id={`${idPrefix}-names`}
-            label={fieldLabel("checks")}
-            mono
-            onChange={(event) => {
-              const names = splitList(event.target.value);
-              const { names: _dropped, ...rest } = predicate;
-              void _dropped;
-              setPredicate(names.length === 0 ? rest : { ...rest, names: [...names] });
-            }}
-            value={Array.isArray(predicate.names) ? predicate.names.join(", ") : ""}
-          />
-        )}
-      </fieldset>
-    </>
+      {properties.includes("names") && (
+        <TextField
+          hint={CHECK_NAMES_HINT}
+          id={`${id}-names`}
+          label={fieldLabel("checks")}
+          mono
+          onChange={(event) => {
+            const names = splitList(event.target.value);
+            const { names: _dropped, ...rest } = value;
+            void _dropped;
+            onChange(names.length === 0 ? rest : { ...rest, names: [...names] });
+          }}
+          value={Array.isArray(value.names) ? value.names.join(", ") : ""}
+        />
+      )}
+    </fieldset>
   );
 }
 

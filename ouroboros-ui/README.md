@@ -2581,10 +2581,11 @@ Copilot control, the three actions, and the `.wf-list` rail down the left edge. 
 *Edit workflows* — became links on the same commit. The
 [canvas](#the-canvas-is-react-flow-and-that-is-a-recorded-exception) (S.2,
 [#148](https://github.com/NobuData/ouroboros/issues/148)) sits in the seat the frame reserved
-for it; the inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)) will sit
-beside it, and the draft, publish and dry-run flows (S.6,
-[#152](https://github.com/NobuData/ouroboros/issues/152)) are what the head's actions — and the
-canvas's own *not saved* — wait for. `/workflows/<slug>` is the same screen opened on a named
+for it, with the inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)) beside
+it and [the editing operations](#the-canvas-builds-and-refuses-what-the-dsl-forbids) (S.5,
+[#151](https://github.com/NobuData/ouroboros/issues/151)) on its toolbar; the draft, publish and
+dry-run flows (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)) are what the head's
+actions — and the canvas's own *not saved* — wait for. `/workflows/<slug>` is the same screen opened on a named
 workflow, which is what the rail links to, and `/workflows/<slug>/code` is
 [the code view](#the-code-view-is-a-second-face-of-the-same-draft) (V.1,
 [#169](https://github.com/NobuData/ouroboros/issues/169)) — the same workflow's other tab.
@@ -2607,7 +2608,7 @@ Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 �
 │ hotfix-p0            ●  ·      └─────────────┘             │plan          │ ·
 │ 5 stages · paused       · · · · · · · · · · · · · · · · · · └──────────────┘ ·
 └ + New workflow          ├───────────────────────────────────────────────────────────┤
-                          │ [−][100%][+]  Auto-layout  Add stage ▾   ⌥ or space + drag to pan · … │
+                          │ [−][100%][+]  Auto-layout  Add stage ▾  Undo  Redo   ⌥ drag to pan · … │
                           └───────────────────────────────────────────────────────────┘
 ```
 
@@ -2770,12 +2771,11 @@ factor, so a press from 100% lands on 125% and not 120%.
 drag as a **selection** and panning on **⌥** or **space** with the drag (the mockup's own
 hint), or the middle or right button; the wheel and pinch zoom; React Flow's keyboard model —
 Tab to a stage or an edge, Enter to select, arrows to move, Escape to clear — is left on and
-named in the hint. A single selected stage or edge is reported to whoever mounts the canvas,
-which is the inspector's binding when S.4 lands; until then the toolbar says what is selected
-and which issue edits it. Nothing connects, adds or deletes yet: **Auto-layout** and
-**Add stage** are drawn inert naming #151, and a move is followed by *Moved, not saved —
-autosave arrives with #152*, because a page that let a reader arrange twelve stages and reload
-would have lied by omission.
+named in the hint. A single selected stage or edge is reported to whoever mounts the canvas —
+the inspector's binding (S.4) — and the toolbar says what is selected. Every edit, a move
+included, is followed by *Edited, not saved — autosave arrives with #152*, because a page that
+let a reader build a graph and reload would have lied by omission. What the canvas edits, and
+how, is [its own section](#the-canvas-builds-and-refuses-what-the-dsl-forbids).
 
 **Both themes from tokens, and no library colour leaks.** Only React Flow's structural sheet
 (`base.css`) is imported, never its default look, and every `--xy-*-default` it would fall
@@ -2855,6 +2855,79 @@ octagon's clip-path, the pill's 176 × 44, the loop's dash and its accent-deep i
 selection's glow. Its baselines draw no accent path, because nothing on the page draws one until
 S.6. The marketplace's provenance chip (`⊞ slug@version`, mockup 23's amendment to this ticket) is
 [#798](https://github.com/NobuData/ouroboros/issues/798)'s.
+
+### The canvas builds, and refuses what the DSL forbids
+
+S.5 ([#151](https://github.com/NobuData/ouroboros/issues/151)) makes the mockup's toolbar keep its
+promises — **Add stage ▾**, **Auto-layout**, *double-click edge to add stage* — and adds what a
+builder needs beside them: connecting, editing an edge, deleting with a confirmation, and undo.
+
+**Every edit is a function over the document.** [`canvas/edit.ts`](app/workflows/canvas/edit.ts)
+adds a stage from the catalog's defaults (its id slugged from the title, numbered when taken), draws
+a connection, replaces an edge's kind, label and condition, inserts a stage into an edge and deletes
+a selection; each takes the draft and returns a new one, the input untouched.
+[`studio-editor.tsx`](app/workflows/studio-editor.tsx) holds the draft as a bounded history of those
+documents ([`history.ts`](app/workflows/history.ts), fifty steps), so **Undo** and **Redo** — on the
+toolbar, and ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y over the canvas — show a previous document again with no
+inverse operation to write. The canvas reconciles its nodes against whatever document it is handed:
+position, config and name from the document, measurements and selection kept. The editor's
+`onDraftChange` is the seam S.6's autosave will write from.
+
+**The DSL's rules are checked at the edit, not at publish.**
+[`canvas/rules.ts`](app/workflows/canvas/rules.ts) is `docs/WORKFLOW_DSL.md` § 7 in the browser, and
+`rules.test.ts` replays every structural case of `schemas/workflow-dsl/fixtures/expected.json` — the
+parity file both validators are held to — against it, so the canvas and the publish gate refuse the
+same things in the same terms. Each edit asks it first and is refused with the rule's reason where
+the edit was made: a connection drawn on the canvas says *Not connected: Nothing can leave a
+terminal — it is where a run ends.* on the toolbar's notice line; the Add stage menu keeps *Trigger*
+in its list, inert, with *A workflow can only have one trigger.* under it; the edge panel says why a
+branch or a loop is illegal under its field and keeps **Apply** inert. The rules that describe an
+unfinished graph — no terminal yet, a stage not yet connected — stay the publish gate's, because
+every graph is unfinished while it is being built.
+
+**Connecting, inserting, deleting.** A drag from any side of a stage to another draws a `default`
+edge; the handles show on a hovered or selected stage, and React Flow connects in its loose mode so
+either handle of a side will do. A double-click on an edge opens the same catalog menu to insert a
+stage into it: `A → B` becomes `A → new`, which keeps the old edge's kind, label and condition
+(they describe how a run leaves `A`), and `new → B`, a plain edge — a loop stays legal, because the
+new stage reaches back through `B`. A trigger or a terminal cannot sit between two stages, and the
+menu says which rule each would break. Delete or Backspace over a selection, **Delete stage** and
+**Delete edge** all ask first ([`confirm-delete.tsx`](app/workflows/confirm-delete.tsx)), naming what
+goes and how many connected edges go with it.
+
+**The edge panel.** Selecting an edge opens
+[`inspector/edge-inspector.tsx`](app/workflows/inspector/edge-inspector.tsx): its kind, its label,
+and — for a branch, where it is required, or a loop, where it is optional — its condition in P8's
+structured shape, drawn by the predicate builder a flow node's predicate uses (`PredicateFields`)
+from the grammar the catalog serves. **Insert stage ▾** and **Delete edge** sit beside **Apply**.
+
+**Auto-layout** ([`canvas/auto-layout.ts`](app/workflows/canvas/auto-layout.ts)) is
+[dagre](https://github.com/dagrejs/dagre)'s layered layout, left to right, at the mockup's rhythm:
+columns 282px apart and the graph starting where the trigger does, at `(24, 40)`. Loop edges are left
+out of the layering, so a loop still reads as a way back, and each stage is laid out at least as
+large as `canvas.css` draws it — larger when React Flow has measured it bigger — so no two overlap.
+The module is imported when the button is pressed, so dagre is not in the studio's first load. It is
+not called `layout.ts`: anywhere under `app/`, Next.js reads a file of that name as a route layout.
+
+**Every operation has a keyboard path.** Add stage, Auto-layout, Undo and Redo are toolbar buttons;
+Tab and Enter select a stage or an edge, the arrows move a stage, Delete removes the selection; a
+stage's panel has **Connect to**, which draws the edge a drag would; an edge's panel edits its kind,
+label and condition and inserts into it. A member sees each structural edit inert with *Only an owner
+or admin may change a workflow.*, and a Delete or a double-click says so on the notice line.
+
+**Each criterion is a suite.** `studio-editor-editing.test.tsx` builds `docs-loop` from a blank
+canvas — its four stages from the catalog; the model stage's prompt, route, limits and declarations
+and the build and terminal configs through the inspector; two connections from the keyboard and one
+on the canvas; then Auto-layout — and holds the result to the published `v1.json` (ajv, 2020-12,
+strict) and the structural rules, and to the node types, configs and connections
+`R__dev_seed_workflows.sql` stores for `docs-loop`. Two things stay the catalog's: the stages' titles
+(the inspector renames nothing, S.4's decision) and the trigger's conditions (a trigger has no form),
+so the built document fires on every queued ticket. The same suite steps back and forward through
+an add, a move and a delete. `studio-canvas-editing.test.tsx` connects by React Flow's
+click-to-connect, the path jsdom can drive, which runs the same `onConnect` a drag does;
+`auto-layout.test.ts` lays the seeded graph out with no overlaps and every non-loop edge ending in a
+later column; `edit.test.ts` inserts a stage into every seeded edge and finds each result
+structurally sound.
 
 ### Code intelligence — completions and hover docs
 

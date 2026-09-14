@@ -4,10 +4,9 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { type EdgeRef, readStages, toEdges } from "@/app/workflows/canvas/graph";
 import {
   ADD_STAGE_LABEL,
-  ADD_STAGE_SOON,
   AUTO_LAYOUT_LABEL,
-  AUTO_LAYOUT_SOON,
   CANVAS_HINT,
+  CATALOG_UNREAD_REASON,
   CANVAS_LABEL,
   NO_STAGES_NOTE,
   UNSAVED_NOTE,
@@ -452,7 +451,7 @@ describe("a document with nothing on it", () => {
 
     expect(container.querySelectorAll(".react-flow__node")).toHaveLength(0);
     expect(screen.getByRole("status")).toHaveTextContent(NO_STAGES_NOTE);
-    expect(NO_STAGES_NOTE).toMatch(/#151/);
+    expect(NO_STAGES_NOTE).toMatch(/Add stage/);
   });
 });
 
@@ -469,21 +468,18 @@ describe("the toolbar", () => {
     ]);
   });
 
-  it("draws Auto-layout and Add stage inert, each naming #151 as its reason", async () => {
+  it("draws Auto-layout live, and Add stage inert naming the catalog when none was read", async () => {
+    // The editing itself is `studio-canvas-editing.test.tsx`'s; this is the toolbar a canvas opened
+    // with no catalog draws.
     await open();
 
-    for (const [name, reason] of [
-      [AUTO_LAYOUT_LABEL, AUTO_LAYOUT_SOON],
-      [ADD_STAGE_LABEL, ADD_STAGE_SOON],
-    ] as const) {
-      const control = screen.getByRole("button", { name });
+    expect(screen.getByRole("button", { name: AUTO_LAYOUT_LABEL })).not.toHaveAttribute("aria-disabled");
 
-      expect(control).toHaveAttribute("aria-disabled", "true");
-      expect(control).toHaveAttribute("title", reason);
-      expect(reason).toMatch(/#151/);
-      // `aria-disabled` rather than `disabled`, so the explanation stays reachable.
-      expect(control).not.toBeDisabled();
-    }
+    const add = screen.getByRole("button", { name: ADD_STAGE_LABEL });
+    expect(add).toHaveAttribute("aria-disabled", "true");
+    expect(add).toHaveAttribute("title", CATALOG_UNREAD_REASON);
+    // `aria-disabled` rather than `disabled`, so the explanation stays reachable.
+    expect(add).not.toBeDisabled();
   });
 
   it("prints the hint, naming the keyboard beside the mouse", async () => {
@@ -631,7 +627,7 @@ describe("selection", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Write attack plan selected");
   });
 
-  it("selects an edge, for S.5's editing", async () => {
+  it("selects an edge, for the inspector's edge panel", async () => {
     const onSelectionChange = vi.fn();
     const { container } = await open({ onSelectionChange });
 
@@ -640,7 +636,7 @@ describe("selection", () => {
 
     expect(edge(container, "checks-green→implement")).toHaveClass("selected");
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Edge checks-green → implement selected — edge editing arrives with #151.",
+      "Edge checks-green → implement selected — edit it in the inspector.",
     );
     expect(onSelectionChange).toHaveBeenLastCalledWith({
       kind: "edge",

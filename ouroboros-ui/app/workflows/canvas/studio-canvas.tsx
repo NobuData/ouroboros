@@ -3,6 +3,8 @@
 import {
   Background,
   BackgroundVariant,
+  type Connection as FlowConnection,
+  ConnectionMode,
   type CoordinateExtent,
   type EdgeChange,
   type NodeChange,
@@ -15,40 +17,70 @@ import {
   applyNodeChanges,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
-import type { WorkflowDefinition } from "@/app/api/workflows";
+import type { WorkflowDefinition, WorkflowStageCatalog, WorkflowStageType } from "@/app/api/workflows";
 import { Button } from "@/app/ui";
 
 import {
+  type Deletion,
+  freePosition,
+  stageTemplate,
+  withAddedStage,
+  withConnection,
+  withInsertedStage,
+} from "./edit";
+import {
   type CanvasSelection,
   type EdgeRef,
+  STAGE_BOX,
   STAGE_EDGE_TYPE,
   STAGE_NODE_TYPE,
+  type Size,
   type StageEdge as StageEdgeType,
   type StageNode as StageNodeType,
+  reconcileEdges,
+  reconcileNodes,
   selectionOf,
   toEdges,
   toNodes,
   withHighlight,
   withPositions,
-  reconcileEdges,
-  reconcileNodes,
 } from "./graph";
+import { historyKey, isDeleteKey, isTypingTarget } from "./keys";
+import { edgeProblem, insertProblem, stageProblem } from "./rules";
 import { EdgeMarkers, StageEdge } from "./stage-edge";
+import { StageMenu } from "./stage-menu";
 import { StageNode } from "./stage-node";
 import {
   ADD_STAGE_LABEL,
-  ADD_STAGE_SOON,
+  ADD_STAGE_MENU_LABEL,
+  AUTO_LAYOUT_EMPTY,
   AUTO_LAYOUT_LABEL,
-  AUTO_LAYOUT_SOON,
   CANVAS_HINT,
   CANVAS_LABEL,
+  CATALOG_UNREAD_REASON,
+  HISTORY_LABEL,
+  NOTHING_TO_REDO,
+  NOTHING_TO_UNDO,
+  REDO_LABEL,
+  UNDO_LABEL,
   UNSAVED_NOTE,
   ZOOM_HOME_LABEL,
   ZOOM_IN_LABEL,
   ZOOM_LABEL,
   ZOOM_OUT_LABEL,
+  connectionRefused,
+  insertMenuLabel,
   selectionSentence,
 } from "./view";
 import {
@@ -73,20 +105,15 @@ import "./canvas.css";
  *
  * ### Controlled, and bound to the document
  *
- * The nodes and edges are React state derived from the definition the canvas opened on
+ * The nodes and edges are React state derived from the definition the canvas is handed
  * (`graph.ts`), and every change React Flow reports is applied to that state — which is what
  * *controlled* means here: the library draws what this component holds and asks before
- * changing it. When a move settles (a drag ends, an arrow key lands), the positions are
- * written back into the document and the result is handed up through `onDefinitionChange`.
- * That is the ticket's *dragging a node updates the draft definition*; S.6
- * ([#152](https://github.com/NobuData/ouroboros/issues/152)) is what will autosave it, and
- * until then the toolbar says so.
- *
- * **The document a canvas opened on is the document it draws.** A different document is a
- * different canvas — the screen keys this component by workflow id, so switching workflows
- * remounts it — rather than a prop the component watches, because a canvas that re-derived its
- * nodes whenever its `definition` changed would throw away a reader's selection and measured
- * layout on every autosave round trip. S.6 keys by the draft's etag when it reloads one.
+ * changing it. Every edit the canvas makes — a settled move, a connection, an added or inserted
+ * stage, an auto-layout — is computed as a new document from the one it was handed and passed up
+ * through `onDefinitionChange`; the caller (`studio-editor.tsx`) records it in the draft's history
+ * and hands the new draft back, and the canvas reconciles its nodes against it during render —
+ * positions, data and names from the document, measurements and selection kept — so the canvas never
+ * holds a second copy of the graph to drift from the draft.
  *
  * ### What the stages and edges look like
  *
@@ -100,21 +127,33 @@ import "./canvas.css";
  * hands the answer through as it arrives; the path is applied over the edges at render and never
  * stored in them, so clearing it — which S.6 does on the first edit — is passing `null`.
  *
- * ### What is switched off, and why
+ * ### Editing (S.5, [#151](https://github.com/NobuData/ouroboros/issues/151))
  *
- * Nothing here connects, adds or deletes: `nodesConnectable` is off, the delete key is unbound,
- * and the toolbar's **Auto-layout** and **Add stage** are drawn inert with #151 as their reason.
- * A foundation that cannot persist an edit should not offer one it would then lose, and the
- * moves it does allow are the ones a reader can see are unsaved.
+ * - **Add stage ▾** is the catalog R.3 serves (`stage-menu.tsx`) and drops the type's defaulted
+ *   stage at the viewport's centre, nudged off any stage already there.
+ * - **Connect by drag** from any side of a stage to another. The connection is judged by the DSL's
+ *   structural rules (`rules.ts`) before it is made, and one that breaks a rule is refused with the
+ *   rule's reason on the toolbar's notice line — never silently dropped.
+ * - **Double-click an edge** opens the same menu to insert a stage into it, rewiring both sides
+ *   (`edit.ts`'s `withInsertedStage`); a type that cannot sit between two stages says why.
+ * - **Delete** (or Backspace) over a selection asks the caller to confirm (`onDeleteRequest`), because
+ *   a stage takes its edges with it and a key press is an easy thing to make by accident.
+ * - **Auto-layout** is dagre, layered left to right (`auto-layout.ts`, loaded when pressed).
+ * - **Undo** and **Redo**, and ⌘Z/Ctrl+Z, ⇧⌘Z/Ctrl+Y, step through the caller's history.
+ *
+ * The edge's kind, label and condition, and a keyboard **Connect**, are the inspector's
+ * (`inspector/edge-inspector.tsx`, `inspector/connect-row.tsx`), so every one of these is reachable
+ * without a pointer. A reader who may not edit (`readOnlyReason`) sees each control inert with the
+ * reason, and a Delete or a double-click says it on the notice line.
  *
  * ### Pan, zoom, select
  *
  * The mockup's hint is *⌥ drag to pan*, so a plain drag on the stage is a **selection** (the
  * rubber band) and panning is the modifier: **⌥** or **space** held with a drag, or the middle
  * or right mouse button. The wheel zooms, pinch zooms, and the toolbar steps through
- * `viewport.ts`'s ladder. React Flow's own keyboard model is left on: Tab reaches each stage and
- * each edge, Enter or space selects, the arrow keys move a selected stage, Escape clears — the
- * ticket's *keyboard navigation baseline*.
+ * `viewport.ts`'s ladder. A double-click does not zoom: on this canvas it inserts. React Flow's own
+ * keyboard model is left on: Tab reaches each stage and each edge, Enter or space selects, the arrow
+ * keys move a selected stage, Escape clears.
  *
  * ### Both themes from tokens
  *
@@ -125,33 +164,54 @@ import "./canvas.css";
  * theme is decided.
  */
 
+/** Undo and redo, as the caller's history offers them. */
+export interface CanvasHistory {
+  /** Whether there is an edit to undo. */
+  readonly canUndo: boolean;
+  /** Whether there is an undone edit to redo. */
+  readonly canRedo: boolean;
+  /** Undo the last edit. */
+  readonly onUndo: () => void;
+  /** Redo the last undone edit. */
+  readonly onRedo: () => void;
+}
+
 /** What the canvas takes. */
 export interface StudioCanvasProps {
   /** The workflow's id — what its viewport is remembered under. */
   readonly workflowId: string;
   /**
-   * The document the canvas opens on: the draft when one is open, else the version in force,
-   * else a blank document (`app/workflows/view.ts`'s `canvasDefinition`). Read once, at mount;
-   * see the note above on why a new document is a new canvas.
+   * The document the canvas draws: the draft (`app/workflows/view.ts`'s `canvasDefinition` at first,
+   * then whatever the caller's history holds). A new document is reconciled into the canvas rather
+   * than remounting it, so the reader keeps their selection and place.
    */
   readonly definition: WorkflowDefinition;
   /**
    * The execution path to draw, as the dry run's `highlight_path` names it — every edge the walk
-   * took, by its ordered pair. `null` or absent draws none. Unlike `definition` this is watched:
-   * a path is an overlay, and turning it on and off must not remount the canvas under a reader.
+   * took, by its ordered pair. `null` or absent draws none.
    */
   readonly highlight?: readonly EdgeRef[] | null;
   /**
-   * Told the document with the canvas's positions in it, each time a move settles. S.6's
-   * autosave is the caller this exists for; the canvas keeps no copy of the draft beyond what
-   * it needs to say *not saved*.
+   * Told the document an edit on the canvas produced — a settled move, a connection, an added or
+   * inserted stage, an auto-layout. The caller is expected to hand it back as `definition`.
    */
   readonly onDefinitionChange?: (definition: WorkflowDefinition) => void;
   /**
    * Told what is selected, each time that changes — including once at mount, with nothing.
-   * The inspector (S.4) is the caller this exists for.
+   * The inspector is the caller this exists for.
    */
   readonly onSelectionChange?: (selection: CanvasSelection) => void;
+  /** Told what a Delete over the canvas would remove, for the caller to confirm and apply. */
+  readonly onDeleteRequest?: (deletion: Deletion) => void;
+  /** The stage catalog — Add stage's menu — or `null` when it could not be read. */
+  readonly catalog?: WorkflowStageCatalog | null;
+  /** Undo and redo. Absent draws both inert. */
+  readonly history?: CanvasHistory;
+  /**
+   * Why the reader may not change the workflow, or `undefined` when they may. Set, it makes every
+   * structural edit inert with this reason. Moving a stage is not one — it changes nothing a run reads.
+   */
+  readonly readOnlyReason?: string;
   /**
    * Where the viewport is remembered. Defaults to the browser's `localStorage`, guarded; a
    * suite passes its own.
@@ -195,6 +255,9 @@ const STAGE_EXTENT: CoordinateExtent = [
 const DOT_GRID_GAP = 18;
 const DOT_SIZE = 2;
 
+/** The margin an auto-layout's fit leaves around the graph, as a share of the stage. */
+const FIT_PADDING = 0.08;
+
 /**
  * Whether a node change is a move that has settled — a drag that ended, or a keyboard move,
  * which settles at once. A move still in progress reports `dragging: true` and is drawn but
@@ -234,33 +297,71 @@ function Canvas({
   highlight = null,
   onDefinitionChange,
   onSelectionChange,
+  onDeleteRequest,
+  catalog = null,
+  history,
+  readOnlyReason,
   storage,
 }: StudioCanvasProps) {
   const [nodes, setNodes] = useState<StageNodeType[]>(() => toNodes(definition));
   const [edges, setEdges] = useState<StageEdgeType[]>(() => toEdges(definition));
-  // The document the nodes were last built from. When the parent hands down a different one — an
-  // inspector Apply or Delete stage (S.4, #150) — the nodes and edges are reconciled during render
-  // (React's *adjusting state when a prop changes*), keeping positions and the selection, so the
-  // chips follow the config without remounting the canvas under the reader.
+  // The document the nodes were last built from. When the caller hands down a different one — an
+  // edit recorded, an inspector Apply, an undo — the nodes and edges are reconciled during render
+  // (React's *adjusting state when a prop changes*), so the canvas follows the draft without
+  // remounting under the reader.
   const [heldDefinition, setHeldDefinition] = useState(definition);
   if (heldDefinition !== definition) {
     setHeldDefinition(definition);
     setNodes((current) => reconcileNodes(current, definition));
     setEdges((current) => reconcileEdges(current, definition));
   }
+  // The document the canvas opened on, so *not saved* follows an edit made anywhere.
+  const [openedOn] = useState(definition);
   // The nodes as of the last change, for the next change to build on. React Flow can report
   // two batches of changes between two renders — a measurement and a selection, say — and a
   // handler that read `nodes` from its render would apply the second batch to the state the
-  // first one had already replaced.
+  // first one had already replaced. Brought up to date after every commit as well, so a node a
+  // reconcile added or removed is in it.
   const nodesRef = useRef(nodes);
+  useLayoutEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
   const [edited, setEdited] = useState(false);
   const [selection, setSelection] = useState<CanvasSelection>(null);
   const [zoom, setZoom] = useState(HOME_VIEWPORT.zoom);
-  const { setViewport, zoomTo, getZoom } = useReactFlow<StageNodeType, StageEdgeType>();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [insertOn, setInsertOn] = useState<EdgeRef | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  // Set by Auto-layout, read once the laid-out nodes have committed, so the fit sees them.
+  const fitPending = useRef(false);
+  const { setViewport, zoomTo, getZoom, screenToFlowPosition, fitView } = useReactFlow<
+    StageNodeType,
+    StageEdgeType
+  >();
+
+  const addReason = readOnlyReason ?? (catalog === null ? CATALOG_UNREAD_REASON : undefined);
 
   // The edges as drawn: the state, with the execution path laid over it. Derived rather than
   // stored, so the path never reaches the edges a selection change is applied to.
   const drawnEdges = useMemo(() => withHighlight(edges, highlight), [edges, highlight]);
+
+  /**
+   * Hand an edit up — unless it changed nothing, which is how a move that landed where it started,
+   * or a layout already in force, adds no step to undo.
+   *
+   * @param next The document the edit produced.
+   */
+  const edit = useCallback(
+    (next: WorkflowDefinition) => {
+      if (next === definition) return;
+      setEdited(true);
+      setNotice(null);
+      onDefinitionChange?.(next);
+    },
+    [definition, onDefinitionChange],
+  );
 
   const onNodesChange = useCallback(
     (changes: NodeChange<StageNodeType>[]) => {
@@ -268,22 +369,102 @@ function Canvas({
       nodesRef.current = next;
       setNodes(next);
 
-      if (changes.some(isSettledMove)) {
-        const draft = withPositions(definition, next);
-        if (draft !== definition) {
-          setEdited(true);
-          onDefinitionChange?.(draft);
-        }
-      }
+      if (changes.some(isSettledMove)) edit(withPositions(definition, next));
     },
-    [definition, onDefinitionChange],
+    [definition, edit],
   );
 
   const onEdgesChange = useCallback((changes: EdgeChange<StageEdgeType>[]) => {
-    // Only a selection can change on an edge here — nothing connects, reconnects or deletes —
-    // so the edges never reach the document and a functional update is all this needs.
+    // Only a selection can change on an edge here — connecting is `onConnect`'s, deleting is the
+    // caller's after it confirms — so a functional update is all this needs.
     setEdges((current) => applyEdgeChanges(changes, current));
   }, []);
+
+  const onConnect = useCallback(
+    ({ source, target }: FlowConnection) => {
+      // The handles are not connectable on a read-only canvas; this is the second lock on the door.
+      if (readOnlyReason !== undefined) {
+        setNotice(readOnlyReason);
+        return;
+      }
+
+      const ref = { from: source, to: target };
+      const problem = edgeProblem(definition, { ...ref, kind: "default" });
+      if (problem !== null) {
+        setNotice(connectionRefused(problem));
+        return;
+      }
+
+      edit(withConnection(definition, ref, { kind: "default", label: null }));
+    },
+    [definition, edit, readOnlyReason],
+  );
+
+  const onEdgeDoubleClick = useCallback(
+    (_event: ReactMouseEvent, edge: StageEdgeType) => {
+      if (addReason !== undefined) {
+        setNotice(addReason);
+        return;
+      }
+
+      setInsertOn({ from: edge.source, to: edge.target });
+      setMenuOpen(true);
+    },
+    [addReason],
+  );
+
+  const onMenuOpenChange = useCallback((open: boolean) => {
+    setMenuOpen(open);
+    if (!open) setInsertOn(null);
+  }, []);
+
+  const pickStage = useCallback(
+    (type: WorkflowStageType) => {
+      const template = stageTemplate(type);
+
+      if (insertOn !== null) {
+        const inserted = withInsertedStage(definition, insertOn, template);
+        if (inserted !== null) edit(inserted.definition);
+        return;
+      }
+
+      // The stage's centre goes where the viewport's is, so a stage is added where the reader is looking.
+      const box = stageRef.current?.getBoundingClientRect();
+      const centre = screenToFlowPosition({
+        x: (box?.left ?? 0) + (box?.width ?? 0) / 2,
+        y: (box?.top ?? 0) + (box?.height ?? 0) / 2,
+      });
+      const at = freePosition(definition, { x: centre.x - STAGE_BOX.width / 2, y: centre.y - STAGE_BOX.height / 2 });
+
+      edit(withAddedStage(definition, template, at).definition);
+    },
+    [definition, edit, insertOn, screenToFlowPosition],
+  );
+
+  const autoLayout = useCallback(async () => {
+    // Loaded when pressed: dagre is weight only an Auto-layout needs.
+    const { withLayout } = await import("./auto-layout");
+    const measured = new Map<string, Size>(
+      nodesRef.current.flatMap((node): [string, Size][] =>
+        node.measured?.width === undefined || node.measured.height === undefined
+          ? []
+          : [[node.id, { width: node.measured.width, height: node.measured.height }]],
+      ),
+    );
+    const next = withLayout(definition, measured);
+    if (next === definition) return;
+
+    fitPending.current = true;
+    edit(next);
+  }, [definition, edit]);
+
+  // After an auto-layout commits, bring the whole graph into view: a layered layout of a graph built
+  // in place is usually wider than the stage.
+  useEffect(() => {
+    if (!fitPending.current) return;
+    fitPending.current = false;
+    void fitView({ padding: FIT_PADDING, maxZoom: HOME_VIEWPORT.zoom, minZoom: MIN_ZOOM });
+  }, [nodes, fitView]);
 
   const onSelection = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }: OnSelectionChangeParams<StageNodeType, StageEdgeType>) => {
@@ -317,13 +498,63 @@ function Canvas({
   const zoomIn = useCallback(() => void zoomTo(nextZoom(getZoom(), 1)), [zoomTo, getZoom]);
   const zoomHome = useCallback(() => void setViewport(HOME_VIEWPORT), [setViewport]);
 
+  /**
+   * Delete over the stage: ask the caller to confirm removing what is selected.
+   *
+   * @param event The key press, from anywhere on the stage.
+   */
+  const onStageKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!isDeleteKey(event) || isTypingTarget(event.target)) return;
+
+    const deletion: Deletion = {
+      stages: nodesRef.current.filter((node) => node.selected === true).map((node) => node.id),
+      edges: edges.filter((edge) => edge.selected === true).map((edge) => ({ from: edge.source, to: edge.target })),
+    };
+    if (deletion.stages.length + deletion.edges.length === 0) return;
+
+    event.preventDefault();
+    if (readOnlyReason !== undefined) {
+      setNotice(readOnlyReason);
+      return;
+    }
+    onDeleteRequest?.(deletion);
+  };
+
+  /**
+   * Undo and redo from anywhere on the canvas — the stage or its toolbar — but never from a field.
+   *
+   * @param event The key press.
+   */
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (history === undefined || isTypingTarget(event.target)) return;
+
+    const action = historyKey(event);
+    if (action === "undo" && history.canUndo) {
+      event.preventDefault();
+      history.onUndo();
+    } else if (action === "redo" && history.canRedo) {
+      event.preventDefault();
+      history.onRedo();
+    }
+  };
+
+  /**
+   * A stage's title, for the insert menu's name.
+   *
+   * @param id The stage.
+   * @returns Its title, or its id when the canvas does not hold it.
+   */
+  const titleOf = (id: string) => nodes.find((node) => node.id === id)?.data.stage.title ?? id;
+
   const status = selectionSentence(selection, nodes.length);
+  const unsaved = edited || definition !== openedOn;
 
   return (
-    <section aria-label={CANVAS_LABEL} className="studio-canvas">
-      <div className="studio-canvas__stage">
+    <section aria-label={CANVAS_LABEL} className="studio-canvas" onKeyDown={onKeyDown}>
+      <div className="studio-canvas__stage" onKeyDown={onStageKeyDown} ref={stageRef}>
         <EdgeMarkers />
         <ReactFlow<StageNodeType, StageEdgeType>
+          connectionMode={ConnectionMode.Loose}
           defaultMarkerColor={null}
           defaultViewport={HOME_VIEWPORT}
           deleteKeyCode={null}
@@ -335,9 +566,11 @@ function Canvas({
           minZoom={MIN_ZOOM}
           nodeExtent={STAGE_EXTENT}
           nodes={nodes}
-          nodesConnectable={false}
+          nodesConnectable={readOnlyReason === undefined}
           nodesFocusable
           nodeTypes={NODE_TYPES}
+          onConnect={onConnect}
+          onEdgeDoubleClick={onEdgeDoubleClick}
           onEdgesChange={onEdgesChange}
           onInit={onInit}
           onMoveEnd={onMoveEnd}
@@ -348,6 +581,7 @@ function Canvas({
           panOnDrag={PAN_BUTTONS}
           selectionMode={SelectionMode.Partial}
           selectionOnDrag
+          zoomOnDoubleClick={false}
         >
           <Background gap={DOT_GRID_GAP} size={DOT_SIZE} variant={BackgroundVariant.Dots} />
         </ReactFlow>
@@ -365,18 +599,55 @@ function Canvas({
             +
           </button>
         </div>
-        <Button reason={AUTO_LAYOUT_SOON} size="sm" tone="ghost">
+        <Button
+          onClick={() => void autoLayout()}
+          reason={readOnlyReason ?? (nodes.length === 0 ? AUTO_LAYOUT_EMPTY : undefined)}
+          size="sm"
+          tone="ghost"
+        >
           {AUTO_LAYOUT_LABEL}
         </Button>
-        <Button reason={ADD_STAGE_SOON} size="sm">
-          {ADD_STAGE_LABEL}
-        </Button>
-        {/* The selection, said out loud: the inspector's stand-in, and the keyboard's confirmation. */}
+        <StageMenu
+          label={ADD_STAGE_LABEL}
+          menuLabel={insertOn === null ? ADD_STAGE_MENU_LABEL : insertMenuLabel(titleOf(insertOn.from), titleOf(insertOn.to))}
+          onOpenChange={onMenuOpenChange}
+          onPick={pickStage}
+          open={menuOpen}
+          placement="up"
+          problemFor={(type) => (insertOn === null ? stageProblem(definition, type) : insertProblem(definition, type))}
+          reason={addReason}
+          types={catalog?.nodeTypes ?? []}
+        />
+        <div aria-label={HISTORY_LABEL} className="studio-canvas__history" role="group">
+          <Button
+            onClick={history?.onUndo}
+            reason={history?.canUndo === true ? undefined : NOTHING_TO_UNDO}
+            size="sm"
+            tone="ghost"
+          >
+            {UNDO_LABEL}
+          </Button>
+          <Button
+            onClick={history?.onRedo}
+            reason={history?.canRedo === true ? undefined : NOTHING_TO_REDO}
+            size="sm"
+            tone="ghost"
+          >
+            {REDO_LABEL}
+          </Button>
+        </div>
+        {/* The selection, said out loud: the keyboard's confirmation of what Enter did. */}
         <p className="studio-canvas__status" role="status">
           {status}
         </p>
-        {edited && <p className="studio-canvas__unsaved">{UNSAVED_NOTE}</p>}
+        {unsaved && <p className="studio-canvas__unsaved">{UNSAVED_NOTE}</p>}
         <span className="studio-canvas__hint">{CANVAS_HINT}</span>
+        {/* An edit refused, with the rule it would have broken — never a silent no. */}
+        {notice !== null && (
+          <p className="studio-canvas__notice" role="alert">
+            {notice}
+          </p>
+        )}
       </div>
     </section>
   );

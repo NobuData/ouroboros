@@ -346,6 +346,16 @@
   font-size: var(--t-2xs);
 }
 
+/* ---------- connections (#151) ---------- */
+
+/* The keyboard's Connect: the button, and the line that says a connection was drawn. */
+.studio-inspector__connect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
 /* ---------- the footer — the mockup's `.insp-foot` ---------- */
 
 .studio-inspector__foot {

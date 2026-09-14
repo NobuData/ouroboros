@@ -1250,7 +1250,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 | S.2 | #148 | 🟢 Done | ouroboros-ui: [S.2] Canvas foundation on React Flow | Themed React Flow: dot-grid, pan/zoom, controlled graph state | mvp, workflow, ui, design | N (after P.2, S.1) | Y | L | ouroboros-ui |
 | S.3 | #149 | 🟢 Done | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
 | S.4 | #150 | 🟢 Done | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
-| S.5 | #151 | 🟡 Open | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
+| S.5 | #151 | 🟢 Done | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
 | S.6 | #152 | 🟡 Open | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui |
 | S.7 | #153 | 🟡 Open | ouroboros-ui: [S.7] Studio states & guards | Empty org, paused/err rail states, read-only member view, load/error | mvp, workflow, ui, design | N (after S.1–S.6) | Y | S | ouroboros-ui |
 | S.8 | #154 | 🟡 Open | ouroboros-ui: [S.8] Studio e2e leg | Seeded parity, edit→publish→version, dry-run highlight, themes | mvp, workflow, ui, ci | N (after S.1–S.7) | Y | S | ouroboros-ui, .github |
@@ -1600,7 +1600,45 @@ Limits [retries 2][budget 400k] · Permissions [fixup ✓][CI ✗]   [Delete] [A
 
 ### Issue S.5 — ouroboros-ui: [S.5] Canvas editing operations
 
-> **GitHub issue:** #151 · **Status:** 🟡 Open · **Parent epic:** #130
+> **GitHub issue:** #151 · **Status:** 🟢 Done · **Parent epic:** #130
+>
+> **Shipped** as `ouroboros-ui/app/workflows/canvas/` (`rules.ts`, `edit.ts`, `auto-layout.ts`,
+> `keys.ts`, `stage-menu.tsx`), `app/workflows/history.ts`, `confirm-delete.tsx`, the edge panel and
+> the Connect row in `inspector/`, and the canvas and editor wired to them (`ouroboros-ui` 0.66.0,
+> `@dagrejs/dagre` 3.1).
+>
+> * **The rules are § 7, held to the parity file.** `canvas/rules.ts` replays every structural case
+>   of `schemas/workflow-dsl/fixtures/expected.json`. An edit is judged by it before it is made and
+>   refused with the rule's reason: on the toolbar's notice line for a drawn connection, inert with
+>   its reason in the Add stage menu (*A workflow can only have one trigger.*), and under the field in
+>   the edge panel. The rules that describe an unfinished graph (no terminal, unreachable) stay the
+>   publish gate's.
+> * **History is a list of documents.** Every edit is a pure function over the draft, and
+>   `StudioEditor` keeps a 50-step history: Undo and Redo on the toolbar, ⌘Z/Ctrl+Z and ⇧⌘Z/Ctrl+Y on
+>   the canvas. On reconcile the canvas now takes a node's position from the document, which is what
+>   lets an undone move or a layout move the stage.
+> * **Decided in-issue.**
+>   - A drag draws a `default` edge, and the edge panel sets its kind, label and condition.
+>   - A double-click on an edge opens the catalog menu in insert mode rather than inserting a fixed
+>     type. The first hop keeps the old edge's kind, label and condition.
+>   - Delete asks in a dialog, from the key and from both inspector buttons.
+>   - Layout uses dagre over elkjs: it is synchronous and smaller. It loads when pressed, and loop
+>     edges are left out of the layering.
+>   - The keyboard paths are the toolbar buttons, Tab/Enter/arrows/Delete on the canvas, **Connect
+>     to** in a stage's panel, and the edge panel.
+>   - A double-click no longer zooms.
+>   - The editor gains `onDraftChange`, S.6's autosave seam.
+> * **The scripted docs-loop.** It is built from `{}` with the canvas and inspector alone, checked
+>   against `v1.json` (ajv, strict) and the structural rules, and matched to the seeded docs-loop's
+>   node types, configs and connections. The titles stay the catalog's defaults and the trigger has
+>   no conditions, because the inspector neither renames a stage nor has a trigger form (S.4).
+> * **CI.** `ci/ui` now watches `v1.json`, the valid and invalid fixtures, `expected.json` and
+>   `R__dev_seed_workflows.sql`; `verify-ci.sh` routes them and its fixture follows.
+> * **Left where it was:**
+>   - Mockup 23's amendment, the snippet splice and the multi-select → publish-snippet hand-off, is
+>     #798's and #799's.
+>   - The e2e editing leg is S.8's (#154).
+>   - Autosave is S.6's (#152).
 
 - **Problem Statement:** The toolbar promises editing: Add stage ▾, connect
   nodes, double-click-edge insertion, auto-layout — the difference between a

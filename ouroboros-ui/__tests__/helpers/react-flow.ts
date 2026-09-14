@@ -88,4 +88,11 @@ export function shimReactFlow(): void {
     writable: true,
     value: () => ({ x: 0, y: 0, width: 0, height: 0 }),
   });
+  // A click-to-connect asks for the handle under the pointer first and falls back to the handle
+  // that was clicked; jsdom lays nothing out, so there is never an element under a point.
+  Object.defineProperty(Document.prototype, "elementFromPoint", {
+    configurable: true,
+    writable: true,
+    value: () => null,
+  });
 }

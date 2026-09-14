@@ -873,6 +873,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@dagrejs/dagre@npm:^3.1.1":
+  version: 3.1.1
+  resolution: "@dagrejs/dagre@npm:3.1.1"
+  dependencies:
+    "@dagrejs/graphlib": "npm:4.0.5"
+  checksum: 10c0/e2607e941e54407d07650c13b7c4c6aca1466e12d56fd7d1e704eab686837b049700f05ca9a723aa34f027ec71bee61914594339a0e74b1f4ad7b69c5fa55242
+  languageName: node
+  linkType: hard
+
+"@dagrejs/graphlib@npm:4.0.5":
+  version: 4.0.5
+  resolution: "@dagrejs/graphlib@npm:4.0.5"
+  checksum: 10c0/698c9ceb996bc1da3a4a141858db57b8380854d412fcd5c9daa48f159f385fc0fb07ef84967409c224d3a82fb8460018d871657c90175bffd9b34ef9c538c1f7
+  languageName: node
+  linkType: hard
+
 "@emnapi/core@npm:1.10.0":
   version: 1.10.0
   resolution: "@emnapi/core@npm:1.10.0"
@@ -10125,6 +10141,7 @@ __metadata:
     "@codemirror/autocomplete": "npm:^6.20.3"
     "@codemirror/state": "npm:^6.7.4"
     "@codemirror/view": "npm:^6.43.11"
+    "@dagrejs/dagre": "npm:^3.1.1"
     "@testing-library/dom": "npm:^10"
     "@testing-library/jest-dom": "npm:^6"
     "@testing-library/react": "npm:^16"
@@ -10133,6 +10150,7 @@ __metadata:
     "@types/react-dom": "npm:^19"
     "@vitejs/plugin-react": "npm:^5"
     "@xyflow/react": "npm:^12.11.6"
+    ajv: "npm:^8"
     better-auth: "npm:1.6.26"
     dotenv: "npm:^17.4.1"
     eslint: "npm:^9"

@@ -21,8 +21,14 @@ name: ouroboros-ui · ci
 # and the printer's golden files (fixtures/code/), so a change there must run the suite that reads
 # them. One fixture file joins them because of #148: the canvas suites open the committed
 # standard-fix v14 (fixtures/valid/standard-fix.json) and assert the seeded graph renders at the
-# mockup's positions, so a change to that document must run the suite that draws it. The rest of
-# schemas/ is the two validators' business, and stays off this filter.
+# mockup's positions, so a change to that document must run the suite that draws it.
+#
+# #151 widens that to every document the DSL's parity contract names. The canvas refuses an
+# illegal edit by the DSL's structural rules, and its suite replays those rules against
+# fixtures/expected.json and the valid and invalid documents it points at, and holds the
+# scripted docs-loop build to the published v1.json. That build reads the document
+# ouroboros-db/migrations/R__dev_seed_workflows.sql seeds, so that one migration is here too.
+# The code-invalid and YAML fixture sets and the rest of the migrations stay off this filter.
 
 on:
   pull_request:
@@ -32,7 +38,11 @@ on:
       - "ouroboros-rest/openapi.json"
       - "schemas/workflow-dsl/fixtures/code-symbols/**"
       - "schemas/workflow-dsl/fixtures/code/**"
-      - "schemas/workflow-dsl/fixtures/valid/standard-fix.json"
+      - "schemas/workflow-dsl/v1.json"
+      - "schemas/workflow-dsl/fixtures/valid/**"
+      - "schemas/workflow-dsl/fixtures/invalid/**"
+      - "schemas/workflow-dsl/fixtures/expected.json"
+      - "ouroboros-db/migrations/R__dev_seed_workflows.sql"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/ui.yml"
@@ -47,7 +57,11 @@ on:
       - "ouroboros-rest/openapi.json"
       - "schemas/workflow-dsl/fixtures/code-symbols/**"
       - "schemas/workflow-dsl/fixtures/code/**"
-      - "schemas/workflow-dsl/fixtures/valid/standard-fix.json"
+      - "schemas/workflow-dsl/v1.json"
+      - "schemas/workflow-dsl/fixtures/valid/**"
+      - "schemas/workflow-dsl/fixtures/invalid/**"
+      - "schemas/workflow-dsl/fixtures/expected.json"
+      - "ouroboros-db/migrations/R__dev_seed_workflows.sql"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/ui.yml"

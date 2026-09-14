@@ -2,13 +2,24 @@
 
 import { type ReactNode, useId, useState } from "react";
 
+import type { WorkflowDefinition, WorkflowStageType } from "@/app/api/workflows";
 import { Button, Card, EmptyState } from "@/app/ui";
-import { type CanvasSelection, type StageEntry, isStageKind } from "@/app/workflows/canvas/graph";
+import type { EdgeFields } from "@/app/workflows/canvas/edit";
+import {
+  type CanvasSelection,
+  type Connection,
+  type EdgeRef,
+  type StageEntry,
+  isStageKind,
+  readConnections,
+  readStages,
+} from "@/app/workflows/canvas/graph";
 import { stageRole } from "@/app/workflows/canvas/treatment";
 import { STAGE_GLYPHS } from "@/app/workflows/canvas/view";
 import type { InspectorReadings } from "@/app/workflows/view";
-import type { WorkflowDefinition } from "@/app/api/workflows";
 
+import { ConnectRow } from "./connect-row";
+import { EdgeInspector } from "./edge-inspector";
 import {
   APPLIED_NOTE,
   APPLY_LABEL,
@@ -55,36 +66,80 @@ export interface InspectorPanelProps {
   readonly onApply: (id: string, config: ConfigRecord) => void;
   /** Told a stage is to be removed — **Delete stage**. */
   readonly onDelete: (id: string) => void;
+  /** Told a connection to draw from a stage — **Connect** (S.5, #151). */
+  readonly onConnect: (from: string, to: string) => void;
+  /** Told an edge's new kind, label and condition — the edge panel's **Apply**. */
+  readonly onApplyEdge: (ref: EdgeRef, fields: EdgeFields) => void;
+  /** Told an edge is to be removed — **Delete edge**. */
+  readonly onDeleteEdge: (ref: EdgeRef) => void;
+  /** Told a stage type to insert into an edge — **Insert stage ▾**. */
+  readonly onInsert: (ref: EdgeRef, type: WorkflowStageType) => void;
+}
+
+/**
+ * The selected edge, as the draft holds it now.
+ *
+ * Read from the draft rather than from the selection, because the selection is the canvas's report of
+ * the edge when it was selected, and an **Apply** since then has changed it.
+ *
+ * @param definition The draft.
+ * @param selection The canvas's selection.
+ * @returns The edge, or `null` when no single edge is selected or the draft no longer holds it.
+ */
+function selectedConnection(definition: WorkflowDefinition, selection: CanvasSelection): Connection | null {
+  if (selection?.kind !== "edge") return null;
+
+  const { from, to } = selection.connection;
+  return readConnections(definition, readStages(definition)).find((edge) => edge.from === from && edge.to === to) ?? null;
 }
 
 /**
  * Mockup 04's `.inspector` — the sticky panel beside the canvas where a stage is configured (S.4,
- * [#150](https://github.com/NobuData/ouroboros/issues/150)).
+ * [#150](https://github.com/NobuData/ouroboros/issues/150)), and since S.5
+ * ([#151](https://github.com/NobuData/ouroboros/issues/151)) where an edge is.
  *
- * The panel is keyed by the selected stage, so moving the selection opens a fresh draft of that
- * stage's config and an unapplied edit of the last one is dropped rather than carried over to a
- * stage it was not written for. The form under the header is chosen by the node's type and drawn
- * from the catalog's schema for it; `app/workflows/inspector/inspector.ts` holds every decision.
+ * The panel is keyed by the selected stage or edge, so moving the selection opens a fresh draft of
+ * what is selected and an unapplied edit of the last one is dropped rather than carried over to
+ * something it was not written for. A stage's form is chosen by the node's type and drawn from the
+ * catalog's schema for it; `app/workflows/inspector/inspector.ts` holds every decision. An edge's
+ * panel is `edge-inspector.tsx`.
  *
  * @param props See {@link InspectorPanelProps}.
  * @returns The panel.
  */
 export function InspectorPanel(props: InspectorPanelProps) {
-  const { entry, selection } = props;
+  const { entry, selection, definition } = props;
+  const connection = entry === null ? selectedConnection(definition, selection) : null;
+  let body: ReactNode;
+
+  if (entry !== null) {
+    body = <StageInspector {...props} entry={entry} key={entry.id} />;
+  } else if (connection !== null) {
+    body = (
+      <EdgeInspector
+        connection={connection}
+        definition={definition}
+        key={`${connection.from}→${connection.to}`}
+        mayAdminister={props.mayAdminister}
+        onApplyEdge={props.onApplyEdge}
+        onDeleteEdge={props.onDeleteEdge}
+        onInsert={props.onInsert}
+        readings={props.readings}
+      />
+    );
+  } else {
+    body = <EmptyState note={emptyNote(selection)} title={NOTHING_SELECTED_TITLE} />;
+  }
 
   return (
     <Card aria-label={INSPECTOR_LABEL} as="aside" className="studio-inspector">
-      {entry === null ? (
-        <EmptyState note={emptyNote(selection)} title={NOTHING_SELECTED_TITLE} />
-      ) : (
-        <StageInspector {...props} entry={entry} key={entry.id} />
-      )}
+      {body}
     </Card>
   );
 }
 
 /**
- * One stage's panel: its header, its form, and the footer.
+ * One stage's panel: its header, its form, its connections, and the footer.
  *
  * @param props See {@link InspectorPanelProps}, with the entry present.
  * @returns The panel's contents.
@@ -96,6 +151,7 @@ function StageInspector({
   mayAdminister,
   onApply,
   onDelete,
+  onConnect,
 }: InspectorPanelProps & { readonly entry: StageEntry }) {
   const idPrefix = useId();
   const [config, setConfig] = useState<ConfigRecord>(entry.config);
@@ -183,6 +239,16 @@ function StageInspector({
       <fieldset aria-labelledby={titleId} className="studio-inspector__form" disabled={!mayAdminister}>
         {form}
       </fieldset>
+
+      {/* Nothing leaves a terminal (§ 7), so a terminal's panel offers no connection to draw. */}
+      {entry.type !== "term" && (
+        <ConnectRow
+          definition={definition}
+          from={entry.id}
+          onConnect={(to) => onConnect(entry.id, to)}
+          readOnlyReason={readOnlyReason}
+        />
+      )}
 
       <footer className="studio-inspector__foot">
         <Button onClick={() => onDelete(entry.id)} reason={readOnlyReason} tone="ghost">

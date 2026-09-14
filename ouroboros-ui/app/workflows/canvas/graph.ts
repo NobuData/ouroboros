@@ -66,6 +66,22 @@ export interface Point {
 /** Where a node the document does not place is drawn. */
 export const ORIGIN: Point = { x: 0, y: 0 };
 
+/** A box's size, in canvas pixels. */
+export interface Size {
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * A stage's box as `canvas.css` draws it at the default type size — `12.75rem` × `6.5rem`. What a
+ * stage dropped at the viewport's centre is centred by, and the floor auto-layout spaces stages at
+ * before React Flow has measured them (`auto-layout.ts`).
+ */
+export const STAGE_BOX: Size = { width: 204, height: 104 };
+
+/** *Back to queue*'s pill, as `canvas.css` draws it — `11rem` × `2.75rem`. */
+export const PILL_BOX: Size = { width: 176, height: 44 };
+
 /** What a stage's `config` is read as when the document's is not an object. */
 const NO_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({});
 
@@ -633,12 +649,14 @@ export function upstreamStageIds(definition: WorkflowDefinition, id: string): re
 }
 
 /**
- * The nodes the canvas holds, brought up to date with a document the canvas did not produce —
- * an inspector **Apply** or **Delete stage** (S.4).
+ * The nodes the canvas holds, brought up to date with a document it was handed — an inspector
+ * **Apply**, a delete, an added or inserted stage, an **Auto-layout**, an **Undo** (S.4, S.5).
  *
- * Each node keeps what React Flow owns — its position, its measurements, whether it is selected —
- * and takes its `data` and accessible name from the new document, so its chips follow the
- * config. A node the document no longer holds is dropped; one it newly holds is added.
+ * Each node keeps what React Flow owns — its measurements, whether it is selected — and takes its
+ * position, its `data` and its accessible name from the new document: the chips follow the config,
+ * and an undone move or a layout moves the stage. Taking the position is safe because a move writes
+ * its position into the document as it settles, so the document's position is always the one the
+ * canvas last showed. A node the document no longer holds is dropped; one it newly holds is added.
  *
  * @param current The nodes as the canvas holds them.
  * @param definition The new document.
@@ -649,7 +667,9 @@ export function reconcileNodes(current: readonly StageNode[], definition: Workfl
 
   return toNodes(definition).map((node) => {
     const existing = held.get(node.id);
-    return existing === undefined ? node : { ...existing, data: node.data, ariaLabel: node.ariaLabel };
+    return existing === undefined
+      ? node
+      : { ...existing, position: node.position, data: node.data, ariaLabel: node.ariaLabel };
   });
 }
 

@@ -49,15 +49,21 @@ make_fixture() {
   # every exchange against that document, and docs/mockups/05-workflow-code.html since #178, because
   # its Loop Checks suite reads the mockup's rows. ouroboros-ui watches two of the DSL's fixture
   # directories since #177, because its code editor suites read the symbol table and the
-  # printer's golden files, and one fixture file since #148, because its canvas suites open
-  # the committed standard-fix. Held in a
+  # printer's golden files; the valid fixtures since #148, because its canvas suites open the
+  # committed standard-fix; and since #151 the schema, the invalid fixtures, the parity file and
+  # the workflows seed, because the canvas's edit rules are replayed against the parity contract
+  # and a scripted docs-loop build is held to the schema. Held in a
   # variable because the two workflows are otherwise identical, and the shared template is what
   # makes that visible.
   for module in ui rest; do
     module_inputs='
       - "schemas/workflow-dsl/fixtures/code-symbols/**"
       - "schemas/workflow-dsl/fixtures/code/**"
-      - "schemas/workflow-dsl/fixtures/valid/standard-fix.json"'
+      - "schemas/workflow-dsl/v1.json"
+      - "schemas/workflow-dsl/fixtures/valid/**"
+      - "schemas/workflow-dsl/fixtures/invalid/**"
+      - "schemas/workflow-dsl/fixtures/expected.json"
+      - "ouroboros-db/migrations/R__dev_seed_workflows.sql"'
     if [ "$module" = rest ]; then
       module_inputs='
       - "ouroboros-db/migrations/**"

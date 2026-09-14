@@ -61,9 +61,9 @@
 /* ---------- React Flow, re-themed ---------- */
 
 /*
- * Every `--xy-*-default` base.css names, on a token. The ones no component here mounts — the
- * minimap, the resize control, the connection line S.5 will draw — are set too, so a component
- * added later arrives themed rather than in the library's grey.
+ * Every `--xy-*-default` base.css names, on a token — the connection line a drag draws (#151)
+ * among them. The ones no component here mounts — the minimap, the resize control — are set too,
+ * so a component added later arrives themed rather than in the library's grey.
  */
 .studio-canvas .react-flow {
   --xy-background-color: transparent;
@@ -359,14 +359,21 @@
 }
 
 /*
- * The connection points, invisible: nothing can be connected until S.5, and a handle that
- * cannot be used should not be seen. They keep their size, because React Flow measures an
- * edge's end from the handle's box and a handle with none would put every edge at the node's
- * corner.
+ * The connection points: invisible until the pointer is over a stage on a canvas that can connect
+ * (#151) — then a dot on each side to drag a connection from. Eight dots on every stage would be
+ * noise on a graph that is mostly read, and a pointer is the only thing that can drag from one: a
+ * keyboard connects from the inspector, so a selected stage keeps the mockup's `.sel` picture. They
+ * keep their size either way, because React Flow measures an edge's end from the handle's box and a
+ * handle with none would put every edge at the node's corner.
  */
 .studio-node__port {
   border: 0;
   opacity: 0;
+}
+
+.studio-canvas .react-flow__node:hover .studio-node__port.connectable {
+  background: var(--accent);
+  opacity: 1;
 }
 
 /* ---------- the five treatments ---------- */
@@ -511,11 +518,126 @@
   line-height: var(--lh-body);
 }
 
+/*
+ * An edit the canvas refused (#151): a connection that breaks a DSL rule, said with its reason on
+ * the toolbar's row, in the error hue — the rule held the reader's hand back, and they need to see why.
+ */
+.studio-canvas__notice {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The undo and redo pair: the zoom group's box, holding two of the design system's small buttons. */
+.studio-canvas__history {
+  display: inline-flex;
+  gap: var(--sp-2);
+}
+
 /* The mockup's `.hint`: pushed to the trailing edge, in mono, faint. */
 .studio-canvas__hint {
   margin-left: auto;
   color: var(--ink-faint);
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the stage menu — Add stage ▾ and Insert stage ▾ (#151) ---------- */
+
+/*
+ * The shell's menu box (the issues page's workflow menu keeps the same one), anchored to its button.
+ * On the toolbar it opens upward, over the stage: the canvas card clips what leaves it, and the
+ * toolbar is the card's last row. In the inspector it opens in the flow of the panel, which scrolls.
+ */
+.studio-stage-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.studio-stage-menu--inline {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.studio-stage-menu__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 16rem;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.studio-stage-menu__panel--up {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + var(--sp-4));
+  left: 0;
+  box-shadow: 0 var(--sp-3) var(--sp-9) calc(var(--sp-3) * -1) var(--scrim);
+}
+
+.studio-stage-menu__panel--inline {
+  align-self: stretch;
+  min-width: 0;
+}
+
+/* What the menu is for — *Stage types*, or the two stages an insertion goes between. */
+.studio-stage-menu__heading {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-5);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+/* One node type: its glyph, its name, and — when picking it would break a rule — why not. */
+.studio-stage-menu__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.studio-stage-menu__item:hover,
+.studio-stage-menu__item:focus-visible {
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+
+.studio-stage-menu__item[aria-disabled="true"] {
+  color: var(--ink-mut);
+  cursor: not-allowed;
+}
+
+.studio-stage-menu__glyph {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+}
+
+.studio-stage-menu__name {
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.studio-stage-menu__reason {
+  grid-column: 2;
+  color: var(--warn);
+  font-size: var(--t-xs);
   line-height: var(--lh-body);
 }
