@@ -50,6 +50,7 @@
 import type { ProviderConnection } from "@/app/api/providers";
 import type { Reading } from "@/app/api/reading";
 import type { RegistryAlias } from "@/app/api/registry";
+import type { RoutingTaskKind } from "@/app/api/routing";
 import { PROVIDERS_PATH } from "@/app/paths";
 
 import { type TableRow, tableRows } from "./table";
@@ -92,6 +93,16 @@ export interface RegistryReadings {
    * empty state and its failed state are different facts — see {@link tableState}.
    */
   readonly aliases: Reading<readonly RegistryAlias[]>;
+  /**
+   * The routing matrix's task kinds — every route and its chain — or why they could not be read.
+   *
+   * Since CI.5 ([#595](https://github.com/NobuData/ouroboros/issues/595)): the chain card
+   * simulates an alias that no run has resolved through yet, and Simulate asks about a **task
+   * kind**, so the page needs to know which route an alias sits in (`app/registry/chain.ts`'s
+   * `primaryTaskKind`). A refused read degrades that card alone: it says it cannot tell rather
+   * than claiming nothing routes through the alias.
+   */
+  readonly routes: Reading<readonly RoutingTaskKind[]>;
 }
 
 /* ------------------------------------------------------------------ the table's seat */

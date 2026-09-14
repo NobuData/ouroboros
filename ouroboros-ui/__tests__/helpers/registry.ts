@@ -2,6 +2,7 @@ import type {
   ImportCandidate,
   ImportCandidateList,
   ImportResult,
+  LatestResolution,
   ModelAliasReference,
   ModelAliasConnection,
   ModelCapabilitySummary,
@@ -14,11 +15,14 @@ import type {
   RegistryAlias,
   RegistryBinding,
   RegistryReadModel,
+  ResolutionSnapshot,
+  ResolutionSnapshotHop,
 } from "@/app/api/registry";
 import type { ProviderConnection } from "@/app/api/providers";
+import type { Resolution, ResolutionHop } from "@/app/api/routing";
 import type { RegistryReadings } from "@/app/registry/view";
 
-import { CHECKED_AT } from "./models";
+import { CHECKED_AT, resolvedExample, seededTaskKinds } from "./models";
 import { seededCards } from "./providers";
 
 /**
@@ -346,8 +350,205 @@ export function registryReadings(over: Partial<RegistryReadings> = {}): Registry
   return {
     providers: { ok: true, value: registryConnections() },
     aliases: { ok: true, value: seededRegistry() },
+    routes: { ok: true, value: seededTaskKinds() },
     ...over,
   };
+}
+
+/* ------------------------------------------------------------------ the CI.5 cards (#595) */
+
+/**
+ * The chain card's fixtures — run #482's stored resolution, and the simulations the card asks
+ * for when there is none.
+ *
+ * **Run #482 is transcribed from the dev seed**, not invented:
+ * `ouroboros-db/migrations/R__dev_seed_routing.sql` writes it by walking the seeded
+ * `implement-primary` chain hop by hop, and `resolutions.integration-spec.ts` in
+ * `ouroboros-rest` asserts it through the read — `coder-max` kept with the key suffix `Xq4A`
+ * and `Primary · healthy · 42ms`, `coder-fallback` dropped because the seeded Copilot connection
+ * is in `error`, `local-docs` kept in reserve, the whole resolution `42` ms. That is what makes
+ * *"the seeded run #482 reproduces the mockup card"* a claim a render test can make at all.
+ */
+
+/** Run #482's snapshot id, as the seed writes it. */
+export const RUN_482_SNAPSHOT_ID = "5eed0017-0000-4000-8000-000000000001";
+
+/** The dropped Copilot hop's sentence, as the seed composes it from the connection's state. */
+export const COPILOT_DROPPED = "Fallback 1 dropped — GitHub Copilot is unreachable (elevated latency).";
+
+/**
+ * One stored hop, defaulting to run #482's primary.
+ *
+ * @param over What this hop is about.
+ * @returns The hop as the contract serves it.
+ */
+export function snapshotHop(over: Partial<ResolutionSnapshotHop> = {}): ResolutionSnapshotHop {
+  return {
+    index: 1,
+    position: 1,
+    alias: "coder-max",
+    modelId: "claude-fable-5",
+    params: { thinking: "max", token_budget: 400_000 },
+    provider: {
+      kind: "anthropic",
+      displayName: "Anthropic Claude",
+      keySuffix: "Xq4A",
+      status: "active",
+      latencyMs: 42,
+      detail: null,
+    },
+    note: null,
+    decision: "kept",
+    code: "provider_healthy",
+    explanation: "Primary · healthy · 42ms",
+    durationMs: 42,
+    ...over,
+  };
+}
+
+/**
+ * Run #482's stored resolution.
+ *
+ * @param over What this case changes about it.
+ * @returns The snapshot as `GET /registry/resolutions/latest` serves it.
+ */
+export function seededSnapshot(over: Partial<ResolutionSnapshot> = {}): ResolutionSnapshot {
+  return {
+    shapeVersion: 1,
+    id: RUN_482_SNAPSHOT_ID,
+    run: { id: "5eed0006-0000-4000-8000-000000000482", issueNumber: 482 },
+    taskKind: "implement",
+    routeTag: "implement-primary",
+    outcome: "resolved",
+    durationMs: 42,
+    resolvedHopIndex: 1,
+    chain: [
+      snapshotHop(),
+      snapshotHop({
+        index: 2,
+        position: 2,
+        alias: "coder-fallback",
+        modelId: "gpt-5-codex",
+        params: {},
+        provider: {
+          kind: "copilot",
+          displayName: "GitHub Copilot",
+          keySuffix: null,
+          status: "error",
+          latencyMs: null,
+          detail: "elevated latency",
+        },
+        note: "Fallback on 5xx / timeouts",
+        decision: "dropped",
+        code: "provider_error",
+        explanation: COPILOT_DROPPED,
+        durationMs: null,
+      }),
+      snapshotHop({
+        index: 3,
+        position: 3,
+        alias: "local-docs",
+        modelId: "qwen3-coder:32b",
+        params: { context_tokens: 32_000 },
+        provider: {
+          kind: "ollama",
+          displayName: "Ollama (local)",
+          keySuffix: null,
+          status: "active",
+          latencyMs: null,
+          detail: null,
+        },
+        note: "Offline mode — keeps the loop turning without a network",
+        explanation: "Fallback 2 · healthy",
+        durationMs: null,
+      }),
+    ],
+    rules: [],
+    resolvedAt: "2026-09-14T09:08:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * The latest-resolution envelope.
+ *
+ * @param alias The alias asked about.
+ * @param snapshot Its snapshot, or `null` for an alias no run has resolved through.
+ * @returns `{alias, snapshot}`, as the contract serves it.
+ */
+export function latestResolution(
+  alias: string,
+  snapshot: ResolutionSnapshot | null = null,
+): LatestResolution {
+  return { alias, snapshot };
+}
+
+/** The sentence resolution writes for a switched-off primary — who, and on which day. */
+export const DISABLED_DROPPED = "Primary dropped — coder-std: alias disabled by Ken Suenobu 2026-08-01.";
+
+/** …and for an unbound one. */
+export const UNBOUND_DROPPED = "Primary dropped — coder-std: alias unbound — no provider.";
+
+/**
+ * A simulation of `analyze` — `coder-std` then `local-docs` — with the primary as this case has it.
+ *
+ * Built on the contract's own `resolved` example so every field a resolution carries is present;
+ * only the chain is this case's.
+ *
+ * @param primary What changes about `coder-std`'s hop.
+ * @returns The resolution as `POST /routing/simulate` answers it.
+ */
+export function analyzeSimulation(primary: Partial<ResolutionHop> = {}): Resolution {
+  const example = resolvedExample();
+  const [anthropic] = example.chain;
+
+  return {
+    ...example,
+    taskKind: "analyze",
+    routeTag: "analyze-primary",
+    rules: [],
+    votes: [],
+    chain: [
+      {
+        ...anthropic,
+        alias: "coder-std",
+        modelId: "claude-sonnet-5",
+        ...primary,
+      },
+      {
+        ...anthropic,
+        index: 2,
+        position: 2,
+        alias: "local-docs",
+        modelId: "qwen3-coder:32b",
+        provider: anthropic.provider === null ? null : { ...anthropic.provider, kind: "ollama", displayName: "Ollama (local)" },
+        explanation: "Fallback 1 · healthy",
+      },
+    ],
+  };
+}
+
+/**
+ * The same simulation with the primary switched off.
+ *
+ * @returns The resolution, `coder-std` dropped with `alias_disabled`.
+ */
+export function disabledSimulation(): Resolution {
+  return analyzeSimulation({ decision: "dropped", code: "alias_disabled", explanation: DISABLED_DROPPED });
+}
+
+/**
+ * The same simulation with the primary bound to nothing.
+ *
+ * @returns The resolution, `coder-std` dropped with `alias_unbound` and no provider.
+ */
+export function unboundSimulation(): Resolution {
+  return analyzeSimulation({
+    decision: "dropped",
+    code: "alias_unbound",
+    provider: null,
+    explanation: UNBOUND_DROPPED,
+  });
 }
 
 /* ------------------------------------------------------------------ the CI.4 flows (#594) */

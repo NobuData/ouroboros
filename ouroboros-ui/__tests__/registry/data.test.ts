@@ -4,6 +4,7 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { TENANT_ID, membership, sessionUser } from "../helpers/login";
+import { seededMatrix, seededTaskKinds } from "../helpers/models";
 import { connectionPage, seededCards } from "../helpers/providers";
 import { registryPayload, seededRegistry } from "../helpers/registry";
 
@@ -30,8 +31,12 @@ const list = vi.fn();
 /** What the registry endpoint answers with. */
 const read = vi.fn();
 
+/** What the routing matrix answers with — the chain card's routes (CI.5, #595). */
+const matrix = vi.fn();
+
 vi.mock("@/app/api/providers", () => ({ providers: { list: () => list() } }));
 vi.mock("@/app/api/registry", () => ({ registry: { read: () => read() } }));
+vi.mock("@/app/api/routing", () => ({ routing: { matrix: () => matrix() } }));
 
 const { readRegistry } = await import("@/app/registry/data");
 
@@ -56,17 +61,31 @@ const ACCESS: Workspace = {
 beforeEach(() => {
   list.mockReset().mockResolvedValue(connectionPage(seededCards()));
   read.mockReset().mockResolvedValue(registryPayload());
+  matrix.mockReset().mockResolvedValue(seededMatrix());
 });
 
 describe("reading the page", () => {
-  it("unwraps both envelopes into the lists the page draws from", () => {
-    // The endpoints' envelopes are `{items, total, limit, offset}` and `{aliases: [...]}`; the
-    // page wants the connections and the rows. Unwrapping here rather than in the components is
-    // what keeps them free of the contract's shape.
+  it("unwraps every envelope into the lists the page draws from", () => {
+    // The endpoints' envelopes are `{items, total, limit, offset}`, `{aliases: [...]}` and the
+    // matrix; the page wants the connections, the rows and the task kinds. Unwrapping here
+    // rather than in the components is what keeps them free of the contract's shape.
     return expect(readRegistry(ACCESS)).resolves.toEqual({
       providers: { ok: true, value: seededCards() },
       aliases: { ok: true, value: seededRegistry() },
+      routes: { ok: true, value: seededTaskKinds() },
     });
+  });
+
+  it("degrades only the chain card's input when the routes could not be read", async () => {
+    // CI.5 (#595): the routes tell the chain card which task kind to simulate. A refusal there
+    // is one degraded card, and the table and the connections stand.
+    matrix.mockRejectedValue(new ApiError(503, "upstream_unavailable", "routing away"));
+
+    const readings = await readRegistry(ACCESS);
+
+    expect(readings.routes).toEqual({ ok: false, reason: "routing away" });
+    expect(readings.aliases.ok).toBe(true);
+    expect(readings.providers.ok).toBe(true);
   });
 
   it("reads a workspace with no aliases as an empty list, not as a failure", async () => {
@@ -133,5 +152,7 @@ describe("reading the page", () => {
     expect(list).toHaveBeenCalledWith();
     expect(read).toHaveBeenCalledOnce();
     expect(read).toHaveBeenCalledWith();
+    expect(matrix).toHaveBeenCalledOnce();
+    expect(matrix).toHaveBeenCalledWith();
   });
 });

@@ -23,9 +23,11 @@ import {
   type RegistryReadings,
 } from "@/app/registry/view";
 
+import { CHAIN_EMPTY_TITLE, CHAIN_TITLE, WHY_TITLE } from "@/app/registry/chain";
 import { CREATE_TITLE, NAME_LABEL, NAME_TAKEN, PROVIDER_LABEL } from "@/app/registry/create";
 import { wizardTitle } from "@/app/registry/wizard";
 
+import { seededTaskKinds } from "../helpers/models";
 import { seededCards } from "../helpers/providers";
 import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 import { seededRegistry } from "../helpers/registry";
@@ -56,6 +58,13 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }),
 }));
 
+/** The chain card's read (#595) — `chain-actions.test.ts`'s subject. Unanswered here. */
+const readChain = vi.fn<(...args: unknown[]) => Promise<never>>(() => new Promise(() => {}));
+
+vi.mock("@/app/registry/chain-actions", () => ({
+  readChain: (...args: unknown[]) => readChain(...args),
+}));
+
 const { RegistryScreen } = await import("@/app/registry/registry-screen");
 
 /**
@@ -82,7 +91,11 @@ function readings(
   providers: readonly ProviderConnection[] = seededCards(),
   aliases: readonly RegistryAlias[] = seededRegistry(),
 ): RegistryReadings {
-  return { providers: { ok: true, value: providers }, aliases: { ok: true, value: aliases } };
+  return {
+    providers: { ok: true, value: providers },
+    aliases: { ok: true, value: aliases },
+    routes: { ok: true, value: seededTaskKinds() },
+  };
 }
 
 /** …and a provider read that did not. */
@@ -112,6 +125,39 @@ function page(
     />,
   );
 }
+
+describe("the right-hand cards (#595)", () => {
+  it("draws the why-aliases and chain cards beside the inspector", () => {
+    page({ alias: "coder-max" });
+
+    expect(screen.getByRole("region", { name: WHY_TITLE })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: CHAIN_TITLE })).toBeInTheDocument();
+  });
+
+  it("asks the chain for the URL's alias, with the task kind its routes give it", () => {
+    readChain.mockClear();
+    page({ alias: "coder-max" });
+
+    expect(readChain).toHaveBeenCalledWith("coder-max", { kind: "routed", taskKind: "plan" });
+  });
+
+  it("tells the chain it cannot know the route when the routes were refused", () => {
+    readChain.mockClear();
+    page({
+      alias: "coder-std",
+      readings: { ...readings(), routes: { ok: false, reason: "routing away" } },
+    });
+
+    expect(readChain).toHaveBeenCalledWith("coder-std", { kind: "unknown", reason: "routing away" });
+  });
+
+  it("keeps both cards when there is no table, with the chain waiting for a selection", () => {
+    page({ readings: { ...readings(), aliases: TABLE_UNREADABLE } });
+
+    expect(screen.getByRole("region", { name: WHY_TITLE })).toBeInTheDocument();
+    expect(screen.getByText(CHAIN_EMPTY_TITLE)).toBeInTheDocument();
+  });
+});
 
 describe("the page head", () => {
   it("is mockup 21's: the Models eyebrow and the naming promise as the title", () => {

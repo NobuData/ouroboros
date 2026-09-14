@@ -255,6 +255,23 @@ export type SkippedImport = components["schemas"]["SkippedImport"];
  */
 export type ImportResult = components["schemas"]["ImportResult"];
 
+/**
+ * The alias asked about, and the most recent stored resolution whose chain names it — CH.6's
+ * read ([#589](https://github.com/NobuData/ouroboros/issues/589)), consumed by the chain card
+ * (CI.5, [#595](https://github.com/NobuData/ouroboros/issues/595)).
+ *
+ * `snapshot` is **`null`** when no run in this workspace has resolved through the alias, which
+ * is the card's cue to ask Simulate instead and say so — never to draw a run that did not
+ * happen (decision **R9**).
+ */
+export type LatestResolution = components["schemas"]["LatestResolution"];
+
+/** One stored resolution — what routing decided for one run, kept. */
+export type ResolutionSnapshot = components["schemas"]["ResolutionSnapshot"];
+
+/** One hop of a stored chain, dropped ones included, with its sentence as written then. */
+export type ResolutionSnapshotHop = components["schemas"]["ResolutionSnapshotHop"];
+
 /** The model registry, as `ouroboros-rest` serves it. */
 export const registry = {
   /**
@@ -467,5 +484,24 @@ export const registry = {
    */
   async remove(id: string, client: ApiClient = api()): Promise<void> {
     await client.DELETE("/api/v1/registry/aliases/{id}", { params: { path: { id } } });
+  },
+
+  /**
+   * The latest stored resolution touching one alias — the chain card's first source
+   * ([#595](https://github.com/NobuData/ouroboros/issues/595)).
+   *
+   * A hop counts whether it was kept or dropped, so asking about an alias a run skipped still
+   * answers that run: an alias being skipped is exactly what somebody inspecting it needs.
+   *
+   * @param alias The alias, by name.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The alias echoed, and its latest snapshot — or `snapshot: null` when no run in this
+   *   workspace has resolved through it, which is an answer rather than a failure.
+   * @throws {ApiError} What the service answered.
+   */
+  async latestResolution(alias: string, client: ApiClient = api()): Promise<LatestResolution> {
+    return unwrap(
+      await client.GET("/api/v1/registry/resolutions/latest", { params: { query: { alias } } }),
+    );
   },
 };

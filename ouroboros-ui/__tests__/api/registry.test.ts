@@ -6,11 +6,13 @@ import { clientAnswering, stubClient } from "../helpers/api";
 import {
   candidateList,
   importResult,
+  latestResolution,
   modelOptionList,
   paramSchemaResponse,
   registryAlias,
   registryPayload,
   seededRegistry,
+  seededSnapshot,
 } from "../helpers/registry";
 import { modelAlias } from "../helpers/providers";
 
@@ -478,5 +480,42 @@ describe("registry.remove", () => {
     );
 
     await expect(registry.remove(registryAlias().id, client)).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("registry.latestResolution", () => {
+  it("asks the snapshot read about one alias, by name, and returns the body itself", async () => {
+    const { client, requests } = clientAnswering(latestResolution("coder-max", seededSnapshot()));
+
+    const answer = await registry.latestResolution("coder-max", client);
+
+    expect(answer).toEqual(latestResolution("coder-max", seededSnapshot()));
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe("GET");
+
+    const url = new URL(requests[0]?.url ?? "");
+
+    expect(url.pathname).toBe("/api/v1/registry/resolutions/latest");
+    expect(url.searchParams.get("alias")).toBe("coder-max");
+    // The workspace is the session's, as for every call in this module.
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+  });
+
+  it("answers a null snapshot as an answer, not a failure", async () => {
+    const { client } = clientAnswering(latestResolution("gpt5-experiments"));
+
+    await expect(registry.latestResolution("gpt5-experiments", client)).resolves.toEqual({
+      alias: "gpt5-experiments",
+      snapshot: null,
+    });
+  });
+
+  it("rejects with the service's refusal", async () => {
+    const { client } = clientAnswering(NO_ORGANIZATION, 403);
+
+    await expect(registry.latestResolution("coder-max", client)).rejects.toMatchObject({
+      status: 403,
+      code: "organization_required",
+    });
   });
 });

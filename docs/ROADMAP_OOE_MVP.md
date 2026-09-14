@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**193 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**194 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -1361,7 +1361,7 @@ the blockquote above that records what it did and what it did differently.
 | 191 | **V.1** | ✅ [#169](https://github.com/NobuData/ouroboros/issues/169) | Code route, head & mode switching | ouroboros-ui | M | S.1, U.3 |
 | 192 | **W.3** | ✅ [#179](https://github.com/NobuData/ouroboros/issues/179) | Intelligence integration tests | ouroboros-rest | S | W.1, W.2 |
 | 193 | **CH.7** | ✅ [#590](https://github.com/NobuData/ouroboros/issues/590) | Registry integration tests | ouroboros-rest | M | CH.1, CH.6 |
-| 194 | **CI.5** | [#595](https://github.com/NobuData/ouroboros/issues/595) | Why-aliases & resolution-chain cards | ouroboros-ui | M | CH.6, CI.1 |
+| 194 | **CI.5** | ✅ [#595](https://github.com/NobuData/ouroboros/issues/595) | Why-aliases & resolution-chain cards | ouroboros-ui | M | CH.6, CI.1 |
 | 195 | **S.4** | [#150](https://github.com/NobuData/ouroboros/issues/150) | Inspector panel | ouroboros-ui | L | R.3, S.3 |
 | 196 | **S.5** | [#151](https://github.com/NobuData/ouroboros/issues/151) | Canvas editing operations | ouroboros-ui | M | R.3, S.3 |
 | 197 | **V.2** | [#170](https://github.com/NobuData/ouroboros/issues/170) | CodeMirror foundation & DSL highlighting | ouroboros-ui | L | V.1 |

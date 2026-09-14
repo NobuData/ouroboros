@@ -21,8 +21,10 @@ import {
   tableRows,
 } from "@/app/registry/table";
 
+import { routeLookups } from "@/app/registry/chain";
 import { importSources } from "@/app/registry/view";
 
+import { seededTaskKinds } from "../helpers/models";
 import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 import { seededCards } from "../helpers/providers";
 import {
@@ -65,6 +67,13 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }),
 }));
 
+/** The chain card's read (#595) — `chain-actions.test.ts`'s subject. Unanswered here. */
+const readChain = vi.fn<(...args: unknown[]) => Promise<never>>(() => new Promise(() => {}));
+
+vi.mock("@/app/registry/chain-actions", () => ({
+  readChain: (...args: unknown[]) => readChain(...args),
+}));
+
 const { RegistryTable } = await import("@/app/registry/registry-table");
 
 /** The mockup this table is drawn from, read once. */
@@ -81,6 +90,9 @@ const SOURCES = importSources(seededCards());
 
 /** …and every alias name, for its live uniqueness check. */
 const NAMES = seededRegistry().map((alias) => alias.alias);
+
+/** Which route each alias sits in — the chain card's lookups (#595). */
+const ROUTES = routeLookups({ ok: true, value: seededTaskKinds() }, NAMES);
 
 /**
  * Where these tests pretend to be, so an assertion about the address bar is about
@@ -113,6 +125,7 @@ function table({
     <RegistryTable
       aliasNames={NAMES}
       mayAdminister={mayAdminister}
+      routes={ROUTES}
       rows={rows}
       selected={selected}
       sources={SOURCES}
@@ -137,6 +150,38 @@ function rowFor(alias: string): HTMLElement {
 function reflected(): string | null {
   return new URL(window.location.href).searchParams.get(ALIAS_PARAM);
 }
+
+describe("the seat row's two cards beside the inspector (#595)", () => {
+  it("holds the inspector, the why-aliases card and the chain card, in the mockup's order", () => {
+    const { container } = table({ selected: "coder-max" });
+
+    const seats = container.querySelectorAll(".registry-aside > section");
+
+    expect([...seats].map((seat) => seat.getAttribute("aria-labelledby"))).toEqual([
+      "registry-inspector-title",
+      "registry-why-title",
+      "registry-chain-title",
+    ]);
+  });
+
+  it("follows the table's selection with the chain card", () => {
+    readChain.mockClear();
+    table({ selected: "coder-max" });
+
+    expect(readChain).toHaveBeenLastCalledWith("coder-max", { kind: "routed", taskKind: "plan" });
+
+    fireEvent.click(rowFor("coder-std"));
+
+    expect(readChain).toHaveBeenLastCalledWith("coder-std", { kind: "routed", taskKind: "analyze" });
+  });
+
+  it("asks nothing while no row is selected", () => {
+    readChain.mockClear();
+    table();
+
+    expect(readChain).not.toHaveBeenCalled();
+  });
+});
 
 describe("the card frame", () => {
   it("names itself and counts what it holds, and the count is the row count", () => {
@@ -438,6 +483,7 @@ describe("a selection the table did not make (#594)", () => {
       <RegistryTable
         aliasNames={NAMES}
         mayAdminister
+        routes={ROUTES}
         rows={ROWS}
         selected="sizer"
         sources={SOURCES}
@@ -458,6 +504,7 @@ describe("a selection the table did not make (#594)", () => {
       <RegistryTable
         aliasNames={NAMES}
         mayAdminister
+        routes={ROUTES}
         rows={ROWS}
         selected="coder-max"
         sources={SOURCES}
@@ -474,6 +521,7 @@ describe("a selection the table did not make (#594)", () => {
       <RegistryTable
         aliasNames={NAMES}
         mayAdminister
+        routes={ROUTES}
         rows={ROWS}
         selected={null}
         sources={SOURCES}
@@ -602,6 +650,7 @@ describe("both palettes", () => {
       <RegistryTable
         aliasNames={NAMES}
         mayAdminister
+        routes={ROUTES}
         rows={ROWS}
         selected="coder-max"
         sources={SOURCES}
@@ -618,6 +667,7 @@ describe("both palettes", () => {
       <RegistryTable
         aliasNames={NAMES}
         mayAdminister
+        routes={ROUTES}
         rows={ROWS}
         selected="coder-max"
         sources={SOURCES}

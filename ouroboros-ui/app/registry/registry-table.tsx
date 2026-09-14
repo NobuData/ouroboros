@@ -9,6 +9,8 @@ import { Button, Card, CardHead, Chip, EmptyState, Table, Tag, type Column, cx }
 
 import { AliasInspector } from "./alias-inspector";
 import { AliasSwitch } from "./alias-switch";
+import { type RouteLookup, routeFor } from "./chain";
+import { ChainCard } from "./chain-card";
 import {
   EM_DASH,
   FIX_IN_PROVIDERS,
@@ -27,6 +29,7 @@ import {
   selectionAnnouncement,
 } from "./table";
 import type { ImportSource } from "./view";
+import { WhyCard } from "./why-card";
 
 import "./registry.css";
 
@@ -105,6 +108,12 @@ export interface RegistryTableProps {
   readonly sources: readonly ImportSource[];
   /** Every alias name this workspace has — the inspector's live uniqueness check. */
   readonly aliasNames: readonly string[];
+  /**
+   * Which route each alias sits in — the chain card's question for Simulate when no run has
+   * resolved through the selected alias (CI.5, [#595](https://github.com/NobuData/ouroboros/issues/595)).
+   * Computed once by the screen from the page's routes read.
+   */
+  readonly routes: Readonly<Record<string, RouteLookup>>;
 }
 
 /** The id the table card's `aria-labelledby` points at. */
@@ -266,6 +275,7 @@ export function RegistryTable({
   mayAdminister,
   sources,
   aliasNames,
+  routes,
 }: RegistryTableProps) {
   /**
    * The selection, and the prop it was last adopted from.
@@ -341,6 +351,9 @@ export function RegistryTable({
           row={row}
           sources={sources}
         />
+        {/* CI.5 (#595): the page's argument, and the proof for whichever alias is selected. */}
+        <WhyCard />
+        <ChainCard route={row === null ? null : routeFor(routes, row.alias)} row={row} />
       </div>
     </>
   );
