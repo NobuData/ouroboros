@@ -1307,7 +1307,10 @@ rail: ▌standard-fix 6·auto-merge │ feature-loop │ deps-refresh │ docs-l
     *Last edited*, measured against the instant the page was read.
   * **The segmented control is the CP.4 `PageSubnav`**, per the shell addendum, with Visual
     live and Code / Copilot as `SubnavSoon` naming #169 and #565 — the ticket's own honesty
-    obligation, and the two amendments recorded on it.
+    obligation, and the two amendments recorded on it. *(Code went live with V.1, #169, on
+    2026-09-14, and Visual and Code now link to the workflow's two URLs through a guard that
+    asks before a switch discards code that has not parsed — see
+    `ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`.)*
   * **Browse templates, Dry run and Publish vN+1 are drawn and inert, each with the issue
     it waits for as its reason** (#159, #152, #152). There is no onboarding placeholder route
     to send Browse templates to — #49's placeholders were never pages — so the honest

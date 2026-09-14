@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CANVAS_LABEL } from "@/app/workflows/canvas/view";
-import { WORKFLOWS_PATH, workflowPath } from "@/app/paths";
+import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
 import {
   DEV_SEED_NOTE,
   EMPTY_TITLE,
@@ -16,7 +16,7 @@ import {
 import {
   BROWSE_TEMPLATES_LABEL,
   BROWSE_TEMPLATES_SOON,
-  CODE_SOON_NOTE,
+  CODE_NEEDS_WORKFLOW_NOTE,
   COPILOT_SOON_NOTE,
   DRY_RUN_LABEL,
   DRY_RUN_SOON,
@@ -120,32 +120,31 @@ describe("the page head, on the seeded standard-fix", () => {
 });
 
 describe("the segmented control", () => {
-  it("is Visual, current and linking to this workflow, then Code and Copilot marked soon", () => {
+  it("is Visual, current and linking to this workflow, then Code linking to its file", () => {
+    // V.1 (#169) amends S.1's control: the Code segment is live.
     render(<StudioScreen mayAdminister readings={readings()} role="owner" />);
 
     const visual = within(segments()).getByRole("link", { name: "Visual" });
+    const code = within(segments()).getByRole("link", { name: "Code" });
 
     expect(visual).toHaveAttribute("aria-current", "page");
     expect(visual).toHaveAttribute("href", workflowPath("standard-fix"));
-    expect(within(segments()).getAllByRole("link")).toHaveLength(1);
+    expect(code).not.toHaveAttribute("aria-current");
+    expect(code).toHaveAttribute("href", workflowCodePath("standard-fix"));
+    expect(within(segments()).getAllByRole("link")).toHaveLength(2);
   });
 
-  it("labels Code and Copilot honestly — a span, out of the tab order, naming what builds each", () => {
-    // The ticket's own honesty obligation: *they ship visibly disabled and labelled, not as
-    // buttons that quietly do nothing.*
+  it("labels Copilot honestly — a span, out of the tab order, marked soon and naming what builds it", () => {
+    // S.1's honesty obligation: *they ship visibly disabled and labelled, not as buttons that
+    // quietly do nothing.*
     render(<StudioScreen mayAdminister readings={readings()} role="owner" />);
 
-    for (const [label, note] of [
-      ["Code", CODE_SOON_NOTE],
-      ["Copilot", COPILOT_SOON_NOTE],
-    ] as const) {
-      const segment = within(segments()).getByTitle(`${label} — ${note}`);
+    const segment = within(segments()).getByTitle(`Copilot — ${COPILOT_SOON_NOTE}`);
 
-      expect(segment.tagName).toBe("SPAN");
-      expect(segment).toHaveTextContent(/soon/);
-      expect(within(segments()).queryByRole("link", { name: label })).toBeNull();
-      expect(within(segments()).queryByRole("button", { name: label })).toBeNull();
-    }
+    expect(segment.tagName).toBe("SPAN");
+    expect(segment).toHaveTextContent(/soon/);
+    expect(within(segments()).queryByRole("link", { name: /Copilot/ })).toBeNull();
+    expect(within(segments()).queryByRole("button", { name: /Copilot/ })).toBeNull();
   });
 });
 
@@ -287,6 +286,16 @@ describe("a URL naming a workflow the rail does not hold", () => {
       "href",
       WORKFLOWS_PATH,
     );
+  });
+
+  it("draws Code inert, saying a workflow has to be selected — not soon, because it is built", () => {
+    render(<StudioScreen mayAdminister readings={missing} role="owner" />);
+
+    const code = within(segments()).getByTitle(`Code — ${CODE_NEEDS_WORKFLOW_NOTE}`);
+
+    expect(code.tagName).toBe("SPAN");
+    expect(code).not.toHaveTextContent(/soon/);
+    expect(within(segments()).queryByRole("link", { name: "Code" })).toBeNull();
   });
 });
 

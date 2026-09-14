@@ -8,7 +8,6 @@ import {
   RAIL_FAILED_HEADLINE,
   type SeatState,
   WORKFLOW_FAILED_HEADLINE,
-  readOnlyNote,
   seatCopy,
   selectedEntry,
   studioHead,
@@ -16,6 +15,7 @@ import {
 } from "./states";
 import { StudioFailedBanner } from "./studio-banner";
 import { StudioFrame } from "./studio-frame";
+import { StudioReadOnlyNote } from "./studio-readonly-note";
 import {
   BROWSE_TEMPLATES_LABEL,
   BROWSE_TEMPLATES_SOON,
@@ -134,12 +134,13 @@ export function StudioScreen({
   return (
     <StudioFrame
       actions={<Actions entry={entry} mayAdminister={mayAdminister} />}
+      current="visual"
       slug={slug}
       subline={head.subline}
       title={head.title}
     >
       {/* The role, explained, for a reader who may look and not change. */}
-      {!mayAdminister && <ReadOnlyNote role={role} />}
+      {!mayAdminister && <StudioReadOnlyNote role={role} />}
 
       {/* The one place a refused read is explained, above everything it took with it. */}
       {state.kind === "failed" && (
@@ -194,27 +195,6 @@ function Actions({
         </Button>
       )}
     </>
-  );
-}
-
-/**
- * The sentence a reader who may look and not change is given.
- *
- * A `note` rather than a `status`: it is a fact about the reader that does not change while
- * the page is open, and announcing it as a live region would read it out again on every
- * render for no reason. The head names the role and the body says what it means here — two
- * spans on one line, so the role is the first thing read.
- *
- * @param props.role The reader's strongest role.
- * @returns The paragraph.
- */
-function ReadOnlyNote({ role }: Readonly<{ role: Role }>) {
-  const note = readOnlyNote(role);
-
-  return (
-    <p className="studio-readonly" role="note">
-      <span className="studio-readonly__head">{note.head}</span> {note.body}
-    </p>
   );
 }
 

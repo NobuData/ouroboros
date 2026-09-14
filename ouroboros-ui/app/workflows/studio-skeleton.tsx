@@ -63,6 +63,7 @@ export function StudioSkeleton() {
         </span>
       }
       busy={LOADING_LABEL}
+      current="visual"
       slug={null}
       subline={<span aria-hidden className="studio-skeleton__sub" />}
       title={<span aria-hidden className="studio-skeleton__title" />}

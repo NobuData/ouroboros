@@ -54,8 +54,10 @@ export { Eyebrow, type EyebrowTone } from "./eyebrow";
 export { Meter, type MeterProps, type MeterTone } from "./meter";
 export {
   PageSubnav,
+  SubnavInert,
   SubnavSoon,
   type PageSubnavProps,
+  type SubnavInertProps,
   type SubnavSoonProps,
   type SubnavTone,
 } from "./page-subnav";

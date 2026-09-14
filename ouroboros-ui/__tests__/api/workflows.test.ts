@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 
 import { clientAnswering } from "../helpers/api";
+import { UNPROJECTABLE_REFUSAL, workflowCode } from "../helpers/workflow-code";
 import { seededRail, workflowDetail } from "../helpers/workflows";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these
@@ -13,7 +14,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { workflows } = await import("@/app/api/workflows");
+const { WORKFLOW_CODE_UNPROJECTABLE, workflows } = await import("@/app/api/workflows");
 
 /**
  * The studio's share of P.3's contract (#134, consumed by #147): the rail, one workflow, and
@@ -227,5 +228,47 @@ describe("workflows.create", () => {
 
     expect((failure as ApiError).status).toBe(403);
     expect((failure as ApiError).code).toBe("forbidden");
+  });
+});
+
+describe("workflows.code", () => {
+  it("reads one workflow's file by its slug, in the path", async () => {
+    // U.3's endpoint takes the slug, unlike `read`, which takes the id.
+    const { client, requests } = clientAnswering(workflowCode());
+
+    const file = await workflows.code("standard-fix", client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/workflows/standard-fix/code");
+    expect(requests[0]?.method).toBe("GET");
+    expect(file).toEqual(workflowCode());
+  });
+
+  it("asks for no version, so the file is the draft's — the one the canvas edits", async () => {
+    const { client, requests } = clientAnswering(workflowCode());
+
+    const file = await workflows.code("standard-fix", client);
+
+    expect(new URL(requests[0]!.url).search).toBe("");
+    // Decision C3 as data: the file's etag is the draft slot's, the token the canvas holds.
+    expect(file.etag).toBe(workflowDetail().draft.etag);
+  });
+
+  it("encodes the slug, so a value from a URL cannot become another route", async () => {
+    const { client, requests } = clientAnswering(workflowCode());
+
+    await workflows.code("a b", client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/workflows/a%20b/code");
+  });
+
+  it("rejects a draft with no spelling as code with its code and the validator's findings", async () => {
+    const { client } = clientAnswering(UNPROJECTABLE_REFUSAL, 409);
+
+    const failure = await workflows.code("hotfix-p1", client).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).status).toBe(409);
+    expect((failure as ApiError).code).toBe(WORKFLOW_CODE_UNPROJECTABLE);
+    expect((failure as ApiError).details).toEqual(UNPROJECTABLE_REFUSAL.details);
   });
 });
