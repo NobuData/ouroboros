@@ -2172,6 +2172,21 @@ export interface WorkflowsTable {
 }
 
 /**
+ * `workflow_versions.edited_in` — which editor last wrote a draft (V033,
+ * [#167](https://github.com/NobuData/ouroboros/issues/167)).
+ *
+ * The `workflow_versions_edited_in_known` CHECK, mirrored. Decision **C3** gives a workflow one
+ * draft and two editors, and a stale save's `409` names the one whose change it lost to:
+ *
+ *   * `visual` — the canvas, through `PUT /api/v1/workflows/{id}/draft`.
+ *   * `code` — the code editor, through `PUT /api/v1/workflows/{slug}/code`.
+ */
+export type DraftEditor = "visual" | "code";
+
+/** The two, in the order the CHECK declares them. */
+export const DRAFT_EDITORS = ["visual", "code"] as const satisfies readonly DraftEditor[];
+
+/**
  * `ouroboros.workflow_versions` — a workflow's version history plus its one mutable draft
  * (V029, [#132](https://github.com/NobuData/ouroboros/issues/132)).
  *
@@ -2226,6 +2241,14 @@ export interface WorkflowVersionsTable {
   published_by: string | null;
   /** What changed, in the publisher's words. Optional, never blank, and never on a draft. */
   change_note: string | null;
+  /**
+   * **Which editor last wrote this draft** — {@link DraftEditor} (V033,
+   * [#167](https://github.com/NobuData/ouroboros/issues/167)).
+   *
+   * What a stale save's `409` names. Null on a draft neither editor has written since it was
+   * created or seeded, and on every published version (`workflow_versions_edited_in_draft_only`).
+   */
+  edited_in: DraftEditor | null;
   created_at: Stamped;
   /**
    * **Last edited** — the mockup's *Last edited 2h ago*.
@@ -2983,6 +3006,7 @@ export const TABLE_COLUMNS = {
     "published_at",
     "published_by",
     "change_note",
+    "edited_in",
     "created_at",
     "updated_at",
   ],

@@ -21,17 +21,28 @@
  *     anything is written so that a refused publish leaves no version behind.
  */
 
+import type { DraftEditor, WorkflowVersion } from "../db/schema";
 import {
   BadRequestError,
   ConflictError,
   InvalidRequestError,
+  MethodNotAllowedError,
   NotFoundError,
 } from "../errors/error.envelope";
 import { isDatabaseFailure } from "../tenancy/constraints";
+import type { WorkflowCodeIssue } from "./code.resources";
+import { draftEtag } from "./draft.etag";
+import type { DslDiagnostic } from "./dsl.errors";
 import type { PublishFinding } from "./publish.gate";
 
 /** The codes, as one object — see `tenancy.errors.ts` for why `as const` matters. */
 export const WORKFLOW_ERRORS = {
+  /** The code view could not read a saved file, so nothing was written (U.3, #167). */
+  codeInvalid: "workflow_code_invalid",
+  /** The document cannot be shown as code without changing it (U.3, #167). */
+  codeUnprojectable: "workflow_code_unprojectable",
+  /** A write to a read-only file of the code view (U.3, #167). */
+  codeReadOnly: "workflow_code_read_only",
   /** No workflow with that id — *or* none this caller may know about. */
   workflowNotFound: "workflow_not_found",
   /** That slug already names a workflow in this workspace. */
@@ -122,22 +133,77 @@ export function draftEtagRequired(): BadRequestError {
 }
 
 /**
+ * The draft a stale write lost to, as its `409` describes it.
+ *
+ * Built by {@link conflictingDraft} from the one row the guard read, so the etag, the editor and
+ * the stamp in an answer all describe the same write.
+ */
+export interface ConflictingDraft {
+  /** The etag the draft has now — {@link draftEtag} of the row. */
+  readonly etag: string;
+  /** Which editor wrote it last (V033), or `null` when neither has since it was created. */
+  readonly editedIn: DraftEditor | null;
+  /** When it was last written, or `null` when there is no draft at all. */
+  readonly updatedAt: Date | null;
+}
+
+/**
+ * What a draft row says about a conflict.
+ *
+ * @param row - The draft the guard read under its lock, or `undefined` when the workflow has
+ *   none — which a writer loses to when its draft was deleted out from under it.
+ * @returns The row's etag, editor and stamp.
+ */
+export function conflictingDraft(row: WorkflowVersion | undefined): ConflictingDraft {
+  return {
+    etag: draftEtag(row),
+    editedIn: row?.edited_in ?? null,
+    updatedAt: row?.updated_at ?? null,
+  };
+}
+
+/** What a `409` says, by the editor whose change the writer lost to (U.3, #167). */
+const CONFLICT_MESSAGES: Readonly<Record<DraftEditor | "unknown", string>> = {
+  visual: "This draft was changed in the visual editor. Reload it before saving again.",
+  code: "This draft was changed in the code editor. Reload it before saving again.",
+  unknown: "This draft was changed by someone else. Reload it before saving again.",
+};
+
+/**
  * `409` — the draft is not the one this writer read.
  *
+ * **It names the other editor's change** (U.3,
+ * [#167](https://github.com/NobuData/ouroboros/issues/167)). A workflow has one draft and two
+ * editors (decision **C3**), so *somebody changed it* would leave the conflict dialog guessing:
+ * the message and `details.editedIn` say which editor wrote the draft this request lost to, and
+ * `details.updatedAt` says when. Both describe a row this caller may already read.
+ *
  * @param expected - The etag the request sent.
- * @param current - The etag the draft actually has now, when it is known. Published so the
+ * @param current - The draft as it is now, when it is known. Its etag is published so the
  *   studio can decide whether to reload without a second round trip; it is a digest of a row
  *   this caller may already read, so it discloses nothing the `GET` does not. Omitted where it
  *   genuinely is not known — a draft created concurrently is reported by a unique index,
  *   inside a transaction that cannot then be read from, and inventing a token there would put
  *   a value in the envelope that matches nothing.
- * @returns The error to throw.
+ * @returns The error to throw. `details` is `{expected}` without a current draft, and
+ *   `{expected, current, editedIn, updatedAt}` with one.
  */
-export function draftConflict(expected: string, current?: string): ConflictError {
+export function draftConflict(expected: string, current?: ConflictingDraft): ConflictError {
+  if (current === undefined) {
+    return new ConflictError(WORKFLOW_ERRORS.draftConflict, CONFLICT_MESSAGES.unknown, {
+      expected,
+    });
+  }
+
   return new ConflictError(
     WORKFLOW_ERRORS.draftConflict,
-    "This draft was changed by someone else. Reload it before saving again.",
-    { expected, ...(current === undefined ? {} : { current }) },
+    CONFLICT_MESSAGES[current.editedIn ?? "unknown"],
+    {
+      expected,
+      current: current.etag,
+      editedIn: current.editedIn,
+      updatedAt: current.updatedAt === null ? null : current.updatedAt.toISOString(),
+    },
   );
 }
 
@@ -213,6 +279,88 @@ export function slugRequired(name: string): InvalidRequestError {
     WORKFLOW_ERRORS.slugRequired,
     "This name has no letters or digits to build a workflow slug from. Send `slug` as well.",
     { name },
+  );
+}
+
+/**
+ * `404` — no workflow with that slug, for this caller.
+ *
+ * The code view's addressing (U.3, [#167](https://github.com/NobuData/ouroboros/issues/167)) under
+ * {@link workflowNotFound}'s rule: the org-scoped read cannot tell a slug nobody has from another
+ * workspace's, so neither can a caller. The same code, with the slug the request sent in place of
+ * an id.
+ *
+ * @param slug - The slug the request named.
+ * @returns The error to throw.
+ */
+export function workflowSlugNotFound(slug: string): NotFoundError {
+  return new NotFoundError(WORKFLOW_ERRORS.workflowNotFound, "No such workflow.", { slug });
+}
+
+/**
+ * `422` — a saved file does not read as this workflow, and nothing was written.
+ *
+ * Decision **C4**: a typo mid-keystroke never becomes the stored draft. Every issue travels in
+ * `details.errors` with a 1-based line and column range, so the editor underlines each where it
+ * is written, while the visual editor keeps showing the last draft that did read.
+ *
+ * @param errors - The parser's errors, or the slug check's one. Carried in `details` rather than
+ *   the message, because the editor places them and a message it had to parse would break when the
+ *   wording changed.
+ * @returns The error to throw.
+ */
+export function codeInvalid(errors: readonly WorkflowCodeIssue[]): InvalidRequestError {
+  return new InvalidRequestError(
+    WORKFLOW_ERRORS.codeInvalid,
+    "This file does not read as a workflow, so it was not saved. The draft is unchanged.",
+    { errors },
+  );
+}
+
+/**
+ * `409` — this document cannot be shown as code without changing it.
+ *
+ * `code.projection.ts`' rule: a document is shown as code only when the file would read back as
+ * that document. A draft the canvas saved half-built — a blank canvas, a model stage with no route
+ * yet — is the ordinary case, and `details.findings` is what the shared validator says about it,
+ * node-anchored, so the page can say what to finish on the canvas. A `409` rather than a `422`:
+ * nothing about the request is wrong, and it is the document's state that refuses it.
+ *
+ * @param slug - The workflow.
+ * @param version - The published version asked for, or `null` for the draft.
+ * @param findings - The validator's errors for the document. Empty when it validates and still does
+ *   not read back as itself, which would be a printer or parser defect rather than the author's.
+ * @returns The error to throw.
+ */
+export function codeUnprojectable(
+  slug: string,
+  version: number | null,
+  findings: readonly DslDiagnostic[],
+): ConflictError {
+  return new ConflictError(
+    WORKFLOW_ERRORS.codeUnprojectable,
+    version === null
+      ? "This draft cannot be shown as code yet. Finish it in the visual editor first."
+      : "This version cannot be shown as code.",
+    { slug, version, findings },
+  );
+}
+
+/**
+ * `405` — a read-only file of the code view.
+ *
+ * Decision **C6**: `ouroboros.config.ts` is a projection of the registry, printed on every read
+ * and stored nowhere, so there is no document for a save to change. The handler that throws this
+ * sets `Allow: GET`.
+ *
+ * @param path - The file, echoed so an editor with several tabs open knows which save was refused.
+ * @returns The error to throw.
+ */
+export function codeReadOnly(path: string): MethodNotAllowedError {
+  return new MethodNotAllowedError(
+    WORKFLOW_ERRORS.codeReadOnly,
+    `${path} is read-only. Change a workflow in the studio, and this file follows.`,
+    { path },
   );
 }
 

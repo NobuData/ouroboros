@@ -156,6 +156,39 @@ export class SaveDraftBody {
   definition!: Record<string, unknown>;
 }
 
+/**
+ * The path of `/api/v1/workflows/{slug}/code` (U.3,
+ * [#167](https://github.com/NobuData/ouroboros/issues/167)).
+ *
+ * A slug rather than an id, because mockup 05 addresses a workflow as a file —
+ * `standard-fix.loop.ts`, at `/workflows/standard-fix/code` — and the slug is what names it
+ * everywhere else in the product. Held to `workflows_slug_format` here, so a path that could not
+ * be a slug is a `422` naming the field rather than a lookup that finds nothing.
+ */
+export class WorkflowSlugParams {
+  /** The workflow's slug — `workflows.slug`, lower-case kebab of at most 64 characters (V029). */
+  @IsString()
+  @Length(1, SLUG_MAX_LENGTH)
+  @Matches(SLUG_PATTERN, {
+    message: "slug must be lower-case words separated by single hyphens",
+  })
+  slug!: string;
+}
+
+/** The body of `PUT /api/v1/workflows/{slug}/code`. */
+export class SaveWorkflowCodeBody {
+  /**
+   * The whole file, as the code editor holds it.
+   *
+   * A string and nothing more. Whether it reads as a workflow is the parser's question, answered
+   * with errors anchored to lines rather than with a field name, so an empty file is a valid body
+   * and a `422 workflow_code_invalid`. How large it may be is the service's body limit
+   * (`REQUEST_BODY_LIMIT`), which is sized from the DSL's largest document.
+   */
+  @IsString()
+  text!: string;
+}
+
 /** The body of `POST /api/v1/workflows/{id}/publish`. */
 export class PublishWorkflowBody {
   /**

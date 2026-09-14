@@ -30,7 +30,7 @@ import { Injectable } from "@nestjs/common";
 
 import type { Transaction } from "kysely";
 
-import type { Database } from "../db/schema";
+import type { Database, DraftEditor, Workflow, WorkflowVersion } from "../db/schema";
 import { pageOf, windowOf, type Page, type PageQuery } from "../tenancy/pagination";
 import { DatabaseService } from "../db/db.service";
 import { draftEtag, ifMatchAdmits } from "./draft.etag";
@@ -46,6 +46,7 @@ import type {
 } from "./workflows.dto";
 import {
   WORKFLOW_CONSTRAINTS,
+  conflictingDraft,
   definitionInvalid,
   draftAbsent,
   draftConflict,
@@ -210,14 +211,7 @@ export class WorkflowsService {
   }
 
   /**
-   * Save the draft, if it is still the draft the writer read.
-   *
-   * The whole of the ticket's concurrency criterion lives in these twenty lines, and the order
-   * is the argument for them: the transaction opens, the draft is read **`for update`**, the
-   * etag is compared against what that locked read found, and only then is anything written.
-   * A second autosave arriving mid-flight blocks on the lock, re-reads the row the first one
-   * committed, and finds an etag its `If-Match` does not admit — so it is told, rather than
-   * winning.
+   * Save the draft from the canvas, if it is still the draft the writer read.
    *
    * @param organizationId - The workspace, from the tenant context.
    * @param id - The workflow.
@@ -227,8 +221,8 @@ export class WorkflowsService {
    * @returns The draft slot after the write, carrying the etag for the next save.
    * @throws {NotFoundError} `workflow_not_found`.
    * @throws {BadRequestError} `workflow_draft_etag_required` when there is no `If-Match`.
-   * @throws {ConflictError} `workflow_draft_conflict` when the draft moved — including when
-   *   another request created one between this one's read and its insert.
+   * @throws {ConflictError} `workflow_draft_conflict` when the draft moved; see
+   *   {@link writeGuarded}.
    */
   async saveDraft(
     organizationId: string,
@@ -240,25 +234,59 @@ export class WorkflowsService {
 
     if (ifMatch === undefined) throw draftEtagRequired();
 
+    return workflowDraft(await this.writeGuarded(workflow, ifMatch, body.definition, "visual"));
+  }
+
+  /**
+   * Write a workflow's draft, if it is still the draft the writer read — the one guard both
+   * editors save through (decision **C3**: one draft, two editors; U.3,
+   * [#167](https://github.com/NobuData/ouroboros/issues/167)).
+   *
+   * The whole of P.3's concurrency criterion lives in these lines, and the order is the argument
+   * for them: the transaction opens, the draft is read **`for update`**, the etag is compared
+   * against what that locked read found, and only then is anything written. A second save
+   * arriving mid-flight — another tab, or the other editor — blocks on the lock, re-reads the row
+   * the first one committed, and finds an etag its `If-Match` does not admit, so it is told rather
+   * than winning. The row records which editor wrote it, and that is what the loser's `409` names.
+   *
+   * @param workflow - The workflow, as an org-scoped read returned it. A row rather than an id on
+   *   purpose: `workflow_versions` has no `organization_id`, so resolving the workflow through the
+   *   tenant *is* this write's tenancy check, and a caller cannot hold a row without having made
+   *   that read.
+   * @param ifMatch - The `If-Match` header, verbatim. A missing one is the caller's to refuse
+   *   first, as `workflow_draft_etag_required`, because it is a different mistake from a stale one.
+   * @param definition - The whole document to store.
+   * @param editedIn - Which editor is writing.
+   * @returns The draft row after the write.
+   * @throws {ConflictError} `workflow_draft_conflict` when the draft moved — including when
+   *   another request created one between this one's read and its insert.
+   */
+  async writeGuarded(
+    workflow: Workflow,
+    ifMatch: string,
+    definition: unknown,
+    editedIn: DraftEditor,
+  ): Promise<WorkflowVersion> {
     return this.database.transaction(async (trx) => {
       const existing = await this.workflows.draftOf(workflow.id, trx, true);
-      const current = draftEtag(existing);
 
-      if (!ifMatchAdmits(ifMatch, current)) throw draftConflict(ifMatch, current);
-
-      if (existing === undefined) {
-        return workflowDraft(await this.insertFirstDraft(workflow.id, body.definition, trx));
+      if (!ifMatchAdmits(ifMatch, draftEtag(existing))) {
+        throw draftConflict(ifMatch, conflictingDraft(existing));
       }
 
-      const written = await this.workflows.writeDraft(existing.id, body.definition, trx);
+      if (existing === undefined) {
+        return this.insertFirstDraft(workflow.id, definition, editedIn, trx);
+      }
+
+      const written = await this.workflows.writeDraft(existing.id, definition, editedIn, trx);
 
       // The locked read found a draft and the keyed update found none, which means the row
       // stopped being a draft between them. Under the lock that cannot happen; the check is
       // here because an `update` that silently matched nothing would otherwise answer `200`
       // with the row it did not write.
-      if (written === undefined) throw draftConflict(ifMatch, current);
+      if (written === undefined) throw draftConflict(ifMatch, conflictingDraft(existing));
 
-      return workflowDraft(written);
+      return written;
     });
   }
 
@@ -325,7 +353,9 @@ export class WorkflowsService {
       // The document that passed the gate is the document that becomes immutable. A draft that
       // moved while the engine was being asked is a `409`, not a version of something nobody
       // validated.
-      if (draftEtag(current) !== validated) throw draftConflict(validated, draftEtag(current));
+      if (draftEtag(current) !== validated) {
+        throw draftConflict(validated, conflictingDraft(current));
+      }
 
       try {
         const version = await this.workflows.publish(
@@ -424,6 +454,7 @@ export class WorkflowsService {
    *
    * @param workflowId - A workflow already resolved through {@link require}.
    * @param definition - The document to store.
+   * @param editedIn - Which editor is writing it.
    * @param trx - The transaction the caller's guard was checked in.
    * @returns The draft as it was stored.
    * @throws {ConflictError} `workflow_draft_conflict` when another request created the draft
@@ -433,11 +464,12 @@ export class WorkflowsService {
    */
   private async insertFirstDraft(
     workflowId: string,
-    definition: Record<string, unknown>,
+    definition: unknown,
+    editedIn: DraftEditor,
     trx: Transaction<Database>,
   ) {
     try {
-      return await this.workflows.insertDraft(workflowId, definition, trx);
+      return await this.workflows.insertDraft(workflowId, definition, editedIn, trx);
     } catch (error) {
       if (violates(error, WORKFLOW_CONSTRAINTS.oneDraft)) {
         throw draftConflict(draftEtag(undefined));

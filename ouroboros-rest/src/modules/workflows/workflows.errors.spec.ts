@@ -1,10 +1,18 @@
 import { HttpStatus } from "@nestjs/common";
 
+import type { WorkflowVersion } from "../db/schema";
 import { UNIQUE_VIOLATION } from "../tenancy/constraints";
+import { CONFIG_FILE_PATH, slugMismatch } from "./code.resources";
+import { NO_DRAFT, draftEtag } from "./draft.etag";
+import { validateWorkflowDocument } from "./dsl.validator";
 import type { PublishFinding } from "./publish.gate";
 import {
   WORKFLOW_CONSTRAINTS,
   WORKFLOW_ERRORS,
+  codeInvalid,
+  codeReadOnly,
+  codeUnprojectable,
+  conflictingDraft,
   definitionInvalid,
   draftAbsent,
   draftConflict,
@@ -15,6 +23,7 @@ import {
   versionNotFound,
   violates,
   workflowNotFound,
+  workflowSlugNotFound,
 } from "./workflows.errors";
 
 /**
@@ -26,10 +35,14 @@ import {
  */
 
 const WORKFLOW = "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94";
+const EDITED = new Date("2026-09-12T10:05:00.000Z");
 
 describe("the codes", () => {
   it("are the strings the specification publishes", () => {
     expect(WORKFLOW_ERRORS).toEqual({
+      codeInvalid: "workflow_code_invalid",
+      codeUnprojectable: "workflow_code_unprojectable",
+      codeReadOnly: "workflow_code_read_only",
       workflowNotFound: "workflow_not_found",
       slugTaken: "workflow_slug_taken",
       versionNotFound: "workflow_version_not_found",
@@ -96,13 +109,63 @@ describe("the conflicts", () => {
     });
   });
 
-  it("answers 409 for a stale draft, carrying both etags", () => {
-    const error = draftConflict("stale-token", "current-token");
+  it("answers 409 for a stale draft, carrying both etags, the editor and the stamp", () => {
+    const error = draftConflict("stale-token", {
+      etag: "current-token",
+      editedIn: "visual",
+      updatedAt: EDITED,
+    });
 
     expect(error.getStatus()).toBe(HttpStatus.CONFLICT);
-    expect(error.getResponse()).toMatchObject({
+    expect(error.getResponse()).toEqual({
       code: "workflow_draft_conflict",
-      details: { expected: "stale-token", current: "current-token" },
+      message: "This draft was changed in the visual editor. Reload it before saving again.",
+      details: {
+        expected: "stale-token",
+        current: "current-token",
+        editedIn: "visual",
+        updatedAt: "2026-09-12T10:05:00.000Z",
+      },
+    });
+  });
+
+  it.each([
+    ["code", "This draft was changed in the code editor. Reload it before saving again."],
+    [null, "This draft was changed by someone else. Reload it before saving again."],
+  ] as const)("names the %s editor, or nobody in particular", (editedIn, message) => {
+    const envelope = draftConflict("stale", {
+      etag: "now",
+      editedIn,
+      updatedAt: null,
+    }).getResponse() as { message: string; details: Record<string, unknown> };
+
+    expect(envelope.message).toBe(message);
+    expect(envelope.details).toMatchObject({ editedIn, updatedAt: null });
+  });
+
+  it("reads a conflict from the draft row the guard locked, or from its absence", () => {
+    const row: WorkflowVersion = {
+      id: "1f2e3d4c-5b6a-4978-8695-a4b3c2d1e0f9",
+      workflow_id: WORKFLOW,
+      version: null,
+      definition: {},
+      published_at: null,
+      published_by: null,
+      change_note: null,
+      edited_in: "code",
+      created_at: EDITED,
+      updated_at: EDITED,
+    };
+
+    expect(conflictingDraft(row)).toEqual({
+      etag: draftEtag(row),
+      editedIn: "code",
+      updatedAt: EDITED,
+    });
+    expect(conflictingDraft(undefined)).toEqual({
+      etag: NO_DRAFT,
+      editedIn: null,
+      updatedAt: null,
     });
   });
 
@@ -184,6 +247,72 @@ describe("the refusals a caller can fix", () => {
     ]).getResponse() as { details: { findings: PublishFinding[] } };
 
     expect(details.findings[0].node).toBe("gate-1");
+  });
+});
+
+describe("the code view's refusals", () => {
+  it("answers 404 for a slug, echoing it in place of an id", () => {
+    const error = workflowSlugNotFound("standard-fix");
+
+    expect(error.getStatus()).toBe(HttpStatus.NOT_FOUND);
+    expect(error.getResponse()).toMatchObject({
+      code: "workflow_not_found",
+      details: { slug: "standard-fix" },
+    });
+  });
+
+  it("answers 422 for a file that does not read, carrying every anchored error", () => {
+    const errors = [
+      {
+        code: "code_out_of_grammar" as const,
+        message: 'The workflow\'s `dsl` is written as a string literal, like "text".',
+        line: 4,
+        column: 8,
+        endLine: 4,
+        endColumn: 11,
+        hint: "Supported in the full SDK (v2)",
+      },
+      slugMismatch({ line: 3, column: 27, endLine: 3, endColumn: 41 }, "standard-fix", "docs-loop"),
+    ];
+
+    const error = codeInvalid(errors);
+
+    expect(error.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+    expect(error.getResponse()).toMatchObject({
+      code: "workflow_code_invalid",
+      details: { errors },
+    });
+    expect((error.getResponse() as { message: string }).message).toContain("draft is unchanged");
+  });
+
+  it("answers 409 for a draft the code view cannot show, with the validator's findings", () => {
+    const findings = validateWorkflowDocument({}).errors;
+
+    const error = codeUnprojectable("standard-fix", null, findings);
+
+    expect(error.getStatus()).toBe(HttpStatus.CONFLICT);
+    expect(error.getResponse()).toMatchObject({
+      code: "workflow_code_unprojectable",
+      message: "This draft cannot be shown as code yet. Finish it in the visual editor first.",
+      details: { slug: "standard-fix", version: null, findings },
+    });
+  });
+
+  it("says a published version cannot be shown, rather than asking anyone to finish it", () => {
+    expect(codeUnprojectable("standard-fix", 14, []).getResponse()).toMatchObject({
+      message: "This version cannot be shown as code.",
+      details: { version: 14, findings: [] },
+    });
+  });
+
+  it("answers 405 for a read-only file, naming it", () => {
+    const error = codeReadOnly(CONFIG_FILE_PATH);
+
+    expect(error.getStatus()).toBe(HttpStatus.METHOD_NOT_ALLOWED);
+    expect(error.getResponse()).toMatchObject({
+      code: "workflow_code_read_only",
+      details: { path: "ouroboros.config.ts" },
+    });
   });
 });
 

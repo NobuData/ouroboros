@@ -440,6 +440,19 @@
 > on purpose. Neither half is a foreign key (decision F8), and nothing ties the pin to
 > `workflows.current_version` — a later publish moves the pointer and must not move the pin.
 
+> `V033` ([#167](https://github.com/NobuData/ouroboros/issues/167)) adds
+> [`workflow_versions.edited_in`](migrations/V033__workflow_draft_editor.sql) — which editor last
+> wrote a workflow's draft, `visual` or `code`. Decision **C3** gives a workflow one draft and two
+> editors, and a stale save's `409` names the editor whose change it lost to; the etag records
+> that the draft moved, and this column records what moved it.
+>
+> Null is a draft neither editor has written — one `POST /api/v1/workflows` created, a seeded one,
+> and every draft from before `V033`. **Only a draft records its editor**
+> (`workflow_versions_edited_in_draft_only`): publishing writes a row of its own, and the
+> constraint also stops the one update `V029` lets a published version take — the publisher's
+> set-null, which its trigger recognises by `V029`'s own column list — from writing an editor
+> onto a frozen row.
+
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
 > migration *below* its current version — which `validate` rejects, and `migrate`
@@ -1529,6 +1542,7 @@ ouroboros-db/
 │   ├── V030__canonical_tickets.sql      # ticket_sources + tickets — the source-agnostic intake model, additive — #138
 │   ├── V031__ticket_source_status_reason.sql  # ticket_sources.status_reason — the sentence behind the status dot — #139
 │   ├── V032__queue_items_workflow_pin.sql  # queue_items.workflow_version + workflow_pin_reason — the pin R.1 stores — #143
+│   ├── V033__workflow_draft_editor.sql     # workflow_versions.edited_in — which editor last wrote the draft — #167
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

@@ -10239,6 +10239,111 @@ select pg_temp.must_hold(
   'and nothing this section created is left behind');
 
 -- ===========================================================================
+-- V033 — workflow_versions.edited_in, which editor last wrote the draft (#167)
+-- ===========================================================================
+--
+-- U.3's criterion is that a stale save names the other editor's change. What the schema owns of
+-- that is asserted here: a draft written before V033 still reads, both editors write the one
+-- draft, and a word outside the two editors — or an editor on a published version, including one
+-- smuggled in by the single update V029 lets a published version take — is refused. *That the
+-- 409 names the editor* is the endpoints' rule, asserted in
+-- `ouroboros-rest/src/modules/workflows/code.integration-spec.ts`.
+--
+-- Its own workspace and person: every section above deleted what it made.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt")
+  values ('org-editors', 'Editor Works', 'editor-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified")
+  values ('user-editor', 'Jorge Ruiz', 'jorge@editor-works.dev', true);
+
+insert into ouroboros.workflows (id, organization_id, slug, name, status)
+  values ('e0330000-0000-0000-0000-000000000001', 'org-editors', 'standard-fix', 'Standard fix',
+          'active');
+
+-- --- a draft written before V033 still reads ---------------------------------------
+--
+-- The column arrived nullable with no default, so every draft V029 already held reads as edited
+-- in neither editor — and so does a draft `POST /api/v1/workflows` creates.
+insert into ouroboros.workflow_versions (id, workflow_id, definition)
+  values ('e0330000-0000-0000-0000-00000000000d', 'e0330000-0000-0000-0000-000000000001',
+          '{}'::jsonb);
+
+select pg_temp.must_hold(
+  (select edited_in is null from ouroboros.workflow_versions
+    where id = 'e0330000-0000-0000-0000-00000000000d'),
+  'a draft written without an editor reads as edited in neither — edited_in is null');
+
+-- --- one draft, two editors (decision C3) ------------------------------------------
+update ouroboros.workflow_versions set edited_in = 'visual'
+  where id = 'e0330000-0000-0000-0000-00000000000d';
+
+select pg_temp.must_hold(
+  (select edited_in = 'visual' from ouroboros.workflow_versions
+    where id = 'e0330000-0000-0000-0000-00000000000d'),
+  'the visual editor is an editor a draft records');
+
+update ouroboros.workflow_versions set edited_in = 'code'
+  where id = 'e0330000-0000-0000-0000-00000000000d';
+
+select pg_temp.must_hold(
+  (select edited_in = 'code' from ouroboros.workflow_versions
+    where id = 'e0330000-0000-0000-0000-00000000000d'),
+  'and so is the code editor, writing the same row');
+
+-- --- what an editor cannot be --------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set edited_in = 'canvas'
+     where id = 'e0330000-0000-0000-0000-00000000000d'$$,
+  'workflow_versions.edited_in is one of the two editors, visual or code',
+  'workflow_versions_edited_in_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set edited_in = 'Code'
+     where id = 'e0330000-0000-0000-0000-00000000000d'$$,
+  'and it is spelled exactly as the endpoints spell it',
+  'workflow_versions_edited_in_known');
+
+-- --- a published version has no editor ------------------------------------------------
+--
+-- Publishing inserts a new row rather than promoting the draft (V029), so a version is never
+-- written by an editor.
+insert into ouroboros.workflow_versions
+    (id, workflow_id, version, definition, published_at, published_by)
+  values ('e0330000-0000-0000-0000-000000000011', 'e0330000-0000-0000-0000-000000000001', 1,
+          '{}'::jsonb, now(), 'user-editor');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_versions
+        (workflow_id, version, definition, published_at, edited_in)
+      values ('e0330000-0000-0000-0000-000000000001', 2, '{}'::jsonb, now(), 'code')$$,
+  'a published version records no editor, since publishing froze it in a row of its own',
+  'workflow_versions_edited_in_draft_only');
+
+-- The one update V029 lets a published version take is the publisher's set-null, which
+-- `workflow_versions_refuse_update` recognises by comparing V029's own columns. `edited_in` is
+-- not among them, so without the constraint a statement that cleared the publisher could write an
+-- editor onto a frozen row in the same breath.
+select pg_temp.must_reject(
+  $$update ouroboros.workflow_versions set published_by = null, edited_in = 'visual'
+     where id = 'e0330000-0000-0000-0000-000000000011'$$,
+  'the publisher''s set-null cannot carry an editor onto a published version with it',
+  'workflow_versions_edited_in_draft_only');
+
+delete from ouroboros."user" where "id" = 'user-editor';
+
+select pg_temp.must_hold(
+  (select published_by is null and edited_in is null from ouroboros.workflow_versions
+    where id = 'e0330000-0000-0000-0000-000000000011'),
+  'while the set-null itself still passes, and leaves the version without an editor');
+
+delete from ouroboros.organization where "id" = 'org-editors';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflows where organization_id = 'org-editors'),
+  'and nothing the draft-editor section created is left behind');
+
+-- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)
 -- ===========================================================================
 --

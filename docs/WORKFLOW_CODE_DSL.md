@@ -631,7 +631,7 @@ default chain"*, describes a fallback routing does not have: an unrouted task ki
 | Issue | Inherits |
 |---|---|
 | **#166**, the parser | This grammar, and `code.grammar.ts`'s tables read backwards, as `parseWorkflowCode`. [§13](#13-reading-a-file-back) records what it accepts and normalises, what it refuses and with which code, and what a stale layout line means. |
-| **#167**, the endpoints | `printWorkflowCode(slug, document)` for `GET /code`. The printer takes valid documents only, and a draft is not validated, so #167 decides what the code view shows for a draft that doesn't print. |
+| **#167**, the endpoints | `printWorkflowCode(slug, document)` for `GET /api/v1/workflows/{slug}/code` and `parseWorkflowCode(text)` for its `PUT`. A draft is not validated, so the code view shows a document only when `parse(print(doc))` is `doc` (`code.projection.ts`), and answers `409 workflow_code_unprojectable` with the validator's findings otherwise. A saved file whose `defineLoop` names another slug is refused at the slug (`slugRangeOf`). |
 | **#168**, the property tests | The bijection in [§2](#2-what-the-grammar-promises), over generated documents. |
 | **#170**, highlighting | The token classes: keywords, strings, numbers, callees, comments. |
 | **#177**, completions and hover docs | `STAGE_CALLEES`, `STAGE_OPTIONS`, `PREDICATE_METHODS`, `EFFORT_CONSTANTS`, `ROUTE_METHODS`, and the schema pointers `code.grammar.ts` keeps beside them (`STAGE_OPTION_FIELDS`, `ROUTE_SIGNATURES` and the rest). `GET /api/v1/workflows/code-symbols` reads each word's type, values and doc from `v1.json` through them (`code.symbols.ts`). |
@@ -649,8 +649,9 @@ const { text, spans } = printWorkflowCode("standard-fix", document);
 Stated rather than discovered.
 
 * **The printer takes valid documents.** A draft is saved as the canvas holds it, and a
-  half-built model stage with no routing has no spelling. What the code view does then is #167's
-  to decide.
+  half-built model stage with no routing has no spelling. The code view (#167) then shows no file:
+  `GET /api/v1/workflows/{slug}/code` answers `409 workflow_code_unprojectable` with the
+  validator's findings for any document that does not read back as itself.
 * **Comments a person adds are not document data.** The document is the artifact, and a file is
   its rendering, so a save followed by a print drops any comment the generator didn't write.
   Keeping them would need somewhere in the document to put them, which is a DSL change.

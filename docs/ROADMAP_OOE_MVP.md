@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**184 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**185 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
-| 🟡 **In progress** | P7 | **20** of 43 |
+| 🟡 **In progress** | P7 | **21** of 43 |
 | — **Not started** | P8–P17 | 0 of 246 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1321,7 +1321,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **43 issues** · 137 complexity points · order **#166–#208** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md`, `ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`, + the held-back registry tail
-> **Status:** 🟡 **In progress** — 20 of 43 issues closed
+> **Status:** 🟡 **In progress** — 21 of 43 issues closed
 
 **Goal.** Define the workflow domain and its immutable versioning, the DSL JSON Schema shared by REST and engine, the pluggable `TicketSourceProvider` SPI, validation/triggers/dry-run, the authoring studio (mockup 04), and the code projection with proven round-trip (mockup 05).
 
@@ -1353,7 +1353,7 @@ the blockquote above that records what it did and what it did differently.
 | 183 | **W.1** | ✅ [#177](https://github.com/NobuData/ouroboros/issues/177) | Schema-driven completions & hover docs | ouroboros-ui, ouroboros-rest | M | R.3, U.1 |
 | 184 | **R.4** | ✅ [#146](https://github.com/NobuData/ouroboros/issues/146) | Studio integration tests | ouroboros-rest | M | R.1, R.3 |
 | 185 | **S.2** | ✅ [#148](https://github.com/NobuData/ouroboros/issues/148) | Canvas foundation on React Flow | ouroboros-ui | L | P.2, S.1 |
-| 186 | **U.3** | [#167](https://github.com/NobuData/ouroboros/issues/167) | Code view & save endpoints | ouroboros-rest | M | P.3, U.2 |
+| 186 | **U.3** | ✅ [#167](https://github.com/NobuData/ouroboros/issues/167) | Code view & save endpoints | ouroboros-rest | M | P.3, U.2 |
 | 187 | **W.2** | [#178](https://github.com/NobuData/ouroboros/issues/178) | Diagnostics & Loop Checks payload | ouroboros-rest | M | R.2, U.2 |
 | 188 | **CH.6** | [#589](https://github.com/NobuData/ouroboros/issues/589) | Governance & resolution-snapshot contract | ouroboros-rest, ouroboros-engine | M | P.2, Z.1 |
 | 189 | **S.3** | [#149](https://github.com/NobuData/ouroboros/issues/149) | Node & edge components | ouroboros-ui | L | S.2 |

@@ -182,6 +182,16 @@
 #   the reason is a rung of resolution order     drop queue_items_workflow_pin_reason_valid
 #   a pinned version always carries its reason   drop queue_items_workflow_version_reasoned
 #
+# #167 (U.3) adds which editor last wrote a workflow draft. The stale-save 409 names it, and the
+# endpoints that write it trust the schema to keep it one of two words and off published rows —
+# the second being what keeps V029's immutability trigger exact. One mutation per rule V033
+# declares:
+#
+#   U.3 scope bullet                             mutation
+#   ------------------------------------------   ------------------------------------------
+#   the editor is visual or code                 drop workflow_versions_edited_in_known
+#   only a draft records its editor              drop workflow_versions_edited_in_draft_only
+#
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
 #   ouroboros-db/tests/verify-constraint-probes.sh --runner docker
@@ -843,6 +853,21 @@ expect_red 'a queue pin reason accepts anything' \
 expect_red 'a pinned version may be unexplained' \
   'a pinned version always carries the reason that chose it .*queue_items_workflow_version_reasoned did not fire' \
   'alter table ouroboros.queue_items drop constraint queue_items_workflow_version_reasoned;'
+
+# ---------------------------------------------------------------------------
+# The draft's editor (#167: a stale save names the other editor's change).
+#
+# The conflict dialog composes its sentence from this word, so a third word is a sentence nobody
+# wrote; and a published version carrying an editor is a frozen row that was written after it
+# froze.
+# ---------------------------------------------------------------------------
+expect_red 'a draft editor accepts anything' \
+  'workflow_versions\.edited_in is one of the two editors, visual or code .*workflow_versions_edited_in_known did not fire' \
+  'alter table ouroboros.workflow_versions drop constraint workflow_versions_edited_in_known;'
+
+expect_red 'a published version may record an editor' \
+  'a published version records no editor, since publishing froze it in a row of its own .*workflow_versions_edited_in_draft_only did not fire' \
+  'alter table ouroboros.workflow_versions drop constraint workflow_versions_edited_in_draft_only;'
 
 printf '\n'
 if check_summary; then

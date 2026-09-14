@@ -2740,6 +2740,44 @@ pointer the schema no longer has fails the service at boot. `code.symbols.spec.t
 `schemas/workflow-dsl/fixtures/code-symbols/table.json` is the golden answer `ouroboros-ui`'s suites
 are written against.
 
+### The code view
+
+**`GET` and `PUT /api/v1/workflows/{slug}/code` are mockup 05's editor over the draft the canvas
+edits** (U.3, [#167](https://github.com/NobuData/ouroboros/issues/167)), and `code-tree` and
+`code-config` are its explorer.
+
+```
+GET /api/v1/workflows/standard-fix/code ─▶ { path, slug, text, etag, readOnly, version, currentVersion, outlineRef, checksRef }
+PUT /api/v1/workflows/standard-fix/code   If-Match: <etag> · { text }
+ ├ does not parse, or names another slug ─▶ 422 workflow_code_invalid {errors: [{code, line, column, endLine, endColumn}]}
+ ├ stale etag                            ─▶ 409 workflow_draft_conflict {editedIn: visual | code, updatedAt, current}
+ └ WorkflowsService.writeGuarded(…, "code") ─▶ 200, the file as it now reads, with the new etag
+GET /api/v1/workflows/code-tree          ─▶ { files: [workflows/<slug>.loop.ts …, ouroboros.config.ts] }
+GET /api/v1/workflows/code-config        ─▶ { path: ouroboros.config.ts, text, readOnly: true }
+PUT /api/v1/workflows/code-config        ─▶ 405 workflow_code_read_only, Allow: GET
+```
+
+| Rule | Where it lives |
+| --- | --- |
+| One draft, two editors (C3): both saves go through one guarded write, and V033's `edited_in` records which editor wrote the draft, so a `409` can name it | `WorkflowsService.writeGuarded`, `workflows.errors.ts`' `draftConflict` |
+| A file that does not read changes nothing (C4): it is parsed, and its slug checked, before a transaction opens | `code.service.ts` |
+| A document is shown only when its file reads back as it | `code.projection.ts` |
+| The explorer lists files only, from the rail's own statement (C6) | `code.resources.ts`, `WorkflowStatsRepository.registryEntries` |
+| `ouroboros.config.ts` is the registry, printed read-only | `code.config.ts` |
+
+**A draft that has no faithful file is refused, not approximated.** The printer takes valid documents
+and a draft is saved as the canvas holds it, so the rule is the round trip itself: `GET` shows a
+document only when printing it and parsing the print gives it back. A graph with an unreachable stage
+passes, since the code view edits work in progress. The blank canvas **+ New workflow** leaves does
+not, and answers `409 workflow_code_unprojectable` with the validator's findings. A workflow with no
+draft opens on the version in force, and its first save creates the draft.
+
+**The `422` is proven byte-identical.** `code.integration-spec.ts` compares the draft row as
+PostgreSQL renders it, every column included, before and after a refused save.
+
+**`outlineRef` and `checksRef` are `null`** until W.2
+([#178](https://github.com/NobuData/ouroboros/issues/178)) serves the payloads they point at.
+
 ## Pluggable ticket sources
 
 **Ingestion is a plug-in decision** (roadmap decision **P5**), and

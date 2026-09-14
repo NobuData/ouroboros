@@ -199,7 +199,7 @@ chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | U.1 | #165 | 🟢 Done | ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer | Closed grammar doc + canonical JSON → TypeScript projection | mvp, workflow, code-view, rest | N (after WF-P.2) | Y | L | ouroboros-rest, docs |
 | U.2 | #166 | 🟢 Done | ouroboros-rest: [U.2] TS-DSL parser (closed grammar) | TypeScript compiler API parse back to canonical JSON; anchored errors | mvp, workflow, code-view, rest | N (after U.1) | Y | L | ouroboros-rest |
-| U.3 | #167 | 🟡 Open | ouroboros-rest: [U.3] Code view & save endpoints | `GET /code`, `PUT /code` (parse→draft, etag), tree/tabs payloads | mvp, workflow, code-view, rest | N (after U.2, WF-P.3) | Y | M | ouroboros-rest |
+| U.3 | #167 | 🟢 Done | ouroboros-rest: [U.3] Code view & save endpoints | `GET /code`, `PUT /code` (parse→draft, etag), tree/tabs payloads | mvp, workflow, code-view, rest | N (after U.2, WF-P.3) | Y | M | ouroboros-rest |
 | U.4 | #168 | 🟡 Open | ouroboros-rest: [U.4] Round-trip property & parity tests | `parse∘print = id`, mockup-parity fixture, cross-editor concurrency | mvp, workflow, code-view, rest, ci | N (after U.3) | Y | M | ouroboros-rest |
 
 ### Issue U.1 — ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer
@@ -296,7 +296,7 @@ TS text ─ ts.createSourceFile ─▶ AST walk (closed grammar) ─▶ canonica
 
 ### Issue U.3 — ouroboros-rest: [U.3] Code view & save endpoints
 
-> **GitHub issue:** #167 · **Status:** 🟡 Open · **Parent epic:** #161
+> **GitHub issue:** #167 · **Status:** 🟢 Done · **Parent epic:** #161
 
 - **Problem Statement:** The editor needs endpoints: fetch the projection (and
   the virtual file tree), save parsed edits into the shared draft, and keep the
@@ -317,6 +317,23 @@ TS text ─ ts.createSourceFile ─▶ AST walk (closed grammar) ─▶ canonica
 - **Parallelism/Dependencies:** Needs U.2, WF-P.3. Blocks V.1, V.6.
 - **Technical Stack:** NestJS, Kysely.
 - **Epic:** U
+- **Delivered (2026-09-13):** `GET` and `PUT /api/v1/workflows/{slug}/code`,
+  `GET /api/v1/workflows/code-tree`, and `GET`/`PUT /api/v1/workflows/code-config`
+  (`ouroboros-rest/src/modules/workflows/code.service.ts`). Both editors save through one guarded
+  write (`WorkflowsService.writeGuarded`), and V033 adds `workflow_versions.edited_in` so a stale
+  save's `409` names the editor whose change it lost to. A file that does not read is refused before
+  any transaction opens, and `code.integration-spec.ts` compares the stored draft row before and
+  after. Six decisions were taken in-issue. **A document is shown as code only when
+  `parse(print(doc))` is `doc`**: drafts are not validated and the printer takes valid documents, so
+  a draft with no faithful file, such as the blank canvas, is `409 workflow_code_unprojectable` with
+  the validator's findings, while a structurally invalid graph that round-trips still opens. **The
+  `409` names the editor from a stored column**, since an etag records that a draft moved but not
+  what moved it. **`ouroboros.config.ts` is the registry**, each rail workflow's slug, name, status
+  and version in force, read at `code-config`, where a `PUT` is `405` with `Allow: GET`. **The tree
+  is a flat list of files**, so no `skills/` or `lib/` row can exist until a file under it does.
+  **`outlineRef` and `checksRef` are `null`** until W.2 (#178) serves those payloads. **The body is
+  JSON `{text}`**, and a file whose `defineLoop` names another slug is a `422` anchored at the slug
+  (`code_slug_mismatch`). A workflow with no draft opens on the version in force.
 
 ```
 GET /workflows/standard-fix/code ─▶ {text, etag, readOnly:false}

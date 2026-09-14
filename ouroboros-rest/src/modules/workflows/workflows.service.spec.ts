@@ -56,6 +56,7 @@ function draft(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion {
     published_at: null,
     published_by: null,
     change_note: null,
+    edited_in: null,
     created_at: AT,
     updated_at: AT,
     ...overrides,
@@ -354,9 +355,28 @@ describe("saving a draft", () => {
     expect(repository.writeDraft).toHaveBeenCalledWith(
       draft().id,
       { nodes: [1] },
+      "visual",
       expect.anything(),
     );
     expect(saved.etag).not.toBe(current);
+  });
+
+  it("names the editor whose change the draft holds, in the message and the details", async () => {
+    // One draft, two editors (decision C3): the conflict dialog says which one it lost to.
+    const { service, repository } = harness();
+    repository.draftOf.mockResolvedValue(draft({ edited_in: "code" }));
+
+    const failure = await service
+      .saveDraft(WORKSPACE, WORKFLOW, "an-older-token", { definition: {} })
+      .catch((error: unknown) => error);
+    const envelope = (
+      failure as { getResponse(): { message: string; details: Record<string, unknown> } }
+    ).getResponse();
+
+    expect(envelope.message).toBe(
+      "This draft was changed in the code editor. Reload it before saving again.",
+    );
+    expect(envelope.details.editedIn).toBe("code");
   });
 
   it("reads the draft under a lock, inside the transaction it is about to write in", async () => {
@@ -386,6 +406,8 @@ describe("saving a draft", () => {
     expect((failure as { getResponse(): { details: object } }).getResponse().details).toEqual({
       expected: "an-older-token",
       current: draftEtag(draft()),
+      editedIn: null,
+      updatedAt: AT.toISOString(),
     });
   });
 
@@ -404,7 +426,12 @@ describe("saving a draft", () => {
 
     await service.saveDraft(WORKSPACE, WORKFLOW, NO_DRAFT, { definition: { nodes: [] } });
 
-    expect(repository.insertDraft).toHaveBeenCalledWith(WORKFLOW, { nodes: [] }, expect.anything());
+    expect(repository.insertDraft).toHaveBeenCalledWith(
+      WORKFLOW,
+      { nodes: [] },
+      "visual",
+      expect.anything(),
+    );
   });
 
   it("turns the one-draft index into the same 409 when two tabs both create", async () => {
@@ -429,6 +456,54 @@ describe("saving a draft", () => {
     expect(
       await refusal(service.saveDraft(WORKSPACE, WORKFLOW, undefined, { definition: {} })),
     ).toBe("workflow_not_found");
+  });
+});
+
+describe("the guarded write both editors share", () => {
+  // Decision C3: one draft, two editors. The code view (U.3, #167) saves through this as well.
+  it("records the editor it is told, on the draft it locked", async () => {
+    const { service, repository } = harness();
+
+    const written = await service.writeGuarded(
+      workflow(),
+      draftEtag(draft()),
+      { nodes: [2] },
+      "code",
+    );
+
+    expect(repository.draftOf).toHaveBeenCalledWith(WORKFLOW, expect.anything(), true);
+    expect(repository.writeDraft).toHaveBeenCalledWith(
+      draft().id,
+      { nodes: [2] },
+      "code",
+      expect.anything(),
+    );
+    expect(written.definition).toEqual({ nodes: [2] });
+  });
+
+  it("creates the first draft as the editor that wrote it", async () => {
+    const { service, repository } = harness();
+    repository.draftOf.mockResolvedValue(undefined);
+
+    await service.writeGuarded(workflow(), NO_DRAFT, { nodes: [] }, "code");
+
+    expect(repository.insertDraft).toHaveBeenCalledWith(
+      WORKFLOW,
+      { nodes: [] },
+      "code",
+      expect.anything(),
+    );
+  });
+
+  it("refuses a stale etag inside the transaction, and writes nothing", async () => {
+    const state = harness();
+
+    expect(await refusal(state.service.writeGuarded(workflow(), "stale", {}, "code"))).toBe(
+      "workflow_draft_conflict",
+    );
+    expect(state.transactions).toBe(1);
+    expect(state.repository.writeDraft).not.toHaveBeenCalled();
+    expect(state.repository.insertDraft).not.toHaveBeenCalled();
   });
 });
 

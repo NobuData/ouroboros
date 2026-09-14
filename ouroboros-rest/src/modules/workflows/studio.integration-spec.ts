@@ -23,6 +23,7 @@ import { INTERNAL_KEY_HEADER } from "../engine/engine.contract";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import type { StageCatalog } from "./catalog.resources";
+import type { WorkflowCodeConfig, WorkflowCodeTree } from "./code.resources";
 import type { CodeSymbolTable } from "./code.symbols";
 import { EffortSchema, TriggerSchema, type SourceKind } from "./dsl.schema";
 import type { PublishFinding } from "./publish.gate";
@@ -869,6 +870,45 @@ describe("the studio across services, against a migrated database", () => {
       },
       [`GET ${WORKFLOWS}/:id/versions`]: async ({ ours, theirId }) => {
         await notFound(as(ours)("get", `${WORKFLOWS}/${theirId}/versions`));
+      },
+      [`GET ${WORKFLOWS}/code-tree`]: async ({ ours }) => {
+        await create(ours, "Docs Loop");
+
+        const tree = bodyOf<WorkflowCodeTree>(
+          await as(ours)("get", `${WORKFLOWS}/code-tree`).expect(200),
+        );
+
+        expect(tree.files.map((file) => file.path)).toEqual([
+          "workflows/docs-loop.loop.ts",
+          "ouroboros.config.ts",
+        ]);
+      },
+      [`GET ${WORKFLOWS}/code-config`]: async ({ ours }) => {
+        const config = bodyOf<WorkflowCodeConfig>(
+          await as(ours)("get", `${WORKFLOWS}/code-config`).expect(200),
+        );
+
+        expect(config.text).toContain(`workspace: "${ours.workspace.slug}"`);
+        expect(config.text).toContain("workflows: [],");
+      },
+      [`PUT ${WORKFLOWS}/code-config`]: async ({ ours }) => {
+        await as(ours)("put", `${WORKFLOWS}/code-config`)
+          .send({ text: "export default {};" })
+          .expect(405);
+      },
+      [`GET ${WORKFLOWS}/:slug/code`]: async ({ ours }) => {
+        // Their workflow is `standard-fix`; this workspace has no workflow by that slug.
+        await notFound(as(ours)("get", `${WORKFLOWS}/standard-fix/code`));
+        await notFound(as(ours)("get", `${WORKFLOWS}/standard-fix/code?version=1`));
+      },
+      [`PUT ${WORKFLOWS}/:slug/code`]: async ({ ours, theirEtag }) => {
+        const theirFile = readFileSync(join(FIXTURES, "code", "standard-fix.loop.ts"), "utf8");
+
+        await notFound(
+          as(ours)("put", `${WORKFLOWS}/standard-fix/code`)
+            .set("If-Match", theirEtag)
+            .send({ text: theirFile }),
+        );
       },
     };
 

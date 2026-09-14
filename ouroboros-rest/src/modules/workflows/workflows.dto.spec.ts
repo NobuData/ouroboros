@@ -8,8 +8,10 @@ import {
   PublishWorkflowBody,
   ReadWorkflowQuery,
   SaveDraftBody,
+  SaveWorkflowCodeBody,
   UpdateWorkflowBody,
   WorkflowParams,
+  WorkflowSlugParams,
 } from "./workflows.dto";
 
 /**
@@ -161,5 +163,35 @@ describe("the publish body", () => {
     expect(
       await violations(PublishWorkflowBody, { changeNote: "a".repeat(CHANGE_NOTE_MAX_LENGTH) }),
     ).toEqual([]);
+  });
+});
+
+describe("the code view's path", () => {
+  it("admits a slug, and refuses anything `workflows_slug_format` would, naming the field", async () => {
+    expect(await violations(WorkflowSlugParams, { slug: "standard-fix" })).toEqual([]);
+
+    for (const slug of [
+      "Standard-Fix",
+      "standard_fix",
+      "ouroboros.config.ts",
+      "",
+      "a".repeat(SLUG_MAX_LENGTH + 1),
+    ]) {
+      expect(await violations(WorkflowSlugParams, { slug })).toEqual(["slug"]);
+    }
+  });
+});
+
+describe("the code body", () => {
+  it("requires the file, as a string", async () => {
+    expect(
+      await violations(SaveWorkflowCodeBody, { text: 'export default defineLoop("x", {});' }),
+    ).toEqual([]);
+    expect(await violations(SaveWorkflowCodeBody, {})).toEqual(["text"]);
+    expect(await violations(SaveWorkflowCodeBody, { text: { nodes: [] } })).toEqual(["text"]);
+  });
+
+  it("admits an empty file, which the parser refuses with anchored errors rather than the pipe", async () => {
+    expect(await violations(SaveWorkflowCodeBody, { text: "" })).toEqual([]);
   });
 });

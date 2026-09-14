@@ -50,6 +50,7 @@ describe("the workflows repository", () => {
      */
     const scoped: readonly [string, (repository: WorkflowsRepository) => Promise<unknown>][] = [
       ["find", (repository) => repository.find(WORKSPACE, WORKFLOW)],
+      ["findBySlug", (repository) => repository.findBySlug(WORKSPACE, "standard-fix")],
       ["lock", (repository) => repository.lock(WORKSPACE, WORKFLOW, asTransaction(database))],
       ["rename", (repository) => repository.rename(WORKSPACE, WORKFLOW, { name: "New" })],
     ];
@@ -94,6 +95,23 @@ describe("the workflows repository", () => {
       expect(sql).toContain('from "ouroboros"."workflows"');
       expect(sql).toContain('"id" = $');
       expect(parameters).toEqual([WORKSPACE, WORKFLOW]);
+    });
+  });
+
+  describe("findBySlug", () => {
+    it("reads one row by workspace and slug — the code view's address", async () => {
+      await workflows.findBySlug(WORKSPACE, "standard-fix");
+
+      const { sql, parameters } = database.statements[0];
+      expect(sql).toContain('from "ouroboros"."workflows"');
+      expect(sql).toContain('"slug" = $');
+      expect(parameters).toEqual([WORKSPACE, "standard-fix"]);
+    });
+
+    it("does not filter by status, since the slug still names an archived workflow", async () => {
+      await workflows.findBySlug(WORKSPACE, "standard-fix");
+
+      expect(database.statements[0].sql).not.toContain('"status"');
     });
   });
 
@@ -189,21 +207,26 @@ describe("the workflows repository", () => {
     it("is inserted rather than upserted, so two creators do not both win", async () => {
       database.answers({ rows: [{ id: DRAFT }] });
 
-      await workflows.insertDraft(WORKFLOW, { nodes: [] });
+      await workflows.insertDraft(WORKFLOW, { nodes: [] }, "code");
 
-      const { sql } = database.statements[0];
+      const { sql, parameters } = database.statements[0];
       expect(sql).toContain('insert into "ouroboros"."workflow_versions"');
       expect(sql).not.toContain("on conflict");
+      // Which editor wrote it (V033) — what the next stale save's 409 names.
+      expect(sql).toContain('"edited_in"');
+      expect(parameters).toContain("code");
     });
 
-    it("is rewritten by id and only while it is still a draft", async () => {
-      await workflows.writeDraft(DRAFT, { nodes: [1] });
+    it("is rewritten by id and only while it is still a draft, recording the editor", async () => {
+      await workflows.writeDraft(DRAFT, { nodes: [1] }, "visual");
 
       const { sql, parameters } = database.statements[0];
       expect(sql).toContain('"id" = $');
       expect(sql).toContain('"version" is null');
+      expect(sql).toContain('"edited_in" = $');
       expect(parameters).toContain(DRAFT);
       expect(parameters).toContain('{"nodes":[1]}');
+      expect(parameters).toContain("visual");
     });
   });
 
