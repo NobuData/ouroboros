@@ -2,6 +2,7 @@ import { HttpStatus } from "@nestjs/common";
 
 import type { WorkflowVersion } from "../db/schema";
 import { UNIQUE_VIOLATION } from "../tenancy/constraints";
+import { fromParseIssues } from "./code.diagnostics";
 import { CONFIG_FILE_PATH, slugMismatch } from "./code.resources";
 import { NO_DRAFT, draftEtag } from "./draft.etag";
 import { validateWorkflowDocument } from "./dsl.validator";
@@ -283,6 +284,35 @@ describe("the code view's refusals", () => {
       details: { errors },
     });
     expect((error.getResponse() as { message: string }).message).toContain("draft is unchanged");
+  });
+
+  it("carries the same issues as the code view's diagnostics stream, in its order (W.2)", () => {
+    const errors = [
+      {
+        code: "code_out_of_grammar" as const,
+        message: "Out of grammar.",
+        line: 4,
+        column: 8,
+        endLine: 4,
+        endColumn: 11,
+        hint: "Supported in the full SDK (v2)",
+      },
+      slugMismatch({ line: 3, column: 27, endLine: 3, endColumn: 41 }, "standard-fix", "docs-loop"),
+    ];
+
+    const { details } = codeInvalid(errors).getResponse() as {
+      details: { diagnostics: unknown };
+    };
+
+    expect(details.diagnostics).toEqual(fromParseIssues(errors));
+    expect(details.diagnostics).toEqual([
+      expect.objectContaining({ severity: "error", code: "code_slug_mismatch" }),
+      expect.objectContaining({
+        severity: "error",
+        code: "code_out_of_grammar",
+        note: "Supported in the full SDK (v2)",
+      }),
+    ]);
   });
 
   it("answers 409 for a draft the code view cannot show, with the validator's findings", () => {

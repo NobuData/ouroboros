@@ -57,6 +57,7 @@ import { WorkflowCatalogService } from "./catalog.service";
 import {
   CONFIG_FILE_PATH,
   type WorkflowCode,
+  type WorkflowCodeChecks,
   type WorkflowCodeConfig,
   type WorkflowCodeTree,
 } from "./code.resources";
@@ -260,6 +261,27 @@ export class WorkflowsController {
     @Body() body: SaveWorkflowCodeBody,
   ): Promise<WorkflowCode> {
     return this.code.save(tenant.id, params.slug, ifMatch, body.text);
+  }
+
+  /**
+   * `GET /api/v1/workflows/{slug}/code/checks` — mockup 05's Loop Checks panel (W.2,
+   * [#178](https://github.com/NobuData/ouroboros/issues/178)).
+   *
+   * The rows for the file `GET …/code` serves — the draft's, or a published version's with
+   * `?version=` — derived from its diagnostics. Every member may read it, as they may the file.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The workflow's slug.
+   * @param query - `version` to check a published version instead of the draft.
+   * @returns The rows, with the file's path, version and the draft's etag.
+   */
+  @Get(":slug/code/checks")
+  readCodeChecks(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: WorkflowSlugParams,
+    @Query() query: ReadWorkflowQuery,
+  ): Promise<WorkflowCodeChecks> {
+    return this.code.checks(tenant.id, params.slug, query.version);
   }
 
   /**

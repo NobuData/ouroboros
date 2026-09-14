@@ -635,7 +635,7 @@ default chain"*, describes a fallback routing does not have: an unrouted task ki
 | **#168**, the property tests | The bijection in [§2](#2-what-the-grammar-promises), over generated documents. |
 | **#170**, highlighting | The token classes: keywords, strings, numbers, callees, comments. |
 | **#177**, completions and hover docs | `STAGE_CALLEES`, `STAGE_OPTIONS`, `PREDICATE_METHODS`, `EFFORT_CONSTANTS`, `ROUTE_METHODS`, and the schema pointers `code.grammar.ts` keeps beside them (`STAGE_OPTION_FIELDS`, `ROUTE_SIGNATURES` and the rest). `GET /api/v1/workflows/code-symbols` reads each word's type, values and doc from `v1.json` through them (`code.symbols.ts`). |
-| **#178**, the span map | `PrintedWorkflowCode.spans`: for each node, in node order, the 1-based first and last line of its stage call. |
+| **#178**, the span map and diagnostics | `PrintedWorkflowCode.spans`: for each node, in node order, the 1-based first and last line of its stage call. `code.diagnostics.ts` puts each validation finding and reference check on its stage's lines: a `/nodes/N` pointer takes the N-th span, an edge's pointer the span of the stage it leaves, and a finding about the whole document the `defineLoop` line. `GET /api/v1/workflows/{slug}/code` serves both as `spans` and `diagnostics`, and `code.checks.ts` derives the Loop Checks rows from them. |
 
 ```ts
 const { text, spans } = printWorkflowCode("standard-fix", document);

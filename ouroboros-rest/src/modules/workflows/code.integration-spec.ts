@@ -10,6 +10,7 @@ import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { edit, golden } from "./code.parser.fixture";
 import type {
   WorkflowCode,
+  WorkflowCodeChecks,
   WorkflowCodeConfig,
   WorkflowCodeIssue,
   WorkflowCodeTree,
@@ -318,6 +319,14 @@ describe("the code view, against a migrated database", () => {
       expect(body.details.errors).toEqual([
         expect.objectContaining({ code: "code_out_of_grammar", line: 4, column: 8, endColumn: 11 }),
       ]);
+      // The same refusal, in the stream a read's findings travel in (W.2).
+      expect(body.details.diagnostics).toEqual([
+        expect.objectContaining({
+          severity: "error",
+          code: "code_out_of_grammar",
+          range: { line: 4, column: 8, endLine: 4, endColumn: 11 },
+        }),
+      ]);
       expect(await storedDraft(created.id)).toBe(before);
 
       // …and both editors still read the last draft that did.
@@ -428,6 +437,190 @@ describe("the code view, against a migrated database", () => {
         [created.id],
       );
       expect(rows).toEqual([{ edited_in: "code" }]);
+    });
+  });
+
+  describe("diagnostics and Loop Checks (W.2)", () => {
+    /** The two stages mockup 04's canvas routes by task rather than by a pinned model. */
+    const ROUTED_TASKS = ["split", "implement"] as const;
+
+    /** What the validator says about a stage no edge reaches. */
+    const UNREACHABLE = "No path of edges reaches this stage from the trigger.";
+
+    /**
+     * Give a workspace a routing matrix, as an operator editing task kinds would.
+     *
+     * @param place - The workspace.
+     * @param names - The task kinds, in matrix order.
+     */
+    async function routes(place: Bench, names: readonly string[]): Promise<void> {
+      for (const [index, name] of names.entries()) {
+        await api.sql.query(
+          `insert into ${SCHEMA_NAME}.task_kinds (organization_id, name, description, sort_order)
+           values ($1, $2, $3, $4)`,
+          [place.id, name, `The ${name} kind of work.`, index + 1],
+        );
+      }
+    }
+
+    /**
+     * Read a workflow's Loop Checks.
+     *
+     * @param place - Where.
+     * @param path - The checks route, `standard-fix`'s by default.
+     * @param person - Who reads them; the owner by default.
+     * @returns The panel.
+     */
+    async function readChecks(place: Bench, path = `${CODE}/checks`, person = place.owner) {
+      return bodyOf<WorkflowCodeChecks>(await as(person, place)("get", path).expect(200));
+    }
+
+    /** The canvas's document with the effort re-check's branch to `split` removed. */
+    function withoutSplitBranch(): Record<string, unknown> {
+      const document = structuredClone(STANDARD_FIX) as { edges: { from: string; to: string }[] };
+      document.edges = document.edges.filter(
+        (edge) => !(edge.from === "effort-recheck" && edge.to === "split"),
+      );
+      return document;
+    }
+
+    it("serves each stage's lines, and no diagnostics for a clean canvas in a routed workspace", async () => {
+      const place = await bench();
+      await routes(place, ROUTED_TASKS);
+      await workflow(place);
+
+      const opened = await readFile(place);
+
+      expect(opened.spans).toHaveLength(12);
+      expect(opened.spans[6]).toEqual({ node: "implement", startLine: 71, endLine: 85 });
+      expect(opened.diagnostics).toEqual([]);
+      expect(opened.checksRef).toBe(`${CODE}/checks`);
+      expect(opened.outlineRef).toBeNull();
+    });
+
+    it("answers mockup 05's first two rows for that canvas, and no infra row (C7)", async () => {
+      const place = await bench();
+      await routes(place, ROUTED_TASKS);
+      await workflow(place);
+      const opened = await readFile(place);
+
+      expect(await readChecks(place, opened.checksRef)).toEqual({
+        path: "workflows/standard-fix.loop.ts",
+        slug: "standard-fix",
+        etag: opened.etag,
+        readOnly: false,
+        version: null,
+        rows: [
+          { id: "graph", status: "ok", title: "Graph acyclic except declared gate loop" },
+          {
+            id: "references",
+            status: "ok",
+            title: "All task routes resolve",
+            note: "models configured for analyze · plan · split · implement · review",
+          },
+        ],
+      });
+    });
+
+    it("puts an unrouted task on the lines of the stage that routes to it, as a warning", async () => {
+      const place = await bench();
+      await routes(place, ["implement"]);
+      await workflow(place);
+
+      expect((await readFile(place)).diagnostics).toEqual([
+        {
+          severity: "warning",
+          range: { line: 54, column: 5, endLine: 66, endColumn: 8 },
+          code: "reference.unknown_task",
+          message: "No route is configured for the task `split`.",
+          node: "split",
+        },
+      ]);
+      expect((await readChecks(place)).rows[1]).toEqual({
+        id: "references",
+        status: "warn",
+        title: "1 reference does not resolve",
+        note: "unresolved in split",
+      });
+    });
+
+    it("leaves out the references row for a workspace with no routing matrix", async () => {
+      const place = await bench();
+      await workflow(place);
+
+      expect((await readChecks(place)).rows).toEqual([
+        { id: "graph", status: "ok", title: "Graph acyclic except declared gate loop" },
+      ]);
+    });
+
+    it("carries a canvas draft's errors on its stages' lines, in the file and after a code save", async () => {
+      const place = await bench();
+      await routes(place, ROUTED_TASKS);
+      await workflow(place, "Standard Fix", withoutSplitBranch());
+      const unreachable = [
+        {
+          severity: "error",
+          range: { line: 53, column: 5, endLine: 65, endColumn: 8 },
+          code: "node.unreachable",
+          message: UNREACHABLE,
+          node: "split",
+        },
+        {
+          severity: "error",
+          range: { line: 66, column: 5, endLine: 69, endColumn: 8 },
+          code: "node.unreachable",
+          message: UNREACHABLE,
+          node: "back-to-queue",
+        },
+      ];
+
+      const opened = await readFile(place);
+      const saved = bodyOf<WorkflowCode>(
+        await codeSave(place, opened.etag, opened.text).expect(200),
+      );
+
+      expect(opened.diagnostics).toEqual(unreachable);
+      expect(saved.diagnostics).toEqual(unreachable);
+      expect((await readChecks(place)).rows).toEqual([
+        { id: "graph", status: "err", title: "2 validation errors", note: UNREACHABLE },
+      ]);
+    });
+
+    it("checks a published version where its file's checksRef points", async () => {
+      const place = await bench();
+      const created = await workflow(place);
+      await as(place.owner, place)("post", `${WORKFLOWS}/${created.id}/publish`)
+        .send({})
+        .expect(200);
+
+      const version = await readFile(place, "?version=1");
+
+      expect(version.checksRef).toBe(`${CODE}/checks?version=1`);
+      expect(await readChecks(place, version.checksRef)).toMatchObject({
+        readOnly: true,
+        version: 1,
+        rows: [{ id: "graph", status: "ok" }],
+      });
+
+      const missing = bodyOf<ErrorEnvelope>(
+        await as(place.owner, place)("get", `${CODE}/checks?version=9`).expect(404),
+      );
+      expect(missing.code).toBe("workflow_version_not_found");
+    });
+
+    it("lets a viewer read the checks, and refuses a blank canvas's checks as the file is refused", async () => {
+      const place = await bench();
+      await workflow(place);
+      await workflow(place, "Blank Loop", null);
+      const viewer = await api.signIn({ email: "viewer@ouroboros.invalid" });
+      await api.join(place.id, viewer, "viewer");
+
+      expect((await readChecks(place, `${CODE}/checks`, viewer)).rows).not.toEqual([]);
+
+      const blank = bodyOf<ErrorEnvelope>(
+        await as(place.owner, place)("get", `${WORKFLOWS}/blank-loop/code/checks`).expect(409),
+      );
+      expect(blank.code).toBe("workflow_code_unprojectable");
     });
   });
 

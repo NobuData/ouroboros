@@ -37,7 +37,7 @@ const PRINCIPAL = { user: { id: "user-1" } } as never;
 describe("the workflows controller", () => {
   let service: jest.Mocked<WorkflowsService>;
   let catalog: jest.Mocked<Pick<WorkflowCatalogService, "catalog" | "codeSymbols">>;
-  let code: jest.Mocked<Pick<WorkflowCodeService, "read" | "save" | "tree" | "config">>;
+  let code: jest.Mocked<Pick<WorkflowCodeService, "read" | "checks" | "save" | "tree" | "config">>;
   let controller: WorkflowsController;
   let reflector: Reflector;
 
@@ -59,6 +59,7 @@ describe("the workflows controller", () => {
 
     code = {
       read: jest.fn().mockResolvedValue({ slug: "standard-fix" }),
+      checks: jest.fn().mockResolvedValue({ rows: [] }),
       save: jest.fn().mockResolvedValue({ etag: "token" }),
       tree: jest.fn().mockResolvedValue({ files: [] }),
       config: jest.fn().mockResolvedValue({ readOnly: true }),
@@ -175,6 +176,12 @@ describe("the workflows controller", () => {
       expect(code.read).toHaveBeenCalledWith("acme-robotics-id", "standard-fix", 2);
     });
 
+    it("hands a file's Loop Checks the slug and the version the query named", async () => {
+      await controller.readCodeChecks(TENANT, { slug: "standard-fix" }, { version: 2 });
+
+      expect(code.checks).toHaveBeenCalledWith("acme-robotics-id", "standard-fix", 2);
+    });
+
     it("hands a file save the If-Match header verbatim, and the text", async () => {
       await controller.saveCode(TENANT, { slug: "standard-fix" }, 'W/"token"', { text: "…" });
 
@@ -213,6 +220,7 @@ describe("the workflows controller", () => {
         controller.codeConfig,
         controller.saveCodeConfig,
         controller.readCode,
+        controller.readCodeChecks,
         controller.saveCode,
         controller.read,
         controller.update,
@@ -233,6 +241,7 @@ describe("the workflows controller", () => {
       ["the code view's explorer", () => controller.codeTree],
       ["ouroboros.config.ts", () => controller.codeConfig],
       ["a workflow's file", () => controller.readCode],
+      ["a workflow's Loop Checks", () => controller.readCodeChecks],
       ["the detail", () => controller.read],
       ["the history", () => controller.versions],
     ])("leaves %s open to every member, viewers included", (_name, handler) => {
@@ -304,6 +313,12 @@ describe("the workflows controller", () => {
       ]) {
         expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe(":slug/code");
       }
+    });
+
+    it("serves a workflow's Loop Checks at `:slug/code/checks`", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, WorkflowsController.prototype.readCodeChecks)).toBe(
+        ":slug/code/checks",
+      );
     });
   });
 

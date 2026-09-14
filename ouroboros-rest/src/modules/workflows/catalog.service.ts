@@ -19,6 +19,10 @@
  * with the same two lifetimes: completions and hover cards read from the grammar and the schema
  * once, and the same workspace suggestions per request. One read of `task_kinds` answers both, so
  * the inspector and the editor cannot suggest different task routes.
+ *
+ * **So is the catalogue the code view's reference checks answer from** (W.2,
+ * [#178](https://github.com/NobuData/ouroboros/issues/178)): the same suggestions, as decision
+ * **P7**'s catalogue, so a name the editor suggests is a name its diagnostics accept.
  */
 
 import { Inject, Injectable } from "@nestjs/common";
@@ -28,12 +32,14 @@ import { WorkflowCatalogRepository } from "./catalog.repository";
 import {
   stageCatalog,
   stageCatalogEntries,
+  toDslCatalogue,
   type StageCatalog,
   type StageCatalogEntry,
   type StageSuggestions,
 } from "./catalog.resources";
 import { nodeTypeSchemas, publishedSchemaId, type JsonSchema } from "./catalog.schema";
 import { buildCodeSymbols, codeSymbolTable, type CodeSymbolTable } from "./code.symbols";
+import type { DslCatalogue } from "./dsl.references";
 
 /** The injection token the published workflow DSL schema is provided under. */
 export const PUBLISHED_DSL_SCHEMA = Symbol("PUBLISHED_DSL_SCHEMA");
@@ -89,7 +95,18 @@ export class WorkflowCatalogService {
   }
 
   /**
-   * What this workspace is advised to name — the one read both answers share.
+   * The names one workspace's code view checks references against (W.2).
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @returns The suggestions as decision **P7**'s catalogue: an empty list is left out, so it is
+   *   *not checked* rather than *nothing exists*.
+   */
+  async dslCatalogue(organizationId: string): Promise<DslCatalogue> {
+    return toDslCatalogue(await this.suggestions(organizationId));
+  }
+
+  /**
+   * What this workspace is advised to name — the one read every answer shares.
    *
    * @param organizationId - The workspace.
    * @returns The configured skills and the workspace's task kinds, in matrix order.

@@ -1,9 +1,11 @@
 /**
  * What the code view looks like on the wire — U.3
- * ([#167](https://github.com/NobuData/ouroboros/issues/167)).
+ * ([#167](https://github.com/NobuData/ouroboros/issues/167)) and W.2
+ * ([#178](https://github.com/NobuData/ouroboros/issues/178)).
  *
  * ```
- * WorkflowCode          one workflow as a file: its text, the draft's etag, whether it is editable
+ * WorkflowCode          one workflow as a file: its text, span map and diagnostics, the draft's etag
+ * WorkflowCodeChecks    the Loop Checks panel for that file
  * WorkflowCodeTree      the explorer: every file the project has, and nothing it does not
  * WorkflowCodeConfig    ouroboros.config.ts, read-only and printed from the registry
  * WorkflowCodeIssue     one reason a saved file was refused, where an editor underlines it
@@ -23,16 +25,27 @@
  * in their `path`, so an empty directory cannot be served at all, and mockup 05's `skills/` and
  * `lib/` appear on the day a file under them does (X.2, #181) rather than as placeholders now.
  *
- * ## The outline and the checks are referenced, not yet served
+ * ## Every file carries its span map and its diagnostics
  *
- * `outlineRef` and `checksRef` are where the outline and the Loop Checks payloads will be read
- * from. W.2 ([#178](https://github.com/NobuData/ouroboros/issues/178)) serves both, and until it
- * does both are `null`: a reference to a route that answers `404` would be a promise the page
- * cannot keep.
+ * `spans` is the printer's node→line-span map for exactly this `text`, and `diagnostics` is the
+ * stream `code.diagnostics.ts` builds with it: validation findings and reference checks, each on
+ * the lines of the stage it is about. A refused save carries the parser's refusals in the same
+ * shape, as `details.diagnostics` of its `422`.
+ *
+ * ## The checks are referenced; the outline is not served
+ *
+ * `checksRef` is where the file's Loop Checks panel is read — `…/{slug}/code/checks`, with the
+ * file's `?version=` when it is a published version. `outlineRef` stays `null`: W.2 scopes no
+ * outline payload, and the outline #173 draws is the stage calls, which `spans` already lists
+ * with the lines a click jumps to. A reference to a route that answers `404` would be a promise
+ * the page cannot keep.
  */
 
 import type { Workflow, WorkflowStatus } from "../db/schema";
+import type { LoopCheckRow } from "./code.checks";
+import type { CodeDiagnostic } from "./code.diagnostics";
 import type { CodeRange, WorkflowCodeErrorCode } from "./code.errors";
+import type { NodeSpan } from "./code.printer";
 import type { WorkflowRegistryRow } from "./stats.repository";
 
 /** The directory the workflow files live in. */
@@ -43,6 +56,15 @@ export const WORKFLOW_FILE_SUFFIX = ".loop.ts";
 
 /** The read-only projection of the workspace's workflow configuration. */
 export const CONFIG_FILE_PATH = "ouroboros.config.ts";
+
+/**
+ * Where the workflow routes are served, as a client requests them.
+ *
+ * Spelled here rather than read from `application.ts`' `API_BASE_PATH`: that file imports the
+ * application module and, through it, this one, and a module that imported it back would close the
+ * cycle. `code.resources.spec.ts` holds the two together.
+ */
+export const WORKFLOWS_PATH = "/api/v1/workflows";
 
 /**
  * The code a save reports when the file's `defineLoop` names another workflow.
@@ -89,10 +111,30 @@ export interface WorkflowCode {
   readonly version: number | null;
   /** The version in force — the `v14` chip — or `null` for a workflow that has published nothing. */
   readonly currentVersion: number | null;
-  /** Where the outline payload is read from. `null` until W.2 (#178) serves it. */
-  readonly outlineRef: string | null;
-  /** Where the Loop Checks payload is read from. `null` until W.2 (#178) serves it. */
-  readonly checksRef: string | null;
+  /** Each stage call's first and last line in `text`, in the document's node order. */
+  readonly spans: readonly NodeSpan[];
+  /** The file's validation findings and reference checks, errors first, then by position. */
+  readonly diagnostics: readonly CodeDiagnostic[];
+  /** Always `null`: no outline payload is served; see this file's header. */
+  readonly outlineRef: null;
+  /** Where this file's Loop Checks panel is read from. */
+  readonly checksRef: string;
+}
+
+/** Mockup 05's Loop Checks panel for one file. */
+export interface WorkflowCodeChecks {
+  /** The file the rows are about. */
+  readonly path: string;
+  /** The workflow's slug. */
+  readonly slug: string;
+  /** The draft slot's etag, as the file carries it — so a client can tell which save it is about. */
+  readonly etag: string;
+  /** Whether the file is a published version. */
+  readonly readOnly: boolean;
+  /** The published version the file was printed from, or `null` for the draft. */
+  readonly version: number | null;
+  /** The rows, in the panel's order. Never an infra row (decision **C7**). */
+  readonly rows: readonly LoopCheckRow[];
 }
 
 /** What a file of the explorer is. */
@@ -132,6 +174,10 @@ export interface WorkflowCodeConfig {
 export interface ProjectedFile {
   /** The file, from `code.projection.ts`. */
   readonly text: string;
+  /** The printer's span map for `text`. */
+  readonly spans: readonly NodeSpan[];
+  /** The file's diagnostics, from `code.diagnostics.ts`. */
+  readonly diagnostics: readonly CodeDiagnostic[];
   /** The draft slot's etag. */
   readonly etag: string;
   /** The published version it was printed from, or `null` for the draft. */
@@ -151,10 +197,23 @@ export function workflowFilePath(slug: string): string {
 }
 
 /**
+ * Where a file's Loop Checks panel is read.
+ *
+ * @param slug - The workflow's slug.
+ * @param version - The published version being read, or `null` for the file a plain `GET …/code`
+ *   opens (the draft, or the version in force when there is none).
+ * @returns `/api/v1/workflows/<slug>/code/checks`, with `?version=` for a published version.
+ */
+export function workflowCodeChecksPath(slug: string, version: number | null): string {
+  const query = version === null ? "" : `?version=${version}`;
+  return `${WORKFLOWS_PATH}/${slug}/code/checks${query}`;
+}
+
+/**
  * One workflow as a file.
  *
  * @param workflow - The entity: its slug and the version in force.
- * @param file - The printed text and what it was printed from.
+ * @param file - The printed text, its span map and diagnostics, and what it was printed from.
  * @returns The file.
  */
 export function workflowCode(
@@ -169,8 +228,33 @@ export function workflowCode(
     readOnly: file.readOnly,
     version: file.version,
     currentVersion: workflow.current_version,
+    spans: file.spans,
+    diagnostics: file.diagnostics,
     outlineRef: null,
-    checksRef: null,
+    checksRef: workflowCodeChecksPath(workflow.slug, file.readOnly ? file.version : null),
+  };
+}
+
+/**
+ * One file's Loop Checks panel.
+ *
+ * @param workflow - The entity: its slug.
+ * @param file - What the file was printed from, and the draft's etag.
+ * @param rows - The rows, from `code.checks.ts`.
+ * @returns The panel.
+ */
+export function workflowCodeChecks(
+  workflow: Pick<Workflow, "slug">,
+  file: Pick<ProjectedFile, "etag" | "version" | "readOnly">,
+  rows: readonly LoopCheckRow[],
+): WorkflowCodeChecks {
+  return {
+    path: workflowFilePath(workflow.slug),
+    slug: workflow.slug,
+    etag: file.etag,
+    readOnly: file.readOnly,
+    version: file.version,
+    rows,
   };
 }
 

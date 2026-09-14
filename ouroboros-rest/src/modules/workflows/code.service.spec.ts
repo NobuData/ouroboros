@@ -1,4 +1,5 @@
 import type { Organization, Workflow, WorkflowVersion } from "../db/schema";
+import type { WorkflowCatalogService } from "./catalog.service";
 import { edit, golden } from "./code.parser.fixture";
 import * as projection from "./code.projection";
 import { WorkflowCodeService } from "./code.service";
@@ -10,12 +11,16 @@ import type { WorkflowsRepository } from "./workflows.repository";
 import type { WorkflowsService } from "./workflows.service";
 
 /**
- * The code view's rules — U.3 ([#167](https://github.com/NobuData/ouroboros/issues/167)).
+ * The code view's rules — U.3 ([#167](https://github.com/NobuData/ouroboros/issues/167)) and W.2
+ * ([#178](https://github.com/NobuData/ouroboros/issues/178)).
  *
- * The statements are the repositories' suites, the guard is `workflows.service.spec.ts`', and the
- * whole pipeline is `code.integration-spec.ts`'. What only this suite can hold is the order of the
+ * The statements are the repositories' suites, the guard is `workflows.service.spec.ts`', the
+ * diagnostics and rows are `code.diagnostics.spec.ts`' and `code.checks.spec.ts`', and the whole
+ * pipeline is `code.integration-spec.ts`'. What only this suite can hold is the order of the
  * decisions a save makes, and two of them are acceptance criteria: **a file that does not read
- * never reaches the guarded write**, and **the draft's etag is the one both editors share**.
+ * never reaches the guarded write**, and **the draft's etag is the one both editors share**. It also
+ * holds that every file carries its span map and diagnostics, checked against the workspace's own
+ * names, and that the checks read opens exactly the file the read does.
  */
 
 const WORKSPACE = "acme-robotics-id";
@@ -26,6 +31,12 @@ const LATER = new Date("2026-09-12T10:05:00.000Z");
 /** The minimal fixture's document, and the file its projection is committed as. */
 const MINIMAL = readFixture("valid/minimal.json");
 const MINIMAL_FILE = golden("minimal");
+
+/** The minimal file's span map: its trigger stage, then its terminal. */
+const MINIMAL_SPANS = [
+  { node: "start", startLine: 9, endLine: 12 },
+  { node: "done", startLine: 13, endLine: 15 },
+];
 
 /** A workflow row named `minimal`, so the committed projection is its file. */
 function workflow(overrides: Partial<Workflow> = {}): Workflow {
@@ -69,6 +80,22 @@ function published(version: number): WorkflowVersion {
   });
 }
 
+/** The minimal document with a terminal nothing reaches — a draft that still prints. */
+function withOrphan(): unknown {
+  // Copied through JSON rather than `structuredClone`: under Jest the clone's objects come from
+  // another realm's `Object.prototype`, and the projection's `isDeepStrictEqual` compares
+  // prototypes, so the round trip would refuse a document that is really the same.
+  const document = JSON.parse(JSON.stringify(MINIMAL)) as { nodes: unknown[] };
+  document.nodes.push({
+    id: "orphan",
+    type: "term",
+    title: "Nothing reaches this",
+    position: { x: 480, y: 0 },
+    config: { action: "needs_review", options: {} },
+  });
+  return document;
+}
+
 /** The workspace, as the tenant guard establishes it. */
 const TENANT: Organization = {
   id: WORKSPACE,
@@ -85,12 +112,14 @@ interface Harness {
   workflows: jest.Mocked<WorkflowsRepository>;
   registry: jest.Mocked<WorkflowStatsRepository>;
   lifecycle: jest.Mocked<WorkflowsService>;
+  catalog: jest.Mocked<Pick<WorkflowCatalogService, "dslCatalogue">>;
 }
 
 /**
  * A service over spies: a workspace with the `minimal` workflow, its draft and its versions.
  *
- * @returns The harness. The guarded write answers with the draft it would have stored.
+ * @returns The harness. The guarded write answers with the draft it would have stored, and the
+ *   workspace's routing matrix has one task kind.
  */
 function harness(): Harness {
   const workflows = {
@@ -123,11 +152,19 @@ function harness(): Harness {
       ),
   } as unknown as jest.Mocked<WorkflowsService>;
 
+  const catalog = { dslCatalogue: jest.fn().mockResolvedValue({ tasks: ["implement"] }) };
+
   return {
-    service: new WorkflowCodeService(workflows, registry, lifecycle),
+    service: new WorkflowCodeService(
+      workflows,
+      registry,
+      lifecycle,
+      catalog as unknown as WorkflowCatalogService,
+    ),
     workflows,
     registry,
     lifecycle,
+    catalog,
   };
 }
 
@@ -156,7 +193,7 @@ afterEach(() => {
 });
 
 describe("reading a workflow as a file", () => {
-  it("is the draft's projection, carrying the draft's etag", async () => {
+  it("is the draft's projection, carrying the draft's etag, span map and checks reference", async () => {
     const { service, workflows } = harness();
 
     const file = await service.read(WORKSPACE, "minimal");
@@ -170,9 +207,31 @@ describe("reading a workflow as a file", () => {
       readOnly: false,
       version: null,
       currentVersion: 3,
+      spans: MINIMAL_SPANS,
+      diagnostics: [],
       outlineRef: null,
-      checksRef: null,
+      checksRef: "/api/v1/workflows/minimal/code/checks",
     });
+  });
+
+  it("carries the draft's findings on the lines of the stage each is about", async () => {
+    const { service, workflows } = harness();
+    workflows.draftOf.mockResolvedValue(draft({ definition: withOrphan() }));
+
+    const file = await service.read(WORKSPACE, "minimal");
+
+    expect(file.diagnostics).toEqual([
+      expect.objectContaining({ severity: "error", code: "node.unreachable", node: "orphan" }),
+    ]);
+    expect(file.diagnostics[0].range.line).toBe(file.spans[2].startLine);
+  });
+
+  it("checks references against this workspace's names", async () => {
+    const { service, catalog } = harness();
+
+    await service.read(WORKSPACE, "minimal");
+
+    expect(catalog.dslCatalogue).toHaveBeenCalledWith(WORKSPACE);
   });
 
   it("opens on the version in force when there is no draft, editable, as the canvas does", async () => {
@@ -182,7 +241,13 @@ describe("reading a workflow as a file", () => {
     const file = await service.read(WORKSPACE, "minimal");
 
     expect(workflows.versionAt).toHaveBeenCalledWith(WORKFLOW, 3);
-    expect(file).toMatchObject({ text: MINIMAL_FILE, etag: NO_DRAFT, version: 3, readOnly: false });
+    expect(file).toMatchObject({
+      text: MINIMAL_FILE,
+      etag: NO_DRAFT,
+      version: 3,
+      readOnly: false,
+      checksRef: "/api/v1/workflows/minimal/code/checks",
+    });
   });
 
   it("reads a published version read-only when one is named, with the draft's etag", async () => {
@@ -191,11 +256,16 @@ describe("reading a workflow as a file", () => {
     const file = await service.read(WORKSPACE, "minimal", 2);
 
     expect(workflows.versionAt).toHaveBeenCalledWith(WORKFLOW, 2);
-    expect(file).toMatchObject({ version: 2, readOnly: true, etag: draftEtag(draft()) });
+    expect(file).toMatchObject({
+      version: 2,
+      readOnly: true,
+      etag: draftEtag(draft()),
+      checksRef: "/api/v1/workflows/minimal/code/checks?version=2",
+    });
   });
 
   it("answers 404 for a slug this workspace does not have, echoing the slug", async () => {
-    const { service, workflows } = harness();
+    const { service, workflows, catalog } = harness();
     workflows.findBySlug.mockResolvedValue(undefined);
 
     expect(await refusal(service.read(WORKSPACE, "standard-fix"))).toMatchObject({
@@ -203,6 +273,7 @@ describe("reading a workflow as a file", () => {
       details: { slug: "standard-fix" },
     });
     expect(workflows.draftOf).not.toHaveBeenCalled();
+    expect(catalog.dslCatalogue).not.toHaveBeenCalled();
   });
 
   it("answers 404 for a version number the workflow does not have", async () => {
@@ -215,7 +286,7 @@ describe("reading a workflow as a file", () => {
   });
 
   it("refuses a draft it cannot show without changing it, with the validator's findings", async () => {
-    const { service, workflows } = harness();
+    const { service, workflows, catalog } = harness();
     workflows.draftOf.mockResolvedValue(draft({ definition: {} }));
 
     const envelope = await refusal(service.read(WORKSPACE, "minimal"));
@@ -223,6 +294,7 @@ describe("reading a workflow as a file", () => {
     expect(envelope.code).toBe("workflow_code_unprojectable");
     expect(envelope.details).toMatchObject({ slug: "minimal", version: null });
     expect(envelope.details.findings).not.toEqual([]);
+    expect(catalog.dslCatalogue).not.toHaveBeenCalled();
   });
 
   it("refuses a workflow with nothing to show at all — no draft and nothing in force", async () => {
@@ -235,6 +307,71 @@ describe("reading a workflow as a file", () => {
       details: { findings: [] },
     });
     expect(workflows.versionAt).not.toHaveBeenCalled();
+  });
+});
+
+describe("a file's Loop Checks", () => {
+  it("are the rows for the file the read opens, with its path, version and the draft's etag", async () => {
+    const { service } = harness();
+
+    expect(await service.checks(WORKSPACE, "minimal")).toEqual({
+      path: "workflows/minimal.loop.ts",
+      slug: "minimal",
+      etag: draftEtag(draft()),
+      readOnly: false,
+      version: null,
+      rows: [
+        { id: "graph", status: "ok", title: "Graph acyclic" },
+        { id: "references", status: "ok", title: "All task routes resolve" },
+      ],
+    });
+  });
+
+  it("leave out the references row when the workspace has no routing matrix", async () => {
+    const { service, catalog } = harness();
+    catalog.dslCatalogue.mockResolvedValue({});
+
+    expect((await service.checks(WORKSPACE, "minimal")).rows).toEqual([
+      { id: "graph", status: "ok", title: "Graph acyclic" },
+    ]);
+  });
+
+  it("report the draft's errors, and nothing about references they stopped", async () => {
+    const { service, workflows } = harness();
+    workflows.draftOf.mockResolvedValue(draft({ definition: withOrphan() }));
+
+    expect((await service.checks(WORKSPACE, "minimal")).rows).toEqual([
+      {
+        id: "graph",
+        status: "err",
+        title: "1 validation error",
+        note: "No path of edges reaches this stage from the trigger.",
+      },
+    ]);
+  });
+
+  it("check a published version when one is named", async () => {
+    const { service, workflows } = harness();
+
+    const checks = await service.checks(WORKSPACE, "minimal", 2);
+
+    expect(workflows.versionAt).toHaveBeenCalledWith(WORKFLOW, 2);
+    expect(checks).toMatchObject({ version: 2, readOnly: true });
+  });
+
+  it("answer as the read does for a slug the workspace lacks or a draft it cannot show", async () => {
+    const { service, workflows } = harness();
+    workflows.findBySlug.mockResolvedValueOnce(undefined);
+
+    expect((await refusal(service.checks(WORKSPACE, "standard-fix"))).code).toBe(
+      "workflow_not_found",
+    );
+
+    workflows.draftOf.mockResolvedValue(draft({ definition: {} }));
+
+    expect((await refusal(service.checks(WORKSPACE, "minimal"))).code).toBe(
+      "workflow_code_unprojectable",
+    );
   });
 });
 
@@ -253,8 +390,30 @@ describe("saving a file", () => {
     expect(ifMatch).toBe(etag);
     expect(editor).toBe("code");
     expect((definition as { nodes: { title: string }[] }).nodes[1].title).toBe("Needs a human");
-    expect(saved).toMatchObject({ text: RETITLED, readOnly: false, version: null });
+    expect(saved).toMatchObject({
+      text: RETITLED,
+      readOnly: false,
+      version: null,
+      spans: MINIMAL_SPANS,
+      diagnostics: [],
+      checksRef: "/api/v1/workflows/minimal/code/checks",
+    });
     expect(saved.etag).toBe(draftEtag(draft({ definition, edited_in: "code", updated_at: LATER })));
+  });
+
+  it("answers with the saved document's findings, which a save does not refuse", async () => {
+    const { service } = harness();
+    const orphaned = edit(
+      MINIMAL_FILE,
+      "  ],\n",
+      '    needsReview("orphan", {\n      title: "Nothing reaches this",\n    }),\n  ],\n',
+    ).replace("// edge start done", "// node orphan 480 0\n// edge start done");
+
+    const saved = await service.save(WORKSPACE, "minimal", "*", orphaned);
+
+    expect(saved.diagnostics).toEqual([
+      expect.objectContaining({ severity: "error", code: "node.unreachable", node: "orphan" }),
+    ]);
   });
 
   it("answers with the canonical file, whatever spelling of the same document it was sent", async () => {
@@ -276,6 +435,13 @@ describe("saving a file", () => {
     expect(envelope.details.errors).toEqual([
       expect.objectContaining({ code: "code_out_of_grammar", line: 4, column: 8 }),
     ]);
+    expect(envelope.details.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "code_out_of_grammar",
+        range: { line: 4, column: 8, endLine: 4, endColumn: 11 },
+      }),
+    ]);
     expect(lifecycle.writeGuarded).not.toHaveBeenCalled();
   });
 
@@ -294,6 +460,9 @@ describe("saving a file", () => {
         endLine: 3,
         endColumn: 41,
       }),
+    ]);
+    expect(envelope.details.diagnostics).toEqual([
+      expect.objectContaining({ severity: "error", code: "code_slug_mismatch" }),
     ]);
     expect(lifecycle.writeGuarded).not.toHaveBeenCalled();
   });
@@ -335,6 +504,16 @@ describe("saving a file", () => {
 
     await expect(service.save(WORKSPACE, "minimal", "*", MINIMAL_FILE)).rejects.toThrow(
       /cannot give back/,
+    );
+    expect(lifecycle.writeGuarded).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing when the workspace's names cannot be read, because it diagnoses first", async () => {
+    const { service, lifecycle, catalog } = harness();
+    catalog.dslCatalogue.mockRejectedValue(new Error("the database is unavailable"));
+
+    await expect(service.save(WORKSPACE, "minimal", "*", MINIMAL_FILE)).rejects.toThrow(
+      /unavailable/,
     );
     expect(lifecycle.writeGuarded).not.toHaveBeenCalled();
   });

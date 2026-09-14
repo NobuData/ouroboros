@@ -30,6 +30,7 @@ import {
   NotFoundError,
 } from "../errors/error.envelope";
 import { isDatabaseFailure } from "../tenancy/constraints";
+import { fromParseIssues } from "./code.diagnostics";
 import type { WorkflowCodeIssue } from "./code.resources";
 import { draftEtag } from "./draft.etag";
 import type { DslDiagnostic } from "./dsl.errors";
@@ -304,6 +305,12 @@ export function workflowSlugNotFound(slug: string): NotFoundError {
  * `details.errors` with a 1-based line and column range, so the editor underlines each where it
  * is written, while the visual editor keeps showing the last draft that did read.
  *
+ * `details.diagnostics` carries the same issues as the code view's one diagnostics stream (W.2,
+ * [#178](https://github.com/NobuData/ouroboros/issues/178)) — `{severity, range, code, message,
+ * note?}`, the shape a successful read or save carries its validation findings in — so the editor
+ * renders a refusal and a finding with one code path. `errors` stays, unchanged, for the clients
+ * that already read it.
+ *
  * @param errors - The parser's errors, or the slug check's one. Carried in `details` rather than
  *   the message, because the editor places them and a message it had to parse would break when the
  *   wording changed.
@@ -313,7 +320,7 @@ export function codeInvalid(errors: readonly WorkflowCodeIssue[]): InvalidReques
   return new InvalidRequestError(
     WORKFLOW_ERRORS.codeInvalid,
     "This file does not read as a workflow, so it was not saved. The draft is unchanged.",
-    { errors },
+    { errors, diagnostics: fromParseIssues(errors) },
   );
 }
 

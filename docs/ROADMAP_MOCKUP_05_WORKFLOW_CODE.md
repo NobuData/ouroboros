@@ -331,7 +331,8 @@ TS text ─ ts.createSourceFile ─▶ AST walk (closed grammar) ─▶ canonica
   what moved it. **`ouroboros.config.ts` is the registry**, each rail workflow's slug, name, status
   and version in force, read at `code-config`, where a `PUT` is `405` with `Allow: GET`. **The tree
   is a flat list of files**, so no `skills/` or `lib/` row can exist until a file under it does.
-  **`outlineRef` and `checksRef` are `null`** until W.2 (#178) serves those payloads. **The body is
+  **`outlineRef` and `checksRef` were `null`** until W.2 (#178), which points `checksRef` at
+  `…/code/checks` and keeps `outlineRef` `null`. **The body is
   JSON `{text}`**, and a file whose `defineLoop` names another slug is a `422` anchored at the slug
   (`code_slug_mismatch`). A workflow with no draft opens on the version in force.
 
@@ -587,7 +588,7 @@ e2e: parity ✓ · code→visual→code round-trip ✓ · publish ✓ · diagnos
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | W.1 | #177 | 🟢 Done | ouroboros-ui: [W.1] Schema-driven completions & hover docs | CM6 sources from WF-P.2 schema + WF-R.3 catalog; the Types card data | mvp, workflow, code-view, ui | N (after U.1, WF-R.3) | Y | M | ouroboros-ui, ouroboros-rest |
-| W.2 | #178 | 🟡 Open | ouroboros-rest: [W.2] Diagnostics & Loop Checks payload | Map validation findings to code ranges; checks panel contract | mvp, workflow, code-view, rest | N (after U.2, WF-R.2) | Y | M | ouroboros-rest |
+| W.2 | #178 | 🟢 Done | ouroboros-rest: [W.2] Diagnostics & Loop Checks payload | Map validation findings to code ranges; checks panel contract | mvp, workflow, code-view, rest | N (after U.2, WF-R.2) | Y | M | ouroboros-rest |
 | W.3 | #179 | 🟡 Open | ouroboros-rest: [W.3] Intelligence integration tests | Completion/hover/diagnostic fixtures, range-mapping accuracy | mvp, workflow, code-view, rest, ci | N (after W.1, W.2) | Y | S | ouroboros-rest |
 
 ### Issue W.1 — ouroboros-ui: [W.1] Schema-driven completions & hover docs
@@ -629,7 +630,7 @@ cursor@route.task ─▶ hover-doc {sig, doc}  — nothing invented beyond the s
 
 ### Issue W.2 — ouroboros-rest: [W.2] Diagnostics & Loop Checks payload
 
-> **GitHub issue:** #178 · **Status:** 🟡 Open · **Parent epic:** #163
+> **GitHub issue:** #178 · **Status:** 🟢 Done · **Parent epic:** #163
 
 - **Problem Statement:** Validation findings (WF-R.2/zod, node-anchored) and
   parse errors (U.2, line-anchored) must unify into one diagnostics contract
@@ -649,6 +650,26 @@ cursor@route.task ─▶ hover-doc {sig, doc}  — nothing invented beyond the s
 - **Parallelism/Dependencies:** Needs U.2, WF-R.2. Feeds V.4, V.5.
 - **Technical Stack:** NestJS.
 - **Epic:** W
+- **Delivered (2026-09-13):** `GET` and `PUT /api/v1/workflows/{slug}/code` carry `spans`, the
+  printer's node→line-span map, and `diagnostics`, one stream of `{severity, range, code, message,
+  note?, node?}` (`ouroboros-rest/src/modules/workflows/code.diagnostics.ts`). A refused save's
+  `422` carries its parse errors in the same shape as `details.diagnostics`.
+  `GET /api/v1/workflows/{slug}/code/checks` serves the Loop Checks rows (`code.checks.ts`), and
+  `checksRef` points there. Five decisions were taken in-issue. **References are checked against
+  the workspace's real task kinds**, so the development seed shows `⚠ 1 reference does not resolve`
+  for `standard-fix`'s `route.task("split")`: the seeded routing matrix has no `split` kind. A golden
+  suite gives the seed a matrix that routes it and reproduces the mockup's two ✓ rows, read out of
+  the mockup's HTML. **The acyclicity row is checked**: nothing looked for a cycle of `next` and
+  `branches` edges, so `graph.undeclared_cycle` is a new code-view warning, kept out of the shared
+  validator and the engine's parity fixtures because it changes no publish. **Findings come from
+  the in-process validator**, which `expected.json` holds in parity with the engine, so opening a
+  file makes no engine call. **The span map stays an array** of `{node, startLine, endLine}` rather
+  than an object keyed by id, since a draft that still round-trips may repeat an id. **`outlineRef`
+  stays `null`**: no outline payload is scoped here, and `spans` is what the outline's jump needs.
+  The `references` row appears only when task routes were checked or a reference failed, and no
+  infra row can be built (C7). **`ci/rest` now watches `docs/mockups/05-workflow-code.html`**, the
+  file and not the directory, because the Loop Checks suite reads the mockup's rows at test time
+  (`rest.yml`, with `scripts/verify-ci.sh` routing it).
 
 ```
 parse errors ∪ validation findings ∪ reference checks ─▶ [{severity, range, code, msg}]
