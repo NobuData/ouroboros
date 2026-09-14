@@ -2,6 +2,7 @@ import { workspaceWithRepo, addRepo, type SeededWorkspace } from "../../testing/
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
 import { INTAKE_ESTIMATES, MOCKUP_03, seedIntake } from "../../testing/intake.fixture";
+import { seedTriggerWorkflow, type TriggerWorkflowOptions } from "../../testing/workflow.fixture";
 import type { DashboardResource } from "../dashboard/resources";
 import { SCHEMA_NAME } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
@@ -258,9 +259,8 @@ describe("the bulk queue action, against a migrated database", () => {
     /**
      * A workflow with published versions, one of them in force, written straight into the tables.
      *
-     * `workflows.integration-spec.ts`' shape and its reason: what these cases are about is the
-     * trigger the version in force carries, and P.3's create goes through a publish gate that asks
-     * the engine for a second opinion nothing here needs.
+     * `workflow.fixture.ts`, bound to this suite's workspace shape; that file says why the rows
+     * are written directly.
      *
      * @param where - Whose workspace.
      * @param slug - The workflow's slug.
@@ -271,33 +271,9 @@ describe("the bulk queue action, against a migrated database", () => {
       where: SeededWorkspace,
       slug: string,
       conditions: Record<string, unknown>,
-      options: { status?: string; versions?: number; inForce?: number } = {},
+      options: TriggerWorkflowOptions = {},
     ): Promise<void> {
-      const versions = options.versions ?? 1;
-      const { rows } = await api.sql.query<{ id: string }>(
-        `insert into ${SCHEMA_NAME}.workflows (organization_id, slug, name, status)
-         values ($1, $2, $2, $3) returning id`,
-        [where.id, slug, options.status ?? "active"],
-      );
-      const definition = JSON.stringify({
-        dsl_version: "1.0",
-        trigger: { event: "ticket_queued", conditions },
-        nodes: [],
-        edges: [],
-      });
-
-      for (let version = 1; version <= versions; version += 1) {
-        await api.sql.query(
-          `insert into ${SCHEMA_NAME}.workflow_versions (workflow_id, version, definition, published_at)
-           values ($1, $2, $3::jsonb, now())`,
-          [rows[0].id, version, definition],
-        );
-      }
-
-      await api.sql.query(
-        `update ${SCHEMA_NAME}.workflows set current_version = $2 where id = $1`,
-        [rows[0].id, options.inForce ?? versions],
-      );
+      await seedTriggerWorkflow(api, where.id, slug, conditions, options);
     }
 
     it("uses the one the request names for every issue", async () => {

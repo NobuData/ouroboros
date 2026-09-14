@@ -45,8 +45,10 @@ make_fixture() {
   # starts a PostgreSQL and applies ouroboros-db's Flyway project to it, so a migration is
   # one of that module's test inputs — and its unit suite compares the harness's image pins
   # against docker-compose.yml. It watches schemas/ since #133, for the reason engine.yml
-  # below does. ouroboros-ui watches two of the DSL's fixture directories since #177, because
-  # its code editor suites read the symbol table and the printer's golden files. Held in a
+  # below does, and ouroboros-engine/openapi.yaml since #146, because its engine stub validates
+  # every exchange against that document. ouroboros-ui watches two of the DSL's fixture
+  # directories since #177, because its code editor suites read the symbol table and the
+  # printer's golden files. Held in a
   # variable because the two workflows are otherwise identical, and the shared template is what
   # makes that visible.
   for module in ui rest; do
@@ -59,6 +61,7 @@ make_fixture() {
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
       - "schemas/**"
+      - "ouroboros-engine/openapi.yaml"
       - "docker-compose.yml"'
     fi
 

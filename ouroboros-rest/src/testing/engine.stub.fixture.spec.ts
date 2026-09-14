@@ -9,12 +9,16 @@ import {
   ESTIMATE_PATH,
   LIVENESS_PATH,
   STATUS_PATH,
+  WORKFLOW_DRY_RUN_PATH,
   WORKFLOW_VALIDATE_PATH,
   contractViolation,
+  dryRunAnswer,
+  dryRunExample,
   engineFailure,
   estimateAnswer,
   offContractAnswer,
   startEngineStub,
+  validationFindings,
   type EngineStub,
 } from "./engine.stub.fixture";
 
@@ -325,9 +329,199 @@ describe("the contract-faithful engine stub", () => {
     });
   });
 
+  /**
+   * Post a body to one of the stub's routes, the way `EngineClient` posts.
+   *
+   * @param path - The route.
+   * @param body - The body, serialised here.
+   * @param key - The shared secret to send, or `null` to send none — for {@link estimate}'s reason.
+   * @returns The status and the parsed body.
+   */
+  async function post(
+    path: string,
+    body: unknown,
+    key: string | null = ENGINE_STUB_SECRET,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    const response = await fetch(`${engine.url}${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(key === null ? {} : { [INTERNAL_KEY_HEADER]: key }),
+      },
+      body: JSON.stringify(body),
+    });
+
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  describe("a scripted workflow validation — R.4 (#146)", () => {
+    /** A body the validation route accepts. What the definition holds is not the stub's business. */
+    const REQUEST = workflowValidateRequestBody({ dsl_version: "1.0", nodes: [], edges: [] });
+
+    /** A finding the engine's document itself uses as its example. */
+    const UNREACHABLE = {
+      code: "node.unreachable",
+      message: "No path of edges reaches this stage from the trigger.",
+      path: "/nodes/2",
+      node_id: "orphan",
+    };
+
+    it("serves the findings a suite scripts, counting attempts per operation", async () => {
+      engine.respondToValidation((attempt) =>
+        attempt === 1 ? validationFindings(UNREACHABLE) : validationFindings(),
+      );
+
+      expect(await post(WORKFLOW_VALIDATE_PATH, REQUEST)).toEqual({
+        status: 200,
+        body: { findings: [UNREACHABLE] },
+      });
+      expect(await post(WORKFLOW_VALIDATE_PATH, REQUEST)).toEqual({
+        status: 200,
+        body: { findings: [] },
+      });
+      expect(engine.validations).toHaveLength(2);
+      expect(engine.violations).toEqual([]);
+    });
+
+    it("serves the engine's own failure envelope, unremarked", async () => {
+      engine.respondToValidation(() => engineFailure());
+
+      const answered = await post(WORKFLOW_VALIDATE_PATH, REQUEST);
+
+      expect(answered.status).toBe(503);
+      expect(answered.body).toMatchObject({ code: "unavailable" });
+      expect(engine.violations).toEqual([]);
+    });
+
+    it("refuses to serve a finding the engine could never send", async () => {
+      // No `path`: `WorkflowFinding` requires one, so a gate that relied on its absence would be
+      // relying on an engine that does not exist.
+      engine.respondToValidation(() => ({
+        status: 200,
+        body: { findings: [{ code: "node.unreachable", message: "Unanchored." }] },
+      }));
+
+      const answered = await post(WORKFLOW_VALIDATE_PATH, REQUEST);
+
+      expect(answered.status).toBe(500);
+      expect(engine.violations).toHaveLength(1);
+      expect(engine.violations[0]).toContain("WorkflowValidation schema");
+      expect(engine.violations[0]).toContain("path");
+    });
+
+    it("goes back to green on reset", async () => {
+      engine.respondToValidation(() => validationFindings(UNREACHABLE));
+
+      engine.reset();
+
+      expect(await post(WORKFLOW_VALIDATE_PATH, REQUEST)).toEqual({
+        status: 200,
+        body: { findings: [] },
+      });
+    });
+  });
+
+  describe("the dry-run route — R.4 (#146)", () => {
+    it("is published, answers the committed example, and records what was sent", async () => {
+      const { request, answer } = dryRunExample();
+
+      expect(await post(WORKFLOW_DRY_RUN_PATH, request)).toEqual({ status: 200, body: answer });
+      expect(engine.dryRuns).toEqual([request]);
+      expect(engine.requests).toEqual([]);
+      expect(engine.validations).toEqual([]);
+      expect(engine.violations).toEqual([]);
+    });
+
+    it("refuses a ticket in this service's names rather than the engine's", async () => {
+      // The translation S.6 will have to write, refused the way the engine refuses it: its
+      // `DryRunTicket` is closed, so `externalKey` is an unknown property *and* a missing
+      // `external_key`.
+      const { request } = dryRunExample();
+
+      const refused = await post(WORKFLOW_DRY_RUN_PATH, {
+        ...request,
+        ticket: { externalKey: "#485", source: "github", labels: [], estimate: null },
+      });
+
+      expect(refused.status).toBe(422);
+      expect(engine.dryRuns).toEqual([]);
+      expect(engine.violations).toHaveLength(1);
+      expect(engine.violations[0]).toContain("WorkflowDryRunRequest schema");
+      expect(engine.violations[0]).toContain("external_key");
+    });
+
+    it("still requires the shared secret", async () => {
+      const refused = await post(WORKFLOW_DRY_RUN_PATH, dryRunExample().request, null);
+
+      expect(refused.status).toBe(401);
+      expect(engine.violations).toEqual([
+        `POST ${WORKFLOW_DRY_RUN_PATH} arrived with no ${INTERNAL_KEY_HEADER}`,
+      ]);
+    });
+
+    it("serves a scripted walk — an invalid definition's findings, and nothing walked", async () => {
+      engine.respondToDryRun(() =>
+        dryRunAnswer({
+          findings: [
+            {
+              code: "node.unreachable",
+              message: "Unreachable.",
+              path: "/nodes/2",
+              node_id: "orphan",
+            },
+          ],
+          steps: [],
+          verdicts: [],
+          highlight_path: [],
+        }),
+      );
+
+      const answered = await post(WORKFLOW_DRY_RUN_PATH, dryRunExample().request);
+
+      expect(answered.status).toBe(200);
+      expect(answered.body).toMatchObject({ steps: [], highlight_path: [] });
+      expect(engine.violations).toEqual([]);
+    });
+
+    it("refuses to serve a walk the WorkflowDryRun schema does not allow", async () => {
+      engine.respondToDryRun(() => dryRunAnswer({ highlight_path: [{ from: "issue-queued" }] }));
+
+      const answered = await post(WORKFLOW_DRY_RUN_PATH, dryRunExample().request);
+
+      expect(answered.status).toBe(500);
+      expect(engine.violations).toHaveLength(1);
+      expect(engine.violations[0]).toContain("WorkflowDryRun schema");
+      expect(engine.violations[0]).toContain("/highlight_path/0");
+    });
+
+    it("forgets its dry-runs and its scripted walk on reset", async () => {
+      engine.respondToDryRun(() => engineFailure());
+      await post(WORKFLOW_DRY_RUN_PATH, dryRunExample().request);
+
+      engine.reset();
+
+      expect(engine.dryRuns).toEqual([]);
+      expect((await post(WORKFLOW_DRY_RUN_PATH, dryRunExample().request)).status).toBe(200);
+    });
+
+    it("hands out a fresh copy of the example every time", () => {
+      const first = dryRunExample();
+      (first.answer.findings as unknown[]).push("mutated");
+
+      expect(dryRunExample().answer.findings).toEqual([]);
+    });
+  });
+
   describe("the committed schema is the standard", () => {
     it("reads it from ouroboros-engine/openapi.yaml, and the mockup's estimate satisfies it", () => {
       expect(contractViolation("estimate", ENGINE_ESTIMATE_BODY)).toBeUndefined();
+    });
+
+    it("carries a dry-run example whose request and answer both satisfy it", () => {
+      const { request, answer } = dryRunExample();
+
+      expect(contractViolation("dryRunRequest", request)).toBeUndefined();
+      expect(contractViolation("dryRun", answer)).toBeUndefined();
     });
 
     it("holds this service's own request translation to it", () => {

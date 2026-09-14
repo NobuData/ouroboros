@@ -22,17 +22,16 @@
  * ever compared it against itself — and the first real engine build would fail in production
  * against a green pipeline. So:
  *
- *   * **Every response this stub serves is validated against the committed L.1 schema** —
+ *   * **Every response this stub serves is validated against the committed schema** —
  *     `ouroboros-engine/openapi.yaml`, the same document `engine.contract.spec.ts` reads, and
- *     the document the engine itself serves verbatim rather than generates. `Estimate` or
- *     `WorkflowValidation` for a `200`, `Error` for anything else. A test that means to answer off-contract says so
- *     ({@link EngineAnswer.offContract}); a test that did not mean to gets a `500` and a line
- *     in {@link EngineStub.violations}.
- *   * **Every request it receives is validated too**, against `EstimateRequest` or
- *     `WorkflowValidateRequest`. That half is
- *     about the *caller*: `estimateRequestBody` translating one key wrongly is a `422` here
- *     with the field named, rather than an estimate that happens to come back anyway because
- *     the fake never looked.
+ *     the document the engine itself serves verbatim rather than generates. `Estimate`,
+ *     `WorkflowValidation` or `WorkflowDryRun` for a `200`, `Error` for anything else. A test
+ *     that means to answer off-contract says so ({@link EngineAnswer.offContract}); a test that
+ *     did not mean to gets a `500` and a line in {@link EngineStub.violations}.
+ *   * **Every request it receives is validated too**, against `EstimateRequest`,
+ *     `WorkflowValidateRequest` or `WorkflowDryRunRequest`. That half is about the *caller*:
+ *     `estimateRequestBody` translating one key wrongly is a `422` here with the field named,
+ *     rather than an estimate that happens to come back anyway because the fake never looked.
  *   * **The shared secret is checked**, the way `ouroboros-engine/src/ouroboros_engine/core/
  *     security.py` checks it, and an unpublished route is a `404`. Both are recorded as
  *     violations: a gateway calling the wrong path with no key is a failure whether or not the
@@ -44,11 +43,24 @@
  * the failure a contract change should produce — a red suite in the service that has to be
  * taught the new field, rather than a green one that finds out in production.
  *
+ * **The studio's two workflow routes answer what a test scripts, too** — R.4
+ * ([#146](https://github.com/NobuData/ouroboros/issues/146)). A publish gate whose engine leg
+ * can only ever say *green* is a gate a suite cannot prove is there: delete the leg and nothing
+ * changes colour. {@link EngineStub.respondToValidation} lets a suite make the engine refuse
+ * ({@link validationFindings}) or fail ({@link engineFailure}), under the same contract check as
+ * everything else. `POST /v0/workflows/dry-run` is published beside it and answers, by default,
+ * the **committed example** the engine's own document carries ({@link dryRunExample}) — read
+ * from the document rather than typed here, so the stub's walk cannot drift from the engine's
+ * description of one. Nothing in this service calls dry-run yet (S.6,
+ * [#152](https://github.com/NobuData/ouroboros/issues/152), will); until then the route is here so
+ * the contract is held, and so that caller inherits a stub rather than writing one.
+ *
  * ```ts
  * const engine = await startEngineStub();
  * const api = await ApiHarness.start({ OURO_ENGINE_URL: engine.url });
  * // …
  * engine.respond(engineUnavailable());
+ * engine.respondToValidation(() => validationFindings({ code: "node.unreachable", … }));
  * // …
  * expect(engine.violations).toEqual([]);
  * await engine.stop();
@@ -68,6 +80,7 @@ import { parse } from "yaml";
 
 import { DEVELOPMENT_ENVIRONMENT } from "../modules/config/configuration.fixture";
 import {
+  ENGINE_API_VERSION,
   ENGINE_ESTIMATE_ROUTE,
   ENGINE_WORKFLOW_VALIDATE_ROUTE,
   INTERNAL_KEY_HEADER,
@@ -96,6 +109,25 @@ export const STATUS_PATH = "/v0/status";
 /** The engine's workflow validation route — R.2 (#144), the publish gate's second opinion. */
 export const WORKFLOW_VALIDATE_PATH = `/${ENGINE_WORKFLOW_VALIDATE_ROUTE}`;
 
+/**
+ * The engine's dry-run simulator — R.2 (#144).
+ *
+ * Built here from the API version rather than imported as a route, because `engine.contract.ts`
+ * mirrors only the operations this service calls, and nothing calls this one yet: S.6 (#152)
+ * adds the constant when it adds the caller.
+ */
+export const WORKFLOW_DRY_RUN_PATH = `/${ENGINE_API_VERSION}/workflows/dry-run`;
+
+/** Where the engine's committed contract lives, from this file. */
+const ENGINE_SPECIFICATION_PATH = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "ouroboros-engine",
+  "openapi.yaml",
+);
+
 /** What every well-formed validation is answered with: a definition the engine is content with. */
 const GREEN_VALIDATION: EngineAnswer = { status: 200, body: { findings: [] } };
 
@@ -117,11 +149,11 @@ export interface EngineAnswer {
 }
 
 /**
- * What to answer, given how many estimate calls have already been made.
+ * What to answer, given how many calls to the same operation have already been accepted.
  *
  * The attempt number is 1-based and counts the calls that *reached the operation* — so a
  * responder can answer the first attempt one way and the retry another, which is how the
- * orchestrator's `MAX_ENGINE_ATTEMPTS` becomes observable.
+ * orchestrator's `MAX_ENGINE_ATTEMPTS` becomes observable. Each operation counts its own.
  */
 export type EngineResponder = (attempt: number) => EngineAnswer;
 
@@ -140,11 +172,14 @@ export interface EngineStub {
   /**
    * Every workflow validation request body it accepted, in order — what the publish gate sent.
    *
-   * Always answered green. The findings the engine would report are its own suite's to assert
-   * (`ouroboros-engine/tests/test_api_workflows.py`), and a stub that invented some would be a
-   * third validator nobody holds to the golden fixtures.
+   * Answered green unless a suite said otherwise with {@link respondToValidation}. The findings
+   * the real engine would report are its own suite's to assert
+   * (`ouroboros-engine/tests/test_api_workflows.py`); a scripted finding here is a suite asking
+   * *what does this service do with one*, never a claim about which documents deserve one.
    */
   readonly validations: Record<string, unknown>[];
+  /** Every dry-run request body it accepted, in order. */
+  readonly dryRuns: Record<string, unknown>[];
   /**
    * Everything this stub was asked to do that the contract does not allow, in order.
    *
@@ -152,9 +187,16 @@ export interface EngineStub {
    * schema violation, so a red suite says which field.
    */
   readonly violations: string[];
-  /** Answer the next calls with whatever this says. */
+  /** Answer the next estimate calls with whatever this says. */
   respond(responder: EngineResponder): void;
-  /** Forget the requests and the violations, and go back to answering the mockup's estimate. */
+  /** Answer the next workflow validation calls with whatever this says. */
+  respondToValidation(responder: EngineResponder): void;
+  /** Answer the next dry-run calls with whatever this says. */
+  respondToDryRun(responder: EngineResponder): void;
+  /**
+   * Forget the requests and the violations, and go back to the defaults: the mockup's estimate,
+   * a green validation and the committed dry-run example.
+   */
   reset(): void;
   /** Stop listening. */
   stop(): Promise<void>;
@@ -200,9 +242,53 @@ export function offContractAnswer(
   return { status: 200, body, offContract: true };
 }
 
+/** One finding, in the engine's own names — `WorkflowFinding` in its document. */
+export interface WorkflowFindingBody {
+  /** Which rule broke, in the DSL's vocabulary. */
+  readonly code: string;
+  /** What a person should read. Never empty. */
+  readonly message: string;
+  /** An RFC 6901 JSON Pointer; `""` is the document itself. */
+  readonly path: string;
+  /** The node it anchors to, when it anchors to one — spelled the engine's way. */
+  readonly node_id?: string;
+  /** The edge it anchors to, when it anchors to one. */
+  readonly edge?: { readonly from: string; readonly to: string };
+}
+
+/**
+ * A validation that refuses — the engine finding something wrong with a definition.
+ *
+ * The findings are served under the same contract check as any answer, so a suite that
+ * scripts one the engine could never send (no `path`, say) gets a `500` and a violation rather
+ * than a refusal the gate would never really see.
+ *
+ * @param findings - What the engine found. None is the green verdict, which
+ *   {@link EngineStub.reset} already restores.
+ * @returns The answer.
+ */
+export function validationFindings(...findings: WorkflowFindingBody[]): EngineAnswer {
+  return { status: 200, body: { findings } };
+}
+
+/** The committed dry-run exchange, as the engine's document gives it. */
+export interface DryRunExample {
+  /** `WorkflowDryRunRequest` — a six-stage cut of mockup 04's graph and the seeded `#485`. */
+  readonly request: Record<string, unknown>;
+  /** `WorkflowDryRun` — the walk the engine documents for that request. */
+  readonly answer: Record<string, unknown>;
+}
+
 /** The parts of the engine's specification this file reads. */
 interface EngineSpecification {
   components?: { schemas?: Record<string, unknown> };
+  paths?: Record<string, Record<string, EngineOperation | undefined> | undefined>;
+}
+
+/** The parts of one operation this file reads: the examples it documents. */
+interface EngineOperation {
+  requestBody?: { content?: Record<string, { example?: unknown } | undefined> };
+  responses?: Record<string, { content?: Record<string, { example?: unknown } | undefined> }>;
 }
 
 /** One compiled schema, and the name the engine's document knows it by. */
@@ -233,10 +319,34 @@ interface Contract {
   readonly validateRequest: CompiledSchema;
   /** `WorkflowValidation` — what a validation `200` may carry. */
   readonly validation: CompiledSchema;
+  /** `WorkflowDryRunRequest` — what a dry-run caller may send. */
+  readonly dryRunRequest: CompiledSchema;
+  /** `WorkflowDryRun` — what a dry-run `200` may carry. */
+  readonly dryRun: CompiledSchema;
 }
 
-/** Compiled once per process; the document does not change under a run. */
+/** The schemas an answer with a `2xx` status can be held to. */
+type AnswerSchema = "estimate" | "liveness" | "status" | "validation" | "dryRun";
+
+/** The schemas a request body can be held to. */
+type RequestSchema = "request" | "validateRequest" | "dryRunRequest";
+
+/** Parsed once per process; the document does not change under a run. */
+let specification: EngineSpecification | undefined;
+
+/** Compiled once per process, for the same reason. */
 let compiled: Contract | undefined;
+
+/**
+ * The engine's committed document, parsed.
+ *
+ * @returns The document.
+ */
+function engineSpecification(): EngineSpecification {
+  specification ??= parse(readFileSync(ENGINE_SPECIFICATION_PATH, "utf8")) as EngineSpecification;
+
+  return specification;
+}
 
 /**
  * The engine's committed schemas, rewritten as a JSON Schema root.
@@ -251,14 +361,12 @@ let compiled: Contract | undefined;
  *   is a contract change large enough that failing here is the honest outcome.
  */
 function engineSchemas(): Record<string, unknown> {
-  const path = join(__dirname, "..", "..", "..", "ouroboros-engine", "openapi.yaml");
-  const document = parse(readFileSync(path, "utf8")) as EngineSpecification;
-  const schemas = document.components?.schemas;
+  const schemas = engineSpecification().components?.schemas;
 
   if (schemas === undefined) {
     throw new Error(
-      `${path} publishes no components.schemas; the engine stub cannot hold itself to a ` +
-        "contract it cannot read.",
+      `${ENGINE_SPECIFICATION_PATH} publishes no components.schemas; the engine stub cannot ` +
+        "hold itself to a contract it cannot read.",
     );
   }
 
@@ -305,6 +413,8 @@ function contract(): Contract {
     status: bind("ServiceStatus"),
     validateRequest: bind("WorkflowValidateRequest"),
     validation: bind("WorkflowValidation"),
+    dryRunRequest: bind("WorkflowDryRunRequest"),
+    dryRun: bind("WorkflowDryRun"),
   };
 
   return compiled;
@@ -334,6 +444,44 @@ export function contractViolation(schema: keyof Contract, document: unknown): st
   return `does not satisfy the engine's ${name} schema: ${reasons}`;
 }
 
+/**
+ * The dry-run exchange the engine's own document commits to, freshly copied.
+ *
+ * Read from `paths./v0/workflows/dry-run.post` — the request body's example and the `200`
+ * response's — so what this stub answers by default is the engine's documented walk, not a
+ * walk somebody typed into a test. A copy on every call, so a suite that edits what it was
+ * handed cannot edit the next suite's default.
+ *
+ * @returns The request and the answer.
+ * @throws {Error} When the document no longer carries either example — the default answer would
+ *   then be an invention, and the stub refuses to make one up.
+ */
+export function dryRunExample(): DryRunExample {
+  const operation = engineSpecification().paths?.[WORKFLOW_DRY_RUN_PATH]?.post;
+  const request = operation?.requestBody?.content?.["application/json"]?.example;
+  const answer = operation?.responses?.["200"]?.content?.["application/json"]?.example;
+
+  if (!isRecord(request) || !isRecord(answer)) {
+    throw new Error(
+      `ouroboros-engine/openapi.yaml no longer documents an example request and 200 answer for ` +
+        `POST ${WORKFLOW_DRY_RUN_PATH}. The engine stub answers dry-runs with that example; ` +
+        "restore it rather than inventing a walk here.",
+    );
+  }
+
+  return { request: structuredClone(request), answer: structuredClone(answer) };
+}
+
+/**
+ * An answer that is the committed dry-run walk, with whatever a test changes.
+ *
+ * @param overrides - Top-level fields to replace.
+ * @returns The answer.
+ */
+export function dryRunAnswer(overrides: Record<string, unknown> = {}): EngineAnswer {
+  return { status: 200, body: { ...dryRunExample().answer, ...overrides } };
+}
+
 /** One request, reduced to what the stub decides with. */
 interface Incoming {
   readonly method: string;
@@ -346,11 +494,12 @@ interface Incoming {
  * Start an engine that answers what a test says, within what the contract allows.
  *
  * @param options - What to be different about it. `sharedSecret` matches whatever the
- *   application under test was configured with; `answer` is what it serves before a test says
- *   otherwise.
+ *   application under test was configured with; `answer` is the estimate it serves before a
+ *   test says otherwise.
  * @returns The stub, already listening on a loopback port.
- * @throws {Error} When the default answer does not satisfy the committed `Estimate` schema —
- *   the contract changed, and this is where the service finds out.
+ * @throws {Error} When a default answer — the estimate, or the committed dry-run exchange —
+ *   does not satisfy the committed schemas: the contract changed, and this is where the service
+ *   finds out.
  */
 export async function startEngineStub(
   options: { sharedSecret?: string; answer?: EngineAnswer } = {},
@@ -362,16 +511,24 @@ export async function startEngineStub(
   // failure in one spec — it is every spec in every pipeline suite asserting against a shape
   // the engine no longer answers with, and the sentence a reader needs is this one rather than
   // twenty assertion diffs.
-  const drift = answerViolation(fallback);
+  const drift = defaultDrift(fallback);
 
   if (drift !== undefined) {
-    throw new Error(`The engine stub's default answer ${drift}`);
+    throw new Error(`The engine stub's default ${drift}`);
   }
 
   const requests: Record<string, unknown>[] = [];
   const validations: Record<string, unknown>[] = [];
+  const dryRuns: Record<string, unknown>[] = [];
   const violations: string[] = [];
-  let responder: EngineResponder = () => fallback;
+  const defaults = {
+    estimate: (): EngineAnswer => fallback,
+    validation: (): EngineAnswer => GREEN_VALIDATION,
+    dryRun: (): EngineAnswer => dryRunAnswer(),
+  };
+  let responder: EngineResponder = defaults.estimate;
+  let validationResponder: EngineResponder = defaults.validation;
+  let dryRunResponder: EngineResponder = defaults.dryRun;
 
   const server: Server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -385,7 +542,17 @@ export async function startEngineStub(
           key: headerOf(request, INTERNAL_KEY_HEADER),
           raw: Buffer.concat(chunks).toString("utf8"),
         },
-        { secret, requests, validations, violations, responder: (attempt) => responder(attempt) },
+        {
+          secret,
+          requests,
+          validations,
+          dryRuns,
+          violations,
+          // Read at call time, so a responder a test installs mid-suite is the one answered with.
+          responder: (attempt) => responder(attempt),
+          validationResponder: (attempt) => validationResponder(attempt),
+          dryRunResponder: (attempt) => dryRunResponder(attempt),
+        },
       );
 
       response.writeHead(answer.status, { "content-type": "application/json" });
@@ -401,15 +568,25 @@ export async function startEngineStub(
     url: `http://127.0.0.1:${String(port)}`,
     requests,
     validations,
+    dryRuns,
     violations,
     respond: (next) => {
       responder = next;
     },
+    respondToValidation: (next) => {
+      validationResponder = next;
+    },
+    respondToDryRun: (next) => {
+      dryRunResponder = next;
+    },
     reset: () => {
       requests.length = 0;
       validations.length = 0;
+      dryRuns.length = 0;
       violations.length = 0;
-      responder = () => fallback;
+      responder = defaults.estimate;
+      validationResponder = defaults.validation;
+      dryRunResponder = defaults.dryRun;
     },
     stop: () =>
       new Promise<void>((resolve) => {
@@ -426,10 +603,16 @@ interface Exchange {
   readonly requests: Record<string, unknown>[];
   /** Where an accepted workflow validation request is recorded. */
   readonly validations: Record<string, unknown>[];
+  /** Where an accepted dry-run request is recorded. */
+  readonly dryRuns: Record<string, unknown>[];
   /** Where a breach of the contract is recorded. */
   readonly violations: string[];
-  /** What the test scripted. */
+  /** What the test scripted for estimates. */
   readonly responder: EngineResponder;
+  /** What the test scripted for workflow validations. */
+  readonly validationResponder: EngineResponder;
+  /** What the test scripted for dry-runs. */
+  readonly dryRunResponder: EngineResponder;
 }
 
 /**
@@ -454,7 +637,10 @@ function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
   }
 
   const published =
-    (method === "POST" && (path === ESTIMATE_PATH || path === WORKFLOW_VALIDATE_PATH)) ||
+    (method === "POST" &&
+      (path === ESTIMATE_PATH ||
+        path === WORKFLOW_VALIDATE_PATH ||
+        path === WORKFLOW_DRY_RUN_PATH)) ||
     (method === "GET" && path === STATUS_PATH);
 
   if (!published) {
@@ -483,26 +669,62 @@ function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
   }
 
   if (path === WORKFLOW_VALIDATE_PATH) {
-    const validation = acceptedBody(incoming, "validateRequest", exchange);
-
-    if ("refusal" in validation) {
-      return validation.refusal;
-    }
-
-    exchange.validations.push(validation.accepted);
-
-    return served(GREEN_VALIDATION, "validation", exchange);
+    return operation(incoming, exchange, {
+      request: "validateRequest",
+      answer: "validation",
+      record: exchange.validations,
+      responder: exchange.validationResponder,
+    });
   }
 
-  const estimate = acceptedBody(incoming, "request", exchange);
-
-  if ("refusal" in estimate) {
-    return estimate.refusal;
+  if (path === WORKFLOW_DRY_RUN_PATH) {
+    return operation(incoming, exchange, {
+      request: "dryRunRequest",
+      answer: "dryRun",
+      record: exchange.dryRuns,
+      responder: exchange.dryRunResponder,
+    });
   }
 
-  exchange.requests.push(estimate.accepted);
+  return operation(incoming, exchange, {
+    request: "request",
+    answer: "estimate",
+    record: exchange.requests,
+    responder: exchange.responder,
+  });
+}
 
-  return served(exchange.responder(exchange.requests.length), "estimate", exchange);
+/** How one published `POST` operation is checked, recorded and answered. */
+interface Operation {
+  /** The schema its request body is held to. */
+  readonly request: RequestSchema;
+  /** The schema its `2xx` answer is held to. */
+  readonly answer: AnswerSchema;
+  /** Where an accepted body is recorded — and whose length is the attempt number. */
+  readonly record: Record<string, unknown>[];
+  /** What the test scripted for it. */
+  readonly responder: EngineResponder;
+}
+
+/**
+ * Accept a body, record it, and serve what the test scripted — the three `POST` routes' one
+ * shape.
+ *
+ * @param incoming - The request, reduced.
+ * @param exchange - The stub's state, for the record.
+ * @param spec - Which schemas, which record and which responder.
+ * @returns The answer to serve.
+ */
+function operation(incoming: Incoming, exchange: Exchange, spec: Operation): EngineAnswer {
+  const body = acceptedBody(incoming, spec.request, exchange);
+
+  if ("refusal" in body) {
+    return body.refusal;
+  }
+
+  spec.record.push(body.accepted);
+
+  return served(spec.responder(spec.record.length), spec.answer, exchange);
 }
 
 /**
@@ -518,7 +740,7 @@ function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
  */
 function acceptedBody(
   incoming: Incoming,
-  schema: "request" | "validateRequest",
+  schema: RequestSchema,
   exchange: Exchange,
 ): { accepted: Record<string, unknown> } | { refusal: EngineAnswer } {
   const route = `${incoming.method} ${incoming.path}`;
@@ -551,16 +773,8 @@ function acceptedBody(
  * @param exchange - The stub's state, for the record.
  * @returns The answer, or a `500` naming the violation.
  */
-function served(
-  answer: EngineAnswer,
-  schema: "estimate" | "liveness" | "status" | "validation",
-  exchange: Exchange,
-): EngineAnswer {
-  if (answer.offContract === true) {
-    return answer;
-  }
-
-  const breach = contractViolation(answer.status < 300 ? schema : "failure", answer.body);
+function served(answer: EngineAnswer, schema: AnswerSchema, exchange: Exchange): EngineAnswer {
+  const breach = answerViolation(answer, schema);
 
   if (breach === undefined) {
     return answer;
@@ -594,14 +808,54 @@ function unprocessable(reason: string): EngineAnswer {
  * Whether an answer is one the contract allows, without a stub to record it against.
  *
  * @param answer - The answer.
+ * @param schema - Which schema a `2xx` body is held to.
  * @returns The reason it is not allowed, or `undefined`.
  */
-function answerViolation(answer: EngineAnswer): string | undefined {
+function answerViolation(answer: EngineAnswer, schema: AnswerSchema): string | undefined {
   if (answer.offContract === true) {
     return undefined;
   }
 
-  return contractViolation(answer.status < 300 ? "estimate" : "failure", answer.body);
+  return contractViolation(answer.status < 300 ? schema : "failure", answer.body);
+}
+
+/**
+ * Whether any default the stub serves has drifted from the committed contract.
+ *
+ * The estimate, and both halves of the committed dry-run exchange — the request too, although it
+ * is never served, because an example request the contract refuses would make the example answer
+ * an answer to a question nobody may ask.
+ *
+ * @param estimate - The estimate the stub will serve by default.
+ * @returns What drifted, as the end of a sentence, or `undefined`.
+ */
+function defaultDrift(estimate: EngineAnswer): string | undefined {
+  const estimateBreach = answerViolation(estimate, "estimate");
+
+  if (estimateBreach !== undefined) {
+    return `answer ${estimateBreach}`;
+  }
+
+  const example = dryRunExample();
+  const requestBreach = contractViolation("dryRunRequest", example.request);
+
+  if (requestBreach !== undefined) {
+    return `dry-run request example ${requestBreach}`;
+  }
+
+  const answerBreach = contractViolation("dryRun", example.answer);
+
+  return answerBreach === undefined ? undefined : `dry-run answer example ${answerBreach}`;
+}
+
+/**
+ * Whether a parsed YAML value is a JSON object.
+ *
+ * @param value - The value.
+ * @returns `true` for a plain object.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

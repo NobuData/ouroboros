@@ -2299,8 +2299,8 @@ catches is a `snake_case` key nobody translated, which is the failure this bound
 has.
 
 **Every answer it serves is validated against `ouroboros-engine/openapi.yaml`, and every
-request it receives with it** — `Estimate` for a `200`, `Error` for a failure,
-`EstimateRequest` on the way in. The document is the engine's own, committed and served
+request it receives with it** — `Estimate`, `WorkflowValidation` or `WorkflowDryRun` for a
+`200`, `Error` for a failure, and the matching request schema on the way in. The document is the engine's own, committed and served
 verbatim rather than generated, and reading it here is what closes the hole an ad-hoc fake
 leaves open: a stub that answers whatever a test typed is free to be wrong in the same
 direction as the code, so a body carrying a field `/v0` does not publish would pass a suite
@@ -2319,8 +2319,33 @@ engine.respond(() => offContractAnswer()); // outside /v0, deliberately
 **A contract change breaks the stub before it breaks a test.** `startEngineStub()` validates
 the body it is about to serve and refuses to start when it no longer satisfies the document, so
 adding a required field to `Estimate` fails with the field named rather than as twenty
-assertion diffs. Its own 21 cases need no database and run in the fast suite, which is where a
+assertion diffs. Its own 38 cases need no database and run in the fast suite, which is where a
 developer should learn that the engine's contract moved.
+
+**The studio's two workflow routes are scriptable too** — R.4
+([#146](https://github.com/NobuData/ouroboros/issues/146)). A publish gate whose engine can
+only ever say *green* is a gate no suite can prove is there, so `respondToValidation` makes the
+engine refuse or fail, under the same contract check:
+
+```ts
+engine.respondToValidation(() => validationFindings({ code: "node.unreachable", message, path, node_id }));
+engine.respondToValidation(() => engineFailure()); // → 502 engine_unavailable, nothing published
+```
+
+`POST /v0/workflows/dry-run` is published beside it and answers, by default, **the example
+exchange the engine's own document commits to** (`dryRunExample()`), read from the YAML rather
+than typed — so the stub's walk cannot drift from the engine's description of one. Nothing in
+this service calls dry-run yet; S.6 ([#152](https://github.com/NobuData/ouroboros/issues/152))
+inherits the stub when it adds the caller. Because the stub reads that document, `ci/rest`
+watches `ouroboros-engine/openapi.yaml`.
+
+**The studio's cross-service behaviour is `studio.integration-spec.ts`**: the publish gate's
+engine refusals (nothing written, counted), a twenty-case R.1 trigger matrix through the queue
+write (response *and* stored pin), dry-run contract fidelity from the data REST holds, and org
+isolation on every workflow route — enumerated from the route table, so a route added without a
+case fails. `catalog.synthetic.integration-spec.ts` serves R.3's synthetic node type from a
+running application, through the `providers` seam on `ApiHarness.start` that overrides one token
+and nothing else.
 
 **The pipeline's matrix is `estimation.integration-spec.ts`** — the lifecycle, the engine-down
 fallback and its recovery, the stale sweep, concurrent re-estimates, provenance, `estimate-all`

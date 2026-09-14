@@ -60,13 +60,20 @@
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import type { INestApplication } from "@nestjs/common";
+import type { INestApplication, InjectionToken } from "@nestjs/common";
+import { Test } from "@nestjs/testing";
 import { Pool } from "pg";
 import request from "supertest";
 
-import { createApplication } from "../application";
+import {
+  applicationOptions,
+  configureApplication,
+  createApplication,
+  permitBrowserOrigins,
+} from "../application";
 import { AUTH_BASE_PATH } from "../auth/auth.options";
 import { GITHUB_PROVIDER_ID } from "../auth/github.provider";
+import { AppModule } from "../modules/app/app.module";
 import { signInAs } from "../modules/auth/session.fixture";
 import type { Configuration } from "../modules/config/configuration";
 import { testConfiguration } from "../modules/config/configuration.fixture";
@@ -81,6 +88,46 @@ import {
   uniqueEmail,
   uniqueName,
 } from "./integration.fixture";
+
+/** One provider a suite replaces — see {@link ApiHarness.start}. */
+export interface ProviderOverride {
+  /** The token it is provided under: a class, or an injection symbol. */
+  readonly provide: InjectionToken;
+  /** What to provide in its place. */
+  readonly useValue: unknown;
+}
+
+/**
+ * The process's application with some providers replaced.
+ *
+ * `@nestjs/testing` is the only way to override a provider without editing a module, and it builds
+ * a bare application — so everything `createApplication` adds is added here too, by the same
+ * functions: the body-parser decision, the prefix, versioning, pipe and filter, and the origin
+ * policy. What differs from the process is the list the caller passed, and nothing else.
+ *
+ * @param configuration - The validated configuration.
+ * @param providers - The providers to replace. Must not be empty; the caller takes the process's
+ *   own path for that.
+ * @returns The application, not yet listening.
+ */
+async function applicationWith(
+  configuration: Configuration,
+  providers: readonly ProviderOverride[],
+): Promise<INestApplication> {
+  let builder = Test.createTestingModule({ imports: [AppModule.forRoot(configuration)] });
+
+  for (const provider of providers) {
+    builder = builder.overrideProvider(provider.provide).useValue(provider.useValue);
+  }
+
+  const moduleRef = await builder.compile();
+  const app = moduleRef.createNestApplication(applicationOptions({ logger: false }));
+
+  configureApplication(app);
+  permitBrowserOrigins(app, configuration.corsOrigins);
+
+  return app;
+}
 
 /**
  * The verbs this API answers to, which is every verb a suite has to be able to send.
@@ -199,23 +246,37 @@ export class ApiHarness {
    * pipeline — the global prefix, the versioning, the validation pipe, the error filter, the
    * authentication guard, the tenant guard and the roles guard, in that order — and a suite that
    * assembled its own would be asserting against a copy of the real one that is free to
-   * drift from it. A suite that has to *replace* a provider is the exception and builds its
-   * own; `auth.integration-spec.ts` is the one that does, because github.com is not
-   * available to it.
+   * drift from it.
+   *
+   * **A suite that has to replace a provider passes `providers`**, and gets the same application
+   * with those tokens overridden — built through `@nestjs/testing`, then given the same
+   * {@link configureApplication} and {@link permitBrowserOrigins} `createApplication` applies, so
+   * nothing but the named providers differs. R.4
+   * ([#146](https://github.com/NobuData/ouroboros/issues/146)) added it for the stage catalog's
+   * synthetic node type, which is a schema provided under a token rather than a file a suite can
+   * edit. `auth.integration-spec.ts` predates it and still assembles its own.
    *
    * @param overrides - Environment variables to change before the configuration is
    *   validated. `OURO_DATABASE_URL` is already set to the run's database and can be
    *   overridden like anything else.
+   * @param providers - Providers to replace, by token. Empty — the default — is the process's
+   *   own application, built exactly as `main.ts` builds it.
    * @returns The started harness.
    * @throws {Error} When no database was published — see `integrationDatabaseUrl`.
    */
-  static async start(overrides: NodeJS.ProcessEnv = {}): Promise<ApiHarness> {
+  static async start(
+    overrides: NodeJS.ProcessEnv = {},
+    providers: readonly ProviderOverride[] = [],
+  ): Promise<ApiHarness> {
     const configuration = testConfiguration({
       OURO_DATABASE_URL: integrationDatabaseUrl(),
       ...overrides,
     });
 
-    const app = await createApplication(configuration, { logger: false });
+    const app =
+      providers.length === 0
+        ? await createApplication(configuration, { logger: false })
+        : await applicationWith(configuration, providers);
     // Loopback rather than every interface: a test server is not something another machine
     // on the network should be able to reach, and binding it there would be a difference
     // between this and the process that nothing needs.

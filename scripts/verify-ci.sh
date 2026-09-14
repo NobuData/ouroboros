@@ -233,6 +233,13 @@ check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml'
 check_route schemas/workflow-dsl/fixtures/code-symbols/table.json 'engine.yml rest.yml ui.yml'
 check_route schemas/workflow-dsl/fixtures/code/standard-fix.loop.ts 'engine.yml rest.yml ui.yml'
 
+# The seventh (#146). ci/rest's engine stub holds every request it receives and every answer it
+# serves to ouroboros-engine's committed contract, read from this one document at test time. A
+# contract change that ran only ci/engine would leave the stub green against a document nobody
+# re-checked it against — the drift the stub exists to surface. The rest of the engine stays
+# ci/engine's alone.
+check_route ouroboros-engine/openapi.yaml 'engine.yml rest.yml'
+
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.
 check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'
