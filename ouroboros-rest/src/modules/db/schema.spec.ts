@@ -301,7 +301,13 @@ describe("TABLE_COLUMNS", () => {
     // brought them in, and Q.2 is the **writer**. The sync loop fills `tickets`, stamps
     // `ticket_sources`, and reads its sources through the view; there is no release in which
     // these are declared and untouched.
-    expect(TABLE_NAMES).toHaveLength(34);
+    //
+    // The thirty-fifth is V024's `resolution_snapshots` (#582), mirrored by CH.6 (#589) — the
+    // stored resolutions behind mockup 21's chain card. It keeps the no-reader rule: the table
+    // arrived with CG.4's run #482 fixture and waited, unmirrored, for the read that is now
+    // `GET /registry/resolutions/latest`. Like `audit_events` it is append-only in the database,
+    // so every column carries a `never` in its update position.
+    expect(TABLE_NAMES).toHaveLength(35);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

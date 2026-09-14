@@ -65,8 +65,23 @@ def _integral(value: object) -> object:
 #: An integer, read the way JSON means one.
 Integer = Annotated[int, BeforeValidator(_integral)]
 
-#: A skill name, a model identifier or a task-route name (decision **P7**: a string).
+#: A model registry alias — ``v1.json``'s ``alias_name``, spelled as ``model_aliases.alias``
+#: holds it (V015).
+ALIAS_NAME_PATTERN: Final = r"^[a-z0-9]+(-[a-z0-9]+)*$"
+
+#: A skill name or a task-route name (decision **P7**: a string).
+#:
+#: Not a model: a stage pins a registry alias, as a :class:`PinnedAlias` (CH.6, #589).
 Reference = Annotated[str, Field(min_length=1, max_length=128)]
+
+#: A model registry alias — ``coder-max``.
+#:
+#: A name and never a raw provider model id: the model id lives on the alias (decision **M1**),
+#: so swapping a model is one edit of one registry row rather than of every workflow that pins
+#: it (CH.6, #589).
+AliasName = Annotated[
+    str, Field(min_length=1, max_length=64, pattern=ALIAS_NAME_PATTERN)
+]
 
 #: A ticket label, as a tracker spells it.
 Label = Annotated[str, Field(min_length=1, max_length=64)]
@@ -187,6 +202,18 @@ class TriggerConfig(_Model):
     """
 
 
+class PinnedAlias(_Model):
+    """A stage's pin — ``{"alias": "coder-max"}``.
+
+    An object rather than a bare name so the reference is **structural**: a raw model id written
+    where an alias belongs is a type mistake the schema stage catches — reported as
+    ``config.routing_raw_model`` by :mod:`ouroboros_engine.workflows.issues` — rather than a
+    string that merely fails to resolve (CH.6, #589).
+    """
+
+    alias: AliasName
+
+
 class LlmRouting(_Model):
     """The inspector's Model routing radios.
 
@@ -196,7 +223,7 @@ class LlmRouting(_Model):
     """
 
     inherit_task: Reference | None = None
-    pinned_model: Reference | None = None
+    pinned_model: PinnedAlias | None = None
 
 
 class LlmLimits(_Model):

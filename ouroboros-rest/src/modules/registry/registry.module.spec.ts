@@ -14,6 +14,7 @@ import { RegistryModule } from "./registry.module";
 import { RegistryRepository } from "./registry.repository";
 import { RegistryService } from "./registry.service";
 import { ProviderCredentialStore } from "./registry.secrets";
+import { ResolutionSnapshotsController } from "./resolutions.controller";
 
 /**
  * The wiring — the one thing about a Nest module that can be wrong at run time and right at
@@ -47,16 +48,18 @@ describe("the registry module", () => {
     await moduleRef.close();
   });
 
-  it("declares exactly three controllers: the schema read, the lifecycle and the import", () => {
+  it("declares exactly four controllers: schema, lifecycle, import and snapshots", () => {
     // Decision M2 as it now stands. Until CH.2 this module had no controller at all; CH.2
     // added a read, CH.1 (#584) is mockup 21 writing its own API — the alias CRUD M2 left to
-    // that roadmap — and CH.4 (#587) is the head's other button. A fourth entry in this list
-    // is a new surface arriving, and this assertion is where that has to be said out loud
-    // rather than noticed in review.
+    // that roadmap — and CH.4 (#587) is the head's other button. CH.6 (#589) is the fourth: the
+    // chain card's read of stored resolution snapshots, which needs no vault and so belongs here
+    // rather than in `RegistryReadModule`. A fifth entry is a new surface arriving, and this
+    // assertion is where that has to be said out loud rather than noticed in review.
     expect(Reflect.getMetadata("controllers", RegistryModule) as unknown[] | undefined).toEqual([
       ParamSchemaController,
       AliasesController,
       ImportController,
+      ResolutionSnapshotsController,
     ]);
   });
 

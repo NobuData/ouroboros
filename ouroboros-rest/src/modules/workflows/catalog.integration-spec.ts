@@ -7,11 +7,14 @@ import { startEngineStub, type EngineStub } from "../../testing/engine.stub.fixt
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME } from "../db/schema";
+import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { toDslCatalogue, type StageCatalog } from "./catalog.resources";
 import type { CodeSymbolTable } from "./code.symbols";
-import { DslWarningCode } from "./dsl.errors";
+import { DslErrorCode, DslWarningCode } from "./dsl.errors";
 import { validateWorkflowDocument } from "./dsl.validator";
+import { seedPinnedAliases } from "./pins.fixture";
+import type { PublishFinding } from "./publish.gate";
 import type { WorkflowDetail } from "./workflows.resources";
 
 /**
@@ -113,6 +116,9 @@ describe("the stage catalog, against a migrated database", () => {
   async function bench(email = "owner@ouroboros.invalid"): Promise<Bench> {
     const owner = await api.signIn({ email });
     const workspace = await api.workspace(owner);
+
+    // Publishing mockup 04's canvas resolves its pins against this registry (CH.6, #589).
+    await seedPinnedAliases(api, workspace.id);
 
     return { owner, id: workspace.id, slug: workspace.slug };
   }
@@ -295,35 +301,123 @@ describe("the stage catalog, against a migrated database", () => {
     });
   });
 
-  describe("an unknown skill or model", () => {
+  /**
+   * Create a workflow and save a draft holding a definition.
+   *
+   * @param place - Where.
+   * @param definition - The document to save.
+   * @returns The workflow's id.
+   */
+  async function drafted(place: Bench, definition: unknown): Promise<string> {
+    const created = bodyOf<WorkflowDetail>(
+      await as(place.owner, place)("post", WORKFLOWS).send({ name: "Standard Fix" }).expect(201),
+    );
+    await as(place.owner, place)("put", `${WORKFLOWS}/${created.id}/draft`)
+      .set("If-Match", created.draft.etag)
+      .send({ definition })
+      .expect(200);
+
+    return created.id;
+  }
+
+  describe("an unknown skill", () => {
     it("is saved and published, and is a warning when checked against the suggestions", async () => {
       const place = await bench();
       const definition = standardFix();
       definition.nodes.find((node) => node.id === "implement")!.config.skill = "no-such-skill";
-      definition.nodes.find((node) => node.id === "analyze")!.config.routing = {
-        pinned_model: "no-such-model",
-      };
 
-      const created = bodyOf<WorkflowDetail>(
-        await as(place.owner, place)("post", WORKFLOWS).send({ name: "Standard Fix" }).expect(201),
-      );
-      await as(place.owner, place)("put", `${WORKFLOWS}/${created.id}/draft`)
-        .set("If-Match", created.draft.etag)
-        .send({ definition })
-        .expect(200);
-      await as(place.owner, place)("post", `${WORKFLOWS}/${created.id}/publish`)
-        .send({})
-        .expect(200);
+      const id = await drafted(place, definition);
+      await as(place.owner, place)("post", `${WORKFLOWS}/${id}/publish`).send({}).expect(200);
 
       const verdict = validateWorkflowDocument(definition, {
         catalogue: toDslCatalogue((await catalog(place.owner, place)).suggestions),
       });
 
-      // Valid, with the skill flagged. The model is not: the catalog suggests no models, so it
-      // has no opinion about one — and nothing anywhere refused the publish.
+      // Valid, with the skill flagged — and nothing refused the publish: decision P7 keeps an
+      // unknown skill advisory. The governance rule below is about aliases alone.
       expect(verdict.valid).toBe(true);
       expect(verdict.warnings.map((warning) => warning.code)).toEqual([
         DslWarningCode.REFERENCE_UNKNOWN_SKILL,
+      ]);
+    });
+  });
+
+  describe("a pin the registry does not hold (CH.6, #589)", () => {
+    it.each([
+      [
+        "a raw model id",
+        "claude-fable-5",
+        {
+          source: "dsl",
+          code: DslErrorCode.CONFIG_ROUTING_RAW_MODEL,
+          path: "/nodes/3/config/routing/pinned_model",
+          message:
+            "Stage `plan` pins the raw model id `claude-fable-5` — raw model ids are not " +
+            "allowed; reference a registry alias (did you mean coder-max?).",
+        },
+      ],
+      [
+        "an alias this workspace does not have",
+        { alias: "coder-maxx" },
+        {
+          source: "registry",
+          code: DslWarningCode.REFERENCE_UNKNOWN_ALIAS,
+          path: "/nodes/3/config/routing/pinned_model/alias",
+          message:
+            "Stage `plan` pins `coder-maxx`, which is not in this workspace's model registry — " +
+            "reference a registry alias (did you mean coder-max?).",
+        },
+      ],
+    ])("refuses %s with the designed error naming the node", async (_what, pin, expected) => {
+      const place = await bench();
+      const definition = standardFix();
+      definition.nodes.find((node) => node.id === "plan")!.config.routing = { pinned_model: pin };
+
+      const id = await drafted(place, definition);
+      const response = await as(place.owner, place)("post", `${WORKFLOWS}/${id}/publish`)
+        .send({})
+        .expect(422);
+      const envelope = bodyOf<ErrorEnvelope>(response);
+
+      expect(envelope.code).toBe("workflow_definition_invalid");
+      expect((envelope.details as { findings: PublishFinding[] }).findings).toEqual([
+        { ...expected, node: "plan", suggestion: "coder-max" },
+      ]);
+    });
+
+    it("publishes the same stage once it names the alias", async () => {
+      const place = await bench();
+      const definition = standardFix();
+      definition.nodes.find((node) => node.id === "plan")!.config.routing = {
+        pinned_model: { alias: "coder-max" },
+      };
+
+      const id = await drafted(place, definition);
+
+      await as(place.owner, place)("post", `${WORKFLOWS}/${id}/publish`).send({}).expect(200);
+    });
+
+    it("does not resolve a pin in another workspace's registry", async () => {
+      // Both workspaces seed the pins; this one then loses `coder-max`. The other workspace still
+      // has it, and that must not make the pin resolve here.
+      const place = await bench();
+      await bench("elsewhere@ouroboros.invalid");
+      await api.sql.query(
+        `delete from ${SCHEMA_NAME}.model_aliases where organization_id = $1 and alias = 'coder-max'`,
+        [place.id],
+      );
+
+      const id = await drafted(place, standardFix());
+      const response = await as(place.owner, place)("post", `${WORKFLOWS}/${id}/publish`)
+        .send({})
+        .expect(422);
+      const { findings } = bodyOf<ErrorEnvelope>(response).details as {
+        findings: PublishFinding[];
+      };
+
+      expect(findings.map((finding) => [finding.node, finding.code])).toEqual([
+        ["plan", DslWarningCode.REFERENCE_UNKNOWN_ALIAS],
+        ["review", DslWarningCode.REFERENCE_UNKNOWN_ALIAS],
       ]);
     });
   });

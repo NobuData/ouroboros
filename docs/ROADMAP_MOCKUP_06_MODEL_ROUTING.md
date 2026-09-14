@@ -762,6 +762,12 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 > `model_aliases.enabled` switch is deliberately **not** read here — and now has somewhere to
 > put them.
 >
+> **Amended by CH.6 (#589), 2026-09-14.** The switch is now read: a switched-off alias is a
+> dropped hop with `alias_disabled` and a sentence naming who last wrote the row and the day, the
+> unbound sentence became *…: alias unbound — no provider.*, and a rule naming a switched-off alias
+> does nothing and says so. Tested after the floor, so floor semantics are unchanged; Z.4's simulate
+> serves the same explanations.
+>
 > **`display` is reported, never recomposed.** Decision **M5** end to end: the sentence in a
 > resolution's rule record is the generated column PostgreSQL derived from `"when"` and
 > `"then"`, so the explanation panel and the rules card cannot print two sentences for one rule.

@@ -513,7 +513,8 @@ describe("publishing", () => {
 
     const version = await service.publish(WORKSPACE, WORKFLOW, {}, PERSON, AT);
 
-    expect(gate.check).toHaveBeenCalledWith(draft().definition);
+    // The workspace travels with the document: a pin must resolve in *this* registry (CH.6).
+    expect(gate.check).toHaveBeenCalledWith(WORKSPACE, draft().definition);
     expect(version.version).toBe(15);
     expect(repository.publish).toHaveBeenCalledWith(
       WORKFLOW,

@@ -62,8 +62,8 @@ export interface ExpectedCase {
 export interface ExpectedCatalogue {
   /** Every skill the case's workspace has defined. */
   skills?: string[];
-  /** Every model identifier the case's registry resolves. */
-  models?: string[];
+  /** Every alias the case's model registry holds. */
+  aliases?: string[];
   /** Every task name the case's routing table has a route for. */
   tasks?: string[];
 }

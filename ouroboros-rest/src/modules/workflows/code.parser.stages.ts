@@ -210,11 +210,12 @@ function readLlmConfig(reader: CodeReader, options: ReadonlyMap<string, ts.Expre
 }
 
 /**
- * Read `route.task("…")` or `route.model("…")`.
+ * Read `route.task("…")` or `route.alias("…")`.
  *
  * @param reader - The walk's reader.
  * @param node - The `model` option's value.
- * @returns The routing object, or `undefined` having reported why.
+ * @returns The routing object — `{inherit_task: name}` or `{pinned_model: {alias: name}}`, the
+ *   document's structural pin (CH.6, #589) — or `undefined` having reported why.
  */
 function readRoute(reader: CodeReader, node: ts.Expression): ReadValue | undefined {
   const value = unwrap(node);
@@ -247,7 +248,9 @@ function readRoute(reader: CodeReader, node: ts.Expression): ReadValue | undefin
   }
 
   const target = reader.string(value.arguments[0], `the name \`${ROUTE}.${method}\` routes to`);
-  return key === undefined || target === undefined ? undefined : { [key]: target };
+
+  if (key === undefined || target === undefined) return undefined;
+  return key === "pinned_model" ? { pinned_model: { alias: target } } : { [key]: target };
 }
 
 /**

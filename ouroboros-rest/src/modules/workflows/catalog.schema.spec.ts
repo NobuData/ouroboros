@@ -118,7 +118,7 @@ describe("the node types of the committed schema", () => {
 
     expect(reached).toEqual({
       trigger: [],
-      llm: ["reference"],
+      llm: ["reference", "alias_name"],
       infra: ["reference"],
       // `predicate` is reached from `flow_config`, and `effort`, `source_kind` and `label` from it.
       flow: ["effort", "source_kind", "label", "predicate"],

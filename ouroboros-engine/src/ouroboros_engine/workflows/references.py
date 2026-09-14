@@ -1,16 +1,20 @@
-"""Decision **P7**: skill, model and task-route references are strings, and unknown ones warn.
+"""Decision **P7**: skill, alias and task-route references are names, and unknown ones warn.
 
 The Python half of ``ouroboros-rest/src/modules/workflows/dsl.references.ts``.
 
-The model registry (mockups 06/21) and the skills catalogue (mockup 14) do not exist. A foreign
-key to a table nobody has written is not a stricter design, it is a design that cannot be
-built; and refusing a workflow because it names a skill the workspace has not defined yet would
-make the editor unusable during exactly the period the skill is being defined. So the reference
-is stored as written, and whether it resolves is asked at validation, answered as a warning, and
-rendered as a flag on the field rather than a block on the Publish button.
+The skills catalogue (mockup 14) does not exist. A foreign key to a table nobody has written is
+not a stricter design, it is a design that cannot be built; and refusing a workflow because it
+names a skill the workspace has not defined yet would make the editor unusable during exactly
+the period the skill is being defined. So the reference is stored as written, and whether it
+resolves is asked at validation, answered as a warning, and rendered as a flag on the field.
+
+**An alias is the exception at publish, and only there.** CH.6 (#589) makes *routes and
+workflows may only reference registry aliases* a system property: ``ouroboros-rest``'s publish
+gate reads the workspace's registry and promotes ``reference.unknown_alias`` to a refusal. A
+draft may still name an alias somebody is about to create; a published version may not.
 
 **The caller supplies the vocabulary.** This module holds no list of skills and no list of
-models, so it cannot invent one — the same shape :class:`.estimation.contract.EstimationContext`
+aliases, so it cannot invent one — the same shape :class:`.estimation.contract.EstimationContext`
 takes for the same reason (decisions K5 and K6). A caller that supplies no catalogue gets no
 warnings of this kind, which is the honest answer to *is this reference known?* when nothing in
 the system knows.
@@ -34,14 +38,14 @@ class Catalogue:
     """The names that exist, as the caller knows them.
 
     Every member is optional and an absent one means *not checked*, which is different from an
-    empty one meaning *nothing is known*. A caller that can enumerate skills but not models says
-    so by supplying only ``skills``.
+    empty one meaning *nothing is known*. A caller that can enumerate skills but not aliases
+    says so by supplying only ``skills``.
     """
 
     #: Every skill the workspace has defined.
     skills: Sequence[str] | None = None
-    #: Every model identifier the registry resolves.
-    models: Sequence[str] | None = None
+    #: Every alias the workspace's model registry holds, bound or not.
+    aliases: Sequence[str] | None = None
     #: Every task name the routing table has a route for.
     tasks: Sequence[str] | None = None
 
@@ -64,7 +68,7 @@ def check_references(
 
     warnings: list[Diagnostic] = []
     known_skills = None if catalogue.skills is None else set(catalogue.skills)
-    known_models = None if catalogue.models is None else set(catalogue.models)
+    known_aliases = None if catalogue.aliases is None else set(catalogue.aliases)
     known_tasks = None if catalogue.tasks is None else set(catalogue.tasks)
 
     for index, node in enumerate(document.nodes):
@@ -86,14 +90,19 @@ def check_references(
         pinned = config.routing.pinned_model
         if (
             pinned is not None
-            and known_models is not None
-            and pinned not in known_models
+            and known_aliases is not None
+            and pinned.alias not in known_aliases
         ):
             warnings.append(
                 Diagnostic(
-                    code=DslWarningCode.REFERENCE_UNKNOWN_MODEL,
-                    path=pointer("nodes", index, "config", "routing", "pinned_model"),
-                    message=f"No model named `{pinned}` is in the registry.",
+                    code=DslWarningCode.REFERENCE_UNKNOWN_ALIAS,
+                    path=pointer(
+                        "nodes", index, "config", "routing", "pinned_model", "alias"
+                    ),
+                    message=(
+                        f"No alias named `{pinned.alias}` is in this workspace's model "
+                        "registry."
+                    ),
                     node=node.id,
                 )
             )

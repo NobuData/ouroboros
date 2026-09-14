@@ -404,7 +404,7 @@ describe("constructs the golden fixtures do not reach", () => {
       workflow(
         [
           START,
-          stage("pinned", "llm", { ...LLM, routing: { pinned_model: "claude-fable-5" } }),
+          stage("pinned", "llm", { ...LLM, routing: { pinned_model: { alias: "coder-max" } } }),
           stage("skilled", "llm", { ...LLM, mode: "skill", skill: "repo-map" }),
           DONE,
         ],
@@ -417,7 +417,7 @@ describe("constructs the golden fixtures do not reach", () => {
     );
     const [pinned, skilled] = text.split('    llm("').slice(1);
 
-    expect(pinned).toContain('      model: route.model("claude-fable-5"),\n');
+    expect(pinned).toContain('      model: route.alias("coder-max"),\n');
     expect(pinned).not.toContain("skill:");
     expect(skilled).toContain('      skill: "repo-map",\n      model: route.task("implement"),\n');
     expect(text).toContain("      tokenBudget: 10_000,\n");
@@ -580,9 +580,9 @@ describe("what the printer refuses", () => {
 
   it.each([
     [
-      "a model stage that routes by a task and a model",
+      "a model stage that routes by a task and an alias",
       broken((document) => {
-        llmConfig(document, "implement").routing.pinned_model = "claude-fable-5";
+        llmConfig(document, "implement").routing.pinned_model = { alias: "coder-max" };
       }),
     ],
     [

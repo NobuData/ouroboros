@@ -189,9 +189,15 @@ export function matchedRules(
  * @param rule - The rule.
  * @param code - What it did, or why it did nothing.
  * @param taskKind - The kind being resolved, for the near-miss sentence that contrasts them.
+ * @param target - The alias the rule names, when its sentence has to say who last changed it.
  * @returns The record.
  */
-function outcome(rule: RuleSpec, code: RuleOutcomeCode, taskKind: string): AppliedRule {
+function outcome(
+  rule: RuleSpec,
+  code: RuleOutcomeCode,
+  taskKind: string,
+  target: AliasSpec | null = null,
+): AppliedRule {
   const applied =
     code === RULE_CODES.paramsMerged ||
     code === RULE_CODES.swapped ||
@@ -205,7 +211,13 @@ function outcome(rule: RuleSpec, code: RuleOutcomeCode, taskKind: string): Appli
     display: rule.display,
     applied,
     code,
-    explanation: ruleExplanation(code, targetAlias(rule.then), targetTaskKind(rule.then), taskKind),
+    explanation: ruleExplanation(
+      code,
+      targetAlias(rule.then),
+      targetTaskKind(rule.then),
+      taskKind,
+      target,
+    ),
   };
 }
 
@@ -264,6 +276,14 @@ export function applyRules(
     // is a legitimate state of a row, and this is where it stops being silent.
     if (target === undefined || target.binding === null) {
       outcomes.push(outcome(rule, RULE_CODES.aliasUnresolvable, taskKind));
+      continue;
+    }
+
+    // Switched off (CH.6, #589): the name resolves, but an operator has said routing may not use
+    // it. A vote on it would be a requirement the executor must not meet, and a primary on it a
+    // hop `resolve()` would only drop — so the rule does nothing, and says who switched it off.
+    if (!target.enabled) {
+      outcomes.push(outcome(rule, RULE_CODES.aliasDisabled, taskKind, target));
       continue;
     }
 

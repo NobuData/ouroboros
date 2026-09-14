@@ -97,13 +97,13 @@ $ curl -s localhost:8000/v0/status && echo
 {"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.6.1","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.7.0","uptime_seconds":42.5}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
     -d '{"task_kind":"echo","payload":{"note":"hello"}}' \
     localhost:8000/v0/tasks/echo && echo
-{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.6.1"}
+{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.7.0"}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \

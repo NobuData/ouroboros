@@ -279,7 +279,7 @@ with canvas (definition) as (values (
           "mode": "skill",
           "skill": "repo-map",
           "prompt_template": "Scope the issue.\n\nIssue: {{issue.title}}\nBody:  {{issue.body}}\n\nName the files the change will touch and the risks you can see.",
-          "routing": { "pinned_model": "claude-sonnet-5" },
+          "routing": { "pinned_model": { "alias": "coder-std" } },
           "limits": { "max_retries": 2, "token_budget": 200000 },
           "permissions": { "push_fixup": false, "touch_ci": false }
         }
@@ -304,7 +304,7 @@ with canvas (definition) as (values (
         "config": {
           "mode": "prompt",
           "prompt_template": "Write the attack plan.\n\nScope: {{analyze}}\n\nOrder the steps and name every file each one touches.",
-          "routing": { "pinned_model": "claude-fable-5" },
+          "routing": { "pinned_model": { "alias": "coder-max" } },
           "limits": { "max_retries": 2, "token_budget": 200000 },
           "permissions": { "push_fixup": false, "touch_ci": false }
         }
@@ -371,7 +371,7 @@ with canvas (definition) as (values (
         "config": {
           "mode": "prompt",
           "prompt_template": "Review the diff against the plan.\n\nPlan: {{plan}}\nDiff: {{diff}}\n\nReport anything the plan did not ask for.",
-          "routing": { "pinned_model": "claude-fable-5" },
+          "routing": { "pinned_model": { "alias": "coder-max" } },
           "limits": { "max_retries": 1, "token_budget": 200000 },
           "permissions": { "push_fixup": true, "touch_ci": false }
         }
@@ -476,7 +476,7 @@ with canvas (definition) as (values (
           "mode": "skill",
           "skill": "repo-map",
           "prompt_template": "Scope the issue.\n\nIssue: {{issue.title}}\nBody:  {{issue.body}}\n\nName the files the change will touch and the risks you can see.",
-          "routing": { "pinned_model": "claude-sonnet-5" },
+          "routing": { "pinned_model": { "alias": "coder-std" } },
           "limits": { "max_retries": 2, "token_budget": 200000 },
           "permissions": { "push_fixup": false, "touch_ci": false }
         }
@@ -490,7 +490,7 @@ with canvas (definition) as (values (
         "config": {
           "mode": "prompt",
           "prompt_template": "Write the attack plan.\n\nScope: {{analyze}}\n\nOrder the steps and name every file each one touches.",
-          "routing": { "pinned_model": "claude-fable-5" },
+          "routing": { "pinned_model": { "alias": "coder-max" } },
           "limits": { "max_retries": 2, "token_budget": 200000 },
           "permissions": { "push_fixup": false, "touch_ci": false }
         }

@@ -84,8 +84,9 @@ export function stageCatalog(
  * The suggestions, as the catalogue decision **P7**'s warnings are checked against.
  *
  * @param suggestions - The catalog's suggestions.
- * @returns A catalogue naming the non-empty lists only — see this file's header. `models` is
- *   never set: the catalog suggests no model names, so it has no opinion about them.
+ * @returns A catalogue naming the non-empty lists only — see this file's header. `aliases` is
+ *   never set: the catalog suggests no alias names, so it has no opinion about them — the
+ *   publish gate reads the registry for itself (CH.6, #589).
  */
 export function toDslCatalogue(suggestions: StageSuggestions): DslCatalogue {
   return {

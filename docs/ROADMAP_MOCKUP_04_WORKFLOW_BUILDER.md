@@ -293,6 +293,12 @@ erDiagram
 
 > **GitHub issue:** #133 · **Status:** 🟢 Done · **Parent epic:** #127
 
+> **Amended by CH.6 (#589), 2026-09-14.** `llm` routing pins a model registry alias —
+> `pinned_model: {alias: "coder-max"}` — never a raw model id; a string there is
+> `config.routing_raw_model`, `reference.unknown_model` became `reference.unknown_alias`, and
+> publishing refuses a pin the workspace's registry does not hold (docs/WORKFLOW_DSL.md §8.3).
+> Amended in place on the 1.x line, with zod and pydantic parity kept by `expected.json`.
+
 - **Problem Statement:** The canvas, the code view (mockup 05, future), the
   validator, and the future interpreter must agree on one definition language —
   the DSL is the product's most durable contract (decision P3).

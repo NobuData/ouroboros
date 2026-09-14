@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.34.13"
+  version: "0.35.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -304,8 +304,13 @@ tags:
       **The model registry — what a workspace may run, and what it costs**
       ([#576](https://github.com/NobuData/ouroboros/issues/576), mockup 21).
 
-      One operation family is published so far: the workspace's own **price corrections**
-      ([#586](https://github.com/NobuData/ouroboros/issues/586)). Resolution itself — *what
+      Its operations are the composed table ([#588](https://github.com/NobuData/ouroboros/issues/588)),
+      the alias lifecycle ([#584](https://github.com/NobuData/ouroboros/issues/584)), param
+      schemas ([#585](https://github.com/NobuData/ouroboros/issues/585)), import from a provider
+      ([#587](https://github.com/NobuData/ouroboros/issues/587)), the workspace's own **price
+      corrections** ([#586](https://github.com/NobuData/ouroboros/issues/586)), and the **stored
+      resolution snapshots** behind the chain card
+      ([#589](https://github.com/NobuData/ouroboros/issues/589)). Price resolution itself — *what
       does this model cost* — is deliberately not a route. It is served inside this service
       to the registry table ([#588](https://github.com/NobuData/ouroboros/issues/588)), to
       priced token accounting ([#92](https://github.com/NobuData/ouroboros/issues/92)) and to
@@ -5480,6 +5485,140 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/registry/resolutions/latest:
+    get:
+      tags: [registry]
+      summary: The latest stored resolution through an alias, for the chain card
+      description: |-
+        Mockup 21's **RESOLUTION CHAIN** card and the run console's transcript
+        ([#589](https://github.com/NobuData/ouroboros/issues/589), decision **R9**): the most
+        recent **stored** resolution snapshot in this workspace whose chain names the alias —
+        whether that hop was kept or dropped.
+
+        **A stored fact, never a re-computation.** A snapshot is what routing decided when a run
+        was resolved: the provider as the health snapshot then saw it, the masked key suffix, the
+        rules evaluated, and the timings. Re-resolving on read would print today's health beside
+        last week's run number.
+
+        **`snapshot: null` is an answer, not an error** — no run here has resolved through the
+        alias. The chain card then renders a Simulate preview labelled as one
+        (`POST /api/v1/routing/simulate`), never a fabricated run. A well-formed name no alias
+        carries today is answered the same way: a snapshot names its alias by name and outlives
+        a rename or a delete.
+
+        **Consumers.** The chain card ([#595](https://github.com/NobuData/ouroboros/issues/595))
+        and the run console's read APIs and transcript
+        ([#304](https://github.com/NobuData/ouroboros/issues/304),
+        [#312](https://github.com/NobuData/ouroboros/issues/312)). **Writers.** The chain executor
+        ([#235](https://github.com/NobuData/ouroboros/issues/235)) and the workflow execution
+        bridge ([#160](https://github.com/NobuData/ouroboros/issues/160)), at execution time;
+        until they land, the development seed's run #482
+        ([#582](https://github.com/NobuData/ouroboros/issues/582)) is the one stored snapshot.
+
+        **Any member may read it.**
+      operationId: readLatestResolution
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: alias
+          in: query
+          required: true
+          description: The alias whose latest stored resolution to read, by name.
+          schema:
+            type: string
+            pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+            minLength: 1
+            maxLength: 64
+      responses:
+        "200":
+          description: The alias, and its latest stored resolution or null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestResolution"
+              example:
+                alias: coder-max
+                snapshot:
+                  shapeVersion: 1
+                  id: 5eed0017-0000-4000-8000-000000000001
+                  run:
+                    id: 0b7e1c2a-4d5f-4a3b-9c8d-7e6f5a4b3c21
+                    issueNumber: 482
+                  taskKind: implement
+                  routeTag: implement-primary
+                  outcome: resolved
+                  durationMs: 42
+                  resolvedHopIndex: 1
+                  chain:
+                    - index: 1
+                      position: 1
+                      alias: coder-max
+                      modelId: claude-fable-5
+                      params:
+                        thinking: max
+                      provider:
+                        kind: anthropic
+                        displayName: Anthropic Claude
+                        keySuffix: Xq4A
+                        status: active
+                        latencyMs: 42
+                        detail: null
+                      note: null
+                      decision: kept
+                      code: provider_healthy
+                      explanation: "Primary · healthy · 42ms"
+                      durationMs: 42
+                    - index: 2
+                      position: 2
+                      alias: coder-fallback
+                      modelId: gpt-5-codex
+                      params: {}
+                      provider:
+                        kind: copilot
+                        displayName: GitHub Copilot
+                        keySuffix: null
+                        status: error
+                        latencyMs: null
+                        detail: elevated latency
+                      note: "Fallback on 5xx / timeouts"
+                      decision: dropped
+                      code: provider_error
+                      explanation: "Fallback 1 dropped — GitHub Copilot is unreachable (elevated latency)."
+                      durationMs: null
+                  rules: []
+                  resolvedAt: "2026-09-13T10:08:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `alias` is missing, or is not a name an alias could have:
+            lower-case letters, digits and single hyphens, at most 64 characters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/registry/aliases/{id}:
     patch:
       tags: [registry]
@@ -11076,9 +11215,9 @@ paths:
                       - label: 'route.task("")'
                         kind: snippet
                         symbol: route.task
-                      - label: 'route.model("")'
+                      - label: 'route.alias("")'
                         kind: snippet
-                        symbol: route.model
+                        symbol: route.alias
                   - scope: route.task
                     completions:
                       - label: analyze
@@ -11883,8 +12022,18 @@ paths:
                   workflowId: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
         "422":
           description: |-
-            `workflow_definition_invalid` — one or both validators refused the definition, and
-            **nothing was created**. `details.findings` carries every finding, node-anchored.
+            `workflow_definition_invalid` — a validator refused the definition, and **nothing was
+            created**. `details.findings` carries every finding, node-anchored. A finding's
+            `source` is `dsl`, `registry` or `engine`.
+
+            **Routes and workflows may only reference registry aliases**
+            ([#589](https://github.com/NobuData/ouroboros/issues/589)). A stage pinning a raw
+            model id (`config.routing_raw_model`) or an alias this workspace's registry does not
+            hold (`reference.unknown_alias`, source `registry`) is refused with a message naming
+            the stage and, where there is one, `suggestion` — the alias the author most plausibly
+            meant, which for a raw model id is the alias bound to it. An alias that exists but is
+            unbound or switched off is not refused: switching an alias off keeps its references.
+
             (`validation_failed` is the other `422` here: the id is not a uuid, or `changeNote`
             is blank or longer than 500 characters.)
           content:
@@ -11900,6 +12049,12 @@ paths:
                       code: structure.trigger_missing
                       message: A workflow needs exactly one trigger node.
                       path: /nodes
+                    - source: dsl
+                      code: config.routing_raw_model
+                      message: "Stage `plan` pins the raw model id `claude-fable-5` — raw model ids are not allowed; reference a registry alias (did you mean coder-max?)."
+                      path: /nodes/3/config/routing/pinned_model
+                      node: plan
+                      suggestion: coder-max
                     - source: engine
                       code: unreachable_node
                       message: Nothing reaches this node.
@@ -16884,7 +17039,9 @@ components:
             - type: "null"
           description: |-
             Where it runs, or **null** when the alias is bound to no provider connection. Such a
-            hop is always `dropped`, with a stated reason.
+            hop is always `dropped`, with a stated reason. A switched-off alias is still bound,
+            so its hop keeps the provider it would have run on and is dropped with
+            `alias_disabled`.
         note:
           type: [string, "null"]
           description: |-
@@ -16906,16 +17063,23 @@ components:
               provider_paused,
               provider_error,
               alias_unbound,
+              alias_disabled,
               below_floor,
               rule_route_local,
               local_not_allowed,
             ]
           description: |-
-            Why — **stable**, and what a client branches on. Two of the eight keep a hop:
+            Why — **stable**, and what a client branches on. Two of the nine keep a hop:
             `provider_healthy` and `provider_unknown`. They are separate codes because *usable*
             and *nothing has checked it* are different claims, and the second must never be
             rendered as the first. A code this list does not carry still arrives with a sentence
             and a `decision`, which is why adding one is not a version bump.
+
+            `alias_unbound` and `alias_disabled` are the registry's two reasons
+            ([#589](https://github.com/NobuData/ouroboros/issues/589)): the alias names no
+            provider connection, or an operator switched it off — the sentence names who and on
+            which day. Neither is a failed run on its own; if every hop drops, the refusal is
+            `no_eligible_hop`, and a floor is honoured exactly as before.
           examples: [provider_healthy]
         explanation:
           type: string
@@ -16970,16 +17134,272 @@ components:
               route_local_applied,
               not_this_task_kind,
               alias_unresolvable,
+              alias_disabled,
               vote_already_added,
             ]
           description: |-
-            What it did, or why it did not. The first five mean `applied: true`; the last three
-            are the near misses.
+            What it did, or why it did not. The first five mean `applied: true`; the last four
+            are the near misses. `alias_disabled` is a rule naming an alias an operator switched
+            off — no primary is moved onto it and no vote is taken from it.
           examples: [add_vote_added]
         explanation:
           type: string
           description: The same, as a sentence — rendered verbatim.
           examples: [Applied — a second-opinion vote was added for the executor to obtain.]
+
+    LatestResolution:
+      type: object
+      title: LatestResolution
+      description: |-
+        The alias asked about, and its most recent stored resolution
+        ([#589](https://github.com/NobuData/ouroboros/issues/589)).
+      additionalProperties: false
+      required: [alias, snapshot]
+      properties:
+        alias:
+          type: string
+          description: The alias, echoed.
+          examples: [coder-max]
+        snapshot:
+          oneOf:
+            - $ref: "#/components/schemas/ResolutionSnapshot"
+            - type: "null"
+          description: |-
+            The most recent snapshot whose chain names the alias, kept or dropped — or **null**
+            when no run in this workspace has resolved through it, which is the chain card's cue
+            to render a Simulate preview labelled as one.
+
+    ResolutionSnapshot:
+      type: object
+      title: ResolutionSnapshot
+      description: |-
+        One stored resolution — what routing decided for one run, kept (decision **R9**,
+        [#589](https://github.com/NobuData/ouroboros/issues/589)).
+
+        **Versioned.** `shapeVersion` is the pin a consumer holds, under `Resolution`'s rule:
+        adding a hop code, a rule code or an optional field is not a bump; renaming or removing a
+        field, or changing what one means, is — together with a migration that widens the
+        database's check on the stored shape.
+
+        **Names, never ids.** The chain names its alias, route and provider as they read when the
+        run was resolved, so a snapshot stays legible after any of them is renamed or deleted —
+        and an optional fact nobody recorded is `null`, never a stand-in.
+      additionalProperties: false
+      required:
+        [
+          shapeVersion,
+          id,
+          run,
+          taskKind,
+          routeTag,
+          outcome,
+          durationMs,
+          resolvedHopIndex,
+          chain,
+          rules,
+          resolvedAt,
+        ]
+      properties:
+        shapeVersion:
+          type: integer
+          enum: [1]
+          description: The shape the snapshot is written in — the number a consumer pins.
+          examples: [1]
+        id:
+          type: string
+          format: uuid
+          description: The snapshot's id.
+        run:
+          type: object
+          additionalProperties: false
+          required: [id, issueNumber]
+          description: The run this resolution served.
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: The run's id.
+            issueNumber:
+              type: integer
+              description: The issue it works — the card's `run #482`.
+              examples: [482]
+        taskKind:
+          type: string
+          description: The task kind resolved for, as it was named then.
+          examples: [implement]
+        routeTag:
+          type: string
+          description: The route that answered, as it was tagged then.
+          examples: [implement-primary]
+        outcome:
+          type: string
+          enum: [resolved, fail_run]
+          description: Whether a hop was kept.
+          examples: [resolved]
+        durationMs:
+          type: [integer, "null"]
+          minimum: 0
+          description: |-
+            How long the resolution took, in whole milliseconds — the card's `· 42ms` — or null
+            when nobody timed it. Never `0` as a stand-in.
+          examples: [42]
+        resolvedHopIndex:
+          type: [integer, "null"]
+          minimum: 1
+          description: |-
+            The `index` of the hop that resolved — the first kept one, which is the line the chain
+            card draws — or null for a run the resolution refused.
+          examples: [1]
+        chain:
+          type: array
+          minItems: 1
+          description: Every hop, in resolved order, dropped ones included.
+          items:
+            $ref: "#/components/schemas/ResolutionSnapshotHop"
+        rules:
+          type: array
+          description: Every escalation rule the resolution matched, applied or not.
+          items:
+            $ref: "#/components/schemas/ResolutionSnapshotRule"
+        resolvedAt:
+          type: string
+          format: date-time
+          description: When the resolution was made.
+
+    ResolutionSnapshotHop:
+      type: object
+      title: ResolutionSnapshotHop
+      description: One hop of a stored chain, as `ResolutionHop` described it when the run was resolved.
+      additionalProperties: false
+      required:
+        [
+          index,
+          position,
+          alias,
+          modelId,
+          params,
+          provider,
+          note,
+          decision,
+          code,
+          explanation,
+          durationMs,
+        ]
+      properties:
+        index:
+          type: integer
+          minimum: 1
+          description: Its place in the resolved chain, dropped hops included.
+          examples: [1]
+        position:
+          type: [integer, "null"]
+          minimum: 1
+          description: Its stored `route_hops.position`, or null for a hop a rule prepended.
+          examples: [1]
+        alias:
+          type: string
+          description: The alias the hop named.
+          examples: [coder-max]
+        modelId:
+          type: string
+          description: The raw provider model id it resolved to.
+          examples: [claude-fable-5]
+        params:
+          type: object
+          additionalProperties: true
+          description: The params it resolved with.
+        provider:
+          oneOf:
+            - $ref: "#/components/schemas/ResolutionSnapshotProvider"
+            - type: "null"
+          description: Where it ran, or null for an unbound alias.
+        note:
+          type: [string, "null"]
+          description: The operator's note on the hop, or null.
+        decision:
+          type: string
+          enum: [kept, dropped]
+          description: Whether the executor would try it.
+          examples: [kept]
+        code:
+          type: string
+          description: |-
+            The resolution's code for the hop — `ResolutionHop.code`'s vocabulary, stored as an
+            identifier so a code added later still reads.
+          examples: [provider_healthy]
+        explanation:
+          type: string
+          description: The resolution's sentence for the hop, as it was written then — rendered verbatim.
+          examples: ["Primary · healthy · 42ms"]
+        durationMs:
+          type: [integer, "null"]
+          minimum: 0
+          description: How long the hop took, in whole milliseconds — only on a kept hop that was tried.
+          examples: [42]
+
+    ResolutionSnapshotProvider:
+      type: object
+      title: ResolutionSnapshotProvider
+      description: Where a stored hop's model ran, as the health snapshot saw it then.
+      additionalProperties: false
+      required: [kind, displayName, keySuffix, status, latencyMs, detail]
+      properties:
+        kind:
+          type: string
+          description: The adapter kind — what a client labels the provider by.
+          examples: [anthropic]
+        displayName:
+          type: string
+          description: The connection's display name then.
+          examples: [Anthropic Claude]
+        keySuffix:
+          type: [string, "null"]
+          pattern: "^[A-Za-z0-9]{1,16}$"
+          description: |-
+            The masked tail of the key the hop resolved with — the card's `(key …Xq4A)` — or null
+            where no credential was involved. Never a key: at most sixteen letters and digits.
+          examples: [Xq4A]
+        status:
+          type: string
+          enum: [active, paused, error, unknown]
+          description: The connection's state in the health snapshot the resolution used.
+          examples: [active]
+        latencyMs:
+          type: [number, "null"]
+          minimum: 0
+          description: The latency measured then, in milliseconds, or null.
+          examples: [42]
+        detail:
+          type: [string, "null"]
+          description: Why the provider was in that state, or null.
+          examples: [elevated latency]
+
+    ResolutionSnapshotRule:
+      type: object
+      title: ResolutionSnapshotRule
+      description: One escalation rule the stored resolution matched.
+      additionalProperties: false
+      required: [id, sortOrder, display, applied, code, explanation]
+      properties:
+        id:
+          type: string
+          description: The rule's id then.
+        sortOrder:
+          type: [integer, "null"]
+          minimum: 1
+          description: Its evaluation order then, or null.
+        display:
+          type: string
+          description: The rule's generated sentence, as it read then.
+        applied:
+          type: boolean
+          description: Whether it changed the resolution.
+        code:
+          type: string
+          description: What it did, or why it did not — `AppliedRule.code`'s vocabulary, as an identifier.
+        explanation:
+          type: [string, "null"]
+          description: The same, as a sentence, or null.
 
     ResolutionVote:
       type: object

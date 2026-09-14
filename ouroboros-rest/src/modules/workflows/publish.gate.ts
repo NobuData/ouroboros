@@ -3,10 +3,12 @@
  * [#134](https://github.com/NobuData/ouroboros/issues/134)).
  *
  * ```
- * definition ─▶ [1] zod   (P.2, in this process)   ─┬─ any error ─▶ findings, and no engine call
- *                                                   └─ green ────▶ [2] engine (R.2, over the wire)
- *                                                                   ─┬─ any finding ─▶ findings
- *                                                                    └─ green ──────▶ publish
+ * definition ─▶ [1] zod      (P.2, in this process)    ─┬─ any error ─▶ findings, and no engine call
+ *                                                       └─ green ────▶ [2] registry (CH.6, one read)
+ *               ─┬─ an unknown alias ─▶ findings, and no engine call
+ *                └─ every pin resolves ─▶ [3] engine (R.2, over the wire)
+ *                                          ─┬─ any finding ─▶ findings
+ *                                           └─ green ──────▶ publish
  * ```
  *
  * ---------------------------------------------------------------------------
@@ -33,15 +35,26 @@
  * no failure path that could leave a numbered row behind, because the gate runs before the
  * only statement that could write one.
  *
- * ## What the gate does *not* consider
+ * ## Governance: a pin must name an alias the registry holds (CH.6)
  *
- * **Warnings.** `dsl.references.ts` reports decision **P7**'s unknown-name warnings when it is
- * given a catalogue, and they are advisory by construction — a model alias that does not exist
- * *yet* is a workflow somebody is about to finish wiring, not a document that must be refused.
- * `DslVerdict.valid` is `errors` being empty, and this gate is that predicate and no stricter.
- * The catalogue is deliberately not assembled here for the same reason: it would make publish
- * depend on the model registry in order to produce diagnostics that could not change the
- * answer.
+ * Mockup 21's why-card promises that *routes and workflows may only reference registry aliases —
+ * raw model strings are rejected at publish time*, and
+ * [#589](https://github.com/NobuData/ouroboros/issues/589) makes that a property of this gate
+ * rather than a sentence on a page. Two ways a stage can break it, one refusal shape for both:
+ *
+ *   * **a raw model id** — `pinned_model: "claude-fable-5"` — is a zod error already
+ *     (`config.routing_raw_model`), because the DSL's pin is an object. This gate rewrites its
+ *     message into the designed one and attaches the suggestion; and
+ *   * **an alias the workspace does not have** — `{alias: "coder-maxx"}` — is decision **P7**'s
+ *     `reference.unknown_alias` warning on a draft, and *this* gate promotes it to a finding.
+ *
+ * Both findings name the node, carry `suggestion` — the alias the author most plausibly meant,
+ * `alias.suggestion.ts`'s rules — and refuse with the same `422 workflow_definition_invalid`. The
+ * registry is read once, before zod, because the raw-id refusal needs it too.
+ *
+ * **Everything else P7 warns about stays advisory.** An unknown skill or task route is still a
+ * workflow somebody is about to finish wiring; the governance rule is about aliases and about
+ * nothing else, so no other warning is read here.
  *
  * ## What refuses a publish without being a finding
  *
@@ -57,11 +70,19 @@
 import { Injectable } from "@nestjs/common";
 
 import { EngineClient } from "../engine/engine.client";
+import type { RegistryAlias } from "./alias.suggestion";
+import { rawModelMessage, suggestAlias, unknownAliasMessage } from "./alias.suggestion";
+import { WorkflowCatalogRepository } from "./catalog.repository";
 import type { DslDiagnostic } from "./dsl.errors";
+import { DslErrorCode, DslWarningCode } from "./dsl.errors";
+import { valueAtPath } from "./dsl.issues";
 import { validateWorkflowDocument } from "./dsl.validator";
 
-/** Which validator produced a finding. */
-export type PublishFindingSource = "dsl" | "engine";
+/**
+ * Which validator produced a finding — the DSL's zod stage, the registry's governance stage
+ * (CH.6, #589), or the engine.
+ */
+export type PublishFindingSource = "dsl" | "registry" | "engine";
 
 /** The endpoints of the edge a finding anchors to. */
 export interface PublishFindingEdge {
@@ -92,6 +113,12 @@ export interface PublishFinding {
   readonly node?: string;
   /** The edge this anchors to, when it is about one. */
   readonly edge?: PublishFindingEdge;
+  /**
+   * The registry alias the author most plausibly meant — present only on a governance finding
+   * that has one to offer (CH.6, #589). The message already says it; this is the value a client
+   * puts in the field when somebody accepts it.
+   */
+  readonly suggestion?: string;
 }
 
 /** What the gate decided, and what the answer has to say about it. */
@@ -112,12 +139,17 @@ export interface PublishVerdict {
 export class WorkflowPublishGate {
   /**
    * @param engine - The typed engine client, from the non-global `EngineModule`.
+   * @param catalog - The workspace reads — here, the model registry's aliases.
    */
-  constructor(private readonly engine: EngineClient) {}
+  constructor(
+    private readonly engine: EngineClient,
+    private readonly catalog: WorkflowCatalogRepository,
+  ) {}
 
   /**
-   * Run both validators over one definition.
+   * Run every stage over one definition.
    *
+   * @param organizationId - The workspace publishing, whose registry a pin must resolve in.
    * @param definition - The draft's document, exactly as it is stored. Not reshaped on the
    *   way: the thing being judged has to be the thing that becomes immutable.
    * @returns The verdict. `findings` empty means the caller may write a version; anything else
@@ -125,14 +157,28 @@ export class WorkflowPublishGate {
    * @throws {UpstreamError} `engine_unavailable` when the engine could not answer, whatever the
    *   reason — a publish is refused rather than waved through by an outage.
    */
-  async check(definition: unknown): Promise<PublishVerdict> {
-    const verdict = validateWorkflowDocument(definition);
+  async check(organizationId: string, definition: unknown): Promise<PublishVerdict> {
+    const aliases = await this.catalog.registryAliases(organizationId);
+    const verdict = validateWorkflowDocument(definition, {
+      catalogue: { aliases: aliases.map((row) => row.alias) },
+    });
 
     if (!verdict.valid) {
-      // Stage 2 is not reached, per this file's header: the engine cannot say anything useful
-      // about a document that does not parse, and a second copy of every complaint would make
-      // the list harder to act on rather than more complete.
-      return { findings: verdict.errors.map(fromDiagnostic), engineConsulted: false };
+      // The engine is not reached, per this file's header: it cannot say anything useful about
+      // a document that does not parse, and a second copy of every complaint would make the
+      // list harder to act on rather than more complete.
+      return {
+        findings: verdict.errors.map((diagnostic) => governed(diagnostic, definition, aliases)),
+        engineConsulted: false,
+      };
+    }
+
+    const unresolved = verdict.warnings
+      .filter((warning) => warning.code === DslWarningCode.REFERENCE_UNKNOWN_ALIAS)
+      .map((warning) => governed(warning, definition, aliases));
+
+    if (unresolved.length > 0) {
+      return { findings: unresolved, engineConsulted: false };
     }
 
     const second = await this.engine.validateWorkflow(definition);
@@ -169,4 +215,83 @@ function fromDiagnostic(diagnostic: DslDiagnostic): PublishFinding {
     ...(diagnostic.node === undefined ? {} : { node: diagnostic.node }),
     ...(diagnostic.edge === undefined ? {} : { edge: { ...diagnostic.edge } }),
   };
+}
+
+/**
+ * One diagnostic as a finding, with the governance rule's designed refusal where it applies.
+ *
+ * A raw model id and an unknown alias get the message `alias.suggestion.ts` composes — naming the
+ * node and what it pinned — and the suggestion beside it; an unknown alias is attributed to the
+ * `registry` stage, because the DSL stage only warned about it. Every other diagnostic passes
+ * through {@link fromDiagnostic} untouched.
+ *
+ * @param diagnostic - What the DSL validator reported.
+ * @param definition - The document, to read back what the pin actually holds.
+ * @param aliases - The workspace's registry.
+ * @returns The finding.
+ */
+function governed(
+  diagnostic: DslDiagnostic,
+  definition: unknown,
+  aliases: readonly RegistryAlias[],
+): PublishFinding {
+  const finding = fromDiagnostic(diagnostic);
+  const node = diagnostic.node ?? "";
+  const written = valueAtPath(definition, pointerSegments(diagnostic.path));
+
+  if (typeof written !== "string") {
+    return finding;
+  }
+
+  if (diagnostic.code === DslErrorCode.CONFIG_ROUTING_RAW_MODEL) {
+    return withSuggestion(finding, suggestAlias(written, aliases), (suggestion) =>
+      rawModelMessage(node, written, suggestion),
+    );
+  }
+
+  if (diagnostic.code === DslWarningCode.REFERENCE_UNKNOWN_ALIAS) {
+    return withSuggestion(
+      { ...finding, source: "registry" },
+      suggestAlias(written, aliases),
+      (suggestion) => unknownAliasMessage(node, written, suggestion),
+    );
+  }
+
+  return finding;
+}
+
+/**
+ * A finding with the designed message, and the suggestion when there is one.
+ *
+ * @param finding - The finding so far.
+ * @param suggestion - The alias to offer, or null.
+ * @param message - Composes the sentence for that suggestion.
+ * @returns The finding, never claiming a suggestion it does not have.
+ */
+function withSuggestion(
+  finding: PublishFinding,
+  suggestion: string | null,
+  message: (suggestion: string | null) => string,
+): PublishFinding {
+  return {
+    ...finding,
+    message: message(suggestion),
+    ...(suggestion === null ? {} : { suggestion }),
+  };
+}
+
+/**
+ * An RFC 6901 pointer as the segments `valueAtPath` walks.
+ *
+ * @param pointer - `/nodes/1/config/routing/pinned_model`, or `""` for the document itself.
+ * @returns `["nodes", "1", "config", "routing", "pinned_model"]` — string indexes reach array
+ *   elements just as numbers do.
+ */
+function pointerSegments(pointer: string): string[] {
+  return pointer === ""
+    ? []
+    : pointer
+        .slice(1)
+        .split("/")
+        .map((segment) => segment.replaceAll("~1", "/").replaceAll("~0", "~"));
 }

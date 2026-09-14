@@ -28,8 +28,14 @@ export const CONNECTIONS = {
   vllm: "c0000000-0000-4000-8000-000000000005",
 } as const;
 
+/** When the seed's aliases were last written, and by whom — the dev seed's owner. */
+export const ALIAS_LAST_WRITE = {
+  updatedBy: "Ken Suenobu",
+  updatedAt: new Date("2026-08-01T09:30:00.000Z"),
+} as const;
+
 /**
- * One alias, bound to one connection.
+ * One alias, bound to one connection and switched on.
  *
  * @param alias - The name routes use.
  * @param modelId - What it resolves to.
@@ -52,6 +58,8 @@ function bound(
     modelId,
     params: {},
     binding: { connectionId, kind, displayName, baseUrl },
+    enabled: true,
+    ...ALIAS_LAST_WRITE,
   };
 }
 

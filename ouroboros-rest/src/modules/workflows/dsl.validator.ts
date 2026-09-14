@@ -246,7 +246,7 @@ function parseNode(shape: NodeShape, index: number): Parsed<WorkflowNode> {
           code: DslErrorCode.CONFIG_ROUTING_MISSING,
           path: pointer(...base, "routing"),
           ...anchor,
-          message: "Routing must either inherit the route for a task or pin a model.",
+          message: "Routing must either inherit the route for a task or pin a registry alias.",
         });
       }
       if (inheritTask !== undefined && pinnedModel !== undefined) {
@@ -255,7 +255,7 @@ function parseNode(shape: NodeShape, index: number): Parsed<WorkflowNode> {
           path: pointer(...base, "routing"),
           ...anchor,
           message:
-            "Routing inherits a task's route or pins a model, never both — " +
+            "Routing inherits a task's route or pins a registry alias, never both — " +
             "the inspector's two radios are exclusive.",
         });
       }

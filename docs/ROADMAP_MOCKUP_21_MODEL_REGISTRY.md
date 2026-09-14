@@ -735,7 +735,7 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 | CH.3 | #586 | 🟢 Done | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
 | CH.4 | #587 | 🟢 Done | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
 | CH.5 | #588 | 🟢 Done | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
-| CH.6 | #589 | 🟡 Open | ouroboros-rest: [CH.6] Governance & resolution-snapshot contract | Raw-model rejection at publish (P.2 amendment), Z.1 disabled/unbound semantics, persisted snapshots | mvp, registry, rest, routing, engine | N (after Z.1, WF P.2) | Y | M | ouroboros-rest, ouroboros-engine |
+| CH.6 | #589 | 🟢 Done | ouroboros-rest: [CH.6] Governance & resolution-snapshot contract | Raw-model rejection at publish (P.2 amendment), Z.1 disabled/unbound semantics, persisted snapshots | mvp, registry, rest, routing, engine | N (after Z.1, WF P.2) | Y | M | ouroboros-rest, ouroboros-engine |
 | CH.7 | #590 | 🟡 Open | ouroboros-rest: [CH.7] Registry integration tests | Lifecycle+guards, params, pricing, import, governance, isolation | mvp, registry, rest, ci | N (after CH.1–CH.6) | Y | M | ouroboros-rest |
 
 ### Issue CH.1 — ouroboros-rest: [CH.1] Alias lifecycle API
@@ -1207,7 +1207,45 @@ adapter calls made by GET /api/v1/registry: 0
 
 ### Issue CH.6 — ouroboros-rest: [CH.6] Governance & resolution-snapshot contract
 
-> **GitHub issue:** #589 · **Status:** 🟡 Open · **Parent epic:** #576
+> **GitHub issue:** #589 · **Status:** 🟢 Done · **Parent epic:** #576
+
+> **Shipped 2026-09-14.** Three coordinated changes, as the issue scoped them.
+>
+> **1 · `llm` nodes reference aliases (WF-P.2 amendment).** A pin is now
+> `routing: {pinned_model: {alias: "coder-max"}}` in
+> [`schemas/workflow-dsl/v1.json`](../schemas/workflow-dsl/v1.json), zod and pydantic alike, amended
+> in place on the 1.x line (pre-MVP, no published workflows outside the seed). A raw model id string
+> is `config.routing_raw_model`, held to parity by a new `expected.json` case, and the code view
+> spells a pin `route.alias("coder-max")`. Publishing reads the workspace's registry
+> ([`publish.gate.ts`](../ouroboros-rest/src/modules/workflows/publish.gate.ts)): a raw model id or
+> an alias the registry does not hold is a `422 workflow_definition_invalid` finding naming the
+> stage, with `suggestion` — the alias bound to that model id, else the nearest name
+> ([`alias.suggestion.ts`](../ouroboros-rest/src/modules/workflows/alias.suggestion.ts)). An alias that
+> exists but is unbound or switched off still publishes: the switch keeps references, and resolution
+> is where it takes effect. The seeded `standard-fix` pins `coder-std` and `coder-max`.
+>
+> **2 · Disabled and unbound aliases resolve honestly (Z.1 amendment).** `resolve()` drops a
+> switched-off hop with `alias_disabled` — *Fallback 1 dropped — coder-std: alias disabled by Ken
+> Suenobu 2026-08-01.*, actor and day from V019's `updated_by`/`updated_at` — and an unbound one with
+> *…: alias unbound — no provider.* The switch is tested **after** the floor, so a breach counts the
+> same hops it always did; a rule naming a switched-off alias is `alias_disabled` too, and adds no
+> vote. `POST /routing/simulate` serves the same sentences, asserted by disabling `coder-std` through
+> CH.1's own `PATCH`.
+>
+> **3 · The resolution snapshot contract.** `GET /api/v1/registry/resolutions/latest?alias=` reads
+> V024's rows — latest whose chain names the alias, kept or dropped, `snapshot: null` when none —
+> and [`routing/snapshot.ts`](../ouroboros-rest/src/modules/routing/snapshot.ts) is the writer's
+> contract for AF.2 (#235) / WF-T.6 (#160), refusing what V024's CHECKs refuse (a whole key where the
+> masked suffix belongs, a timing on a dropped hop). Documented in `openapi.yaml` (0.35.0) with its
+> consumers named. The seeded run #482 round-trips through the read in
+> `resolutions.integration-spec.ts`, applied from the committed seed files. One figure is the
+> drawing's: the card prints `provider Anthropic`, the stored connection is `Anthropic Claude`, so
+> the resource carries both `kind` and `displayName` and the label is CI.5's (#595).
+>
+> **Deferred, and to whom.** The `workflow` leg of V023's `alias_references` (the
+> `workflow_alias_refs()` extractor and its expression index) is now buildable — pins are structural
+> — and is left to a follow-up, so the delete/rename guards do not yet count workflow pins. The
+> executor that writes snapshots is AF.2's (#235); the card is CI.5's (#595).
 
 - **Problem Statement:** Two promises remain unowned: *"raw model strings are
   rejected at publish time"* (why-card) and *"every hop is inspectable in the

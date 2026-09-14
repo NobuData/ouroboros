@@ -6,6 +6,7 @@ import { bodyOf } from "../../testing/integration.fixture";
 import { startEngineStub, type EngineStub } from "../../testing/engine.stub.fixture";
 import type { Page } from "../tenancy/pagination";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import { seedPinnedAliases } from "./pins.fixture";
 import type { WorkflowStats } from "./stats.resources";
 import type {
   WorkflowDetail,
@@ -119,6 +120,9 @@ describe("the workflow lifecycle, against a migrated database", () => {
   async function bench(email = "owner@ouroboros.invalid"): Promise<Bench> {
     const owner = await api.signIn({ email });
     const workspace = await api.workspace(owner);
+
+    // Publishing mockup 04's canvas resolves its pins against this registry (CH.6, #589).
+    await seedPinnedAliases(api, workspace.id);
 
     return { owner, slug: workspace.slug };
   }
@@ -517,6 +521,9 @@ describe("the workflow lifecycle, against a migrated database", () => {
       const owner = await api.signIn({ email: "owner@ouroboros.invalid" });
       const workspace = await api.workspace(owner);
       const place: Bench = { owner, slug: workspace.slug };
+
+      // The canvas it publishes pins two aliases, which must resolve in this registry (CH.6).
+      await seedPinnedAliases(api, workspace.id);
 
       const member = await api.signIn({ email: "member@ouroboros.invalid" });
       const viewer = await api.signIn({ email: "viewer@ouroboros.invalid" });

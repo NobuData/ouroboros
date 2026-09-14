@@ -158,6 +158,36 @@ describe("the routing repository", () => {
     });
   });
 
+  describe("reading an alias's switch and its last writer", () => {
+    const aliasReads: readonly [string, (repository: RoutingRepository) => Promise<unknown>][] = [
+      ["hops", (repository) => repository.hops(WORKSPACE, ROUTE)],
+      ["aliases", (repository) => repository.aliases(WORKSPACE)],
+    ];
+
+    it.each(aliasReads)("selects enabled and updated_at in %s", async (_name, issue) => {
+      // CH.6 (#589): a switched-off hop is dropped with a sentence naming who and when, so both
+      // alias reads must carry the switch — the chain's hops and the aliases a rule may name.
+      await issue(routes);
+
+      const [statement] = database.statements;
+
+      expect(statement.sql).toContain('"a"."enabled"');
+      expect(statement.sql).toContain('"a"."updated_at"');
+    });
+
+    it.each(aliasReads)("left-joins the last writer's name in %s", async (_name, issue) => {
+      // Left, because a row a migration or an import wrote has no writer and is still an alias.
+      await issue(routes);
+
+      const [statement] = database.statements;
+
+      expect(statement.sql).toContain('left join "ouroboros"."user" as "u"');
+      expect(statement.sql).toContain('"u"."id" = "a"."updated_by"');
+      expect(statement.sql).toContain('"u"."name" as "updated_by_name"');
+      expect(statement.sql).not.toContain('"u"."email"');
+    });
+  });
+
   describe("reading the rules", () => {
     it("filters to the enabled ones in the statement rather than in the resolver", async () => {
       // V018's distinction: *the rules this workspace has* and *the rules that currently fire*

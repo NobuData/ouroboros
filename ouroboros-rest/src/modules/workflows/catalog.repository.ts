@@ -16,6 +16,7 @@
 import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../db/db.service";
+import type { RegistryAlias } from "./alias.suggestion";
 
 @Injectable()
 export class WorkflowCatalogRepository {
@@ -41,5 +42,29 @@ export class WorkflowCatalogRepository {
       .execute();
 
     return rows.map((row) => row.name);
+  }
+
+  /**
+   * Every alias in one workspace's model registry, with the raw model id each resolves to —
+   * what the publish gate resolves a stage's pin against (CH.6, #589).
+   *
+   * **Bound or not, switched on or not.** A pin names an alias, and V019 lets an alias exist
+   * unbound or switched off without losing a single reference: that is what the switch is for,
+   * and resolution is where it takes effect. A publish that refused a workflow for pinning an
+   * alias somebody switched off for the afternoon would make the switch a delete. The model id
+   * is here for the suggestion — `claude-fable-5` is answered with the alias that means it.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @returns The aliases, by name.
+   */
+  async registryAliases(organizationId: string): Promise<RegistryAlias[]> {
+    const rows = await this.database.db
+      .selectFrom("model_aliases")
+      .select(["alias", "model_id"])
+      .where("organization_id", "=", organizationId)
+      .orderBy("alias")
+      .execute();
+
+    return rows.map((row) => ({ alias: row.alias, modelId: row.model_id }));
   }
 }

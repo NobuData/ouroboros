@@ -69,6 +69,12 @@ export const DslErrorCode = {
   CONFIG_ROUTING_MISSING: "config.routing_missing",
   /** `routing` names both, and the inspector's radios are exclusive. */
   CONFIG_ROUTING_AMBIGUOUS: "config.routing_ambiguous",
+  /**
+   * `routing.pinned_model` is a raw provider model id where a registry alias belongs — routes
+   * and workflows may only reference aliases (CH.6, #589). A `schema.type` failure, given a code
+   * of its own because it is the one mistake the governance rule exists to catch.
+   */
+  CONFIG_ROUTING_RAW_MODEL: "config.routing_raw_model",
 
   /** Two nodes share an `id`. Reported on the second and each one after. */
   NODE_DUPLICATE_ID: "node.duplicate_id",
@@ -124,6 +130,7 @@ export const SCHEMA_STAGE_CODES: ReadonlySet<string> = new Set<string>([
   DslErrorCode.CONFIG_SKILL_NOT_ALLOWED,
   DslErrorCode.CONFIG_ROUTING_MISSING,
   DslErrorCode.CONFIG_ROUTING_AMBIGUOUS,
+  DslErrorCode.CONFIG_ROUTING_RAW_MODEL,
 ]);
 
 /** The codes the **structural stage** can report — the rules JSON Schema cannot express. */
@@ -147,17 +154,17 @@ export const STRUCTURAL_STAGE_CODES: ReadonlySet<string> = new Set<string>([
 /**
  * Every code this validator emits as a *warning* — decision **P7**, in full.
  *
- * A skill, a model or a task route the caller's catalogue does not list is reported and the
- * document still saves. The model registry (mockups 06/21) and the skills catalogue (mockup
- * 14) do not exist, so today the only caller that can supply a catalogue is a test; a caller
- * that supplies none gets no warnings of this kind, which is the honest answer to *is this
- * reference known?* when nothing knows.
+ * A skill, an alias or a task route the caller's catalogue does not list is reported and the
+ * document still saves; a caller that supplies no catalogue gets no warnings of this kind,
+ * which is the honest answer to *is this reference known?* when nothing knows. An unknown
+ * **alias** is the one of the three that also refuses a *publish* — the gate reads the
+ * workspace's registry and promotes it (CH.6, #589) — while a draft may name one ahead of it.
  */
 export const DslWarningCode = {
   /** The named skill is not in the catalogue the caller supplied. */
   REFERENCE_UNKNOWN_SKILL: "reference.unknown_skill",
-  /** The pinned model is not in the catalogue the caller supplied. */
-  REFERENCE_UNKNOWN_MODEL: "reference.unknown_model",
+  /** The pinned alias is not in the catalogue the caller supplied. */
+  REFERENCE_UNKNOWN_ALIAS: "reference.unknown_alias",
   /** The inherited task route is not in the catalogue the caller supplied. */
   REFERENCE_UNKNOWN_TASK: "reference.unknown_task",
 } as const;

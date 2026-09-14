@@ -35,10 +35,18 @@
     },
 
     "reference": {
-      "description": "A skill name, a model identifier or a task-route name. Decision P7: these are validated strings, never foreign keys — the model registry and the skills catalogue do not exist yet, and an unknown one is a warning at validation rather than a refusal at save.",
+      "description": "A skill name or a task-route name. Decision P7: these are validated strings, never foreign keys — the skills catalogue does not exist yet, and an unknown one is a warning at validation rather than a refusal at save.",
       "type": "string",
       "minLength": 1,
       "maxLength": 128
+    },
+
+    "alias_name": {
+      "description": "A model registry alias, spelled as model_aliases.alias holds it (V015). A name, never a raw provider model id: the model id lives on the alias (decision M1), and publishing resolves the name against the workspace's registry (CH.6, #589).",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 64
     },
 
     "effort": {
@@ -186,7 +194,7 @@
           "maxLength": 20000
         },
         "routing": {
-          "description": "The inspector's Model routing radios. Exactly one of the two: inherit the route configured for a task name, or pin an opaque model identifier.",
+          "description": "The inspector's Model routing radios. Exactly one of the two: inherit the route configured for a task name, or pin one model registry alias.",
           "type": "object",
           "oneOf": [
             {
@@ -204,8 +212,13 @@
               "required": ["pinned_model"],
               "properties": {
                 "pinned_model": {
-                  "description": "Pins the stage to one opaque model identifier instead of a task kind's route.",
-                  "$ref": "#/$defs/reference"
+                  "description": "Pins the stage to one model registry alias instead of a task kind's route, written as an object naming it. A raw model id string is refused, because routes and workflows may only reference registry aliases (CH.6, #589).",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["alias"],
+                  "properties": {
+                    "alias": { "$ref": "#/$defs/alias_name" }
+                  }
                 }
               }
             }

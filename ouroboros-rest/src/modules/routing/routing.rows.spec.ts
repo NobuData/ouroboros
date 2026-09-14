@@ -1,5 +1,8 @@
-import type { AliasRow, ChainHopRow, EscalationRuleRow, RouteRow } from "./routing.rows";
+import type { ChainHopRow, EscalationRuleRow, ResolutionAliasRow, RouteRow } from "./routing.rows";
 import { toAliasSpec, toChainHop, toRouteSpec, toRuleSpec } from "./routing.rows";
+
+/** When the row below was last written. */
+const UPDATED_AT = new Date("2026-08-01T09:30:00.000Z");
 
 /**
  * The crossing point — rows in the database's vocabulary, inputs in the service's.
@@ -11,8 +14,8 @@ import { toAliasSpec, toChainHop, toRouteSpec, toRuleSpec } from "./routing.rows
  * are what keep the null from being turned into something else on the way through.
  */
 
-/** One joined alias row, bound unless a test says otherwise. */
-function aliasRow(overrides: Partial<AliasRow> = {}): AliasRow {
+/** One joined alias row, bound and switched on unless a test says otherwise. */
+function aliasRow(overrides: Partial<ResolutionAliasRow> = {}): ResolutionAliasRow {
   return {
     alias: "coder-max",
     model_id: "claude-fable-5",
@@ -21,6 +24,9 @@ function aliasRow(overrides: Partial<AliasRow> = {}): AliasRow {
     kind: "anthropic",
     display_name: "Anthropic Claude",
     base_url: null,
+    enabled: true,
+    updated_at: UPDATED_AT,
+    updated_by_name: "Ken Suenobu",
     ...overrides,
   };
 }
@@ -37,7 +43,20 @@ describe("an alias row", () => {
         displayName: "Anthropic Claude",
         baseUrl: null,
       },
+      enabled: true,
+      updatedBy: "Ken Suenobu",
+      updatedAt: UPDATED_AT,
     });
+  });
+
+  it("carries the switch, and keeps a writer nobody the workspace knows null", () => {
+    // Null is V019's honest state for a row a migration or an import wrote; a placeholder name
+    // here would put somebody's name on a sentence they never caused.
+    const off = toAliasSpec(aliasRow({ enabled: false, updated_by_name: null }));
+
+    expect(off.enabled).toBe(false);
+    expect(off.updatedBy).toBeNull();
+    expect(off.updatedAt).toBe(UPDATED_AT);
   });
 
   it("carries the params through as they are, without defaulting", () => {

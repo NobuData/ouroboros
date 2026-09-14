@@ -385,7 +385,34 @@ describe("route resolution, against a migrated database", () => {
     expect(resolved.chain).toHaveLength(3);
     expect(resolved.chain[0].provider).toBeNull();
     expect(resolved.chain[0].explanation).toBe(
-      "Primary dropped — the alias coder-max is not bound to a provider connection.",
+      "Primary dropped — coder-max: alias unbound — no provider.",
+    );
+  });
+
+  it("drops a switched-off alias, naming who last wrote the row and the day", async () => {
+    // CH.6 (#589): `enabled` and the writer's name come out of the same two statements as the
+    // binding — only a real join against `"user"` can show the name arriving.
+    const organizationId = await mockupWorkspace();
+    const operator = await api.signIn();
+
+    const { rows } = await api.sql.query<{ updated_at: Date }>(
+      `update ${SCHEMA_NAME}.model_aliases set enabled = false, updated_by = $2
+        where organization_id = $1 and alias = 'coder-fallback'
+       returning updated_at`,
+      [organizationId, operator.id],
+    );
+    const day = rows[0].updated_at.toISOString().slice(0, 10);
+
+    const resolved = await resolution.resolve(organizationId, "implement");
+
+    expect(resolved.outcome).toBe("resolved");
+    expect(resolved.chain.map((hop) => [hop.alias, hop.decision])).toEqual([
+      ["coder-max", "kept"],
+      ["coder-fallback", "dropped"],
+      ["local-docs", "kept"],
+    ]);
+    expect(resolved.chain[1].explanation).toBe(
+      `Fallback 1 dropped — coder-fallback: alias disabled by ${operator.displayName} ${day}.`,
     );
   });
 

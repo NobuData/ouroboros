@@ -179,7 +179,7 @@ interface Vocabulary {
   readonly predicateForms: readonly CodeCompletion[];
   /** What the trigger's `when` offers: `(i) => i.effort.`, … */
   readonly conditionForms: readonly CodeCompletion[];
-  /** What `model:` offers: `route.task("")`, `route.model("")`. */
+  /** What `model:` offers: `route.task("")`, `route.alias("")`. */
   readonly routeSnippets: readonly CodeCompletion[];
 }
 
@@ -457,7 +457,7 @@ function addStages(
 }
 
 /**
- * `route.task` and `route.model`: offered after `route.`, and mockup 05's Types card.
+ * `route.task` and `route.alias`: offered after `route.`, and mockup 05's Types card.
  *
  * @param draft - The table being built.
  */

@@ -54,8 +54,25 @@ export interface AliasRow {
   base_url: string | null;
 }
 
+/**
+ * One alias row as resolution selects it — the binding, plus V019's switch and who last wrote
+ * the row (CH.6, #589).
+ *
+ * A widening of {@link AliasRow} rather than new columns on it, because Z.2's resources and
+ * `management.rows.ts` share that row and have no use for the lifecycle; only a resolution's
+ * sentences name who switched an alias off.
+ */
+export interface ResolutionAliasRow extends AliasRow {
+  /** Mockup 21's On switch. */
+  enabled: boolean;
+  /** When the row was last written — V015's touch trigger moves it. */
+  updated_at: Date;
+  /** `"user".name` of whoever last wrote the row, or null when nobody the workspace knows did. */
+  updated_by_name: string | null;
+}
+
 /** One hop of a chain: an alias row, plus where it sits and what an operator wrote about it. */
-export interface ChainHopRow extends AliasRow {
+export interface ChainHopRow extends ResolutionAliasRow {
   position: number;
   note: string | null;
 }
@@ -79,9 +96,9 @@ export interface EscalationRuleRow {
  * check. There is no state in which the three disagree, so there is no fourth branch.
  *
  * @param row - The joined row.
- * @returns The alias, with a binding or without one.
+ * @returns The alias, with a binding or without one, and its switch and last writer.
  */
-export function toAliasSpec(row: AliasRow): AliasSpec {
+export function toAliasSpec(row: ResolutionAliasRow): AliasSpec {
   const { connection_id: connectionId, kind, display_name: displayName } = row;
 
   return {
@@ -92,6 +109,9 @@ export function toAliasSpec(row: AliasRow): AliasSpec {
       connectionId !== null && kind !== null && displayName !== null
         ? { connectionId, kind, displayName, baseUrl: row.base_url }
         : null,
+    enabled: row.enabled,
+    updatedBy: row.updated_by_name,
+    updatedAt: row.updated_at,
   };
 }
 

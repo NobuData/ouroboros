@@ -921,6 +921,7 @@ Amendment comments posted at filing:
 | #257 (AI.2) | Farm current-job cells link to **#309**; the reservation link is rendered by **#313**, omitted when absent |
 | #253 (AH.5) | Pattern-reuse note — the offset-fetch log pattern carries the run transcript (**#304**), caps/elision follow AG.5 |
 | #133 (WF-P.2) | Stage permissions become *evaluated* in **#305**; DSL limits snapshot onto stage rows in **#298**; enforcement stays deferred to **#315** |
+| #589 (CH.6) | The **resolution-snapshot contract** is the stored truth behind the stage model pill and the transcript's routing hops (**#304**, **#312**): `GET /api/v1/registry/resolutions/latest` reads it and `routing/snapshot.ts` is what the executor writes; every dropped hop keeps Z.1's code and sentence, `alias_disabled` included |
 | #49 | The `/runs/:id` placeholder is retired by **#309** |
 | #56 | The smoke suite gains the console e2e leg (**#314**), the MVP gate |
 

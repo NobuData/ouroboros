@@ -215,9 +215,9 @@
           "symbol": "route.task"
         },
         {
-          "label": "route.model(\"\")",
+          "label": "route.alias(\"\")",
           "kind": "snippet",
-          "symbol": "route.model"
+          "symbol": "route.alias"
         }
       ]
     },
@@ -566,9 +566,9 @@
           "symbol": "route.task"
         },
         {
-          "label": "model",
+          "label": "alias",
           "kind": "method",
-          "symbol": "route.model"
+          "symbol": "route.alias"
         }
       ]
     },
@@ -1050,7 +1050,7 @@
           "role": "type"
         }
       ],
-      "doc": "A skill name, a model identifier or a task-route name. Decision P7: these are validated strings, never foreign keys — the model registry and the skills catalogue do not exist yet, and an unknown one is a warning at validation rather than a refusal at save."
+      "doc": "A skill name or a task-route name. Decision P7: these are validated strings, never foreign keys — the skills catalogue does not exist yet, and an unknown one is a warning at validation rather than a refusal at save."
     },
     {
       "symbol": "stage.llm.model",
@@ -1060,7 +1060,7 @@
           "role": "name"
         }
       ],
-      "doc": "The inspector's Model routing radios. Exactly one of the two: inherit the route configured for a task name, or pin an opaque model identifier."
+      "doc": "The inspector's Model routing radios. Exactly one of the two: inherit the route configured for a task name, or pin one model registry alias."
     },
     {
       "symbol": "stage.llm.retries",
@@ -1227,7 +1227,7 @@
           "role": "type"
         }
       ],
-      "doc": "A skill name, a model identifier or a task-route name. Decision P7: these are validated strings, never foreign keys — the model registry and the skills catalogue do not exist yet, and an unknown one is a warning at validation rather than a refusal at save."
+      "doc": "A skill name or a task-route name. Decision P7: these are validated strings, never foreign keys — the skills catalogue does not exist yet, and an unknown one is a warning at validation rather than a refusal at save."
     },
     {
       "symbol": "stage.infra.cmd",
@@ -1795,10 +1795,10 @@
       "doc": "Resolves the model assigned to a task kind in Model Routing."
     },
     {
-      "symbol": "route.model",
+      "symbol": "route.alias",
       "signature": [
         {
-          "text": "route.model",
+          "text": "route.alias",
           "role": "name"
         },
         {
@@ -1806,7 +1806,7 @@
           "role": "text"
         },
         {
-          "text": "ModelId",
+          "text": "AliasName",
           "role": "type"
         },
         {
@@ -1818,7 +1818,7 @@
           "role": "type"
         }
       ],
-      "doc": "Pins the stage to one opaque model identifier instead of a task kind's route."
+      "doc": "Pins the stage to one model registry alias instead of a task kind's route, written as an object naming it. A raw model id string is refused, because routes and workflows may only reference registry aliases (CH.6, #589)."
     },
     {
       "symbol": "effort.XS",

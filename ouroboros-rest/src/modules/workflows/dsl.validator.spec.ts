@@ -220,7 +220,7 @@ describe("validateWorkflowDocument — the dispatch", () => {
     const withBoth = minimal();
     for (const [doc, routing] of [
       [withNeither, {}],
-      [withBoth, { inherit_task: "implement", pinned_model: "claude-fable-5" }],
+      [withBoth, { inherit_task: "implement", pinned_model: { alias: "coder-max" } }],
     ] as const) {
       (doc.nodes as Record<string, unknown>[]).splice(1, 0, {
         id: "stage",
@@ -238,6 +238,35 @@ describe("validateWorkflowDocument — the dispatch", () => {
     }
     expect(codes(withNeither)).toEqual([DslErrorCode.CONFIG_ROUTING_MISSING]);
     expect(codes(withBoth)).toEqual([DslErrorCode.CONFIG_ROUTING_AMBIGUOUS]);
+  });
+
+  it("reports a raw model id pinned where an alias belongs under a code of its own (CH.6)", () => {
+    // A string where the `{alias}` object belongs is a type mistake to zod; to the product it is
+    // the one mistake *routes and workflows may only reference registry aliases* exists for.
+    const doc = minimal();
+    (doc.nodes as Record<string, unknown>[]).splice(1, 0, {
+      id: "stage",
+      type: "llm",
+      title: "Code the change",
+      position: { x: 120, y: 0 },
+      config: {
+        mode: "prompt",
+        prompt_template: "Do the thing.",
+        routing: { pinned_model: "claude-fable-5" },
+        limits: { max_retries: 1, token_budget: 10000 },
+        permissions: { push_fixup: false, touch_ci: false },
+      },
+    });
+
+    const { errors } = validateWorkflowDocument(doc);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      code: DslErrorCode.CONFIG_ROUTING_RAW_MODEL,
+      path: "/nodes/1/config/routing/pinned_model",
+      node: "stage",
+    });
+    expect(errors[0].message).toContain("claude-fable-5");
   });
 });
 
@@ -263,14 +292,14 @@ describe("validateWorkflowDocument — what a caller gets back", () => {
   it("saves a document whose references are unknown, and says so", () => {
     // The issue's last acceptance criterion, and decision P7 in one assertion.
     const verdict = validateWorkflowDocument(readFixture("valid/standard-fix.json"), {
-      catalogue: { skills: [], models: [], tasks: [] },
+      catalogue: { skills: [], aliases: [], tasks: [] },
     });
     expect(verdict.valid).toBe(true);
     expect(verdict.errors).toEqual([]);
     expect(new Set(verdict.warnings.map((w) => w.code))).toEqual(
       new Set([
         DslWarningCode.REFERENCE_UNKNOWN_SKILL,
-        DslWarningCode.REFERENCE_UNKNOWN_MODEL,
+        DslWarningCode.REFERENCE_UNKNOWN_ALIAS,
         DslWarningCode.REFERENCE_UNKNOWN_TASK,
       ]),
     );

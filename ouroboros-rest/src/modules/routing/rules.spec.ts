@@ -241,7 +241,12 @@ describe("a rule that cannot be applied", () => {
   });
 
   it("reports a rule naming an alias V019 left unbound", () => {
-    const unbound = { ...aliasNamed("coder-std"), alias: "gpt5-experiments", binding: null };
+    const unbound = {
+      ...aliasNamed("coder-std"),
+      alias: "gpt5-experiments",
+      binding: null,
+      enabled: false,
+    };
     const applied = applyRules(
       PLANNED,
       [useAlias("gpt5-experiments")],
@@ -251,6 +256,22 @@ describe("a rule that cannot be applied", () => {
 
     expect(applied.outcomes[0].code).toBe(RULE_CODES.aliasUnresolvable);
     expect(applied.chain).toEqual(PLANNED);
+  });
+
+  it("reports a rule naming a switched-off alias, and neither moves a hop nor adds a vote", () => {
+    const aliases = ALIASES.map((alias) =>
+      alias.alias === "coder-std" || alias.alias === "second-opinion"
+        ? { ...alias, enabled: false }
+        : alias,
+    );
+    const prepended = applyRules(PLANNED, [useAlias("coder-std")], aliases, "implement");
+    const voted = applyRules(PLANNED, [RULES[1]], aliases, "review");
+
+    expect(prepended.outcomes[0].code).toBe(RULE_CODES.aliasDisabled);
+    expect(prepended.outcomes[0].applied).toBe(false);
+    expect(prepended.chain).toEqual(PLANNED);
+    expect(voted.outcomes[0].code).toBe(RULE_CODES.aliasDisabled);
+    expect(voted.votes).toEqual([]);
   });
 });
 

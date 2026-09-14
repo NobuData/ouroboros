@@ -145,21 +145,21 @@ describe("the suggestions, as a P7 catalogue", () => {
     ]);
   });
 
-  it("leaves an unknown model a warning too, once a model list is known", () => {
-    // The catalog suggests no models, so its catalogue has no opinion about them; the warning
-    // path for a model is the same one, reached when the model registry supplies the list.
+  it("leaves an unknown alias a warning too, once an alias list is known", () => {
+    // The catalog suggests no aliases, so its catalogue has no opinion about them; the warning
+    // path for an alias is the same one, reached when the publish gate supplies the registry.
     const document = standardFix();
     document.nodes.find((node) => node.id === "analyze")!.config.routing = {
-      pinned_model: "no-such-model",
+      pinned_model: { alias: "no-such-alias" },
     };
 
     const verdict = validateWorkflowDocument(document, {
-      catalogue: { ...toDslCatalogue(SUGGESTIONS), models: ["claude-sonnet-5", "claude-fable-5"] },
+      catalogue: { ...toDslCatalogue(SUGGESTIONS), aliases: ["coder-std", "coder-max"] },
     });
 
     expect(verdict.valid).toBe(true);
     expect(verdict.warnings.map((warning) => warning.code)).toEqual([
-      DslWarningCode.REFERENCE_UNKNOWN_MODEL,
+      DslWarningCode.REFERENCE_UNKNOWN_ALIAS,
     ]);
   });
 

@@ -38,7 +38,7 @@ import { META_SEPARATOR } from "../provider-health/resources";
 /**
  * What a hop's decision can be, as codes.
  *
- * Six of the eight remove a hop. The two that keep one are still codes rather than a bare
+ * Seven of the nine remove a hop. The two that keep one are still codes rather than a bare
  * `kept`, because *usable* and *nothing has checked it* are different claims and decision
  * **M8** insists the second is never rendered as the first.
  */
@@ -53,6 +53,8 @@ export const HOP_CODES = {
   unreachable: "provider_error",
   /** Dropped — the alias names no provider connection (V019's unbound state). */
   unbound: "alias_unbound",
+  /** Dropped — an operator switched the alias off (V019's `enabled`, CH.6 #589). */
+  disabled: "alias_disabled",
   /** Dropped — the hop sits deeper than this route's floor. */
   belowFloor: "below_floor",
   /** Dropped — a `route_local` rule fired and this hop is not on a local provider. */
@@ -83,6 +85,11 @@ export const RULE_CODES = {
   otherTaskKind: "not_this_task_kind",
   /** Not applied — the alias the rule names is missing or unbound. */
   aliasUnresolvable: "alias_unresolvable",
+  /**
+   * Not applied — the alias the rule names is switched off (CH.6, #589). Deliberately the same
+   * string as {@link HOP_CODES.disabled}: one fact, one spelling, whichever list it lands in.
+   */
+  aliasDisabled: "alias_disabled",
   /** Not applied — that vote is already on this resolution. */
   voteAlreadyAdded: "vote_already_added",
 } as const;
@@ -147,6 +154,63 @@ export interface ProviderFacts {
   readonly latencyMs: number | null;
   /** Why it is in this state, when there is something to say — `elevated latency`, `503 upstream`. */
   readonly detail: string | null;
+}
+
+/**
+ * What a sentence needs to know about an alias's lifecycle — who last wrote it, and when.
+ *
+ * Structural for {@link ProviderFacts}' reason: `inputs.ts`'s `AliasSpec` satisfies it without
+ * this module importing that one.
+ */
+export interface AliasFacts {
+  /** Who last wrote the alias row, or null when no person the workspace knows did. */
+  readonly updatedBy: string | null;
+  /** When the alias row was last written. */
+  readonly updatedAt: Date;
+}
+
+/**
+ * A timestamp as the day it fell on, in UTC — `2026-08-01`.
+ *
+ * UTC rather than a viewer's zone, because the sentence is composed once, here, for every
+ * reader; a date that moved with the reader would be a client composing it after all.
+ *
+ * @param at - The moment.
+ * @returns Its ISO calendar date.
+ */
+function dayOf(at: Date): string {
+  return at.toISOString().slice(0, 10);
+}
+
+/**
+ * Why a switched-off alias cannot be used, in the phrase mockup 21's roadmap writes —
+ * `coder-std: alias disabled by Ken 2026-08-01`.
+ *
+ * CH.6 ([#589](https://github.com/NobuData/ouroboros/issues/589)) asks for the actor and the
+ * time, and takes both from V019's `updated_by` / `updated_at`. That is the row's **last**
+ * write rather than the switch's own, so an edit made after switching off moves them — the
+ * honest reading is *last changed by*, which for the ordinary switched-off alias is the switch.
+ * A row nobody the workspace knows wrote omits the actor rather than inventing one.
+ *
+ * @param alias - The alias's name.
+ * @param facts - Who last wrote it and when, or null when neither is known.
+ * @returns The phrase, with no terminal period — the caller places it in a sentence.
+ */
+export function aliasDisabledPhrase(alias: string, facts: AliasFacts | null): string {
+  const by = facts === null || facts.updatedBy === null ? "" : ` by ${facts.updatedBy}`;
+  const on = facts === null ? "" : ` ${dayOf(facts.updatedAt)}`;
+
+  return `${alias}: alias disabled${by}${on}`;
+}
+
+/**
+ * Why an unbound alias cannot be used — `gpt5-experiments: alias unbound — no provider`.
+ *
+ * @param alias - The alias's name.
+ * @returns The phrase, with no terminal period.
+ */
+export function aliasUnboundPhrase(alias: string): string {
+  return `${alias}: alias unbound — no provider`;
 }
 
 /**
@@ -222,6 +286,8 @@ export function keptHopExplanation(index: number, provider: ProviderFacts): stri
  * @param alias - The alias the hop names, for the codes whose sentence is about the name.
  * @param provider - Where it would have run, or null for an unbound alias.
  * @param floorHopIndex - The route's floor, for the code whose sentence quotes it.
+ * @param aliasFacts - Who last wrote the alias and when, for the code whose sentence names
+ *   them. Null when unknown, which the sentence then omits.
  * @returns The sentence.
  */
 export function droppedHopExplanation(
@@ -230,6 +296,7 @@ export function droppedHopExplanation(
   alias: string,
   provider: ProviderFacts | null,
   floorHopIndex: number | null,
+  aliasFacts: AliasFacts | null = null,
 ): string {
   const role = hopRole(index);
   const name = provider === null ? alias : provider.displayName;
@@ -237,7 +304,9 @@ export function droppedHopExplanation(
 
   switch (code) {
     case HOP_CODES.unbound:
-      return `${role} dropped — the alias ${alias} is not bound to a provider connection.`;
+      return `${role} dropped — ${aliasUnboundPhrase(alias)}.`;
+    case HOP_CODES.disabled:
+      return `${role} dropped — ${aliasDisabledPhrase(alias, aliasFacts)}.`;
     case HOP_CODES.belowFloor:
       return (
         `${role} dropped — this route may not degrade below hop ` +
@@ -326,6 +395,8 @@ export function failureExplanation(
  * @param alias - The alias its `"then"` names, or null for `route_local`, which names none.
  * @param ruleTaskKind - The kind its `"then"` modifies, or null for `route_local`.
  * @param taskKind - The kind being resolved, for the near-miss sentence that contrasts them.
+ * @param aliasFacts - Who last wrote the named alias and when, for the code whose sentence
+ *   names them. Null when unknown.
  * @returns The sentence.
  */
 export function ruleExplanation(
@@ -333,6 +404,7 @@ export function ruleExplanation(
   alias: string | null,
   ruleTaskKind: string | null,
   taskKind: string,
+  aliasFacts: AliasFacts | null = null,
 ): string {
   const name = alias ?? "this rule's alias";
 
@@ -360,6 +432,8 @@ export function ruleExplanation(
         `Not applied — this workspace has no alias named ${name} ` +
         "bound to a provider connection."
       );
+    case RULE_CODES.aliasDisabled:
+      return `Not applied — ${aliasDisabledPhrase(name, aliasFacts)}.`;
     case RULE_CODES.voteAlreadyAdded:
       return `Not applied — a ${name} vote is already on this resolution.`;
   }

@@ -315,13 +315,13 @@ function llmOptions(id: string, config: LlmConfig, options: Map<string, OptionVa
   const { inherit_task: task, pinned_model: model } = config.routing;
   if ((task === undefined) === (model === undefined)) {
     throw new WorkflowCodePrintError(
-      `Model stage ${JSON.stringify(id)} must route by exactly one of a task or a model`,
+      `Model stage ${JSON.stringify(id)} must route by exactly one of a task or an alias`,
     );
   }
 
   const route =
     task === undefined
-      ? `route.${ROUTE_METHODS.pinned_model}(${quoteString(model as string)})`
+      ? `route.${ROUTE_METHODS.pinned_model}(${quoteString((model as { alias: string }).alias)})`
       : `route.${ROUTE_METHODS.inherit_task}(${quoteString(task)})`;
   const permissions = Object.entries(PERMISSION_KEYS)
     .map(
