@@ -4,6 +4,7 @@ import {
   type Connection,
   EDGE_KINDS,
   ORIGIN,
+  STAGE_EDGE_TYPE,
   STAGE_KINDS,
   STAGE_NODE_TYPE,
   type Stage,
@@ -19,14 +20,16 @@ import {
   selectionOf,
   toEdges,
   toNodes,
+  withHighlight,
   withPositions,
 } from "@/app/workflows/canvas/graph";
 
-import { standardFixDefinition } from "../../helpers/workflows";
+import { MOCKUP_ACTIVE_PATH, standardFixDefinition } from "../../helpers/workflows";
 
 /**
  * The document ⇄ graph projection (#148): what the canvas reads out of a definition, what it
- * hands React Flow, and what it writes back.
+ * hands React Flow, and what it writes back — and the execution path laid over the edges
+ * (#149's highlight mode).
  *
  * Every case is a judgement about two values — the seeded `standard-fix` in, nodes and edges
  * out; nodes in, the document out — because *positions round-trip* is a property of the
@@ -36,9 +39,12 @@ import { standardFixDefinition } from "../../helpers/workflows";
 /** The seeded document. */
 const SEEDED = standardFixDefinition();
 
+/** The seeded document's node entries, as stored. */
+const SEEDED_NODES = SEEDED.nodes as { id: string; config: Record<string, unknown> }[];
+
 /** A stage, for the cases that build one by hand. */
 function stage(overrides: Partial<Stage> = {}): Stage {
-  return { id: "s", kind: "llm", title: "S", position: ORIGIN, ...overrides };
+  return { id: "s", kind: "llm", title: "S", position: ORIGIN, config: {}, ...overrides };
 }
 
 /** A node as React Flow holds one, for the cases that hand nodes back. */
@@ -46,13 +52,18 @@ function node(id: string, x: number, y: number): StageNode {
   return { id, type: STAGE_NODE_TYPE, position: { x, y }, data: { stage: stage({ id }) } };
 }
 
-/** An edge as React Flow holds one, for the selection cases. */
+/** A connection, for the cases that build one by hand. */
+function connection(from: string, to: string, kind: Connection["kind"] = "default"): Connection {
+  return { from, to, kind, label: null, condition: null };
+}
+
+/** An edge as React Flow holds one, for the selection and highlight cases. */
 function edge(from: string, to: string, kind: Connection["kind"] = "default"): StageEdge {
   return {
     id: `${from}→${to}`,
     source: from,
     target: to,
-    data: { connection: { from, to, kind, label: null } },
+    data: { connection: connection(from, to, kind) },
   };
 }
 
@@ -79,7 +90,7 @@ describe("the vocabulary", () => {
 });
 
 describe("reading the seeded document", () => {
-  it("reads all twelve stages, in document order, at the mockup's positions", () => {
+  it("reads all twelve stages, in document order, at the mockup's positions, with their configs", () => {
     const stages = readStages(SEEDED);
 
     expect(stages.map((s) => s.id)).toEqual([
@@ -101,13 +112,18 @@ describe("reading the seeded document", () => {
       kind: "trigger",
       title: "Issue queued",
       position: { x: 24, y: 40 },
+      config: {},
     });
     expect(stages[6]).toEqual({
       id: "implement",
       kind: "llm",
       title: "Code the change",
       position: { x: 588, y: 420 },
+      config: SEEDED_NODES[6].config,
     });
+    // The config is the document's own object — read, not copied — so a chip derived from it
+    // is derived from what the document holds.
+    expect(stages[6].config).toBe(SEEDED_NODES[6].config);
     expect(stages.map((s) => s.kind)).toEqual([
       "trigger",
       "llm",
@@ -124,17 +140,30 @@ describe("reading the seeded document", () => {
     ]);
   });
 
-  it("reads all twelve connections, with their kinds and labels", () => {
+  it("reads all twelve connections, with their kinds, labels and conditions", () => {
     const connections = readConnections(SEEDED, readStages(SEEDED));
 
     expect(connections).toHaveLength(12);
-    expect(connections[0]).toEqual({ from: "issue-queued", to: "analyze", kind: "default", label: null });
-    expect(connections[2]).toEqual({ from: "effort-recheck", to: "plan", kind: "branch", label: "≤ M ↓" });
+    expect(connections[0]).toEqual({
+      from: "issue-queued",
+      to: "analyze",
+      kind: "default",
+      label: null,
+      condition: null,
+    });
+    expect(connections[2]).toEqual({
+      from: "effort-recheck",
+      to: "plan",
+      kind: "branch",
+      label: "≤ M ↓",
+      condition: { kind: "effort", op: "lte", value: "m" },
+    });
     expect(connections[11]).toEqual({
       from: "checks-green",
       to: "implement",
       kind: "loop",
       label: "fail ↺",
+      condition: { kind: "checks", op: "any_failed" },
     });
   });
 });
@@ -162,13 +191,13 @@ describe("reading a draft that is not yet a document", () => {
       ],
     });
 
-    expect(stages).toEqual([{ id: "ok", kind: "term", title: "Fine", position: { x: 5, y: 6 } }]);
+    expect(stages).toEqual([{ id: "ok", kind: "term", title: "Fine", position: { x: 5, y: 6 }, config: {} }]);
   });
 
-  it("titles a stage by its id when the document gives it none, and places one with no position at the origin", () => {
-    const stages = readStages({ nodes: [{ id: "analyze", type: "llm", title: "" }] });
+  it("titles a stage by its id when the document gives it none, places one with no position at the origin, and reads a config that is not an object as empty", () => {
+    const stages = readStages({ nodes: [{ id: "analyze", type: "llm", title: "", config: ["skill"] }] });
 
-    expect(stages).toEqual([{ id: "analyze", kind: "llm", title: "analyze", position: ORIGIN }]);
+    expect(stages).toEqual([{ id: "analyze", kind: "llm", title: "analyze", position: ORIGIN, config: {} }]);
   });
 
   it("keeps the first of two nodes sharing an id", () => {
@@ -198,14 +227,17 @@ describe("reading a draft that is not yet a document", () => {
       stages,
     );
 
-    expect(connections).toEqual([{ from: "a", to: "b", kind: "default", label: null }]);
+    expect(connections).toEqual([connection("a", "b")]);
   });
 
-  it("reads a kind it does not know as the plain path, and an empty label as none", () => {
+  it("reads a kind it does not know as the plain path, an empty label as none, and a condition that is not an object as none", () => {
     const stages = readStages({ nodes: [{ id: "a", type: "llm" }, { id: "b", type: "term" }] });
-    const [connection] = readConnections({ edges: [{ from: "a", to: "b", kind: "dashed", label: "" }] }, stages);
+    const [read] = readConnections(
+      { edges: [{ from: "a", to: "b", kind: "dashed", label: "", condition: "checks" }] },
+      stages,
+    );
 
-    expect(connection).toEqual({ from: "a", to: "b", kind: "default", label: null });
+    expect(read).toEqual(connection("a", "b"));
   });
 });
 
@@ -239,16 +271,27 @@ describe("which sides an edge runs between", () => {
       target: "left",
     });
   });
+
+  it("drops a fork's outcome a row the way the mockup does, and runs one along its own row", () => {
+    // The decision's *> M ↘*: out of its bottom beside *≤ M ↓*, into the split's top — not out of
+    // its left side and back across the edge from analyze. The gate's *pass →* stays on its row.
+    expect(edgeSides({ x: 588, y: 40 }, { x: 306, y: 230 }, "branch")).toEqual({ source: "bottom", target: "top" });
+    expect(edgeSides({ x: 306, y: 630 }, { x: 588, y: 630 }, "branch")).toEqual({ source: "right", target: "left" });
+    expect(toEdges(SEEDED).find((e) => e.id === "effort-recheck→split")).toMatchObject({
+      sourceHandle: "bottom",
+      targetHandle: "top",
+    });
+  });
 });
 
 describe("edge ids", () => {
   it("names an edge by its two ends, and numbers a second edge between the same pair", () => {
     expect(
       edgeIds([
-        { from: "a", to: "b", kind: "default", label: null },
-        { from: "a", to: "b", kind: "loop", label: null },
-        { from: "b", to: "a", kind: "default", label: null },
-        { from: "a", to: "b", kind: "branch", label: null },
+        connection("a", "b"),
+        connection("a", "b", "loop"),
+        connection("b", "a"),
+        connection("a", "b", "branch"),
       ]),
     ).toEqual(["a→b", "a→b#2", "b→a", "a→b#3"]);
   });
@@ -263,25 +306,40 @@ describe("the projection into React Flow", () => {
       id: "implement",
       type: STAGE_NODE_TYPE,
       position: { x: 588, y: 420 },
-      data: { stage: { id: "implement", kind: "llm", title: "Code the change", position: { x: 588, y: 420 } } },
+      data: {
+        stage: {
+          id: "implement",
+          kind: "llm",
+          title: "Code the change",
+          position: { x: 588, y: 420 },
+          config: SEEDED_NODES[6].config,
+        },
+      },
       ariaLabel: "Model stage: Code the change",
     });
     expect(new Set(nodes.map((n) => n.id)).size).toBe(12);
   });
 
-  it("makes one edge per connection, between the sides the positions decide, ending in the arrowhead", () => {
+  it("hands the trigger node the document's root trigger, which its chip prints, and no other node", () => {
+    const nodes = toNodes(SEEDED);
+
+    expect(nodes[0].data.trigger).toEqual({ event: "ticket_queued", conditions: { effort_lte: "m" } });
+    expect(nodes.slice(1).every((n) => !("trigger" in n.data))).toBe(true);
+  });
+
+  it("makes one edge per connection, of the one type, between the sides the positions decide", () => {
     const edges = toEdges(SEEDED);
 
     expect(edges).toHaveLength(12);
     expect(edges[0]).toMatchObject({
       id: "issue-queued→analyze",
+      type: STAGE_EDGE_TYPE,
       source: "issue-queued",
       target: "analyze",
       sourceHandle: "right",
       targetHandle: "left",
       label: undefined,
-      markerEnd: { type: "arrowclosed" },
-      data: { connection: { from: "issue-queued", to: "analyze", kind: "default", label: null } },
+      data: { connection: connection("issue-queued", "analyze") },
       ariaLabel: "Issue queued to Understand & scope",
     });
     expect(edges[11]).toMatchObject({
@@ -291,6 +349,8 @@ describe("the projection into React Flow", () => {
       label: "fail ↺",
       ariaLabel: "Checks green? to Code the change (fail ↺)",
     });
+    // The arrowheads are the edge component's (`stage-edge.tsx`), not the library's markers.
+    expect(edges.every((e) => e.markerEnd === undefined)).toBe(true);
     expect(new Set(edges.map((e) => e.id)).size).toBe(12);
   });
 
@@ -298,6 +358,71 @@ describe("the projection into React Flow", () => {
     expect(toNodes({})).toEqual([]);
     expect(toEdges({})).toEqual([]);
     expect(toNodes(null)).toEqual([]);
+  });
+});
+
+describe("the execution path", () => {
+  /** The ids of the edges a path marks. */
+  function onPath(edges: readonly StageEdge[]): string[] {
+    return edges.filter((e) => e.data?.onPath === true).map((e) => e.id);
+  }
+
+  it("marks the mockup's active path, and nothing else", () => {
+    const edges = withHighlight(toEdges(SEEDED), MOCKUP_ACTIVE_PATH);
+
+    expect(onPath(edges)).toEqual([
+      "issue-queued→analyze",
+      "analyze→effort-recheck",
+      "effort-recheck→plan",
+      "plan→implement",
+    ]);
+  });
+
+  it("names an edge by its ordered pair: the reverse of a taken edge is not taken", () => {
+    const edges = [edge("a", "b"), edge("b", "a")];
+
+    expect(onPath(withHighlight(edges, [{ from: "a", to: "b" }]))).toEqual(["a→b"]);
+  });
+
+  it("ignores a pair the canvas does not draw, and a pair named twice is marked once", () => {
+    const edges = toEdges(SEEDED);
+    const path = [
+      { from: "gone", to: "implement" },
+      { from: "checks-green", to: "implement" },
+      { from: "checks-green", to: "implement" },
+    ];
+
+    expect(onPath(withHighlight(edges, path))).toEqual(["checks-green→implement"]);
+  });
+
+  it("returns every unchanged edge as the same object, so only the edges that changed redraw", () => {
+    const edges = toEdges(SEEDED);
+    const lit = withHighlight(edges, MOCKUP_ACTIVE_PATH);
+
+    // Nothing to draw: every edge is the one it was.
+    expect(withHighlight(edges, null).every((e, i) => e === edges[i])).toBe(true);
+    expect(withHighlight(edges, []).every((e, i) => e === edges[i])).toBe(true);
+    // A path marks four; the other eight are untouched.
+    expect(lit.filter((e, i) => e !== edges[i])).toHaveLength(4);
+    // Turning it off unmarks those four and leaves the eight alone.
+    const cleared = withHighlight(lit, null);
+    expect(cleared.filter((e, i) => e !== lit[i])).toHaveLength(4);
+    expect(onPath(cleared)).toEqual([]);
+  });
+
+  it("never touches the edges it was given", () => {
+    const edges = toEdges(SEEDED);
+
+    withHighlight(edges, MOCKUP_ACTIVE_PATH);
+
+    expect(onPath(edges)).toEqual([]);
+    expect(edges[0].data).toEqual({ connection: connection("issue-queued", "analyze") });
+  });
+
+  it("leaves an edge with no data alone", () => {
+    const bare: StageEdge = { id: "a→b", source: "a", target: "b" };
+
+    expect(withHighlight([bare], [{ from: "a", to: "b" }])[0]).toBe(bare);
   });
 });
 
@@ -360,7 +485,7 @@ describe("the selection", () => {
     expect(selectionOf([], [edge("a", "b", "loop")])).toEqual({
       kind: "edge",
       id: "a→b",
-      connection: { from: "a", to: "b", kind: "loop", label: null },
+      connection: connection("a", "b", "loop"),
     });
   });
 

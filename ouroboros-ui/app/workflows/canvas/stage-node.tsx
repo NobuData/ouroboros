@@ -3,20 +3,25 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { Fragment, memo } from "react";
 
-import { SIDES, type Side, type StageNode as StageNodeType } from "./graph";
-import { STAGE_KIND_WORDS } from "./view";
+import { SIDES, type Side, type StageKind, type StageNode as StageNodeType } from "./graph";
+import { isPill, stageChips, stageRole } from "./treatment";
+import { STAGE_GLYPHS } from "./view";
 
 /**
- * The one node the canvas draws every stage as (S.2,
- * [#148](https://github.com/NobuData/ouroboros/issues/148)): the mockup's `.node` box — the
- * type line, the title — at the mockup's geometry, with a connection point on each side.
+ * The node every stage is drawn as (S.2, [#148](https://github.com/NobuData/ouroboros/issues/148);
+ * treatments S.3, [#149](https://github.com/NobuData/ouroboros/issues/149)): mockup 04's `.node`
+ * in its five treatments — the trigger's accent top, the violet model stage, the warn-hued infra
+ * stage, the octagonal flow node and the green terminal — and the mini pill *Back to queue* is
+ * drawn as.
  *
- * **Deliberately plain.** The five treatments (the trigger's accent top, the violet model
- * stage, the warn-hued infra stage, the octagonal flow node, the terminal's mini pill), the
- * chip row and the `.sel` glow are S.3's ([#149](https://github.com/NobuData/ouroboros/issues/149)),
- * and this component is what S.3 replaces. What it settles is what S.3 inherits: the box is
- * the node's own element inside React Flow's positioned wrapper, the handles are the four
- * sides named in `graph.ts`, and every colour and length is a token (`canvas.css`).
+ * ### What it prints, and where each word comes from
+ *
+ * The **type line** is the type's glyph and the stage's role (`treatment.ts`'s `stageRole`), the
+ * **title** is the document's, and the **chip row** is derived from the stage's `config` on every
+ * render (`stageChips`) — never stored, so an edit to a stage's skill is an edit to its chip with
+ * nothing else to write. The runner chip carries the mockup's dot, in the infra hue. Which
+ * treatment a node takes is its type's class; the octagon, the rails, the hues and the `.sel`
+ * glow on the selected node are all `canvas.css`'s, on tokens, so both palettes are the sheet's.
  *
  * ### Eight handles, four sides
  *
@@ -41,24 +46,78 @@ const SIDE_POSITION: Readonly<Record<Side, Position>> = {
 };
 
 /**
+ * Each type's box, as whole class lists — literal strings rather than a composed one, so every
+ * class this component can render is one a reader (and a search) finds as written.
+ */
+const NODE_CLASS: Readonly<Record<StageKind, string>> = {
+  trigger: "studio-node studio-node--trigger",
+  llm: "studio-node studio-node--llm",
+  infra: "studio-node studio-node--infra",
+  flow: "studio-node studio-node--flow",
+  term: "studio-node studio-node--term",
+};
+
+/** The mockup's `.node.term.mini`. */
+const PILL_CLASS = "studio-node studio-node--term studio-node--pill";
+
+/**
+ * The eight connection points.
+ *
+ * @returns A source and a target handle on each side.
+ */
+function Ports() {
+  return SIDES.map((side) => (
+    <Fragment key={side}>
+      <Handle className="studio-node__port" id={side} position={SIDE_POSITION[side]} type="target" />
+      <Handle className="studio-node__port" id={side} position={SIDE_POSITION[side]} type="source" />
+    </Fragment>
+  ));
+}
+
+/**
  * The node.
  *
- * @param props React Flow's node props; `data.stage` is what is drawn.
- * @returns The box.
+ * @param props React Flow's node props; `data.stage` is what is drawn, and `data.trigger` is the
+ *   document's root trigger on the trigger node.
+ * @returns The box — or, for *Back to queue*, the pill.
  */
 export const StageNode = memo(function StageNode({ data }: NodeProps<StageNodeType>) {
-  const { stage } = data;
+  const { stage, trigger } = data;
+
+  if (isPill(stage)) {
+    // The mockup's mini pill: a dot in the terminal's hue and the title, and nothing to chip.
+    return (
+      <div className={PILL_CLASS}>
+        <Ports />
+        <span aria-hidden="true" className="studio-node__dot" />
+        <span className="studio-node__title">{stage.title}</span>
+      </div>
+    );
+  }
+
+  const chips = stageChips(stage, trigger);
 
   return (
-    <div className="studio-node">
-      {SIDES.map((side) => (
-        <Fragment key={side}>
-          <Handle className="studio-node__port" id={side} position={SIDE_POSITION[side]} type="target" />
-          <Handle className="studio-node__port" id={side} position={SIDE_POSITION[side]} type="source" />
-        </Fragment>
-      ))}
-      <span className="studio-node__kind">{STAGE_KIND_WORDS[stage.kind]}</span>
+    <div className={NODE_CLASS[stage.kind]}>
+      <Ports />
+      <span className="studio-node__kind">
+        <span aria-hidden="true" className="studio-node__glyph">
+          {STAGE_GLYPHS[stage.kind]}
+        </span>
+        {stageRole(stage)}
+      </span>
       <span className="studio-node__title">{stage.title}</span>
+      {chips.length > 0 && (
+        <span className="studio-node__chips">
+          {chips.map((chip) => (
+            // The title carries the whole chip where a long skill name is cut to the node's width.
+            <span className="studio-node__chip" data-chip={chip.kind} key={chip.kind} title={chip.text}>
+              {chip.kind === "runner" && <span aria-hidden="true" className="studio-node__chip-dot" />}
+              {chip.text}
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 });

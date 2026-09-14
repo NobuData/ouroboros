@@ -16,11 +16,12 @@ import type { CanvasSelection, StageKind } from "./graph";
 export const CANVAS_LABEL = "Canvas";
 
 /**
- * How each node type is named on the node and to a screen reader.
+ * How each node type is named to a screen reader, and on a node whose type is its role.
  *
- * The DSL's words are `trigger`, `llm`, `infra`, `flow` and `term`; the mockup prints a stage's
- * *role* (*Analyze*, *Gate*, *Terminal*), which the document does not carry and S.3's chips are
- * where it is derived. Until then a node says what kind of stage it is, in a word a reader
+ * The DSL's words are `trigger`, `llm`, `infra`, `flow` and `term`. A node's type line prints
+ * the stage's *role* — the mockup's *Analyze*, *Gate*, *Terminal* — which `treatment.ts`'s
+ * `stageRole` derives, and which is these words for a trigger, a terminal and a flow node of no
+ * known kind. The accessible name always says what kind of stage it is, in a word a reader
  * would use.
  */
 export const STAGE_KIND_WORDS: Readonly<Record<StageKind, string>> = {
@@ -29,6 +30,21 @@ export const STAGE_KIND_WORDS: Readonly<Record<StageKind, string>> = {
   infra: "Infra",
   flow: "Flow",
   term: "Terminal",
+};
+
+/** The glyph each type's line begins with — the mockup's `▸ ◆ ▣ ◇ ●`, hidden from a screen reader. */
+export const STAGE_GLYPHS: Readonly<Record<StageKind, string>> = {
+  trigger: "▸",
+  llm: "◆",
+  infra: "▣",
+  flow: "◇",
+  term: "●",
+};
+
+/** What a flow node's type line says, by its config's `kind` — the mockup's *Decision* and *Gate*. */
+export const FLOW_ROLE_WORDS: Readonly<Record<"decision" | "gate", string>> = {
+  decision: "Decision",
+  gate: "Gate",
 };
 
 /**

@@ -300,7 +300,15 @@ ouroboros-ui/
 │   │   ├── create-actions.ts #  the Server Action behind + New workflow
 │   │   ├── new-workflow.tsx #   the dashed tile and its dialog
 │   │   ├── workflow-rail.tsx #  the .wf-list rail: one link per workflow, the err-dot, the tile
-│   │   └── studio-screen.tsx #  the head, the segmented control, the rail and the canvas's seat
+│   │   ├── studio-screen.tsx #  the head, the segmented control, the rail and the canvas's seat
+│   │   └── canvas/          #   the React Flow canvas — #148 — in mockup 04's visual language #149
+│   │       ├── graph.ts     #     the document ⇄ graph projection, and the execution path laid over it
+│   │       ├── viewport.ts  #     the zoom ladder, and each reader's place per workflow
+│   │       ├── treatment.ts #     each stage's type line, chips and shape; each label's tone and place
+│   │       ├── view.ts      #     every word and glyph the canvas prints
+│   │       ├── stage-node.tsx #   the five node treatments and the mini pill
+│   │       ├── stage-edge.tsx #   plain, loop and active edges, the arrowheads, the label pills
+│   │       └── studio-canvas.tsx # the canvas, its toolbar, and highlight mode
 │   ├── workshop/            # stories for surfaces whose page has not landed yet
 │   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
@@ -2713,10 +2721,7 @@ back to is redefined on a token in [`canvas.css`](app/workflows/canvas/canvas.cs
 `__tests__/workflows/canvas/canvas-styles.test.ts` reads the library's own sheet and holds the
 list equal, so a library upgrade that adds a colour goes red there rather than grey on the
 canvas. The library's `colorMode` is never set: the tokens already switch with the palette.
-The node the canvas draws every stage as
-([`stage-node.tsx`](app/workflows/canvas/stage-node.tsx)) is deliberately the mockup's box and
-no more — the five treatments, the chips and the `.sel` glow are S.3's
-([#149](https://github.com/NobuData/ouroboros/issues/149)), and this is what S.3 replaces.
+What the stages and edges look like is the next section's.
 
 The suites render the real library under jsdom through
 [`__tests__/helpers/react-flow.ts`](__tests__/helpers/react-flow.ts), the shim React Flow's
@@ -2728,6 +2733,66 @@ the picture itself were checked in Chrome against the seeded workspace in both p
 the 60fps criterion was measured there as main-thread cost per interaction event — under 2 ms
 at the 95th percentile for both wheel zoom and a button-drag pan over the twelve-node graph,
 against a 16.7 ms frame — which is the part of *smooth* a script can measure.
+
+### Stages and edges speak mockup 04's visual language
+
+The octagonal decisions, the chip rows and the glowing dashed loop-back are what make the canvas
+recognisably Ouroboros rather than a generic node editor, and they are the one part of it React
+Flow cannot supply (S.3, [#149](https://github.com/NobuData/ouroboros/issues/149)).
+
+**Five treatments, one per type.** [`stage-node.tsx`](app/workflows/canvas/stage-node.tsx) draws
+each stage in its type's treatment — the trigger's accent rail and top rule, the model stage's
+violet, the infra stage's warn, the flow node's dim ink cut to an octagon, the terminal's green —
+and *Back to queue* (`back_to_queue`, the one terminal that hands a ticket back rather than
+finishing it) as the mockup's mini pill. A treatment is one custom property in
+[`canvas.css`](app/workflows/canvas/canvas.css), `--studio-node-hue`, which the rail and the type
+line are drawn in, so hover and selection change the rim without restating five colours. The
+selected stage wears the mockup's `.sel` ring — the accent rim, a ring in the accent tint and the
+accent's glow — and a selected octagon, which clips its own box-shadow, wears it as drop-shadows
+on React Flow's unclipped wrapper.
+
+**The type line and the chips are read from the document on every render**
+([`treatment.ts`](app/workflows/canvas/treatment.ts)). The type line is the type's glyph and the
+stage's role: *Trigger* and *Terminal* from the type, *Decision* or *Gate* from a flow node's
+`kind`, and a model or infra stage's id (`analyze` → *Analyze*), which is the one place the
+document names what such a stage is for. The chips come from `config` — `skill:<name>` or
+`prompt template`, the pinned alias or `routed by task`, the command and `runner <pool>`, the
+predicate (`effort ≤ M`, `required checks: 3`), `squash · delete branch` — and the trigger node's
+from the document's root trigger, where the DSL keeps the predicate. Nothing is stored, so editing
+a stage's config is editing its chip, with no second write to forget. Where that differs from the
+mockup's picture the document wins — registry aliases where the mockup prints model ids, three
+checks where it prints fourteen — and the module's header lists every difference.
+
+**Edges** ([`stage-edge.tsx`](app/workflows/canvas/stage-edge.tsx)) are one custom edge in three
+treatments: the plain line, the dashed accent-deep **loop** under its own glow, and the accent
+**active** path, each ending in one of the mockup's three arrowheads — defined once per canvas and
+filled from tokens, because the library's markers take their colour from an attribute the token
+sheet cannot switch. A label is an HTML pill in React Flow's label layer, in the tone its
+**condition** reports (checks passed ok, failed err; an effort within its bound the accent, past
+it warn) and never one read from the label's text; it sits above a row's edge, beside a column's
+and on a curve, as the mockup sets them, and is hidden from the accessibility tree because the
+edge's name already carries it. A branch that changes rows leaves its decision's bottom, as the
+mockup's `> M ↘` does, rather than crossing back over the edge that arrived.
+
+**Highlight mode.** `StudioCanvas`'s `highlight` prop takes an execution path in the dry run's own
+shape — `highlight_path`, a list of `{from, to}` — and draws those edges active. It is laid over
+the edges at render (`graph.ts`'s `withHighlight`) and never stored in them, so S.6
+([#152](https://github.com/NobuData/ouroboros/issues/152)) hands the dry run's answer straight
+through and clears it with `null` without remounting the canvas under a reader. The suites
+exercise it with the mockup's own four accent edges (`MOCKUP_ACTIVE_PATH`), which is also S.6's
+criterion for the dry run of `#485`.
+
+**Each claim is proven where it can be.** `treatment.test.ts` holds every derivation to the
+seed; `stage-node.test.tsx` re-renders React Flow with one config field changed and nothing else,
+and watches the chip follow; `studio-canvas.test.tsx` asserts the treatments, the arrowheads, the
+tones and the highlight on the rendered canvas; `canvas-styles.test.ts` holds each treatment to
+its token. The picture is the e2e suite's: leg 12
+([`tests/e2e/specs/studio.spec.ts`](../tests/e2e/specs/studio.spec.ts)) diffs the canvas with
+*Implement* selected in both palettes and asks the browser for what jsdom cannot compute — the
+octagon's clip-path, the pill's 176 × 44, the loop's dash and its accent-deep in each palette, the
+selection's glow. Its baselines draw no accent path, because nothing on the page draws one until
+S.6. The marketplace's provenance chip (`⊞ slug@version`, mockup 23's amendment to this ticket) is
+[#798](https://github.com/NobuData/ouroboros/issues/798)'s.
 
 ### Code intelligence — completions and hover docs
 

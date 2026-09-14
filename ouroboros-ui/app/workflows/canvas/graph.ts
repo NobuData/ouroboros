@@ -11,8 +11,8 @@
  * rendered page.
  *
  * **React-free**, the way `app/workflows/view.ts` is. The one thing it takes from the library
- * is its vocabulary — the `Node` and `Edge` shapes, and the arrowhead's name — because a
- * projection *into* React Flow has to speak React Flow.
+ * is its vocabulary — the `Node` and `Edge` shapes — because a projection *into* React Flow has
+ * to speak React Flow.
  *
  * ### The document is read defensively, and drawn as far as it can be
  *
@@ -24,18 +24,20 @@
  * half-built document, and a canvas that refused to open one would be the one place that could
  * not be done. Validation is the publish gate's (P.3), not the canvas's.
  *
- * ### One node type, four sides
+ * ### One node type, one edge type, four sides
  *
- * Every stage is drawn by one node component, `app/workflows/canvas/stage-node.tsx`, with a
- * connection point on each of its four sides. Which side an edge leaves from and arrives at is
- * decided here ({@link edgeSides}) from where the two stages sit — the mockup's edges run right
- * along a row, down between rows and left back along the next — so the seeded graph reads as
- * the mockup draws it without the document carrying a side per edge. S.3
- * ([#149](https://github.com/NobuData/ouroboros/issues/149)) owns what the nodes and edges look
- * like; this module owns which is connected to which, and where.
+ * Every stage is drawn by one node component, `stage-node.tsx`, with a connection point on each
+ * of its four sides, and every connection by one edge component, `stage-edge.tsx`. Which side an
+ * edge leaves from and arrives at is decided here ({@link edgeSides}) from where the two stages
+ * sit — the mockup's edges run right along a row, down between rows and left back along the
+ * next — so the seeded graph reads as the mockup draws it without the document carrying a side
+ * per edge. What the nodes and edges look like is S.3's
+ * ([#149](https://github.com/NobuData/ouroboros/issues/149)) and decided in `treatment.ts`; this
+ * module owns which is connected to which, where, and which edges an execution path takes
+ * ({@link withHighlight}).
  */
 
-import { type Edge, MarkerType, type Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 
 import type { WorkflowDefinition } from "@/app/api/workflows";
 
@@ -64,10 +66,12 @@ export interface Point {
 /** Where a node the document does not place is drawn. */
 export const ORIGIN: Point = { x: 0, y: 0 };
 
+/** What a stage's `config` is read as when the document's is not an object. */
+const NO_CONFIG: Readonly<Record<string, unknown>> = Object.freeze({});
+
 /**
- * One stage as the canvas needs it: the four fields of a DSL node that decide where and as what
- * it is drawn. `config` and `description` stay in the document, which S.3's chips and S.4's
- * inspector read from there.
+ * One stage as the canvas needs it: the fields of a DSL node that decide where and as what it is
+ * drawn. `description` stays in the document, which S.4's inspector reads from there.
  */
 export interface Stage {
   /** The node's id — the React Flow node's id, and what edges name. */
@@ -78,6 +82,12 @@ export interface Stage {
   readonly title: string;
   /** Its top-left corner on the stage. */
   readonly position: Point;
+  /**
+   * Its `config`, exactly as the document holds it — the object the node's chips are derived
+   * from on every render (`treatment.ts`), so editing a stage's config is editing its chips.
+   * An empty object when the document's is not one.
+   */
+  readonly config: Readonly<Record<string, unknown>>;
 }
 
 /** One connection as the canvas needs it. */
@@ -87,6 +97,11 @@ export interface Connection {
   readonly kind: EdgeKind;
   /** What the document prints beside the edge, or `null` when it prints nothing. */
   readonly label: string | null;
+  /**
+   * The edge's `condition`, as the document holds it — what its label's tone is derived from
+   * (`treatment.ts`'s `labelTone`). `null` when it has none, or none that is an object.
+   */
+  readonly condition: Readonly<Record<string, unknown>> | null;
 }
 
 /* ------------------------------------------------------------------ React Flow's vocabulary */
@@ -94,11 +109,35 @@ export interface Connection {
 /** The one node type the canvas registers — `nodeTypes[STAGE_NODE_TYPE]` is the stage node. */
 export const STAGE_NODE_TYPE = "stage";
 
-/** A stage on the canvas. Its `data` is the stage; React Flow owns the rest. */
-export type StageNode = Node<{ readonly stage: Stage }, typeof STAGE_NODE_TYPE>;
+/** The one edge type the canvas registers — `edgeTypes[STAGE_EDGE_TYPE]` is the stage edge. */
+export const STAGE_EDGE_TYPE = "stage";
 
-/** A connection on the canvas. Its `data` is the connection. */
-export type StageEdge = Edge<{ readonly connection: Connection }>;
+/** What a stage node carries. */
+export type StageNodeData = {
+  /** The stage. */
+  readonly stage: Stage;
+  /**
+   * The document's root `trigger`, as stored — on the trigger node alone. The DSL keeps the
+   * trigger's predicate on the root rather than in the node's config (§ 3) and renders it as the
+   * node's chip, so the trigger node is handed the one thing it prints that its config does not
+   * hold.
+   */
+  readonly trigger?: unknown;
+};
+
+/** A stage on the canvas. React Flow owns everything but its `data`. */
+export type StageNode = Node<StageNodeData, typeof STAGE_NODE_TYPE>;
+
+/** What a stage edge carries. */
+export type StageEdgeData = {
+  /** The connection. */
+  readonly connection: Connection;
+  /** Whether the execution path being drawn takes this edge ({@link withHighlight}). */
+  readonly onPath?: boolean;
+};
+
+/** A connection on the canvas. */
+export type StageEdge = Edge<StageEdgeData, typeof STAGE_EDGE_TYPE>;
 
 /** The four sides of a node, each a handle id, clockwise from the top. */
 export const SIDES = ["top", "right", "bottom", "left"] as const;
@@ -111,9 +150,6 @@ export interface EdgeSides {
   readonly source: Side;
   readonly target: Side;
 }
-
-/** The arrowhead every edge ends in. Its colour is the sheet's (`canvas.css`), not the marker's. */
-const ARROWHEAD = { type: MarkerType.ArrowClosed, width: 14, height: 14 } as const;
 
 /* ------------------------------------------------------------------ reading the document */
 
@@ -191,6 +227,7 @@ export function readStages(definition: WorkflowDefinition | null): readonly Stag
       kind: node.type,
       title: typeof node.title === "string" && node.title !== "" ? node.title : node.id,
       position: readPoint(node.position),
+      config: isRecord(node.config) ? node.config : NO_CONFIG,
     });
   }
 
@@ -228,6 +265,7 @@ export function readConnections(
       to: edge.to,
       kind: isEdgeKind(edge.kind) ? edge.kind : "default",
       label: typeof edge.label === "string" && edge.label !== "" ? edge.label : null,
+      condition: isRecord(edge.condition) ? edge.condition : null,
     });
   }
 
@@ -244,26 +282,42 @@ export function readConnections(
  * whose target is further down than along leaves the bottom and arrives at the top (or the
  * reverse, going up). A tie is read as horizontal, because the mockup's rows are horizontal.
  *
- * **A loop prefers the vertical axis** whenever there is one. The mockup's ouroboros edge — the
- * gate's *fail ↺* back to implement — leaves the gate's top and arrives at implement's bottom,
- * arcing over the row between them, and a loop drawn side-to-side would share its source side
- * with the gate's *pass →* and read as a second branch rather than as a return.
+ * **A loop and a fork's outcome prefer the vertical axis** whenever there is one. The mockup's
+ * ouroboros edge — the gate's *fail ↺* back to implement — leaves the gate's top and arrives at
+ * implement's bottom, arcing over the row between them, and a loop drawn side-to-side would share
+ * its source side with the gate's *pass →* and read as a second branch rather than as a return.
+ * A branch that changes rows is the same picture from the other side (#149): the decision's
+ * *> M ↘* leaves its bottom beside *≤ M ↓* and arrives at the split's top, as the mockup draws it,
+ * where the dominant axis would send it out of the decision's left side and back across the edge
+ * that arrived there. A branch along its own row — the gate's *pass →* — still runs along it.
  *
  * @param from The source stage's top-left corner.
  * @param to The target stage's top-left corner.
- * @param kind The edge's kind — a loop is placed differently.
+ * @param kind The edge's kind — a loop and a branch are placed differently.
  * @returns The two sides.
  */
 export function edgeSides(from: Point, to: Point, kind: EdgeKind = "default"): EdgeSides {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const vertical = kind === "loop" ? dy !== 0 : Math.abs(dy) > Math.abs(dx);
+  const vertical = kind === "default" ? Math.abs(dy) > Math.abs(dx) : dy !== 0;
 
   if (vertical) {
     return dy >= 0 ? { source: "bottom", target: "top" } : { source: "top", target: "bottom" };
   }
 
   return dx >= 0 ? { source: "right", target: "left" } : { source: "left", target: "right" };
+}
+
+/**
+ * How an ordered pair is named — `from→to`. The DSL identifies an edge by its pair (§ 6), and so
+ * does the dry run's `highlight_path`, so one spelling serves an edge's id and a path's lookup.
+ *
+ * @param from The id of the stage the edge leaves.
+ * @param to The id of the stage it arrives at.
+ * @returns The name.
+ */
+function pairName(from: string, to: string): string {
+  return `${from}→${to}`;
 }
 
 /**
@@ -281,7 +335,7 @@ export function edgeIds(connections: readonly Connection[]): readonly string[] {
   const taken = new Map<string, number>();
 
   return connections.map((connection) => {
-    const base = `${connection.from}→${connection.to}`;
+    const base = pairName(connection.from, connection.to);
     const ordinal = taken.get(base) ?? 0;
     taken.set(base, ordinal + 1);
 
@@ -294,7 +348,8 @@ export function edgeIds(connections: readonly Connection[]): readonly string[] {
  *
  * One node per stage, in document order, at the document's position: the canvas opens on
  * exactly the picture the document describes, which is the ticket's *seeded graph renders at
- * the mockup's node positions*. Each carries its stage as `data` for the node component, and an
+ * the mockup's node positions*. Each carries its stage as `data` for the node component — and
+ * the trigger node the document's root trigger besides, which is what its chip prints — and an
  * accessible name, because React Flow's nodes are focusable and a screen reader would otherwise
  * announce twelve of them as *node*.
  *
@@ -306,7 +361,7 @@ export function toNodes(definition: WorkflowDefinition | null): StageNode[] {
     id: stage.id,
     type: STAGE_NODE_TYPE,
     position: stage.position,
-    data: { stage },
+    data: stage.kind === "trigger" ? { stage, trigger: definition?.trigger } : { stage },
     ariaLabel: stageName(stage),
   }));
 }
@@ -314,9 +369,9 @@ export function toNodes(definition: WorkflowDefinition | null): StageNode[] {
 /**
  * The document's connections as React Flow edges.
  *
- * Each names the handle it leaves from and the one it arrives at ({@link edgeSides}), prints the
- * document's label where there is one, and ends in the arrowhead. S.3 replaces the default edge
- * with the mockup's three treatments; the ids, ends and sides decided here are what it inherits.
+ * Each is the one edge type, names the handle it leaves from and the one it arrives at
+ * ({@link edgeSides}), and carries its connection for the edge component to draw — its label,
+ * its tone, its dash and its arrowhead are all decided from that (`treatment.ts`).
  *
  * @param definition The document, or `null` for a workflow with none.
  * @returns The edges, between the stages {@link toNodes} draws.
@@ -337,12 +392,12 @@ export function toEdges(definition: WorkflowDefinition | null): StageEdge[] {
 
     return {
       id: ids[index],
+      type: STAGE_EDGE_TYPE,
       source: connection.from,
       target: connection.to,
       sourceHandle: sides.source,
       targetHandle: sides.target,
       label: connection.label ?? undefined,
-      markerEnd: ARROWHEAD,
       data: { connection },
       ariaLabel: edgeName(
         titles.get(connection.from) ?? connection.from,
@@ -350,6 +405,46 @@ export function toEdges(definition: WorkflowDefinition | null): StageEdge[] {
         connection.label,
       ),
     };
+  });
+}
+
+/* ------------------------------------------------------------------ the execution path */
+
+/**
+ * An edge, named the way the document and the dry run name one: by its ordered pair. The
+ * engine's `highlight_path` (`ouroboros-engine`'s `EdgeRef`, `from` on the wire) is a list of
+ * these, so S.6 hands the dry run's answer to the canvas as it arrives.
+ */
+export interface EdgeRef {
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * The edges with an execution path drawn on them — the **highlight mode** S.6's dry-run overlay
+ * ([#152](https://github.com/NobuData/ouroboros/issues/152)) consumes.
+ *
+ * An edge is on the path when the path names its pair, and is then drawn in the mockup's active
+ * treatment (`treatment.ts`'s `edgeVariant`). A pair the path names that the canvas does not draw
+ * is ignored — a dry run of a document that has since been edited is S.6's to clear, and a stale
+ * path must not throw here — and a path that names a pair twice (a walk that came round a loop)
+ * marks it once.
+ *
+ * @param edges The edges, as the canvas holds them.
+ * @param path The edges the walk took, in any order; `null` or empty for no highlight.
+ * @returns The edges, each marked on or off the path. **An edge whose mark did not change is the
+ *   same object**, so turning the highlight off and on redraws only the edges that changed.
+ */
+export function withHighlight(edges: readonly StageEdge[], path: readonly EdgeRef[] | null): StageEdge[] {
+  const taken = new Set((path ?? []).map((ref) => pairName(ref.from, ref.to)));
+
+  return edges.map((edge) => {
+    if (edge.data === undefined) return edge;
+
+    const onPath = taken.has(pairName(edge.source, edge.target));
+    if ((edge.data.onPath ?? false) === onPath) return edge;
+
+    return { ...edge, data: { ...edge.data, onPath } };
   });
 }
 

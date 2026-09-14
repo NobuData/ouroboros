@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and six amended in since:
+deployment. Five legs from the issue, and seven amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -29,6 +29,7 @@ deployment. Five legs from the issue, and six amended in since:
 | 9 | [`specs/routing.spec.ts`](specs/routing.spec.ts) | Mockup 06 against four seeded tables and the resolution engine: a chain reordered, saved and re-read; a rule switched off changing what the simulator answers; a floor turning a degradable run into a designed failure; and a member served the page read-only |
 | 10 | [`specs/providers.spec.ts`](specs/providers.spec.ts) | Mockup 07's credential lifecycle across four layers: a key the provider refuses connecting **no** card; a rotation that failed leaving the old key *still working*, proved by testing it; a reveal shown, recorded and masked again; a pull whose progress survives a reload; and a provider that really goes away |
 | 11 | [`specs/issues.spec.ts`](specs/issues.spec.ts) | Mockup 03 against the intake seed: a selection refused by name and then queued, with the *dashboard page* moving by exactly one row's worth; a press of **Re-estimate** that really goes through the engine and comes back as a new version the panel draws without a reload; the filter bar's address reloaded into the identical view; and the personal workspace's guidance |
+| 12 | [`specs/studio.spec.ts`](specs/studio.spec.ts) | Mockup 04's canvas as a browser draws it: the five node treatments printing the chips the seeded document's configs become, the octagonal flow nodes and the mini pill, the ouroboros edge dashed and glowing in each palette's own accent-deep, and the `.sel` ring — with the canvas diffed in both palettes |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -115,6 +116,17 @@ stack the health strip stops being the seed's and becomes a report of five faile
 Without that line this leg's parity, its screenshots and even *which model the simulator
 resolves to* depend on how long the stack has been up; `docker-compose.e2e.yml` argues it in
 full.
+
+Leg 12 is [#149](https://github.com/NobuData/ouroboros/issues/149)'s — S.3, the workflow
+studio's node and edge components — and the studio's first leg, which S.8
+([#154](https://github.com/NobuData/ouroboros/issues/154)) extends. Its subject is the one
+thing `ouroboros-ui`'s suites cannot see about mockup 04's visual language: a pixel. Every
+decision behind the canvas is unit-tested — which treatment a stage takes, what chips its
+config becomes, what tone a label's condition gives it — but jsdom applies no stylesheet, so
+this leg asks a browser for what only a browser computes: the flow nodes' octagonal clip-path,
+the mini pill's 176 × 44, the ouroboros edge's dash, glow and `--accent-deep` in each palette,
+and the selection's two-part glow. It screenshot-diffs the canvas region with *Implement*
+selected in both palettes, and writes nothing.
 
 ## Stack
 
@@ -254,7 +266,7 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9, 10 and 11's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10, 11 and 12's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
@@ -262,6 +274,7 @@ tests/e2e/
 │   ├── routing.ts              # what mockup 06 renders, and putting a route or a rule back (leg 9)
 │   ├── providers.ts            # what mockup 07 renders, the stub's keys, and removing what leg 10 connects
 │   ├── issues.ts               # what mockup 03 renders against the intake seed, and what each flow leaves behind (leg 11)
+│   ├── studio.ts               # what mockup 04's canvas draws for the seeded standard-fix, stage by stage (leg 12)
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
@@ -351,6 +364,14 @@ this pair lost two of the five cards it was meant to be comparing. Giving the wi
 page's own height makes the pane not scroll, and the leg asserts that it does not, so a page
 that outgrows the window turns red rather than being quietly cropped.
 
+Leg 12's pair is of the **canvas region alone** rather than the page —
+`studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
+1920 × 1400 window the leg asserts the canvas fits whole. The studio's head says *Last edited 2h
+ago*, measured from a draft stamp that moves with the clock, and the canvas is what #149's
+parity criterion is about. The pair draws **no accent path**: the mockup's four accent edges are
+an execution path, and nothing on the page draws one until S.6's dry run
+([#152](https://github.com/NobuData/ouroboros/issues/152)), which re-records the pair.
+
 #### Refreshing them
 
 A baseline nobody can refresh becomes a suite somebody disables, so the procedure is written
@@ -385,9 +406,9 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10 and 11's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
---update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts` or
-`specs/issues.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
+Legs 6, 9, 10, 11 and 12's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+--update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
+`specs/issues.spec.ts` or `specs/studio.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
 
 **Leg 11 makes the fresh volume a precondition of a green run, not only of a recording.**
 Two of its writes have no undo on the API — the queue row it creates (`GET /api/v1/queue`
@@ -429,8 +450,9 @@ volume and produced a dashboard reading zeroes.
 This suite is scheduled to grow. Every mockup roadmap amends a leg into
 [#56](https://github.com/NobuData/ouroboros/issues/56) — the dashboard leg in
 [#88](https://github.com/NobuData/ouroboros/issues/88) was the first, the issues leg in
-[#121](https://github.com/NobuData/ouroboros/issues/121) the latest, the studio follows in
-[#154](https://github.com/NobuData/ouroboros/issues/154), and a dozen more — each with a
+[#121](https://github.com/NobuData/ouroboros/issues/121), the studio's in
+[#149](https://github.com/NobuData/ouroboros/issues/149) the latest (S.8,
+[#154](https://github.com/NobuData/ouroboros/issues/154), extends it), and a dozen more — each with a
 stated runtime budget of its own. Two rules keep that from becoming a suite nobody can run:
 
 1. **The budget is one number.** `SUITE_BUDGET_MS` in `support/stack.ts` is the total, and
@@ -477,3 +499,5 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#112](https://github.com/NobuData/ouroboros/issues/112) — the queue write leg 11 follows onto the dashboard
 - [#108](https://github.com/NobuData/ouroboros/issues/108) — the re-estimation leg 11 drives through the engine
 - [#107](https://github.com/NobuData/ouroboros/issues/107) — the recovery sweep leg 11 asks the stack to hold still
+- [#149](https://github.com/NobuData/ouroboros/issues/149) — leg 12, the studio canvas in mockup 04's visual language
+- [#154](https://github.com/NobuData/ouroboros/issues/154) — S.8, the studio leg's extension: editing, publish, the dry-run highlight, the member view

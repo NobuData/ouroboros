@@ -1248,7 +1248,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | S.1 | #147 | 🟢 Done | ouroboros-ui: [S.1] Studio route, page head & workflow rail | `(app)/workflows`: head, seg control, actions, rail with states | mvp, workflow, ui, design | N (after #41, P.3, BA-D.5) | Y | M | ouroboros-ui |
 | S.2 | #148 | 🟢 Done | ouroboros-ui: [S.2] Canvas foundation on React Flow | Themed React Flow: dot-grid, pan/zoom, controlled graph state | mvp, workflow, ui, design | N (after P.2, S.1) | Y | L | ouroboros-ui |
-| S.3 | #149 | 🟡 Open | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
+| S.3 | #149 | 🟢 Done | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
 | S.4 | #150 | 🟡 Open | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
 | S.5 | #151 | 🟡 Open | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
 | S.6 | #152 | 🟡 Open | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui |
@@ -1438,7 +1438,7 @@ dot-grid bg · ⌥-drag pan · zoom −/100%/+ · selection → inspector
 
 ### Issue S.3 — ouroboros-ui: [S.3] Node & edge components
 
-> **GitHub issue:** #149 · **Status:** 🟡 Open · **Parent epic:** #130
+> **GitHub issue:** #149 · **Status:** 🟢 Done · **Parent epic:** #130
 
 - **Problem Statement:** The mockup's visual language — five node treatments,
   octagonal flow nodes, mini term pill, four edge classes with labeled pills —
@@ -1464,6 +1464,78 @@ dot-grid bg · ⌥-drag pan · zoom −/100%/+ · selection → inspector
 [▸ TRIGGER  Issue queued  (effort ≤ M)]──accent──▶[◆ ANALYZE …]──▶[◇ decision]
                                                         ╰┄┄fail ↺ loop (dashed)┄┄╯
 ```
+
+- **Decided in-issue and shipped 2026-09-14 as `ouroboros-ui/app/workflows/canvas/{treatment.ts,
+  stage-edge.tsx}`, a rewritten `stage-node.tsx`, `graph.ts`'s highlight mode and the treatments
+  in `canvas.css`, with the studio's first e2e leg, `tests/e2e/specs/studio.spec.ts` (leg 12)
+  (`ouroboros-ui` 0.62.0, `ouroboros-e2e` 0.9.0):**
+
+  * **Chips are derived on every render and stored nowhere.** A stage now carries its `config`
+    exactly as the document holds it, and the node computes its chip row from it each time it
+    draws (`treatment.ts`'s `stageChips`): `skill:<name>` or `prompt template`, the pinned alias
+    or `routed by task`, the command and `runner <pool>`, the predicate, `squash · delete branch`.
+    The trigger node reads the document's root trigger, where the DSL keeps the predicate (§ 3).
+    Editing a stage's config *is* editing its chip — `stage-node.test.tsx` hands React Flow the
+    same document with one config field changed and nothing else, and the chip follows — which is
+    the property S.4's inspector relies on.
+  * **Where a chip and the mockup disagree, the document wins.** Model stages print their
+    registry alias (`coder-std`, `coder-max`) where the mockup prints model ids, because the alias
+    is what the document holds and resolving it is the route's (CH.6, #589). The gate prints
+    `required checks: 3` where the mockup prints `14`, because the seed's predicate names three
+    checks and § 5 records the fourteen as a repository's count. The decision prints its
+    predicate (`effort ≤ M`) and *Split* its prompt and route where the mockup prints sentences
+    (*re-estimate after scope*, *creates linked issues*) that are in no document. And the test
+    stage prints `runner pool-a` beside its command, because the seed names both. A chip invented
+    to match the picture would be a chip no edit could change.
+  * **The type line prints what a stage is for.** The glyph is the type's (`▸ ◆ ▣ ◇ ●`); the word
+    is *Trigger* or *Terminal* from the type, *Decision* or *Gate* from a flow node's `kind`, and a
+    model or infra stage's id (`analyze` → *Analyze*), because the id is the one place the
+    document names such a stage's role — and the seed's ids are the mockup's words. Accessible
+    names keep the type's word (*Model stage: Code the change*). The mini pill is the
+    `back_to_queue` terminal: the one that hands a ticket back rather than ending a run, with
+    nothing to chip.
+  * **The five treatments are one custom property each.** `--studio-node-hue` draws the rail and
+    the type line; hover lifts the rim and keeps the rail; the trigger adds the accent top rule;
+    the flow node is clipped to the mockup's octagon at a spacing step so the cut scales with the
+    box. The `.sel` ring is the mockup's — accent rim, a 3px ring in the accent tint, the accent's
+    glow — and a selected octagon, which clips its own box-shadow, wears it as drop-shadows on
+    React Flow's unclipped wrapper. The chip row may run into the box's trailing padding, as the
+    mockup's does, so `skill:zephyr-conventions` prints whole at the mockup's width.
+  * **One edge component, the mockup's three arrowheads.** Plain; the **loop**, dashed `7 6` in
+    accent-deep under a glow in the accent tint; and the **active** path in the accent under the
+    accent's glow — a loop the path takes stays dashed. The markers are defined once per canvas
+    and filled from tokens, because the library's markers colour themselves through an attribute
+    the token sheet cannot switch.
+  * **A label's tone comes from its condition, never its text.** Checks passed are ok and failed
+    err; an effort within its bound is the accent and past it warn; a loop whose condition says
+    neither is err; anything else is neutral. The pill is HTML in React Flow's label layer — a rem
+    type size and a true pill radius, which an SVG rectangle cannot have at every font size — set
+    above a row's edge, beside a column's and on a curve, as the mockup sets them, and hidden from
+    the accessibility tree because the edge's name already carries the label.
+  * **S.2's side rule gained one case, for the mockup's `> M ↘`.** A branch that changes rows now
+    prefers the vertical axis, as a loop already did: the decision's *> M ↘* leaves its bottom and
+    lands on the split's top, where the dominant axis had sent it out of the decision's left side
+    and back across the edge from analyze — the one place the first recording of the parity pair
+    did not read as the mockup. A branch along its own row (*pass →*) is unchanged.
+  * **Highlight mode takes the dry run's own `highlight_path`.** `StudioCanvas`'s `highlight` is a
+    list of `{from, to}` — the engine's `EdgeRef` — laid over the edges at render (`withHighlight`)
+    and never stored in them, so S.6 hands the answer through and clears it with `null` without
+    remounting under a reader. It is exercised by `MOCKUP_ACTIVE_PATH`, the mockup's four accent
+    edges, which is also S.6's criterion for `#485`.
+  * **The screenshot criterion started the studio's e2e leg rather than waiting for S.8.** Leg 12
+    signs in, opens `standard-fix`, and holds the twelve stages to their treatments, type lines and
+    chips; asks the browser for what jsdom cannot compute — both flow nodes' clip-path, the pill's
+    176 × 44, the loop's dash, glow and computed accent-deep in each palette, the `.sel` shadows —
+    and diffs the canvas with *Implement* selected in both palettes
+    (`studio-canvas-{light,dark}-chromium-linux.png`, the canvas region alone so the head's
+    relative time is never in the frame). `verify-failure-modes.sh` registers its `db` pair.
+  * **What this ticket left where it was:** the baselines draw **no accent path**, because nothing
+    on the page draws one until S.6's dry run; S.6 re-records the pair with the walk drawn, and
+    S.8 (#154) extends the leg with editing, publish, the member view and the font-scale check.
+    The provenance chip (`⊞ slug@version` and its `modified` variant — mockup 23's amendment to
+    this ticket) is #798's: that issue amends S.3 and depends on it, and the stamp it reads (#777)
+    has not landed. Printing a pinned alias's model id on its chip is a route read this canvas
+    does not make.
 
 ### Issue S.4 — ouroboros-ui: [S.4] Inspector panel
 
