@@ -2859,6 +2859,22 @@ no publish. `outlineRef` stays `null`: the outline is the stage calls `spans` al
 `code.checks.spec.ts` reads the Loop Checks rows out of `docs/mockups/05-workflow-code.html` at test
 time, so `ci/rest` watches that one file too.
 
+**The code view's intelligence is held to golden files** (W.3,
+[#179](https://github.com/NobuData/ouroboros/issues/179)). A grammar change that adds a line to the
+print shifts every span below it, and nothing crashes. So `code.intelligence.spec.ts` holds every
+seeded workflow's span map, diagnostics, Loop Checks rows and completion contexts to
+`schemas/workflow-dsl/fixtures/code-intelligence/`. `code.intelligence.integration-spec.ts` holds
+what `GET` and `PUT /code`, `…/code/checks` and `code-symbols` serve to the same files. Two oracles
+share none of the printer's arithmetic. The TypeScript compiler reads each stage call's lines, and a
+walk of its tree names each word's scope the way `ouroboros-ui`'s `context.ts` does. Edit-shift
+cases grow and shrink the content above each stage, and every span and finding below must move by
+exactly that much. A moved answer fails naming the golden, the case and the command that
+regenerates the files. That command is refused where `CI` is set:
+
+```bash
+OURO_UPDATE_GOLDENS=1 yarn jest src/modules/workflows/code.intelligence.spec.ts
+```
+
 ## Pluggable ticket sources
 
 **Ingestion is a plug-in decision** (roadmap decision **P5**), and

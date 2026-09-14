@@ -1,0 +1,147 @@
+{
+  "about": "W.3 (#179): the Loop Checks rows derived from each diagnostics case that has a document. No row is an infra row (decision C7). Regenerate with: OURO_UPDATE_GOLDENS=1 yarn jest src/modules/workflows/code.intelligence.spec.ts",
+  "cases": {
+    "standard_fix_v14 · seeded": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic except declared gate loop"
+      },
+      {
+        "id": "references",
+        "status": "warn",
+        "title": "1 reference does not resolve",
+        "note": "unresolved in split"
+      }
+    ],
+    "standard_fix_v14 · unconfigured": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic except declared gate loop"
+      }
+    ],
+    "standard_fix_v1 · seeded": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic"
+      },
+      {
+        "id": "references",
+        "status": "ok",
+        "title": "All task routes resolve",
+        "note": "models configured for analyze · plan · implement"
+      }
+    ],
+    "standard_fix_v1 · unconfigured": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic"
+      }
+    ],
+    "feature_loop_v1 · seeded": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic except declared gate loop"
+      },
+      {
+        "id": "references",
+        "status": "ok",
+        "title": "All task routes resolve",
+        "note": "models configured for design · plan · implement"
+      }
+    ],
+    "feature_loop_v1 · unconfigured": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic except declared gate loop"
+      }
+    ],
+    "deps_refresh_v1 · seeded": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic"
+      },
+      {
+        "id": "references",
+        "status": "ok",
+        "title": "All task routes resolve",
+        "note": "models configured for bump"
+      }
+    ],
+    "deps_refresh_v1 · unconfigured": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic"
+      }
+    ],
+    "docs_loop_v1 · seeded": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic"
+      },
+      {
+        "id": "references",
+        "status": "ok",
+        "title": "All task routes resolve",
+        "note": "models configured for write"
+      }
+    ],
+    "docs_loop_v1 · unconfigured": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic"
+      }
+    ],
+    "hotfix_p0_v1 · seeded": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic except declared gate loop"
+      },
+      {
+        "id": "references",
+        "status": "ok",
+        "title": "All task routes resolve",
+        "note": "models configured for patch"
+      }
+    ],
+    "hotfix_p0_v1 · unconfigured": [
+      {
+        "id": "graph",
+        "status": "ok",
+        "title": "Graph acyclic except declared gate loop"
+      }
+    ],
+    "sabotage · references and an undeclared cycle": [
+      {
+        "id": "graph",
+        "status": "warn",
+        "title": "Graph has an undeclared cycle",
+        "note": "through analyze"
+      },
+      {
+        "id": "references",
+        "status": "warn",
+        "title": "3 references do not resolve",
+        "note": "unresolved in analyze · split · implement"
+      }
+    ],
+    "sabotage · validation errors": [
+      {
+        "id": "graph",
+        "status": "err",
+        "title": "3 validation errors",
+        "note": "An edge cannot join a stage to itself."
+      }
+    ]
+  }
+}

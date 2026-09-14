@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**191 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**192 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
-| 🟡 **In progress** | P7 | **26** of 43 |
+| 🟡 **In progress** | P7 | **27** of 43 |
 | — **Not started** | P8–P17 | 0 of 246 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1321,7 +1321,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **43 issues** · 137 complexity points · order **#166–#208** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md`, `ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`, + the held-back registry tail
-> **Status:** 🟡 **In progress** — 26 of 43 issues closed
+> **Status:** 🟡 **In progress** — 27 of 43 issues closed
 
 **Goal.** Define the workflow domain and its immutable versioning, the DSL JSON Schema shared by REST and engine, the pluggable `TicketSourceProvider` SPI, validation/triggers/dry-run, the authoring studio (mockup 04), and the code projection with proven round-trip (mockup 05).
 
@@ -1359,7 +1359,7 @@ the blockquote above that records what it did and what it did differently.
 | 189 | **S.3** | ✅ [#149](https://github.com/NobuData/ouroboros/issues/149) | Node & edge components | ouroboros-ui | L | S.2 |
 | 190 | **U.4** | ✅ [#168](https://github.com/NobuData/ouroboros/issues/168) | Round-trip property & parity tests | ouroboros-rest | M | U.3 |
 | 191 | **V.1** | ✅ [#169](https://github.com/NobuData/ouroboros/issues/169) | Code route, head & mode switching | ouroboros-ui | M | S.1, U.3 |
-| 192 | **W.3** | [#179](https://github.com/NobuData/ouroboros/issues/179) | Intelligence integration tests | ouroboros-rest | S | W.1, W.2 |
+| 192 | **W.3** | ✅ [#179](https://github.com/NobuData/ouroboros/issues/179) | Intelligence integration tests | ouroboros-rest | S | W.1, W.2 |
 | 193 | **CH.7** | [#590](https://github.com/NobuData/ouroboros/issues/590) | Registry integration tests | ouroboros-rest | M | CH.1, CH.6 |
 | 194 | **CI.5** | [#595](https://github.com/NobuData/ouroboros/issues/595) | Why-aliases & resolution-chain cards | ouroboros-ui | M | CH.6, CI.1 |
 | 195 | **S.4** | [#150](https://github.com/NobuData/ouroboros/issues/150) | Inspector panel | ouroboros-ui | L | R.3, S.3 |

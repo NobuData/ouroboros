@@ -28,7 +28,8 @@ schemas/
         ├── yaml/                # the YAML projection of each valid document (P.2's round-trip proof)
         ├── code/                # the TypeScript projection of each valid document (mockup 05, U.1)
         ├── code-invalid/        # workflow files the parser refuses, and expected.json: each one's errors (U.2)
-        └── code-symbols/        # the code editor's symbol table as served: completions and hover docs (W.1)
+        ├── code-symbols/        # the code editor's symbol table as served: completions and hover docs (W.1)
+        └── code-intelligence/   # every seed's span map, diagnostics, Loop Checks rows and completion contexts (W.3)
 ```
 
 `v1.json` describes the whole **1.x line**. Adding an optional field appends a minor to its
@@ -44,6 +45,7 @@ schemas/
 | [`ouroboros-rest/src/modules/workflows/catalog.*`](../ouroboros-rest/src/modules/workflows) | the stage catalog (R.3) — serves each node type's config schema out of `v1.json` itself, at runtime | `catalog.schema.spec.ts` (served schemas classify every fixture's configs as `v1.json`'s definitions do) |
 | [`ouroboros-rest/src/modules/workflows/code.*`](../ouroboros-rest/src/modules/workflows) | the code-view printer (U.1) and parser (U.2) — each valid document as mockup 05's TypeScript DSL, and back | `code.printer.spec.ts` (every print is exactly `fixtures/code/<name>.loop.ts`, parses, and gives back the document's graph), `code.parser.spec.ts` (every `code/` file parses back to its `valid/` document) and `code.parser.errors.spec.ts` (every `code-invalid/` file reports exactly the codes and ranges `code-invalid/expected.json` records) |
 | [`ouroboros-rest/src/modules/workflows/code.symbols*`](../ouroboros-rest/src/modules/workflows) | the code editor's symbol table (W.1) — each word's type, enum values and doc, read from `v1.json` itself at boot | `code.symbols.spec.ts` (every doc is a `v1.json` description verbatim, and the served table is exactly `fixtures/code-symbols/table.json`) |
+| [`ouroboros-rest/src/modules/workflows/code.intelligence.*`](../ouroboros-rest/src/modules/workflows) | the code view's editor intelligence under test (W.3) — span maps, merged diagnostics, Loop Checks rows and completion contexts for every seeded workflow | `code.intelligence.spec.ts` and `code.intelligence.integration-spec.ts` (every seed's answer, computed and served, is exactly `fixtures/code-intelligence/*.json`, which `OURO_UPDATE_GOLDENS=1` regenerates) |
 | [`ouroboros-ui/app/workflows/code/`](../ouroboros-ui/app/workflows/code) | completions and hover docs in the code editor (W.1) | `__tests__/workflows/code/` (completion and hover fixtures over `code-symbols/table.json` and `code/standard-fix.loop.ts`) |
 | [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) | the specification a person reads | Worked examples taken from these fixtures |
 | [`docs/WORKFLOW_CODE_DSL.md`](../docs/WORKFLOW_CODE_DSL.md) | the code-view language a person reads | Worked examples taken from `fixtures/code/` |
