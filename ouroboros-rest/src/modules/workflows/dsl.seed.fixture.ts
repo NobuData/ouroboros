@@ -14,6 +14,11 @@
  * harness, for the same reason: `yarn test` runs from `ouroboros-rest/` and `turbo run test`
  * from the repository root, and a relative path would find the file under exactly one of them.
  *
+ * **The routing seed's task kinds are read here too** (W.3,
+ * [#179](https://github.com/NobuData/ouroboros/issues/179)): the code view checks a workflow's
+ * `route.task` names against them, so the suites that pin what a development workspace shows need
+ * the matrix `R__dev_seed_routing.sql` writes, not a copy of it.
+ *
  * `*.fixture.ts` is left out of the build, so none of this ships.
  */
 
@@ -24,6 +29,12 @@ import { resolve } from "node:path";
 export const SEED_PATH = resolve(
   __dirname,
   "../../../../ouroboros-db/migrations/R__dev_seed_workflows.sql",
+);
+
+/** The routing seed migration, which writes the development workspace's task kinds. */
+export const ROUTING_SEED_PATH = resolve(
+  __dirname,
+  "../../../../ouroboros-db/migrations/R__dev_seed_routing.sql",
 );
 
 /**
@@ -73,4 +84,35 @@ export function seededDocuments(tag: string): unknown[] {
   for (let index = 1; index < pieces.length; index += 2) bodies.push(pieces[index]);
 
   return bodies.map((body) => JSON.parse(body) as unknown);
+}
+
+/**
+ * The development workspace's task kinds, in routing-matrix order.
+ *
+ * Read out of the `values` list of `R__dev_seed_routing.sql`'s `insert into ouroboros.task_kinds`,
+ * whose rows are `(sort_order, 'name', 'description')`, so a kind added to the seed changes what
+ * the suites reading this expect.
+ *
+ * @returns The names, by `sort_order`.
+ * @throws {Error} When the statement, or any row of it, cannot be found — a reshaped seed, which is
+ *   more useful raised here than read as a matrix with no kinds.
+ */
+export function seededTaskKinds(): string[] {
+  const sql = readFileSync(ROUTING_SEED_PATH, "utf8");
+  const statement =
+    /insert into ouroboros\.task_kinds\b[\s\S]*?\) as seed \(sort_order, name, description\)/.exec(
+      sql,
+    );
+  const rows = [...(statement?.[0] ?? "").matchAll(/^\s*\((\d+),\s*'([^']+)',/gm)];
+
+  if (rows.length === 0) {
+    throw new Error(
+      `No task_kinds rows found in ${ROUTING_SEED_PATH}; has the seed been reshaped?`,
+    );
+  }
+
+  return rows
+    .map((row) => ({ order: Number(row[1]), name: row[2] }))
+    .sort((a, b) => a.order - b.order)
+    .map((row) => row.name);
 }

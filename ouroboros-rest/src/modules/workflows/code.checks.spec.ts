@@ -8,7 +8,7 @@ import { validDocument } from "./code.recover.fixture";
 import { readExpectedCases, readFixture } from "./dsl.golden.fixture";
 import type { DslCatalogue } from "./dsl.references";
 import type { WorkflowDocument } from "./dsl.schema";
-import { SEED_DOCUMENT_TAGS, seededDocuments } from "./dsl.seed.fixture";
+import { SEED_DOCUMENT_TAGS, seededDocuments, seededTaskKinds } from "./dsl.seed.fixture";
 
 /**
  * Mockup 05's Loop Checks rows — W.2 ([#178](https://github.com/NobuData/ouroboros/issues/178)).
@@ -28,21 +28,6 @@ const ROUTED: DslCatalogue = {
   skills: ["repo-map", "zephyr-conventions"],
   tasks: ["split", "implement"],
 };
-
-/**
- * The development seed's task kinds, as `R__dev_seed_routing.sql` writes them: the routing matrix a
- * fresh development database has. `split` is not among them.
- */
-const SEEDED_TASK_KINDS = [
-  "analyze",
-  "estimate",
-  "plan",
-  "implement",
-  "test-gen",
-  "review",
-  "docs",
-  "commit-msg",
-];
 
 /** The mockup's rows, as their visible text. */
 interface MockupRow {
@@ -138,7 +123,9 @@ describe("a clean seed", () => {
   });
 
   it("shows the unrouted `split` against the seed's real routing matrix, rather than a ✓", () => {
-    expect(rowsFor(seededCanvas(), { ...ROUTED, tasks: SEEDED_TASK_KINDS })).toEqual([
+    // The routing matrix a fresh development database has, read from R__dev_seed_routing.sql.
+    // `split` is not among its kinds.
+    expect(rowsFor(seededCanvas(), { ...ROUTED, tasks: seededTaskKinds() })).toEqual([
       { id: "graph", status: "ok", title: "Graph acyclic except declared gate loop" },
       {
         id: "references",

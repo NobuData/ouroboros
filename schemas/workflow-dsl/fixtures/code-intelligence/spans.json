@@ -1,0 +1,212 @@
+{
+  "about": "W.3 (#179): the printer's node→span map for every document R__dev_seed_workflows.sql writes, keyed by its dollar-quoted tag. Each span is also held to the lines the TypeScript compiler finds its stage call on. Regenerate with: OURO_UPDATE_GOLDENS=1 yarn jest src/modules/workflows/code.intelligence.spec.ts",
+  "cases": {
+    "standard_fix_v14": [
+      {
+        "node": "issue-queued",
+        "startLine": 10,
+        "endLine": 14
+      },
+      {
+        "node": "analyze",
+        "startLine": 15,
+        "endLine": 30
+      },
+      {
+        "node": "effort-recheck",
+        "startLine": 31,
+        "endLine": 39
+      },
+      {
+        "node": "plan",
+        "startLine": 40,
+        "endLine": 53
+      },
+      {
+        "node": "split",
+        "startLine": 54,
+        "endLine": 66
+      },
+      {
+        "node": "back-to-queue",
+        "startLine": 67,
+        "endLine": 70
+      },
+      {
+        "node": "implement",
+        "startLine": 71,
+        "endLine": 85
+      },
+      {
+        "node": "build",
+        "startLine": 86,
+        "endLine": 91
+      },
+      {
+        "node": "test",
+        "startLine": 92,
+        "endLine": 98
+      },
+      {
+        "node": "review",
+        "startLine": 99,
+        "endLine": 113
+      },
+      {
+        "node": "checks-green",
+        "startLine": 114,
+        "endLine": 122
+      },
+      {
+        "node": "open-pr",
+        "startLine": 123,
+        "endLine": 128
+      }
+    ],
+    "standard_fix_v1": [
+      {
+        "node": "issue-queued",
+        "startLine": 10,
+        "endLine": 14
+      },
+      {
+        "node": "analyze",
+        "startLine": 15,
+        "endLine": 30
+      },
+      {
+        "node": "plan",
+        "startLine": 31,
+        "endLine": 44
+      },
+      {
+        "node": "implement",
+        "startLine": 45,
+        "endLine": 59
+      },
+      {
+        "node": "build",
+        "startLine": 60,
+        "endLine": 65
+      },
+      {
+        "node": "open-pr",
+        "startLine": 66,
+        "endLine": 71
+      }
+    ],
+    "feature_loop_v1": [
+      {
+        "node": "issue-queued",
+        "startLine": 10,
+        "endLine": 14
+      },
+      {
+        "node": "design",
+        "startLine": 15,
+        "endLine": 30
+      },
+      {
+        "node": "plan",
+        "startLine": 31,
+        "endLine": 44
+      },
+      {
+        "node": "implement",
+        "startLine": 45,
+        "endLine": 58
+      },
+      {
+        "node": "build",
+        "startLine": 59,
+        "endLine": 65
+      },
+      {
+        "node": "checks-green",
+        "startLine": 66,
+        "endLine": 74
+      },
+      {
+        "node": "open-pr",
+        "startLine": 75,
+        "endLine": 80
+      }
+    ],
+    "deps_refresh_v1": [
+      {
+        "node": "issue-queued",
+        "startLine": 10,
+        "endLine": 14
+      },
+      {
+        "node": "bump",
+        "startLine": 15,
+        "endLine": 29
+      },
+      {
+        "node": "build",
+        "startLine": 30,
+        "endLine": 35
+      },
+      {
+        "node": "test",
+        "startLine": 36,
+        "endLine": 42
+      },
+      {
+        "node": "hand-off",
+        "startLine": 43,
+        "endLine": 46
+      }
+    ],
+    "docs_loop_v1": [
+      {
+        "node": "issue-queued",
+        "startLine": 10,
+        "endLine": 14
+      },
+      {
+        "node": "write",
+        "startLine": 15,
+        "endLine": 29
+      },
+      {
+        "node": "prose-lint",
+        "startLine": 30,
+        "endLine": 36
+      },
+      {
+        "node": "open-pr",
+        "startLine": 37,
+        "endLine": 42
+      }
+    ],
+    "hotfix_p0_v1": [
+      {
+        "node": "issue-queued",
+        "startLine": 10,
+        "endLine": 14
+      },
+      {
+        "node": "patch",
+        "startLine": 15,
+        "endLine": 30
+      },
+      {
+        "node": "smoke",
+        "startLine": 31,
+        "endLine": 37
+      },
+      {
+        "node": "checks-green",
+        "startLine": 38,
+        "endLine": 46
+      },
+      {
+        "node": "open-pr",
+        "startLine": 47,
+        "endLine": 52
+      }
+    ]
+  }
+}

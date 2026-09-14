@@ -657,7 +657,7 @@ e2e: parity ✓ · code→visual→code round-trip ✓ · publish ✓ · diagnos
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | W.1 | #177 | 🟢 Done | ouroboros-ui: [W.1] Schema-driven completions & hover docs | CM6 sources from WF-P.2 schema + WF-R.3 catalog; the Types card data | mvp, workflow, code-view, ui | N (after U.1, WF-R.3) | Y | M | ouroboros-ui, ouroboros-rest |
 | W.2 | #178 | 🟢 Done | ouroboros-rest: [W.2] Diagnostics & Loop Checks payload | Map validation findings to code ranges; checks panel contract | mvp, workflow, code-view, rest | N (after U.2, WF-R.2) | Y | M | ouroboros-rest |
-| W.3 | #179 | 🟡 Open | ouroboros-rest: [W.3] Intelligence integration tests | Completion/hover/diagnostic fixtures, range-mapping accuracy | mvp, workflow, code-view, rest, ci | N (after W.1, W.2) | Y | S | ouroboros-rest |
+| W.3 | #179 | 🟢 Done | ouroboros-rest: [W.3] Intelligence integration tests | Completion/hover/diagnostic fixtures, range-mapping accuracy | mvp, workflow, code-view, rest, ci | N (after W.1, W.2) | Y | S | ouroboros-rest |
 
 ### Issue W.1 — ouroboros-ui: [W.1] Schema-driven completions & hover docs
 
@@ -747,7 +747,7 @@ node→span map: printer emits {nodeId: [lineStart, lineEnd]} with every GET
 
 ### Issue W.3 — ouroboros-rest: [W.3] Intelligence integration tests
 
-> **GitHub issue:** #179 · **Status:** 🟡 Open · **Parent epic:** #163
+> **GitHub issue:** #179 · **Status:** 🟢 Done · **Parent epic:** #163
 
 - **Problem Statement:** Range mapping and completion contexts drift silently
   as the grammar evolves; fixtures keep them honest.
@@ -760,6 +760,58 @@ node→span map: printer emits {nodeId: [lineStart, lineEnd]} with every GET
 - **Parallelism/Dependencies:** Needs W.1, W.2.
 - **Technical Stack:** Jest, Testcontainers.
 - **Epic:** W
+- **Delivered (2026-09-14):** four golden files under
+  `schemas/workflow-dsl/fixtures/code-intelligence/`, and two suites in `ouroboros-rest` that hold
+  the code view to them. `code.intelligence.spec.ts` runs in `yarn test` and
+  `code.intelligence.integration-spec.ts` in `yarn test:integration`. `ci/rest` runs both, and it
+  already watches `schemas/**`. The shared helpers are `code.intelligence.fixture.ts`, and
+  `src/testing/golden.fixture.ts` compares or rewrites a golden.
+  - **Node→span accuracy.** `spans.json` records the printer's span map for all six seeded
+    documents: the five workflows, and standard-fix's v1 read as its published version. Every span
+    is also held to the lines the TypeScript compiler finds its stage call on (`stageCallsOf`),
+    which shares none of the printer's arithmetic. There are 67 edit-shift cases. Each drops or
+    adds a stage's description, or grows or shrinks a model stage's prompt. Every span and finding
+    below the edit must move by exactly that many lines: in the functions, and in what `PUT /code`
+    answers for the five drafts.
+  - **Diagnostics merge.** `diagnostics.json` records every seed's stream in a development workspace
+    and in an unconfigured one. It also records two sabotaged standard-fix saves, the `422` for
+    `code-invalid/three-mistakes.loop.ts`, and all three sources merged. The first sabotage
+    interleaves reference warnings and an undeclared cycle by position, with a tie on `analyze`
+    broken by code. The second is three validation errors of two rules. The merged stream must be
+    the same whatever order its sources arrive in. Messages are left out, as
+    `code-invalid/expected.json` leaves them out: they are prose, and drift in them is not the
+    silent kind.
+  - **Checks summary derivation.** `checks.json` records the rows for each of those cases, and
+    every row is held to its diagnostics and to C7. Only `graph` and `references` can appear, in
+    that order, and no row mentions pools, runners or the build farm.
+  - **Completion contexts per stage type.** `contexts.json` records 462 contexts: every word a seed
+    writes where the symbol table offers something, as `line:column scope label`.
+    `completionContextsOf` walks the compiler's tree and names each scope the way `ouroboros-ui`'s
+    `context.ts` does. That was checked once, locally, against `completionPlace` itself for all 462;
+    the comparison is not committed, since `ci/ui` does not watch this directory. Every stage callee
+    is written by a seed, and every word inside its calls is offered. The one exception is a skill
+    or task-route name the workspace does not suggest, and it must coincide exactly with a reference
+    warning on that stage: standard-fix's `split`, in the seeded workspace.
+  - **Loud failures, spot-verified.** A printer that wrote one more line above the stages failed 16
+    of 174 unit tests and 4 of 8 integration tests. Each message names the golden, the case and
+    `OURO_UPDATE_GOLDENS=1 yarn jest src/modules/workflows/code.intelligence.spec.ts`. A span map one
+    line off with the text unchanged failed 84 of 174, starting with the compiler check for every
+    seed, so regenerating the goldens would not hide it. That second run found a flaw first: the
+    edit-shift cases located stages through the span map, so a drifted map broke the suite at
+    collection instead of failing its assertions. They now locate stages with the compiler. The
+    update variable is refused where `CI` is set.
+  - **Runtimes.** On its own the unit suite takes about 3s. The integration suite takes 8.5s, with
+    the container start shared across the run.
+
+  Three decisions were taken in-issue. **The goldens sit with the other DSL fixtures** under
+  `schemas/`, beside `code-symbols/`, rather than inside `ouroboros-rest`. `ci/rest` already runs on
+  a change there, and `ci/engine` runs as it does for every fixture. **"Seeded" means read from the
+  seed files.** The task kinds come from `R__dev_seed_routing.sql` (`seededTaskKinds`, which
+  `code.checks.spec.ts` now reads too) and the skills from the suggestion line `.env.example`
+  documents. The integration suite covers only that workspace, because skill suggestions are
+  process-wide configuration. **A schema error cannot stand in for a graph error in a sabotage
+  case.** It stops the validator before the graph rules run, so the second sabotage joins
+  `analyze` to itself instead. `ouroboros-rest` is 0.35.2.
 
 ```
 suites: span map ✓ · merged diagnostics ✓ · checks rows ✓ · symbol table ✓

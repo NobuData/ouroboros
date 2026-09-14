@@ -1,0 +1,255 @@
+{
+  "about": "W.3 (#179): the code view's diagnostics, in the order the editor lists them and without their messages — for every seeded document in each workspace state (seeded: R__dev_seed_routing.sql's task kinds and .env.example's skill suggestions; unconfigured: neither), for sabotaged standard-fix files, for a file the parser refuses, and for those three sources merged. Regenerate with: OURO_UPDATE_GOLDENS=1 yarn jest src/modules/workflows/code.intelligence.spec.ts",
+  "cases": {
+    "standard_fix_v14 · seeded": [
+      {
+        "severity": "warning",
+        "range": {
+          "line": 54,
+          "column": 5,
+          "endLine": 66,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_task",
+        "node": "split"
+      }
+    ],
+    "standard_fix_v14 · unconfigured": [],
+    "standard_fix_v1 · seeded": [],
+    "standard_fix_v1 · unconfigured": [],
+    "feature_loop_v1 · seeded": [],
+    "feature_loop_v1 · unconfigured": [],
+    "deps_refresh_v1 · seeded": [],
+    "deps_refresh_v1 · unconfigured": [],
+    "docs_loop_v1 · seeded": [],
+    "docs_loop_v1 · unconfigured": [],
+    "hotfix_p0_v1 · seeded": [],
+    "hotfix_p0_v1 · unconfigured": [],
+    "sabotage · references and an undeclared cycle": [
+      {
+        "severity": "warning",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "graph.undeclared_cycle",
+        "node": "analyze"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "analyze"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 55,
+          "column": 5,
+          "endLine": 67,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_task",
+        "node": "split"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 72,
+          "column": 5,
+          "endLine": 86,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "implement"
+      }
+    ],
+    "sabotage · validation errors": [
+      {
+        "severity": "error",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "edge.self_reference",
+        "node": "analyze"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 53,
+          "column": 5,
+          "endLine": 65,
+          "endColumn": 8
+        },
+        "code": "node.unreachable",
+        "node": "split"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 66,
+          "column": 5,
+          "endLine": 69,
+          "endColumn": 8
+        },
+        "code": "node.unreachable",
+        "node": "back-to-queue"
+      }
+    ],
+    "parse · three-mistakes": [
+      {
+        "severity": "error",
+        "range": {
+          "line": 1,
+          "column": 44,
+          "endLine": 1,
+          "endColumn": 49
+        },
+        "code": "code_out_of_grammar",
+        "note": "Supported in the full SDK (v2) — see https://github.com/NobuData/ouroboros/issues/180"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 11,
+          "column": 7,
+          "endLine": 11,
+          "endColumn": 11
+        },
+        "code": "code_syntax_error"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 15,
+          "column": 7,
+          "endLine": 15,
+          "endColumn": 14
+        },
+        "code": "code_out_of_grammar",
+        "note": "Supported in the full SDK (v2) — see https://github.com/NobuData/ouroboros/issues/180"
+      }
+    ],
+    "merged · parse errors, validation findings and reference checks": [
+      {
+        "severity": "error",
+        "range": {
+          "line": 1,
+          "column": 44,
+          "endLine": 1,
+          "endColumn": 49
+        },
+        "code": "code_out_of_grammar",
+        "note": "Supported in the full SDK (v2) — see https://github.com/NobuData/ouroboros/issues/180"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 11,
+          "column": 7,
+          "endLine": 11,
+          "endColumn": 11
+        },
+        "code": "code_syntax_error"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "edge.self_reference",
+        "node": "analyze"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 15,
+          "column": 7,
+          "endLine": 15,
+          "endColumn": 14
+        },
+        "code": "code_out_of_grammar",
+        "note": "Supported in the full SDK (v2) — see https://github.com/NobuData/ouroboros/issues/180"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 53,
+          "column": 5,
+          "endLine": 65,
+          "endColumn": 8
+        },
+        "code": "node.unreachable",
+        "node": "split"
+      },
+      {
+        "severity": "error",
+        "range": {
+          "line": 66,
+          "column": 5,
+          "endLine": 69,
+          "endColumn": 8
+        },
+        "code": "node.unreachable",
+        "node": "back-to-queue"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "graph.undeclared_cycle",
+        "node": "analyze"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "analyze"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 55,
+          "column": 5,
+          "endLine": 67,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_task",
+        "node": "split"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 72,
+          "column": 5,
+          "endLine": 86,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "implement"
+      }
+    ]
+  }
+}
