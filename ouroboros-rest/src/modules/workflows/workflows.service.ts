@@ -334,7 +334,7 @@ export class WorkflowsService {
     if (draft === undefined) throw draftAbsent(id);
 
     const validated = draftEtag(draft);
-    const verdict = await this.gate.check(draft.definition);
+    const verdict = await this.gate.check(organizationId, draft.definition);
 
     if (verdict.findings.length > 0) throw definitionInvalid(verdict.findings);
 

@@ -311,8 +311,8 @@ def test_what_a_stage_would_do_is_said_and_not_done(
     simulation = _simulated(standard_fix, ticket_485)
 
     assert _step(simulation, "analyze").annotation == (
-        "A model stage: loads the skill `repo-map` before its prompt, on the pinned model "
-        "`claude-sonnet-5`, with at most 2 retries and a 200000-token budget. Not invoked — "
+        "A model stage: loads the skill `repo-map` before its prompt, on the pinned alias "
+        "`coder-std`, with at most 2 retries and a 200000-token budget. Not invoked — "
         "a dry run makes no model call."
     )
     assert _step(simulation, "implement").annotation == (

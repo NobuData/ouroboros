@@ -1969,6 +1969,110 @@ export interface AliasRevisionsTable {
 }
 
 /**
+ * A snapshot hop's provider — where the hop's model ran, as the health snapshot then saw it.
+ *
+ * V024's `resolution_snapshot_provider_valid()`, shape version 1
+ * ([#582](https://github.com/NobuData/ouroboros/issues/582), contracted by
+ * [#589](https://github.com/NobuData/ouroboros/issues/589)). The stored spelling — snake_case,
+ * because this is a persisted document rather than a resource. An optional member that is absent
+ * and one that is `null` both mean *not known*.
+ */
+export interface ResolutionSnapshotProviderDocument {
+  /** The adapter kind, as it read then — `anthropic`. */
+  kind: string;
+  /** The connection's display name, as it read then — `Anthropic Claude`. */
+  display_name: string;
+  /**
+   * The masked tail of the key the hop resolved with — `Xq4A`. At most sixteen alphanumerics by
+   * CHECK, a shape no credential fits; null where no credential was involved.
+   */
+  key_suffix?: string | null;
+  /** The connection's state from the health snapshot the resolution was made against. */
+  status: ProviderConnectionStatus;
+  /** The last measured latency, in ms, or null. */
+  latency_ms?: number | null;
+  /** Why the provider was in that state, when there was something to say. */
+  detail?: string | null;
+}
+
+/** One hop of a stored chain — V024's `resolution_snapshot_hop_valid()`, shape version 1. */
+export interface ResolutionSnapshotHopDocument {
+  /** 1-based place in the resolved chain, dropped hops included; dense by CHECK. */
+  index: number;
+  /** `route_hops.position`, or null for a hop a rule prepended. */
+  position?: number | null;
+  /** The alias the hop named — a name, never a reference. */
+  alias: string;
+  /** The raw provider model id it resolved to. */
+  model_id: string;
+  /** The params the hop resolved with. */
+  params?: Record<string, unknown>;
+  /** Where it ran, or null for an unbound alias. */
+  provider: ResolutionSnapshotProviderDocument | null;
+  /** The operator's note on the hop, or null. */
+  note?: string | null;
+  /** Whether the executor would try it. A kept hop has a provider by CHECK. */
+  decision: "kept" | "dropped";
+  /** Z.1's stable code — `provider_healthy`, `alias_disabled`. */
+  code: string;
+  /** Z.1's sentence, as it was written then. */
+  explanation: string;
+  /** How long the hop took, in whole ms — only on a kept hop that was tried. */
+  duration_ms?: number | null;
+}
+
+/** One evaluated escalation rule — V024's `resolution_snapshot_rules_valid()`, shape version 1. */
+export interface ResolutionSnapshotRuleDocument {
+  /** The rule's id, as text — a name rather than a reference. */
+  id: string;
+  /** Its evaluation order then, or null. */
+  sort_order?: number | null;
+  /** V018's generated sentence, copied. */
+  display: string;
+  /** Whether it changed the resolution. */
+  applied: boolean;
+  /** What it did, or why it did not. */
+  code: string;
+  /** The same, as a sentence, or null. */
+  explanation?: string | null;
+}
+
+/**
+ * `resolution_snapshots` — what a run's routing resolution decided, kept
+ * ([#582](https://github.com/NobuData/ouroboros/issues/582), decision **R9**).
+ *
+ * V024 landed the table with CG.4's run #482 fixture; CH.6
+ * ([#589](https://github.com/NobuData/ouroboros/issues/589)) owns the contract and the read
+ * (`GET /api/v1/registry/resolutions/latest`), and AF.2
+ * ([#235](https://github.com/NobuData/ouroboros/issues/235)) is the writer. **Append-only in the
+ * database** — `resolution_snapshots_no_update` refuses every UPDATE — so every column carries
+ * `never` in its update position.
+ */
+export interface ResolutionSnapshotsTable {
+  id: Generated<string>;
+  /** The workspace. `on delete cascade`. */
+  organization_id: ColumnType<string, string, never>;
+  /** The run the resolution served — `runs.id`, cascading, held to this workspace by trigger. */
+  run_id: ColumnType<string, string, never>;
+  /** Which shape `chain` and `rules` are written in. `1` is V024's, and the only one admitted. */
+  shape_version: ColumnType<number, number | undefined, never>;
+  /** The task kind resolved for, by name. */
+  task_kind: ColumnType<string, string, never>;
+  /** The route that answered, by tag. */
+  route_tag: ColumnType<string, string, never>;
+  /** `resolved` exactly when some hop was kept. */
+  outcome: ColumnType<"resolved" | "fail_run", "resolved" | "fail_run", never>;
+  /** How long the resolution took, in whole ms, or null when nobody timed it. Never 0 as a stand-in. */
+  duration_ms: ColumnType<number | null, number | null | undefined, never>;
+  /** The chain, hop by hop. Written as JSON text; read back parsed. */
+  chain: ColumnType<ResolutionSnapshotHopDocument[], string, never>;
+  /** The rules evaluated. Written as JSON text; read back parsed. */
+  rules: ColumnType<ResolutionSnapshotRuleDocument[], string | undefined, never>;
+  /** When the resolution was made. */
+  resolved_at: Stamped;
+}
+
+/**
  * The four storage shapes a model alias can be referenced from — V023's
  * `alias_reference_kind` domain ([#581](https://github.com/NobuData/ouroboros/issues/581),
  * decision **R5**). Two are live (`route`, `escalation`); `workflow` and `chat_pin` are in
@@ -2720,6 +2824,7 @@ export interface Database {
   escalation_rules: EscalationRulesTable;
   route_revisions: RouteRevisionsTable;
   alias_revisions: AliasRevisionsTable;
+  resolution_snapshots: ResolutionSnapshotsTable;
   audit_events: AuditEventsTable;
   workflows: WorkflowsTable;
   workflow_versions: WorkflowVersionsTable;
@@ -2976,6 +3081,19 @@ export const TABLE_COLUMNS = {
     "action",
     "diff",
     "created_at",
+  ],
+  resolution_snapshots: [
+    "id",
+    "organization_id",
+    "run_id",
+    "shape_version",
+    "task_kind",
+    "route_tag",
+    "outcome",
+    "duration_ms",
+    "chain",
+    "rules",
+    "resolved_at",
   ],
   audit_events: [
     "id",

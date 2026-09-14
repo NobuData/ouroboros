@@ -238,14 +238,19 @@ def test_a_terminals_options_are_validated_against_its_own_action() -> None:
     [
         ({}, DslErrorCode.CONFIG_ROUTING_MISSING),
         (
-            {"inherit_task": "implement", "pinned_model": "claude-fable-5"},
+            {"inherit_task": "implement", "pinned_model": {"alias": "coder-max"}},
             DslErrorCode.CONFIG_ROUTING_AMBIGUOUS,
         ),
     ],
 )
 def test_the_two_routing_mistakes_are_reported_under_different_codes(
-    routing: dict[str, str], expected: str
+    routing: dict[str, object], expected: str
 ) -> None:
+    assert codes(with_model_stage(routing)) == [expected]
+
+
+def with_model_stage(routing: object) -> dict[str, Any]:
+    """The smallest legal document with a model stage, ``stage``, routed as given."""
     document = minimal()
     document["nodes"].insert(
         1,
@@ -263,7 +268,55 @@ def test_the_two_routing_mistakes_are_reported_under_different_codes(
             },
         },
     )
-    assert codes(document) == [expected]
+    return document
+
+
+def test_a_raw_model_id_pinned_where_an_alias_belongs_has_a_code_of_its_own() -> None:
+    # CH.6 (#589): routes and workflows may only reference registry aliases, so the string is
+    # named for the governance mistake it is rather than reported as a bare type failure.
+    document = with_model_stage({"pinned_model": "claude-fable-5"})
+    [diagnostic] = validate_workflow_document(document).errors
+    assert (diagnostic.code, diagnostic.path, diagnostic.node) == (
+        DslErrorCode.CONFIG_ROUTING_RAW_MODEL,
+        "/nodes/1/config/routing/pinned_model",
+        "stage",
+    )
+    assert "claude-fable-5" in diagnostic.message
+
+
+@pytest.mark.parametrize(
+    ("pinned", "expected"),
+    [
+        # Not a model id anybody wrote, so it stays the type failure it is.
+        (7, (DslErrorCode.SCHEMA_TYPE, "/nodes/1/config/routing/pinned_model")),
+        (
+            {"alias": "Coder Max"},
+            (DslErrorCode.SCHEMA_PATTERN, "/nodes/1/config/routing/pinned_model/alias"),
+        ),
+        (
+            {"alias": "coder-max", "model": "claude-fable-5"},
+            (
+                DslErrorCode.SCHEMA_UNKNOWN_PROPERTY,
+                "/nodes/1/config/routing/pinned_model/model",
+            ),
+        ),
+        (
+            {},
+            (
+                DslErrorCode.SCHEMA_REQUIRED,
+                "/nodes/1/config/routing/pinned_model/alias",
+            ),
+        ),
+    ],
+)
+def test_every_other_malformed_pin_is_an_ordinary_schema_failure(
+    pinned: object, expected: tuple[str, str]
+) -> None:
+    errors = validate_workflow_document(
+        with_model_stage({"pinned_model": pinned})
+    ).errors
+    assert [(d.code, d.path) for d in errors] == [expected]
+    assert errors[0].node == "stage"
 
 
 def test_the_typed_document_comes_back_for_a_valid_one_and_not_for_an_invalid_one() -> (
@@ -300,13 +353,13 @@ def test_a_document_whose_references_are_unknown_still_saves() -> None:
     # The issue's last acceptance criterion, and decision P7, in one assertion.
     verdict = validate_workflow_document(
         read_fixture("valid/standard-fix.json"),
-        Catalogue(skills=[], models=[], tasks=[]),
+        Catalogue(skills=[], aliases=[], tasks=[]),
     )
     assert verdict.valid is True
     assert verdict.errors == ()
     assert {warning.code for warning in verdict.warnings} == {
         DslWarningCode.REFERENCE_UNKNOWN_SKILL,
-        DslWarningCode.REFERENCE_UNKNOWN_MODEL,
+        DslWarningCode.REFERENCE_UNKNOWN_ALIAS,
         DslWarningCode.REFERENCE_UNKNOWN_TASK,
     }
 

@@ -63,3 +63,48 @@ describe("the stage catalog repository", () => {
     await expect(repository.taskKindNames(WORKSPACE)).resolves.toEqual([]);
   });
 });
+
+describe("the registry aliases a publish resolves pins against (CH.6, #589)", () => {
+  let database: RecordingDatabase;
+  let repository: WorkflowCatalogRepository;
+
+  beforeEach(() => {
+    database = recordingDatabase();
+    repository = new WorkflowCatalogRepository(database.service);
+  });
+
+  it("reads one workspace's aliases, by parameter", async () => {
+    await repository.registryAliases(WORKSPACE);
+
+    const [statement] = database.statements;
+    expect(statement.sql).toMatch(
+      new RegExp(`^select "alias", "model_id" from "${SCHEMA_NAME}"\\."model_aliases"`),
+    );
+    expect(statement.sql).toContain('"organization_id" = $');
+    expect(statement.parameters).toContain(WORKSPACE);
+  });
+
+  it("does not filter on the switch or the binding, because a pin names an alias that exists", async () => {
+    // Switching an alias off keeps its references; a publish that refused one would make the
+    // switch a delete.
+    await repository.registryAliases(WORKSPACE);
+
+    expect(database.statements[0].sql).not.toContain("enabled");
+    expect(database.statements[0].sql).not.toContain("provider_connection_id");
+  });
+
+  it("answers each alias with the model it means, in name order", async () => {
+    database.answers({
+      rows: [
+        { alias: "coder-max", model_id: "claude-fable-5" },
+        { alias: "coder-std", model_id: "claude-sonnet-5" },
+      ],
+    });
+
+    await expect(repository.registryAliases(WORKSPACE)).resolves.toEqual([
+      { alias: "coder-max", modelId: "claude-fable-5" },
+      { alias: "coder-std", modelId: "claude-sonnet-5" },
+    ]);
+    expect(database.statements[0].sql).toContain('order by "alias"');
+  });
+});

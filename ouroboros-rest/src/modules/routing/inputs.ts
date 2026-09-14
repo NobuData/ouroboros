@@ -66,9 +66,11 @@ export interface AliasBinding {
  * One alias, as far as the registry can resolve it.
  *
  * {@link AliasSpec.binding} is null for V019's **unbound** state — a name created ahead of its
- * key, which mockup 21 draws as a first-class row. Resolution treats it as a hop it cannot
- * use and says so; the fuller disabled/unbound semantics are CH.6's
- * ([#589](https://github.com/NobuData/ouroboros/issues/589)) to add on top of this seam.
+ * key, which mockup 21 draws as a first-class row — and {@link AliasSpec.enabled} is false for
+ * an alias an operator switched off. CH.6 ([#589](https://github.com/NobuData/ouroboros/issues/589),
+ * decision **R2**) gives both the same treatment: the hop is dropped, never skipped silently and
+ * never a failed run, and its sentence says which — `alias unbound — no provider`, or `alias
+ * disabled by Ken 2026-08-01` from the two lifecycle fields below.
  */
 export interface AliasSpec {
   /** The name a route or a rule uses — `coder-max`. */
@@ -79,6 +81,24 @@ export interface AliasSpec {
   readonly params: Record<string, unknown>;
   /** Where it runs, or null when nothing is bound. */
   readonly binding: AliasBinding | null;
+  /**
+   * Mockup 21's **On** switch — `model_aliases.enabled` (V019). Switching an alias off keeps
+   * every route and workflow reference to it, so resolution is where the switch takes effect.
+   * An unbound alias is always off (V019's `model_aliases_unbound_disabled`) and is reported as
+   * unbound, the nearer cause.
+   */
+  readonly enabled: boolean;
+  /**
+   * Who last wrote the alias row — `"user".name` through `model_aliases.updated_by` — or null for
+   * a row a migration, an import or a since-deleted person wrote. The disabled sentence's actor.
+   */
+  readonly updatedBy: string | null;
+  /**
+   * When the alias row was last written — `model_aliases.updated_at`, which V015's touch trigger
+   * moves. The disabled sentence's date. A value handed in rather than a clock read, so
+   * `resolve()` stays a function of its arguments.
+   */
+  readonly updatedAt: Date;
 }
 
 /** One stored hop of the chain — a position, an operator's note, and the alias it names. */

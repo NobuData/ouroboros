@@ -146,7 +146,9 @@ export interface ResolutionHop {
    * ahead of its key.
    *
    * Null is why {@link Resolution.chain} can hold a hop with no provider at all, and such a
-   * hop is always `dropped` with a stated reason.
+   * hop is always `dropped` with a stated reason. A **switched-off** alias still has its
+   * provider here — it is bound, and the reader is owed where it would have run — and is
+   * dropped with `alias_disabled` (CH.6, #589).
    */
   readonly provider: ResolvedProvider | null;
   /**

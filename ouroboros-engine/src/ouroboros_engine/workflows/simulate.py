@@ -367,7 +367,7 @@ def _llm_annotation(config: LlmConfig) -> str:
 
     routing = config.routing
     if routing.pinned_model is not None:
-        model = f"on the pinned model `{routing.pinned_model}`"
+        model = f"on the pinned alias `{routing.pinned_model.alias}`"
     else:
         model = f"on the model the `{routing.inherit_task}` task routes to"
 

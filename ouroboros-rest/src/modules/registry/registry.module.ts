@@ -11,6 +11,7 @@
  * params.*.ts            CH.2 — the param schema, its merge, its validation, the chips
  * aliases.*.ts           CH.1 — the alias lifecycle: create, edit, rebind, duplicate, delete
  * import.*.ts            CH.4 — bulk creation from discovery: candidates, naming, one batch
+ * resolutions.*.ts       CH.6 — the stored resolution snapshots: the chain card's latest read
  * ```
  *
  * **It declared no controller until mockup 21 was written, and that was the whole of decision
@@ -27,7 +28,11 @@
  * with the guards that make the page's caption true. CH.4
  * ([#587](https://github.com/NobuData/ouroboros/issues/587)) is the head's other button,
  * `/api/v1/registry/import`. `registry.module.spec.ts` asserts the controller list, so a
- * fourth entry has to be stated out loud rather than noticed in review.
+ * fourth entry has to be stated out loud rather than noticed in review — and CH.6
+ * ([#589](https://github.com/NobuData/ouroboros/issues/589)) is that fourth:
+ * `/api/v1/registry/resolutions/latest`, the chain card's read of the stored snapshots. It lands
+ * here rather than in `RegistryReadModule` because a snapshot carries a key *suffix* already
+ * masked at write time and needs no vault, which is the one thing that module exists for.
  *
  * **It imports `PricingModule`, and only for `PricingService`.** CH.4's candidate rows carry a
  * price preview, and CH.3 ([#586](https://github.com/NobuData/ouroboros/issues/586)) is
@@ -93,10 +98,18 @@ import { ParamSchemaService } from "./params.service";
 import { RegistryRepository } from "./registry.repository";
 import { RegistryService } from "./registry.service";
 import { ProviderCredentialStore } from "./registry.secrets";
+import { ResolutionSnapshotsController } from "./resolutions.controller";
+import { ResolutionSnapshotsRepository } from "./resolutions.repository";
+import { ResolutionSnapshotsService } from "./resolutions.service";
 
 @Module({
   imports: [DbModule, PricingModule, ProvidersModule],
-  controllers: [ParamSchemaController, AliasesController, ImportController],
+  controllers: [
+    ParamSchemaController,
+    AliasesController,
+    ImportController,
+    ResolutionSnapshotsController,
+  ],
   providers: [
     RegistryRepository,
     RegistryService,
@@ -106,6 +119,8 @@ import { ProviderCredentialStore } from "./registry.secrets";
     AliasesService,
     ImportRepository,
     ImportService,
+    ResolutionSnapshotsRepository,
+    ResolutionSnapshotsService,
   ],
   exports: [RegistryService, ProviderCredentialStore, ParamSchemaService, AliasesService],
 })

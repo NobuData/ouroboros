@@ -130,10 +130,15 @@ export const TRIGGER_CONDITION_METHODS = [
   ["source", "source", "is"],
 ] as const;
 
-/** How a model stage's routing is written: `route.task("implement")` or `route.model("…")`. */
+/**
+ * How a model stage's routing is written: `route.task("implement")` or `route.alias("coder-max")`.
+ *
+ * `route.alias` names a registry alias and is the only way to pin one — there is no spelling
+ * for a raw model id, because routes and workflows may only reference aliases (CH.6, #589).
+ */
 export const ROUTE_METHODS = {
   inherit_task: "task",
-  pinned_model: "model",
+  pinned_model: "alias",
 } as const satisfies Record<keyof LlmConfig["routing"], string>;
 
 /** A model stage's permission flags, camel-cased inside `permissions: {…}`. */
@@ -319,7 +324,7 @@ export const STAGE_OPTION_FIELDS = {
   readonly [C in StageCallee]: Partial<Record<(typeof STAGE_OPTIONS)[C][number], string>>;
 };
 
-/** The type `route.task(…)` and `route.model(…)` both answer — mockup 05's Types card. */
+/** The type `route.task(…)` and `route.alias(…)` both answer — mockup 05's Types card. */
 export const ROUTE_RESULT_TYPE = "ModelRoute";
 
 /**
@@ -336,7 +341,7 @@ export const ROUTE_SIGNATURES = {
   },
   pinned_model: {
     parameter: "name",
-    type: "ModelId",
+    type: "AliasName",
     field: `${LLM_FIELD}/routing/oneOf/1/properties/pinned_model`,
   },
 } as const satisfies Record<

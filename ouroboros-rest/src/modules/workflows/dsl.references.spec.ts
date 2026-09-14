@@ -26,7 +26,11 @@ const document = (nodes: WorkflowNode[]): WorkflowDocument => ({
 
 describe("checkReferences", () => {
   const doc = document([
-    llm("a", { mode: "skill", skill: "repo-map", routing: { pinned_model: "claude-sonnet-5" } }),
+    llm("a", {
+      mode: "skill",
+      skill: "repo-map",
+      routing: { pinned_model: { alias: "coder-std" } },
+    }),
     llm("b", { routing: { inherit_task: "plan" } }),
   ]);
 
@@ -39,14 +43,14 @@ describe("checkReferences", () => {
     expect(
       checkReferences(doc, {
         skills: ["repo-map"],
-        models: ["claude-sonnet-5"],
+        aliases: ["coder-std"],
         tasks: ["plan"],
       }),
     ).toEqual([]);
   });
 
   it("reports each kind of reference the catalogue does not list, anchored at the field", () => {
-    expect(checkReferences(doc, { skills: [], models: [], tasks: [] })).toEqual([
+    expect(checkReferences(doc, { skills: [], aliases: [], tasks: [] })).toEqual([
       {
         code: DslWarningCode.REFERENCE_UNKNOWN_SKILL,
         path: "/nodes/0/config/skill",
@@ -54,10 +58,10 @@ describe("checkReferences", () => {
         message: expect.stringContaining("repo-map") as string,
       },
       {
-        code: DslWarningCode.REFERENCE_UNKNOWN_MODEL,
-        path: "/nodes/0/config/routing/pinned_model",
+        code: DslWarningCode.REFERENCE_UNKNOWN_ALIAS,
+        path: "/nodes/0/config/routing/pinned_model/alias",
         node: "a",
-        message: expect.stringContaining("claude-sonnet-5") as string,
+        message: expect.stringContaining("coder-std") as string,
       },
       {
         code: DslWarningCode.REFERENCE_UNKNOWN_TASK,
@@ -69,7 +73,7 @@ describe("checkReferences", () => {
   });
 
   it("treats an absent member list as not checked, which is not the same as empty", () => {
-    // A caller that can enumerate skills but not models says so by supplying only `skills`.
+    // A caller that can enumerate skills but not aliases says so by supplying only `skills`.
     const warnings = checkReferences(doc, { skills: [] });
     expect(warnings.map((w) => w.code)).toEqual([DslWarningCode.REFERENCE_UNKNOWN_SKILL]);
   });
@@ -84,7 +88,7 @@ describe("checkReferences", () => {
       // catalogues, so it is deliberately outside decision P7's question.
       config: { runner_pool: "pool-nobody-has" },
     };
-    expect(checkReferences(document([infra]), { skills: [], models: [], tasks: [] })).toEqual([]);
+    expect(checkReferences(document([infra]), { skills: [], aliases: [], tasks: [] })).toEqual([]);
   });
 
   it("says nothing about a prompt-mode stage that names no skill", () => {

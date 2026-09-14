@@ -26,6 +26,7 @@ import type { StageCatalog } from "./catalog.resources";
 import type { WorkflowCodeConfig, WorkflowCodeTree } from "./code.resources";
 import type { CodeSymbolTable } from "./code.symbols";
 import { EffortSchema, TriggerSchema, type SourceKind } from "./dsl.schema";
+import { seedPinnedAliases } from "./pins.fixture";
 import type { PublishFinding } from "./publish.gate";
 import { triggerMatches } from "./trigger.evaluation";
 import type { WorkflowDetail, WorkflowDraft, WorkflowVersionResource } from "./workflows.resources";
@@ -141,8 +142,12 @@ describe("the studio across services, against a migrated database", () => {
    */
   async function bench(email = "owner@ouroboros.invalid"): Promise<Bench> {
     const owner = await api.signIn({ email });
+    const workspace = await workspaceWithRepo(api, owner);
 
-    return { owner, workspace: await workspaceWithRepo(api, owner) };
+    // Publishing mockup 04's canvas resolves its pins against this registry (CH.6, #589).
+    await seedPinnedAliases(api, workspace.id);
+
+    return { owner, workspace };
   }
 
   /** A request as a bench's owner, already carrying its workspace. */

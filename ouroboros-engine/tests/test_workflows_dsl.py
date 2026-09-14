@@ -24,6 +24,7 @@ from ouroboros_engine.workflows.dsl import (
     InfraConfig,
     LlmConfig,
     NodeShape,
+    PinnedAlias,
     Position,
     SourcePredicate,
     Trigger,
@@ -227,10 +228,33 @@ def test_the_routing_exclusivity_is_left_to_the_validator_which_has_two_codes_fo
         LlmConfig,
         {
             **LLM,
-            "routing": {"inherit_task": "implement", "pinned_model": "claude-fable-5"},
+            "routing": {
+                "inherit_task": "implement",
+                "pinned_model": {"alias": "coder-max"},
+            },
         },
     )
     assert not accepts(LlmConfig, {**LLM, "routing": {"model": "claude-fable-5"}})
+
+
+@pytest.mark.parametrize("value", ["a", "0", "coder-max", "a-b-c", "x" * 64])
+def test_a_pin_names_a_registry_alias(value: str) -> None:
+    assert accepts(PinnedAlias, {"alias": value})
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "-a", "a-", "a--b", "Coder-Max", "coder_max", "claude-fable-5.1", "x" * 65],
+)
+def test_a_pin_names_nothing_else(value: str) -> None:
+    assert not accepts(PinnedAlias, {"alias": value})
+
+
+def test_a_pin_is_an_object_naming_one_alias_and_nothing_more() -> None:
+    # CH.6 (#589): a raw model id is refused by shape, not merely left unresolved.
+    assert not accepts(PinnedAlias, "claude-fable-5")
+    assert not accepts(PinnedAlias, {})
+    assert not accepts(PinnedAlias, {"alias": "coder-max", "model": "claude-fable-5"})
 
 
 def test_an_infra_stage_may_have_neither_a_pool_nor_a_command() -> None:

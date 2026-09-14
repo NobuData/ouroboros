@@ -17,7 +17,7 @@
       "config": {
         "mode": "prompt",
         "prompt_template": "Implement the approved plan.",
-        "routing": { "inherit_task": "implement", "pinned_model": "claude-fable-5" },
+        "routing": { "inherit_task": "implement", "pinned_model": { "alias": "coder-max" } },
         "limits": { "max_retries": 2, "token_budget": 100000 },
         "permissions": { "push_fixup": false, "touch_ci": false }
       }

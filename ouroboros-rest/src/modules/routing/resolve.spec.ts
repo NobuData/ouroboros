@@ -5,6 +5,7 @@ import { FLOOR_CODES, HOP_CODES, RESOLUTION_FAILURE_CODES, RULE_CODES } from "./
 import { RESOLUTION_VERSION, type Resolution } from "./resolution";
 import { resolve } from "./resolve";
 import {
+  ALIAS_LAST_WRITE,
   aliasNamed,
   ALIASES,
   CONNECTIONS,
@@ -179,6 +180,24 @@ describe("the three seeded escalation rules", () => {
     ]);
   });
 
+  it("attaches no vote from an alias an operator switched off", () => {
+    // A vote is a requirement the executor must meet, and a switched-off alias is one routing
+    // may not use — so the rule does nothing, and says why.
+    const resolution = resolve(
+      resolutionInput({
+        route: REVIEW_ROUTE,
+        hops: REVIEW_HOPS,
+        aliases: ALIASES.map((alias) =>
+          alias.alias === "second-opinion" ? { ...alias, enabled: false } : alias,
+        ),
+        context: { labels: ["security"] },
+      }),
+    );
+
+    expect(resolution.rules[0].code).toBe(RULE_CODES.aliasDisabled);
+    expect(resolution.votes).toEqual([]);
+  });
+
   it("fires the docs-only rule and filters the whole chain to local providers", () => {
     const resolution = resolve(resolutionInput({ context: { diffKind: "docs_only" } }));
     const [applied] = resolution.rules;
@@ -261,8 +280,31 @@ describe("a use_alias rule whose alias is not the primary", () => {
     expect(kept(resolution)).toEqual(["coder-std", "coder-max"]);
   });
 
+  it("does not apply a rule naming a switched-off alias, and says who switched it off", () => {
+    const off = { ...aliasNamed("coder-std"), enabled: false };
+    const resolution = resolve(
+      resolutionInput({
+        aliases: ALIASES.map((alias) => (alias.alias === "coder-std" ? off : alias)),
+        rules: pointedAt("coder-std"),
+        context: { effort: "l" },
+      }),
+    );
+
+    expect(resolution.rules[0].applied).toBe(false);
+    expect(resolution.rules[0].code).toBe(RULE_CODES.aliasDisabled);
+    expect(resolution.rules[0].explanation).toBe(
+      "Not applied — coder-std: alias disabled by Ken Suenobu 2026-08-01.",
+    );
+    expect(kept(resolution)).toEqual(["coder-max", "coder-fallback", "local-docs"]);
+  });
+
   it("does not apply a rule naming an alias this workspace has not bound", () => {
-    const unbound = { ...aliasNamed("coder-std"), alias: "gpt5-experiments", binding: null };
+    const unbound = {
+      ...aliasNamed("coder-std"),
+      alias: "gpt5-experiments",
+      binding: null,
+      enabled: false,
+    };
     const resolution = resolve(
       resolutionInput({
         aliases: [...ALIASES, unbound],
@@ -468,7 +510,11 @@ describe("an unbound alias in a chain", () => {
     // inner-joins the connection and would simply not return this row; a chain that lost a hop
     // that way would arrive shorter than the operator configured it.
     const hops = [
-      { position: 1, note: null, target: { ...aliasNamed("coder-max"), binding: null } },
+      {
+        position: 1,
+        note: null,
+        target: { ...aliasNamed("coder-max"), binding: null, enabled: false },
+      },
       ...IMPLEMENT_HOPS.slice(1),
     ];
     const resolution = resolve(resolutionInput({ hops }));
@@ -477,9 +523,113 @@ describe("an unbound alias in a chain", () => {
     expect(resolution.chain[0].code).toBe(HOP_CODES.unbound);
     expect(resolution.chain[0].provider).toBeNull();
     expect(resolution.chain[0].explanation).toBe(
-      "Primary dropped — the alias coder-max is not bound to a provider connection.",
+      "Primary dropped — coder-max: alias unbound — no provider.",
     );
     expect(kept(resolution)).toEqual(["coder-fallback", "local-docs"]);
+  });
+
+  it("is reported as unbound, not as switched off, though V019 holds it off too", () => {
+    // Every unbound alias is switched off, so both reasons are true; *no provider* is the nearer
+    // cause, and the one an operator can act on in Providers.
+    const hops = [
+      IMPLEMENT_HOPS[0],
+      {
+        ...IMPLEMENT_HOPS[1],
+        target: { ...aliasNamed("coder-fallback"), binding: null, enabled: false },
+      },
+      IMPLEMENT_HOPS[2],
+    ];
+
+    expect(resolve(resolutionInput({ hops })).chain[1].code).toBe(HOP_CODES.unbound);
+  });
+});
+
+describe("a switched-off alias in a chain", () => {
+  /**
+   * `implement-primary` with some of its aliases switched off.
+   *
+   * @param names - The aliases to switch off.
+   * @param updatedBy - Who the rows say last wrote them.
+   * @returns The chain.
+   */
+  function switchedOff(
+    names: readonly string[],
+    updatedBy: string | null = ALIAS_LAST_WRITE.updatedBy,
+  ) {
+    return IMPLEMENT_HOPS.map((hop) =>
+      names.includes(hop.target.alias)
+        ? { ...hop, target: { ...hop.target, enabled: false, updatedBy } }
+        : hop,
+    );
+  }
+
+  it("is dropped with who switched it off and when, and the chain continues", () => {
+    const resolution = resolve(resolutionInput({ hops: switchedOff(["coder-fallback"]) }));
+
+    expect(resolution.outcome).toBe("resolved");
+    expect(resolution.chain).toHaveLength(3);
+    expect(kept(resolution)).toEqual(["coder-max", "local-docs"]);
+    expect(dropped(resolution)).toEqual([["coder-fallback", HOP_CODES.disabled]]);
+    expect(resolution.chain[1].explanation).toBe(
+      "Fallback 1 dropped — coder-fallback: alias disabled by Ken Suenobu 2026-08-01.",
+    );
+  });
+
+  it("keeps the provider it would have run on, because it is still bound", () => {
+    const [primary] = resolve(resolutionInput({ hops: switchedOff(["coder-max"]) })).chain;
+
+    expect(primary.decision).toBe("dropped");
+    expect(primary.provider?.displayName).toBe("Anthropic Claude");
+    expect(primary.modelId).toBe("claude-fable-5");
+  });
+
+  it("omits the actor when nobody the workspace knows last wrote the alias", () => {
+    const resolution = resolve(resolutionInput({ hops: switchedOff(["coder-max"], null) }));
+
+    expect(resolution.chain[0].explanation).toBe(
+      "Primary dropped — coder-max: alias disabled 2026-08-01.",
+    );
+  });
+
+  it("still honours the floor — a switched-off primary does not license degrading below it", () => {
+    const resolution = resolve(
+      routedWith({ floorHopIndex: 1 }, { hops: switchedOff(["coder-max"]) }),
+    );
+
+    expect(resolution.outcome).toBe("fail_run");
+    expect(resolution.failure?.code).toBe(RESOLUTION_FAILURE_CODES.floorBreached);
+    expect(dropped(resolution)).toEqual([
+      ["coder-max", HOP_CODES.disabled],
+      ["coder-fallback", HOP_CODES.belowFloor],
+      ["local-docs", HOP_CODES.belowFloor],
+    ]);
+  });
+
+  it("reports a switched-off hop below the floor as below it, so a breach counts as before", () => {
+    // The order `resolve.ts` argues for: were the switch tested first, this breach would be
+    // reported as *nothing usable* and the floor would be blamed less than it was yesterday.
+    const resolution = resolve(
+      routedWith(
+        { floorHopIndex: 1 },
+        withHealth({ anthropic: "error" }, { hops: switchedOff(["local-docs"]) }),
+      ),
+    );
+
+    expect(resolution.failure?.code).toBe(RESOLUTION_FAILURE_CODES.floorBreached);
+    expect(resolution.chain[2].code).toBe(HOP_CODES.belowFloor);
+  });
+
+  it("fails through the existing no-route path when every hop is switched off", () => {
+    const resolution = resolve(
+      resolutionInput({ hops: switchedOff(["coder-max", "coder-fallback", "local-docs"]) }),
+    );
+
+    expect(resolution.outcome).toBe("fail_run");
+    expect(resolution.failure).toEqual({
+      code: RESOLUTION_FAILURE_CODES.noEligibleHop,
+      explanation: "No hop in implement-primary is usable, so this run fails rather than guessing.",
+    });
+    expect(resolution.chain).toHaveLength(3);
   });
 });
 

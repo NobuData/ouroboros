@@ -109,9 +109,43 @@ describe("the shape of an explanation", () => {
 });
 
 describe("explaining a dropped hop", () => {
+  /** When mockup 21's roadmap has Ken switch `coder-std` off — late in the day, in UTC. */
+  const SWITCHED_OFF = new Date("2026-08-01T23:59:59.999Z");
+
   it("names the alias when the alias is what is wrong", () => {
     expect(droppedHopExplanation(HOP_CODES.unbound, 1, "gpt5-experiments", null, null)).toBe(
-      "Primary dropped — the alias gpt5-experiments is not bound to a provider connection.",
+      "Primary dropped — gpt5-experiments: alias unbound — no provider.",
+    );
+  });
+
+  it("says who switched an alias off, and on which day", () => {
+    // CH.6's own sentence: "alias disabled by Ken 2026-08-01".
+    expect(
+      droppedHopExplanation(HOP_CODES.disabled, 2, "coder-std", facts(), null, {
+        updatedBy: "Ken",
+        updatedAt: SWITCHED_OFF,
+      }),
+    ).toBe("Fallback 1 dropped — coder-std: alias disabled by Ken 2026-08-01.");
+  });
+
+  it("dates the switch in UTC, so every reader is told the same day", () => {
+    const facts2 = { updatedBy: "Ken", updatedAt: new Date("2026-08-02T00:00:00.000Z") };
+
+    expect(droppedHopExplanation(HOP_CODES.disabled, 1, "coder-std", facts(), null, facts2)).toBe(
+      "Primary dropped — coder-std: alias disabled by Ken 2026-08-02.",
+    );
+  });
+
+  it("omits an actor nobody the workspace knows, rather than inventing one", () => {
+    // A row a migration or an import wrote, or one whose writer was deleted: V019 sets null.
+    expect(
+      droppedHopExplanation(HOP_CODES.disabled, 2, "coder-std", facts(), null, {
+        updatedBy: null,
+        updatedAt: SWITCHED_OFF,
+      }),
+    ).toBe("Fallback 1 dropped — coder-std: alias disabled 2026-08-01.");
+    expect(droppedHopExplanation(HOP_CODES.disabled, 2, "coder-std", facts(), null)).toBe(
+      "Fallback 1 dropped — coder-std: alias disabled.",
     );
   });
 
@@ -217,6 +251,15 @@ describe("explaining a rule", () => {
     );
   });
 
+  it("says who switched off the alias a rule names", () => {
+    expect(
+      ruleExplanation(RULE_CODES.aliasDisabled, "second-opinion", "review", "review", {
+        updatedBy: "Maya",
+        updatedAt: new Date("2026-08-01T10:00:00.000Z"),
+      }),
+    ).toBe("Not applied — second-opinion: alias disabled by Maya 2026-08-01.");
+  });
+
   it("says what a route_local rule did without naming an alias it does not have", () => {
     expect(ruleExplanation(RULE_CODES.routedLocal, null, null, "implement")).toBe(
       "Applied — the chain was filtered to local providers.",
@@ -228,6 +271,10 @@ describe("the codes themselves", () => {
   it("gives the floor breach and the refusal one spelling", () => {
     // Two names for one fact would make a client check both.
     expect(RESOLUTION_FAILURE_CODES.floorBreached).toBe(FLOOR_CODES.breached);
+  });
+
+  it("gives a switched-off alias one spelling, on a hop or on a rule", () => {
+    expect(RULE_CODES.aliasDisabled).toBe(HOP_CODES.disabled);
   });
 
   it("keeps every code distinct within its vocabulary", () => {

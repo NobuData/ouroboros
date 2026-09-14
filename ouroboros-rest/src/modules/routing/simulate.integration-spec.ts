@@ -509,6 +509,125 @@ describe("the routing simulate endpoint", () => {
     });
   });
 
+  describe("a switched-off or unbound alias (CH.6, #589)", () => {
+    /**
+     * Switch an alias off through CH.1's own write, as a person — so the row records who did,
+     * which is what the simulated sentence must name.
+     *
+     * @param person - Who switches it off.
+     * @param workspace - Where.
+     * @param name - The alias.
+     * @returns The day the row was written, as the sentence prints it.
+     */
+    async function switchOff(person: Person, workspace: Workspace, name: string): Promise<string> {
+      const found = await api.sql.query<{ id: string }>(
+        `select id from ${SCHEMA_NAME}.model_aliases where organization_id = $1 and alias = $2`,
+        [workspace.id, name],
+      );
+
+      await api
+        .as(person)("patch", `/api/v1/registry/aliases/${found.rows[0].id}`)
+        .set(TENANT_HEADER, workspace.slug)
+        .send({ enabled: false })
+        .expect(200);
+
+      const written = await api.sql.query<{ updated_at: Date }>(
+        `select updated_at from ${SCHEMA_NAME}.model_aliases where id = $1`,
+        [found.rows[0].id],
+      );
+
+      return written.rows[0].updated_at.toISOString().slice(0, 10);
+    }
+
+    it("shows disabling coder-std as a dropped hop naming who and when", async () => {
+      const owner = await api.signIn();
+      const workspace = await seeded(owner);
+      const day = await switchOff(owner, workspace, "coder-std");
+
+      const resolution = bodyOf<Resolution>(
+        await simulate(owner, workspace, { taskKind: "review" }).expect(200),
+      );
+
+      expect(resolution.outcome).toBe("resolved");
+      expect(resolution.chain.map((hop) => [hop.alias, hop.decision, hop.code])).toEqual([
+        ["coder-max", "kept", HOP_CODES.healthy],
+        ["coder-std", "dropped", HOP_CODES.disabled],
+      ]);
+      expect(resolution.chain[1].explanation).toBe(
+        `Fallback 1 dropped — coder-std: alias disabled by ${owner.displayName} ${day}.`,
+      );
+    });
+
+    it("still honours the floor when the switched-off alias was the primary", async () => {
+      // `analyze-primary` is coder-std then local-docs. Floored at hop 1, switching coder-std off
+      // must refuse the run rather than let it degrade onto local-docs.
+      const owner = await api.signIn();
+      const workspace = await seeded(owner);
+
+      await api.sql.query(
+        `update ${SCHEMA_NAME}.routes set floor_hop_index = 1
+          where organization_id = $1 and tag = 'analyze-primary'`,
+        [workspace.id],
+      );
+      await switchOff(owner, workspace, "coder-std");
+
+      const resolution = bodyOf<Resolution>(
+        await simulate(owner, workspace, { taskKind: "analyze" }).expect(200),
+      );
+
+      expect(resolution.outcome).toBe("fail_run");
+      expect(resolution.failure?.code).toBe("floor_breached");
+      expect(resolution.chain.map((hop) => [hop.alias, hop.code])).toEqual([
+        ["coder-std", HOP_CODES.disabled],
+        ["local-docs", HOP_CODES.belowFloor],
+      ]);
+    });
+
+    it("skips a rule whose alias is switched off, and says so", async () => {
+      const owner = await api.signIn();
+      const workspace = await seeded(owner);
+      const day = await switchOff(owner, workspace, "second-opinion");
+
+      const resolution = bodyOf<Resolution>(
+        await simulate(owner, workspace, {
+          taskKind: "review",
+          ctx: { labels: ["security"] },
+        }).expect(200),
+      );
+
+      expect(resolution.votes).toEqual([]);
+      expect(resolution.rules.map((rule) => [rule.code, rule.explanation])).toEqual([
+        [
+          RULE_CODES.aliasDisabled,
+          `Not applied — second-opinion: alias disabled by ${owner.displayName} ${day}.`,
+        ],
+      ]);
+    });
+
+    it("drops an unbound alias with the alias-unbound explanation", async () => {
+      const owner = await api.signIn();
+      const workspace = await seeded(owner);
+
+      await api.sql.query(
+        `update ${SCHEMA_NAME}.model_aliases set provider_connection_id = null, enabled = false
+          where organization_id = $1 and alias = 'coder-std'`,
+        [workspace.id],
+      );
+
+      const resolution = bodyOf<Resolution>(
+        await simulate(owner, workspace, { taskKind: "review" }).expect(200),
+      );
+
+      expect(resolution.chain[1]).toMatchObject({
+        alias: "coder-std",
+        decision: "dropped",
+        code: HOP_CODES.unbound,
+        provider: null,
+        explanation: "Fallback 1 dropped — coder-std: alias unbound — no provider.",
+      });
+    });
+  });
+
   describe("a floor breach", () => {
     it("answers 200 carrying fail_run and its reason, not an error", async () => {
       const owner = await api.signIn();

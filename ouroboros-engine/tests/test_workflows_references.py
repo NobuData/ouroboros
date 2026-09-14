@@ -9,6 +9,7 @@ from ouroboros_engine.workflows.dsl import (
     LlmLimits,
     LlmPermissions,
     LlmRouting,
+    PinnedAlias,
     Position,
     Trigger,
     TriggerConditions,
@@ -54,7 +55,7 @@ DOCUMENT = document(
             "a",
             mode="skill",
             skill="repo-map",
-            routing=LlmRouting(pinned_model="claude-sonnet-5"),
+            routing=LlmRouting(pinned_model=PinnedAlias(alias="coder-std")),
         ),
         llm("b", routing=LlmRouting(inherit_task="plan")),
     ]
@@ -67,19 +68,19 @@ def test_nothing_is_reported_when_the_caller_supplies_no_catalogue() -> None:
 
 
 def test_nothing_is_reported_when_every_reference_is_in_the_catalogue() -> None:
-    catalogue = Catalogue(
-        skills=["repo-map"], models=["claude-sonnet-5"], tasks=["plan"]
-    )
+    catalogue = Catalogue(skills=["repo-map"], aliases=["coder-std"], tasks=["plan"])
     assert check_references(DOCUMENT, catalogue) == []
 
 
 def test_each_kind_of_unknown_reference_is_reported_at_its_own_field() -> None:
-    warnings = check_references(DOCUMENT, Catalogue(skills=[], models=[], tasks=[]))
+    warnings = check_references(DOCUMENT, Catalogue(skills=[], aliases=[], tasks=[]))
     assert [(w.code, w.path, w.node) for w in warnings] == [
         (DslWarningCode.REFERENCE_UNKNOWN_SKILL, "/nodes/0/config/skill", "a"),
         (
-            DslWarningCode.REFERENCE_UNKNOWN_MODEL,
-            "/nodes/0/config/routing/pinned_model",
+            # Anchored at the name inside the pin (CH.6, #589): that is the field the
+            # inspector's alias picker edits.
+            DslWarningCode.REFERENCE_UNKNOWN_ALIAS,
+            "/nodes/0/config/routing/pinned_model/alias",
             "a",
         ),
         (
@@ -89,10 +90,19 @@ def test_each_kind_of_unknown_reference_is_reported_at_its_own_field() -> None:
         ),
     ]
     assert "repo-map" in warnings[0].message
+    assert "coder-std" in warnings[1].message
+
+
+def test_an_alias_is_looked_up_by_its_name_not_by_a_model_it_might_resolve_to() -> None:
+    # The catalogue lists registry aliases; a model id in it is not the name the stage pins.
+    catalogue = Catalogue(aliases=["claude-sonnet-5"])
+    assert [w.code for w in check_references(DOCUMENT, catalogue)] == [
+        DslWarningCode.REFERENCE_UNKNOWN_ALIAS
+    ]
 
 
 def test_an_absent_member_list_means_not_checked_rather_than_empty() -> None:
-    # A caller that can enumerate skills but not models says so by supplying only `skills`.
+    # A caller that can enumerate skills but not aliases says so by supplying only `skills`.
     warnings = check_references(DOCUMENT, Catalogue(skills=[]))
     assert [w.code for w in warnings] == [DslWarningCode.REFERENCE_UNKNOWN_SKILL]
 
@@ -107,7 +117,7 @@ def test_nothing_is_said_about_a_node_that_is_not_a_model_stage() -> None:
         position=Position(x=0, y=0),
         config=InfraConfig(runner_pool="pool-nobody-has"),
     )
-    catalogue = Catalogue(skills=[], models=[], tasks=[])
+    catalogue = Catalogue(skills=[], aliases=[], tasks=[])
     assert check_references(document([build]), catalogue) == []
 
 

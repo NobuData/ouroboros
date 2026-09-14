@@ -300,7 +300,7 @@ llm("analyze", {
   title: "Understand & scope",
   description: "Reads the issue against a map of the repository and states what the change touches.",
   skill: "repo-map",
-  model: route.model("claude-sonnet-5"),
+  model: route.alias("coder-std"),
   retries: 2,
   tokenBudget: 200_000,
   permissions: { pushFixup: false, touchCi: false },
@@ -317,7 +317,7 @@ Name the files the change will touch and the risks you can see.`,
 | Option | Holds | Spelling |
 |---|---|---|
 | `skill` | `config.skill` | A string. **Present exactly when `mode` is `"skill"`**, so `mode` is not written: validation guarantees the two agree in both directions. |
-| `model` | `config.routing` | `route.task("<task>")` for `inherit_task`, `route.model("<model>")` for `pinned_model`. |
+| `model` | `config.routing` | `route.task("<task>")` for `inherit_task`, `route.alias("<alias>")` for `pinned_model: {alias}` — a registry alias, never a raw model id ([#589](https://github.com/NobuData/ouroboros/issues/589)). |
 | `retries` | `limits.max_retries` | An integer. |
 | `tokenBudget` | `limits.token_budget` | An integer with `_` separators every three digits: `400_000`, `1_000`, `10_000_000`. |
 | `permissions` | `config.permissions` | `{ pushFixup: <bool>, touchCi: <bool> }`, both, always, in that order. |
@@ -329,7 +329,7 @@ A prompt-mode stage simply has no `skill` line:
 llm("plan", {
   title: "Write attack plan",
   description: "Turns the scope into an ordered plan the implement stage is held to.",
-  model: route.model("claude-fable-5"),
+  model: route.alias("coder-max"),
   retries: 2,
   tokenBudget: 200_000,
   permissions: { pushFixup: false, touchCi: false },
@@ -600,13 +600,13 @@ and every idiom the mockup uses that the document can carry is kept.
 | 4 `export default defineLoop("standard-fix", {` | identical | |
 | *(none)* | `dsl: "1.0",` | `dsl_version` has to survive the trip. |
 | 5–8, the trigger | identical, byte for byte | `on: "issue.queued"`, `when: (i) => i.effort.lte(effort.M)` |
-| 10 `analyze({ skill: repoMap, model: route.task("analyze") }),` | `llm("analyze", { … skill: "repo-map", model: route.model("claude-sonnet-5"), … })` | The callee is the node type, never the id. The seeded stage **pins** `claude-sonnet-5` rather than inheriting the `analyze` route, and it has a title, description, prompt, limits and permissions the listing leaves out. |
+| 10 `analyze({ skill: repoMap, model: route.task("analyze") }),` | `llm("analyze", { … skill: "repo-map", model: route.alias("coder-std"), … })` | The callee is the node type, never the id. The seeded stage **pins** the `coder-std` alias rather than inheriting the `analyze` route, and it has a title, description, prompt, limits and permissions the listing leaves out. |
 | 11–13 `recheckEffort({ escalate: { over: effort.M, to: "split-subtasks" } })` | `decision("effort-recheck", { … when: (i) => i.effort.lte(effort.M), branches: [plan, split] })`, then `llm("split", …)` and `backToQueue("back-to-queue", …)` | The canvas is a decision, two branch edges, a model stage and a terminal. `escalate` folds all five into an option no DSL construct has, and `split-subtasks` is not a node. |
-| 14 `plan({ template: "attack-plan@v3", model: route.task("plan") })` | `llm("plan", { … model: route.model("claude-fable-5"), prompt: \`Write the attack plan.…\` })` | DSL v1 has no prompt-template registry; `prompt_template` is the text itself. The seeded stage pins its model. |
+| 14 `plan({ template: "attack-plan@v3", model: route.task("plan") })` | `llm("plan", { … model: route.alias("coder-max"), prompt: \`Write the attack plan.…\` })` | DSL v1 has no prompt-template registry; `prompt_template` is the text itself. The seeded stage pins its alias. |
 | 15–20, `implement` | `skill`, `model: route.task("implement")`, `retries: 2`, `tokenBudget: 400_000` kept exactly | Plus the title, description, permissions and prompt the document holds. |
 | 21 `build({ farm: "pool-a", cache: "ccache" })` | `infra("build", { … farm: "pool-a", next: "test" })` | An infra stage has no cache field. |
 | 22 `test({ cmd: "twister -p native_sim", flakes: "retry-once" })` | `infra("test", { … farm: "pool-a", cmd: "twister -p native_sim", … })` | No flake policy exists in DSL v1; the seeded stage also names its pool. |
-| 23 `review({ template: "self-review@v2", model: route.task("review") })` | `llm("review", { … model: route.model("claude-fable-5"), prompt: … })` | As `plan`. |
+| 23 `review({ template: "self-review@v2", model: route.task("review") })` | `llm("review", { … model: route.alias("coder-max"), prompt: … })` | As `plan`. |
 | 24 `gate({ require: ["build", "test", "review"], onFail: "implement" }), // the loop bites its tail` | `gate("checks-green", { … require: ["build", "test", "review"], branches: [{ to: "open-pr", … }], onFail: "implement", }), // the loop bites its tail` | `require`, `onFail` and the comment are kept. The pass edge to `open-pr` is written because the graph is the edges, not the order of the calls ([`WORKFLOW_DSL.md` §2](WORKFLOW_DSL.md#2-the-root)). |
 | 25 `openPr({ merge: "auto-squash", deleteBranch: true })` | `openPr("open-pr", { … merge: "squash", deleteBranch: true })` | `merge_method` is `squash`, `merge` or `rebase`. *Auto-* is the action itself (`open_pr_automerge`), so repeating it on the value would add nothing. |
 | 26–27 `],` `});` | identical | |

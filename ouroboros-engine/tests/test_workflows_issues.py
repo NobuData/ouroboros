@@ -15,10 +15,12 @@ from typing import Annotated, Literal
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from ouroboros_engine.workflows.dsl import LlmConfig
 from ouroboros_engine.workflows.errors import DslErrorCode
 from ouroboros_engine.workflows.issues import (
     code_for,
     diagnostics_from_validation_error,
+    is_raw_model_pin,
 )
 
 
@@ -125,6 +127,61 @@ def test_the_anchor_is_attached_to_every_diagnostic() -> None:
     )
     assert diagnostics[0].node == "implement"
     assert diagnostics[0].edge is None
+
+
+def raw_pin_errors(routing: object) -> list[dict[str, object]]:
+    """The errors a model stage's config raises with the given routing, as pydantic gives them."""
+    config = {
+        "mode": "prompt",
+        "prompt_template": "Do the thing.",
+        "routing": routing,
+        "limits": {"max_retries": 1, "token_budget": 10000},
+        "permissions": {"push_fixup": False, "touch_ci": False},
+    }
+    with pytest.raises(ValidationError) as raised:
+        LlmConfig.model_validate(config)
+    return [dict(error) for error in raised.value.errors()]
+
+
+def test_a_raw_model_id_string_at_the_pin_is_a_raw_model_pin() -> None:
+    # CH.6 (#589): pydantic's `model_type` on a string there is the governance mistake, and it
+    # is asserted through a real failure so a pydantic that renames the type would show here.
+    [error] = raw_pin_errors({"pinned_model": "claude-fable-5"})
+    assert is_raw_model_pin(error)
+
+
+@pytest.mark.parametrize(
+    "routing",
+    [
+        {"pinned_model": 7},
+        {"pinned_model": {"alias": "Coder Max"}},
+        {"inherit_task": 7},
+    ],
+)
+def test_nothing_else_is_a_raw_model_pin(routing: object) -> None:
+    [error] = raw_pin_errors(routing)
+    assert not is_raw_model_pin(error)
+
+
+def test_a_raw_model_pin_is_translated_to_its_own_code_at_the_pin() -> None:
+    with pytest.raises(ValidationError) as raised:
+        LlmConfig.model_validate(
+            {
+                "mode": "prompt",
+                "prompt_template": "Do the thing.",
+                "routing": {"pinned_model": "claude-fable-5"},
+                "limits": {"max_retries": 1, "token_budget": 10000},
+                "permissions": {"push_fixup": False, "touch_ci": False},
+            }
+        )
+    [diagnostic] = diagnostics_from_validation_error(
+        raised.value, ("nodes", 1, "config"), node="stage"
+    )
+    assert (diagnostic.code, diagnostic.path, diagnostic.node) == (
+        DslErrorCode.CONFIG_ROUTING_RAW_MODEL,
+        "/nodes/1/config/routing/pinned_model",
+        "stage",
+    )
 
 
 @pytest.mark.parametrize(

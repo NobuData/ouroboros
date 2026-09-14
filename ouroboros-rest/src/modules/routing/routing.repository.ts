@@ -40,7 +40,7 @@
 import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../db/db.service";
-import type { AliasRow, ChainHopRow, EscalationRuleRow, RouteRow } from "./routing.rows";
+import type { ChainHopRow, EscalationRuleRow, ResolutionAliasRow, RouteRow } from "./routing.rows";
 
 /**
  * The connection columns every alias read here selects, in one place.
@@ -54,6 +54,22 @@ const CONNECTION_COLUMNS = [
   "c.kind",
   "c.display_name",
   "c.base_url",
+] as const;
+
+/**
+ * The alias columns both alias reads select — the name, what it means, and V019's lifecycle.
+ *
+ * `enabled` and the last writer arrived with CH.6 ([#589](https://github.com/NobuData/ouroboros/issues/589)):
+ * a switched-off hop is dropped with a sentence naming who switched it and when, and the name is
+ * `"user".name` through `updated_by`, left-joined because a row a migration wrote has nobody.
+ */
+const ALIAS_COLUMNS = [
+  "a.alias",
+  "a.model_id",
+  "a.params",
+  "a.enabled",
+  "a.updated_at",
+  "u.name as updated_by_name",
 ] as const;
 
 @Injectable()
@@ -126,7 +142,8 @@ export class RoutingRepository {
           .onRef("c.organization_id", "=", "a.organization_id")
           .onRef("c.id", "=", "a.provider_connection_id"),
       )
-      .select(["h.position", "h.note", "a.alias", "a.model_id", "a.params", ...CONNECTION_COLUMNS])
+      .leftJoin("user as u", "u.id", "a.updated_by")
+      .select(["h.position", "h.note", ...ALIAS_COLUMNS, ...CONNECTION_COLUMNS])
       .where("h.organization_id", "=", organizationId)
       .where("h.route_id", "=", routeId)
       .orderBy("h.position")
@@ -148,7 +165,7 @@ export class RoutingRepository {
    * @param organizationId - The workspace, from the tenant context.
    * @returns Every alias, ordered by name, unbound ones included.
    */
-  async aliases(organizationId: string): Promise<AliasRow[]> {
+  async aliases(organizationId: string): Promise<ResolutionAliasRow[]> {
     return this.database.db
       .selectFrom("model_aliases as a")
       .leftJoin("provider_connections as c", (join) =>
@@ -156,7 +173,8 @@ export class RoutingRepository {
           .onRef("c.organization_id", "=", "a.organization_id")
           .onRef("c.id", "=", "a.provider_connection_id"),
       )
-      .select(["a.alias", "a.model_id", "a.params", ...CONNECTION_COLUMNS])
+      .leftJoin("user as u", "u.id", "a.updated_by")
+      .select([...ALIAS_COLUMNS, ...CONNECTION_COLUMNS])
       .where("a.organization_id", "=", organizationId)
       .orderBy("a.alias")
       .execute();

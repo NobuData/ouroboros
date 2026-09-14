@@ -992,6 +992,40 @@ headline projected from the same merged schema the inspector's form is drawn fro
 about a whole connection costs a fixed handful of statements rather than two per model:
 `ParamSchemaService.forModels` resolves the adapter once and batches both metadata reads.
 
+### Resolution snapshots
+
+**What routing decided for a run, kept** (CH.6, [#589](https://github.com/NobuData/ouroboros/issues/589),
+decision **R9**). Mockup 21's chain card promises *every hop is inspectable in the run console
+transcript*, and that is a promise about stored truth: a card that re-ran `resolve()` whenever it
+rendered would print today's health beside last week's run number. So the card reads V024's
+`resolution_snapshots` — `src/modules/registry/resolutions.*.ts`, member read.
+
+```
+GET /api/v1/registry/resolutions/latest?alias=coder-max
+ ─▶ { alias: coder-max,
+      snapshot: { shapeVersion: 1, run: {issueNumber: 482}, taskKind: implement, routeTag: implement-primary,
+                  outcome: resolved, durationMs: 42, resolvedHopIndex: 1,
+                  chain: [ {alias: coder-max, modelId: claude-fable-5, provider: {displayName: Anthropic Claude, keySuffix: Xq4A}, decision: kept, durationMs: 42},
+                           {alias: coder-fallback, decision: dropped, code: provider_error, explanation: "Fallback 1 dropped — …"}, … ],
+                  rules: [], resolvedAt } }
+```
+
+**Latest is by containment**, `chain @> '[{"alias": …}]'` over V024's GIN index, newest first with
+the id breaking a millisecond tie — and a hop counts whether it was kept or dropped, because an alias
+that has been skipped for a week is what somebody inspecting it needs to see. **`snapshot: null` is
+an answer**: no run here has resolved through the alias, and the card renders a Simulate preview
+labelled as one rather than a fabricated run.
+
+**The writer's contract is `routing/snapshot.ts`.** `snapshotOf(resolution, measurements)` builds
+the row's versioned document from a `Resolution` plus what only execution knows — the masked key
+suffix and each tried hop's timing — and refuses what V024's CHECKs refuse (a whole key where the
+suffix belongs, a timing on a dropped hop) with a `RangeError` naming the hop. The chain executor
+([#235](https://github.com/NobuData/ouroboros/issues/235)) and the workflow bridge
+([#160](https://github.com/NobuData/ouroboros/issues/160)) write through it; until they land, the
+dev seed's run #482 is the one stored snapshot. The consumers are the chain card
+([#595](https://github.com/NobuData/ouroboros/issues/595)) and the run console
+([#304](https://github.com/NobuData/ouroboros/issues/304), [#312](https://github.com/NobuData/ouroboros/issues/312)).
+
 ## Provider health
 
 **Real checks where they are cheap, key validation where it is honest, and `unknown` where
@@ -1159,6 +1193,7 @@ simulate panel render those sentences verbatim — there is no story assembly in
 | ---------------------------------- | --------------------- |
 | the alias is bound to no provider  | `alias_unbound`       |
 | it sits deeper than the route floor| `below_floor`         |
+| an operator switched the alias off | `alias_disabled`      |
 | a `route_local` rule fired         | `rule_route_local`    |
 | the route allows no local models   | `local_not_allowed`   |
 | an operator paused the provider    | `provider_paused`     |
@@ -1168,6 +1203,13 @@ Policy is tested before health, deliberately: a hop the route's own configuratio
 not in play whatever a provider is doing, and an operator asking *why is hop 3 not being used*
 should be told about the floor they set rather than about a latency that would not have
 mattered.
+
+**A switched-off or unbound alias is a dropped hop, never a failed run on its own** (CH.6,
+[#589](https://github.com/NobuData/ouroboros/issues/589)). The sentences say which —
+*Fallback 1 dropped — coder-std: alias disabled by Ken Suenobu 2026-08-01.*, the actor and day
+from `model_aliases.updated_by`/`updated_at`, or *…: alias unbound — no provider.* The switch is
+tested *after* the floor, so a breach counts exactly the hops it always did; a rule naming a
+switched-off alias is `alias_disabled` too, and neither moves a primary nor adds a vote.
 
 **A floor breach is a refusal, never a shorter chain.** *The run may not proceed* and *the run
 proceeds on the third fallback* are different outcomes, and quietly returning the survivors
@@ -2366,8 +2408,10 @@ projection mockup 05's code view is a view of.
 
 P.2 is the language, P.4 is the derivation over it (below), and the CRUD, draft and publish
 routes are P.3 ([#134](https://github.com/NobuData/ouroboros/issues/134)) — [the lifecycle
-API](#the-workflow-lifecycle-api), whose publish gate is `validateWorkflowDocument` and the
-engine's own reading of the same document. The module also *exports* two providers, as
+API](#the-workflow-lifecycle-api), whose publish gate is `validateWorkflowDocument`, the
+workspace's model registry — every `pinned_model: {alias}` must name an alias it holds, since
+CH.6 ([#589](https://github.com/NobuData/ouroboros/issues/589)) — and the engine's own reading of
+the same document. The module also *exports* two providers, as
 `PricingModule` does, so the rail its own controller serves and the vocabulary the intake
 surfaces read are one derivation rather than three.
 
@@ -2700,7 +2744,10 @@ the type is drawn a glyph, so a shipping type never keeps the placeholder.
 publish naming an unlisted skill succeeds, and `toDslCatalogue(suggestions)` is the catalogue the
 inspector validates with, so an unknown name comes back as a `reference.unknown_*` **warning**. An
 empty list means *nothing to suggest*, and is left out of that catalogue rather than flagging every
-name.
+name. A pinned **alias** is the one exception, and only at publish: routes and workflows may only
+reference registry aliases, so the publish gate refuses a pin the workspace's registry does not hold
+— or a raw model id where the alias belongs — with a `suggestion`
+([`docs/WORKFLOW_DSL.md` §8.3](../docs/WORKFLOW_DSL.md#83-publishing-registry-aliases-only)).
 
 ### The code symbol table
 

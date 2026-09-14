@@ -191,12 +191,25 @@ describe("LlmConfigSchema", () => {
     expect(
       accepts(LlmConfigSchema, {
         ...valid,
-        routing: { inherit_task: "implement", pinned_model: "claude-fable-5" },
+        routing: { inherit_task: "implement", pinned_model: { alias: "coder-max" } },
       }),
     ).toBe(true);
     expect(accepts(LlmConfigSchema, { ...valid, routing: { model: "claude-fable-5" } })).toBe(
       false,
     );
+  });
+
+  it("takes a pin as an object naming a registry alias, never a raw model id (CH.6)", () => {
+    const pinned = (pin: unknown) =>
+      accepts(LlmConfigSchema, { ...valid, routing: { pinned_model: pin } });
+
+    expect(pinned({ alias: "coder-max" })).toBe(true);
+    expect(pinned("claude-fable-5")).toBe(false);
+    expect(pinned({ alias: "Coder Max" })).toBe(false);
+    expect(pinned({ alias: "qwen3-coder:32b" })).toBe(false);
+    expect(pinned({ alias: "a".repeat(65) })).toBe(false);
+    expect(pinned({ alias: "coder-max", model: "claude-fable-5" })).toBe(false);
+    expect(pinned({})).toBe(false);
   });
 });
 

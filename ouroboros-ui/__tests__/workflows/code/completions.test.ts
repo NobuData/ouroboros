@@ -129,8 +129,8 @@ describe("fixtures — each stage's options", () => {
     ["the merge methods", 'openPr("p", {\n      merge: ¦', ["squash", "merge", "rebase"]],
     ["true and false", 'openPr("p", {\n      deleteBranch: ¦', ["true", "false"]],
     ["the permission flags", 'llm("a", {\n      permissions: { ¦', ["pushFixup", "touchCi"]],
-    ["the route snippets", 'llm("a", {\n      model: ¦', ['route.task("")', 'route.model("")']],
-    ["the route methods", 'llm("a", {\n      model: route.¦', ["task", "model"]],
+    ["the route snippets", 'llm("a", {\n      model: ¦', ['route.task("")', 'route.alias("")']],
+    ["the route methods", 'llm("a", {\n      model: route.¦', ["task", "alias"]],
     [
       "the workspace's task routes",
       'llm("a", {\n      model: route.task("¦',
@@ -265,7 +265,7 @@ describe("when it opens", () => {
     expect(labels(stage('llm("a", {\n      ret¦'), { explicit: false })).not.toBeNull();
     expect(labels(stage('llm("a", {\n      model: route.¦'), { explicit: false })).toEqual([
       "task",
-      "model",
+      "alias",
     ]);
     expect(labels(stage('openPr("p", {\n      merge: "¦'), { explicit: false })).not.toBeNull();
   });
@@ -277,7 +277,7 @@ describe("where nothing is offered", () => {
     ["inside a prompt", stage('llm("a", {\n      prompt: `Scope the issue ¦')],
     ["for a callee the grammar does not have", stage('review("r", {\n      ¦')],
     ["for a free string", stage('infra("b", {\n      cmd: "¦')],
-    ["for a model name, which nothing suggests", stage('llm("a", {\n      model: route.model("¦')],
+    ["for an alias name, which nothing suggests", stage('llm("a", {\n      model: route.alias("¦')],
     ["for a node id", stage('llm("a", {\n      next: "¦')],
   ])("offers nothing %s", (_case, source) => {
     expect(complete(source)).toBeNull();

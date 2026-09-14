@@ -3,7 +3,7 @@ import { ResolutionService } from "./resolution.service";
 import { ROUTING_ERRORS } from "./routing.errors";
 import type { RoutingRepository } from "./routing.repository";
 import { CONNECTIONS, HEALTH } from "./routing.fixture";
-import type { AliasRow, ChainHopRow, EscalationRuleRow, RouteRow } from "./routing.rows";
+import type { ChainHopRow, EscalationRuleRow, ResolutionAliasRow, RouteRow } from "./routing.rows";
 
 /**
  * The load, and only the load.
@@ -40,11 +40,16 @@ const HOPS: ChainHopRow[] = [
     kind: "anthropic",
     display_name: "Anthropic Claude",
     base_url: null,
+    enabled: true,
+    updated_at: new Date("2026-08-01T09:30:00.000Z"),
+    updated_by_name: "Ken Suenobu",
   },
 ];
 
 /** The workspace's aliases — here, just the one the chain names. */
-const ALIAS_ROWS: AliasRow[] = HOPS.map(({ position: _position, note: _note, ...alias }) => alias);
+const ALIAS_ROWS: ResolutionAliasRow[] = HOPS.map(
+  ({ position: _position, note: _note, ...alias }) => alias,
+);
 
 /** The effort rule, as the row it is stored as. */
 const RULE_ROWS: EscalationRuleRow[] = [

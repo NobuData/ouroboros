@@ -14,7 +14,7 @@ Three decisions carried across from it:
 * **``message`` is presentation, not contract.** Each validator renders its own prose; what
   the parity suites compare is ``code``, ``path`` and the anchors.
 * **Errors and warnings are separate lists, not a severity field.** Decision **P7**: an
-  unknown skill or model reference must not fail a save, and a caller that has to filter by
+  unknown skill or alias reference must not fail a save, and a caller that has to filter by
   severity to learn that is a caller who will forget to.
 
 A :class:`Diagnostic` is a dataclass rather than a pydantic model for one reason worth
@@ -69,10 +69,15 @@ class DslErrorCode:
     CONFIG_SKILL_REQUIRED: Final = "config.skill_required"
     #: A ``skill`` in ``mode: "prompt"``, which would never be loaded.
     CONFIG_SKILL_NOT_ALLOWED: Final = "config.skill_not_allowed"
-    #: ``routing`` names neither a task to inherit nor a model to pin.
+    #: ``routing`` names neither a task to inherit nor an alias to pin.
     CONFIG_ROUTING_MISSING: Final = "config.routing_missing"
     #: ``routing`` names both, and the inspector's radios are exclusive.
     CONFIG_ROUTING_AMBIGUOUS: Final = "config.routing_ambiguous"
+    #: ``routing.pinned_model`` is a raw provider model id where a registry alias belongs —
+    #: routes and workflows may only reference aliases (CH.6, #589). A ``schema.type`` failure,
+    #: given a code of its own because it is the one mistake the governance rule exists to
+    #: catch.
+    CONFIG_ROUTING_RAW_MODEL: Final = "config.routing_raw_model"
 
     #: Two nodes share an ``id``. Reported on the second and each one after.
     NODE_DUPLICATE_ID: Final = "node.duplicate_id"
@@ -102,17 +107,18 @@ class DslErrorCode:
 class DslWarningCode:
     """Every code this validator reports as a warning — decision **P7**, in full.
 
-    A skill, a model or a task route the caller's catalogue does not list is reported and the
-    document still saves. The model registry (mockups 06/21) and the skills catalogue (mockup
-    14) do not exist, so today the only caller that can supply a catalogue is a test; a caller
-    that supplies none gets no warnings of this kind, which is the honest answer to *is this
-    reference known?* when nothing in the system knows.
+    A skill, an alias or a task route the caller's catalogue does not list is reported and the
+    document still saves; a caller that supplies no catalogue gets no warnings of this kind,
+    which is the honest answer to *is this reference known?* when nothing knows. An unknown
+    **alias** is the one of the three that also refuses a *publish* — ``ouroboros-rest``'s
+    publish gate reads the workspace's registry and promotes it (CH.6, #589) — while a draft
+    may name one ahead of it.
     """
 
     #: The named skill is not in the catalogue the caller supplied.
     REFERENCE_UNKNOWN_SKILL: Final = "reference.unknown_skill"
-    #: The pinned model is not in the catalogue the caller supplied.
-    REFERENCE_UNKNOWN_MODEL: Final = "reference.unknown_model"
+    #: The pinned alias is not in the catalogue the caller supplied.
+    REFERENCE_UNKNOWN_ALIAS: Final = "reference.unknown_alias"
     #: The inherited task route is not in the catalogue the caller supplied.
     REFERENCE_UNKNOWN_TASK: Final = "reference.unknown_task"
 
@@ -139,6 +145,7 @@ SCHEMA_STAGE_CODES: Final[frozenset[str]] = frozenset(
         DslErrorCode.CONFIG_SKILL_NOT_ALLOWED,
         DslErrorCode.CONFIG_ROUTING_MISSING,
         DslErrorCode.CONFIG_ROUTING_AMBIGUOUS,
+        DslErrorCode.CONFIG_ROUTING_RAW_MODEL,
     }
 )
 

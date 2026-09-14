@@ -141,6 +141,30 @@ function translate(
 }
 
 /**
+ * Whether an issue is a raw provider model id where a registry alias belongs (CH.6, #589).
+ *
+ * zod calls it `invalid_type` — a string is not the `{alias}` object the schema declares — and
+ * that is true, but it is also the exact mistake *routes and workflows may only reference
+ * registry aliases* exists to catch, so it gets `config.routing_raw_model` rather than a type
+ * complaint. pydantic's `model_type` at the same place gets the same code in
+ * `ouroboros-engine`'s `issues.py`, which is what the parity fixture holds both to.
+ *
+ * @param issue - The zod issue.
+ * @param value - The value at the issue's path.
+ * @returns True for a string at `…/routing/pinned_model`.
+ */
+function isRawModelPin(issue: z.core.$ZodIssue, value: unknown): value is string {
+  const [parent, field] = issue.path.slice(-2);
+
+  return (
+    issue.code === "invalid_type" &&
+    typeof value === "string" &&
+    parent === "routing" &&
+    field === "pinned_model"
+  );
+}
+
+/**
  * Translate a zod failure into diagnostics.
  *
  * @param issues - The issues from one `safeParse`.
@@ -172,7 +196,21 @@ export function diagnosticsFromZodIssues(
       continue;
     }
 
-    const present = valueAtPath(parsed, issue.path) !== undefined;
+    const value = valueAtPath(parsed, issue.path);
+
+    if (isRawModelPin(issue, value)) {
+      diagnostics.push({
+        code: DslErrorCode.CONFIG_ROUTING_RAW_MODEL,
+        path: pointerFor(base, issue.path),
+        ...anchor,
+        message:
+          `Routing pins the raw model id \`${value}\` — raw model ids are not allowed; ` +
+          'reference a registry alias as `{"alias": …}` instead.',
+      });
+      continue;
+    }
+
+    const present = value !== undefined;
     const { code, message } = translate(issue, present);
     diagnostics.push({
       code,

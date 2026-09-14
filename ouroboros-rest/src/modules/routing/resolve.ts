@@ -23,9 +23,17 @@
  * Policy is tested before health, deliberately: a hop the route's own configuration excludes
  * is not in play whatever any provider is doing, and an operator asking *why is hop 3 not
  * being used* should be told about the floor they set rather than about a latency that would
- * not have mattered. Within policy, the order is unbound → floor → `route_local` → local
- * fallback, which runs from *this hop cannot resolve at all* outwards to *this route will not
- * use it today*.
+ * not have mattered. Within policy, the order is unbound → floor → switched off → `route_local`
+ * → local fallback, which runs from *this hop cannot resolve at all* outwards to *this route will
+ * not use it today*.
+ *
+ * **A switched-off alias is tested after the floor, and that placement is CH.6's promise that
+ * floor semantics are unchanged** ([#589](https://github.com/NobuData/ouroboros/issues/589)). A
+ * breach is decided by counting the hops dropped *for sitting below the floor*; were the switch
+ * tested first, a switched-off hop below the floor would stop being counted, and a run the floor
+ * refused would start failing as *nothing usable* instead — the floor quietly blamed less. Unbound
+ * stays first because every unbound alias is also switched off (V019), and *no provider* is the
+ * nearer cause.
  *
  * ---------------------------------------------------------------------------
  * **The floor is measured against `route_hops.position`, never against the resolved index.**
@@ -121,12 +129,14 @@ function providerOf(
  * See this file's header for why the tests are in this order.
  *
  * @param provider - Where the hop runs, or null when its alias is unbound.
+ * @param enabled - Whether its alias is switched on.
  * @param position - Its stored position, or null for a hop a rule prepended.
  * @param policy - The route's policies and whether a `route_local` rule fired.
  * @returns The code. Exactly one, and the first that applies.
  */
 function hopCode(
   provider: ResolvedProvider | null,
+  enabled: boolean,
   position: number | null,
   policy: HopPolicy,
 ): HopCode {
@@ -136,6 +146,10 @@ function hopCode(
 
   if (policy.floorHopIndex !== null && position !== null && position > policy.floorHopIndex) {
     return HOP_CODES.belowFloor;
+  }
+
+  if (!enabled) {
+    return HOP_CODES.disabled;
   }
 
   const local = isLocalProvider(provider.kind);
@@ -175,7 +189,7 @@ function walkHop(
   policy: HopPolicy,
 ): ResolutionHop {
   const provider = providerOf(hop.target.binding, health);
-  const code = hopCode(provider, hop.position, policy);
+  const code = hopCode(provider, hop.target.enabled, hop.position, policy);
   const kept = KEPT.has(code);
 
   return {
@@ -190,7 +204,14 @@ function walkHop(
     explanation:
       kept && provider !== null
         ? keptHopExplanation(index, provider)
-        : droppedHopExplanation(code, index, hop.target.alias, provider, policy.floorHopIndex),
+        : droppedHopExplanation(
+            code,
+            index,
+            hop.target.alias,
+            provider,
+            policy.floorHopIndex,
+            hop.target,
+          ),
     code,
   };
 }

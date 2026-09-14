@@ -99,6 +99,33 @@ def message_for(code: str, error: dict[str, object]) -> str:
     return f"{detail}." if detail else "This value does not match the workflow schema."
 
 
+def is_raw_model_pin(error: dict[str, object]) -> bool:
+    """Whether an error is a raw provider model id where a registry alias belongs (CH.6, #589).
+
+    pydantic calls it ``model_type`` — a string is not the ``{"alias": …}`` object
+    :class:`~ouroboros_engine.workflows.dsl.PinnedAlias` declares — and that is true, but it is
+    also the exact mistake *routes and workflows may only reference registry aliases* exists to
+    catch, so it gets ``config.routing_raw_model`` rather than a type complaint. zod's
+    ``invalid_type`` at the same place gets the same code in ``ouroboros-rest``'s
+    ``dsl.issues.ts`` (``isRawModelPin``), which is what the parity fixture holds both to.
+
+    Only a *string* qualifies: a number or an array there is not a model id anybody wrote, so it
+    stays the plain type failure both validators already agree on.
+
+    Args:
+        error: One entry from :meth:`pydantic.ValidationError.errors`.
+
+    Returns:
+        ``True`` for a type failure on a string at ``…/routing/pinned_model``.
+    """
+    location = tuple(error.get("loc") or ())
+    return (
+        str(error.get("type", "")).endswith("_type")
+        and isinstance(error.get("input"), str)
+        and location[-2:] == ("routing", "pinned_model")
+    )
+
+
 def diagnostics_from_validation_error(
     exc: ValidationError,
     base: tuple[str | int, ...] = (),
@@ -120,8 +147,23 @@ def diagnostics_from_validation_error(
     """
     diagnostics: list[Diagnostic] = []
     for error in exc.errors():
-        code = code_for(str(error["type"]))
         location = tuple(str(segment) for segment in error["loc"])
+        if is_raw_model_pin(dict(error)):
+            diagnostics.append(
+                Diagnostic(
+                    code=DslErrorCode.CONFIG_ROUTING_RAW_MODEL,
+                    path=pointer(*base, *location),
+                    message=(
+                        f"Routing pins the raw model id `{error['input']}` — raw model ids "
+                        'are not allowed; reference a registry alias as `{"alias": …}` '
+                        "instead."
+                    ),
+                    node=node,
+                    edge=edge,
+                )
+            )
+            continue
+        code = code_for(str(error["type"]))
         diagnostics.append(
             Diagnostic(
                 code=code,

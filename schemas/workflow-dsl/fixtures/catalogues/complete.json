@@ -1,5 +1,5 @@
 {
   "skills": ["repo-map", "zephyr-conventions"],
-  "models": ["claude-sonnet-5", "claude-fable-5"],
+  "aliases": ["coder-std", "coder-max"],
   "tasks": ["analyze", "plan", "split", "implement", "review"]
 }

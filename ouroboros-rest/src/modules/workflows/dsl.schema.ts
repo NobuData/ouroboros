@@ -45,7 +45,7 @@ export const SourceKindSchema = z.enum(["github", "gitlab", "jira", "linear"]);
 export type SourceKind = z.infer<typeof SourceKindSchema>;
 
 /**
- * A skill name, a model identifier or a task-route name.
+ * A skill name or a task-route name — a model is pinned by {@link AliasNameSchema} instead.
  *
  * Decision **P7**: a validated string, never a foreign key. Whether it names something that
  * exists is `dsl.references.ts`'s question, and its answer is a warning.
@@ -144,6 +144,29 @@ export const TriggerConfigSchema = z.strictObject({});
 export type TriggerConfig = z.infer<typeof TriggerConfigSchema>;
 
 /**
+ * A model registry alias, spelled as `model_aliases.alias` holds it (V015) — `coder-max`.
+ *
+ * `v1.json`'s `alias_name`. A name and never a raw provider model id: the model id lives on the
+ * alias (decision **M1**), so swapping a model is one edit of one registry row rather than of
+ * every workflow that pins it (CH.6, [#589](https://github.com/NobuData/ouroboros/issues/589)).
+ */
+export const AliasNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+
+/**
+ * A stage's pin — `{alias: "coder-max"}`.
+ *
+ * An object rather than a bare name so the reference is **structural**: a raw model id written
+ * where an alias belongs is a type mistake the schema catches (`config.routing_raw_model`)
+ * rather than a string that merely fails to resolve, and CG.3's reference index can find every
+ * pin by its key.
+ */
+export const PinnedAliasSchema = z.strictObject({ alias: AliasNameSchema });
+
+/**
  * A model stage's config — the inspector's exact field set (mockup 04).
  *
  * `skill` is declared optional here and made conditional by `dsl.validator.ts`, which is
@@ -161,7 +184,7 @@ export const LlmConfigSchema = z.strictObject({
   prompt_template: z.string().min(1).max(20000),
   routing: z.strictObject({
     inherit_task: ReferenceSchema.optional(),
-    pinned_model: ReferenceSchema.optional(),
+    pinned_model: PinnedAliasSchema.optional(),
   }),
   limits: z.strictObject({
     max_retries: z.int().min(0).max(10),

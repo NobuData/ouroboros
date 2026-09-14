@@ -124,7 +124,7 @@ function editableSchema(): {
 }
 
 /** The route snippets `model:` offers. */
-const ROUTE_SNIPPETS = ['route.task("")', 'route.model("")'];
+const ROUTE_SNIPPETS = ['route.task("")', 'route.alias("")'];
 
 /** What every predicate-valued key offers. */
 const PREDICATE_FORMS = [
@@ -201,8 +201,8 @@ describe("the Types card — mockup 05", () => {
     expect(JSON.stringify(TABLE)).not.toMatch(/default chain/i);
   });
 
-  it("signs route.model beside it", () => {
-    expect(signature(TABLE, "route.model")).toBe("route.model(name: ModelId): ModelRoute");
+  it("signs route.alias beside it, taking a registry alias rather than a model id", () => {
+    expect(signature(TABLE, "route.alias")).toBe("route.alias(name: AliasName): ModelRoute");
   });
 });
 
@@ -308,7 +308,7 @@ describe("completions — each stage's options", () => {
 
   it("offers the two routes as `model:`, and the methods after `route.`", () => {
     expect(offered(TABLE, "stage.llm.model")).toEqual(ROUTE_SNIPPETS);
-    expect(offered(TABLE, "route.methods")).toEqual(["task", "model"]);
+    expect(offered(TABLE, "route.methods")).toEqual(["task", "alias"]);
   });
 
   it("offers the edge entry's keys in `branches` and `onFail`", () => {

@@ -214,7 +214,7 @@ here would be a second place to look for the same thing.
 | `mode` | `prompt` \| `skill` | yes | The inspector's *Direct prompt / Skill* segment. |
 | `skill` | reference, ≤ 128 | iff `mode: "skill"` | Loaded into context **before** the prompt. Present in `prompt` mode is an error, not a no-op. |
 | `prompt_template` | string, 1–20 000 | yes | Required in both modes — the skill precedes the prompt, it does not replace it. `{{…}}` placeholders resolve from the run context. |
-| `routing` | exactly one of `inherit_task` / `pinned_model` | yes | The inspector's two radios. Neither and both are two different mistakes, and each has its own code. |
+| `routing` | exactly one of `inherit_task` (a task name) / `pinned_model` (`{"alias": "<registry alias>"}`) | yes | The inspector's two radios. Neither and both are two different mistakes, and each has its own code. A raw model id string in `pinned_model` is a third, with a third code (`config.routing_raw_model`). |
 | `limits.max_retries` | integer 0–10 | yes | |
 | `limits.token_budget` | integer 1 000–10 000 000 | yes | A number of tokens. The inspector renders 400000 as `400k`; the formatting is the UI's and never the document's. |
 | `permissions.push_fixup` | boolean | yes | Decision **P9**. |
@@ -225,8 +225,17 @@ permission nobody can be held to. Storing the intent now keeps published version
 forward-compatible with enforcement, which lands with the interpreter (T.6) — and until it does,
 the inspector must not imply an enforcement that does not exist.
 
-`skill`, `inherit_task` and `pinned_model` are **validated strings, not foreign keys** — decision
-**P7**, and [§8.2](#82-warnings) is what happens when one names something unknown.
+A pinned stage names a **model registry alias**, never a raw provider model id — `"routing": {
+"pinned_model": { "alias": "coder-max" } }` — because the model id lives on the alias, and swapping a
+model is one edit of one registry row rather than of every workflow that pins it. The object form
+makes the reference structural: a string written where the object belongs is a schema error with a
+code of its own, and an alias name follows the registry's shape (lower-case letters, digits and
+single hyphens, at most 64 characters). Amended in place on the 1.x line by CH.6
+([#589](https://github.com/NobuData/ouroboros/issues/589)).
+
+`skill`, `inherit_task` and `pinned_model.alias` are **validated names, not foreign keys** —
+decision **P7**, and [§8.2](#82-warnings) is what happens when one names something unknown. A
+pinned alias is the one that must also resolve at **publish** ([§8.3](#83-publishing-registry-aliases-only)).
 
 ### 4.3 `infra`
 
@@ -411,16 +420,16 @@ Beyond the structural codes in [§7](#7-the-structural-rules):
 | `schema.unknown_property` | A property the schema does not declare. |
 | `config.skill_required` | `mode: "skill"` with no skill to load. |
 | `config.skill_not_allowed` | A skill in `prompt` mode, which would never be loaded. |
-| `config.routing_missing` | Routing names neither a task nor a model. |
+| `config.routing_missing` | Routing names neither a task nor an alias. |
 | `config.routing_ambiguous` | Routing names both. |
+| `config.routing_raw_model` | `routing.pinned_model` is a raw model id string where `{"alias": …}` belongs. |
 
 A document written in an unsupported `dsl_version` is reported and **nothing else is**: the rules
 this build would report against are not the rules the document was written to.
 
 ### 8.2 Warnings
 
-Decision **P7**, in full. The model registry (mockups 06/21) and the skills catalogue (mockup 14)
-do not exist. A foreign key to a table nobody has written is not a stricter design; it is a
+Decision **P7**, in full. The skills catalogue (mockup 14) does not exist. A foreign key to a table nobody has written is not a stricter design; it is a
 design that cannot be built, and refusing to save a workflow because it names a skill the
 workspace has not defined yet would make the editor unusable during exactly the period the skill
 is being defined.
@@ -428,13 +437,13 @@ is being defined.
 | Code | Fires when |
 |---|---|
 | `reference.unknown_skill` | `config.skill` is not in the caller's catalogue |
-| `reference.unknown_model` | `routing.pinned_model` is not in it |
+| `reference.unknown_alias` | `routing.pinned_model.alias` is not in it |
 | `reference.unknown_task` | `routing.inherit_task` is not in it |
 
-**The caller supplies the vocabulary.** Neither validator holds a list of skills or models, so
+**The caller supplies the vocabulary.** Neither validator holds a list of skills or aliases, so
 neither can invent one; a caller that supplies no catalogue gets no warnings of this kind, which
 is the honest answer to *is this reference known?* when nothing in the system knows. A catalogue
-member left out (`{skills: […]}` with no `models`) means *not checked*, which is different from
+member left out (`{skills: […]}` with no `aliases`) means *not checked*, which is different from
 an empty list meaning *nothing is known*.
 
 `runner_pool` is deliberately not checked: which pools exist is a property of a deployment's
@@ -442,6 +451,27 @@ build farm (mockup 08), not of a workspace's catalogues.
 
 Warnings are reported only for a document that is otherwise valid. Advice about a document
 somebody cannot save would bury the reason they cannot.
+
+### 8.3 Publishing: registry aliases only
+
+Mockup 21's governance rule, enforced ([#589](https://github.com/NobuData/ouroboros/issues/589)):
+**routes and workflows may only reference registry aliases.** A draft may still name an alias
+somebody is about to create; a published version may not. Publishing reads the publishing
+workspace's model registry and refuses with `422 workflow_definition_invalid`:
+
+| Finding | `source` | When | `suggestion` |
+|---|---|---|---|
+| `config.routing_raw_model` | `dsl` | `pinned_model` is a raw model id string | The alias bound to that model id; failing that, the nearest alias name |
+| `reference.unknown_alias` | `registry` | `pinned_model.alias` names no alias in the registry | The same rule, over the name written |
+
+The nearest name is within a third of the alias's length (at least one edit), and nothing is
+suggested beyond that. Both findings name the stage: *Stage `plan` pins the raw model id
+`claude-fable-5` — raw model ids are not allowed; reference a registry alias (did you mean
+coder-max?).*
+
+An alias that **exists but is unbound or switched off is not refused**: switching an alias off keeps
+every reference to it, and resolution is where the switch takes effect, as a dropped hop. Unknown
+skills and task routes stay advisory at publish, as they are everywhere else.
 
 ---
 

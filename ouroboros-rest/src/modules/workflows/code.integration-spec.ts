@@ -15,6 +15,7 @@ import type {
   WorkflowCodeIssue,
   WorkflowCodeTree,
 } from "./code.resources";
+import { seedPinnedAliases } from "./pins.fixture";
 import type { WorkflowDetail } from "./workflows.resources";
 
 /**
@@ -103,6 +104,9 @@ describe("the code view, against a migrated database", () => {
   async function bench(email = "owner@ouroboros.invalid"): Promise<Bench> {
     const owner = await api.signIn({ email });
     const workspace = await api.workspace(owner);
+
+    // Publishing mockup 04's canvas resolves its pins against this registry (CH.6, #589).
+    await seedPinnedAliases(api, workspace.id);
 
     return { owner, slug: workspace.slug, id: workspace.id };
   }

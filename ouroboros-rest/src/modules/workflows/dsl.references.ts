@@ -1,21 +1,25 @@
 /**
- * Decision **P7**, in full: skill, model and task-route references are validated *strings*,
- * and an unknown one is a warning ([#133](https://github.com/NobuData/ouroboros/issues/133)).
+ * Decision **P7**, in full: skill, alias and task-route references are validated *names*, and
+ * an unknown one is a warning ([#133](https://github.com/NobuData/ouroboros/issues/133)).
  *
- * The model registry (mockups 06/21) and the skills catalogue (mockup 14) do not exist. A
- * foreign key to a table nobody has written is not a stricter design, it is a design that
- * cannot be built; and refusing to save a workflow because it names a skill the workspace
- * has not defined yet would make the editor unusable during exactly the period the skill is
- * being defined. So the reference is stored as written, and whether it resolves is a
- * question asked at validation, answered as a warning, and rendered by the inspector as a
- * flag on the field rather than as a block on the Publish button.
+ * The skills catalogue (mockup 14) does not exist. A foreign key to a table nobody has written
+ * is not a stricter design, it is a design that cannot be built; and refusing to save a
+ * workflow because it names a skill the workspace has not defined yet would make the editor
+ * unusable during exactly the period the skill is being defined. So the reference is stored as
+ * written, and whether it resolves is a question asked at validation, answered as a warning,
+ * and rendered by the inspector as a flag on the field.
+ *
+ * **An alias is the exception at publish, and only there.** CH.6
+ * ([#589](https://github.com/NobuData/ouroboros/issues/589)) makes *routes and workflows may only
+ * reference registry aliases* a system property: `publish.gate.ts` reads the workspace's
+ * registry and promotes this module's `reference.unknown_alias` to a refusal. A draft may still
+ * name an alias somebody is about to create; a published version may not.
  *
  * **The caller supplies the vocabulary.** This module holds no list of skills and no list of
- * models, so it cannot invent one — the same shape `ouroboros-engine`'s `EstimationContext`
+ * aliases, so it cannot invent one — the same shape `ouroboros-engine`'s `EstimationContext`
  * takes for the same reason (decisions K5 and K6). A caller that supplies no catalogue gets
  * no warnings of this kind, which is the honest answer to *is this reference known?* when
- * nothing in the system knows. When P.4 and the model registry land, the catalogue gets a
- * real source and these warnings start firing with no change here.
+ * nothing in the system knows.
  *
  * `runner_pool` is deliberately not checked. Which pools exist is a property of a
  * deployment's build farm (mockup 08), not of the workspace's catalogues, and a warning
@@ -36,8 +40,8 @@ import type { WorkflowDocument } from "./dsl.schema";
 export interface DslCatalogue {
   /** Every skill the workspace has defined. */
   skills?: readonly string[];
-  /** Every model identifier the registry resolves. */
-  models?: readonly string[];
+  /** Every alias the workspace's model registry holds, bound or not. */
+  aliases?: readonly string[];
   /** Every task name the routing table has a route for. */
   tasks?: readonly string[];
 }
@@ -58,7 +62,7 @@ export function checkReferences(
   const warnings: DslDiagnostic[] = [];
   const known = {
     skills: catalogue.skills && new Set(catalogue.skills),
-    models: catalogue.models && new Set(catalogue.models),
+    aliases: catalogue.aliases && new Set(catalogue.aliases),
     tasks: catalogue.tasks && new Set(catalogue.tasks),
   };
 
@@ -77,12 +81,12 @@ export function checkReferences(
 
     const { inherit_task: inheritTask, pinned_model: pinnedModel } = config.routing;
 
-    if (pinnedModel !== undefined && known.models && !known.models.has(pinnedModel)) {
+    if (pinnedModel !== undefined && known.aliases && !known.aliases.has(pinnedModel.alias)) {
       warnings.push({
-        code: DslWarningCode.REFERENCE_UNKNOWN_MODEL,
-        path: pointer("nodes", index, "config", "routing", "pinned_model"),
+        code: DslWarningCode.REFERENCE_UNKNOWN_ALIAS,
+        path: pointer("nodes", index, "config", "routing", "pinned_model", "alias"),
         node: node.id,
-        message: `No model named \`${pinnedModel}\` is in the registry.`,
+        message: `No alias named \`${pinnedModel.alias}\` is in this workspace's model registry.`,
       });
     }
 

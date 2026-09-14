@@ -282,7 +282,9 @@ def _check_llm_config(
             Diagnostic(
                 code=DslErrorCode.CONFIG_ROUTING_MISSING,
                 path=pointer(*base, "routing"),
-                message="Routing must either inherit the route for a task or pin a model.",
+                message=(
+                    "Routing must either inherit the route for a task or pin a registry alias."
+                ),
                 node=node_id,
             )
         )
@@ -292,8 +294,8 @@ def _check_llm_config(
                 code=DslErrorCode.CONFIG_ROUTING_AMBIGUOUS,
                 path=pointer(*base, "routing"),
                 message=(
-                    "Routing inherits a task's route or pins a model, never both — the "
-                    "inspector's two radios are exclusive."
+                    "Routing inherits a task's route or pins a registry alias, never both — "
+                    "the inspector's two radios are exclusive."
                 ),
                 node=node_id,
             )

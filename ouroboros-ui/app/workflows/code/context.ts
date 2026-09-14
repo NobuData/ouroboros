@@ -52,7 +52,7 @@ const PERMISSIONS_KEY = "permissions";
 /** The stage options whose arrays hold edge entries. */
 const EDGE_LIST_KEYS = new Set(["branches", "onFail"]);
 
-/** The namespace `route.task` and `route.model` are members of. */
+/** The namespace `route.task` and `route.alias` are members of. */
 const ROUTE_NAMESPACE = "route";
 
 /** The call whose string argument names a task route. */

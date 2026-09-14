@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.34.13",
+    "version": "0.35.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -56,7 +56,7 @@
     },
     {
       "name": "registry",
-      "description": "**The model registry — what a workspace may run, and what it costs**\n([#576](https://github.com/NobuData/ouroboros/issues/576), mockup 21).\n\nOne operation family is published so far: the workspace's own **price corrections**\n([#586](https://github.com/NobuData/ouroboros/issues/586)). Resolution itself — *what\ndoes this model cost* — is deliberately not a route. It is served inside this service\nto the registry table ([#588](https://github.com/NobuData/ouroboros/issues/588)), to\npriced token accounting ([#92](https://github.com/NobuData/ouroboros/issues/92)) and to\nroute spend ([#198](https://github.com/NobuData/ouroboros/issues/198)), and a second\nendpoint answering the same question would be a second place for the answer to come\nfrom.\n\n**The `$ per 1M in·out` column has four shapes and one absence**, and the rule behind\nall five is *never say a number you cannot source*:\n\n| Cell | What it means |\n|---|---|\n| `$10 · $50` | Per-token rates, in cents per one million tokens |\n| `seat-based` | Billed per person, not per call — GitHub Copilot |\n| `usage-based` | Metered by the vendor on terms this catalog cannot express — Cursor |\n| `$0` | Genuinely free per call — a model running on local hardware |\n| `—` | **We have no price for this model** |\n\n**`$0` and `—` are different facts and never collapse into each other.** A budget is\nsized off this column, and an unknown price rendered as free is the one error that\nwould be acted on. Every priced answer also carries its **provenance**: which snapshot\nit came from, or that this workspace overrode it.\n\n**The prices come from a vendored, version-stamped snapshot**\n([#580](https://github.com/NobuData/ouroboros/issues/580)) that ships with the\nmigrations — no third-party call on the render path, so an air-gapped deployment keeps\nthe column — and a workspace that has negotiated its own rates corrects them here. An\noverride always wins, and says so."
+      "description": "**The model registry — what a workspace may run, and what it costs**\n([#576](https://github.com/NobuData/ouroboros/issues/576), mockup 21).\n\nIts operations are the composed table ([#588](https://github.com/NobuData/ouroboros/issues/588)),\nthe alias lifecycle ([#584](https://github.com/NobuData/ouroboros/issues/584)), param\nschemas ([#585](https://github.com/NobuData/ouroboros/issues/585)), import from a provider\n([#587](https://github.com/NobuData/ouroboros/issues/587)), the workspace's own **price\ncorrections** ([#586](https://github.com/NobuData/ouroboros/issues/586)), and the **stored\nresolution snapshots** behind the chain card\n([#589](https://github.com/NobuData/ouroboros/issues/589)). Price resolution itself — *what\ndoes this model cost* — is deliberately not a route. It is served inside this service\nto the registry table ([#588](https://github.com/NobuData/ouroboros/issues/588)), to\npriced token accounting ([#92](https://github.com/NobuData/ouroboros/issues/92)) and to\nroute spend ([#198](https://github.com/NobuData/ouroboros/issues/198)), and a second\nendpoint answering the same question would be a second place for the answer to come\nfrom.\n\n**The `$ per 1M in·out` column has four shapes and one absence**, and the rule behind\nall five is *never say a number you cannot source*:\n\n| Cell | What it means |\n|---|---|\n| `$10 · $50` | Per-token rates, in cents per one million tokens |\n| `seat-based` | Billed per person, not per call — GitHub Copilot |\n| `usage-based` | Metered by the vendor on terms this catalog cannot express — Cursor |\n| `$0` | Genuinely free per call — a model running on local hardware |\n| `—` | **We have no price for this model** |\n\n**`$0` and `—` are different facts and never collapse into each other.** A budget is\nsized off this column, and an unknown price rendered as free is the one error that\nwould be acted on. Every priced answer also carries its **provenance**: which snapshot\nit came from, or that this workspace overrode it.\n\n**The prices come from a vendored, version-stamped snapshot**\n([#580](https://github.com/NobuData/ouroboros/issues/580)) that ships with the\nmigrations — no third-party call on the render path, so an air-gapped deployment keeps\nthe column — and a workspace that has negotiated its own rates corrects them here. An\noverride always wins, and says so."
     },
     {
       "name": "routing",
@@ -5272,6 +5272,147 @@
           },
           "422": {
             "description": "`validation_failed` — `connection` is missing or is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registry/resolutions/latest": {
+      "get": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "The latest stored resolution through an alias, for the chain card",
+        "description": "Mockup 21's **RESOLUTION CHAIN** card and the run console's transcript\n([#589](https://github.com/NobuData/ouroboros/issues/589), decision **R9**): the most\nrecent **stored** resolution snapshot in this workspace whose chain names the alias —\nwhether that hop was kept or dropped.\n\n**A stored fact, never a re-computation.** A snapshot is what routing decided when a run\nwas resolved: the provider as the health snapshot then saw it, the masked key suffix, the\nrules evaluated, and the timings. Re-resolving on read would print today's health beside\nlast week's run number.\n\n**`snapshot: null` is an answer, not an error** — no run here has resolved through the\nalias. The chain card then renders a Simulate preview labelled as one\n(`POST /api/v1/routing/simulate`), never a fabricated run. A well-formed name no alias\ncarries today is answered the same way: a snapshot names its alias by name and outlives\na rename or a delete.\n\n**Consumers.** The chain card ([#595](https://github.com/NobuData/ouroboros/issues/595))\nand the run console's read APIs and transcript\n([#304](https://github.com/NobuData/ouroboros/issues/304),\n[#312](https://github.com/NobuData/ouroboros/issues/312)). **Writers.** The chain executor\n([#235](https://github.com/NobuData/ouroboros/issues/235)) and the workflow execution\nbridge ([#160](https://github.com/NobuData/ouroboros/issues/160)), at execution time;\nuntil they land, the development seed's run #482\n([#582](https://github.com/NobuData/ouroboros/issues/582)) is the one stored snapshot.\n\n**Any member may read it.**",
+        "operationId": "readLatestResolution",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "alias",
+            "in": "query",
+            "required": true,
+            "description": "The alias whose latest stored resolution to read, by name.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The alias, and its latest stored resolution or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestResolution"
+                },
+                "example": {
+                  "alias": "coder-max",
+                  "snapshot": {
+                    "shapeVersion": 1,
+                    "id": "5eed0017-0000-4000-8000-000000000001",
+                    "run": {
+                      "id": "0b7e1c2a-4d5f-4a3b-9c8d-7e6f5a4b3c21",
+                      "issueNumber": 482
+                    },
+                    "taskKind": "implement",
+                    "routeTag": "implement-primary",
+                    "outcome": "resolved",
+                    "durationMs": 42,
+                    "resolvedHopIndex": 1,
+                    "chain": [
+                      {
+                        "index": 1,
+                        "position": 1,
+                        "alias": "coder-max",
+                        "modelId": "claude-fable-5",
+                        "params": {
+                          "thinking": "max"
+                        },
+                        "provider": {
+                          "kind": "anthropic",
+                          "displayName": "Anthropic Claude",
+                          "keySuffix": "Xq4A",
+                          "status": "active",
+                          "latencyMs": 42,
+                          "detail": null
+                        },
+                        "note": null,
+                        "decision": "kept",
+                        "code": "provider_healthy",
+                        "explanation": "Primary · healthy · 42ms",
+                        "durationMs": 42
+                      },
+                      {
+                        "index": 2,
+                        "position": 2,
+                        "alias": "coder-fallback",
+                        "modelId": "gpt-5-codex",
+                        "params": {},
+                        "provider": {
+                          "kind": "copilot",
+                          "displayName": "GitHub Copilot",
+                          "keySuffix": null,
+                          "status": "error",
+                          "latencyMs": null,
+                          "detail": "elevated latency"
+                        },
+                        "note": "Fallback on 5xx / timeouts",
+                        "decision": "dropped",
+                        "code": "provider_error",
+                        "explanation": "Fallback 1 dropped — GitHub Copilot is unreachable (elevated latency).",
+                        "durationMs": null
+                      }
+                    ],
+                    "rules": [],
+                    "resolvedAt": "2026-09-13T10:08:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `alias` is missing, or is not a name an alias could have:\nlower-case letters, digits and single hyphens, at most 64 characters.",
             "content": {
               "application/json": {
                 "schema": {
@@ -11229,9 +11370,9 @@
                           "symbol": "route.task"
                         },
                         {
-                          "label": "route.model(\"\")",
+                          "label": "route.alias(\"\")",
                           "kind": "snippet",
-                          "symbol": "route.model"
+                          "symbol": "route.alias"
                         }
                       ]
                     },
@@ -12138,7 +12279,7 @@
             }
           },
           "422": {
-            "description": "`workflow_definition_invalid` — one or both validators refused the definition, and\n**nothing was created**. `details.findings` carries every finding, node-anchored.\n(`validation_failed` is the other `422` here: the id is not a uuid, or `changeNote`\nis blank or longer than 500 characters.)",
+            "description": "`workflow_definition_invalid` — a validator refused the definition, and **nothing was\ncreated**. `details.findings` carries every finding, node-anchored. A finding's\n`source` is `dsl`, `registry` or `engine`.\n\n**Routes and workflows may only reference registry aliases**\n([#589](https://github.com/NobuData/ouroboros/issues/589)). A stage pinning a raw\nmodel id (`config.routing_raw_model`) or an alias this workspace's registry does not\nhold (`reference.unknown_alias`, source `registry`) is refused with a message naming\nthe stage and, where there is one, `suggestion` — the alias the author most plausibly\nmeant, which for a raw model id is the alias bound to it. An alias that exists but is\nunbound or switched off is not refused: switching an alias off keeps its references.\n\n(`validation_failed` is the other `422` here: the id is not a uuid, or `changeNote`\nis blank or longer than 500 characters.)",
             "content": {
               "application/json": {
                 "schema": {
@@ -12154,6 +12295,14 @@
                         "code": "structure.trigger_missing",
                         "message": "A workflow needs exactly one trigger node.",
                         "path": "/nodes"
+                      },
+                      {
+                        "source": "dsl",
+                        "code": "config.routing_raw_model",
+                        "message": "Stage `plan` pins the raw model id `claude-fable-5` — raw model ids are not allowed; reference a registry alias (did you mean coder-max?).",
+                        "path": "/nodes/3/config/routing/pinned_model",
+                        "node": "plan",
+                        "suggestion": "coder-max"
                       },
                       {
                         "source": "engine",
@@ -18104,7 +18253,7 @@
                 "type": "null"
               }
             ],
-            "description": "Where it runs, or **null** when the alias is bound to no provider connection. Such a\nhop is always `dropped`, with a stated reason."
+            "description": "Where it runs, or **null** when the alias is bound to no provider connection. Such a\nhop is always `dropped`, with a stated reason. A switched-off alias is still bound,\nso its hop keeps the provider it would have run on and is dropped with\n`alias_disabled`."
           },
           "note": {
             "type": [
@@ -18135,11 +18284,12 @@
               "provider_paused",
               "provider_error",
               "alias_unbound",
+              "alias_disabled",
               "below_floor",
               "rule_route_local",
               "local_not_allowed"
             ],
-            "description": "Why — **stable**, and what a client branches on. Two of the eight keep a hop:\n`provider_healthy` and `provider_unknown`. They are separate codes because *usable*\nand *nothing has checked it* are different claims, and the second must never be\nrendered as the first. A code this list does not carry still arrives with a sentence\nand a `decision`, which is why adding one is not a version bump.",
+            "description": "Why — **stable**, and what a client branches on. Two of the nine keep a hop:\n`provider_healthy` and `provider_unknown`. They are separate codes because *usable*\nand *nothing has checked it* are different claims, and the second must never be\nrendered as the first. A code this list does not carry still arrives with a sentence\nand a `decision`, which is why adding one is not a version bump.\n\n`alias_unbound` and `alias_disabled` are the registry's two reasons\n([#589](https://github.com/NobuData/ouroboros/issues/589)): the alias names no\nprovider connection, or an operator switched it off — the sentence names who and on\nwhich day. Neither is a failed run on its own; if every hop drops, the refusal is\n`no_eligible_hop`, and a floor is honoured exactly as before.",
             "examples": [
               "provider_healthy"
             ]
@@ -18204,9 +18354,10 @@
               "route_local_applied",
               "not_this_task_kind",
               "alias_unresolvable",
+              "alias_disabled",
               "vote_already_added"
             ],
-            "description": "What it did, or why it did not. The first five mean `applied: true`; the last three\nare the near misses.",
+            "description": "What it did, or why it did not. The first five mean `applied: true`; the last four\nare the near misses. `alias_disabled` is a rule naming an alias an operator switched\noff — no primary is moved onto it and no vote is taken from it.",
             "examples": [
               "add_vote_added"
             ]
@@ -18217,6 +18368,397 @@
             "examples": [
               "Applied — a second-opinion vote was added for the executor to obtain."
             ]
+          }
+        }
+      },
+      "LatestResolution": {
+        "type": "object",
+        "title": "LatestResolution",
+        "description": "The alias asked about, and its most recent stored resolution\n([#589](https://github.com/NobuData/ouroboros/issues/589)).",
+        "additionalProperties": false,
+        "required": [
+          "alias",
+          "snapshot"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string",
+            "description": "The alias, echoed.",
+            "examples": [
+              "coder-max"
+            ]
+          },
+          "snapshot": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResolutionSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The most recent snapshot whose chain names the alias, kept or dropped — or **null**\nwhen no run in this workspace has resolved through it, which is the chain card's cue\nto render a Simulate preview labelled as one."
+          }
+        }
+      },
+      "ResolutionSnapshot": {
+        "type": "object",
+        "title": "ResolutionSnapshot",
+        "description": "One stored resolution — what routing decided for one run, kept (decision **R9**,\n[#589](https://github.com/NobuData/ouroboros/issues/589)).\n\n**Versioned.** `shapeVersion` is the pin a consumer holds, under `Resolution`'s rule:\nadding a hop code, a rule code or an optional field is not a bump; renaming or removing a\nfield, or changing what one means, is — together with a migration that widens the\ndatabase's check on the stored shape.\n\n**Names, never ids.** The chain names its alias, route and provider as they read when the\nrun was resolved, so a snapshot stays legible after any of them is renamed or deleted —\nand an optional fact nobody recorded is `null`, never a stand-in.",
+        "additionalProperties": false,
+        "required": [
+          "shapeVersion",
+          "id",
+          "run",
+          "taskKind",
+          "routeTag",
+          "outcome",
+          "durationMs",
+          "resolvedHopIndex",
+          "chain",
+          "rules",
+          "resolvedAt"
+        ],
+        "properties": {
+          "shapeVersion": {
+            "type": "integer",
+            "enum": [
+              1
+            ],
+            "description": "The shape the snapshot is written in — the number a consumer pins.",
+            "examples": [
+              1
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The snapshot's id."
+          },
+          "run": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "issueNumber"
+            ],
+            "description": "The run this resolution served.",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The run's id."
+              },
+              "issueNumber": {
+                "type": "integer",
+                "description": "The issue it works — the card's `run",
+                "examples": [
+                  482
+                ]
+              }
+            }
+          },
+          "taskKind": {
+            "type": "string",
+            "description": "The task kind resolved for, as it was named then.",
+            "examples": [
+              "implement"
+            ]
+          },
+          "routeTag": {
+            "type": "string",
+            "description": "The route that answered, as it was tagged then.",
+            "examples": [
+              "implement-primary"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "fail_run"
+            ],
+            "description": "Whether a hop was kept.",
+            "examples": [
+              "resolved"
+            ]
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How long the resolution took, in whole milliseconds — the card's `· 42ms` — or null\nwhen nobody timed it. Never `0` as a stand-in.",
+            "examples": [
+              42
+            ]
+          },
+          "resolvedHopIndex": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The `index` of the hop that resolved — the first kept one, which is the line the chain\ncard draws — or null for a run the resolution refused.",
+            "examples": [
+              1
+            ]
+          },
+          "chain": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Every hop, in resolved order, dropped ones included.",
+            "items": {
+              "$ref": "#/components/schemas/ResolutionSnapshotHop"
+            }
+          },
+          "rules": {
+            "type": "array",
+            "description": "Every escalation rule the resolution matched, applied or not.",
+            "items": {
+              "$ref": "#/components/schemas/ResolutionSnapshotRule"
+            }
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the resolution was made."
+          }
+        }
+      },
+      "ResolutionSnapshotHop": {
+        "type": "object",
+        "title": "ResolutionSnapshotHop",
+        "description": "One hop of a stored chain, as `ResolutionHop` described it when the run was resolved.",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "position",
+          "alias",
+          "modelId",
+          "params",
+          "provider",
+          "note",
+          "decision",
+          "code",
+          "explanation",
+          "durationMs"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Its place in the resolved chain, dropped hops included.",
+            "examples": [
+              1
+            ]
+          },
+          "position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Its stored `route_hops.position`, or null for a hop a rule prepended.",
+            "examples": [
+              1
+            ]
+          },
+          "alias": {
+            "type": "string",
+            "description": "The alias the hop named.",
+            "examples": [
+              "coder-max"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "description": "The raw provider model id it resolved to.",
+            "examples": [
+              "claude-fable-5"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The params it resolved with."
+          },
+          "provider": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResolutionSnapshotProvider"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it ran, or null for an unbound alias."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The operator's note on the hop, or null."
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "kept",
+              "dropped"
+            ],
+            "description": "Whether the executor would try it.",
+            "examples": [
+              "kept"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "description": "The resolution's code for the hop — `ResolutionHop.code`'s vocabulary, stored as an\nidentifier so a code added later still reads.",
+            "examples": [
+              "provider_healthy"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "description": "The resolution's sentence for the hop, as it was written then — rendered verbatim.",
+            "examples": [
+              "Primary · healthy · 42ms"
+            ]
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How long the hop took, in whole milliseconds — only on a kept hop that was tried.",
+            "examples": [
+              42
+            ]
+          }
+        }
+      },
+      "ResolutionSnapshotProvider": {
+        "type": "object",
+        "title": "ResolutionSnapshotProvider",
+        "description": "Where a stored hop's model ran, as the health snapshot saw it then.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "displayName",
+          "keySuffix",
+          "status",
+          "latencyMs",
+          "detail"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "The adapter kind — what a client labels the provider by.",
+            "examples": [
+              "anthropic"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "description": "The connection's display name then.",
+            "examples": [
+              "Anthropic Claude"
+            ]
+          },
+          "keySuffix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z0-9]{1,16}$",
+            "description": "The masked tail of the key the hop resolved with — the card's `(key …Xq4A)` — or null\nwhere no credential was involved. Never a key: at most sixteen letters and digits.",
+            "examples": [
+              "Xq4A"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "error",
+              "unknown"
+            ],
+            "description": "The connection's state in the health snapshot the resolution used.",
+            "examples": [
+              "active"
+            ]
+          },
+          "latencyMs": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The latency measured then, in milliseconds, or null.",
+            "examples": [
+              42
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the provider was in that state, or null.",
+            "examples": [
+              "elevated latency"
+            ]
+          }
+        }
+      },
+      "ResolutionSnapshotRule": {
+        "type": "object",
+        "title": "ResolutionSnapshotRule",
+        "description": "One escalation rule the stored resolution matched.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sortOrder",
+          "display",
+          "applied",
+          "code",
+          "explanation"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The rule's id then."
+          },
+          "sortOrder": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Its evaluation order then, or null."
+          },
+          "display": {
+            "type": "string",
+            "description": "The rule's generated sentence, as it read then."
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "Whether it changed the resolution."
+          },
+          "code": {
+            "type": "string",
+            "description": "What it did, or why it did not — `AppliedRule.code`'s vocabulary, as an identifier."
+          },
+          "explanation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The same, as a sentence, or null."
           }
         }
       },

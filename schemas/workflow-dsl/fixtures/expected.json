@@ -31,7 +31,7 @@
     },
     {
       "name": "standard-fix-known-references",
-      "about": "The same graph against a catalogue that lists every skill, model and task it names.",
+      "about": "The same graph against a catalogue that lists every skill, alias and task it names.",
       "document": "valid/standard-fix.json",
       "catalogue": "catalogues/complete.json",
       "valid": true,
@@ -47,8 +47,8 @@
       "errors": [],
       "warnings": [
         {
-          "code": "reference.unknown_model",
-          "path": "/nodes/1/config/routing/pinned_model",
+          "code": "reference.unknown_alias",
+          "path": "/nodes/1/config/routing/pinned_model/alias",
           "node": "analyze"
         },
         {
@@ -57,8 +57,8 @@
           "node": "analyze"
         },
         {
-          "code": "reference.unknown_model",
-          "path": "/nodes/3/config/routing/pinned_model",
+          "code": "reference.unknown_alias",
+          "path": "/nodes/3/config/routing/pinned_model/alias",
           "node": "plan"
         },
         {
@@ -77,8 +77,8 @@
           "node": "implement"
         },
         {
-          "code": "reference.unknown_model",
-          "path": "/nodes/9/config/routing/pinned_model",
+          "code": "reference.unknown_alias",
+          "path": "/nodes/9/config/routing/pinned_model/alias",
           "node": "review"
         }
       ]
@@ -287,13 +287,27 @@
     },
     {
       "name": "llm-routing-missing",
-      "about": "Routing that neither inherits a task's route nor pins a model.",
+      "about": "Routing that neither inherits a task's route nor pins an alias.",
       "document": "invalid/llm-routing-missing.json",
       "valid": false,
       "errors": [
         {
           "code": "config.routing_missing",
           "path": "/nodes/1/config/routing",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "llm-routing-raw-model",
+      "about": "CH.6 (#589): a raw provider model id pinned where a registry alias belongs.",
+      "document": "invalid/llm-routing-raw-model.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "config.routing_raw_model",
+          "path": "/nodes/1/config/routing/pinned_model",
           "node": "stage"
         }
       ],
