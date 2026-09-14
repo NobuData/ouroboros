@@ -7,6 +7,7 @@ import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import { parseWorkflowCode } from "./code.parser";
 import { edit, golden } from "./code.parser.fixture";
 import type {
   WorkflowCode,
@@ -37,6 +38,11 @@ import type { WorkflowDetail } from "./workflows.resources";
  *     archived.
  *   * **Members read and may not write; another workspace's slug is `404`.** The route-by-route
  *     isolation matrix is `studio.integration-spec.ts`'.
+ *   * **Two editors on one draft converge** (U.4, [#168](https://github.com/NobuData/ouroboros/issues/168)).
+ *     A visual save followed by a stale code save is a `409`, and the code editor's reload and re-save
+ *     keep both edits. Saves alternating between the editors leave both reading one document under
+ *     one etag. Of two saves racing on one etag, exactly one is written. A `422` in the code editor
+ *     moves nothing the canvas holds, its etag included.
  *
  * ```bash
  * yarn test:integration src/modules/workflows/code.integration-spec.ts
@@ -306,6 +312,196 @@ describe("the code view, against a migrated database", () => {
       );
 
       expect(body.details.editedIn).toBe("code");
+    });
+  });
+
+  describe("two editors on one draft (U.4)", () => {
+    /** The parts of `standard-fix`'s document these cases edit. */
+    interface EditedDocument {
+      nodes: { title: string; position: { x: number; y: number } }[];
+    }
+
+    /** What both editors hold once they agree. */
+    interface Converged {
+      /** The draft's document, as the canvas reads it. */
+      readonly definition: EditedDocument;
+      /** The file, as the code editor reads it. */
+      readonly text: string;
+      /** The etag either editor would save with. */
+      readonly etag: string;
+    }
+
+    /**
+     * Read the draft through both editors and hold the two readings to each other: the file parses
+     * back to exactly the canvas's document, under the canvas's etag.
+     *
+     * @param place - Where.
+     * @param id - The workflow.
+     * @returns What both editors now hold.
+     */
+    async function converged(place: Bench, id: string): Promise<Converged> {
+      const file = await readFile(place);
+      const canvas = await detail(place, id);
+
+      expect(file.etag).toBe(canvas.draft.etag);
+      expect(parseWorkflowCode(file.text)).toStrictEqual({
+        slug: "standard-fix",
+        document: canvas.draft.definition,
+        errors: [],
+      });
+
+      return {
+        definition: canvas.draft.definition as EditedDocument,
+        text: file.text,
+        etag: file.etag,
+      };
+    }
+
+    /**
+     * A canvas edit: one stage dragged along the x axis.
+     *
+     * @param definition - The document the canvas holds.
+     * @param index - Which stage.
+     * @param x - Where it is dropped.
+     * @returns The edited copy.
+     */
+    function moved(definition: unknown, index: number, x: number): EditedDocument {
+      const document = structuredClone(definition) as EditedDocument;
+      document.nodes[index].position.x = x;
+      return document;
+    }
+
+    /**
+     * A code edit: one stage retitled in the file.
+     *
+     * @param text - The file the code editor holds.
+     * @param from - The stage's title now.
+     * @param to - Its new title.
+     * @returns The edited file.
+     */
+    function retitled(text: string, from: string, to: string): string {
+      return edit(text, `title: ${JSON.stringify(from)},`, `title: ${JSON.stringify(to)},`);
+    }
+
+    it("refuses a stale code save after a visual save with 409, and the reloaded code editor keeps both edits", async () => {
+      const place = await bench();
+      const created = await workflow(place);
+      const opened = await converged(place, created.id);
+
+      await canvasSave(place, created.id, opened.etag, moved(opened.definition, 1, 999)).expect(
+        200,
+      );
+      const stale = bodyOf<ErrorEnvelope>(
+        await codeSave(
+          place,
+          opened.etag,
+          retitled(opened.text, "Issue queued", "Ticket queued"),
+        ).expect(409),
+      );
+      expect(stale.details.editedIn).toBe("visual");
+
+      const reloaded = await readFile(place);
+      expect(reloaded.etag).toBe(stale.details.current);
+      await codeSave(
+        place,
+        reloaded.etag,
+        retitled(reloaded.text, "Issue queued", "Ticket queued"),
+      ).expect(200);
+
+      const { definition } = await converged(place, created.id);
+      expect(definition.nodes[0].title).toBe("Ticket queued");
+      expect(definition.nodes[1].position.x).toBe(999);
+    });
+
+    it("converges on one document after saves alternating between the editors, with every edit in it", async () => {
+      const place = await bench();
+      const created = await workflow(place);
+      const rounds = 6;
+
+      for (let round = 0; round < rounds; round += 1) {
+        const { definition, text, etag } = await converged(place, created.id);
+
+        if (round % 2 === 0) {
+          await canvasSave(place, created.id, etag, moved(definition, round, 1000 + round)).expect(
+            200,
+          );
+        } else {
+          const title = definition.nodes[round].title;
+          await codeSave(place, etag, retitled(text, title, `Round ${round}`)).expect(200);
+        }
+      }
+
+      const { definition } = await converged(place, created.id);
+      for (let round = 0; round < rounds; round += 1) {
+        if (round % 2 === 0) expect(definition.nodes[round].position.x).toBe(1000 + round);
+        else expect(definition.nodes[round].title).toBe(`Round ${round}`);
+      }
+    });
+
+    it("writes exactly one of two saves racing on one etag, names the winner to the loser, and converges once the loser re-saves", async () => {
+      const place = await bench();
+      const created = await workflow(place);
+      const opened = await converged(place, created.id);
+      const originalX = opened.definition.nodes[1].position.x;
+
+      const [visual, code] = await Promise.all([
+        canvasSave(place, created.id, opened.etag, moved(opened.definition, 1, 999)),
+        codeSave(place, opened.etag, retitled(opened.text, "Issue queued", "Ticket queued")),
+      ]);
+
+      expect([visual.status, code.status].sort()).toEqual([200, 409]);
+      const winner = visual.status === 200 ? "visual" : "code";
+      const loser = winner === "visual" ? code : visual;
+      expect(bodyOf<ErrorEnvelope>(loser).details.editedIn).toBe(winner);
+
+      // Only the winner's edit is stored…
+      const stored = await converged(place, created.id);
+      expect(stored.definition.nodes[0].title).toBe(
+        winner === "code" ? "Ticket queued" : "Issue queued",
+      );
+      expect(stored.definition.nodes[1].position.x).toBe(winner === "visual" ? 999 : originalX);
+
+      // …and the loser, having reloaded, applies its edit on top of it.
+      if (winner === "visual") {
+        await codeSave(
+          place,
+          stored.etag,
+          retitled(stored.text, "Issue queued", "Ticket queued"),
+        ).expect(200);
+      } else {
+        await canvasSave(place, created.id, stored.etag, moved(stored.definition, 1, 999)).expect(
+          200,
+        );
+      }
+
+      const settled = await converged(place, created.id);
+      expect(settled.definition.nodes[0].title).toBe("Ticket queued");
+      expect(settled.definition.nodes[1].position.x).toBe(999);
+    });
+
+    it("lets a 422 in the code editor move nothing the canvas holds, its etag included", async () => {
+      const place = await bench();
+      const created = await workflow(place);
+      const opened = await converged(place, created.id);
+      const broken = edit(opened.text, 'dsl: "1.0",', "dsl: 1.0,");
+      const before = await storedDraft(created.id);
+
+      await codeSave(place, opened.etag, broken).expect(422);
+      expect(await storedDraft(created.id)).toBe(before);
+
+      // The refusal moved no etag, so the canvas's save from the same read still lands…
+      await canvasSave(place, created.id, opened.etag, moved(opened.definition, 1, 999)).expect(
+        200,
+      );
+      const after = await storedDraft(created.id);
+
+      // …and the same broken file on the now-stale etag is still refused before the guard is reached:
+      // a 422, not a 409, and nothing written.
+      await codeSave(place, opened.etag, broken).expect(422);
+      expect(await storedDraft(created.id)).toBe(after);
+
+      const { definition } = await converged(place, created.id);
+      expect(definition.nodes[1].position.x).toBe(999);
     });
   });
 

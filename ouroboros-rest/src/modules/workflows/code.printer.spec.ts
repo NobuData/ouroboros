@@ -35,6 +35,7 @@ import {
   graphOf,
   recoverGraph,
   recoverWorkflowCode,
+  reversedKeys,
   sdkReferences,
   syntaxErrors,
   validDocument,
@@ -54,23 +55,6 @@ const VALID_DOCUMENTS = [
 /** U+2028 and U+2029, built from their code points so this file never holds them raw. */
 const LINE_SEPARATOR = String.fromCharCode(0x2028);
 const PARAGRAPH_SEPARATOR = String.fromCharCode(0x2029);
-
-/**
- * The same value with every object's keys in reverse order, arrays untouched.
- *
- * @param value - A JSON value.
- * @returns The re-keyed copy.
- */
-function reversedKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(reversedKeys);
-  if (typeof value !== "object" || value === null) return value;
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .reverse()
-      .map(([key, member]) => [key, reversedKeys(member)]),
-  );
-}
 
 /**
  * Assert everything the printer promises about one document, and return what it printed.

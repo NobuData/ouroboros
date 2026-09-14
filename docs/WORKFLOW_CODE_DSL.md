@@ -149,6 +149,11 @@ positions, and each edge's kind, condition, label and place in the order, as wel
 the slug, every title, description and prompt, and every flow predicate. Each golden print must
 also match the committed `.loop.ts` byte for byte.
 
+**And over documents nobody wrote down** (#168). `code.roundtrip.spec.ts` generates a thousand
+valid documents from a fixed seed and holds each one to `parse(print(doc))` being `doc`, to the
+compiler's reading of its print, and to determinism. The run fails unless it reaches every stage
+callee, predicate form, edge spelling, position oddity and hostile string the grammar has to spell.
+
 ---
 
 ## 3. The file
@@ -593,6 +598,11 @@ therefore be a lossy one. Losslessness is the requirement, so the golden file is
 print, [`fixtures/code/standard-fix.loop.ts`](../schemas/workflow-dsl/fixtures/code/standard-fix.loop.ts),
 and every idiom the mockup uses that the document can carry is kept.
 
+**The table is checked, not just written.** `code.parity.spec.ts` (#168) reads the listing out of the
+mockup's HTML. It holds the golden file to the seed's print byte for byte, finds each line marked
+*identical* below in the golden file in the mockup's order, and fails if a non-blank line of the
+listing is on neither side of the table.
+
 | Mockup line | Printed | Why |
 |---|---|---|
 | 1 `import { defineLoop, effort, route } from "@ouroboros/sdk";` | `import { defineLoop, effort, route, trigger, llm, infra, decision, gate, openPr, backToQueue } from "@ouroboros/sdk";` | Stage callees are SDK names too, and a file imports exactly what it uses. |
@@ -600,6 +610,7 @@ and every idiom the mockup uses that the document can carry is kept.
 | 4 `export default defineLoop("standard-fix", {` | identical | |
 | *(none)* | `dsl: "1.0",` | `dsl_version` has to survive the trip. |
 | 5–8, the trigger | identical, byte for byte | `on: "issue.queued"`, `when: (i) => i.effort.lte(effort.M)` |
+| 9 `stages: [` | identical | |
 | 10 `analyze({ skill: repoMap, model: route.task("analyze") }),` | `llm("analyze", { … skill: "repo-map", model: route.alias("coder-std"), … })` | The callee is the node type, never the id. The seeded stage **pins** the `coder-std` alias rather than inheriting the `analyze` route, and it has a title, description, prompt, limits and permissions the listing leaves out. |
 | 11–13 `recheckEffort({ escalate: { over: effort.M, to: "split-subtasks" } })` | `decision("effort-recheck", { … when: (i) => i.effort.lte(effort.M), branches: [plan, split] })`, then `llm("split", …)` and `backToQueue("back-to-queue", …)` | The canvas is a decision, two branch edges, a model stage and a terminal. `escalate` folds all five into an option no DSL construct has, and `split-subtasks` is not a node. |
 | 14 `plan({ template: "attack-plan@v3", model: route.task("plan") })` | `llm("plan", { … model: route.alias("coder-max"), prompt: \`Write the attack plan.…\` })` | DSL v1 has no prompt-template registry; `prompt_template` is the text itself. The seeded stage pins its alias. |
@@ -632,7 +643,7 @@ default chain"*, describes a fallback routing does not have: an unrouted task ki
 |---|---|
 | **#166**, the parser | This grammar, and `code.grammar.ts`'s tables read backwards, as `parseWorkflowCode`. [§13](#13-reading-a-file-back) records what it accepts and normalises, what it refuses and with which code, and what a stale layout line means. |
 | **#167**, the endpoints | `printWorkflowCode(slug, document)` for `GET /api/v1/workflows/{slug}/code` and `parseWorkflowCode(text)` for its `PUT`. A draft is not validated, so the code view shows a document only when `parse(print(doc))` is `doc` (`code.projection.ts`), and answers `409 workflow_code_unprojectable` with the validator's findings otherwise. A saved file whose `defineLoop` names another slug is refused at the slug (`slugRangeOf`). |
-| **#168**, the property tests | The bijection in [§2](#2-what-the-grammar-promises), over generated documents. |
+| **#168**, the property tests | The bijection in [§2](#2-what-the-grammar-promises), over a thousand generated documents (`code.roundtrip.spec.ts`). Also: the parser under fuzz (`code.parser.fuzz.spec.ts`), [§10](#10-against-mockup-05)'s table against the mockup (`code.parity.spec.ts`), and the two editors converging on one draft (`code.integration-spec.ts`). |
 | **#170**, highlighting | The token classes: keywords, strings, numbers, callees, comments. |
 | **#177**, completions and hover docs | `STAGE_CALLEES`, `STAGE_OPTIONS`, `PREDICATE_METHODS`, `EFFORT_CONSTANTS`, `ROUTE_METHODS`, and the schema pointers `code.grammar.ts` keeps beside them (`STAGE_OPTION_FIELDS`, `ROUTE_SIGNATURES` and the rest). `GET /api/v1/workflows/code-symbols` reads each word's type, values and doc from `v1.json` through them (`code.symbols.ts`). |
 | **#178**, the span map and diagnostics | `PrintedWorkflowCode.spans`: for each node, in node order, the 1-based first and last line of its stage call. `code.diagnostics.ts` puts each validation finding and reference check on its stage's lines: a `/nodes/N` pointer takes the N-th span, an edge's pointer the span of the stage it leaves, and a finding about the whole document the `defineLoop` line. `GET /api/v1/workflows/{slug}/code` serves both as `spans` and `diagnostics`, and `code.checks.ts` derives the Loop Checks rows from them. |
@@ -717,7 +728,9 @@ with a JSON Pointer, and #178's span map takes it to the stage's lines.
 Every error is anchored to a range: a 1-based `line` and `column`, and `endLine` and `endColumn`
 just past its last character. **Lines count line feeds only**, as the span map does, and `\r\n` or
 `\r` endings read as `\n`, so a file saved on Windows reports the same positions. Columns count
-UTF-16 code units. Errors are listed in the order a reader meets them.
+UTF-16 code units. Errors are listed in the order a reader meets them. `code.parser.fuzz.spec.ts`
+(#168) holds the parser to all of this over thousands of mutated and arbitrary texts: it never
+throws, and every error it reports has a documented code and a range inside the text.
 
 **Every problem comes back from one pass.** The compiler recovers from a syntax error and reports
 each one, and the walk records each grammar error and carries on with the next sibling. When the

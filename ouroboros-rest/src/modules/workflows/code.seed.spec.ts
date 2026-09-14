@@ -10,12 +10,10 @@
  * ([#166](https://github.com/NobuData/ouroboros/issues/166)) then reads each print back into the
  * very document the seed stores, which is that issue's golden-fixture criterion.
  *
- * `standard-fix` v14 is also the draft the code view opens (the seed copies it), so its print
- * is held to the committed golden file as well.
+ * `standard-fix` v14 is also the draft the code view opens (the seed copies it), so its print is
+ * held to the committed golden file as well — by `code.parity.spec.ts` since U.4
+ * ([#168](https://github.com/NobuData/ouroboros/issues/168)), beside mockup 05's listing.
  */
-
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import { parseWorkflowCode } from "./code.parser";
 import { printWorkflowCode } from "./code.printer";
@@ -26,7 +24,6 @@ import {
   syntaxErrors,
   validDocument,
 } from "./code.recover.fixture";
-import { FIXTURES_DIR } from "./dsl.golden.fixture";
 import { SEED_DOCUMENT_TAGS, seededDocuments } from "./dsl.seed.fixture";
 
 describe.each(SEED_DOCUMENT_TAGS)("%s — %s", (tag, _about, slug) => {
@@ -65,11 +62,4 @@ it("prints every one of the five workflows the seed creates", () => {
   expect(new Set(SEED_DOCUMENT_TAGS.map(([, , slug]) => slug))).toEqual(
     new Set(["standard-fix", "feature-loop", "deps-refresh", "docs-loop", "hotfix-p0"]),
   );
-});
-
-it("prints standard-fix v14 — the draft the code view opens — as the committed golden", () => {
-  const golden = readFileSync(join(FIXTURES_DIR, "code", "standard-fix.loop.ts"), "utf8");
-  const document = validDocument(seededDocuments("standard_fix_v14")[0]);
-
-  expect(printWorkflowCode("standard-fix", document).text).toBe(golden);
 });
