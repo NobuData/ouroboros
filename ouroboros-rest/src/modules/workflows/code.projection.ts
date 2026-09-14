@@ -4,7 +4,8 @@
  *
  * ```ts
  * projectWorkflowCode("standard-fix", draft.definition);
- * // "import { defineLoop, … } from \"@ouroboros/sdk\";\n…"  — or undefined
+ * // { text: "import { defineLoop, … } from \"@ouroboros/sdk\";\n…", spans: [{ node: "issue-queued", … }] }
+ * // — or undefined
  * ```
  *
  * **The printer takes validated documents (U.1), and a draft is not one.** The canvas saves what
@@ -26,7 +27,7 @@
 import { isDeepStrictEqual } from "node:util";
 
 import { parseWorkflowCode } from "./code.parser";
-import { printWorkflowCode } from "./code.printer";
+import { printWorkflowCode, type PrintedWorkflowCode } from "./code.printer";
 import type { WorkflowDocument } from "./dsl.schema";
 
 /**
@@ -36,26 +37,30 @@ import type { WorkflowDocument } from "./dsl.schema";
  *   projection either.
  * @param definition - A stored document — a draft's or a version's — and not trusted to be
  *   anything in particular.
- * @returns The file's text, or `undefined` when the document has none: the printer could not spell
- *   it, or what it spelled reads back as something else.
+ * @returns The file's text and the printer's span map for it (W.2,
+ *   [#178](https://github.com/NobuData/ouroboros/issues/178)), or `undefined` when the document has
+ *   none: the printer could not spell it, or what it spelled reads back as something else.
  */
-export function projectWorkflowCode(slug: string, definition: unknown): string | undefined {
-  let text: string;
+export function projectWorkflowCode(
+  slug: string,
+  definition: unknown,
+): PrintedWorkflowCode | undefined {
+  let printed: PrintedWorkflowCode;
 
   try {
     // Unvalidated on purpose; see this file's header. A document without what the printer reads
     // fails inside it, as a `TypeError` as often as a `WorkflowCodePrintError`, and the two mean
     // the same thing here: this document has no spelling.
-    text = printWorkflowCode(slug, definition as WorkflowDocument).text;
+    printed = printWorkflowCode(slug, definition as WorkflowDocument);
   } catch {
     return undefined;
   }
 
-  const reread = parseWorkflowCode(text);
+  const reread = parseWorkflowCode(printed.text);
 
   return reread.errors.length === 0 &&
     reread.slug === slug &&
     isDeepStrictEqual(reread.document, definition)
-    ? text
+    ? printed
     : undefined;
 }

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.34.12",
+    "version": "0.34.13",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -12303,7 +12303,7 @@
           "workflows"
         ],
         "summary": "One workflow as a file of the code view",
-        "description": "Mockup 05's editor opening `standard-fix.loop.ts` — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)). The text is the TypeScript\nprojection of the workflow's document\n([`docs/WORKFLOW_CODE_DSL.md`](https://github.com/NobuData/ouroboros/blob/main/docs/WORKFLOW_CODE_DSL.md)).\n\n**One draft, two editors** (decision **C3**). Without `?version=` the file is the\ndraft's, and `etag` is the draft slot's etag — the same token `GET /api/v1/workflows/{id}`\nhands the canvas. Send it back as `If-Match` on `PUT`; a save in either editor moves it.\nA workflow with no draft opens on the version in force, editable, as the canvas does, and\nits first save creates the draft. With `?version=` the file is that published version,\n`readOnly`, still carrying the draft's etag.\n\n**A document is shown only when the file would read back as it.** A draft the canvas saved\nhalf-built — the blank canvas **+ New workflow** leaves, a model stage with no route yet —\nhas no faithful spelling, and showing an approximation would let a save replace the draft\nwith it. Such a read is a `409 workflow_code_unprojectable` carrying the validator's\nfindings, so the page can say what to finish on the canvas.\n\n**`outlineRef` and `checksRef` are `null`** until W.2\n([#178](https://github.com/NobuData/ouroboros/issues/178)) serves the outline and Loop\nChecks payloads.\n\n**A workflow that is not yours does not exist**: another workspace's slug is a `404`,\nindistinguishably from a slug nobody has.\n\n**Every member may read it**, `viewer` included.",
+        "description": "Mockup 05's editor opening `standard-fix.loop.ts` — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)). The text is the TypeScript\nprojection of the workflow's document\n([`docs/WORKFLOW_CODE_DSL.md`](https://github.com/NobuData/ouroboros/blob/main/docs/WORKFLOW_CODE_DSL.md)).\n\n**One draft, two editors** (decision **C3**). Without `?version=` the file is the\ndraft's, and `etag` is the draft slot's etag — the same token `GET /api/v1/workflows/{id}`\nhands the canvas. Send it back as `If-Match` on `PUT`; a save in either editor moves it.\nA workflow with no draft opens on the version in force, editable, as the canvas does, and\nits first save creates the draft. With `?version=` the file is that published version,\n`readOnly`, still carrying the draft's etag.\n\n**A document is shown only when the file would read back as it.** A draft the canvas saved\nhalf-built — the blank canvas **+ New workflow** leaves, a model stage with no route yet —\nhas no faithful spelling, and showing an approximation would let a save replace the draft\nwith it. Such a read is a `409 workflow_code_unprojectable` carrying the validator's\nfindings, so the page can say what to finish on the canvas.\n\n**Every file carries its span map and its diagnostics** (W.2,\n[#178](https://github.com/NobuData/ouroboros/issues/178)). `spans` gives each stage call's\nfirst and last line in `text`, in the document's node order. `diagnostics` puts the\nvalidator's findings, the reference checks against this workspace's skills and task routes,\nand any cycle no loop edge declares on the lines of the stage each is about, errors first.\nThey advise: nothing about them refuses a read. `checksRef` is where this file's Loop\nChecks panel is read (`GET …/code/checks`, with this file's `?version=`), and `outlineRef`\nis always `null`, since the outline is the stage calls `spans` already lists.\n\n**A workflow that is not yours does not exist**: another workspace's slug is a `404`,\nindistinguishably from a slug nobody has.\n\n**Every member may read it**, `viewer` included.",
         "operationId": "readWorkflowCode",
         "parameters": [
           {
@@ -12340,8 +12340,21 @@
                   "readOnly": false,
                   "version": null,
                   "currentVersion": 14,
+                  "spans": [
+                    {
+                      "node": "start",
+                      "startLine": 9,
+                      "endLine": 12
+                    },
+                    {
+                      "node": "done",
+                      "startLine": 13,
+                      "endLine": 15
+                    }
+                  ],
+                  "diagnostics": [],
                   "outlineRef": null,
-                  "checksRef": null
+                  "checksRef": "/api/v1/workflows/minimal/code/checks"
                 }
               }
             }
@@ -12551,7 +12564,7 @@
             }
           },
           "422": {
-            "description": "`workflow_code_invalid` — the file does not read as this workflow, and **nothing was\nwritten**. `details.errors` carries every problem, each with a 1-based `line` and\n`column` and an exclusive `endLine`/`endColumn`, and a `code`: `code_syntax_error`,\n`code_out_of_grammar` (with a `hint`), `code_layout_invalid`, or `code_slug_mismatch`\nfor a file that names another workflow. (`validation_failed` is the other `422` here:\nthe slug is not a slug, or `text` is missing or not a string.)",
+            "description": "`workflow_code_invalid` — the file does not read as this workflow, and **nothing was\nwritten**. `details.errors` carries every problem, each with a 1-based `line` and\n`column` and an exclusive `endLine`/`endColumn`, and a `code`: `code_syntax_error`,\n`code_out_of_grammar` (with a `hint`), `code_layout_invalid`, or `code_slug_mismatch`\nfor a file that names another workflow. `details.diagnostics` carries the same problems\nas the code view's diagnostics stream (`CodeDiagnostic`, W.2), each an `error` with its\n`range` and the `hint` as its `note`, so an editor renders a refusal and a read's\nfindings alike. (`validation_failed` is the other `422` here: the slug is not a slug, or\n`text` is missing or not a string.)",
             "content": {
               "application/json": {
                 "schema": {
@@ -12571,6 +12584,20 @@
                         "endColumn": 11,
                         "hint": "Supported in the full SDK (v2) — see https://github.com/NobuData/ouroboros/issues/180"
                       }
+                    ],
+                    "diagnostics": [
+                      {
+                        "severity": "error",
+                        "range": {
+                          "line": 4,
+                          "column": 8,
+                          "endLine": 4,
+                          "endColumn": 11
+                        },
+                        "code": "code_out_of_grammar",
+                        "message": "`dsl` is written as a string literal, like \"text\".",
+                        "note": "Supported in the full SDK (v2) — see https://github.com/NobuData/ouroboros/issues/180"
+                      }
                     ]
                   }
                 }
@@ -12579,6 +12606,127 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately. Nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{slug}/code/checks": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "A workflow file's Loop Checks panel",
+        "description": "Mockup 05's **Loop Checks** panel — W.2\n([#178](https://github.com/NobuData/ouroboros/issues/178)). The rows are derived from the\n`diagnostics` of the file `GET /api/v1/workflows/{slug}/code` serves: the draft's, or with\n`?version=` a published version's. A file's `checksRef` is this route with its own query.\n\n| Row | `ok` | `warn` | `err` |\n| --- | --- | --- | --- |\n| `graph` | no error and no undeclared cycle, titled by the loop edges (*Graph acyclic except declared gate loop*) | a cycle of `next` and `branches` edges that no loop edge declares | the validator found errors, counted, the first as the note |\n| `references` | this workspace's task routes were checked and every skill and task route resolves (*All task routes resolve*, noting the model stages) | a skill or task route does not resolve | never |\n\n**Rows say only what was checked.** A document with errors has no `references` row, since\nthe reference checks never ran. Neither does a workspace whose routing matrix has no task\nkinds, unless a reference already failed.\n\n**No infra row** (decision **C7**). Mockup 05's *pool-a has 1 runner offline* reports\nbuild-farm state nothing here observes, so it is omitted rather than faked: `id` is `graph`\nor `references` and nothing else.\n\n**A workflow that is not yours does not exist**: another workspace's slug is a `404`,\nindistinguishably from a slug nobody has.\n\n**Every member may read it**, `viewer` included.",
+        "operationId": "readWorkflowCodeChecks",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowSlug"
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "description": "Check this published version instead of the draft. A number that names no version of\nthis workflow is a `404 workflow_version_not_found`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 14
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCodeChecks"
+                },
+                "example": {
+                  "path": "workflows/standard-fix.loop.ts",
+                  "slug": "standard-fix",
+                  "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                  "readOnly": false,
+                  "version": null,
+                  "rows": [
+                    {
+                      "id": "graph",
+                      "status": "ok",
+                      "title": "Graph acyclic except declared gate loop"
+                    },
+                    {
+                      "id": "references",
+                      "status": "ok",
+                      "title": "All task routes resolve",
+                      "note": "models configured for analyze · plan · split · implement · review"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that slug, **or none this caller may know\nabout**; `details.slug` echoes it. `workflow_version_not_found` when `?version=` names\nno version of it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_code_unprojectable` — the file these rows would be about cannot be shown, as\n`GET …/code` answers, with the same `details`. Finish the draft on the canvas, and the\nfile and its checks open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the slug is not a slug, or `version` is not a positive integer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
             "content": {
               "application/json": {
                 "schema": {
@@ -22647,6 +22795,8 @@
           "readOnly",
           "version",
           "currentVersion",
+          "spans",
+          "diagnostics",
           "outlineRef",
           "checksRef"
         ],
@@ -22704,25 +22854,251 @@
               14
             ]
           },
+          "spans": {
+            "type": "array",
+            "description": "Each stage call's first and last line in `text`, one entry per node in the document's\nnode order — the printer's span map (W.2,\n[#178](https://github.com/NobuData/ouroboros/issues/178)). What an outline row jumps\nto, and where each diagnostic about a stage is placed. An array rather than an object\nkeyed by id, because a draft that repeats an id can still be shown.",
+            "items": {
+              "$ref": "#/components/schemas/NodeSpan"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "description": "The file's validation findings, its reference checks against this workspace's skills\nand task routes, and any cycle no loop edge declares, each on the lines of the stage it\nis about, errors first and then by position. They advise. A file with errors is still\nserved and still saves, and publishing is where an error refuses.",
+            "items": {
+              "$ref": "#/components/schemas/CodeDiagnostic"
+            }
+          },
           "outlineRef": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Where the outline payload is read from. `null` until W.2\n([#178](https://github.com/NobuData/ouroboros/issues/178)) serves it.",
+            "type": "null",
+            "description": "Always `null`. No outline payload is served: the outline is the stage calls, which\n`spans` lists with their lines.",
             "examples": [
               null
             ]
           },
           "checksRef": {
+            "type": "string",
+            "description": "Where this file's Loop Checks panel is read — `GET /api/v1/workflows/{slug}/code/checks`,\nwith `?version=` when the file is a published version.",
+            "examples": [
+              "/api/v1/workflows/standard-fix/code/checks"
+            ]
+          }
+        }
+      },
+      "NodeSpan": {
+        "type": "object",
+        "title": "NodeSpan",
+        "description": "Where one stage call sits in a workflow file (W.2).",
+        "additionalProperties": false,
+        "required": [
+          "node",
+          "startLine",
+          "endLine"
+        ],
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "The stage's node id.",
+            "examples": [
+              "implement"
+            ]
+          },
+          "startLine": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The 1-based line the call opens on, as in `llm(\"implement\", {`.",
+            "examples": [
+              71
+            ]
+          },
+          "endLine": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The 1-based line it closes on, the one holding its `}),`. Inclusive.",
+            "examples": [
+              85
+            ]
+          }
+        }
+      },
+      "CodeDiagnostic": {
+        "type": "object",
+        "title": "CodeDiagnostic",
+        "description": "One entry of the code view's diagnostics stream (W.2,\n[#178](https://github.com/NobuData/ouroboros/issues/178)): what the editor underlines and\nwhat the Loop Checks panel counts. A refused save's parse errors, a file's validation\nfindings and its reference checks all take this shape. A finding about a stage is placed on\nthat stage call's lines through the file's `spans`, a finding about an edge on the stage the\nedge leaves, and a finding about the whole document on the `defineLoop` line.",
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "range",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "description": "`error` for what the parser refuses and what the validator reports as an error, which\npublishing refuses too. `warning` for decision **P7**'s unknown skill, model or task\nroute, and for a cycle no loop edge declares. A warning refuses nothing."
+          },
+          "range": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "line",
+              "column",
+              "endLine",
+              "endColumn"
+            ],
+            "description": "Where it is underlined. Lines count line feeds only, and columns count UTF-16 code\nunits.",
+            "properties": {
+              "line": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The 1-based line it starts on."
+              },
+              "column": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The 1-based column it starts at."
+              },
+              "endLine": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The 1-based line it ends on."
+              },
+              "endColumn": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The 1-based column just past its last character."
+              }
+            }
+          },
+          "code": {
+            "type": "string",
+            "description": "Which rule. A parser code (`code_syntax_error`, `code_out_of_grammar`,\n`code_layout_invalid`, `code_slug_mismatch`), a workflow DSL code (`node.unreachable`,\n`reference.unknown_task` and the rest of `docs/WORKFLOW_DSL.md`'s list), or\n`graph.undeclared_cycle`.",
+            "examples": [
+              "reference.unknown_task"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "What a person should read. Presentation, never contract."
+          },
+          "note": {
+            "type": "string",
+            "description": "Where support for the construct would come from, which is the parser's `hint` on\n`code_out_of_grammar`."
+          },
+          "node": {
+            "type": "string",
+            "description": "The id of the stage the range is, when it is a stage's.",
+            "examples": [
+              "split"
+            ]
+          }
+        }
+      },
+      "LoopCheckRow": {
+        "type": "object",
+        "title": "LoopCheckRow",
+        "description": "One row of mockup 05's Loop Checks panel (W.2).",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "graph",
+              "references"
+            ],
+            "description": "Which check. There is no infra row (decision **C7**). The build-farm state mockup 05's\n*pool-a has 1 runner offline* reports is not observed here, so it is omitted rather\nthan faked."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "warn",
+              "err"
+            ],
+            "description": "The row's glyph, which is the check mark, the warn dot, or the error mark."
+          },
+          "title": {
+            "type": "string",
+            "description": "The row's sentence.",
+            "examples": [
+              "Graph acyclic except declared gate loop"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "The small text after it, when there is one.",
+            "examples": [
+              "models configured for analyze · plan · split · implement · review"
+            ]
+          }
+        }
+      },
+      "WorkflowCodeChecks": {
+        "type": "object",
+        "title": "WorkflowCodeChecks",
+        "description": "The Loop Checks panel of one workflow file (W.2,\n[#178](https://github.com/NobuData/ouroboros/issues/178)) — what\n`GET /api/v1/workflows/{slug}/code/checks` answers.",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "slug",
+          "etag",
+          "readOnly",
+          "version",
+          "rows"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The file the rows are about.",
+            "examples": [
+              "workflows/standard-fix.loop.ts"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "description": "The workflow's slug.",
+            "examples": [
+              "standard-fix"
+            ]
+          },
+          "etag": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The draft slot's etag, as the file carries it, so a client can tell which save the rows\nare about. **Opaque**.",
+            "examples": [
+              "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0"
+            ]
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Whether the file is a published version."
+          },
+          "version": {
             "type": [
-              "string",
+              "integer",
               "null"
             ],
-            "description": "Where the Loop Checks payload is read from. `null` until W.2\n([#178](https://github.com/NobuData/ouroboros/issues/178)) serves it.",
+            "minimum": 1,
+            "description": "The published version the file was printed from, or `null` for the draft.",
             "examples": [
-              null
+              null,
+              14
             ]
+          },
+          "rows": {
+            "type": "array",
+            "description": "The rows, `graph` first. `references` is present only when the reference checks ran\nagainst task routes, or a reference failed.",
+            "items": {
+              "$ref": "#/components/schemas/LoopCheckRow"
+            }
           }
         }
       },

@@ -25,6 +25,10 @@ name: ouroboros-rest · ci
 # suite talks to holds each request it receives and each answer it serves to that document, read
 # at test time. An engine contract change that ran only ci/engine would leave this module's stub —
 # and every suite over it — green against a contract nobody re-checked it against.
+#
+# docs/mockups/05-workflow-code.html is here because of W.2 (#178). The Loop Checks suite reads the
+# mockup's own rows at test time and holds a clean seed's rows to its first two, so an edit to that
+# one file has to run the suite that would notice. The rest of docs/ stays out.
 
 on:
   pull_request:
@@ -38,6 +42,7 @@ on:
       - "ouroboros-db/run.sh"
       - "schemas/**"
       - "ouroboros-engine/openapi.yaml"
+      - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
@@ -55,6 +60,7 @@ on:
       - "ouroboros-db/run.sh"
       - "schemas/**"
       - "ouroboros-engine/openapi.yaml"
+      - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"

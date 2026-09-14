@@ -2747,11 +2747,12 @@ edits** (U.3, [#167](https://github.com/NobuData/ouroboros/issues/167)), and `co
 `code-config` are its explorer.
 
 ```
-GET /api/v1/workflows/standard-fix/code ─▶ { path, slug, text, etag, readOnly, version, currentVersion, outlineRef, checksRef }
+GET /api/v1/workflows/standard-fix/code ─▶ { path, slug, text, etag, readOnly, version, currentVersion, spans, diagnostics, outlineRef, checksRef }
 PUT /api/v1/workflows/standard-fix/code   If-Match: <etag> · { text }
- ├ does not parse, or names another slug ─▶ 422 workflow_code_invalid {errors: [{code, line, column, endLine, endColumn}]}
+ ├ does not parse, or names another slug ─▶ 422 workflow_code_invalid {errors: [{code, line, column, endLine, endColumn}], diagnostics}
  ├ stale etag                            ─▶ 409 workflow_draft_conflict {editedIn: visual | code, updatedAt, current}
  └ WorkflowsService.writeGuarded(…, "code") ─▶ 200, the file as it now reads, with the new etag
+GET /api/v1/workflows/standard-fix/code/checks ─▶ { path, slug, etag, readOnly, version, rows: [graph, references?] }
 GET /api/v1/workflows/code-tree          ─▶ { files: [workflows/<slug>.loop.ts …, ouroboros.config.ts] }
 GET /api/v1/workflows/code-config        ─▶ { path: ouroboros.config.ts, text, readOnly: true }
 PUT /api/v1/workflows/code-config        ─▶ 405 workflow_code_read_only, Allow: GET
@@ -2764,6 +2765,8 @@ PUT /api/v1/workflows/code-config        ─▶ 405 workflow_code_read_only, All
 | A document is shown only when its file reads back as it | `code.projection.ts` |
 | The explorer lists files only, from the rail's own statement (C6) | `code.resources.ts`, `WorkflowStatsRepository.registryEntries` |
 | `ouroboros.config.ts` is the registry, printed read-only | `code.config.ts` |
+| Findings and reference checks sit on the lines of the stage they are about, through the printer's span map, errors first (W.2) | `code.diagnostics.ts` |
+| Loop Checks rows say only what was checked, and no infra row can be built (C7) | `code.checks.ts` |
 
 **A draft that has no faithful file is refused, not approximated.** The printer takes valid documents
 and a draft is saved as the canvas holds it, so the rule is the round trip itself: `GET` shows a
@@ -2775,8 +2778,20 @@ draft opens on the version in force, and its first save creates the draft.
 **The `422` is proven byte-identical.** `code.integration-spec.ts` compares the draft row as
 PostgreSQL renders it, every column included, before and after a refused save.
 
-**`outlineRef` and `checksRef` are `null`** until W.2
-([#178](https://github.com/NobuData/ouroboros/issues/178)) serves the payloads they point at.
+**Every file carries its span map and its diagnostics** (W.2,
+[#178](https://github.com/NobuData/ouroboros/issues/178)). The printer's `spans` place each
+validation finding and reference check on the lines of the stage it is about, and a refused save's
+`422` carries its parse errors in the same `{severity, range, code, message, note?}` shape as
+`details.diagnostics`. The findings come from this process's validator, which `expected.json` holds
+in parity with the engine, so opening a file makes no engine call. References are checked against
+the workspace's own task kinds and skill suggestions, so the development seed's `standard-fix` shows
+`split` as unrouted: the seeded routing matrix has no `split` kind. `checksRef` points at
+`…/code/checks`, whose rows (`graph`, then `references`) say only what was checked, with no infra
+row (C7). A cycle of `next` and `branches` edges that no loop edge declares is
+`graph.undeclared_cycle`, a warning checked here rather than in the shared validator, so it changes
+no publish. `outlineRef` stays `null`: the outline is the stage calls `spans` already lists.
+`code.checks.spec.ts` reads the Loop Checks rows out of `docs/mockups/05-workflow-code.html` at test
+time, so `ci/rest` watches that one file too.
 
 ## Pluggable ticket sources
 

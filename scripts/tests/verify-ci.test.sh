@@ -46,7 +46,8 @@ make_fixture() {
   # one of that module's test inputs — and its unit suite compares the harness's image pins
   # against docker-compose.yml. It watches schemas/ since #133, for the reason engine.yml
   # below does, and ouroboros-engine/openapi.yaml since #146, because its engine stub validates
-  # every exchange against that document. ouroboros-ui watches two of the DSL's fixture
+  # every exchange against that document, and docs/mockups/05-workflow-code.html since #178, because
+  # its Loop Checks suite reads the mockup's rows. ouroboros-ui watches two of the DSL's fixture
   # directories since #177, because its code editor suites read the symbol table and the
   # printer's golden files, and one fixture file since #148, because its canvas suites open
   # the committed standard-fix. Held in a
@@ -64,6 +65,7 @@ make_fixture() {
       - "ouroboros-db/run.sh"
       - "schemas/**"
       - "ouroboros-engine/openapi.yaml"
+      - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"'
     fi
 

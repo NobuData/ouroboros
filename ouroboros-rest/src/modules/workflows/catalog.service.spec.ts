@@ -167,6 +167,24 @@ describe("the stage catalog service", () => {
     });
   });
 
+  describe("the reference catalogue (W.2)", () => {
+    it("is the suggestions, read once, as decision P7's catalogue", async () => {
+      expect(await service().dslCatalogue(WORKSPACE)).toEqual({
+        skills: ["repo-map", "zephyr-conventions"],
+        tasks: ["analyze", "implement"],
+      });
+      expect(repository.taskKindNames).toHaveBeenCalledTimes(1);
+      expect(repository.taskKindNames).toHaveBeenCalledWith(WORKSPACE);
+    });
+
+    it("leaves out an empty list, so it means not checked rather than nothing exists", async () => {
+      repository.taskKindNames.mockResolvedValue([]);
+      config = { workflowSkillSuggestions: Object.freeze([]) };
+
+      expect(await service().dslCatalogue(WORKSPACE)).toEqual({});
+    });
+  });
+
   it("fails at construction for a schema it cannot read node types from", () => {
     expect(() => service({ $id: "https://ouroboros.build/schemas/workflow-dsl/v1.json" })).toThrow(
       DslSchemaError,

@@ -11,6 +11,10 @@ import { validateWorkflowDocument } from "./dsl.validator";
  * printer's committed fixtures record. **A document the validator refuses still projects when the
  * round trip keeps it**, because the code view edits work in progress. And **a document with no
  * faithful spelling has no projection** — however it fails, and without throwing.
+ *
+ * A projection carries the printer's span map with its text (W.2,
+ * [#178](https://github.com/NobuData/ouroboros/issues/178)), which the diagnostics map findings
+ * through.
  */
 
 /** Every document the fixture set records as valid, once each. */
@@ -43,7 +47,17 @@ describe("a valid document", () => {
   it.each(VALID_DOCUMENTS)("%s projects to the file committed beside it", (relativePath) => {
     const name = nameOf(relativePath);
 
-    expect(projectWorkflowCode(name, readFixture(relativePath))).toBe(golden(name));
+    expect(projectWorkflowCode(name, readFixture(relativePath))?.text).toBe(golden(name));
+  });
+
+  it("carries the printer's span map for the text: each stage call's first and last line", () => {
+    expect(projectWorkflowCode("minimal", minimal())).toEqual({
+      text: golden("minimal"),
+      spans: [
+        { node: "start", startLine: 9, endLine: 12 },
+        { node: "done", startLine: 13, endLine: 15 },
+      ],
+    });
   });
 });
 
@@ -60,9 +74,10 @@ describe("a document the validator refuses", () => {
 
     expect(validateWorkflowDocument(document).valid).toBe(false);
 
-    const text = projectWorkflowCode("minimal", document);
+    const projected = projectWorkflowCode("minimal", document);
 
-    expect(text).toContain('needsReview("orphan", {');
+    expect(projected?.text).toContain('needsReview("orphan", {');
+    expect(projected?.spans.map((span) => span.node)).toEqual(["start", "done", "orphan"]);
   });
 });
 
@@ -95,7 +110,7 @@ describe("a document with no faithful spelling", () => {
   });
 
   it("names the slug it was given, so a file is always its own workflow's", () => {
-    const text = projectWorkflowCode("standard-fix", minimal());
+    const text = projectWorkflowCode("standard-fix", minimal())?.text;
 
     expect(text).toBe(edit(golden("minimal"), 'defineLoop("minimal"', 'defineLoop("standard-fix"'));
   });

@@ -247,6 +247,12 @@ check_route schemas/workflow-dsl/fixtures/valid/minimal.json 'engine.yml rest.ym
 # ci/engine's alone.
 check_route ouroboros-engine/openapi.yaml 'engine.yml rest.yml'
 
+# The eighth (#178), and the first document. ci/rest's Loop Checks suite reads mockup 05's rows at
+# test time and holds a clean seed's rows to its first two, so an edit to that mockup has to run the
+# suite that would notice. The file, not the directory: every other mockup stays documentation.
+check_route docs/mockups/05-workflow-code.html 'rest.yml'
+check_route docs/mockups/04-workflow-builder.html ''
+
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.
 check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'

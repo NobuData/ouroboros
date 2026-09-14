@@ -901,6 +901,11 @@ describe("the studio across services, against a migrated database", () => {
         await notFound(as(ours)("get", `${WORKFLOWS}/standard-fix/code`));
         await notFound(as(ours)("get", `${WORKFLOWS}/standard-fix/code?version=1`));
       },
+      [`GET ${WORKFLOWS}/:slug/code/checks`]: async ({ ours }) => {
+        // The Loop Checks of a file this workspace cannot open are as absent as the file.
+        await notFound(as(ours)("get", `${WORKFLOWS}/standard-fix/code/checks`));
+        await notFound(as(ours)("get", `${WORKFLOWS}/standard-fix/code/checks?version=1`));
+      },
       [`PUT ${WORKFLOWS}/:slug/code`]: async ({ ours, theirEtag }) => {
         const theirFile = readFileSync(join(FIXTURES, "code", "standard-fix.loop.ts"), "utf8");
 
