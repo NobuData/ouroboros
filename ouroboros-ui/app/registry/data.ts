@@ -52,6 +52,7 @@ import type { Workspace } from "@/app/api/access";
 import { providers } from "@/app/api/providers";
 import { attempt } from "@/app/api/reading";
 import { registry } from "@/app/api/registry";
+import { routing } from "@/app/api/routing";
 
 import type { RegistryReadings } from "./view";
 
@@ -73,12 +74,14 @@ export async function readRegistry(access: Workspace): Promise<RegistryReadings>
   // nobody deletes an argument that is carrying a proof.
   void access;
 
-  // Both at once: neither read depends on the other, and a page that waited for the
-  // connections before asking for the table would be paying two round trips for one screen.
-  const [connections, aliases] = await Promise.all([
+  // All at once: no read depends on another, and a page that waited for the connections before
+  // asking for the table would be paying extra round trips for one screen. The routes are the
+  // chain card's (CI.5, #595) — which task kind to simulate for an alias no run has used yet.
+  const [connections, aliases, routes] = await Promise.all([
     attempt(async () => (await providers.list()).items),
     attempt(async () => (await registry.read()).aliases),
+    attempt(async () => (await routing.matrix()).taskKinds),
   ]);
 
-  return { providers: connections, aliases };
+  return { providers: connections, aliases, routes };
 }

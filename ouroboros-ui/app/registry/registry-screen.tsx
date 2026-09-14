@@ -3,6 +3,8 @@ import Link from "next/link";
 import { ModelsFrame } from "@/app/models/models-frame";
 import { Card, CardHead, EmptyState, Tag } from "@/app/ui";
 
+import { routeLookups } from "./chain";
+import { ChainCard } from "./chain-card";
 import { ImportMenu } from "./import-menu";
 import { NewAlias } from "./new-alias";
 import { InspectorSeat, RegistryTable } from "./registry-table";
@@ -27,6 +29,7 @@ import {
   importState,
   tableState,
 } from "./view";
+import { WhyCard } from "./why-card";
 
 import "./registry.css";
 
@@ -133,6 +136,7 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
   const table = tableState(readings.aliases);
   const names = aliasNames(readings.aliases);
   const sources = aliasSources(readings.providers);
+  const routes = routeLookups(readings.routes, names);
 
   return (
     <ModelsFrame
@@ -171,6 +175,7 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
         <RegistryTable
           aliasNames={names}
           mayAdminister={mayAdminister}
+          routes={routes}
           rows={table.rows}
           selected={selectedAlias(table.rows, alias)}
           sources={sources}
@@ -180,6 +185,8 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
           <TableSeat state={table} />
           <div className="registry-aside">
             <InspectorSeat row={null} />
+            <WhyCard />
+            <ChainCard route={null} row={null} />
           </div>
         </>
       )}

@@ -410,3 +410,63 @@ describe("the alias inspector (#593)", () => {
     }
   });
 });
+
+describe("the why-aliases and resolution-chain cards (#595)", () => {
+  it("resets both lists, since the claims and the hops are not bullets", () => {
+    for (const list of ["\\.registry-why", "\\.registry-chain"]) {
+      expect(rule(list), list).toMatch(/list-style:\s*none/);
+      expect(rule(list), list).toMatch(/padding:\s*0/);
+    }
+  });
+
+  it("ticks each claim in the ok hue, as the mockup's `.why-row .tick` does", () => {
+    expect(rule("\\.registry-why__tick")).toContain("var(--ok)");
+  });
+
+  it("draws the alias in the accent and the model in the model hue", () => {
+    expect(rule("\\.registry-chain__alias")).toContain("var(--accent)");
+    expect(rule("\\.registry-chain__model")).toContain("var(--model)");
+  });
+
+  it("draws the rail and its dots in rem, so the geometry holds at 125% type", () => {
+    const hop = rule("\\.registry-chain__hop");
+    const dot = rule("\\.registry-chain__hop::after");
+
+    expect(hop).toMatch(/padding:[^;]*[\d.]+rem/);
+    expect(dot).toMatch(/width:\s*[\d.]+rem/);
+    expect(dot).toMatch(/height:\s*[\d.]+rem/);
+    expect(rule("\\.registry-chain__hop::before")).toContain("var(--line-strong)");
+  });
+
+  it("scrolls the rail inside its own wrapper and keeps each hop on one line", () => {
+    expect(rule("\\.registry-chain__scroll")).toMatch(/overflow-x:\s*auto/);
+    expect(rule("\\.registry-chain__hop")).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it("gives every status tone a dot and a word of its own", () => {
+    expect(rule("\\.registry-chain__hop--ok::after")).toContain("var(--ok)");
+    expect(rule("\\.registry-chain__hop--err::after")).toContain("var(--err)");
+    expect(rule("\\.registry-chain__hop--neutral::after")).toContain("var(--ink-mut)");
+
+    for (const [tone, token] of [["ok", "--ok"], ["err", "--err"], ["neutral", "--ink-mut"]]) {
+      expect(rule(`\\.registry-chain__hop--${tone} \\.registry-chain__status`), tone).toContain(`var(${token})`);
+    }
+  });
+
+  it("strikes a dropped hop's alias, provider and model, and not its status", () => {
+    expect(CODE).toMatch(
+      /\.registry-chain--dropped \.registry-chain__alias,\s*\.registry-chain--dropped \.registry-chain__provider,\s*\.registry-chain--dropped \.registry-chain__model\s*\{\s*text-decoration:\s*line-through/,
+    );
+    expect(CODE).not.toMatch(/registry-chain__status[^{]*\{[^}]*line-through/);
+  });
+
+  it("draws a refused read in the error hue, as every other refusal on this page is", () => {
+    expect(rule("\\.registry-chain__failure")).toContain("var(--err)");
+  });
+
+  it("restyles none of the #46 primitives the cards are built from", () => {
+    for (const primitive of [".ou-card", ".ou-btn", ".ou-tag", ".ou-empty"]) {
+      expect(CODE, primitive).not.toContain(primitive);
+    }
+  });
+});

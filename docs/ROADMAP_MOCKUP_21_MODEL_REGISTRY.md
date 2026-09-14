@@ -1343,7 +1343,7 @@ dark-only).
 | CI.2 | #592 | 🟢 Done | ouroboros-ui: [CI.2] Allowed-models table | 8-column table: alias pills, monograms, chips, health states, prices, switches | mvp, registry, ui, design | N (after CI.1, CH.5) | Y | L | ouroboros-ui |
 | CI.3 | #593 | 🟢 Done | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
 | CI.4 | #594 | 🟢 Done | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
-| CI.5 | #595 | 🟡 Open | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
+| CI.5 | #595 | 🟢 Done | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
 | CI.6 | #596 | 🟡 Open | ouroboros-ui: [CI.6] Registry states & guards | Empty org, member read-only, load/error, unbound guidance | mvp, registry, ui, design | N (after CI.2–CI.5) | Y | S | ouroboros-ui |
 | CI.7 | #597 | 🟡 Open | ouroboros-ui: [CI.7] Registry e2e leg | Parity, lifecycle, rebind BYOK, import, guards, governance, themes | mvp, registry, ui, ci | N (after CI.1–CI.6) | Y | S | ouroboros-ui, .github |
 
@@ -1788,7 +1788,24 @@ USED BY (implement-primary)(plan-primary)(review-primary)(escalation:effort≥L)
 
 ### Issue CI.5 — ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards
 
-> **GitHub issue:** #595 · **Status:** 🟡 Open · **Parent epic:** #577
+> **GitHub issue:** #595 · **Status:** 🟢 Done · **Parent epic:** #577
+>
+> **Shipped.** Both cards sit in the seat row beside the inspector
+> ([`why-card.tsx`](../ouroboros-ui/app/registry/why-card.tsx),
+> [`chain-card.tsx`](../ouroboros-ui/app/registry/chain-card.tsx)), every decision and sentence in
+> [`chain.ts`](../ouroboros-ui/app/registry/chain.ts). The governance row is gated on
+> `GOVERNANCE_ENFORCED`, true because CH.6's publish gate shipped. The chain card follows the
+> table's selection through one Server Action
+> ([`chain-actions.ts`](../ouroboros-ui/app/registry/chain-actions.ts)) whose order is the honesty:
+> the latest snapshot touching the alias (`run #482` for `coder-max`, drawn as an inert tag while
+> the run console has no route), else Simulate for the alias's primary task kind — the first
+> route with it as primary, else the first naming it — labelled `simulated — live runs arrive with
+> invocation`, else an explanation for an alias no route names (unbound reason first). The page
+> now also reads the routing matrix for that lookup; a refused read makes the card say so rather
+> than guess. Dropped hops render struck with the resolution's own sentence. Answers are held per
+> alias, switch and binding, so disabling an alias and re-viewing it asks again. **Note:** an alias
+> *with* a snapshot keeps showing that stored run after being disabled — the snapshot is a record,
+> not a live resolution; the dropped-hop story after disabling is the simulated path's.
 
 - **Problem Statement:** The right column carries the page's argument: the
   three-row BYOK explainer, and the chain card proving aliases resolve —

@@ -54,6 +54,8 @@ vi.mock("@/app/registry/inspector-actions", () => ({
   duplicateAlias: vi.fn(),
   removeAlias: vi.fn(),
 }));
+// …and so does the chain card's read (#595, `chain-actions.test.ts`).
+vi.mock("@/app/registry/chain-actions", () => ({ readChain: () => new Promise(() => {}) }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }),
 }));
