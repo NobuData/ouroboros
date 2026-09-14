@@ -137,3 +137,30 @@ export function SubnavSoon({ label, note }: SubnavSoonProps) {
     </span>
   );
 }
+
+/**
+ * What an inert tab takes — {@link SubnavSoon}'s props, for its reason: the note is required.
+ */
+export type SubnavInertProps = SubnavSoonProps;
+
+/**
+ * A tab whose surface is built but has nothing to open from this page: labelled and inert, with
+ * no *soon* mark.
+ *
+ * The studio's **Code** segment on a page with no workflow selected is the case it exists for
+ * (V.1, [#169](https://github.com/NobuData/ouroboros/issues/169)): a file is always one
+ * workflow's, so there is no link to draw — and *soon* would be untrue, because what is missing
+ * is a selection rather than a surface. It takes the soon tab's treatment and its shape, a
+ * `<span>` out of the tab order with its note as the tooltip, so the row does not change when a
+ * workflow is selected and the tab becomes a link.
+ *
+ * @param props See {@link SubnavInertProps}.
+ * @returns A `<span>` styled as a receding tab, carrying its explanation as a tooltip.
+ */
+export function SubnavInert({ label, note }: SubnavInertProps) {
+  return (
+    <span className="ou-subnav__soon" title={`${label} — ${note}`}>
+      {label}
+    </span>
+  );
+}

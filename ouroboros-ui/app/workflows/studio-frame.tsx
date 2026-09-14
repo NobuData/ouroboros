@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Eyebrow } from "@/app/ui";
 
 import { StudioSubnav } from "./studio-subnav";
-import { STUDIO_EYEBROW } from "./view";
+import { STUDIO_EYEBROW, type StudioSurface } from "./view";
 
 import "./workflows.css";
 
@@ -33,8 +33,10 @@ import "./workflows.css";
 
 /** What a page supplies to the frame. */
 export interface StudioFrameProps {
-  /** The selected workflow's slug, or `null` — what the control's live segment links to. */
+  /** The selected workflow's slug, or `null` — what the control's live segments link to. */
   readonly slug: string | null;
+  /** Which editor this page is — the segment the control marks current (V.1, #169). */
+  readonly current: StudioSurface;
   /** The `<h1>` — the workflow's name, or a state's title, or the skeleton's bar. */
   readonly title: ReactNode;
   /** The sentence under the title — the composed subline, a state's sentence, or a bar. */
@@ -58,7 +60,15 @@ export interface StudioFrameProps {
  * @returns The `<main>` with the head, the segmented control, and the page's content in that
  *   order.
  */
-export function StudioFrame({ slug, title, subline, actions, children, busy }: StudioFrameProps) {
+export function StudioFrame({
+  slug,
+  current,
+  title,
+  subline,
+  actions,
+  children,
+  busy,
+}: StudioFrameProps) {
   return (
     <main aria-busy={busy === undefined ? undefined : true} aria-label={busy} className="studio">
       <div className="studio__head">
@@ -70,7 +80,7 @@ export function StudioFrame({ slug, title, subline, actions, children, busy }: S
         <div className="studio__actions">{actions}</div>
       </div>
 
-      <StudioSubnav slug={slug} />
+      <StudioSubnav current={current} slug={slug} />
 
       {children}
     </main>

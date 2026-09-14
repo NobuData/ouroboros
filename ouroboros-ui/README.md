@@ -2575,7 +2575,7 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 
 `/workflows` ([#147](https://github.com/NobuData/ouroboros/issues/147)) is
 [`docs/mockups/04-workflow-builder.html`](../docs/mockups/04-workflow-builder.html)'s
-**frame**: the page head bound to the selected workflow, the segmented **Visual** · Code ·
+**frame**: the page head bound to the selected workflow, the segmented **Visual** · **Code** ·
 Copilot control, the three actions, and the `.wf-list` rail down the left edge. It retires the
 `#49` placeholder this route was, and the sidebar's **Workflows** entry — and the dashboard's
 *Edit workflows* — became links on the same commit. The
@@ -2585,14 +2585,16 @@ for it; the inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/
 beside it, and the draft, publish and dry-run flows (S.6,
 [#152](https://github.com/NobuData/ouroboros/issues/152)) are what the head's actions — and the
 canvas's own *not saved* — wait for. `/workflows/<slug>` is the same screen opened on a named
-workflow, which is what the rail links to.
+workflow, which is what the rail links to, and `/workflows/<slug>/code` is
+[the code view](#the-code-view-is-a-second-face-of-the-same-draft) (V.1,
+[#169](https://github.com/NobuData/ouroboros/issues/169)) — the same workflow's other tab.
 
 ```
 WORKFLOW STUDIO
 standard-fix                                   [Browse templates] [Dry run] [Publish v15]
 Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 · used by 42% of runs.
 ──────────────────────────────────────────────────────────────────────────────────────────
- Visual   Code soon   Copilot soon
+ Visual   Code   Copilot soon
  ▔▔▔▔▔▔
 ▌standard-fix             ┌ · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ┐
 │ 12 stages · auto-merge  · ┌TRIGGER──────┐  ┌MODEL────────┐  ┌FLOW─────────┐ ·
@@ -2627,11 +2629,14 @@ canvas, and the usage reads `42%` because no integer count of the seeded runs ro
 
 The mockup draws `.seg` beside the actions; the shell specification renders it as the CP.4
 `PageSubnav`, sticky in the pane, because the three segments are sub-surfaces of one sidebar
-entry. **Visual** is the one built surface and links to the workflow's own URL; **Code** and
-**Copilot** are `SubnavSoon` — a span, out of the tab order, naming the issue that builds each
-([#169](https://github.com/NobuData/ouroboros/issues/169),
-[#565](https://github.com/NobuData/ouroboros/issues/565)) — which is the ticket's own honesty
+entry. **Visual** and **Code** link to the selected workflow's two URLs — Code since V.1
+([#169](https://github.com/NobuData/ouroboros/issues/169)), which amended S.1's control — through
+the [mode guard](#the-code-view-is-a-second-face-of-the-same-draft). **Copilot** is `SubnavSoon`
+— a span, out of the tab order, naming the issue that builds it
+([#565](https://github.com/NobuData/ouroboros/issues/565)) — which is S.1's own honesty
 obligation: *they ship visibly disabled and labelled, not as buttons that quietly do nothing.*
+With no workflow selected, Code has nothing to open and is `SubnavInert`: the same span, saying
+why, without a *soon* mark, because it is built.
 
 ### The rail links, the tile creates
 
@@ -2661,8 +2666,65 @@ not-found page, because the rail is what a reader who followed a stale link need
 workflow whose own read failed keeps the rail's facts in the head and says which read failed.
 The fifth, populated, is the canvas. Loading is
 [`app/workflows/studio-skeleton.tsx`](app/workflows/studio-skeleton.tsx): one skeleton for
-both routes, at the frame's own geometry, with the title and subline as bars because — unlike
-the routing page's — both depend on the reads.
+both visual routes, at the frame's own geometry, with the title and subline as bars because —
+unlike the routing page's — both depend on the reads. The code view has its own.
+
+### The code view is a second face of the same draft
+
+`/workflows/<slug>/code` (V.1, [#169](https://github.com/NobuData/ouroboros/issues/169)) is
+[`docs/mockups/05-workflow-code.html`](../docs/mockups/05-workflow-code.html)'s page head over the
+workflow's file: *Workflow Studio*, `standard-fix.loop.ts`, the mockup's subline verbatim,
+**Validate** and **Publish v15**, and the segmented control with **Code** current. It is a tab of
+the studio rather than a section of its own — the same frame, in the content pane, under the
+sidebar's **Workflows** entry, which stays lit.
+
+```
+WORKFLOW STUDIO
+standard-fix.loop.ts                                                  [Validate] [Publish v15]
+The same loop as the visual canvas — every graph compiles to this typed DSL and back, losslessly.
+──────────────────────────────────────────────────────────────────────────────────────────
+ Visual   Code   Copilot soon
+          ▔▔▔▔
+┌ workflows/standard-fix.loop.ts    Printed from the draft · Read-only — editing arrives with #170 and #172. ┐
+│  1  import { defineLoop, trigger, llm, … } from "@ouroboros/sdk";                            │
+│  2                                                                                            │
+│  3  export default defineLoop("standard-fix", {                                               │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**One draft, two editors (decision C3).** The file is U.3's `GET /api/v1/workflows/{slug}/code`,
+printed from the draft slot the canvas reads — its `etag` is the canvas's — and each route reads
+that slot when it renders ([`app/workflows/code/code-data.ts`](app/workflows/code/code-data.ts)).
+So a switch converts nothing and keeps nothing on the client that could drift from the draft.
+Visual → Code → Visual shows whatever the draft holds; the cross-editor round trip in a browser is
+V.8's leg ([#176](https://github.com/NobuData/ouroboros/issues/176)).
+
+**The one thing a switch can lose asks first (decision C4).** Code that has not parsed never
+reaches the draft, so it exists only in the page. `app/(app)/workflows/[slug]/layout.tsx` mounts
+[`app/workflows/mode-guard.tsx`](app/workflows/mode-guard.tsx) around both editors: an editor
+holding such a buffer says so through `useUnsavedBuffer` — V.4
+([#172](https://github.com/NobuData/ouroboros/issues/172)) is its caller — and a plain press on
+the other segment then asks *Discard code that has not parsed?* before navigating. A switch with
+nothing held, a press on the open tab and a modified click are never interrupted; the rules are
+[`app/workflows/mode-switch.ts`](app/workflows/mode-switch.ts)'s. A hold is released on a
+successful parse and when its editor unmounts, so a browser Back cannot leave a stale one behind.
+
+**Read-only until the editor arrives.** The file is drawn as numbered text in a listing that
+scrolls inside itself, and says it is read-only: CodeMirror (V.2,
+[#170](https://github.com/NobuData/ouroboros/issues/170)) and the save loop (V.4) replace that
+region. **Validate** waits for V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)) and
+**Publish vN+1** for S.6's shared dialog (#152), each inert with its issue as the reason. Publish
+is drawn for an `owner` or `admin`; a member reaches the route, reads the file, and gets the same
+role note the visual editor gives (`studio-readonly-note.tsx`, shared).
+
+**States.** [`app/workflows/code/code-view.ts`](app/workflows/code/code-view.ts) decides six: the
+visual editor's five, in the code view's words — an empty workspace and an unknown slug point at
+the Visual tab's rail, since this route has none — and **unprojectable**: a draft U.3 cannot print
+faithfully yet (the blank canvas **+ New workflow** leaves) is a `409 workflow_code_unprojectable`,
+drawn with the validator's findings and a link to Visual rather than a retry, because nothing
+failed. The route's skeleton is
+[`app/workflows/code/code-skeleton.tsx`](app/workflows/code/code-skeleton.tsx): the same head, two
+actions, and a file card instead of a rail and a canvas.
 
 ### The canvas is React Flow, and that is a recorded exception
 

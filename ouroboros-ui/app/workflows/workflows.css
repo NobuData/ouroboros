@@ -313,6 +313,20 @@
   }
 }
 
+/* ---------- the mode-switch prompt (#169) ---------- */
+
+/*
+ * The two answers under the prompt — discard and switch, or keep editing. The dialog around
+ * them is .shell-overlay's and the buttons are the #46 primitive; this only lays them out, in
+ * the create dialog's own rhythm.
+ */
+.studio-switch__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-8);
+}
+
 /* ---------- the create dialog (#147) ---------- */
 
 /*

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { CHROME_SUBNAV_PROPERTY, PageSubnav, SubnavSoon } from "@/app/ui";
+import { CHROME_SUBNAV_PROPERTY, PageSubnav, SubnavInert, SubnavSoon } from "@/app/ui";
 
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 
@@ -140,6 +140,38 @@ describe("a tab whose surface is not built yet", () => {
 
     expect(tabs.children).toHaveLength(2);
     expect(tabs.firstElementChild).toHaveAttribute("aria-current", "page");
+  });
+});
+
+describe("a tab whose surface is built but has nothing to open from here", () => {
+  it("is a span out of the tab order, in the soon tab's treatment, with its note as the tooltip", () => {
+    // The studio's Code segment with no workflow selected (#169): a file is one workflow's.
+    render(
+      <PageSubnav label="Workflow Studio">
+        <SubnavInert label="Code" note="A workflow's code opens once a workflow is selected." />
+      </PageSubnav>,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+
+    const tab = screen.getByText("Code", { selector: ".ou-subnav__soon" });
+
+    expect(tab.tagName).toBe("SPAN");
+    expect(tab.hasAttribute("tabindex")).toBe(false);
+    expect(tab).toHaveAttribute("title", "Code — A workflow's code opens once a workflow is selected.");
+  });
+
+  it("carries no soon mark, because nothing about it is unbuilt", () => {
+    render(
+      <PageSubnav label="Workflow Studio">
+        <SubnavInert label="Code" note="Select a workflow." />
+      </PageSubnav>,
+    );
+
+    const tab = screen.getByText("Code", { selector: ".ou-subnav__soon" });
+
+    expect(tab).toHaveTextContent(/^Code$/);
+    expect(tab.querySelector(".ou-subnav__mark")).toBeNull();
   });
 });
 

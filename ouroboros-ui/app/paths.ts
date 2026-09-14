@@ -150,6 +150,22 @@ export function workflowPath(slug: string): string {
 }
 
 /**
+ * The studio's code view, opened on one workflow — `/workflows/standard-fix/code` (V.1,
+ * [#169](https://github.com/NobuData/ouroboros/issues/169)), mockup 05.
+ *
+ * A tab of the same surface rather than a section of its own: it sits beneath
+ * {@link workflowPath}, so the sidebar's **Workflows** entry stays lit here by the same
+ * `isActiveRoute` rule, and the segmented control's **Visual** and **Code** segments are the
+ * two spellings of one workflow's URL.
+ *
+ * @param slug The workflow's slug, encoded for the reason {@link workflowPath} gives.
+ * @returns The path.
+ */
+export function workflowCodePath(slug: string): string {
+  return `${workflowPath(slug)}/code`;
+}
+
+/**
  * The routing matrix's heading, as an element id — where a **Used by** chip naming a route
  * goes ([#593](https://github.com/NobuData/ouroboros/issues/593)).
  *

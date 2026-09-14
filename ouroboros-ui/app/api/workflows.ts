@@ -118,6 +118,19 @@ export type CodeSymbol = components["schemas"]["WorkflowCodeSymbol"];
 /** One run of a signature, and its colour. */
 export type CodeSignaturePart = components["schemas"]["WorkflowCodeSignaturePart"];
 
+/**
+ * One workflow as a file of the code view — U.3
+ * ([#167](https://github.com/NobuData/ouroboros/issues/167)): the TypeScript projection of its
+ * draft, with the draft slot's etag.
+ *
+ * **One draft, two editors** (decision **C3**): `etag` is the same token `WorkflowDetail.draft`
+ * carries for the canvas, so the two editors are reading one row, not two copies of it.
+ */
+export type WorkflowCode = components["schemas"]["WorkflowCode"];
+
+/** The code a `409` answers for a draft that has no faithful spelling as a file (U.3). */
+export const WORKFLOW_CODE_UNPROJECTABLE = "workflow_code_unprojectable";
+
 /** Workflows, as `ouroboros-rest` serves them. */
 export const workflows = {
   /**
@@ -173,5 +186,35 @@ export const workflows = {
    */
   async create(body: CreateWorkflowRequest, client: ApiClient = api()): Promise<WorkflowDetail> {
     return unwrap(await client.POST("/api/v1/workflows", { body }));
+  },
+
+  /**
+   * One workflow as a file — the code view's read (V.1,
+   * [#169](https://github.com/NobuData/ouroboros/issues/169)).
+   *
+   * Always the draft's file: no `?version=` is sent, for the reason {@link workflows.read}
+   * sends none. A workflow with no draft answers the version in force, editable, which is what
+   * the canvas opens on too.
+   *
+   * @param slug The workflow's slug — this endpoint takes the slug, not the id. The code route
+   *   resolves it against the rail first (`app/workflows/code/code-data.ts`), so a slug the
+   *   workspace does not have never reaches this call.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The file, its etag, and the version in force.
+   * @throws {ApiError} What the service answered — `409 workflow_code_unprojectable` (see
+   *   {@link WORKFLOW_CODE_UNPROJECTABLE}) for a draft with no faithful spelling as code, with
+   *   the validator's findings in `details.findings`; `404 workflow_not_found` for a slug this
+   *   workspace does not have.
+   */
+  async code(slug: string, client: ApiClient = api()): Promise<WorkflowCode> {
+    const file = unwrap(
+      await client.GET("/api/v1/workflows/{slug}/code", { params: { path: { slug } } }),
+    );
+
+    // `outlineRef` is typed `null` and nothing else, and openapi-fetch's `Readable` drops a
+    // response property whose only type is `null` (`NonNullable<null>` is `never`, which extends
+    // its `$Write` marker). The contract serves it and it is always `null`, so it is restored
+    // here rather than widening a type every caller reads.
+    return { ...file, outlineRef: null };
   },
 };

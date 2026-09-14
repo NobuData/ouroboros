@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { WORKFLOWS_PATH, workflowPath } from "@/app/paths";
+import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
 import {
   ANY_ISSUE,
   BROWSE_TEMPLATES_SOON,
-  CODE_SOON_NOTE,
+  CODE_NEEDS_WORKFLOW_NOTE,
   COPILOT_SOON_NOTE,
   DRY_RUN_SOON,
   NEW_WORKFLOW_MEMBER_REASON,
@@ -318,29 +318,38 @@ describe("the segmented control", () => {
     ]);
   });
 
-  it("links the one live segment to this workflow's own visual surface", () => {
-    const [visual] = studioTabs("standard-fix");
+  it("links the two live segments to this workflow's own surfaces", () => {
+    // V.1 (#169) turns Code on: Visual and Code are one workflow's two URLs.
+    const [visual, code] = studioTabs("standard-fix");
 
-    expect(isLiveTab(visual!)).toBe(true);
     expect(isLiveTab(visual!) && visual.href).toBe(workflowPath("standard-fix"));
+    expect(isLiveTab(code!) && code.href).toBe(workflowCodePath("standard-fix"));
+    expect(workflowCodePath("standard-fix")).toBe("/workflows/standard-fix/code");
   });
 
-  it("links it to the landing when nothing is selected", () => {
-    const [visual] = studioTabs(null);
+  it("encodes the slug in the code path, as the visual path does", () => {
+    expect(workflowCodePath("a b")).toBe("/workflows/a%20b/code");
+  });
+
+  it("links Visual to the landing when nothing is selected, and makes Code inert without calling it soon", () => {
+    // A file is always one workflow's, so with none selected Code has nothing to open — and it
+    // is built, so *soon* would be untrue.
+    const [visual, code] = studioTabs(null);
 
     expect(isLiveTab(visual!) && visual.href).toBe(WORKFLOWS_PATH);
+    expect(isLiveTab(code!)).toBe(false);
+    expect(!isLiveTab(code!) && code.soon).toBe(false);
+    expect(!isLiveTab(code!) && code.note).toBe(CODE_NEEDS_WORKFLOW_NOTE);
   });
 
-  it("labels the two unbuilt segments with the issue that builds each", () => {
-    // The ticket's honesty obligation, and the two amendments recorded on it: V.1 (#169) turns
-    // Code on, CE.1 (#565) turns Copilot on.
-    const [, code, copilot] = studioTabs("standard-fix");
+  it("labels Copilot soon, with the issue that builds it, whether or not a workflow is selected", () => {
+    for (const slug of ["standard-fix", null]) {
+      const [, , copilot] = studioTabs(slug);
 
-    expect(isLiveTab(code!)).toBe(false);
-    expect(isLiveTab(copilot!)).toBe(false);
-    expect(!isLiveTab(code!) && code.note).toBe(CODE_SOON_NOTE);
-    expect(!isLiveTab(copilot!) && copilot.note).toBe(COPILOT_SOON_NOTE);
-    expect(CODE_SOON_NOTE).toMatch(/#169/);
+      expect(isLiveTab(copilot!)).toBe(false);
+      expect(!isLiveTab(copilot!) && copilot.soon).toBe(true);
+      expect(!isLiveTab(copilot!) && copilot.note).toBe(COPILOT_SOON_NOTE);
+    }
     expect(COPILOT_SOON_NOTE).toMatch(/#565/);
   });
 

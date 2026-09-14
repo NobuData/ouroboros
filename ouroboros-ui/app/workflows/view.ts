@@ -29,7 +29,7 @@
 import type { Reading } from "@/app/api/reading";
 import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
 import { relativeAgo } from "@/app/format";
-import { WORKFLOWS_PATH, workflowPath } from "@/app/paths";
+import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
 
 /* ------------------------------------------------------------------ what the page reads */
 
@@ -387,15 +387,15 @@ export const PUBLISH_SOON =
  * The studio surfaces that are built — the ids a page may claim as the tab it *is*.
  *
  * A type rather than a list, so the tab set below cannot link to a surface that does not
- * exist. `"code"` joins it with V.1 ([#169](https://github.com/NobuData/ouroboros/issues/169))
- * and `"copilot"` with CE.1 ([#565](https://github.com/NobuData/ouroboros/issues/565)) — the
- * two amendments recorded on the ticket — and the compiler will name the tab that has to
- * change with each, which is what the union is for.
+ * exist. `"code"` joined it with V.1 ([#169](https://github.com/NobuData/ouroboros/issues/169));
+ * `"copilot"` joins it with CE.1 ([#565](https://github.com/NobuData/ouroboros/issues/565)) —
+ * the amendment recorded on the ticket — and the compiler will name the tab that has to change,
+ * which is what the union is for.
  */
-export type StudioSurface = "visual";
+export type StudioSurface = "visual" | "code";
 
 /** Every segment's id, built or not. */
-export type StudioTabId = StudioSurface | "code" | "copilot";
+export type StudioTabId = StudioSurface | "copilot";
 
 /** What every segment carries: a stable id, which is also the React key, and what it says. */
 interface StudioTabBase {
@@ -411,21 +411,27 @@ export interface LiveStudioTab extends StudioTabBase {
 }
 
 /**
- * A segment whose surface does not exist yet. It names its owner instead of linking.
+ * A segment that cannot be pressed from here. It says why instead of linking.
  *
  * `note` is required here and impossible on a live segment — the honesty pair `NavEntry` and
- * the Models tab set already use: a surface that is not ready is **labelled**, never dead and
- * never a link to a `404`. The ticket says so in as many words: *they ship visibly disabled and
- * labelled, not as buttons that quietly do nothing.*
+ * the Models tab set already use: a surface that is not reachable is **labelled**, never dead
+ * and never a link to a `404`. S.1's words: *they ship visibly disabled and labelled, not as
+ * buttons that quietly do nothing.*
+ *
+ * There are two reasons a segment is inert, and `soon` tells them apart. **Copilot** is not
+ * built, and is marked *soon*. **Code** is built, but a file is always one workflow's, so on a
+ * page with no workflow selected — an empty workspace, a refused rail, a slug the rail does not
+ * hold — it has nothing to open, and *soon* would be untrue.
  */
-export interface SoonStudioTab extends StudioTabBase {
-  readonly id: Exclude<StudioTabId, StudioSurface>;
-  /** Why it is not reachable — which surface owns it, and when it arrives. */
+export interface InertStudioTab extends StudioTabBase {
+  /** Why it is not reachable — which issue builds it, or what has to be selected first. */
   readonly note: string;
+  /** `true` when the surface is not built yet, which is what the *soon* mark says. */
+  readonly soon: boolean;
 }
 
-/** One segment of the control: built and linking, or unbuilt and saying so. */
-export type StudioTab = LiveStudioTab | SoonStudioTab;
+/** One segment of the control: linking, or inert and saying why. */
+export type StudioTab = LiveStudioTab | InertStudioTab;
 
 /**
  * Whether a segment leads somewhere.
@@ -437,20 +443,22 @@ export function isLiveTab(tab: StudioTab): tab is LiveStudioTab {
   return "href" in tab;
 }
 
-/** Why **Code** leads nowhere yet — mockup 05's roadmap, V.1. */
-export const CODE_SOON_NOTE = "Workflow as code arrives with #169.";
+/** Why **Code** cannot be pressed on a page with no workflow selected. */
+export const CODE_NEEDS_WORKFLOW_NOTE =
+  "A workflow's code opens once a workflow is selected — pick one from the rail.";
 
 /** Why **Copilot** leads nowhere yet — mockup 20's roadmap, CE.1. */
 export const COPILOT_SOON_NOTE = "The workflow copilot arrives with #565.";
 
 /**
- * The segmented control — Visual · Code · Copilot — in the order mockup 04 draws it.
+ * The segmented control — Visual · Code · Copilot — in the order mockups 04 and 05 draw it.
  *
- * A function rather than a constant, because the one live segment links to *this* workflow:
- * the Visual surface of `standard-fix` is `/workflows/standard-fix`, and a tab set that linked
- * every workflow's Visual segment to the section's landing would deselect the workflow on
- * every press. With nothing selected — an empty rail, a refused read — it links to the landing,
- * which is the only Visual surface there is.
+ * A function rather than a constant, because the two live segments link to *this* workflow:
+ * the Visual surface of `standard-fix` is `/workflows/standard-fix` and its Code surface is
+ * `/workflows/standard-fix/code`, and a tab set that linked to the section's landing would
+ * deselect the workflow on every press. With nothing selected — an empty rail, a refused read —
+ * Visual links to the landing, which is the only Visual surface there is, and Code is inert and
+ * says why (see {@link InertStudioTab}).
  *
  * @param slug The selected workflow's slug, or `null` when nothing is selected.
  * @returns The three segments.
@@ -458,8 +466,10 @@ export const COPILOT_SOON_NOTE = "The workflow copilot arrives with #565.";
 export function studioTabs(slug: string | null): readonly StudioTab[] {
   return [
     { id: "visual", label: "Visual", href: slug === null ? WORKFLOWS_PATH : workflowPath(slug) },
-    { id: "code", label: "Code", note: CODE_SOON_NOTE },
-    { id: "copilot", label: "Copilot", note: COPILOT_SOON_NOTE },
+    slug === null
+      ? { id: "code", label: "Code", note: CODE_NEEDS_WORKFLOW_NOTE, soon: false }
+      : { id: "code", label: "Code", href: workflowCodePath(slug) },
+    { id: "copilot", label: "Copilot", note: COPILOT_SOON_NOTE, soon: true },
   ];
 }
 

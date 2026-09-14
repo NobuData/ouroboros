@@ -417,7 +417,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| V.1 | #169 | 🟡 Open | ouroboros-ui: [V.1] Code route, head & mode switching | `/workflows/:slug/code`, seg control live, shared-draft state | mvp, workflow, code-view, ui | N (after WF-S.1, U.3) | Y | M | ouroboros-ui |
+| V.1 | #169 | 🟢 Done | ouroboros-ui: [V.1] Code route, head & mode switching | `/workflows/:slug/code`, seg control live, shared-draft state | mvp, workflow, code-view, ui | N (after WF-S.1, U.3) | Y | M | ouroboros-ui |
 | V.2 | #170 | 🟡 Open | ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting | Themed CM6, custom language package, line/current-line/caret parity | mvp, workflow, code-view, ui, design | N (after V.1) | Y | L | ouroboros-ui |
 | V.3 | #171 | 🟡 Open | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
 | V.4 | #172 | 🟡 Open | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
@@ -428,7 +428,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 
 ### Issue V.1 — ouroboros-ui: [V.1] Code route, head & mode switching
 
-> **GitHub issue:** #169 · **Status:** 🟡 Open · **Parent epic:** #162
+> **GitHub issue:** #169 · **Status:** 🟢 Done · **Parent epic:** #162
 
 - **Problem Statement:** The Code segment (a "soon" stub after WF-S.1) must go
   live: route, head (filename h1, round-trip subline, Validate/Publish), and
@@ -445,6 +445,34 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 - **Parallelism/Dependencies:** Needs WF-S.1, U.3. Blocks V.2–V.7.
 - **Technical Stack:** Next.js, shared studio state.
 - **Epic:** V
+- **Delivered (2026-09-14):** `/workflows/[slug]/code` in `ouroboros-ui`
+  (`app/(app)/workflows/[slug]/code/`, with `app/workflows/code/code-{data,view,screen,skeleton}`).
+  It shares the studio frame and carries mockup 05's head: `standard-fix.loop.ts`, the subline
+  verbatim, **Validate** and **Publish v15**. S.1's segmented control is amended, with Visual and
+  Code live and Copilot `soon`. Under the head is U.3's file, read-only as numbered text.
+  Five decisions were taken in-issue.
+  - **The shared state is the draft slot, not a client store.** Both routes read it when they
+    render. `staleTimes.dynamic` is 0 and `cacheComponents` is off, so no route is kept stale,
+    and C3 needs no synchronisation. The one piece of client state is the guard mounted by the
+    `[slug]` layout (`app/workflows/mode-guard.tsx`). An editor registers a buffer that has not
+    parsed through `useUnsavedBuffer`, and a plain press on the other segment prompts before
+    discarding it (`mode-switch.ts`). V.4 (#172) is the first real caller, so this issue proves
+    the prompt with a stand-in editor.
+  - **Publish is inert, naming #152, so "Publish opens the shared dialog" lands with V.6
+    (#174).** The dialog does not exist yet and sits behind #150 and #151. Asked on 2026-09-14,
+    the choice was to draw Publish as S.1 does, since V.6 already owns wiring the dialog and
+    depends on S.6. **Validate** is inert too, naming #174.
+  - **The file is read before the editor exists.** A deep link therefore shows the real draft,
+    and U.3's `409 workflow_code_unprojectable` gets its designed state now: the findings and a
+    link to Visual, with no retry.
+  - **Code with no workflow selected is `SubnavInert`**, a new CP.4 sibling of `SubnavSoon`. It
+    is inert with its reason, but carries no *soon* mark, because the surface is built.
+  - **`workflows.code()` restores `outlineRef: null`.** openapi-fetch's `Readable` drops a
+    response property whose only type is `null`.
+
+  Two things are left to later issues. The browser-level backing of Visual → Code → Visual is
+  V.8's (#176). Canvas moves are still unsaved on any navigation until S.6's autosave (#152),
+  as the canvas toolbar says. `ouroboros-ui` is now 0.63.0.
 
 ```
 [Workflow Studio]  standard-fix.loop.ts     (Visual | ●Code | Copilot·soon)
