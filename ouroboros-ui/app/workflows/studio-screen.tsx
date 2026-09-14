@@ -69,8 +69,8 @@ import "./workflows.css";
  * than linked to a `404`; **Browse templates**, **Dry run** and **Publish vN+1** are drawn
  * where the mockup draws them and are inert with the issue each waits for as its reason
  * (§ 3.5) — a control that cannot act says what is missing, never quietly does nothing. The
- * canvas's own toolbar keeps the same rule for **Auto-layout** and **Add stage**, and says out
- * loud that a move is not saved yet.
+ * canvas's own toolbar keeps the same rule for every edit it refuses (S.5, #151), and says out
+ * loud that an edit is not saved yet.
  *
  * ### The role decides what is drawn, and is explained
  *

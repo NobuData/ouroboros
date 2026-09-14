@@ -10,7 +10,6 @@ import {
   CLEAN_REASON,
   DECLARED_NOTE,
   DIRTY_NOTE,
-  EDGE_SELECTED_NOTE,
   INSPECTOR_LABEL,
   INVALID_REASON,
   MANY_SELECTED_NOTE,
@@ -45,6 +44,16 @@ import { inspectorReadings, stageCatalog, standardFixDefinition } from "../../he
  */
 
 /**
+ * The four editing callbacks S.5 (#151) added — connect, apply an edge, delete an edge, insert — as
+ * fresh spies, for a render whose case is not about them.
+ *
+ * @returns The callbacks.
+ */
+function editing() {
+  return { onConnect: vi.fn(), onApplyEdge: vi.fn(), onDeleteEdge: vi.fn(), onInsert: vi.fn() };
+}
+
+/**
  * Open the panel on one stage.
  *
  * @param id The stage, or `null` for nothing selected.
@@ -60,6 +69,7 @@ function open(id: string | null, over: Partial<InspectorPanelProps> = {}) {
 
   const view = render(
     <InspectorPanel
+      {...editing()}
       definition={definition}
       entry={id === null ? null : stageEntry(definition, id)}
       mayAdminister
@@ -96,14 +106,20 @@ describe("with no single stage selected", () => {
     expect(within(panel()).getByText(NOTHING_SELECTED_TITLE)).toBeInTheDocument();
   });
 
-  it("says edge editing is #151's for an edge, and asks for one stage for several", () => {
+  it("opens an edge's panel for an edge the draft holds, and asks for one thing for several", () => {
+    // The edge panel itself is `edge-inspector.test.tsx`'s; this is the panel choosing it.
     const { rerender } = open(null, {
-      selection: { kind: "edge", id: "a→b", connection: { from: "a", to: "b", kind: "default", label: null, condition: null } },
+      selection: {
+        kind: "edge",
+        id: "plan→implement",
+        connection: { from: "plan", to: "implement", kind: "default", label: null, condition: null },
+      },
     });
-    expect(screen.getByText(EDGE_SELECTED_NOTE)).toBeInTheDocument();
+    expect(within(panel()).getByRole("heading", { level: 2, name: "Write attack plan → Code the change" })).toBeInTheDocument();
 
     rerender(
       <InspectorPanel
+        {...editing()}
         definition={standardFixDefinition()}
         entry={null}
         mayAdminister
@@ -114,6 +130,14 @@ describe("with no single stage selected", () => {
       />,
     );
     expect(screen.getByText(MANY_SELECTED_NOTE)).toBeInTheDocument();
+  });
+
+  it("says to select one for an edge the draft no longer holds", () => {
+    open(null, {
+      selection: { kind: "edge", id: "a→b", connection: { from: "a", to: "b", kind: "default", label: null, condition: null } },
+    });
+
+    expect(within(panel()).getByText(NOTHING_SELECTED_TITLE)).toBeInTheDocument();
   });
 });
 
@@ -203,6 +227,7 @@ describe("editing and applying", () => {
     const entry = stageEntry(definition, "implement");
     rerender(
       <InspectorPanel
+        {...editing()}
         definition={definition}
         entry={entry === null ? null : { ...entry, config: applied }}
         mayAdminister
@@ -504,6 +529,7 @@ describe("both themes", () => {
     const definition = standardFixDefinition();
     const [light, dark] = renderInBothPalettes(
       <InspectorPanel
+        {...editing()}
         definition={definition}
         entry={stageEntry(definition, "implement")}
         mayAdminister

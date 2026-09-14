@@ -28,7 +28,7 @@
 import type { Reading } from "@/app/api/reading";
 import type { RoutingAlias, RoutingTaskKind } from "@/app/api/routing";
 import type { WorkflowDefinition, WorkflowStageCatalog, WorkflowStageType } from "@/app/api/workflows";
-import { type CanvasSelection, upstreamStageIds } from "@/app/workflows/canvas/graph";
+import { type CanvasSelection, type EdgeKind, upstreamStageIds } from "@/app/workflows/canvas/graph";
 
 /* ------------------------------------------------------------------ reading a catalog schema */
 
@@ -504,16 +504,37 @@ function llmErrors(config: ConfigRecord, root: JsonSchema, budget: string, error
  * @param errors Where to write them.
  */
 function flowErrors(config: ConfigRecord, root: JsonSchema, errors: Record<string, string>): void {
-  const predicate = isRecord(config.predicate) ? config.predicate : {};
-  if (typeof predicate.kind !== "string") {
-    errors["predicate.kind"] = PREDICATE_REQUIRED;
+  predicateErrors(config.predicate, propertySchema(root, "predicate", root), root, "predicate", errors);
+}
+
+/**
+ * A structured predicate's errors (decision **P8**) — a flow node's `predicate`, or an edge's
+ * `condition` (S.5, [#151](https://github.com/NobuData/ouroboros/issues/151)): no kind chosen, or a
+ * kind that needs a list with none given.
+ *
+ * @param predicate The predicate, as the draft holds it.
+ * @param schema The predicate's schema.
+ * @param root The document its references resolve against.
+ * @param field The key the messages are filed under — `predicate`, `condition`.
+ * @param errors Where to write them, as `<field>.kind` and `<field>.values`.
+ */
+export function predicateErrors(
+  predicate: unknown,
+  schema: JsonSchema,
+  root: JsonSchema,
+  field: string,
+  errors: Record<string, string>,
+): void {
+  const value = isRecord(predicate) ? predicate : {};
+  if (typeof value.kind !== "string") {
+    errors[`${field}.kind`] = PREDICATE_REQUIRED;
     return;
   }
 
-  const branch = branchSchema(propertySchema(root, "predicate", root), "kind", predicate.kind, root);
+  const branch = branchSchema(schema, "kind", value.kind, root);
   if (requiredProperties(branch, root).includes("values")) {
-    if (!Array.isArray(predicate.values) || predicate.values.length === 0) {
-      errors["predicate.values"] = VALUES_REQUIRED;
+    if (!Array.isArray(value.values) || value.values.length === 0) {
+      errors[`${field}.values`] = VALUES_REQUIRED;
     }
   }
 }
@@ -697,25 +718,21 @@ export function templateSegments(template: string): readonly TemplateSegment[] {
 export const INSPECTOR_LABEL = "Inspector";
 
 /** What the panel says with nothing selected. */
-export const NOTHING_SELECTED_TITLE = "Select a stage";
-export const NOTHING_SELECTED_NOTE = "Click a stage on the canvas, or Tab to one and press Enter, to configure it.";
-
-/** …with an edge selected. */
-export const EDGE_SELECTED_NOTE = "Editing an edge arrives with #151 — select a stage to configure it.";
+export const NOTHING_SELECTED_TITLE = "Select a stage or an edge";
+export const NOTHING_SELECTED_NOTE =
+  "Click a stage or an edge on the canvas, or Tab to one and press Enter, to configure it.";
 
 /** …with more than one thing selected. */
-export const MANY_SELECTED_NOTE = "Select one stage to configure it.";
+export const MANY_SELECTED_NOTE = "Select one stage or one edge to configure it — or press Delete to remove the selection.";
 
 /**
- * What the panel says when no single stage is selected.
+ * What the panel says when no single stage or edge is selected.
  *
  * @param selection The canvas's selection.
- * @returns The note for an edge, for several things, or for nothing.
+ * @returns The note for several things, or for nothing.
  */
 export function emptyNote(selection: CanvasSelection): string {
-  if (selection?.kind === "edge") return EDGE_SELECTED_NOTE;
-  if (selection?.kind === "many") return MANY_SELECTED_NOTE;
-  return NOTHING_SELECTED_NOTE;
+  return selection?.kind === "many" ? MANY_SELECTED_NOTE : NOTHING_SELECTED_NOTE;
 }
 
 /** The mode segment's legend, and what each mode is called. */
@@ -804,6 +821,44 @@ export const APPLIED_NOTE = "Applied to the draft — not saved; autosave arrive
 export const MEMBER_REASON = "Only an owner or admin may change a workflow.";
 export const INVALID_REASON = "Fix the fields marked in red before applying.";
 export const CLEAN_REASON = "Nothing to apply yet.";
+
+/** The edge panel (S.5, #151): what an edge is called, and each of its fields. */
+export const EDGE_TYPE_LABEL = "Edge";
+export const EDGE_GLYPH = "→";
+export const KIND_LABEL = "Kind";
+export const EDGE_KIND_WORDS: Readonly<Record<EdgeKind, string>> = {
+  default: "Default — always taken",
+  branch: "Branch — one outcome of a fork",
+  loop: "Loop — back up the graph",
+};
+export const EDGE_LABEL_LABEL = "Label";
+export const EDGE_LABEL_HINT = "Printed beside the edge on the canvas — never evaluated.";
+export const CONDITION_LABEL = "Condition";
+export const NO_CONDITION = "No condition";
+export const DEFAULT_EDGE_NOTE = "A default edge is always taken, so it has no condition.";
+export const CONDITION_UNREAD = "The stage catalog could not be read, so this edge's condition has no form.";
+export const DELETE_EDGE_LABEL = "Delete edge";
+export const INSERT_STAGE_LABEL = "Insert stage ▾";
+export const INSERT_HINT = "Splits this edge in two, with the new stage between its ends — as a double-click on the edge does.";
+
+/** Connecting from a stage by keyboard — what a drag from a stage's side does. */
+export const CONNECTIONS_LABEL = "Connections";
+export const CONNECT_TARGET_LABEL = "Connect to";
+export const CONNECT_LABEL = "Connect";
+export const CONNECT_HINT = "Draws a default edge to the stage chosen, as a drag from this stage's side does.";
+export const CONNECT_CHOOSE_REASON = "Choose a stage to connect to.";
+export const CONNECTED_NOTE = "Connected — not saved; autosave arrives with #152.";
+
+/**
+ * An edge's title in its panel — *Write attack plan → Code the change*.
+ *
+ * @param from The source stage's title.
+ * @param to The target stage's title.
+ * @returns The title.
+ */
+export function edgeTitle(from: string, to: string): string {
+  return `${from} → ${to}`;
+}
 
 /** When the catalog is missing what the panel needs. */
 export const CATALOG_UNREAD = "The stage catalog could not be read, so this stage has no form.";

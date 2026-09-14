@@ -117,9 +117,13 @@ describe("the stages upstream of one", () => {
 });
 
 describe("reconciling the canvas with a new document", () => {
-  it("keeps a node's position and selection and takes its new config", () => {
+  it("keeps a node's selection and measurements, and takes its config and position from the document", () => {
+    // The position is the document's since #151: an Undo of a move, or an Auto-layout, moves the
+    // stage — and a settled move has already written the canvas's position into the document.
     const current = toNodes(SEEDED).map((node) =>
-      node.id === "implement" ? { ...node, selected: true, position: { x: 700, y: 440 } } : node,
+      node.id === "implement"
+        ? { ...node, selected: true, measured: { width: 204, height: 104 }, position: { x: 700, y: 440 } }
+        : node,
     );
     const next = withStage(SEEDED, "implement", {
       title: "Code the change",
@@ -131,7 +135,8 @@ describe("reconciling the canvas with a new document", () => {
     const implement = reconciled.find((node) => node.id === "implement");
 
     expect(implement?.selected).toBe(true);
-    expect(implement?.position).toEqual({ x: 700, y: 440 });
+    expect(implement?.measured).toEqual({ width: 204, height: 104 });
+    expect(implement?.position).toEqual({ x: 588, y: 420 });
     expect(implement?.data.stage.config.skill).toBe("repo-map");
   });
 

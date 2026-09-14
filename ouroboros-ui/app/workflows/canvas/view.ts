@@ -1,6 +1,7 @@
 /**
- * Every word the canvas prints, and the two sentences it composes (S.2,
- * [#148](https://github.com/NobuData/ouroboros/issues/148)).
+ * Every word the canvas prints, and the sentences it composes (S.2,
+ * [#148](https://github.com/NobuData/ouroboros/issues/148); editing S.5,
+ * [#151](https://github.com/NobuData/ouroboros/issues/151)).
  *
  * The labels, the reasons and the hint live here rather than in the component for the reason
  * `app/workflows/view.ts` gives: each is an agreement with a test or with another module, and a
@@ -9,6 +10,7 @@
  */
 
 import type { CanvasSelection, StageKind } from "./graph";
+import type { EditRule } from "./rules";
 
 /* ------------------------------------------------------------------ the canvas */
 
@@ -89,41 +91,66 @@ export const ZOOM_HOME_LABEL = "Return to 100%";
 /** The mockup's second toolbar control. */
 export const AUTO_LAYOUT_LABEL = "Auto-layout";
 
-/** Why it cannot act yet — the layout is S.5's. */
-export const AUTO_LAYOUT_SOON =
-  "Auto-layout arrives with #151 — a layered, left-to-right layout that untangles a graph.";
+/** Why Auto-layout cannot act on a canvas with nothing on it. */
+export const AUTO_LAYOUT_EMPTY = "Nothing to lay out yet — add a stage first.";
 
 /** The mockup's third toolbar control. */
 export const ADD_STAGE_LABEL = "Add stage ▾";
 
-/** Why it cannot act yet — adding is S.5's, over the catalog R.3 serves. */
-export const ADD_STAGE_SOON =
-  "Adding a stage arrives with #151, with the stage catalog (#145) as its menu.";
+/** The menu Add stage opens — the catalog's node types. */
+export const ADD_STAGE_MENU_LABEL = "Stage types";
+
+/** Why Add stage cannot act when the catalog (#145) could not be read. */
+export const CATALOG_UNREAD_REASON = "The stage catalog could not be read, so there is nothing to add from.";
 
 /**
- * The mockup's hint, rewritten for what this canvas does.
+ * The menu's name when it was opened by a double-click on an edge, or **Insert stage** — it inserts
+ * rather than adds.
  *
- * The mockup's reads *⌥ drag to pan · double-click edge to add stage*. The second half is
- * S.5's and is not advertised until it works; what is added is the keyboard, because a hint
- * that names only the mouse tells a keyboard reader the canvas is not for them.
+ * @param from The title of the stage the edge leaves.
+ * @param to The title of the stage it arrives at.
+ * @returns The name.
  */
-export const CANVAS_HINT = "⌥ or space + drag to pan · scroll to zoom · Tab to a stage, arrows move it";
+export function insertMenuLabel(from: string, to: string): string {
+  return `Insert a stage between ${from} and ${to}`;
+}
+
+/** The undo and redo group's accessible name. */
+export const HISTORY_LABEL = "Edit history";
+
+/** Undo, and why it cannot act. */
+export const UNDO_LABEL = "Undo";
+export const NOTHING_TO_UNDO = "Nothing to undo yet.";
+
+/** Redo, and why it cannot act. */
+export const REDO_LABEL = "Redo";
+export const NOTHING_TO_REDO = "Nothing to redo.";
 
 /**
- * What the toolbar says once a stage has been moved.
+ * The mockup's hint, with the keyboard beside the mouse.
  *
- * The move is in the draft the canvas holds and nowhere else until S.6's autosave
+ * The mockup's reads *⌥ drag to pan · double-click edge to add stage*, and both halves work now.
+ * The keyboard is added, because a hint that names only the mouse tells a keyboard reader the
+ * canvas is not for them.
+ */
+export const CANVAS_HINT =
+  "⌥ drag to pan · double-click edge to add stage · Tab to a stage, arrows move it, Delete removes it · ⌘/Ctrl+Z undoes";
+
+/**
+ * What the toolbar says once the canvas has been edited.
+ *
+ * The edit is in the draft the page holds and nowhere else until S.6's autosave
  * ([#152](https://github.com/NobuData/ouroboros/issues/152)) writes it, and a page that let a
- * reader drag twelve stages into place and reload would have lied by omission.
+ * reader build a graph and reload would have lied by omission.
  */
-export const UNSAVED_NOTE = "Moved, not saved — autosave arrives with #152.";
+export const UNSAVED_NOTE = "Edited, not saved — autosave arrives with #152.";
 
 /** What the toolbar says over a document with no stages — a blank draft. */
-export const NO_STAGES_NOTE = "No stages yet. Adding one arrives with #151.";
+export const NO_STAGES_NOTE = "No stages yet — add one from Add stage ▾.";
 
 /**
  * The selection, in a sentence — the one place a keyboard reader is told what pressing Enter on
- * a stage did, and where to go next: the inspector (S.4) beside the canvas.
+ * a stage or an edge did, and where to go next: the inspector beside the canvas.
  *
  * @param selection What is selected.
  * @param stageCount How many stages the canvas holds, for the sentence when nothing is.
@@ -137,7 +164,7 @@ export function selectionSentence(selection: CanvasSelection, stageCount: number
     case "node":
       return `${selection.stage.title} selected — configure it in the inspector.`;
     case "edge":
-      return `Edge ${selection.connection.from} → ${selection.connection.to} selected — edge editing arrives with #151.`;
+      return `Edge ${selection.connection.from} → ${selection.connection.to} selected — edit it in the inspector.`;
     case "many":
       return `${count(selection.nodes, "stage")} and ${count(selection.edges, "edge")} selected.`;
   }
@@ -150,6 +177,82 @@ export function selectionSentence(selection: CanvasSelection, stageCount: number
  * @param noun The singular.
  * @returns The phrase.
  */
-function count(n: number, noun: string): string {
+export function count(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+/* ------------------------------------------------------------------ the rules, in words */
+
+/**
+ * Why an edit was refused — one sentence per structural rule an edit can break (`rules.ts`'s
+ * `EditRule`), said where the edit was made: on the canvas's notice line, beside the Add stage menu's
+ * item, or under the inspector field that would break it. Each says what the rule protects, not only
+ * that it exists, because *not allowed* teaches nothing about the next attempt.
+ */
+export const RULE_REASONS: Readonly<Record<EditRule, string>> = {
+  "document.multiple_triggers": "A workflow can only have one trigger.",
+  "edge.unknown_from": "That connection starts at a stage the workflow does not hold.",
+  "edge.unknown_to": "That connection ends at a stage the workflow does not hold.",
+  "edge.duplicate": "Those two stages are already connected in that direction.",
+  "edge.self_reference": "A stage cannot connect to itself.",
+  "edge.into_trigger": "Nothing can arrive at the trigger — it is where a run starts.",
+  "edge.out_of_terminal": "Nothing can leave a terminal — it is where a run ends.",
+  "edge.branch_without_condition": "A branch edge needs a condition — choose what it tests.",
+  "edge.unexpected_condition": "A default edge is always taken, so it cannot carry a condition.",
+  "edge.loop_not_upstream": "A loop edge must return upstream — to a stage that leads back to where the loop starts.",
+};
+
+/**
+ * What the notice line says when a connection drawn on the canvas is refused.
+ *
+ * @param rule The rule it would have broken.
+ * @returns The sentence.
+ */
+export function connectionRefused(rule: EditRule): string {
+  return `Not connected: ${RULE_REASONS[rule]}`;
+}
+
+/* ------------------------------------------------------------------ deleting */
+
+/** The confirmation's two answers. */
+export const DELETE_CONFIRM_LABEL = "Delete";
+export const DELETE_CANCEL_LABEL = "Cancel";
+
+/** What a delete would remove, as the confirmation words it. */
+export interface DeletionSummary {
+  /** The titles of the stages it removes. */
+  readonly stages: readonly string[];
+  /** The edges it removes by name, as `from → to`. */
+  readonly edges: readonly string[];
+  /** How many more edges go with the stages, because they leave or arrive at one. */
+  readonly attached: number;
+}
+
+/**
+ * The confirmation a delete asks — its title and the sentence under it.
+ *
+ * The body says what goes with the named things and that **Undo** brings it back, because the edges
+ * a stage takes with it are the part a reader does not see they are agreeing to.
+ *
+ * @param summary What the delete removes.
+ * @returns The title and the body.
+ */
+export function deletePrompt(summary: DeletionSummary): { readonly title: string; readonly body: string } {
+  const { stages, edges, attached } = summary;
+  let title: string;
+
+  if (stages.length === 1 && edges.length === 0) title = `Delete ${stages[0]}?`;
+  else if (stages.length === 0 && edges.length === 1) title = `Delete the edge ${edges[0]}?`;
+  else title = `Delete ${count(stages.length, "stage")} and ${count(edges.length, "edge")}?`;
+
+  const pronoun = stages.length === 1 ? "it" : "them";
+  const along =
+    attached === 0
+      ? ""
+      : attached === 1
+        ? `One edge connected to ${pronoun} goes too. `
+        : `${attached} edges connected to ${pronoun} go too. `;
+  const total = stages.length + edges.length + attached;
+
+  return { title, body: `${along}Undo brings ${total === 1 ? "it" : "them"} back.` };
 }

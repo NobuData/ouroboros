@@ -332,6 +332,19 @@
   margin-top: var(--sp-8);
 }
 
+/* ---------- the delete confirmation (#151) ---------- */
+
+/*
+ * Delete, or keep everything — the answers under a delete's prompt, laid out as the mode-switch
+ * prompt's are, because they are the same kind of question in the same dialog frame.
+ */
+.studio-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-8);
+}
+
 /* ---------- the create dialog (#147) ---------- */
 
 /*

@@ -202,6 +202,11 @@ check_route ouroboros-web/app/page.tsx 'docker-publish.yml'
 check_route ouroboros-db/migrations/V001__tenants.sql 'db.yml rest.yml'
 check_route ouroboros-db/flyway.toml 'db.yml rest.yml'
 
+# One seed reaches ci/ui as well (#151): the studio's scripted docs-loop build reads the document
+# R__dev_seed_workflows.sql stores, so an edit to that seed runs the suite that builds it. The file,
+# not the directory — every other migration stays the data tier's and ci/rest's.
+check_route ouroboros-db/migrations/R__dev_seed_workflows.sql 'db.yml rest.yml ui.yml'
+
 # The fourth exception, and the mirror image of the third (#710). ci/db's drift check
 # compares the applied schema against what BetterAuth expects, and the expectation is
 # decided in ouroboros-rest: by the plugins `src/auth` enables, and by the version
@@ -221,10 +226,14 @@ check_route ouroboros-rest/package.json 'db.yml rest.yml'
 # The schema itself reaches ci/db as well (#137), whose drift check validates every seeded
 # workflow definition against it: a schema edit that leaves the seeds behind touches nothing
 # under ouroboros-db/, and it is exactly the change that check exists to catch. The fixtures do
-# not — the seeds are validated against the schema, not against the golden cases — so the
-# expected-verdict file stays the two validators' alone.
-check_route schemas/workflow-dsl/v1.json 'db.yml engine.yml rest.yml'
-check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml'
+# not — the seeds are validated against the schema, not against the golden cases.
+#
+# Both reach ci/ui since #151. The canvas refuses an illegal edit by the DSL's structural rules,
+# and its suite replays those rules against the expected-verdict file and the documents it names,
+# then holds a scripted build of the seeded docs-loop to the published schema.
+check_route schemas/workflow-dsl/v1.json 'db.yml engine.yml rest.yml ui.yml'
+check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml ui.yml'
+check_route schemas/workflow-dsl/fixtures/invalid/two-triggers.json 'engine.yml rest.yml ui.yml'
 
 # The sixth (#177), and the first that reaches ci/ui. The code editor's completion and hover
 # suites run against two of these golden files: the symbol table ouroboros-rest serves, and the
@@ -233,12 +242,12 @@ check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml'
 check_route schemas/workflow-dsl/fixtures/code-symbols/table.json 'engine.yml rest.yml ui.yml'
 check_route schemas/workflow-dsl/fixtures/code/standard-fix.loop.ts 'engine.yml rest.yml ui.yml'
 
-# …and one more file since #148: the canvas suites open the committed standard-fix v14 and
-# assert the seeded graph renders at the mockup's positions, so a change to that document runs
-# the UI suite too. The file, not the directory — the other valid fixtures are still the
-# validators' alone.
+# …and the valid documents since #148: the canvas suites open the committed standard-fix v14 and
+# assert the seeded graph renders at the mockup's positions, and since #151 the parity replay
+# reads every valid document too. The code-invalid and YAML sets stay the validators' alone.
 check_route schemas/workflow-dsl/fixtures/valid/standard-fix.json 'engine.yml rest.yml ui.yml'
-check_route schemas/workflow-dsl/fixtures/valid/minimal.json 'engine.yml rest.yml'
+check_route schemas/workflow-dsl/fixtures/valid/minimal.json 'engine.yml rest.yml ui.yml'
+check_route schemas/workflow-dsl/fixtures/code-invalid/expected.json 'engine.yml rest.yml'
 
 # The seventh (#146). ci/rest's engine stub holds every request it receives and every answer it
 # serves to ouroboros-engine's committed contract, read from this one document at test time. A

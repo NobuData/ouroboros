@@ -10,7 +10,6 @@ import {
   BUDGET_LABEL,
   DECLARED_NOTE,
   DELETE_LABEL,
-  EDGE_SELECTED_NOTE,
   type JsonSchema,
   MANY_SELECTED_NOTE,
   MODE_WORDS,
@@ -418,11 +417,12 @@ describe("the copy", () => {
     expect(APPLIED_NOTE).toMatch(/#152/);
   });
 
-  it("explains an empty panel by what is selected", () => {
+  it("explains an empty panel by what is selected — an edge has a panel of its own since #151", () => {
     expect(emptyNote(null)).toBe(NOTHING_SELECTED_NOTE);
     expect(
       emptyNote({ kind: "edge", id: "a→b", connection: { from: "a", to: "b", kind: "default", label: null, condition: null } }),
-    ).toBe(EDGE_SELECTED_NOTE);
+    ).toBe(NOTHING_SELECTED_NOTE);
     expect(emptyNote({ kind: "many", nodes: 2, edges: 0 })).toBe(MANY_SELECTED_NOTE);
+    expect(MANY_SELECTED_NOTE).toMatch(/Delete/);
   });
 });

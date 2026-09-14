@@ -29,9 +29,10 @@ import { STAGE_GLYPHS } from "./view";
  * target handle at the other — and looks the handle up by id within that type. So each side
  * carries one of each, both named for the side, and an edge that `graph.ts` decided runs
  * `right → left` finds a source handle called `right` here and a target handle called `left`
- * on the other node. They are drawn invisible: nothing can be connected until S.5
- * ([#151](https://github.com/NobuData/ouroboros/issues/151)), and a handle that cannot be
- * used is a handle that should not be seen.
+ * on the other node. They are drawn invisible until the pointer is over the stage on a canvas that
+ * can connect (S.5, [#151](https://github.com/NobuData/ouroboros/issues/151)): a drag from any side
+ * draws a connection, and eight dots on every stage would be noise on a graph that is mostly read. The canvas connects in React Flow's *loose* mode, so a drag may end
+ * on either handle of a side.
  *
  * Memoised, as React Flow asks of custom nodes: the wrapper re-renders on every viewport
  * change, and twelve boxes re-rendering on every scroll frame is what 60fps is spent on.
@@ -63,13 +64,28 @@ const PILL_CLASS = "studio-node studio-node--term studio-node--pill";
 /**
  * The eight connection points.
  *
+ * @param props.connectable Whether a connection may be drawn from or to them — React Flow's
+ *   `isConnectable` for the node, which follows the canvas's `nodesConnectable`. A handle does not
+ *   read it by itself, so a read-only canvas that did not pass it on would still connect on a click.
  * @returns A source and a target handle on each side.
  */
-function Ports() {
+function Ports({ connectable }: Readonly<{ connectable: boolean }>) {
   return SIDES.map((side) => (
     <Fragment key={side}>
-      <Handle className="studio-node__port" id={side} position={SIDE_POSITION[side]} type="target" />
-      <Handle className="studio-node__port" id={side} position={SIDE_POSITION[side]} type="source" />
+      <Handle
+        className="studio-node__port"
+        id={side}
+        isConnectable={connectable}
+        position={SIDE_POSITION[side]}
+        type="target"
+      />
+      <Handle
+        className="studio-node__port"
+        id={side}
+        isConnectable={connectable}
+        position={SIDE_POSITION[side]}
+        type="source"
+      />
     </Fragment>
   ));
 }
@@ -81,14 +97,14 @@ function Ports() {
  *   document's root trigger on the trigger node.
  * @returns The box — or, for *Back to queue*, the pill.
  */
-export const StageNode = memo(function StageNode({ data }: NodeProps<StageNodeType>) {
+export const StageNode = memo(function StageNode({ data, isConnectable }: NodeProps<StageNodeType>) {
   const { stage, trigger } = data;
 
   if (isPill(stage)) {
     // The mockup's mini pill: a dot in the terminal's hue and the title, and nothing to chip.
     return (
       <div className={PILL_CLASS}>
-        <Ports />
+        <Ports connectable={isConnectable} />
         <span aria-hidden="true" className="studio-node__dot" />
         <span className="studio-node__title">{stage.title}</span>
       </div>
@@ -99,7 +115,7 @@ export const StageNode = memo(function StageNode({ data }: NodeProps<StageNodeTy
 
   return (
     <div className={NODE_CLASS[stage.kind]}>
-      <Ports />
+      <Ports connectable={isConnectable} />
       <span className="studio-node__kind">
         <span aria-hidden="true" className="studio-node__glyph">
           {STAGE_GLYPHS[stage.kind]}
