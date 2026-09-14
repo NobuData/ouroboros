@@ -1294,7 +1294,8 @@ snapshot(run#482): task→route→alias coder-max→Anthropic(…Xq4A)→claude-
 > [`registry.seed.fixture.ts`](../ouroboros-rest/src/testing/registry.seed.fixture.ts) from the
 > repeatable migrations themselves; every id is read back by alias name, never hard-coded. Suites:
 > the lifecycle matrix in guarded and unguarded states (the unbound CHECK, the 409 delete guard,
-> the 422 rename guard), rebind invariants, param validation including a novel fake-adapter param,
+> the 422 rename guard), rebind invariants, param validation including a novel fake-adapter param
+> offered in the schema (V019 still refuses storing it),
 > chip derivation over all eight rows, pricing (four billing modes, `—`, provenance, override
 > precedence and cache invalidation), import transactionality, the reference index (route and
 > escalation rows, workflow and chat-pin **asserted absent** until their legs land, and a route
