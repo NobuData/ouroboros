@@ -61,7 +61,7 @@ in a single, auditable place.
 | Tenancy         | A request-scoped tenant context over `AsyncLocalStorage`, a global guard and `@Roles(…)` ([#32](https://github.com/NobuData/ouroboros/issues/32))                          |
 | Engine gateway  | A typed client over bare `fetch` — shared secret, five-second deadline, one retry, zod-parsed answers, every failure a `502` ([#35](https://github.com/NobuData/ouroboros/issues/35)) |
 | API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
-| Tests           | Jest (unit), plus a Supertest suite over a PostgreSQL the run starts for itself — Testcontainers, migrated by Flyway ([#37](https://github.com/NobuData/ouroboros/issues/37))  |
+| Tests           | Jest (unit), plus a Supertest suite over a PostgreSQL the run starts for itself — Testcontainers, migrated by Flyway ([#37](https://github.com/NobuData/ouroboros/issues/37)); fast-check for the code view's property and fuzz suites ([#168](https://github.com/NobuData/ouroboros/issues/168))  |
 | Lint            | ESLint flat config + Prettier                                                                                                                                              |
 | Container       | Multi-stage Dockerfile on `node:24-alpine`, production-only dependency tree, non-root, `HEALTHCHECK` on `/health/live` — see [Container](#container)                        |
 
@@ -2495,13 +2495,20 @@ const { slug, document, errors } = parseWorkflowCode(text);
 | Suite | What it asserts |
 |---|---|
 | `code.printer.spec.ts` | Every valid fixture prints exactly `fixtures/code/<name>.loop.ts`. The print has no syntax error, and the graph `ts.createSourceFile` reads back (positions; each edge's kind, condition, label and order) is the document's. Also covers the constructs the golden files don't reach, each of which also parses back into its document, and every refusal. |
-| `code.seed.spec.ts` | All six seeded definitions print, give back their graph and parse back into the stored document, and `standard-fix` v14 prints the golden file. |
+| `code.seed.spec.ts` | All six seeded definitions print, give back their graph and parse back into the stored document. |
 | `code.parser.spec.ts` | Every committed projection parses back to the JSON it was printed from, and prints back to the same bytes. Also covers the non-canonical spellings the parser accepts, what stale layout lines mean, and files that spell invalid workflows: those parse, and the validator reports them. |
 | `code.parser.errors.spec.ts` | Each file in `fixtures/code-invalid/` reports exactly the codes and ranges its `expected.json` records. Every refused construct is checked one at a time against the text its range covers, as are several errors from one parse and syntax errors that don't cascade. |
 | `code.parser.static.spec.ts` | The parser's module graph imports only `typescript` and `zod`, and never names `eval`, `Function` or `require`, imports at run time, or emits. A file that would leave a mark if it ran leaves none, and no file is read. |
 | `code.errors.spec.ts`, `code.reader.spec.ts` | Positions count line feeds only. Each literal reading returns its value or one anchored error. |
 | `code.predicates.spec.ts` | Every predicate form and trigger combination has exactly one spelling, and the compiler reads each spelling back into its structure. |
 | `code.literals.spec.ts`, `code.layout.spec.ts` | Strings, prompts, token budgets and coordinates survive the compiler. The layout block reads back exactly and reports each unreadable line by number. |
+| `code.roundtrip.spec.ts` | `parse(print(doc))` is `doc` over 1000 documents that `code.arbitrary.fixture.ts` generates, and the compiler's reading of each print is the document's graph. Printing is deterministic and ignores key order. The run fails unless it reaches every feature in `GRAMMAR_FEATURES`: each stage callee, predicate form, edge spelling, position oddity and hostile string. |
+| `code.parser.fuzz.spec.ts` | 2800 texts: mutations of every committed file and of generated prints, token soup, and arbitrary code points. The parser never throws. Every error has a documented code, the #180 hint exactly when out of grammar, and a range inside the text in reading order. A text it reads that spells a valid document prints and parses back to that document. |
+| `code.parity.spec.ts` | The seeded `standard-fix` v14 prints the golden file byte for byte, and mockup 05's listing, read from its HTML, agrees with `WORKFLOW_CODE_DSL.md` §10 line by line. |
+
+**The generated runs replay.** The property and fuzz suites use the fixed seed `168` (U.4,
+[#168](https://github.com/NobuData/ouroboros/issues/168)). A failure's report names the seed and a
+`path`, and passing both to `fc.assert` replays the shrunk counterexample.
 
 **The seeded `standard-fix` doesn't print to mockup 05's 32-line listing.** The listing is drawn
 from a simpler document than the one the seed writes, so a byte-exact print would be a lossy one.
@@ -2824,6 +2831,18 @@ draft opens on the version in force, and its first save creates the draft.
 
 **The `422` is proven byte-identical.** `code.integration-spec.ts` compares the draft row as
 PostgreSQL renders it, every column included, before and after a refused save.
+
+**Two editors on one draft are proven to converge** (U.4,
+[#168](https://github.com/NobuData/ouroboros/issues/168)). The same suite runs four sequences:
+
+* a canvas save, then a save from a code tab holding the old etag: a `409`, then a reload whose save
+  keeps both edits;
+* saves alternating between the two editors;
+* two saves racing on one etag: exactly one is written, and the loser is told which editor won;
+* a file that doesn't read: a `422` that moves neither the row nor the etag the canvas holds.
+
+After each step it reads the draft through both editors and requires the file to parse back to
+exactly the canvas's document.
 
 **Every file carries its span map and its diagnostics** (W.2,
 [#178](https://github.com/NobuData/ouroboros/issues/178)). The printer's `spans` place each

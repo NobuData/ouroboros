@@ -1,6 +1,6 @@
 {
   "name": "ouroboros-rest",
-  "version": "0.35.0",
+  "version": "0.35.1",
   "private": true,
   "description": "The communications layer — the only boundary between the browser and everything behind it. NestJS 11 on Node 24; a Yarn workspace resolving through the repository-root lockfile.",
   "license": "Apache-2.0",
@@ -56,6 +56,7 @@
     "eslint": "^9",
     "eslint-config-prettier": "^10",
     "eslint-plugin-prettier": "^5",
+    "fast-check": "^4.10.0",
     "globals": "^17",
     "jest": "^30",
     "prettier": "^3",

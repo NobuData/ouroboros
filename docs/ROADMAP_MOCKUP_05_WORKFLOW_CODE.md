@@ -200,7 +200,7 @@ chips: **XS · S · M · L**.
 | U.1 | #165 | 🟢 Done | ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer | Closed grammar doc + canonical JSON → TypeScript projection | mvp, workflow, code-view, rest | N (after WF-P.2) | Y | L | ouroboros-rest, docs |
 | U.2 | #166 | 🟢 Done | ouroboros-rest: [U.2] TS-DSL parser (closed grammar) | TypeScript compiler API parse back to canonical JSON; anchored errors | mvp, workflow, code-view, rest | N (after U.1) | Y | L | ouroboros-rest |
 | U.3 | #167 | 🟢 Done | ouroboros-rest: [U.3] Code view & save endpoints | `GET /code`, `PUT /code` (parse→draft, etag), tree/tabs payloads | mvp, workflow, code-view, rest | N (after U.2, WF-P.3) | Y | M | ouroboros-rest |
-| U.4 | #168 | 🟡 Open | ouroboros-rest: [U.4] Round-trip property & parity tests | `parse∘print = id`, mockup-parity fixture, cross-editor concurrency | mvp, workflow, code-view, rest, ci | N (after U.3) | Y | M | ouroboros-rest |
+| U.4 | #168 | 🟢 Done | ouroboros-rest: [U.4] Round-trip property & parity tests | `parse∘print = id`, mockup-parity fixture, cross-editor concurrency | mvp, workflow, code-view, rest, ci | N (after U.3) | Y | M | ouroboros-rest |
 
 ### Issue U.1 — ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer
 
@@ -343,7 +343,7 @@ PUT (If-Match) ─ parse ✓ ─▶ draft updated (shared with visual) │ parse
 
 ### Issue U.4 — ouroboros-rest: [U.4] Round-trip property & parity tests
 
-> **GitHub issue:** #168 · **Status:** 🟡 Open · **Parent epic:** #161
+> **GitHub issue:** #168 · **Status:** 🟢 Done · **Parent epic:** #161
 
 - **Problem Statement:** "Losslessly" is the page's headline claim; only
   property tests and cross-editor concurrency tests make it durable.
@@ -359,6 +359,46 @@ PUT (If-Match) ─ parse ✓ ─▶ draft updated (shared with visual) │ parse
 - **Parallelism/Dependencies:** Needs U.3.
 - **Technical Stack:** Jest, fast-check (property testing), Testcontainers.
 - **Epic:** U
+- **Delivered (2026-09-14):** four suites in `ouroboros-rest`, all run by `ci/rest`: the three unit
+  suites in `yarn test`, and the editor cases in `yarn test:integration`.
+  `code.roundtrip.spec.ts` checks `parse(print(doc))` against `doc` over 1000 documents that
+  `code.arbitrary.fixture.ts` generates from the fixed seed `168`. It also checks the compiler's
+  own reading of each print against the document's graph, and that printing is deterministic
+  whatever order the keys arrive in. The run fails unless it reaches every entry of
+  `GRAMMAR_FEATURES`:
+  - all eight stage callees and §6's fifteen predicate forms;
+  - every edge spelling: `next` single and list, `branches`, `onFail` shorthand and list, and
+    entries with and without `when`;
+  - a loop pointing two or more stages upstream;
+  - every trigger condition, and labels;
+  - negative-zero and fractional positions, and reordered node and edge lists;
+  - strings carrying quotes, `${`, line separators and lone surrogates.
+
+  `code.parser.fuzz.spec.ts` parses 2,800 texts: mutations of every committed `.loop.ts` and of
+  generated prints, token soup, and arbitrary code points. None crashes, and every error carries a
+  documented code and a range inside the text. Every text that reads as a valid document survives
+  a second round trip. `code.parity.spec.ts` takes over the byte-exact golden check from
+  `code.seed.spec.ts`, and reads mockup 05's listing out of its HTML to check
+  [§10](WORKFLOW_CODE_DSL.md#10-against-mockup-05) against it line by line.
+  `code.integration-spec.ts` gains four cross-editor cases:
+  - a visual `PUT` then a stale code `PUT` is `409`, and the reloaded code editor keeps both edits;
+  - saves alternating between the editors converge on one document with every edit in it;
+  - of two saves racing on one etag, exactly one is written, and the loser is told which editor
+    won;
+  - a `422` in the code editor moves neither the draft row nor the canvas's etag.
+
+  **Runtimes.** Inside the full parallel unit run the three unit suites take 12s (round trip), 20s
+  (fuzz) and 13s (parity); on their own the three finish in about 11s together.
+  `code.integration-spec.ts` takes 11.5s. **Both deliberate printer bugs were caught.** An `onFail`
+  shorthand that swallowed named failures failed the property, and a formatting change failed only
+  parity. Three decisions were taken in-issue.
+  **Generated documents are valid by construction** (a spine, with skip edges down it and loop edges
+  back up it) rather than filtered, because the printer takes only valid documents. **"The committed
+  listing" is U.1's golden file.** The mockup's 32 lines are checked against it through §10 rather
+  than byte for byte, which only a lossy printer could satisfy. **An empty stage list is not
+  generated**, because no valid document has one. A file with `stages: []` is left to the fuzzer and
+  the validator. fast-check `^4.10.0` is a new development dependency, and `ouroboros-rest` is now
+  0.35.1.
 
 ```
 ∀ doc ∈ gen(DSL): parse(print(doc)) ≡ doc     golden: print(standard-fix) ≡ mockup listing

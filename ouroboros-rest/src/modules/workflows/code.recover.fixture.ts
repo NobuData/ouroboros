@@ -124,6 +124,24 @@ export function validDocument(value: unknown): WorkflowDocument {
 }
 
 /**
+ * The same value with every object's keys in reverse order, arrays untouched — for asserting that
+ * a print depends on a document's values and not on the order its keys arrived in.
+ *
+ * @param value - A JSON value.
+ * @returns The re-keyed copy.
+ */
+export function reversedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(reversedKeys);
+  if (typeof value !== "object" || value === null) return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .reverse()
+      .map(([key, member]) => [key, reversedKeys(member)]),
+  );
+}
+
+/**
  * Parse text into a syntax tree, parents set.
  *
  * @param text - The source.
