@@ -257,6 +257,27 @@ export function describedDefinition(detail: WorkflowDetail): WorkflowDefinition 
   return detail.version?.definition ?? detail.draft.definition;
 }
 
+/** A document with nothing in it — the blank canvas, and what the create endpoint stores. */
+export const BLANK_DEFINITION: WorkflowDefinition = {};
+
+/**
+ * Which document the canvas opens on: the draft when one is open, else the version in force,
+ * else a blank document.
+ *
+ * The reverse of {@link describedDefinition}'s order, and for the same reason: the head
+ * describes what *runs*, and the canvas is where what runs next is *edited*. A workflow with a
+ * draft open is mid-edit, and its canvas shows the edit; one with none shows the version in
+ * force, which is what P.3's start-editing copies into a draft on the first change (S.6). A
+ * workflow with neither — one **+ New workflow** just made, before the service has stored a
+ * document for it — opens on nothing, which is the only honest picture of it.
+ *
+ * @param detail The workflow.
+ * @returns The document.
+ */
+export function canvasDefinition(detail: WorkflowDetail): WorkflowDefinition {
+  return detail.draft.definition ?? detail.version?.definition ?? BLANK_DEFINITION;
+}
+
 /** What the subline says of a workflow with no draft open. */
 export const NO_DRAFT = "No open draft";
 

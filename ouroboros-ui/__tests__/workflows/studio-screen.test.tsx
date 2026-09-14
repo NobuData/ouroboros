@@ -1,15 +1,16 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { CANVAS_LABEL } from "@/app/workflows/canvas/view";
 import { WORKFLOWS_PATH, workflowPath } from "@/app/paths";
 import {
-  CANVAS_SOON_TITLE,
   DEV_SEED_NOTE,
   EMPTY_TITLE,
   FAILED_TITLE,
   MISSING_TITLE,
   RAIL_FAILED_HEADLINE,
   SEAT_FAILED_NOTE,
+  SEAT_UNREAD_TITLE,
   WORKFLOW_FAILED_HEADLINE,
 } from "@/app/workflows/states";
 import {
@@ -27,24 +28,33 @@ import {
 } from "@/app/workflows/view";
 
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
-import { railEntry, readings, seededRail, unpublishedEntry } from "../helpers/workflows";
+import { shimReactFlow } from "../helpers/react-flow";
+import { railEntry, readings, seededRail, unpublishedEntry, workflowDetail } from "../helpers/workflows";
 
 /**
  * The studio frame as it is drawn (#147) — `docs/mockups/04-workflow-builder.html`'s head,
- * segmented control, actions and rail, from the seeded workspace.
+ * segmented control, actions and rail, from the seeded workspace — and, since #148, the canvas
+ * in its seat.
  *
  * The acceptance criteria this suite exists for, in the ticket's words: **head values are
  * real**; **actions are role-gated — a member sees no Publish**; **Code and Copilot are
  * visibly disabled with an honest "soon" label**; **both themes**; and **shell: mounts in the
  * content pane, header and sidebar do not scroll with content** — the last of which is the
  * absence of any chrome of its own. The rail's parity is `workflow-rail.test.tsx`'s; the
- * decisions behind every sentence are `view.test.ts`'s and `states.test.ts`'s.
+ * decisions behind every sentence are `view.test.ts`'s and `states.test.ts`'s; the canvas
+ * itself is `canvas/studio-canvas.test.tsx`'s, and what is asserted here is that it is mounted
+ * on the right document in the right state.
  */
 
 // The tile's dialog and the failed banner both want the App Router, and the dialog's action
 // sits on the server-only client; each is another suite's subject.
 vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+
+// The populated page mounts React Flow, which measures — see the helper.
+beforeAll(() => {
+  shimReactFlow();
+});
 
 const { StudioScreen } = await import("@/app/workflows/studio-screen");
 
@@ -139,13 +149,54 @@ describe("the segmented control", () => {
   });
 });
 
-describe("the rail and the seat", () => {
-  it("draws the seeded rail with standard-fix selected, and the seat where the canvas will be", () => {
-    render(<StudioScreen mayAdminister readings={readings()} role="owner" />);
+describe("the rail and the canvas", () => {
+  it("draws the seeded rail with standard-fix selected, and the canvas on its twelve stages", () => {
+    const { container } = render(<StudioScreen mayAdminister readings={readings()} role="owner" />);
 
     expect(within(rail()).getAllByRole("link")).toHaveLength(5);
     expect(within(rail()).getByRole("link", { current: "page" })).toHaveTextContent("standard-fix");
-    expect(screen.getByText(CANVAS_SOON_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: CANVAS_LABEL })).toBeInTheDocument();
+    expect(container.querySelectorAll(".react-flow__node")).toHaveLength(12);
+    expect(screen.queryByText(SEAT_UNREAD_TITLE)).toBeNull();
+  });
+
+  it("opens the canvas on the draft when one is open", () => {
+    // The head describes the version in force; the canvas is where the draft is edited.
+    const draft = { ...workflowDetail().draft.definition, nodes: [] };
+    const { container } = render(
+      <StudioScreen
+        mayAdminister
+        readings={readings({
+          selected: {
+            entry: railEntry(),
+            detail: { ok: true, value: workflowDetail({ draft: { ...workflowDetail().draft, definition: draft } }) },
+          },
+        })}
+        role="owner"
+      />,
+    );
+
+    expect(container.querySelectorAll(".react-flow__node")).toHaveLength(0);
+  });
+
+  it("opens the canvas on the version in force when there is no draft", () => {
+    const { container } = render(
+      <StudioScreen
+        mayAdminister
+        readings={readings({
+          selected: {
+            entry: railEntry(),
+            detail: {
+              ok: true,
+              value: workflowDetail({ draft: { etag: "none", definition: null, updatedAt: null } }),
+            },
+          },
+        })}
+        role="owner"
+      />,
+    );
+
+    expect(container.querySelectorAll(".react-flow__node")).toHaveLength(12);
   });
 });
 

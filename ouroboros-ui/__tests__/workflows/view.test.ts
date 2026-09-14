@@ -13,6 +13,8 @@ import {
   NO_TRIGGER,
   PUBLISH_SOON,
   STUDIO_EYEBROW,
+  BLANK_DEFINITION,
+  canvasDefinition,
   describedDefinition,
   isLiveTab,
   lastEdited,
@@ -209,6 +211,34 @@ describe("which document the head describes", () => {
     });
 
     expect(describedDefinition(detail)).toBeNull();
+  });
+});
+
+describe("which document the canvas opens on", () => {
+  it("prefers the draft, because the canvas is where the next version is edited", () => {
+    // The reverse of the head's order: the head describes what runs, the canvas what will.
+    const draft = definitionWithTrigger({ event: "ticket_queued", conditions: {} });
+    const detail = workflowDetail({ draft: { ...workflowDetail().draft, definition: draft } });
+
+    expect(canvasDefinition(detail)).toBe(draft);
+    expect(describedDefinition(detail)).not.toBe(draft);
+  });
+
+  it("falls back to the version in force for a workflow with no draft open", () => {
+    const detail = workflowDetail({ draft: { etag: "none", definition: null, updatedAt: null } });
+
+    expect(canvasDefinition(detail)).toBe(detail.version?.definition);
+  });
+
+  it("opens on a blank document for a workflow with neither", () => {
+    const detail = workflowDetail({
+      currentVersion: null,
+      version: null,
+      draft: { etag: "none", definition: null, updatedAt: null },
+    });
+
+    expect(canvasDefinition(detail)).toBe(BLANK_DEFINITION);
+    expect(BLANK_DEFINITION).toEqual({});
   });
 });
 

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import type {
   WorkflowDefinition,
   WorkflowDetail,
@@ -151,8 +154,8 @@ export function unpublishedEntry(): WorkflowRailEntry {
 }
 
 /**
- * A definition carrying one trigger and nothing else — the frame reads the trigger and the
- * canvas (#148) is what reads the rest.
+ * A definition carrying one trigger and nothing else — what the frame's head reads, over a
+ * canvas with nothing on it.
  *
  * @param trigger The root `trigger`, as the DSL spells it.
  * @returns The document.
@@ -162,12 +165,36 @@ export function definitionWithTrigger(trigger: unknown): WorkflowDefinition {
 }
 
 /**
- * The seeded `standard-fix`'s trigger — mockup 04's `effort ≤ M` chip.
+ * The committed `standard-fix` v14 — `schemas/workflow-dsl/fixtures/valid/standard-fix.json`,
+ * the document `R__dev_seed_workflows.sql` stores and `dsl.seed.spec.ts` holds it to.
+ *
+ * Read from the file rather than copied, so a canvas assertion about *the mockup's node
+ * positions* is an assertion about the seed and not about a second transcription of it. The
+ * UI's CI is routed to run on a change to this file for that reason (`.github/workflows/ui.yml`).
+ */
+const STANDARD_FIX = join(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "schemas",
+  "workflow-dsl",
+  "fixtures",
+  "valid",
+  "standard-fix.json",
+);
+
+/**
+ * The seeded `standard-fix` in full: mockup 04's twelve-node canvas at v14, trigger, positions,
+ * configs and the loop edge included.
+ *
+ * A fresh object on every call, because the canvas writes positions back into a copy of what
+ * it was given and a suite must be able to compare against what it started with.
  *
  * @returns The document.
  */
 export function standardFixDefinition(): WorkflowDefinition {
-  return definitionWithTrigger({ event: "ticket_queued", conditions: { effort_lte: "m" } });
+  return JSON.parse(readFileSync(STANDARD_FIX, "utf8")) as WorkflowDefinition;
 }
 
 /**

@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CANVAS_SOON_NOTE,
-  CANVAS_SOON_TITLE,
   DEFINITION_UNREAD,
   EMPTY_SUBLINE,
   EMPTY_TITLE,
@@ -134,13 +132,10 @@ describe("the head", () => {
 });
 
 describe("the seat", () => {
-  it("says the canvas is coming, and which issues bring it, on a populated page", () => {
-    expect(seatCopy(studioState(readings()))).toEqual({
-      title: CANVAS_SOON_TITLE,
-      note: CANVAS_SOON_NOTE,
-    });
-    expect(CANVAS_SOON_NOTE).toMatch(/#148/);
-    expect(CANVAS_SOON_NOTE).toMatch(/#150/);
+  it("has no copy for a populated page, which draws the canvas there instead", () => {
+    // `seatCopy` is total over `SeatState`, which excludes `populated` by type; what a test can
+    // add is that the state is what the screen switches on.
+    expect(studioState(readings()).kind).toBe("populated");
   });
 
   it("points up at the banner rather than repeating the reason, for a refused rail", () => {
@@ -160,6 +155,17 @@ describe("the seat", () => {
 
     expect(titles).toEqual([SEAT_EMPTY_TITLE, SEAT_MISSING_TITLE, SEAT_UNREAD_TITLE]);
     expect(new Set(titles).size).toBe(3);
+  });
+
+  it("names the issue the canvas waits for in none of them, because the canvas is here", () => {
+    for (const copy of [
+      seatCopy({ kind: "failed", reason: "r" }),
+      seatCopy({ kind: "empty" }),
+      seatCopy({ kind: "missing", slug: "gone" }),
+      seatCopy({ kind: "unread", entry: railEntry(), reason: "r" }),
+    ]) {
+      expect(`${copy.title} ${copy.note}`).not.toMatch(/#148/);
+    }
   });
 });
 

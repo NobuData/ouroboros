@@ -233,6 +233,13 @@ check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml'
 check_route schemas/workflow-dsl/fixtures/code-symbols/table.json 'engine.yml rest.yml ui.yml'
 check_route schemas/workflow-dsl/fixtures/code/standard-fix.loop.ts 'engine.yml rest.yml ui.yml'
 
+# …and one more file since #148: the canvas suites open the committed standard-fix v14 and
+# assert the seeded graph renders at the mockup's positions, so a change to that document runs
+# the UI suite too. The file, not the directory — the other valid fixtures are still the
+# validators' alone.
+check_route schemas/workflow-dsl/fixtures/valid/standard-fix.json 'engine.yml rest.yml ui.yml'
+check_route schemas/workflow-dsl/fixtures/valid/minimal.json 'engine.yml rest.yml'
+
 # The seventh (#146). ci/rest's engine stub holds every request it receives and every answer it
 # serves to ouroboros-engine's committed contract, read from this one document at test time. A
 # contract change that ran only ci/engine would leave the stub green against a document nobody
