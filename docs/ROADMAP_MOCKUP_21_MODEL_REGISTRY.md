@@ -736,7 +736,7 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 | CH.4 | #587 | 🟢 Done | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
 | CH.5 | #588 | 🟢 Done | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
 | CH.6 | #589 | 🟢 Done | ouroboros-rest: [CH.6] Governance & resolution-snapshot contract | Raw-model rejection at publish (P.2 amendment), Z.1 disabled/unbound semantics, persisted snapshots | mvp, registry, rest, routing, engine | N (after Z.1, WF P.2) | Y | M | ouroboros-rest, ouroboros-engine |
-| CH.7 | #590 | 🟡 Open | ouroboros-rest: [CH.7] Registry integration tests | Lifecycle+guards, params, pricing, import, governance, isolation | mvp, registry, rest, ci | N (after CH.1–CH.6) | Y | M | ouroboros-rest |
+| CH.7 | #590 | 🟢 Done | ouroboros-rest: [CH.7] Registry integration tests | Lifecycle+guards, params, pricing, import, governance, isolation | mvp, registry, rest, ci | N (after CH.1–CH.6) | Y | M | ouroboros-rest |
 
 ### Issue CH.1 — ouroboros-rest: [CH.1] Alias lifecycle API
 
@@ -1286,7 +1286,22 @@ snapshot(run#482): task→route→alias coder-max→Anthropic(…Xq4A)→claude-
 
 ### Issue CH.7 — ouroboros-rest: [CH.7] Registry integration tests
 
-> **GitHub issue:** #590 · **Status:** 🟡 Open · **Parent epic:** #576
+> **GitHub issue:** #590 · **Status:** 🟢 Done · **Parent epic:** #576
+
+> **Shipped 2026-09-14.**
+> [`registry.certification.integration-spec.ts`](../ouroboros-rest/src/modules/registry/registry.certification.integration-spec.ts)
+> runs the whole registry over the committed #582 seeds, applied by
+> [`registry.seed.fixture.ts`](../ouroboros-rest/src/testing/registry.seed.fixture.ts) from the
+> repeatable migrations themselves; every id is read back by alias name, never hard-coded. Suites:
+> the lifecycle matrix in guarded and unguarded states (the unbound CHECK, the 409 delete guard,
+> the 422 rename guard), rebind invariants, param validation including a novel fake-adapter param,
+> chip derivation over all eight rows, pricing (four billing modes, `—`, provenance, override
+> precedence and cache invalidation), import transactionality, the reference index (route and
+> escalation rows, workflow and chat-pin **asserted absent** until their legs land, and a route
+> save racing a delete), governance (dropped hops in the change and in simulate, snapshot
+> round-trip), every health branch with **zero adapter calls** on the read path, and isolation
+> and roles across every registry route. The raw-model publish rejection stays certified in
+> `workflows/catalog.integration-spec.ts`, beside the engine stub its gate needs.
 
 - **Problem Statement:** Guards, rebind semantics, pricing precedence, and
   governance rejection are cross-table logic that regressions will find
