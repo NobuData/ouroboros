@@ -1,6 +1,8 @@
 /*
  * The workflow canvas (#148): mockup 04's `.canvas-card` — the `.stage` dot grid over the
- * inset well, the nodes on it, and the `.canvas-toolbar` beneath — drawn on React Flow.
+ * inset well, the nodes on it, and the `.canvas-toolbar` beneath — drawn on React Flow; and its
+ * visual language (#149): the five node treatments, the chip row, the `.sel` glow, the three
+ * edge treatments with their arrowheads, and the label pills.
  *
  * React Flow ships two sheets. `style.css` is its default look: grey nodes, blue selection,
  * a white minimap, its own dark palette behind a `.dark` class. `base.css` is only what the
@@ -14,11 +16,13 @@
  *
  * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated in
  * docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every type size is
- * rem. Lengths that are the stage's own — the 18px dot lattice, a 2px stroke — are set from
- * the component in canvas units, because they scale with the zoom and not with the type.
+ * rem. Lengths that are the stage's own — the 18px dot lattice, a 2px stroke, the loop's dash —
+ * are canvas units, because they scale with the zoom and not with the type; the rules, rings
+ * and glows are px, as a hairline is everywhere else.
  *
  * The mockup's token names map onto the #16 sheet's as workflows.css records: --border → --line,
- * --border-strong → --line-strong, --mut → --ink-mut, --faint → --ink-faint.
+ * --border-strong → --line-strong, --mut → --ink-mut, --faint → --ink-faint; and on the canvas
+ * --glow-soft → --accent-tint, --glow → --accent-glow and --bg0 → --ground-deep.
  */
 
 /* ---------- the card ---------- */
@@ -116,68 +120,186 @@
   border-radius: var(--r-md);
 }
 
+/* ---------- the edges — mockup 04's .edge ---------- */
+
 /*
- * An edge's label, as the default edge draws one: the text on a rounded ground behind it. The
- * mockup's pills — accent, warn, ok and err by outcome — are S.3's; this is the label in the
- * canvas's mono, legible on the grid.
+ * The arrowheads' SVG (stage-edge.tsx's EdgeMarkers): definitions only, so it takes no room in
+ * the stage and paints nothing of its own.
  */
-.studio-canvas .react-flow__edge-textbg {
-  fill: var(--ground);
+.studio-canvas__markers {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
-.studio-canvas .react-flow__edge-text {
-  fill: var(--ink-mut);
+/* The mockup's `.mkd`, `.mka` and `.mkl`: each arrowhead in its line's colour. */
+.studio-arrow--plain {
+  fill: var(--line-strong);
+}
+
+.studio-arrow--active {
+  fill: var(--accent);
+}
+
+.studio-arrow--loop {
+  fill: var(--accent-deep);
+}
+
+/*
+ * The plain `.edge` is the library's own path on --xy-edge-stroke above. The mockup's
+ * `.edge.active` is an execution path: the accent, with the accent's glow — the glow the token
+ * sheet reserves for live things, which a walk being shown is.
+ */
+.studio-canvas .studio-edge--active {
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+}
+
+/*
+ * The mockup's `.edge.loop`: the ouroboros — a failed gate going back to implement — dashed in
+ * accent-deep under a soft glow of its own, so it reads as a return someone drew rather than as
+ * a line that failed to render. The dash is in canvas units and scales with the zoom as the
+ * stroke does.
+ */
+.studio-canvas .studio-edge--loop {
+  stroke: var(--accent-deep);
+  stroke-dasharray: 7 6;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px var(--accent-tint));
+}
+
+/* A loop the execution path takes: still dashed, and in the path's accent and glow. */
+.studio-canvas .studio-edge--loop.studio-edge--active {
+  stroke: var(--accent);
+  opacity: 1;
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+}
+
+/*
+ * The mockup's `.elabel`: a mono pill on the deepest ground inside a hairline. The edge writes
+ * the curve's midpoint as the label's inline `transform` — the one measured value — and this
+ * rule sets the pill against that point with `translate`, which composes with a transform
+ * rather than replacing it: centred on a curve, above a row's edge, beside a column's
+ * (treatment.ts's labelAnchor). The label layer lets pointer events through to the stage.
+ */
+.studio-edge-label {
+  position: absolute;
+  translate: -50% -50%;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--ground-deep);
+  color: var(--ink-mut);
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
+  font-weight: 500;
+  line-height: var(--lh-body);
+  white-space: nowrap;
 }
 
-/* ---------- the stage node ---------- */
+.studio-edge-label[data-anchor="above"] {
+  translate: -50% -100%;
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+.studio-edge-label[data-anchor="beside"] {
+  translate: 0 -50%;
+  margin-left: var(--sp-3);
+}
+
+/* The four tones: each hue's ink on its 35% line, as the mockup's `.elabel.acc/.warn/.ok/.err`. */
+.studio-edge-label--accent {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.studio-edge-label--warn {
+  border-color: var(--warn-line);
+  color: var(--warn);
+}
+
+.studio-edge-label--ok {
+  border-color: var(--ok-line);
+  color: var(--ok);
+}
+
+.studio-edge-label--err {
+  border-color: var(--err-line);
+  color: var(--err);
+}
+
+/* ---------- the stage node — mockup 04's .node ---------- */
 
 /*
  * The mockup's `.node`: a 204×104 box on the surface with a hairline rim, a 3px rail on its
  * left edge (px on purpose — it is a rule, as the rail's item rail is), the medium radius and
  * a soft drop shadow in the scrim. Width in rem so the title never clips at the 150% step;
- * the floor is the mockup's height and the box grows past it for a long title. The five
- * treatments — which hue the rail and the type line take per kind — are S.3's.
+ * the floor is the mockup's height and the box grows past it for a long title or a second row
+ * of chips. `--studio-node-hue` is the treatment: the rail and the type line are drawn in it,
+ * each type below sets it, and hover and selection change the rim without restating five hues.
  */
 .studio-node {
+  --studio-node-hue: var(--ink-mut);
+
   position: relative;
   box-sizing: border-box;
   width: 12.75rem;
   min-height: 6.5rem;
   padding: var(--sp-5) var(--sp-6);
   border: 1px solid var(--line-strong);
-  border-left: 3px solid var(--line-strong);
+  border-left: 3px solid var(--studio-node-hue);
   border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: 0 var(--sp-3) var(--sp-9) calc(var(--sp-3) * -1) var(--scrim);
   color: var(--ink);
 }
 
+/* The mockup's `.node:hover`: the rim lifts to the faint ink, and the treatment keeps its hue. */
 .studio-canvas .react-flow__node:hover .studio-node {
   border-color: var(--ink-faint);
+  border-left-color: var(--studio-node-hue);
+}
+
+.studio-canvas .react-flow__node:hover .studio-node--trigger {
+  border-top-color: var(--studio-node-hue);
 }
 
 /*
- * The selected node: the accent rim, and a ring in the accent tint. The mockup's `.sel` glow
- * — the accent's glow at depth — is S.3's; this is the same fact at the foundation's fidelity.
+ * The mockup's `.node.sel`: the accent rim all round, a 3px ring in the accent tint and the
+ * accent's glow beyond it. After the hover rule, so a hovered selection keeps its accent.
  */
 .studio-canvas .react-flow__node.selected .studio-node {
   border-color: var(--accent);
   box-shadow:
     0 0 0 3px var(--accent-tint),
-    0 var(--sp-3) var(--sp-9) calc(var(--sp-3) * -1) var(--scrim);
+    0 0 26px -4px var(--accent-glow);
 }
 
-/* The mockup's `.ntype`: mono, small caps, widely tracked, in the muted ink. */
+/*
+ * The octagon clips its own box-shadow, so a selected flow node would lose its ring. React
+ * Flow's wrapper is not clipped: the glow is drawn there, as drop-shadows that follow the
+ * octagon's outline.
+ */
+.studio-canvas .react-flow__node.selected:has(> .studio-node--flow) {
+  filter: drop-shadow(0 0 3px var(--accent-tint)) drop-shadow(0 0 12px var(--accent-glow));
+}
+
+/* The mockup's `.ntype`: mono, small caps, tracked, in the treatment's hue. */
 .studio-node__kind {
   display: block;
-  color: var(--ink-mut);
+  color: var(--studio-node-hue);
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
   font-weight: 500;
-  letter-spacing: var(--tr-widest);
+  letter-spacing: var(--tr-wider);
+  overflow-wrap: anywhere;
   text-transform: uppercase;
+}
+
+/* The mockup's `.ntype .glyph`. */
+.studio-node__glyph {
+  margin-inline-end: var(--sp-2);
 }
 
 /* The mockup's `.ntitle`. It wraps rather than clips. */
@@ -191,6 +313,52 @@
 }
 
 /*
+ * The mockup's `.nchips`: the chip row, wrapping under the title. It may run into the box's
+ * trailing padding, as the mockup's chips do — which is what prints `skill:zephyr-conventions`
+ * whole at the mockup's width rather than cutting its last letters.
+ */
+.studio-node__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  margin-inline-end: calc(var(--sp-6) * -1);
+}
+
+/*
+ * The mockup's `.nchip`: a value in mono on the inset well, in a hairlined box with the
+ * extra-small radius — a flat tag, not the design system's pill. A chip is never wider than its
+ * node: a long skill name ends in an ellipsis, and the chip's title carries it whole.
+ */
+.studio-node__chip {
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--inset);
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mockup's `.nchip .dot`: the runner's dot, in the treatment's hue. */
+.studio-node__chip-dot {
+  display: inline-block;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  margin-inline-end: var(--sp-2);
+  border-radius: var(--r-round);
+  background: var(--studio-node-hue);
+  vertical-align: middle;
+}
+
+/*
  * The connection points, invisible: nothing can be connected until S.5, and a handle that
  * cannot be used should not be seen. They keep their size, because React Flow measures an
  * edge's end from the handle's box and a handle with none would put every edge at the node's
@@ -199,6 +367,79 @@
 .studio-node__port {
   border: 0;
   opacity: 0;
+}
+
+/* ---------- the five treatments ---------- */
+
+/* The mockup's `.node.trigger`: the accent rail, and an accent rule across the top. */
+.studio-node--trigger {
+  --studio-node-hue: var(--accent);
+
+  border-top: 2px solid var(--studio-node-hue);
+}
+
+/* `.node.llm`: the model-routing violet. */
+.studio-node--llm {
+  --studio-node-hue: var(--model);
+}
+
+/* `.node.infra`: the warn hue — a stage that spends a runner. */
+.studio-node--infra {
+  --studio-node-hue: var(--warn);
+}
+
+/*
+ * `.node.flow`: the dim ink, cut to an octagon — a decision or a gate is a different kind of
+ * thing from a stage that does work, and reads as one at a glance. The corners are the mockup's
+ * 14px as a spacing step, so the cut scales with the box.
+ */
+.studio-node--flow {
+  --studio-node-hue: var(--ink-dim);
+
+  clip-path: polygon(
+    var(--sp-7) 0,
+    calc(100% - var(--sp-7)) 0,
+    100% var(--sp-7),
+    100% calc(100% - var(--sp-7)),
+    calc(100% - var(--sp-7)) 100%,
+    var(--sp-7) 100%,
+    0 calc(100% - var(--sp-7)),
+    0 var(--sp-7)
+  );
+}
+
+/* `.node.term`: the ok hue — where a run ends. */
+.studio-node--term {
+  --studio-node-hue: var(--ok);
+}
+
+/*
+ * The mockup's `.node.mini`: *Back to queue* as a 176×44 pill — a dot in the terminal's hue
+ * beside the title, centred, and nothing else. The rail stays, as the mockup's does.
+ */
+.studio-node--pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  width: 11rem;
+  min-height: 2.75rem;
+  padding: 0 var(--sp-7);
+  border-radius: var(--r-pill);
+}
+
+.studio-node--pill .studio-node__title {
+  margin-top: 0;
+  font-size: var(--t-xs);
+}
+
+/* The mockup's `.dot.ok`, in the treatment's hue. */
+.studio-node__dot {
+  flex: none;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: var(--r-round);
+  background: var(--studio-node-hue);
 }
 
 /* ---------- the toolbar — mockup 04's .canvas-toolbar ---------- */

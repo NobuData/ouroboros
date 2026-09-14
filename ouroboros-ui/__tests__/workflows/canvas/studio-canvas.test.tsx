@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { readStages } from "@/app/workflows/canvas/graph";
+import { type EdgeRef, readStages, toEdges } from "@/app/workflows/canvas/graph";
 import {
   ADD_STAGE_LABEL,
   ADD_STAGE_SOON,
@@ -21,20 +21,24 @@ import { viewportKey } from "@/app/workflows/canvas/viewport";
 import { hostileStorage, memoryStorage } from "../../helpers/match-media";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../../helpers/palettes";
 import { shimReactFlow } from "../../helpers/react-flow";
-import { standardFixDefinition } from "../../helpers/workflows";
+import { MOCKUP_ACTIVE_PATH, standardFixDefinition } from "../../helpers/workflows";
 
 /**
- * The canvas as it is drawn (#148) — `docs/mockups/04-workflow-builder.html`'s `.canvas-card`
- * on React Flow, opened on the committed `standard-fix` v14.
+ * The canvas as it is drawn (#148, #149) — `docs/mockups/04-workflow-builder.html`'s
+ * `.canvas-card` on React Flow, opened on the committed `standard-fix` v14.
  *
- * The acceptance criteria this suite exists for, in the ticket's words: **the seeded graph
+ * The acceptance criteria this suite exists for, in the two tickets' words: **the seeded graph
  * renders at the mockup's node positions**; **dragging a node updates the draft definition**;
  * **viewport persists per workflow across navigation**; **both themes render from tokens**;
- * and the selection model and keyboard baseline the scope names. What it cannot prove is a
- * pixel — 60fps, the dot grid's spacing — because jsdom paints nothing; see
- * `__tests__/helpers/react-flow.ts` for what the shim gives the library and what it does not.
- * The projection in each direction is `graph.test.ts`'s, the ladder and the storage rules
- * `viewport.test.ts`'s, the words `view.test.ts`'s.
+ * **every node type renders its mockup treatment, including the octagonal flow node and the mini
+ * term pill**; **the loop edge renders dashed**; **highlight mode is exercised by a fixture**;
+ * and the selection model and keyboard baseline the first scope names. What it cannot prove is a
+ * pixel — 60fps, the dot grid's spacing, the glow — because jsdom paints nothing; the colours are
+ * `canvas-styles.test.ts`'s, the picture is the e2e studio leg's screenshot pair, and
+ * `__tests__/helpers/react-flow.ts` says what the shim gives the library and what it does not.
+ * The projection in each direction is `graph.test.ts`'s, the treatments' decisions
+ * `treatment.test.ts`'s, the ladder and the storage rules `viewport.test.ts`'s, the words
+ * `view.test.ts`'s.
  */
 
 beforeAll(() => {
@@ -45,6 +49,9 @@ const { StudioCanvas } = await import("@/app/workflows/canvas/studio-canvas");
 
 /** The seeded document, as the fixture holds it. */
 const SEEDED = standardFixDefinition();
+
+/** The seeded document's node entries, as stored. */
+const SEEDED_NODES = SEEDED.nodes as { id: string; config: Record<string, unknown> }[];
 
 /**
  * Let React Flow's effects — measuring, the initial viewport — run, and one timer tick with
@@ -59,7 +66,7 @@ async function settle(): Promise<void> {
 /**
  * Open the canvas on the seeded document.
  *
- * @param props Anything this case overrides — a storage, a listener.
+ * @param props Anything this case overrides — a storage, a listener, a path.
  * @returns The render, settled.
  */
 async function open(
@@ -85,11 +92,37 @@ function stage(container: HTMLElement, id: string): HTMLElement {
   return node;
 }
 
+/** The stage node's own box inside the wrapper — where the treatment is. */
+function box(container: HTMLElement, id: string): HTMLElement {
+  const found = stage(container, id).querySelector(".studio-node");
+  if (!(found instanceof HTMLElement)) throw new Error(`no box for ${id}`);
+  return found;
+}
+
 /** React Flow's wrapper for one edge. */
 function edge(container: HTMLElement, id: string): Element {
   const found = container.querySelector(`.react-flow__edge[data-id="${id}"]`);
   if (found === null) throw new Error(`no edge ${id}`);
   return found;
+}
+
+/** One edge's line. */
+function line(container: HTMLElement, id: string): Element {
+  const found = edge(container, id).querySelector(".react-flow__edge-path");
+  if (found === null) throw new Error(`no line for ${id}`);
+  return found;
+}
+
+/** One edge's label pill, in the label layer above the edges. */
+function label(container: HTMLElement, id: string): Element {
+  const found = container.querySelector(`.studio-edge-label[data-edge="${id}"]`);
+  if (found === null) throw new Error(`no label for ${id}`);
+  return found;
+}
+
+/** What one stage's chips print. */
+function chips(container: HTMLElement, id: string): string[] {
+  return [...box(container, id).querySelectorAll(".studio-node__chip")].map((chip) => chip.textContent ?? "");
 }
 
 /**
@@ -152,25 +185,26 @@ describe("the seeded graph", () => {
     expect(placed(stage(container, "open-pr"))).toEqual([588, 630]);
   });
 
-  it("prints each stage's kind and title", async () => {
+  it("prints each stage's type line and title", async () => {
     const { container } = await open();
     const implement = stage(container, "implement");
 
-    expect(implement).toHaveTextContent("Model");
+    expect(implement).toHaveTextContent("Implement");
     expect(implement).toHaveTextContent("Code the change");
     expect(stage(container, "issue-queued")).toHaveTextContent("Trigger");
-    expect(stage(container, "checks-green")).toHaveTextContent("Flow");
+    expect(stage(container, "checks-green")).toHaveTextContent("Gate");
   });
 
-  it("draws every connection, the labelled ones with their labels", async () => {
+  it("draws every connection, and a pill for each labelled one", async () => {
     const { container } = await open();
 
     expect(container.querySelectorAll(".react-flow__edge")).toHaveLength(12);
-    expect(edge(container, "checks-green→implement")).toHaveTextContent("fail ↺");
-    expect(edge(container, "effort-recheck→plan")).toHaveTextContent("≤ M ↓");
-    expect(edge(container, "effort-recheck→split")).toHaveTextContent("> M ↘");
-    expect(edge(container, "checks-green→open-pr")).toHaveTextContent("pass →");
-    expect(edge(container, "issue-queued→analyze").querySelector(".react-flow__edge-text")).toBeNull();
+    expect(label(container, "checks-green→implement")).toHaveTextContent("fail ↺");
+    expect(label(container, "effort-recheck→plan")).toHaveTextContent("≤ M ↓");
+    expect(label(container, "effort-recheck→split")).toHaveTextContent("> M ↘");
+    expect(label(container, "checks-green→open-pr")).toHaveTextContent("pass →");
+    expect(container.querySelector('.studio-edge-label[data-edge="issue-queued→analyze"]')).toBeNull();
+    expect(container.querySelectorAll(".studio-edge-label")).toHaveLength(4);
   });
 
   it("names every stage and edge for a screen reader, and keeps both in the tab order", async () => {
@@ -202,6 +236,216 @@ describe("the seeded graph", () => {
   });
 });
 
+describe("the five treatments", () => {
+  it("draws each stage in its type's treatment, and Back to queue as the mini pill", async () => {
+    const { container } = await open();
+
+    expect(Object.fromEntries(readStages(SEEDED).map(({ id }) => [id, box(container, id).className]))).toEqual({
+      "issue-queued": "studio-node studio-node--trigger",
+      analyze: "studio-node studio-node--llm",
+      "effort-recheck": "studio-node studio-node--flow",
+      plan: "studio-node studio-node--llm",
+      split: "studio-node studio-node--llm",
+      "back-to-queue": "studio-node studio-node--term studio-node--pill",
+      implement: "studio-node studio-node--llm",
+      build: "studio-node studio-node--infra",
+      test: "studio-node studio-node--infra",
+      review: "studio-node studio-node--llm",
+      "checks-green": "studio-node studio-node--flow",
+      "open-pr": "studio-node studio-node--term",
+    });
+  });
+
+  it("begins each type line with the type's glyph, hidden from a screen reader", async () => {
+    const { container } = await open();
+    const typeLine = (id: string) => box(container, id).querySelector(".studio-node__kind");
+    const glyph = typeLine("implement")?.querySelector(".studio-node__glyph");
+
+    expect(glyph).toHaveTextContent("◆");
+    expect(glyph).toHaveAttribute("aria-hidden", "true");
+    expect(typeLine("implement")).toHaveTextContent("◆Implement");
+    expect(typeLine("issue-queued")).toHaveTextContent("▸Trigger");
+    expect(typeLine("build")).toHaveTextContent("▣Build");
+    expect(typeLine("effort-recheck")).toHaveTextContent("◇Decision");
+    expect(typeLine("checks-green")).toHaveTextContent("◇Gate");
+    expect(typeLine("open-pr")).toHaveTextContent("●Terminal");
+  });
+
+  it("draws the pill as a dot and the title — no type line, no chips — and keeps its name", async () => {
+    const { container } = await open();
+    const pill = box(container, "back-to-queue");
+
+    expect(pill.querySelector(".studio-node__dot")).toHaveAttribute("aria-hidden", "true");
+    expect(pill.querySelector(".studio-node__title")).toHaveTextContent("Back to queue");
+    expect(pill.querySelector(".studio-node__kind")).toBeNull();
+    expect(pill.querySelector(".studio-node__chips")).toBeNull();
+    expect(stage(container, "back-to-queue")).toHaveAttribute("aria-label", "Terminal stage: Back to queue");
+    // Its four sides still connect: the split's edge arrives at it.
+    expect(pill.querySelectorAll(".studio-node__port")).toHaveLength(8);
+  });
+});
+
+describe("the chips", () => {
+  it("prints each stage's chips as its config derives them", async () => {
+    const { container } = await open();
+
+    expect(chips(container, "issue-queued")).toEqual(["effort ≤ M"]);
+    expect(chips(container, "analyze")).toEqual(["skill:repo-map", "coder-std"]);
+    expect(chips(container, "implement")).toEqual(["skill:zephyr-conventions", "routed by task"]);
+    expect(chips(container, "plan")).toEqual(["prompt template", "coder-max"]);
+    expect(chips(container, "build")).toEqual(["runner pool-a"]);
+    expect(chips(container, "test")).toEqual(["twister -p native_sim", "runner pool-a"]);
+    expect(chips(container, "checks-green")).toEqual(["required checks: 3"]);
+    expect(chips(container, "open-pr")).toEqual(["squash · delete branch"]);
+  });
+
+  it("dots the runner chips alone, and titles every chip with its whole text", async () => {
+    const { container } = await open();
+
+    expect(box(container, "build").querySelector('[data-chip="runner"] .studio-node__chip-dot')).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(container.querySelectorAll(".studio-node__chip-dot")).toHaveLength(2);
+    for (const chip of container.querySelectorAll(".studio-node__chip")) {
+      expect(chip).toHaveAttribute("title", chip.textContent ?? "");
+    }
+  });
+
+  it("draws no chip row for a stage with nothing to print", async () => {
+    const { container } = await open({
+      definition: {
+        nodes: [{ id: "build", type: "infra", title: "Build", position: { x: 0, y: 0 }, config: {} }],
+        edges: [],
+      },
+    });
+
+    expect(box(container, "build").querySelector(".studio-node__chips")).toBeNull();
+    expect(box(container, "build")).toHaveTextContent("Build");
+  });
+});
+
+describe("the edges", () => {
+  it("defines the three arrowheads once, out of the accessibility tree, for every edge to name", async () => {
+    const { container } = await open();
+    const markers = container.querySelector(".studio-canvas__markers");
+
+    expect([...container.querySelectorAll(".studio-canvas__markers marker")].map((marker) => marker.id)).toEqual([
+      "studio-arrow-plain",
+      "studio-arrow-active",
+      "studio-arrow-loop",
+    ]);
+    expect(markers).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("draws the ouroboros dashed, ending in its own arrowhead, and every other edge plain", async () => {
+    const { container } = await open();
+    const loop = line(container, "checks-green→implement");
+
+    expect(loop).toHaveClass("studio-edge", "studio-edge--loop");
+    expect(loop).not.toHaveClass("studio-edge--active");
+    expect(loop).toHaveAttribute("marker-end", "url(#studio-arrow-loop)");
+
+    for (const { id } of toEdges(SEEDED).filter((e) => e.id !== "checks-green→implement")) {
+      expect(line(container, id).getAttribute("class"), id).toBe("react-flow__edge-path studio-edge");
+      expect(line(container, id), id).toHaveAttribute("marker-end", "url(#studio-arrow-plain)");
+    }
+  });
+
+  it("draws each label as a pill in the tone its condition reports, hidden behind the edge's own name", async () => {
+    const { container } = await open();
+    const labels = [...container.querySelectorAll(".studio-edge-label")];
+
+    expect(labels.map((pill) => [pill.textContent, pill.getAttribute("class")])).toEqual([
+      ["≤ M ↓", "studio-edge-label studio-edge-label--accent"],
+      ["> M ↘", "studio-edge-label studio-edge-label--warn"],
+      ["pass →", "studio-edge-label studio-edge-label--ok"],
+      ["fail ↺", "studio-edge-label studio-edge-label--err"],
+    ]);
+    for (const pill of labels) expect(pill).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("sets each pill against its line: beside a column's edge, above a row's, on a curve", async () => {
+    const { container } = await open();
+
+    expect(label(container, "effort-recheck→plan")).toHaveAttribute("data-anchor", "beside");
+    expect(label(container, "checks-green→open-pr")).toHaveAttribute("data-anchor", "above");
+    expect(label(container, "effort-recheck→split")).toHaveAttribute("data-anchor", "on");
+    expect(label(container, "checks-green→implement")).toHaveAttribute("data-anchor", "on");
+  });
+});
+
+describe("highlight mode", () => {
+  /** The ids of the edges drawn in the active treatment. */
+  function active(container: HTMLElement): string[] {
+    return [...container.querySelectorAll(".react-flow__edge")]
+      .filter((element) => element.querySelector(".studio-edge--active") !== null)
+      .map((element) => element.getAttribute("data-id") ?? "");
+  }
+
+  /** The ids the mockup draws active. */
+  const MOCKUP_ACTIVE_IDS = MOCKUP_ACTIVE_PATH.map(({ from, to }) => `${from}→${to}`);
+
+  it("draws nothing active when no path is given", async () => {
+    const { container } = await open();
+
+    expect(active(container)).toEqual([]);
+  });
+
+  it("draws the mockup's active path in the accent, each edge ending in the active arrowhead", async () => {
+    const { container } = await open({ highlight: MOCKUP_ACTIVE_PATH });
+
+    expect(active(container)).toEqual(MOCKUP_ACTIVE_IDS);
+    for (const id of MOCKUP_ACTIVE_IDS) {
+      expect(line(container, id), id).toHaveAttribute("marker-end", "url(#studio-arrow-active)");
+    }
+    expect(line(container, "implement→build")).toHaveAttribute("marker-end", "url(#studio-arrow-plain)");
+    expect(line(container, "checks-green→implement")).toHaveAttribute("marker-end", "url(#studio-arrow-loop)");
+  });
+
+  it("keeps the loop dashed when the path takes it", async () => {
+    const { container } = await open({ highlight: [{ from: "checks-green", to: "implement" }] });
+    const loop = line(container, "checks-green→implement");
+
+    expect(loop).toHaveClass("studio-edge--loop", "studio-edge--active");
+    expect(loop).toHaveAttribute("marker-end", "url(#studio-arrow-active)");
+  });
+
+  it("clears when the path is taken away, without remounting the canvas under the reader", async () => {
+    // S.6 clears the overlay on the first edit; a canvas that remounted to do it would throw
+    // away the reader's selection and place.
+    const storage = memoryStorage();
+    const definition = standardFixDefinition();
+    const canvas = (highlight: readonly EdgeRef[] | null) => (
+      <StudioCanvas definition={definition} highlight={highlight} storage={storage} workflowId="w" />
+    );
+    const { container, rerender } = render(canvas(MOCKUP_ACTIVE_PATH));
+    await settle();
+
+    fireEvent.click(stage(container, "plan"));
+    await settle();
+    expect(active(container)).toEqual(MOCKUP_ACTIVE_IDS);
+
+    rerender(canvas(null));
+    await settle();
+
+    expect(active(container)).toEqual([]);
+    expect(stage(container, "plan")).toHaveClass("selected");
+
+    rerender(canvas([{ from: "plan", to: "implement" }]));
+    await settle();
+
+    expect(active(container)).toEqual(["plan→implement"]);
+  });
+
+  it("draws a path naming a stage the canvas does not hold as no path at all", async () => {
+    const { container } = await open({ highlight: [{ from: "gone", to: "implement" }] });
+
+    expect(active(container)).toEqual([]);
+    expect(container.querySelectorAll(".react-flow__edge")).toHaveLength(12);
+  });
+});
+
 describe("a document with nothing on it", () => {
   it("draws the stage, says there are no stages, and names what adds one", async () => {
     const { container } = await open({ definition: {} });
@@ -228,11 +472,11 @@ describe("the toolbar", () => {
   it("draws Auto-layout and Add stage inert, each naming #151 as its reason", async () => {
     await open();
 
-    for (const [label, reason] of [
+    for (const [name, reason] of [
       [AUTO_LAYOUT_LABEL, AUTO_LAYOUT_SOON],
       [ADD_STAGE_LABEL, ADD_STAGE_SOON],
     ] as const) {
-      const control = screen.getByRole("button", { name: label });
+      const control = screen.getByRole("button", { name });
 
       expect(control).toHaveAttribute("aria-disabled", "true");
       expect(control).toHaveAttribute("title", reason);
@@ -359,6 +603,7 @@ describe("selection", () => {
     fireEvent.keyDown(implement, { key: "Enter" });
     await settle();
 
+    // The wrapper's `selected` is what the `.sel` glow ring is drawn from (canvas.css).
     expect(implement).toHaveClass("selected");
     expect(screen.getByRole("status")).toHaveTextContent(
       "Code the change selected — the inspector arrives with #150.",
@@ -366,7 +611,13 @@ describe("selection", () => {
     expect(onSelectionChange).toHaveBeenLastCalledWith({
       kind: "node",
       id: "implement",
-      stage: { id: "implement", kind: "llm", title: "Code the change", position: { x: 588, y: 420 } },
+      stage: {
+        id: "implement",
+        kind: "llm",
+        title: "Code the change",
+        position: { x: 588, y: 420 },
+        config: SEEDED_NODES[6].config,
+      },
     });
   });
 
@@ -394,7 +645,13 @@ describe("selection", () => {
     expect(onSelectionChange).toHaveBeenLastCalledWith({
       kind: "edge",
       id: "checks-green→implement",
-      connection: { from: "checks-green", to: "implement", kind: "loop", label: "fail ↺" },
+      connection: {
+        from: "checks-green",
+        to: "implement",
+        kind: "loop",
+        label: "fail ↺",
+        condition: { kind: "checks", op: "any_failed" },
+      },
     });
   });
 
@@ -506,13 +763,20 @@ describe("both palettes", () => {
 
     expect(document.documentElement).toHaveAttribute("data-theme", palette);
     expect(container.querySelectorAll(".react-flow__node")).toHaveLength(12);
+    expect(container.querySelectorAll(".studio-edge--loop")).toHaveLength(1);
   });
 
   it("draws the same markup in both, because the palette is the token sheet's", () => {
     // A canvas that branched on the theme in JavaScript — or let the library's own colour
-    // mode do so — would render differently on the server than in the browser.
+    // mode do so — would render differently on the server than in the browser. The five
+    // treatments, the arrowheads and the pills are classes; their colours are the sheet's.
     const [light, dark] = renderInBothPalettes(
-      <StudioCanvas definition={standardFixDefinition()} storage={memoryStorage()} workflowId="w" />,
+      <StudioCanvas
+        definition={standardFixDefinition()}
+        highlight={MOCKUP_ACTIVE_PATH}
+        storage={memoryStorage()}
+        workflowId="w"
+      />,
     );
 
     expect(light).toBe(dark);

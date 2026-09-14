@@ -5,7 +5,9 @@ import {
   ADD_STAGE_SOON,
   AUTO_LAYOUT_SOON,
   CANVAS_HINT,
+  FLOW_ROLE_WORDS,
   NO_STAGES_NOTE,
+  STAGE_GLYPHS,
   STAGE_KIND_WORDS,
   UNSAVED_NOTE,
   edgeName,
@@ -14,8 +16,9 @@ import {
 } from "@/app/workflows/canvas/view";
 
 /**
- * The canvas's words (#148): what each control says it waits for, how a stage and an edge are
- * named to a screen reader, and the sentence the selection becomes.
+ * The canvas's words (#148, #149): what each control says it waits for, how a stage and an edge
+ * are named to a screen reader, the glyphs and words a node's type line begins with, and the
+ * sentence the selection becomes.
  */
 
 describe("the stage's words", () => {
@@ -23,6 +26,15 @@ describe("the stage's words", () => {
     for (const kind of STAGE_KINDS) {
       expect(STAGE_KIND_WORDS[kind]).toMatch(/^[A-Z][a-z]+$/);
     }
+  });
+
+  it("gives every node type the mockup's glyph, each a single character and each different", () => {
+    expect(STAGE_GLYPHS).toEqual({ trigger: "▸", llm: "◆", infra: "▣", flow: "◇", term: "●" });
+    expect(new Set(STAGE_KINDS.map((kind) => STAGE_GLYPHS[kind])).size).toBe(STAGE_KINDS.length);
+  });
+
+  it("names the two kinds of flow node the mockup draws", () => {
+    expect(FLOW_ROLE_WORDS).toEqual({ decision: "Decision", gate: "Gate" });
   });
 
   it("names a stage by its kind and its title", () => {
@@ -54,7 +66,13 @@ describe("what waits, and for what", () => {
 });
 
 describe("the selection, in a sentence", () => {
-  const stage = { id: "implement", kind: "llm", title: "Code the change", position: { x: 0, y: 0 } } as const;
+  const stage = {
+    id: "implement",
+    kind: "llm",
+    title: "Code the change",
+    position: { x: 0, y: 0 },
+    config: {},
+  } as const;
 
   it("names the stage and where it will be edited", () => {
     expect(selectionSentence({ kind: "node", id: "implement", stage }, 12)).toBe(
@@ -65,7 +83,11 @@ describe("the selection, in a sentence", () => {
   it("names the edge's ends and where it will be edited", () => {
     expect(
       selectionSentence(
-        { kind: "edge", id: "a→b", connection: { from: "checks-green", to: "implement", kind: "loop", label: "fail ↺" } },
+        {
+          kind: "edge",
+          id: "a→b",
+          connection: { from: "checks-green", to: "implement", kind: "loop", label: "fail ↺", condition: null },
+        },
         12,
       ),
     ).toBe("Edge checks-green → implement selected — edge editing arrives with #151.");

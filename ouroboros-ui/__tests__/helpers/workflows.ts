@@ -6,6 +6,7 @@ import type {
   WorkflowDetail,
   WorkflowRailEntry,
 } from "@/app/api/workflows";
+import type { EdgeRef } from "@/app/workflows/canvas/graph";
 import type { SelectedWorkflow, StudioReadings } from "@/app/workflows/view";
 
 /**
@@ -196,6 +197,22 @@ const STANDARD_FIX = join(
 export function standardFixDefinition(): WorkflowDefinition {
   return JSON.parse(readFileSync(STANDARD_FIX, "utf8")) as WorkflowDefinition;
 }
+
+/**
+ * Mockup 04's active path — the four `.edge.active` segments it draws in the accent, from the
+ * trigger through the effort re-check to implement — named the way the dry run's
+ * `highlight_path` names edges.
+ *
+ * The fixture the canvas's highlight mode (#149) is exercised with ahead of the dry run that will
+ * feed it: S.6's acceptance criterion is that a dry run of the seeded `standard-fix` for `#485`
+ * paints *the mockup's exact active path* (#152), and this is that path.
+ */
+export const MOCKUP_ACTIVE_PATH: readonly EdgeRef[] = [
+  { from: "issue-queued", to: "analyze" },
+  { from: "analyze", to: "effort-recheck" },
+  { from: "effort-recheck", to: "plan" },
+  { from: "plan", to: "implement" },
+];
 
 /**
  * The seeded `standard-fix` in full, as `GET /api/v1/workflows/{id}` serves it: v14 in force,

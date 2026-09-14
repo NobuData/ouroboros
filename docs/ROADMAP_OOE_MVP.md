@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**188 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**189 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
-| 🟡 **In progress** | P7 | **23** of 43 |
+| 🟡 **In progress** | P7 | **24** of 43 |
 | — **Not started** | P8–P17 | 0 of 246 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -110,7 +110,7 @@ position is not forced by dependencies, one of these decided it.
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
 | **P6** | Issue intake & estimation | ✅ 23/23 | 23 | 68 | Mockup 03 |
-| **P7** | Workflow authoring (visual + code) | 🟡 19/43 | 43 | 137 | Mockups 04, 05 |
+| **P7** | Workflow authoring (visual + code) | 🟡 24/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | — 0/17 | 17 | 55 | Mockup 10 |
@@ -1321,7 +1321,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **43 issues** · 137 complexity points · order **#166–#208** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md`, `ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`, + the held-back registry tail
-> **Status:** 🟡 **In progress** — 23 of 43 issues closed
+> **Status:** 🟡 **In progress** — 24 of 43 issues closed
 
 **Goal.** Define the workflow domain and its immutable versioning, the DSL JSON Schema shared by REST and engine, the pluggable `TicketSourceProvider` SPI, validation/triggers/dry-run, the authoring studio (mockup 04), and the code projection with proven round-trip (mockup 05).
 
@@ -1356,7 +1356,7 @@ the blockquote above that records what it did and what it did differently.
 | 186 | **U.3** | ✅ [#167](https://github.com/NobuData/ouroboros/issues/167) | Code view & save endpoints | ouroboros-rest | M | P.3, U.2 |
 | 187 | **W.2** | ✅ [#178](https://github.com/NobuData/ouroboros/issues/178) | Diagnostics & Loop Checks payload | ouroboros-rest | M | R.2, U.2 |
 | 188 | **CH.6** | ✅ [#589](https://github.com/NobuData/ouroboros/issues/589) | Governance & resolution-snapshot contract | ouroboros-rest, ouroboros-engine | M | P.2, Z.1 |
-| 189 | **S.3** | [#149](https://github.com/NobuData/ouroboros/issues/149) | Node & edge components | ouroboros-ui | L | S.2 |
+| 189 | **S.3** | ✅ [#149](https://github.com/NobuData/ouroboros/issues/149) | Node & edge components | ouroboros-ui | L | S.2 |
 | 190 | **U.4** | [#168](https://github.com/NobuData/ouroboros/issues/168) | Round-trip property & parity tests | ouroboros-rest | M | U.3 |
 | 191 | **V.1** | [#169](https://github.com/NobuData/ouroboros/issues/169) | Code route, head & mode switching | ouroboros-ui | M | S.1, U.3 |
 | 192 | **W.3** | [#179](https://github.com/NobuData/ouroboros/issues/179) | Intelligence integration tests | ouroboros-rest | S | W.1, W.2 |

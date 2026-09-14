@@ -34,6 +34,9 @@
 #   engine    issues.spec.ts      a press of Re-estimate really goes through the engine:
 #                                 with it stopped the orchestrator writes `needs_human`
 #                                 and no new version, and the panel says so (#121)
+#   db        studio.spec.ts      the studio canvas's stages, chips and edges come out of
+#                                 the seeded workflow document rather than out of the
+#                                 mockup (#149)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -352,6 +355,13 @@ expect_red db issues.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 # …and the same leg against the engine. See the header: only the re-estimate test goes red,
 # and it goes red with the pill the orchestrator writes when the engine does not answer.
 expect_red engine issues.spec.ts "needs human"
+
+# The studio leg (#149), against the layer its canvas is drawn from. Every stage, chip and edge
+# on it is the seeded `standard-fix` document read out of `workflows` and `workflow_versions`,
+# so a canvas that still drew mockup 04 with the database stopped would be a page drawing the
+# artwork. `db` rather than `rest` for the reason every pair above uses it, and the leg breaks
+# at its first step for the reason the dashboard's does: a session is a row.
+expect_red db studio.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 
 printf '\n'
 if check_summary; then

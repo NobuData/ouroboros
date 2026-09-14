@@ -15,21 +15,25 @@ import {
   applyNodeChanges,
   useReactFlow,
 } from "@xyflow/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { WorkflowDefinition } from "@/app/api/workflows";
 import { Button } from "@/app/ui";
 
 import {
   type CanvasSelection,
+  type EdgeRef,
+  STAGE_EDGE_TYPE,
   STAGE_NODE_TYPE,
-  type StageEdge,
+  type StageEdge as StageEdgeType,
   type StageNode as StageNodeType,
   selectionOf,
   toEdges,
   toNodes,
+  withHighlight,
   withPositions,
 } from "./graph";
+import { EdgeMarkers, StageEdge } from "./stage-edge";
 import { StageNode } from "./stage-node";
 import {
   ADD_STAGE_LABEL,
@@ -82,6 +86,18 @@ import "./canvas.css";
  * nodes whenever its `definition` changed would throw away a reader's selection and measured
  * layout on every autosave round trip. S.6 keys by the draft's etag when it reloads one.
  *
+ * ### What the stages and edges look like
+ *
+ * Mockup 04's visual language (S.3, [#149](https://github.com/NobuData/ouroboros/issues/149)):
+ * every stage is `stage-node.tsx` in its type's treatment, with its chips derived from its config,
+ * and every connection is `stage-edge.tsx` — plain, loop or active, with the arrowhead and the
+ * label pill that go with it. The arrowheads are defined once, here, for every edge to name.
+ *
+ * **Highlight mode** draws an execution path over the graph: every edge `highlight` names is drawn
+ * in the mockup's active treatment. It takes the dry run's own `highlight_path`, so S.6's overlay
+ * hands the answer through as it arrives; the path is applied over the edges at render and never
+ * stored in them, so clearing it — which S.6 does on the first edit — is passing `null`.
+ *
  * ### What is switched off, and why
  *
  * Nothing here connects, adds or deletes: `nodesConnectable` is off, the delete key is unbound,
@@ -118,6 +134,12 @@ export interface StudioCanvasProps {
    */
   readonly definition: WorkflowDefinition;
   /**
+   * The execution path to draw, as the dry run's `highlight_path` names it — every edge the walk
+   * took, by its ordered pair. `null` or absent draws none. Unlike `definition` this is watched:
+   * a path is an overlay, and turning it on and off must not remount the canvas under a reader.
+   */
+  readonly highlight?: readonly EdgeRef[] | null;
+  /**
    * Told the document with the canvas's positions in it, each time a move settles. S.6's
    * autosave is the caller this exists for; the canvas keeps no copy of the draft beyond what
    * it needs to say *not saved*.
@@ -137,6 +159,9 @@ export interface StudioCanvasProps {
 
 /** The one node type, registered once so React Flow does not re-register it on every render. */
 const NODE_TYPES = { [STAGE_NODE_TYPE]: StageNode };
+
+/** The one edge type, registered once for the same reason. */
+const EDGE_TYPES = { [STAGE_EDGE_TYPE]: StageEdge };
 
 /**
  * The mouse buttons that pan without a modifier: the middle button and the right — never the
@@ -204,12 +229,13 @@ export function StudioCanvas(props: StudioCanvasProps) {
 function Canvas({
   workflowId,
   definition,
+  highlight = null,
   onDefinitionChange,
   onSelectionChange,
   storage,
 }: StudioCanvasProps) {
   const [nodes, setNodes] = useState<StageNodeType[]>(() => toNodes(definition));
-  const [edges, setEdges] = useState<StageEdge[]>(() => toEdges(definition));
+  const [edges, setEdges] = useState<StageEdgeType[]>(() => toEdges(definition));
   // The nodes as of the last change, for the next change to build on. React Flow can report
   // two batches of changes between two renders — a measurement and a selection, say — and a
   // handler that read `nodes` from its render would apply the second batch to the state the
@@ -218,7 +244,11 @@ function Canvas({
   const [edited, setEdited] = useState(false);
   const [selection, setSelection] = useState<CanvasSelection>(null);
   const [zoom, setZoom] = useState(HOME_VIEWPORT.zoom);
-  const { setViewport, zoomTo, getZoom } = useReactFlow<StageNodeType, StageEdge>();
+  const { setViewport, zoomTo, getZoom } = useReactFlow<StageNodeType, StageEdgeType>();
+
+  // The edges as drawn: the state, with the execution path laid over it. Derived rather than
+  // stored, so the path never reaches the edges a selection change is applied to.
+  const drawnEdges = useMemo(() => withHighlight(edges, highlight), [edges, highlight]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<StageNodeType>[]) => {
@@ -237,14 +267,14 @@ function Canvas({
     [definition, onDefinitionChange],
   );
 
-  const onEdgesChange = useCallback((changes: EdgeChange<StageEdge>[]) => {
+  const onEdgesChange = useCallback((changes: EdgeChange<StageEdgeType>[]) => {
     // Only a selection can change on an edge here — nothing connects, reconnects or deletes —
     // so the edges never reach the document and a functional update is all this needs.
     setEdges((current) => applyEdgeChanges(changes, current));
   }, []);
 
   const onSelection = useCallback(
-    ({ nodes: selectedNodes, edges: selectedEdges }: OnSelectionChangeParams<StageNodeType, StageEdge>) => {
+    ({ nodes: selectedNodes, edges: selectedEdges }: OnSelectionChangeParams<StageNodeType, StageEdgeType>) => {
       const next = selectionOf(selectedNodes, selectedEdges);
       setSelection(next);
       onSelectionChange?.(next);
@@ -280,13 +310,15 @@ function Canvas({
   return (
     <section aria-label={CANVAS_LABEL} className="studio-canvas">
       <div className="studio-canvas__stage">
-        <ReactFlow<StageNodeType, StageEdge>
+        <EdgeMarkers />
+        <ReactFlow<StageNodeType, StageEdgeType>
           defaultMarkerColor={null}
           defaultViewport={HOME_VIEWPORT}
           deleteKeyCode={null}
-          edges={edges}
+          edges={drawnEdges}
           edgesFocusable
           edgesReconnectable={false}
+          edgeTypes={EDGE_TYPES}
           maxZoom={MAX_ZOOM}
           minZoom={MIN_ZOOM}
           nodeExtent={STAGE_EXTENT}
