@@ -74,9 +74,9 @@ describe("the selection, in a sentence", () => {
     config: {},
   } as const;
 
-  it("names the stage and where it will be edited", () => {
+  it("names the stage and where it is edited — the inspector beside the canvas (#150)", () => {
     expect(selectionSentence({ kind: "node", id: "implement", stage }, 12)).toBe(
-      "Code the change selected — the inspector arrives with #150.",
+      "Code the change selected — configure it in the inspector.",
     );
   });
 

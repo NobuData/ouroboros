@@ -1249,7 +1249,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 | S.1 | #147 | 🟢 Done | ouroboros-ui: [S.1] Studio route, page head & workflow rail | `(app)/workflows`: head, seg control, actions, rail with states | mvp, workflow, ui, design | N (after #41, P.3, BA-D.5) | Y | M | ouroboros-ui |
 | S.2 | #148 | 🟢 Done | ouroboros-ui: [S.2] Canvas foundation on React Flow | Themed React Flow: dot-grid, pan/zoom, controlled graph state | mvp, workflow, ui, design | N (after P.2, S.1) | Y | L | ouroboros-ui |
 | S.3 | #149 | 🟢 Done | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
-| S.4 | #150 | 🟡 Open | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
+| S.4 | #150 | 🟢 Done | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
 | S.5 | #151 | 🟡 Open | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
 | S.6 | #152 | 🟡 Open | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui |
 | S.7 | #153 | 🟡 Open | ouroboros-ui: [S.7] Studio states & guards | Empty org, paused/err rail states, read-only member view, load/error | mvp, workflow, ui, design | N (after S.1–S.6) | Y | S | ouroboros-ui |
@@ -1542,7 +1542,34 @@ dot-grid bg · ⌥-drag pan · zoom −/100%/+ · selection → inspector
 
 ### Issue S.4 — ouroboros-ui: [S.4] Inspector panel
 
-> **GitHub issue:** #150 · **Status:** 🟡 Open · **Parent epic:** #130
+> **GitHub issue:** #150 · **Status:** 🟢 Done · **Parent epic:** #130
+>
+> **Shipped** as `ouroboros-ui/app/workflows/inspector/` (the pure `inspector.ts`, the panel, the
+> model-stage form, the flow/terminal/generated forms, the prompt editor), `studio-editor.tsx`, the
+> write-back helpers in `canvas/graph.ts`, and `workflows.catalog()` (`ouroboros-ui` 0.65.0).
+>
+> * **One draft, two views.** `StudioEditor` lifts the draft and the selection out of the canvas
+>   (S.2's seam). Apply writes a stage's config with `withStage`, Delete stage removes the node and
+>   its edges with `withoutStage`, and the canvas reconciles its nodes against the new document during
+>   render — positions and selection kept — so the node's chips (S.3) follow the config.
+> * **Forms from the catalog.** Choices and bounds are read from R.3's served `configSchema`
+>   (`$ref` into `$defs`, `if`/`then` per discriminator): the mode enum, the routing `oneOf`, the
+>   limits' ranges, a predicate's operators and values per kind (P8), a terminal's options per
+>   action. An infra stage and any unknown type get a generated form (select, toggle, number, text;
+>   anything else points at the code view).
+> * **Honesty.** Permissions carry *Declared now — enforced at execution (T.6, #160)* (P9). Unknown
+>   skills, task routes and pinned aliases warn inline in the service's own words and never block
+>   Apply (P7); the alias warning adds that publishing refuses it (#589). Apply says *not saved —
+>   autosave arrives with #152*. A member sees the panel inert with the reason.
+> * **Decided in-issue.** The variable palette offers `issue.title`, `issue.body`, `diff` and the
+>   model/infra stages upstream of the selected one (loops not followed), labelled as suggestions —
+>   no run-context contract exists yet. The prompt editor is a native textarea over a highlight
+>   layer rather than an embedded code editor, so keyboard, undo and screen readers are the
+>   platform's. The header is read-only as the mockup draws it; renaming a stage is not in this
+>   ticket. The page makes three more reads for the inspector (catalog, routing matrix, aliases),
+>   each degrading only its part of the panel. Skills stay catalog configuration until #410.
+> * **Left where it was:** the e2e inspector leg and screenshot are S.8's (#154); the canvas
+>   baselines are unchanged.
 
 - **Problem Statement:** The sticky inspector is where stages are actually
   configured — every section of the mockup (mode, skill, prompt template,

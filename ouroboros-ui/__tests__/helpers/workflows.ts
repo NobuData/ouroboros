@@ -5,9 +5,13 @@ import type {
   WorkflowDefinition,
   WorkflowDetail,
   WorkflowRailEntry,
+  WorkflowStageCatalog,
+  WorkflowStageType,
 } from "@/app/api/workflows";
 import type { EdgeRef } from "@/app/workflows/canvas/graph";
-import type { SelectedWorkflow, StudioReadings } from "@/app/workflows/view";
+import type { InspectorReadings, SelectedWorkflow, StudioReadings } from "@/app/workflows/view";
+
+import { seededAliases, seededTaskKinds } from "./models";
 
 /**
  * The studio's fixtures — the seeded workspace's rail and its `standard-fix`, as
@@ -275,7 +279,109 @@ export function readings(overrides: Partial<StudioReadings> = {}): StudioReading
     rail: { ok: true, value: seededRail() },
     requested: null,
     selected: selected(),
+    inspector: inspectorReadings(),
     now: READ_AT,
+    ...overrides,
+  };
+}
+
+/* ------------------------------------------------------------------ the inspector (#150) */
+
+/**
+ * The published DSL schema — `schemas/workflow-dsl/v1.json`, the file R.3's catalog reads its
+ * config schemas from. Read rather than transcribed, so an inspector form generated in a test is
+ * generated from the grammar the service serves.
+ */
+const DSL_SCHEMA = join(import.meta.dirname, "..", "..", "..", "schemas", "workflow-dsl", "v1.json");
+
+/** The schema's `$id`, as the catalog echoes it. */
+export const DSL_SCHEMA_ID = "https://ouroboros.build/schemas/workflow-dsl/v1.json";
+
+/**
+ * One node type's config schema, self-contained as the catalog serves it: the definition, with a
+ * `$defs` its references resolve against. (The service trims `$defs` to exactly what the
+ * definition reaches; carrying all of them resolves every reference identically.)
+ *
+ * @param definition The `$defs` entry — `llm_config`, `flow_config`, …
+ * @returns The schema.
+ */
+export function configSchema(definition: string): WorkflowStageType["configSchema"] {
+  const schema = JSON.parse(readFileSync(DSL_SCHEMA, "utf8")) as { $defs: Record<string, object> };
+
+  // The contract types a config schema as an unconstrained object, so a real one is cast through
+  // `unknown` — the value is the published schema itself.
+  return { ...schema.$defs[definition], $defs: schema.$defs } as unknown as WorkflowStageType["configSchema"];
+}
+
+/**
+ * One catalog entry.
+ *
+ * @param type The node type.
+ * @param label What the Add-stage menu calls it.
+ * @param glyph Mockup 04's glyph.
+ * @param defaults A dropped node's title and config.
+ * @returns The entry as `GET /api/v1/workflows/catalog` serves it.
+ */
+function stageType(
+  type: string,
+  label: string,
+  glyph: string,
+  defaults: { title: string; config: Record<string, unknown> },
+): WorkflowStageType {
+  return {
+    type,
+    label,
+    glyph,
+    class: type,
+    configSchemaRef: `${DSL_SCHEMA_ID}#/$defs/${type}_config`,
+    configSchema: configSchema(`${type}_config`),
+    defaults: defaults as WorkflowStageType["defaults"],
+  };
+}
+
+/**
+ * The seeded workspace's stage catalog — `ouroboros-rest`'s presentation table
+ * (`catalog.presentation.ts`) over the published schema, with the openapi example's suggestions:
+ * the deployment's two configured skills and the seeded routing matrix's eight task kinds.
+ *
+ * @param overrides What this case is about.
+ * @returns The catalog.
+ */
+export function stageCatalog(overrides: Partial<WorkflowStageCatalog> = {}): WorkflowStageCatalog {
+  return {
+    schemaId: DSL_SCHEMA_ID,
+    nodeTypes: [
+      stageType("trigger", "Trigger", "▸", { title: "Issue queued", config: {} }),
+      stageType("llm", "Model stage", "◆", {
+        title: "Model stage",
+        config: { mode: "prompt", limits: { max_retries: 2, token_budget: 400_000 } },
+      }),
+      stageType("infra", "Build or test", "▣", { title: "Build", config: {} }),
+      stageType("flow", "Decision or gate", "◇", {
+        title: "Decision",
+        config: { kind: "decision", predicate: { kind: "always" } },
+      }),
+      stageType("term", "Terminal", "●", { title: "Needs review", config: { action: "needs_review", options: {} } }),
+    ],
+    suggestions: {
+      skills: ["repo-map", "zephyr-conventions"],
+      taskRoutes: ["analyze", "estimate", "plan", "implement", "test-gen", "review", "docs", "commit-msg"],
+    },
+    ...overrides,
+  };
+}
+
+/**
+ * The inspector's three reads, all clean, for the seeded workspace.
+ *
+ * @param overrides What this case is about.
+ * @returns The readings.
+ */
+export function inspectorReadings(overrides: Partial<InspectorReadings> = {}): InspectorReadings {
+  return {
+    catalog: { ok: true, value: stageCatalog() },
+    routes: { ok: true, value: seededTaskKinds() },
+    aliases: { ok: true, value: seededAliases() },
     ...overrides,
   };
 }

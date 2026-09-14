@@ -28,9 +28,10 @@ import "server-only";
 
 import type { Workspace } from "@/app/api/access";
 import { attempt } from "@/app/api/reading";
+import { routing } from "@/app/api/routing";
 import { workflows } from "@/app/api/workflows";
 
-import type { StudioReadings } from "./view";
+import type { InspectorReadings, StudioReadings } from "./view";
 
 /**
  * Read the studio: the rail, and the workflow the URL asks for.
@@ -61,14 +62,38 @@ export async function readStudio(
   const rail = await attempt(async () => workflows.list());
   const readAt = now.toISOString();
 
-  if (!rail.ok) return { rail, requested: slug, selected: null, now: readAt };
+  if (!rail.ok) return { rail, requested: slug, selected: null, inspector: null, now: readAt };
 
   const entry =
     slug === null ? rail.value[0] : rail.value.find((candidate) => candidate.slug === slug);
 
-  if (entry === undefined) return { rail, requested: slug, selected: null, now: readAt };
+  if (entry === undefined) {
+    return { rail, requested: slug, selected: null, inspector: null, now: readAt };
+  }
 
   const detail = await attempt(async () => workflows.read(entry.id));
+  const inspector = detail.ok ? await readInspector() : null;
 
-  return { rail, requested: slug, selected: { entry, detail }, now: readAt };
+  return { rail, requested: slug, selected: { entry, detail }, inspector, now: readAt };
+}
+
+/**
+ * The inspector's three reads (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)),
+ * issued together — none depends on another — and each allowed to fail on its own, so a refused
+ * routing read costs the panel its model pill and nothing else.
+ *
+ * Made only once there is a workflow to inspect: a page with no canvas has no inspector, and a
+ * reader who cannot open a workflow should not pay for its catalog.
+ *
+ * @returns The catalog, the task kinds and the registry aliases, each read or explained.
+ * @throws Whatever is not an `ApiError`, for the reason {@link readStudio} lets it travel.
+ */
+async function readInspector(): Promise<InspectorReadings> {
+  const [catalog, routes, aliases] = await Promise.all([
+    attempt(async () => workflows.catalog()),
+    attempt(async () => (await routing.matrix()).taskKinds),
+    attempt(async () => routing.aliases()),
+  ]);
+
+  return { catalog, routes, aliases };
 }

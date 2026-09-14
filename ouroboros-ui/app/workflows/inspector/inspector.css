@@ -1,0 +1,367 @@
+/*
+ * The studio's inspector (S.4, #150) — mockup 04's `.inspector` over docs/mockups/assets/ouroboros.css.
+ *
+ * The card is the #46 Card and the fields inside it are the #46 primitives; nothing here restyles
+ * `.ou-*`. What is here is the panel's placement — sticky beside the canvas, scrolling inside its
+ * own wrapper — and the parts the primitives do not have: the type line, the section eyebrows,
+ * the mode segment, the routing radio rows, the prompt editor's highlight layer and palette, the
+ * toggle rows, the P9 note and the footer.
+ *
+ * Every colour is a token and every length a token or a rem, so the panel follows the palette
+ * and the reader's font-size preference (docs/CONVENTIONS.md § 6). The mockup's pixel sizes are
+ * translated: 10px eyebrows are --t-2xs, 11.5px code is --t-2xs, 15px title is --t-md.
+ */
+
+/* ---------- placement ---------- */
+
+/*
+ * Sticky under the page's own sticky chrome (the subnav and any sticky bar publish their heights,
+ * app/ui/chrome.ts), and never taller than the viewport below it — so a long form scrolls inside
+ * the panel and the footer's Apply stays reachable at 125% type.
+ */
+.studio-inspector {
+  position: sticky;
+  top: calc(var(--ou-chrome-subnav, 0rem) + var(--ou-chrome-bar, 0rem) + var(--sp-6));
+  max-height: calc(100vh - var(--ou-chrome-subnav, 0rem) - var(--ou-chrome-bar, 0rem) - var(--sp-10));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The mockup's own break: the panel stacks under the canvas and scrolls with the page. */
+@media (max-width: 68.75rem) {
+  .studio-inspector {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+/* ---------- the header ---------- */
+
+.studio-inspector__head {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The mockup's `.insp-type`: glyph and role, mono, tracked, in the model hue. */
+.studio-inspector__type {
+  margin: 0;
+  color: var(--model);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.studio-inspector__title {
+  margin: var(--sp-1) 0 var(--sp-2);
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.studio-inspector__description {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the form ---------- */
+
+/* Fieldsets are grouping, not boxes: the browser's border, padding and minimum width are undone. */
+.studio-inspector__form,
+.studio-inspector__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.studio-inspector__field,
+.studio-inspector__block,
+.studio-inspector__prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* The mockup's `.insp-sec`: a mono eyebrow over each section. */
+.studio-inspector__section {
+  margin: var(--sp-7) 0 0;
+  padding: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.studio-inspector__label {
+  padding: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+/* A line the panel says about itself: a hint, a reason there is no form, a variable note. */
+.studio-inspector__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.studio-inspector__faint {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+/* An unknown name — a warning, never a block (decision P7). */
+.studio-inspector__warning {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* A value the schema refuses — what blocks Apply. */
+.studio-inspector__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the mode segment — the mockup's `.seg.sm` ---------- */
+
+.studio-inspector__seg {
+  display: inline-flex;
+  align-self: flex-start;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.studio-inspector__seg-option {
+  position: relative;
+  padding: var(--sp-3) var(--sp-6);
+  color: var(--ink-mut);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The chosen segment — the mockup's `.seg .on`: raised, in the accent, with an accent underline. */
+.studio-inspector__seg-option--on {
+  background: var(--accent-wash);
+  color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* The radio stays in the tree for the keyboard and the screen reader; the segment is its label. */
+.studio-inspector__seg-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.studio-inspector__seg-option:has(.studio-inspector__seg-input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---------- the prompt editor ---------- */
+
+/*
+ * The textarea and its highlight layer share one grid cell, one font, one padding and one
+ * wrapping rule, so the highlighted text sits exactly under the typed text. The textarea's own
+ * text is transparent; its caret and selection are not.
+ */
+.studio-inspector__editor {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.studio-inspector__highlight,
+.studio-inspector__template {
+  grid-area: 1 / 1;
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.studio-inspector__highlight {
+  overflow: hidden;
+  color: var(--ink-dim);
+  pointer-events: none;
+}
+
+.studio-inspector__template {
+  min-height: 9rem;
+  resize: vertical;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: transparent;
+  caret-color: var(--ink);
+}
+
+/* The mockup's `.c-fn` — a placeholder in the model hue. */
+.studio-inspector__variable {
+  color: var(--model);
+}
+
+.studio-inspector__palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.studio-inspector__palette-group {
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+.studio-inspector__token {
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-pill);
+  background: var(--model-tint);
+  color: var(--model);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  cursor: pointer;
+}
+
+.studio-inspector__token:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ---------- model routing — the mockup's `.radio-row` ---------- */
+
+.studio-inspector__radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.studio-inspector__radio-row--checked {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+
+.studio-inspector__radio {
+  flex: none;
+  margin: var(--sp-1) 0 0;
+  accent-color: var(--accent);
+}
+
+.studio-inspector__radio-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.studio-inspector__radio-label {
+  color: var(--ink);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.studio-inspector__model {
+  display: inline-flex;
+}
+
+/* ---------- limits and permissions ---------- */
+
+/* The mockup's `.num-row`: two fields abreast. */
+.studio-inspector__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-5);
+}
+
+/* The mockup's `.toggle-row`. */
+.studio-inspector__toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  padding: var(--sp-3) 0;
+}
+
+.studio-inspector__toggle-label {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+}
+
+/* Decision P9, under the toggles: the declarations are not enforced yet. */
+.studio-inspector__declared {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.studio-inspector__check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+}
+
+.studio-inspector__json {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* ---------- the footer — the mockup's `.insp-foot` ---------- */
+
+.studio-inspector__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  margin-top: var(--sp-8);
+}
+
+.studio-inspector__status {
+  flex: 1 1 8rem;
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  text-align: center;
+}
