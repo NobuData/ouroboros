@@ -4,7 +4,8 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { TENANT_ID, membership, sessionUser } from "../helpers/login";
-import { READ_AT, seededRail, workflowDetail } from "../helpers/workflows";
+import { seededAliases, seededMatrix } from "../helpers/models";
+import { READ_AT, inspectorReadings, seededRail, stageCatalog, workflowDetail } from "../helpers/workflows";
 
 /**
  * The studio's reader (#147).
@@ -25,8 +26,20 @@ const list = vi.fn();
 /** What the workflow endpoint answers this case with, keyed by the id it was asked for. */
 const read = vi.fn();
 
+/** What the stage catalog answers — the inspector's first read (#150). */
+const catalog = vi.fn();
+
+/** What the routing matrix answers — the inspector's model pill. */
+const matrix = vi.fn();
+
+/** What the registry's alias list answers — the inspector's pin-model select. */
+const aliases = vi.fn();
+
 vi.mock("@/app/api/workflows", () => ({
-  workflows: { list: () => list(), read: (id: string) => read(id) },
+  workflows: { list: () => list(), read: (id: string) => read(id), catalog: () => catalog() },
+}));
+vi.mock("@/app/api/routing", () => ({
+  routing: { matrix: () => matrix(), aliases: () => aliases() },
 }));
 
 const { readStudio } = await import("@/app/workflows/data");
@@ -55,6 +68,58 @@ const NOW = new Date(READ_AT);
 beforeEach(() => {
   list.mockReset().mockResolvedValue(seededRail());
   read.mockReset().mockResolvedValue(workflowDetail());
+  catalog.mockReset().mockResolvedValue(stageCatalog());
+  matrix.mockReset().mockResolvedValue(seededMatrix());
+  aliases.mockReset().mockResolvedValue(seededAliases());
+});
+
+describe("the inspector's reads (#150)", () => {
+  it("reads the catalog, the task kinds and the aliases once there is a workflow to inspect", async () => {
+    const readings = await readStudio(ACCESS, null, NOW);
+
+    expect(readings.inspector).toEqual(inspectorReadings());
+    expect(catalog).toHaveBeenCalledOnce();
+    expect(matrix).toHaveBeenCalledOnce();
+    expect(aliases).toHaveBeenCalledOnce();
+  });
+
+  it("makes none of them when there is no workflow — a missing slug, or a refused workflow", async () => {
+    const missing = await readStudio(ACCESS, "gone", NOW);
+    expect(missing.inspector).toBeNull();
+
+    read.mockRejectedValue(new ApiError(404, "workflow_not_found", "No such workflow.", {}));
+    const refused = await readStudio(ACCESS, "standard-fix", NOW);
+    expect(refused.inspector).toBeNull();
+
+    expect(catalog).not.toHaveBeenCalled();
+    expect(matrix).not.toHaveBeenCalled();
+  });
+
+  it("makes none of them when the rail itself was refused", async () => {
+    list.mockRejectedValue(new ApiError(500, "internal_error", "The service failed.", {}));
+
+    const readings = await readStudio(ACCESS, null, NOW);
+
+    expect(readings.inspector).toBeNull();
+    expect(aliases).not.toHaveBeenCalled();
+  });
+
+  it("degrades only the read that was refused — the model pill, not the panel", async () => {
+    matrix.mockRejectedValue(new ApiError(503, "upstream_unavailable", "Routing is away.", {}));
+
+    const readings = await readStudio(ACCESS, null, NOW);
+
+    expect(readings.inspector?.routes).toEqual({ ok: false, reason: "Routing is away." });
+    expect(readings.inspector?.catalog.ok).toBe(true);
+    expect(readings.inspector?.aliases.ok).toBe(true);
+    expect(readings.selected?.detail.ok).toBe(true);
+  });
+
+  it("lets anything that is not a refusal keep travelling", async () => {
+    catalog.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(readStudio(ACCESS, null, NOW)).rejects.toThrow("NEXT_REDIRECT /login");
+  });
 });
 
 describe("the landing, which names no workflow", () => {

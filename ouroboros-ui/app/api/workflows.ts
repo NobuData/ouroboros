@@ -128,6 +128,22 @@ export type CodeSignaturePart = components["schemas"]["WorkflowCodeSignaturePart
  */
 export type WorkflowCode = components["schemas"]["WorkflowCode"];
 
+/**
+ * The stage catalog — R.3 ([#145](https://github.com/NobuData/ouroboros/issues/145)): every node
+ * type the published DSL schema declares, each with its glyph, its config JSON Schema and its
+ * defaults, and this workspace's advisory suggestions (skill names, task routes).
+ *
+ * The inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)) draws its forms
+ * from these schemas, so a node type added to the DSL gets a form without a UI change.
+ */
+export type WorkflowStageCatalog = components["schemas"]["WorkflowStageCatalog"];
+
+/** One node type in the catalog. */
+export type WorkflowStageType = components["schemas"]["WorkflowStageType"];
+
+/** The names the inspector offers — advice, never an enumeration (decision **P7**). */
+export type WorkflowStageSuggestions = components["schemas"]["WorkflowStageSuggestions"];
+
 /** The code a `409` answers for a draft that has no faithful spelling as a file (U.3). */
 export const WORKFLOW_CODE_UNPROJECTABLE = "workflow_code_unprojectable";
 
@@ -186,6 +202,19 @@ export const workflows = {
    */
   async create(body: CreateWorkflowRequest, client: ApiClient = api()): Promise<WorkflowDetail> {
     return unwrap(await client.POST("/api/v1/workflows", { body }));
+  },
+
+  /**
+   * The stage catalog — what the inspector's forms are generated from (S.4,
+   * [#150](https://github.com/NobuData/ouroboros/issues/150)).
+   *
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns Every node type, in the schema's order, and the workspace's suggestions. An empty
+   *   suggestion list means *nothing to suggest*, not *nothing allowed*.
+   * @throws {ApiError} What the service answered.
+   */
+  async catalog(client: ApiClient = api()): Promise<WorkflowStageCatalog> {
+    return unwrap(await client.GET("/api/v1/workflows/catalog", {}));
   },
 
   /**

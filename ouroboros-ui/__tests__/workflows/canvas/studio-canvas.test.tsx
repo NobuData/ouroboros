@@ -593,8 +593,8 @@ describe("the viewport, remembered per workflow", () => {
 
 describe("selection", () => {
   it("selects a stage from the keyboard, says so, and tells the listener", async () => {
-    // Enter on a focused stage is React Flow's own keyboard model; the sentence is the
-    // inspector's stand-in until #150, and the one confirmation a keyboard reader gets.
+    // Enter on a focused stage is React Flow's own keyboard model; the sentence is the one
+    // confirmation a keyboard reader gets, and it points at the inspector (#150).
     const onSelectionChange = vi.fn();
     const { container } = await open({ onSelectionChange });
     const implement = stage(container, "implement");
@@ -606,7 +606,7 @@ describe("selection", () => {
     // The wrapper's `selected` is what the `.sel` glow ring is drawn from (canvas.css).
     expect(implement).toHaveClass("selected");
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Code the change selected — the inspector arrives with #150.",
+      "Code the change selected — configure it in the inspector.",
     );
     expect(onSelectionChange).toHaveBeenLastCalledWith({
       kind: "node",

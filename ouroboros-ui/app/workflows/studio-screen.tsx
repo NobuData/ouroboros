@@ -2,7 +2,6 @@ import type { Role } from "@/app/api/membership";
 import type { WorkflowRailEntry } from "@/app/api/workflows";
 import { Button, Card, EmptyState } from "@/app/ui";
 
-import { StudioCanvas } from "./canvas/studio-canvas";
 import {
   DEV_SEED_NOTE,
   RAIL_FAILED_HEADLINE,
@@ -14,6 +13,7 @@ import {
   studioState,
 } from "./states";
 import { StudioFailedBanner } from "./studio-banner";
+import { StudioEditor } from "./studio-editor";
 import { StudioFrame } from "./studio-frame";
 import { StudioReadOnlyNote } from "./studio-readonly-note";
 import {
@@ -153,9 +153,13 @@ export function StudioScreen({
       <div className="studio__grid">
         <WorkflowRail activeSlug={slug} entries={entries} mayAdminister={mayAdminister} />
         {state.kind === "populated" ? (
-          <StudioCanvas
+          // The canvas and the inspector, sharing one draft (S.4, #150). Keyed by the workflow's
+          // id, so following the rail to another workflow is a new draft rather than this one.
+          <StudioEditor
             key={state.workflow.id}
             definition={canvasDefinition(state.workflow)}
+            inspector={readings.inspector}
+            mayAdminister={mayAdminister}
             workflowId={state.workflow.id}
           />
         ) : (

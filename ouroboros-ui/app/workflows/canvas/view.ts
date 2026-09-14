@@ -122,8 +122,8 @@ export const UNSAVED_NOTE = "Moved, not saved — autosave arrives with #152.";
 export const NO_STAGES_NOTE = "No stages yet. Adding one arrives with #151.";
 
 /**
- * The selection, in a sentence — the stand-in for the inspector until S.4 mounts it, and the
- * one place a keyboard reader is told what pressing Enter on a stage did.
+ * The selection, in a sentence — the one place a keyboard reader is told what pressing Enter on
+ * a stage did, and where to go next: the inspector (S.4) beside the canvas.
  *
  * @param selection What is selected.
  * @param stageCount How many stages the canvas holds, for the sentence when nothing is.
@@ -135,7 +135,7 @@ export function selectionSentence(selection: CanvasSelection, stageCount: number
 
   switch (selection.kind) {
     case "node":
-      return `${selection.stage.title} selected — the inspector arrives with #150.`;
+      return `${selection.stage.title} selected — configure it in the inspector.`;
     case "edge":
       return `Edge ${selection.connection.from} → ${selection.connection.to} selected — edge editing arrives with #151.`;
     case "many":

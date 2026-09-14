@@ -496,6 +496,180 @@ export function withPositions(
   return changed ? { ...definition, nodes: next } : definition;
 }
 
+/**
+ * One stage's editable fields, read from the document — what the inspector (S.4,
+ * [#150](https://github.com/NobuData/ouroboros/issues/150)) prefills from and writes back.
+ */
+export interface StageEntry {
+  /** The node's id. */
+  readonly id: string;
+  /** Its type, as the document spells it — a type the canvas does not know is kept verbatim. */
+  readonly type: string;
+  /** The title, or `""` when the document has none. */
+  readonly title: string;
+  /** The description, or `""` when the document has none. */
+  readonly description: string;
+  /** The config, or `{}` when the document's is not an object. */
+  readonly config: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Read one stage's editable fields out of the document.
+ *
+ * @param definition The document.
+ * @param id The node's id.
+ * @returns The fields, or `null` when the document holds no node with that id.
+ */
+export function stageEntry(definition: WorkflowDefinition, id: string): StageEntry | null {
+  const { nodes } = definition;
+  if (!Array.isArray(nodes)) return null;
+
+  const node: unknown = nodes.find((entry: unknown) => isRecord(entry) && entry.id === id);
+  if (!isRecord(node)) return null;
+
+  return {
+    id,
+    type: typeof node.type === "string" ? node.type : "",
+    title: typeof node.title === "string" ? node.title : "",
+    description: typeof node.description === "string" ? node.description : "",
+    config: isRecord(node.config) ? node.config : NO_CONFIG,
+  };
+}
+
+/**
+ * The document with one stage's title, description and config replaced — the inspector's
+ * **Apply**.
+ *
+ * Nothing else about the node is touched: its id, type and position travel through. An empty
+ * description is removed rather than stored as `""`, because the DSL's description is optional
+ * and an empty one is *none*.
+ *
+ * @param definition The document.
+ * @param id The node to change.
+ * @param fields What to write.
+ * @returns The document with that node changed, or `definition` itself when no node has that id.
+ */
+export function withStage(
+  definition: WorkflowDefinition,
+  id: string,
+  fields: Pick<StageEntry, "title" | "description" | "config">,
+): WorkflowDefinition {
+  const { nodes } = definition;
+  if (!Array.isArray(nodes)) return definition;
+
+  let changed = false;
+
+  const next = nodes.map((entry: unknown) => {
+    if (!isRecord(entry) || entry.id !== id) return entry;
+
+    changed = true;
+    const { description: _dropped, ...rest } = entry;
+    void _dropped;
+
+    return {
+      ...rest,
+      title: fields.title,
+      ...(fields.description === "" ? {} : { description: fields.description }),
+      config: fields.config,
+    };
+  });
+
+  return changed ? { ...definition, nodes: next } : definition;
+}
+
+/**
+ * The document with one stage removed — the inspector's **Delete stage** — together with every
+ * edge that leaves or arrives at it, so no edge is left naming a stage that is not there.
+ *
+ * @param definition The document.
+ * @param id The node to remove.
+ * @returns The document without it, or `definition` itself when no node has that id.
+ */
+export function withoutStage(definition: WorkflowDefinition, id: string): WorkflowDefinition {
+  const { nodes, edges } = definition;
+  if (!Array.isArray(nodes)) return definition;
+
+  const keptNodes = nodes.filter((entry: unknown) => !(isRecord(entry) && entry.id === id));
+  if (keptNodes.length === nodes.length) return definition;
+
+  const keptEdges = Array.isArray(edges)
+    ? edges.filter((edge: unknown) => !(isRecord(edge) && (edge.from === id || edge.to === id)))
+    : edges;
+
+  return { ...definition, nodes: keptNodes, ...(Array.isArray(edges) ? { edges: keptEdges } : {}) };
+}
+
+/**
+ * The ids of every stage that runs before this one — the prompt template's *From earlier stages*
+ * variables (`{{analyze}}`, `{{plan}}`).
+ *
+ * Walked backwards over `default` and `branch` edges; a `loop` edge is not followed, because
+ * the stage a loop returns from runs *after* the one it returns to. Only model and infra stages
+ * produce output a prompt can quote, so a trigger, a flow node and a terminal are not offered.
+ *
+ * @param definition The document.
+ * @param id The stage whose predecessors are wanted.
+ * @returns The ids, in document order.
+ */
+export function upstreamStageIds(definition: WorkflowDefinition, id: string): readonly string[] {
+  const stages = readStages(definition);
+  const connections = readConnections(definition, stages).filter((edge) => edge.kind !== "loop");
+  const seen = new Set<string>();
+  const queue = [id];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    for (const edge of connections) {
+      if (edge.to === current && !seen.has(edge.from)) {
+        seen.add(edge.from);
+        queue.push(edge.from);
+      }
+    }
+  }
+
+  return stages
+    .filter((stage) => stage.id !== id && seen.has(stage.id) && (stage.kind === "llm" || stage.kind === "infra"))
+    .map((stage) => stage.id);
+}
+
+/**
+ * The nodes the canvas holds, brought up to date with a document the canvas did not produce —
+ * an inspector **Apply** or **Delete stage** (S.4).
+ *
+ * Each node keeps what React Flow owns — its position, its measurements, whether it is selected —
+ * and takes its `data` and accessible name from the new document, so its chips follow the
+ * config. A node the document no longer holds is dropped; one it newly holds is added.
+ *
+ * @param current The nodes as the canvas holds them.
+ * @param definition The new document.
+ * @returns The reconciled nodes, in document order.
+ */
+export function reconcileNodes(current: readonly StageNode[], definition: WorkflowDefinition): StageNode[] {
+  const held = new Map(current.map((node) => [node.id, node]));
+
+  return toNodes(definition).map((node) => {
+    const existing = held.get(node.id);
+    return existing === undefined ? node : { ...existing, data: node.data, ariaLabel: node.ariaLabel };
+  });
+}
+
+/**
+ * The edges the canvas holds, brought up to date with a new document — the edges of a deleted
+ * stage go, and each kept edge keeps whether it is selected.
+ *
+ * @param current The edges as the canvas holds them.
+ * @param definition The new document.
+ * @returns The reconciled edges, in document order.
+ */
+export function reconcileEdges(current: readonly StageEdge[], definition: WorkflowDefinition): StageEdge[] {
+  const held = new Map(current.map((edge) => [edge.id, edge]));
+
+  return toEdges(definition).map((edge) => {
+    const existing = held.get(edge.id);
+    return existing?.selected === undefined ? edge : { ...edge, selected: existing.selected };
+  });
+}
+
 /* ------------------------------------------------------------------ selection */
 
 /**

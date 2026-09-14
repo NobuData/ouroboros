@@ -27,7 +27,13 @@
  */
 
 import type { Reading } from "@/app/api/reading";
-import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
+import type { RoutingAlias, RoutingTaskKind } from "@/app/api/routing";
+import type {
+  WorkflowDefinition,
+  WorkflowDetail,
+  WorkflowRailEntry,
+  WorkflowStageCatalog,
+} from "@/app/api/workflows";
 import { relativeAgo } from "@/app/format";
 import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
 
@@ -65,10 +71,31 @@ export interface StudioReadings {
    */
   readonly selected: SelectedWorkflow | null;
   /**
+   * What the inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)) reads
+   * besides the workflow — or `null` when there is no workflow to inspect (nothing selected, or
+   * its read failed), in which case none of these calls is made.
+   */
+  readonly inspector: InspectorReadings | null;
+  /**
    * When the page was read, ISO 8601. Every *Last edited 2h ago* is measured from this one
    * instant rather than from each render's clock, so a server render and its hydration agree.
    */
   readonly now: string;
+}
+
+/**
+ * The inspector's three reads, each degrading only the part of the panel that needs it.
+ *
+ * - **catalog** — the node types' config schemas and the skill / task-route suggestions. Without
+ *   it the panel still shows the stage's header and says why it has no form.
+ * - **routes** — the routing matrix's task kinds, for the model an inherited route resolves to
+ *   (the mockup's `claude-fable-5` pill) and nothing else.
+ * - **aliases** — the model registry's names, for **Pin model** and the unknown-alias warning.
+ */
+export interface InspectorReadings {
+  readonly catalog: Reading<WorkflowStageCatalog>;
+  readonly routes: Reading<readonly RoutingTaskKind[]>;
+  readonly aliases: Reading<readonly RoutingAlias[]>;
 }
 
 /** The workflow the studio is open on. */

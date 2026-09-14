@@ -32,6 +32,8 @@ import {
   toNodes,
   withHighlight,
   withPositions,
+  reconcileEdges,
+  reconcileNodes,
 } from "./graph";
 import { EdgeMarkers, StageEdge } from "./stage-edge";
 import { StageNode } from "./stage-node";
@@ -236,6 +238,16 @@ function Canvas({
 }: StudioCanvasProps) {
   const [nodes, setNodes] = useState<StageNodeType[]>(() => toNodes(definition));
   const [edges, setEdges] = useState<StageEdgeType[]>(() => toEdges(definition));
+  // The document the nodes were last built from. When the parent hands down a different one — an
+  // inspector Apply or Delete stage (S.4, #150) — the nodes and edges are reconciled during render
+  // (React's *adjusting state when a prop changes*), keeping positions and the selection, so the
+  // chips follow the config without remounting the canvas under the reader.
+  const [heldDefinition, setHeldDefinition] = useState(definition);
+  if (heldDefinition !== definition) {
+    setHeldDefinition(definition);
+    setNodes((current) => reconcileNodes(current, definition));
+    setEdges((current) => reconcileEdges(current, definition));
+  }
   // The nodes as of the last change, for the next change to build on. React Flow can report
   // two batches of changes between two renders — a measurement and a selection, say — and a
   // handler that read `nodes` from its render would apply the second batch to the state the
