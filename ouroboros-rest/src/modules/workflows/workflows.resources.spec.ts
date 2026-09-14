@@ -49,6 +49,7 @@ function version(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion {
     published_at: PUBLISHED,
     published_by: "user-1",
     change_note: "Added the review gate.",
+    edited_in: null,
     created_at: PUBLISHED,
     updated_at: PUBLISHED,
     ...overrides,

@@ -3,8 +3,9 @@
  * ([#134](https://github.com/NobuData/ouroboros/issues/134)).
  *
  * ```
- * find / create / rename        the entity: one workspace's rows, and the rail's order
- * draftOf / writeDraft          the one mutable row a workflow has
+ * find / findBySlug             the entity: one workspace's row, by id or by the code view's slug
+ * create / rename               a workflow and its first draft; its title and status
+ * draftOf / writeDraft          the one mutable row a workflow has, and which editor wrote it
  * versions / countVersions      the history, newest first
  * versionAt                     one published version, for `?version=` and for the chip
  * publish                       the whole of the publish write, in one transaction
@@ -42,7 +43,13 @@ import { Injectable } from "@nestjs/common";
 import { sql, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import type { Database, Workflow, WorkflowStatus, WorkflowVersion } from "../db/schema";
+import type {
+  Database,
+  DraftEditor,
+  Workflow,
+  WorkflowStatus,
+  WorkflowVersion,
+} from "../db/schema";
 import type { PageWindow } from "../tenancy/pagination";
 import { asCount, queryOn } from "../tenancy/queries";
 
@@ -136,6 +143,29 @@ export class WorkflowsRepository {
   }
 
   /**
+   * One workflow by its slug, if it is this workspace's to see — the code view's address (U.3,
+   * [#167](https://github.com/NobuData/ouroboros/issues/167)).
+   *
+   * Mockup 05's route is `/workflows/standard-fix/code` and its file is `standard-fix.loop.ts`, so
+   * the code endpoints name a workflow the way the product already does. `(organization_id, slug)`
+   * is `workflows_organization_slug_key`, so this is one row or none, and it is the same
+   * information-flow property as {@link find}: another workspace's `standard-fix` is absent here.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param slug - The slug, already validated against the slug pattern.
+   * @returns The row, or `undefined` for a slug this workspace does not have — archived workflows
+   *   included, since the slug still names them.
+   */
+  async findBySlug(organizationId: string, slug: string): Promise<Workflow | undefined> {
+    return this.database.db
+      .selectFrom("workflows")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("slug", "=", slug)
+      .executeTakeFirst();
+  }
+
+  /**
    * One workflow, locked against a concurrent publish.
    *
    * `for update` on the entity row rather than on the version table, because the thing two
@@ -191,7 +221,8 @@ export class WorkflowsRepository {
         .returningAll()
         .executeTakeFirstOrThrow();
 
-      const draft = await this.insertDraft(workflow.id, input.definition, trx);
+      // Edited in neither editor yet: `edited_in` names an editor's save, and this is a create.
+      const draft = await this.insertDraft(workflow.id, input.definition, null, trx);
 
       return { workflow, draft };
     });
@@ -269,12 +300,15 @@ export class WorkflowsRepository {
    * @param workflowId - A workflow already resolved through {@link find}.
    * @param definition - The document to store. Serialised here, because Kysely wants the value
    *   a driver will send for a `jsonb` column and `pg` hands it back parsed.
+   * @param editedIn - Which editor is writing it (V033), or `null` for a draft neither editor
+   *   wrote — the one {@link create} starts a workflow with.
    * @param trx - The transaction to write in, when the caller is inside one.
    * @returns The draft as it was stored.
    */
   async insertDraft(
     workflowId: string,
     definition: unknown,
+    editedIn: DraftEditor | null,
     trx?: Transaction<Database>,
   ): Promise<WorkflowVersion> {
     return queryOn(this.database, trx)
@@ -286,13 +320,14 @@ export class WorkflowsRepository {
         published_at: null,
         published_by: null,
         change_note: null,
+        edited_in: editedIn,
       })
       .returningAll()
       .executeTakeFirstOrThrow();
   }
 
   /**
-   * Replace the document a draft holds.
+   * Replace the document a draft holds, and record which editor replaced it.
    *
    * Keyed by the draft's own id **and** by `version is null`, so a row that became a version
    * between the read and this write is not edited — `workflow_versions_no_update` would refuse
@@ -301,6 +336,7 @@ export class WorkflowsRepository {
    *
    * @param draftId - The draft row's id, from {@link draftOf}.
    * @param definition - The document to store.
+   * @param editedIn - Which editor is writing it — what the next stale save's `409` names (V033).
    * @param trx - The transaction to write in, when the caller is inside one.
    * @returns The draft after the write — stamped by `workflow_versions_touch_updated_at`,
    *   which is where the mockup's *Last edited* comes from. `undefined` when the row is no
@@ -309,11 +345,12 @@ export class WorkflowsRepository {
   async writeDraft(
     draftId: string,
     definition: unknown,
+    editedIn: DraftEditor,
     trx?: Transaction<Database>,
   ): Promise<WorkflowVersion | undefined> {
     return queryOn(this.database, trx)
       .updateTable("workflow_versions")
-      .set({ definition: JSON.stringify(definition) })
+      .set({ definition: JSON.stringify(definition), edited_in: editedIn })
       .where("id", "=", draftId)
       .where("version", "is", null)
       .returningAll()

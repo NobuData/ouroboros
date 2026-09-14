@@ -73,6 +73,9 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // reason above: the pipe refuses anything else, and a `422` would let the signed-in half
   // pass without the guard having admitted anything.
   connectionId: "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70",
+  // `GET /api/v1/workflows/:slug/code` (#167). Lower-case kebab, which is `workflows_slug_format`,
+  // so the pipe lets it through and what this suite sees is the guard's answer.
+  slug: "standard-fix",
 };
 
 /**

@@ -5,6 +5,7 @@ import {
   DomainError,
   INTERNAL_ERROR_MESSAGE,
   InvalidRequestError,
+  MethodNotAllowedError,
   NotImplementedError,
   NotFoundError,
   SERVER_ERROR_FLOOR,
@@ -51,6 +52,7 @@ describe("a domain error", () => {
   it.each([
     [NotFoundError, HttpStatus.NOT_FOUND],
     [ConflictError, HttpStatus.CONFLICT],
+    [MethodNotAllowedError, HttpStatus.METHOD_NOT_ALLOWED],
     [InvalidRequestError, HttpStatus.UNPROCESSABLE_ENTITY],
     [NotImplementedError, HttpStatus.NOT_IMPLEMENTED],
     [TooManyRequestsError, HttpStatus.TOO_MANY_REQUESTS],

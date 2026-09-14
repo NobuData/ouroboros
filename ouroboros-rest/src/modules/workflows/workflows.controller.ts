@@ -10,16 +10,18 @@
  * session acting in no workspace is a `400 organization_required` before any handler runs.
  *
  * **Reading is every member's, writing is an administrator's.** The ticket's role policy, and
- * it is spelled the way the roles guard wants it: the five reads carry no `@Roles()`, which is
+ * it is spelled the way the roles guard wants it: the reads carry no `@Roles()`, which is
  * *every member including a `viewer`* — a viewer is a role that exists to be able to look at a
- * workflow — and the four writes carry `@Roles(...ADMINISTRATORS)`. `CONTRIBUTORS` would have
+ * workflow — and the writes carry `@Roles(...ADMINISTRATORS)`, the code view's save among them
+ * (U.3, [#167](https://github.com/NobuData/ouroboros/issues/167)). `CONTRIBUTORS` would have
  * been the wrong list: a `member` is somebody who works here, and publishing changes what every
- * future run of this workspace does.
+ * future run of this workspace does. The one write with no `@Roles()` is `PUT …/code-config`,
+ * which refuses everybody with the same `405`.
  *
- * **`catalog` and `code-symbols` are declared before `:id`, and the order is the route.** Express
- * matches in registration order and Nest registers handlers in declaration order, so a
- * `GET …/catalog` declared below `GET …/:id` would be answered by the detail — as a `422` for an
- * id that is not a uuid. `workflows.controller.spec.ts` holds the order.
+ * **`catalog`, `code-symbols`, `code-tree` and `code-config` are declared before `:id`, and the
+ * order is the route.** Express matches in registration order and Nest registers handlers in
+ * declaration order, so a `GET …/catalog` declared below `GET …/:id` would be answered by the
+ * detail — as a `422` for an id that is not a uuid. `workflows.controller.spec.ts` holds the order.
  *
  * **`If-Match` is a header, and it is read here rather than in a DTO.** A precondition is not a
  * field of the body — there is nothing for `class-validator` to say about it, and a DTO that
@@ -40,6 +42,7 @@ import {
   Post,
   Put,
   Query,
+  Res,
 } from "@nestjs/common";
 
 import { Session } from "@thallesp/nestjs-better-auth";
@@ -51,15 +54,25 @@ import { ADMINISTRATORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
 import type { StageCatalog } from "./catalog.resources";
 import { WorkflowCatalogService } from "./catalog.service";
+import {
+  CONFIG_FILE_PATH,
+  type WorkflowCode,
+  type WorkflowCodeConfig,
+  type WorkflowCodeTree,
+} from "./code.resources";
+import { WorkflowCodeService } from "./code.service";
 import type { CodeSymbolTable } from "./code.symbols";
 import {
   CreateWorkflowBody,
   PublishWorkflowBody,
   ReadWorkflowQuery,
   SaveDraftBody,
+  SaveWorkflowCodeBody,
   UpdateWorkflowBody,
   WorkflowParams,
+  WorkflowSlugParams,
 } from "./workflows.dto";
+import { codeReadOnly } from "./workflows.errors";
 import type {
   WorkflowDetail,
   WorkflowDraft,
@@ -69,15 +82,23 @@ import type {
 } from "./workflows.resources";
 import { WorkflowsService, type WorkflowRail } from "./workflows.service";
 
+/** The one thing the `405` handler does to a response: set its `Allow` header. */
+export interface HeaderTarget {
+  /** Express's `response.setHeader`, narrowed to the call made. */
+  setHeader(name: string, value: string): unknown;
+}
+
 @Controller("workflows")
 export class WorkflowsController {
   /**
    * @param workflows - The lifecycle's rules.
    * @param stages - The stage catalog (R.3).
+   * @param code - The code view (U.3).
    */
   constructor(
     private readonly workflows: WorkflowsService,
     private readonly stages: WorkflowCatalogService,
+    private readonly code: WorkflowCodeService,
   ) {}
 
   /**
@@ -147,6 +168,98 @@ export class WorkflowsController {
   @Get("code-symbols")
   codeSymbols(@CurrentTenant() tenant: Organization): Promise<CodeSymbolTable> {
     return this.stages.codeSymbols(tenant.id);
+  }
+
+  /**
+   * `GET /api/v1/workflows/code-tree` — the code view's explorer (U.3,
+   * [#167](https://github.com/NobuData/ouroboros/issues/167)).
+   *
+   * Decision **C6**: a `workflows/<slug>.loop.ts` per workflow on the rail, in the rail's order,
+   * and `ouroboros.config.ts` — and nothing that does not exist. Every member may read it.
+   *
+   * Declared above `read` on purpose; see this file's header.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @returns The files.
+   */
+  @Get("code-tree")
+  codeTree(@CurrentTenant() tenant: Organization): Promise<WorkflowCodeTree> {
+    return this.code.tree(tenant.id);
+  }
+
+  /**
+   * `GET /api/v1/workflows/code-config` — `ouroboros.config.ts`, read-only.
+   *
+   * The workspace's workflow configuration as a file: its workflows, their statuses and the
+   * version of each in force, printed from the rail's statement. Every member may read it.
+   *
+   * Declared above `read` on purpose; see this file's header.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @returns The file, with `readOnly: true`.
+   */
+  @Get("code-config")
+  codeConfig(@CurrentTenant() tenant: Organization): Promise<WorkflowCodeConfig> {
+    return this.code.config(tenant);
+  }
+
+  /**
+   * `PUT /api/v1/workflows/code-config` — always `405`.
+   *
+   * The file is a projection printed on every read, so a save has nothing to change. An explicit
+   * `405` rather than the router's `404` is what lets the editor say *read-only* instead of
+   * *missing*. No `@Roles()`: the refusal is the file's, whoever asks.
+   *
+   * @param response - The response, for the `Allow` header RFC 9110 requires of a `405`.
+   * @returns Never.
+   * @throws {MethodNotAllowedError} `workflow_code_read_only`, always.
+   */
+  @Put("code-config")
+  saveCodeConfig(@Res({ passthrough: true }) response: HeaderTarget): never {
+    response.setHeader("Allow", "GET");
+
+    throw codeReadOnly(CONFIG_FILE_PATH);
+  }
+
+  /**
+   * `GET /api/v1/workflows/{slug}/code` — one workflow as a file.
+   *
+   * The draft's text, or a published version's with `?version=` (read-only), with the draft's
+   * etag either way — the token the canvas holds too.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The workflow's slug, validated against the slug pattern by the pipe.
+   * @param query - `version` to read a published version instead of the draft.
+   * @returns The file.
+   */
+  @Get(":slug/code")
+  readCode(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: WorkflowSlugParams,
+    @Query() query: ReadWorkflowQuery,
+  ): Promise<WorkflowCode> {
+    return this.code.read(tenant.id, params.slug, query.version);
+  }
+
+  /**
+   * `PUT /api/v1/workflows/{slug}/code` — save a file into the shared draft, guarded.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The workflow's slug.
+   * @param ifMatch - The `If-Match` header, verbatim — the draft etag this file was edited from.
+   *   Required; see this file's header on why it is read here.
+   * @param body - The whole file.
+   * @returns The file as it reads from the stored draft, with the draft's new etag.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Put(":slug/code")
+  saveCode(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: WorkflowSlugParams,
+    @Headers("if-match") ifMatch: string | undefined,
+    @Body() body: SaveWorkflowCodeBody,
+  ): Promise<WorkflowCode> {
+    return this.code.save(tenant.id, params.slug, ifMatch, body.text);
   }
 
   /**

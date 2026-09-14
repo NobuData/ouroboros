@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.34.11",
+    "version": "0.34.12",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -11343,6 +11343,253 @@
         }
       }
     },
+    "/api/v1/workflows/code-tree": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "The code view's explorer — the files the project has",
+        "description": "What mockup 05's explorer lists — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)). Decision **C6**: the tree is\nregistry-backed and honest.\n\n**A `workflows/<slug>.loop.ts` per workflow on the rail**, in the rail's order and with its\nstatus, so a paused workflow draws its err-dot here as it does on the rail. Archived\nworkflows are absent, as they are from the rail. **Then `ouroboros.config.ts`**, read-only.\n\n**Directories are not entries.** A client groups files by the directory in their `path`,\nso an empty directory cannot be served: mockup 05's `skills/` and `lib/` appear when a file\nunder them exists (X.2, [#181](https://github.com/NobuData/ouroboros/issues/181)), not as\nplaceholder rows before then.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "readWorkflowCodeTree",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The files.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCodeTree"
+                },
+                "example": {
+                  "files": [
+                    {
+                      "path": "workflows/standard-fix.loop.ts",
+                      "kind": "workflow",
+                      "readOnly": false,
+                      "slug": "standard-fix",
+                      "status": "active"
+                    },
+                    {
+                      "path": "workflows/hotfix-p0.loop.ts",
+                      "kind": "workflow",
+                      "readOnly": false,
+                      "slug": "hotfix-p0",
+                      "status": "paused"
+                    },
+                    {
+                      "path": "ouroboros.config.ts",
+                      "kind": "config",
+                      "readOnly": true,
+                      "slug": null,
+                      "status": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/code-config": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "The workspace's workflow configuration, as read-only ouroboros.config.ts",
+        "description": "The explorer's `ouroboros.config.ts` — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)), decision **C6**: a read-only\nprojection of this workspace's workflow configuration.\n\n**What a workspace configures about its workflows is its registry**, so that is the file:\nthe workspace's slug, then each workflow on the rail with its name, its status and the\nversion in force (`null` for one never published), in the rail's order. Nothing is\ninvented beside it — no routing, no skills, no defaults.\n\n**It is printed on every read and stored nowhere**, which is why it is read-only and a\n`PUT` is a `405`. Pausing, resuming and publishing are what change it. It is valid\nTypeScript that imports nothing, and the parser never reads it.\n\n**Every member may read it**, `viewer` included.",
+        "operationId": "readWorkflowCodeConfig",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file, with its read-only flag.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCodeConfig"
+                },
+                "example": {
+                  "path": "ouroboros.config.ts",
+                  "readOnly": true,
+                  "text": "// ouroboros.config.ts is read-only. It is this workspace's workflow configuration, printed\n// from the registry each time it is opened, and nothing written here is saved. Pause, resume\n// or publish a workflow in the studio to change it.\n\nexport default {\n  workspace: \"acme-robotics\",\n  workflows: [\n    { slug: \"standard-fix\", name: \"Standard Fix\", status: \"active\", version: 14 },\n    { slug: \"hotfix-p0\", name: \"Hotfix P0\", status: \"paused\", version: 3 },\n  ],\n};\n"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Refused, because ouroboros.config.ts is read-only",
+        "description": "Always `405 workflow_code_read_only`, with `Allow: GET` — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)). The file is a projection of\nthe registry, so a save has nothing to change, and answering `405` rather than `404` is\nwhat lets the editor say *read-only* rather than *missing*. No body is read.\n\n**Refused for every role alike**: no role may write this file, so a member and an owner\nget the same answer.",
+        "operationId": "saveWorkflowCodeConfig",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "`workflow_code_read_only` — `ouroboros.config.ts` is read-only, always.\n`details.path` names the file.",
+            "headers": {
+              "Allow": {
+                "description": "The methods the file does take.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "GET"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_code_read_only",
+                  "message": "ouroboros.config.ts is read-only. Change a workflow in the studio, and this file follows.",
+                  "details": {
+                    "path": "ouroboros.config.ts"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workflows/{id}": {
       "get": {
         "tags": [
@@ -11717,7 +11964,7 @@
             }
           },
           "409": {
-            "description": "`workflow_draft_conflict` — the draft was changed by somebody else, and **nothing\nwas overwritten**. `details.expected` is what you sent and `details.current` is the\netag the draft has now; reload and save again. `details.current` is absent in the\none case where it genuinely is not known — two requests creating the first draft at\nonce, which a unique index separates.",
+            "description": "`workflow_draft_conflict` — the draft was changed by somebody else, and **nothing\nwas overwritten**. `details.expected` is what you sent and `details.current` is the\netag the draft has now; reload and save again. `details.editedIn` names the editor\nthat changed it — `visual`, `code` (`PUT /api/v1/workflows/{slug}/code` writes the\nsame draft), or `null` when neither has written it since it was created — and\n`details.updatedAt` says when, so the reload dialog can say what happened (U.3,\n[#167](https://github.com/NobuData/ouroboros/issues/167)). Only `details.expected` is\npresent in the one case where the draft genuinely is not known — two requests\ncreating the first draft at once, which a unique index separates.",
             "content": {
               "application/json": {
                 "schema": {
@@ -11725,10 +11972,12 @@
                 },
                 "example": {
                   "code": "workflow_draft_conflict",
-                  "message": "This draft was changed by someone else. Reload it before saving again.",
+                  "message": "This draft was changed in the code editor. Reload it before saving again.",
                   "details": {
                     "expected": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
-                    "current": "8b1c4d7e0a3f6295c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0a3f6295c8d1e4f7a0b"
+                    "current": "8b1c4d7e0a3f6295c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0a3f6295c8d1e4f7a0b",
+                    "editedIn": "code",
+                    "updatedAt": "2026-09-12T10:07:31.412Z"
                   }
                 }
               }
@@ -12048,6 +12297,299 @@
         }
       }
     },
+    "/api/v1/workflows/{slug}/code": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "One workflow as a file of the code view",
+        "description": "Mockup 05's editor opening `standard-fix.loop.ts` — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)). The text is the TypeScript\nprojection of the workflow's document\n([`docs/WORKFLOW_CODE_DSL.md`](https://github.com/NobuData/ouroboros/blob/main/docs/WORKFLOW_CODE_DSL.md)).\n\n**One draft, two editors** (decision **C3**). Without `?version=` the file is the\ndraft's, and `etag` is the draft slot's etag — the same token `GET /api/v1/workflows/{id}`\nhands the canvas. Send it back as `If-Match` on `PUT`; a save in either editor moves it.\nA workflow with no draft opens on the version in force, editable, as the canvas does, and\nits first save creates the draft. With `?version=` the file is that published version,\n`readOnly`, still carrying the draft's etag.\n\n**A document is shown only when the file would read back as it.** A draft the canvas saved\nhalf-built — the blank canvas **+ New workflow** leaves, a model stage with no route yet —\nhas no faithful spelling, and showing an approximation would let a save replace the draft\nwith it. Such a read is a `409 workflow_code_unprojectable` carrying the validator's\nfindings, so the page can say what to finish on the canvas.\n\n**`outlineRef` and `checksRef` are `null`** until W.2\n([#178](https://github.com/NobuData/ouroboros/issues/178)) serves the outline and Loop\nChecks payloads.\n\n**A workflow that is not yours does not exist**: another workspace's slug is a `404`,\nindistinguishably from a slug nobody has.\n\n**Every member may read it**, `viewer` included.",
+        "operationId": "readWorkflowCode",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowSlug"
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "description": "Read this published version, read-only, instead of the draft. A number that names no\nversion of this workflow is a `404 workflow_version_not_found`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 14
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCode"
+                },
+                "example": {
+                  "path": "workflows/minimal.loop.ts",
+                  "slug": "minimal",
+                  "text": "import { defineLoop, trigger, needsReview } from \"@ouroboros/sdk\";\n\nexport default defineLoop(\"minimal\", {\n  dsl: \"1.0\",\n  trigger: {\n    on: \"issue.queued\",\n  },\n  stages: [\n    trigger(\"start\", {\n      title: \"Issue queued\",\n      next: \"done\",\n    }),\n    needsReview(\"done\", {\n      title: \"Needs review\",\n    }),\n  ],\n});\n\n// Round-trips with the visual canvas: every node on the graph is one\n// stage call above, and `onFail` is the declared back-edge that\n// closes the loop. Publishing writes the next version for both editors.\n\n// @ouroboros/layout v1 — generated; the canvas owns these lines\n// node start 0 0\n// node done 240 0\n// edge start done\n",
+                  "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                  "readOnly": false,
+                  "version": null,
+                  "currentVersion": 14,
+                  "outlineRef": null,
+                  "checksRef": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that slug, **or none this caller may know\nabout**; `details.slug` echoes it. `workflow_version_not_found` when `?version=` names\nno version of it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_not_found",
+                  "message": "No such workflow.",
+                  "details": {
+                    "slug": "standard-fix"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_code_unprojectable` — the document cannot be shown as code without changing\nit, including a workflow with no document at all. `details.findings` carries what the\nshared validator reports about it, node-anchored; `details.version` is the version\nasked for, or `null` for the draft. Nothing about the request is wrong: finish the\ndraft on the canvas, and the file opens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_code_unprojectable",
+                  "message": "This draft cannot be shown as code yet. Finish it in the visual editor first.",
+                  "details": {
+                    "slug": "standard-fix",
+                    "version": null,
+                    "findings": [
+                      {
+                        "code": "schema.required",
+                        "path": "/dsl_version",
+                        "message": "This property is required."
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the slug is not a slug, or `version` is not a positive integer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Save a file into the workflow's shared draft, guarded by its etag",
+        "description": "The code editor's save — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)). The file is parsed\n([`docs/WORKFLOW_CODE_DSL.md` §13](https://github.com/NobuData/ouroboros/blob/main/docs/WORKFLOW_CODE_DSL.md#13-reading-a-file-back))\nand the document it spells replaces the **shared** draft — the row\n`PUT /api/v1/workflows/{id}/draft` writes (decision **C3**).\n\n**A file that does not read changes nothing** (decision **C4**). The text is parsed before\nanything is opened, so a typo mid-keystroke is a `422 workflow_code_invalid` carrying every\nerror with a 1-based line and column range, and the stored draft stays byte-identical: the\nvisual editor keeps showing the last draft that read. A file whose `defineLoop(\"…\")` names\na different workflow is the same `422`, anchored at the slug, because a workflow's slug\ncannot be changed.\n\n**`If-Match` is required, and a stale one is a `409` naming the other editor's change.**\n`details.editedIn` is the editor that wrote the draft this request lost to, `visual` or\n`code`, and the message says so. The guard is the canvas's: the header is read as RFC 9110\nwrites it, `*` opts out, and a request with no header is a\n`400 workflow_draft_etag_required`.\n\n**The answer is the file as it now reads from the stored draft** — printed canonically, so\nit may differ from the text sent in formatting and key order, never in meaning — with the\ndraft's new etag.\n\n**The document is not validated here**, as a canvas save is not: a graph with an\nunreachable stage is work in progress, and publishing is where the gate runs.\n\n**`owner` or `admin`.**",
+        "operationId": "saveWorkflowCode",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowSlug"
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The draft etag the file was edited from — `etag` from the last read, in either editor.\nOpaque. `*` overwrites whatever is there.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "example": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveWorkflowCodeRequest"
+              },
+              "example": {
+                "text": "import { defineLoop, trigger, needsReview } from \"@ouroboros/sdk\";\n\nexport default defineLoop(\"minimal\", {\n  dsl: \"1.0\",\n  trigger: {\n    on: \"issue.queued\",\n  },\n  stages: [\n    trigger(\"start\", {\n      title: \"Ticket queued\",\n      next: \"done\",\n    }),\n    needsReview(\"done\", {\n      title: \"Needs review\",\n    }),\n  ],\n});\n\n// @ouroboros/layout v1 — generated; the canvas owns these lines\n// node start 0 0\n// node done 240 0\n// edge start done\n"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file as it now reads from the stored draft, with the etag for the next save.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowCode"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`workflow_draft_etag_required` — the request carried no `If-Match`. Read the file and\nsend back its `etag`. (`organization_required` is the other `400` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role is too low. Saving a workflow's file is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that slug, or none this caller may know\nabout. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_draft_conflict` — the draft was changed since this file was read, and\n**nothing was overwritten**. `details.editedIn` names the editor that changed it\n(`visual`, `code`, or `null` when neither has written it since it was created),\n`details.updatedAt` says when, `details.expected` is what you sent and\n`details.current` is the etag the draft has now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_draft_conflict",
+                  "message": "This draft was changed in the visual editor. Reload it before saving again.",
+                  "details": {
+                    "expected": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
+                    "current": "8b1c4d7e0a3f6295c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0a3f6295c8d1e4f7a0b",
+                    "editedIn": "visual",
+                    "updatedAt": "2026-09-12T10:07:31.412Z"
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`payload_too_large` — the request body is larger than this service reads. The limit is\nsized from the DSL's own ceiling, so the file of any document the validator would\naccept fits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`workflow_code_invalid` — the file does not read as this workflow, and **nothing was\nwritten**. `details.errors` carries every problem, each with a 1-based `line` and\n`column` and an exclusive `endLine`/`endColumn`, and a `code`: `code_syntax_error`,\n`code_out_of_grammar` (with a `hint`), `code_layout_invalid`, or `code_slug_mismatch`\nfor a file that names another workflow. (`validation_failed` is the other `422` here:\nthe slug is not a slug, or `text` is missing or not a string.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_code_invalid",
+                  "message": "This file does not read as a workflow, so it was not saved. The draft is unchanged.",
+                  "details": {
+                    "errors": [
+                      {
+                        "code": "code_out_of_grammar",
+                        "message": "`dsl` is written as a string literal, like \"text\".",
+                        "line": 4,
+                        "column": 8,
+                        "endLine": 4,
+                        "endColumn": 11,
+                        "hint": "Supported in the full SDK (v2) — see https://github.com/NobuData/ouroboros/issues/180"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately. Nothing was written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "tags": [
@@ -12313,6 +12855,19 @@
           "format": "uuid"
         },
         "example": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
+      },
+      "WorkflowSlug": {
+        "name": "slug",
+        "in": "path",
+        "required": true,
+        "description": "The workflow by its slug — `workflows.slug`, lower-case words separated by single hyphens,\nat most 64 characters (V029). The code view names a workflow as mockup 05 does, by the file\nit is: `standard-fix` is `workflows/standard-fix.loop.ts`. Anything that could not be a\nslug is a `422` naming the field, before anything is read; a slug that names nothing *this\ncaller may see* is a `404`.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "example": "standard-fix"
       },
       "ConnectionId": {
         "name": "id",
@@ -22076,6 +22631,212 @@
               }
             ],
             "description": "The version `?version=` named, or the one in force when it named none. `null` for a\nworkflow that has published nothing — not an error, and the canvas opens on\n`draft.definition`."
+          }
+        }
+      },
+      "WorkflowCode": {
+        "type": "object",
+        "title": "WorkflowCode",
+        "description": "One workflow as a file of the code view (U.3,\n[#167](https://github.com/NobuData/ouroboros/issues/167)) — what\n`GET /api/v1/workflows/{slug}/code` answers, and what a successful `PUT` answers with.",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "slug",
+          "text",
+          "etag",
+          "readOnly",
+          "version",
+          "currentVersion",
+          "outlineRef",
+          "checksRef"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Where the file sits in the virtual project.",
+            "examples": [
+              "workflows/standard-fix.loop.ts"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "description": "The workflow's slug, which the file's `defineLoop` names.",
+            "examples": [
+              "standard-fix"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "The file — the TypeScript projection of the document, ending in a line feed. Lines are\ncounted by line feeds only, which is how every position in the code view's errors is\ncounted too."
+          },
+          "etag": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The draft slot's etag: the `If-Match` of the next save, in either editor, and the same\ntoken `GET /api/v1/workflows/{id}` hands the canvas. Carried whichever version the text\nwas printed from. **Opaque**: compare it for equality and nothing else.",
+            "examples": [
+              "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0"
+            ]
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "`true` for a published version, which nothing edits; `false` for the draft."
+          },
+          "version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The published version the text was printed from, or `null` when it was printed from\nthe draft. A workflow with no draft opens on the version in force, editable.",
+            "examples": [
+              null,
+              14
+            ]
+          },
+          "currentVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The version in force — the `v14` chip — or `null` for a workflow that has published\nnothing.",
+            "examples": [
+              14
+            ]
+          },
+          "outlineRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the outline payload is read from. `null` until W.2\n([#178](https://github.com/NobuData/ouroboros/issues/178)) serves it.",
+            "examples": [
+              null
+            ]
+          },
+          "checksRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the Loop Checks payload is read from. `null` until W.2\n([#178](https://github.com/NobuData/ouroboros/issues/178)) serves it.",
+            "examples": [
+              null
+            ]
+          }
+        }
+      },
+      "SaveWorkflowCodeRequest": {
+        "type": "object",
+        "title": "SaveWorkflowCodeRequest",
+        "description": "What the code editor's save sends.",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The whole file. Whether it reads as a workflow is the parser's question, answered with\nerrors anchored to lines, so an empty string is a well-formed body and a\n`422 workflow_code_invalid`."
+          }
+        }
+      },
+      "WorkflowCodeTree": {
+        "type": "object",
+        "title": "WorkflowCodeTree",
+        "description": "The code view's explorer (decision **C6**). **Directories are not entries**: group files\nby the directory in their `path`, so a directory with no file in it cannot appear.",
+        "additionalProperties": false,
+        "required": [
+          "files"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "description": "The workflows on the rail, in its order, then `ouroboros.config.ts`.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowCodeTreeFile"
+            }
+          }
+        }
+      },
+      "WorkflowCodeTreeFile": {
+        "type": "object",
+        "title": "WorkflowCodeTreeFile",
+        "description": "One file of the explorer.",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "kind",
+          "readOnly",
+          "slug",
+          "status"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "examples": [
+              "workflows/hotfix-p0.loop.ts",
+              "ouroboros.config.ts"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "workflow",
+              "config"
+            ],
+            "description": "A workflow's file, or the read-only configuration projection."
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Whether a save is refused — `true` for `ouroboros.config.ts` and nothing else."
+          },
+          "slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The workflow's slug, which `GET /api/v1/workflows/{slug}/code` reads; `null` for the\nconfiguration.",
+            "examples": [
+              "hotfix-p0"
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The workflow's status, so `paused` draws the rail's err-dot; `null` for the\nconfiguration."
+          }
+        }
+      },
+      "WorkflowCodeConfig": {
+        "type": "object",
+        "title": "WorkflowCodeConfig",
+        "description": "`ouroboros.config.ts` as the code view opens it: read-only, printed from the registry on\nevery read, stored nowhere.",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "text",
+          "readOnly"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "const": "ouroboros.config.ts"
+          },
+          "text": {
+            "type": "string",
+            "description": "The file, ending in a line feed."
+          },
+          "readOnly": {
+            "type": "boolean",
+            "const": true,
+            "description": "Always `true` — a `PUT` is a `405`."
           }
         }
       },

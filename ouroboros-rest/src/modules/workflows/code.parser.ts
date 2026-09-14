@@ -40,6 +40,7 @@
 import ts from "typescript";
 
 import {
+  type CodeRange,
   LineMap,
   placeErrors,
   type PendingCodeError,
@@ -125,6 +126,42 @@ export function parseWorkflowCode(text: string): ParsedWorkflowCode {
       ],
     };
   }
+}
+
+/**
+ * Where a file writes its workflow's slug: the first argument of `defineLoop`.
+ *
+ * For the save endpoint (#167), which refuses a file whose slug is not the workflow being saved
+ * and anchors that refusal at the slug. It is not part of {@link ParsedWorkflowCode} because that
+ * one refusal is its only reader, so the text is read a second time only when there is a refusal to
+ * make.
+ *
+ * @param text - A file {@link parseWorkflowCode} read without errors. Anything else may nest too
+ *   deeply for the compiler, which is the one text that call guards against and this does not.
+ * @returns The range of the slug's string literal, or `undefined` when the text has no
+ *   `export default defineLoop("…", …)` to find it in.
+ */
+export function slugRangeOf(text: string): CodeRange | undefined {
+  const normalised = text.replace(/\r\n?/g, "\n");
+  const source = ts.createSourceFile(
+    FILE_NAME,
+    normalised,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const loop = source.statements.find(
+    (statement): statement is ts.ExportAssignment =>
+      ts.isExportAssignment(statement) && !statement.isExportEquals,
+  );
+  const call = loop === undefined ? undefined : unwrap(loop.expression);
+
+  if (call === undefined || !ts.isCallExpression(call) || call.arguments.length === 0) {
+    return undefined;
+  }
+
+  const slug = unwrap(call.arguments[0]);
+  return new LineMap(normalised).range(slug.getStart(source), slug.getEnd());
 }
 
 /**

@@ -58,7 +58,7 @@ export interface ErrorEnvelope {
  *
  * Subclass rather than construct: {@link BadRequestError}, {@link UnauthenticatedError},
  * {@link ForbiddenError}, {@link NotFoundError}, {@link ConflictError},
- * {@link InvalidRequestError} and
+ * {@link MethodNotAllowedError}, {@link InvalidRequestError} and
  * {@link UpstreamError} are the statuses this API answers with, and naming one at a call
  * site is what makes the status readable there. A caller that needs another adds a subclass
  * here rather than passing a number through a service.
@@ -192,6 +192,24 @@ export class BadRequestError extends DomainError {
 export class ConflictError extends DomainError {
   constructor(code: string, message: string, details: ErrorDetails = {}) {
     super(HttpStatus.CONFLICT, code, message, details);
+  }
+}
+
+/**
+ * `405` — the path names something real, and it does not accept this method.
+ *
+ * Distinct from `404` on the axis a client acts on: there *is* such a thing, and no request of
+ * this kind will ever change it. The one case today is U.3's
+ * ([#167](https://github.com/NobuData/ouroboros/issues/167)) `ouroboros.config.ts`, a read-only
+ * projection a client may `GET` and whose `PUT` has to say *this file is read-only* rather than
+ * *there is no such file*.
+ *
+ * RFC 9110 requires a `405` to carry `Allow`, and a thrown error cannot set a header, so the
+ * handler that throws one sets it on the response first.
+ */
+export class MethodNotAllowedError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.METHOD_NOT_ALLOWED, code, message, details);
   }
 }
 

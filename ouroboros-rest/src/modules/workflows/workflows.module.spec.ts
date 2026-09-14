@@ -4,6 +4,7 @@ import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import { WorkflowCatalogRepository } from "./catalog.repository";
 import { PUBLISHED_DSL_SCHEMA, WorkflowCatalogService } from "./catalog.service";
+import { WorkflowCodeService } from "./code.service";
 import { WorkflowPublishGate } from "./publish.gate";
 import { WorkflowRegistryService } from "./registry.service";
 import { WorkflowStatsRepository } from "./stats.repository";
@@ -46,6 +47,7 @@ describe("the workflows module", () => {
     expect(moduleRef.get(WorkflowCatalogRepository)).toBeInstanceOf(WorkflowCatalogRepository);
     expect(moduleRef.get(TriggerService)).toBeInstanceOf(TriggerService);
     expect(moduleRef.get(TriggerRepository)).toBeInstanceOf(TriggerRepository);
+    expect(moduleRef.get(WorkflowCodeService)).toBeInstanceOf(WorkflowCodeService);
 
     await moduleRef.close();
   });

@@ -45,13 +45,9 @@ export type WorkflowCodeErrorCode =
 export const FULL_SDK_HINT =
   "Supported in the full SDK (v2) — see https://github.com/NobuData/ouroboros/issues/180";
 
-/** One thing that stops a file from being read, and where. */
-export interface WorkflowCodeError {
-  /** Which kind of problem it is. */
-  code: WorkflowCodeErrorCode;
-  /** What a person should read: what is wrong, and what the grammar writes instead. */
-  message: string;
-  /** The 1-based line the problem starts on. */
+/** Where something sits in a file, as an editor underlines it. */
+export interface CodeRange {
+  /** The 1-based line it starts on. */
   line: number;
   /** The 1-based column it starts at. */
   column: number;
@@ -59,6 +55,14 @@ export interface WorkflowCodeError {
   endLine: number;
   /** The 1-based column just past its last character. Equal to `column` for an empty range. */
   endColumn: number;
+}
+
+/** One thing that stops a file from being read, and where. */
+export interface WorkflowCodeError extends CodeRange {
+  /** Which kind of problem it is. */
+  code: WorkflowCodeErrorCode;
+  /** What a person should read: what is wrong, and what the grammar writes instead. */
+  message: string;
   /** Where support for the construct would come from. Present on `code_out_of_grammar` only. */
   hint?: string;
 }
@@ -141,6 +145,20 @@ export class LineMap {
     const end = line < this.starts.length ? this.starts[line] - 1 : this.text.length;
     return { start, end };
   }
+
+  /**
+   * Where a range of offsets sits.
+   *
+   * @param start - The offset of its first character.
+   * @param end - The offset just past its last character.
+   * @returns Its 1-based start and end, each clamped to the text as {@link position} clamps.
+   */
+  range(start: number, end: number): CodeRange {
+    const from = this.position(start);
+    const to = this.position(end);
+
+    return { line: from.line, column: from.column, endLine: to.line, endColumn: to.column };
+  }
 }
 
 /**
@@ -165,20 +183,12 @@ export function placeErrors(
         compareText(a.code, b.code) ||
         compareText(a.message, b.message),
     )
-    .map(({ code, message, start, end, hint }) => {
-      const from = lines.position(start);
-      const to = lines.position(end);
-
-      return {
-        code,
-        message,
-        line: from.line,
-        column: from.column,
-        endLine: to.line,
-        endColumn: to.column,
-        ...(hint === undefined ? {} : { hint }),
-      };
-    });
+    .map(({ code, message, start, end, hint }) => ({
+      code,
+      message,
+      ...lines.range(start, end),
+      ...(hint === undefined ? {} : { hint }),
+    }));
 }
 
 /**

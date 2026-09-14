@@ -84,6 +84,12 @@ describe("LineMap", () => {
     expect(map.position(0)).toStrictEqual({ line: 1, column: 1 });
     expect(map.lineSpan(1)).toStrictEqual({ start: 0, end: 0 });
   });
+
+  it("places a range by both of its ends, as an editor underlines it", () => {
+    expect(lines.range(3, 5)).toStrictEqual({ line: 2, column: 1, endLine: 2, endColumn: 3 });
+    expect(lines.range(1, 4)).toStrictEqual({ line: 1, column: 2, endLine: 2, endColumn: 2 });
+    expect(lines.range(6, 6)).toStrictEqual({ line: 3, column: 1, endLine: 3, endColumn: 1 });
+  });
 });
 
 describe("placeErrors", () => {

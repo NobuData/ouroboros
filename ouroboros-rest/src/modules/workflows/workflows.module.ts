@@ -18,7 +18,11 @@
  * workflows.dto        what a request may contain, as class-validator classes
  * workflows.errors     every code this API answers with, and the V029 constraints it translates
  * workflows.service    the rules: the 404, the guard, the gate, the transactions
- * workflows.controller the eight routes
+ * code.projection      a document as the code view's text, only when the text reads back as it · #167
+ * code.config          ouroboros.config.ts — the registry, printed read-only
+ * code.resources       the code view's wire shapes: a workflow's file, the explorer, the config
+ * code.service         WorkflowCodeService — read, save through the draft guard, tree, config
+ * workflows.controller the lifecycle's routes and the code view's
  * catalog.schema       the published DSL schema, read as per-type config schemas               · #145
  * catalog.presentation the mockup's glyphs and classes, and what a dropped node contains
  * catalog.repository   the workspace's task kinds, for the task-route suggestions
@@ -85,6 +89,7 @@ import { EngineModule } from "../engine/engine.module";
 import { WorkflowCatalogRepository } from "./catalog.repository";
 import { readPublishedDslSchema } from "./catalog.schema";
 import { PUBLISHED_DSL_SCHEMA, WorkflowCatalogService } from "./catalog.service";
+import { WorkflowCodeService } from "./code.service";
 import { WorkflowPublishGate } from "./publish.gate";
 import { WorkflowRegistryService } from "./registry.service";
 import { WorkflowStatsRepository } from "./stats.repository";
@@ -100,6 +105,7 @@ import { WorkflowsService } from "./workflows.service";
   controllers: [WorkflowsController],
   providers: [
     WorkflowsService,
+    WorkflowCodeService,
     WorkflowsRepository,
     WorkflowPublishGate,
     WorkflowStatsService,
