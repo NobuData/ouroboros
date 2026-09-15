@@ -40,9 +40,15 @@ import "./code-editor.css";
  *
  * `diagnostics` are the service's, with the text they were counted in; they are placed in the text
  * on screen (`code-diagnostics.ts`) and drawn by the lint gutter as squiggles, gutter markers and a
- * hover card, then carried through every later edit by CodeMirror. `reveal` puts the cursor on a
- * range, scrolls it to the middle and moves the keyboard into the editor — the diagnostics strip's
- * jump. Neither does anything in the read-only variant, which nobody saves.
+ * hover card, then carried through every later edit by CodeMirror. They draw nothing in the
+ * read-only variant, which nobody saves.
+ *
+ * ### Jumps and the cursor (V.5, [#173](https://github.com/NobuData/ouroboros/issues/173))
+ *
+ * `reveal` puts the cursor on a range, scrolls it to the middle and moves the keyboard into the
+ * editor — the diagnostics strip's jump, and the outline's. It acts in both variants: a reader who
+ * may not type can still be taken to a stage. `onCursor` hears where the cursor is after every move
+ * or change, with the whole document, so the Types card can follow it.
  */
 
 /** Marks a change that came from the `text` prop rather than from the editor. */
@@ -62,6 +68,11 @@ export interface CodeEditorProps {
   readonly diagnostics?: AnchoredDiagnostics | null;
   /** Put the cursor on a range and scroll to it. Each new request object is acted on once. */
   readonly reveal?: RevealRequest | null;
+  /**
+   * Called with the cursor's offset and the whole document after each cursor move or change —
+   * typing included, in either variant.
+   */
+  readonly onCursor?: (head: number, text: string) => void;
 }
 
 /**
@@ -70,26 +81,39 @@ export interface CodeEditorProps {
  * @param props See {@link CodeEditorProps}.
  * @returns The editor's wrapper: CodeMirror's host, and the text drawn until it mounts.
  */
-export function CodeEditor({ text, label, readOnly = false, onChange, diagnostics = null, reveal = null }: CodeEditorProps) {
+export function CodeEditor({
+  text,
+  label,
+  readOnly = false,
+  onChange,
+  diagnostics = null,
+  reveal = null,
+  onCursor,
+}: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   // What the editor is built over and who hears it, read when a view is built or reports — so
   // neither has to rebuild it. Declared first, so it is current before the effects below run.
-  const latest = useRef({ text, onChange });
+  const latest = useRef({ text, onChange, onCursor });
 
   useEffect(() => {
-    latest.current = { text, onChange };
-  }, [text, onChange]);
+    latest.current = { text, onChange, onCursor };
+  }, [text, onChange, onCursor]);
 
   useEffect(() => {
     const parent = host.current;
     if (parent === null) return;
 
     const reporter = EditorView.updateListener.of((update) => {
-      if (!update.docChanged) return;
-      if (update.transactions.every((transaction) => transaction.annotation(FROM_PROP) === true)) return;
+      if (!update.docChanged && !update.selectionSet) return;
 
-      latest.current.onChange?.(update.state.doc.toString());
+      const doc = update.state.doc.toString();
+      const typed =
+        update.docChanged &&
+        !update.transactions.every((transaction) => transaction.annotation(FROM_PROP) === true);
+
+      if (typed) latest.current.onChange?.(doc);
+      latest.current.onCursor?.(update.state.selection.main.head, doc);
     });
 
     const created = new EditorView({
@@ -131,7 +155,7 @@ export function CodeEditor({ text, label, readOnly = false, onChange, diagnostic
 
   useEffect(() => {
     const current = view.current;
-    if (current === null || readOnly || reveal === null) return;
+    if (current === null || reveal === null) return;
 
     const span = anchoredSpan(reveal.anchor, current.state.doc.toString(), reveal.range);
     current.dispatch({
@@ -140,7 +164,8 @@ export function CodeEditor({ text, label, readOnly = false, onChange, diagnostic
       userEvent: "select",
     });
     current.focus();
-  }, [reveal, readOnly]);
+    // After the text and a rebuild, so a request is placed in the editor that is on screen.
+  }, [reveal, label, readOnly]);
 
   return (
     <div className={readOnly ? "code-editor code-editor--read-only" : "code-editor"}>

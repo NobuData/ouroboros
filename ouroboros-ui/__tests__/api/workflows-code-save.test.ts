@@ -87,3 +87,47 @@ describe("workflows.saveCode", () => {
     expect(refused).toMatchObject({ status: 409, code: WORKFLOW_DRAFT_CONFLICT, details: { editedIn: "visual" } });
   });
 });
+
+/**
+ * The right panel's two reads (V.5, #173), on W.1's and W.2's contracts: the Loop Checks of one
+ * workflow's draft by its slug, and the code symbol table.
+ */
+
+describe("workflows.codeChecks", () => {
+  it("gets the draft's Loop Checks by the workflow's slug, with no version", async () => {
+    const checks = {
+      path: "workflows/standard-fix.loop.ts",
+      slug: "standard-fix",
+      etag: "etag-1",
+      readOnly: false,
+      version: null,
+      rows: [{ id: "graph", status: "ok", title: "Graph acyclic except declared gate loop" }],
+    };
+    const { client, requests } = clientAnswering(checks);
+
+    await expect(workflows.codeChecks("standard-fix", client)).resolves.toEqual(checks);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url).toBe(`${STUB_BASE_URL}/api/v1/workflows/standard-fix/code/checks`);
+  });
+
+  it("rejects with the service's refusal", async () => {
+    const { client } = clientAnswering({ code: "workflow_not_found", message: "No such workflow." }, 404);
+
+    await expect(workflows.codeChecks("retired", client)).rejects.toMatchObject({ status: 404, code: "workflow_not_found" });
+  });
+});
+
+describe("workflows.codeSymbols", () => {
+  it("gets the code symbol table", async () => {
+    const table = { schemaId: "https://ouroboros.build/schemas/workflow-dsl/v1.json", scopes: [], symbols: [] };
+    const { client, requests } = clientAnswering(table);
+
+    await expect(workflows.codeSymbols(client)).resolves.toEqual(table);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url).toBe(`${STUB_BASE_URL}/api/v1/workflows/code-symbols`);
+  });
+});

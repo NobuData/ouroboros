@@ -126,6 +126,21 @@ export type CodeSignaturePart = components["schemas"]["WorkflowCodeSignaturePart
 export type CodeDiagnostic = components["schemas"]["CodeDiagnostic"];
 
 /**
+ * A workflow file's Loop Checks panel — W.2 ([#178](https://github.com/NobuData/ouroboros/issues/178)):
+ * the rows mockup 05's right panel lists, with the etag of the file they were derived from.
+ */
+export type WorkflowCodeChecks = components["schemas"]["WorkflowCodeChecks"];
+
+/**
+ * One Loop Checks row. `id` is a closed union with no infra row (decision **C7**): the build-farm state
+ * mockup 05's *pool-a has 1 runner offline* reports is observed by nothing, so it is omitted, not faked.
+ */
+export type LoopCheckRow = components["schemas"]["LoopCheckRow"];
+
+/** Where one stage call sits in a workflow file — the printer's span map entry (W.2). */
+export type NodeSpan = components["schemas"]["NodeSpan"];
+
+/**
  * One workflow as a file of the code view — U.3
  * ([#167](https://github.com/NobuData/ouroboros/issues/167)): the TypeScript projection of its
  * draft, with the draft slot's etag.
@@ -290,6 +305,36 @@ export const workflows = {
     // its `$Write` marker). The contract serves it and it is always `null`, so it is restored
     // here rather than widening a type every caller reads.
     return { ...file, outlineRef: null };
+  },
+
+  /**
+   * One workflow file's Loop Checks — the code view's right panel (V.5,
+   * [#173](https://github.com/NobuData/ouroboros/issues/173)), on W.2's contract.
+   *
+   * Always the draft's, as {@link workflows.code} is: no `?version=` is sent.
+   *
+   * @param slug The workflow's slug, resolved against the rail by the caller.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The rows, `graph` first, with the etag of the file they were derived from.
+   * @throws {ApiError} What the service answered — `404 workflow_not_found` for a slug this workspace
+   *   does not have, `409 workflow_code_unprojectable` for a draft with no spelling as code.
+   */
+  async codeChecks(slug: string, client: ApiClient = api()): Promise<WorkflowCodeChecks> {
+    return unwrap(
+      await client.GET("/api/v1/workflows/{slug}/code/checks", { params: { path: { slug } } }),
+    );
+  },
+
+  /**
+   * The code symbol table — what the Types card says about the symbol at the cursor (V.5,
+   * [#173](https://github.com/NobuData/ouroboros/issues/173)), on W.1's contract.
+   *
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The scopes and the symbols, read from the grammar and the published schema.
+   * @throws {ApiError} What the service answered.
+   */
+  async codeSymbols(client: ApiClient = api()): Promise<CodeSymbolTable> {
+    return unwrap(await client.GET("/api/v1/workflows/code-symbols", {}));
   },
 
   /**

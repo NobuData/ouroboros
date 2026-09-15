@@ -3,12 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
+import { CODE_SYMBOLS } from "../../helpers/code-symbols";
 import { TENANT_ID, membership, sessionUser } from "../../helpers/login";
 import {
   UNPROJECTABLE_REFUSAL,
+  codeChecks as codeChecksFixture,
   codeConfig,
   codeTreeFor,
   explorerReadings,
+  panelReadings,
   workflowCode,
 } from "../../helpers/workflow-code";
 import { seededRail } from "../../helpers/workflows";
@@ -38,6 +41,12 @@ const tree = vi.fn();
 /** What `ouroboros.config.ts` answers. */
 const config = vi.fn();
 
+/** What the Loop Checks endpoint answers, keyed by the slug it was asked for. */
+const codeChecks = vi.fn();
+
+/** What the symbol table endpoint answers. */
+const codeSymbols = vi.fn();
+
 vi.mock("@/app/api/workflows", () => ({
   WORKFLOW_CODE_UNPROJECTABLE: "workflow_code_unprojectable",
   workflows: {
@@ -45,6 +54,8 @@ vi.mock("@/app/api/workflows", () => ({
     code: (slug: string) => code(slug),
     tree: () => tree(),
     config: () => config(),
+    codeChecks: (slug: string) => codeChecks(slug),
+    codeSymbols: () => codeSymbols(),
   },
 }));
 
@@ -67,6 +78,8 @@ beforeEach(() => {
   code.mockReset().mockResolvedValue(workflowCode());
   tree.mockReset().mockResolvedValue(codeTreeFor());
   config.mockReset().mockResolvedValue(codeConfig());
+  codeChecks.mockReset().mockResolvedValue(codeChecksFixture());
+  codeSymbols.mockReset().mockResolvedValue(CODE_SYMBOLS);
 });
 
 describe("a workflow the rail holds", () => {
@@ -81,7 +94,27 @@ describe("a workflow the rail holds", () => {
       requested: "standard-fix",
       selected: { entry: seededRail()[0], file: { kind: "file", file: workflowCode() } },
       explorer: explorerReadings(),
+      panel: panelReadings(),
     });
+  });
+
+  it("reads the right panel — the workflow's Loop Checks by its slug, and the symbol table (V.5)", async () => {
+    await readStudioCode(ACCESS, "standard-fix");
+
+    expect(codeChecks).toHaveBeenCalledExactlyOnceWith("standard-fix");
+    expect(codeSymbols).toHaveBeenCalledOnce();
+  });
+
+  it("reads the panel in parallel with the file, not after it", async () => {
+    let releaseFile: (value: unknown) => void = () => {};
+    code.mockReturnValue(new Promise((resolve) => (releaseFile = resolve)));
+
+    const pending = readStudioCode(ACCESS, "standard-fix");
+    await vi.waitFor(() => expect(codeChecks).toHaveBeenCalledOnce());
+    expect(codeSymbols).toHaveBeenCalledOnce();
+
+    releaseFile(workflowCode());
+    await expect(pending).resolves.toMatchObject({ panel: panelReadings() });
   });
 
   it("reads the draft's file, whose etag is the canvas's — one draft, two editors", async () => {
@@ -109,11 +142,14 @@ describe("a slug the rail does not hold", () => {
     const readings = await readStudioCode(ACCESS, "retired-loop");
 
     expect(code).not.toHaveBeenCalled();
+    expect(codeChecks).not.toHaveBeenCalled();
+    expect(codeSymbols).not.toHaveBeenCalled();
     expect(readings).toEqual({
       rail: { ok: true, value: seededRail() },
       requested: "retired-loop",
       selected: null,
       explorer: explorerReadings(),
+      panel: null,
     });
   });
 });
@@ -127,9 +163,12 @@ describe("a refused rail", () => {
     expect(code).not.toHaveBeenCalled();
     expect(tree).not.toHaveBeenCalled();
     expect(config).not.toHaveBeenCalled();
+    expect(codeChecks).not.toHaveBeenCalled();
+    expect(codeSymbols).not.toHaveBeenCalled();
     expect(readings.rail).toEqual({ ok: false, reason: "The service is unavailable." });
     expect(readings.selected).toBeNull();
     expect(readings.explorer).toBeNull();
+    expect(readings.panel).toBeNull();
   });
 
   it("lets anything that is not a refusal keep travelling — the redirect signal above all", async () => {
@@ -153,6 +192,7 @@ describe("a workspace with no workflows", () => {
       requested: "standard-fix",
       selected: null,
       explorer: null,
+      panel: null,
     });
   });
 });
@@ -202,6 +242,36 @@ describe("a refused file", () => {
   it("lets anything that is not a refusal keep travelling", async () => {
     const redirect = new Error("NEXT_REDIRECT");
     code.mockRejectedValue(redirect);
+
+    await expect(readStudioCode(ACCESS, "standard-fix")).rejects.toBe(redirect);
+  });
+});
+
+describe("a refused panel read (V.5)", () => {
+  it("is a value on the Loop Checks alone, and the file and the symbol table still read", async () => {
+    codeChecks.mockRejectedValue(new ApiError(500, "internal_error", "The checks are unavailable."));
+
+    const readings = await readStudioCode(ACCESS, "standard-fix");
+
+    expect(readings.panel).toEqual({
+      checks: { ok: false, reason: "The checks are unavailable." },
+      symbols: { ok: true, value: CODE_SYMBOLS },
+    });
+    expect(readings.selected?.file).toEqual({ kind: "file", file: workflowCode() });
+  });
+
+  it("is a value on the symbol table alone when that is the read refused", async () => {
+    codeSymbols.mockRejectedValue(new ApiError(503, "unavailable", "The symbol table is unavailable."));
+
+    const readings = await readStudioCode(ACCESS, "standard-fix");
+
+    expect(readings.panel?.checks).toEqual({ ok: true, value: codeChecksFixture() });
+    expect(readings.panel?.symbols).toEqual({ ok: false, reason: "The symbol table is unavailable." });
+  });
+
+  it("lets anything that is not a refusal keep travelling", async () => {
+    const redirect = new Error("NEXT_REDIRECT");
+    codeChecks.mockRejectedValue(redirect);
 
     await expect(readStudioCode(ACCESS, "standard-fix")).rejects.toBe(redirect);
   });

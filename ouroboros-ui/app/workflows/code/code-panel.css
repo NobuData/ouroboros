@@ -1,0 +1,217 @@
+/*
+ * The code view's right panel — V.5 (#173): mockup 05's `.rp` (docs/mockups/05-workflow-code.html),
+ * with its Loop Checks rows, the Types card (the card itself is code.css's `.code-hover-doc`) and its
+ * Outline rows.
+ *
+ * Every colour is a token from app/tokens.css, so both themes are the token sheet's, and every length
+ * that should follow the reader's font-size preference is rem or a token (docs/CONVENTIONS.md § 6). The
+ * mockup's values map as code-workbench.css records: `--border` is `--line`, `--faint` is `--ink-faint`.
+ */
+
+/* ---------- the panel: `.rp` ---------- */
+
+/* A column on the explorer's well, beside the editor, scrolling on its own. */
+.code-panel {
+  flex: none;
+  width: 16.875rem;
+  padding-block: var(--sp-7) var(--sp-8);
+  padding-inline: var(--sp-8);
+  overflow-y: auto;
+  border-inline-start: 1px solid var(--line);
+  background: var(--inset);
+  color: var(--ink-dim);
+}
+
+/* `.rp-head`: a mono eyebrow. */
+.code-panel__head {
+  margin: 0 0 var(--sp-5);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 400;
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+/* `.rp-head.later` */
+.code-panel__head--later {
+  margin-block-start: var(--sp-9);
+}
+
+/* A section's quiet sentence: why it could not be read, or that there is nothing in it. */
+.code-panel__quiet {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.code-panel__failed {
+  padding: 0;
+}
+
+/* ---------- loop checks: `.ck` ---------- */
+
+.code-panel__checks,
+.code-panel__outline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.code-panel__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  padding-block: var(--sp-3);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* `.ck`: a passed row keeps the panel's ink. */
+.code-panel__check--ok {
+  color: var(--ink-dim);
+}
+
+/* `.ck.warn`: the whole row in the warn hue. */
+.code-panel__check--warn {
+  color: var(--warn);
+}
+
+.code-panel__check--err {
+  color: var(--err);
+}
+
+/* `.ck .ic` */
+.code-panel__icon {
+  flex: none;
+  width: 0.9375rem;
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  text-align: center;
+}
+
+.code-panel__icon--ok {
+  color: var(--ok);
+}
+
+.code-panel__icon--err {
+  color: var(--err);
+}
+
+/* `.dot.warn`, on the text's first line. */
+.code-panel__dot {
+  display: inline-block;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: var(--r-round);
+  background: var(--warn);
+  vertical-align: middle;
+}
+
+.code-panel__check-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* `.ck small`: the note on its own line. */
+.code-panel__note {
+  display: block;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+/* ---------- outline: `.ol-row` ---------- */
+
+/* A row is a button with none of a button's own chrome. */
+.code-panel__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  padding-block: var(--sp-2);
+  padding-inline: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.code-panel__row:hover {
+  color: var(--ink);
+}
+
+.code-panel__row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* `.ol-row .n` */
+.code-panel__number {
+  flex: none;
+  width: 1.125rem;
+  color: var(--ink-faint);
+}
+
+/* `.ol-row .g` */
+.code-panel__glyph {
+  flex: none;
+  width: var(--sp-6);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+.code-panel__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* `.ol-row.loopback`: the row, its number and its glyph in the accent. */
+.code-panel .code-panel__row--loopback,
+.code-panel__row--loopback .code-panel__number,
+.code-panel__row--loopback .code-panel__glyph {
+  color: var(--accent);
+}
+
+/* `.ol-row .note`: `back-edge → 07`, at the trailing edge. */
+.code-panel__back-edge {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+/* ---------- narrow panes ---------- */
+
+/* Above 1000px the panel always shows, so its toggle is not drawn. */
+.code-panel-toggle {
+  display: none;
+}
+
+/*
+ * Mockup 05 hides the panel below 1000px. Its toggle shows it again, as a full-width row under the
+ * editor (the workbench's body wraps there), so the content stays reachable.
+ */
+@media (max-width: 62.5rem) {
+  .code-panel {
+    display: none;
+  }
+
+  .code-panel.code-panel--open {
+    display: block;
+    width: 100%;
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--line);
+  }
+
+  .code-panel-toggle {
+    display: inline-flex;
+    align-self: flex-start;
+  }
+}

@@ -34,7 +34,9 @@
 
 import type { Reading } from "@/app/api/reading";
 import type {
+  CodeSymbolTable,
   WorkflowCode,
+  WorkflowCodeChecks,
   WorkflowCodeConfig,
   WorkflowCodeTree,
   WorkflowRailEntry,
@@ -105,6 +107,22 @@ export interface CodeReadings {
    * nothing is asked for.
    */
   readonly explorer: ExplorerReadings | null;
+  /**
+   * The right panel's two reads (V.5, [#173](https://github.com/NobuData/ouroboros/issues/173)), or
+   * `null` when there is no workflow to check — a refused or empty rail, or a slug it lacks.
+   */
+  readonly panel: PanelReadings | null;
+}
+
+/**
+ * The right panel's reads: the workflow's Loop Checks and the code symbol table. Each is its own
+ * reading, so a refused one degrades its own section and nothing else.
+ */
+export interface PanelReadings {
+  /** The Loop Checks rows, or why they could not be read. */
+  readonly checks: Reading<WorkflowCodeChecks>;
+  /** The symbol table the Types card is drawn from, or why it could not be read. */
+  readonly symbols: Reading<CodeSymbolTable>;
 }
 
 /**

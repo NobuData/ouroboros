@@ -421,7 +421,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 | V.2 | #170 | 🟢 Done | ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting | Themed CM6, custom language package, line/current-line/caret parity | mvp, workflow, code-view, ui, design | N (after V.1) | Y | L | ouroboros-ui |
 | V.3 | #171 | 🟢 Done | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
 | V.4 | #172 | 🟢 Done | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
-| V.5 | #173 | 🟡 Open | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
+| V.5 | #173 | 🟢 Done | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
 | V.6 | #174 | 🟡 Open | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui |
 | V.7 | #175 | 🟡 Open | ouroboros-ui: [V.7] Code-view states & guards | Read-only member mode, empty org, load/error, narrow-viewport | mvp, workflow, code-view, ui, design | N (after V.1–V.6) | Y | S | ouroboros-ui |
 | V.8 | #176 | 🟡 Open | ouroboros-ui: [V.8] Code-view e2e leg | Parity, edit→visual round-trip, publish, diagnostics, themes | mvp, workflow, code-view, ui, ci | N (after V.1–V.7) | Y | S | ouroboros-ui, .github |
@@ -643,7 +643,7 @@ type ─ debounce ─ PUT ─▶ 200 ✓ (dot clears) │ 422 ▶ squiggles + st
 
 ### Issue V.5 — ouroboros-ui: [V.5] Right panel — checks, types, outline
 
-> **GitHub issue:** #173 · **Status:** 🟡 Open · **Parent epic:** #162
+> **GitHub issue:** #173 · **Status:** 🟢 Done · **Parent epic:** #162
 
 - **Problem Statement:** The right panel is the page's understanding surface:
   Loop Checks, the Types hover-doc card, and the Outline with its accent
@@ -662,6 +662,29 @@ type ─ debounce ─ PUT ─▶ 200 ✓ (dot clears) │ 422 ▶ squiggles + st
 - **Parallelism/Dependencies:** Needs V.2, W.1, W.2.
 - **Technical Stack:** React, CM6 cursor integration.
 - **Epic:** V
+- **Delivered (2026-09-15):** The right panel in `ouroboros-ui`: `app/workflows/code/code-panel.ts`
+  (every decision, pure), `code-panel-view.tsx` and `code-panel.css`, mounted by the workbench beside
+  the route's file. The route reads `GET …/{slug}/code/checks` and `GET …/code-symbols` beside the
+  file (`workflows.codeChecks`, `workflows.codeSymbols`), each its own degraded region. Four decisions
+  were taken in-issue.
+  - **No infra row, verified twice (C7).** The panel draws only the row ids it knows (`graph`,
+    `references`), so an infra row is dropped even if a service ever sends one. The suite injects
+    mockup 05's own *pool-a has 1 runner offline* row, read out of the mockup's HTML, and asserts it
+    never renders.
+  - **The outline is the file's `spans`, not a second parser.** One row per stage call, numbered in
+    node order; a stage whose call declares `onFail` at the option depth is the `⟲` row, noted
+    `back-edge → NN`. For the seed that is `11 ⟲ checks-green  back-edge → 07`, not the mockup's
+    `08 ⟲ gate → 04`: the seed has twelve stages (`WORKFLOW_CODE_DSL.md` §10). The span map is kept with
+    the text it counts (the read's, then each save's) and a jump is placed through the same text
+    difference as a diagnostic, so it stays on the stage after lines are typed above it.
+  - **Jumps work in the read-only editor.** `CodeEditor`'s `reveal` no longer skips the read-only
+    variant, so a member can be taken to a stage. `onCursor` is new, and the Types card is `hoverAt` at
+    the cursor. An unknown symbol, a string or a comment draws no card.
+  - **Rows read before a save say so.** The checks carry the etag they were derived from; once a save
+    moves the draft, a note says they predate it rather than re-deriving them client-side.
+  Below 1000px the panel is hidden per the mockup and a **Checks & outline** disclosure toggle shows it
+  as a row under the editor. W.1's `dslIntelligence` (completions and the editor's hover tooltip) is
+  still not mounted in the editor; this issue mounts only the card.
 
 ```
 LOOP CHECKS  ✓ acyclic except declared gate loop · ✓ routes resolve

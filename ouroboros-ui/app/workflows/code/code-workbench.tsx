@@ -14,7 +14,13 @@ import {
 } from "react";
 
 import type { Reading } from "@/app/api/reading";
-import type { CodeDiagnostic, WorkflowCode, WorkflowCodeConfig, WorkflowCodeTree } from "@/app/api/workflows";
+import type {
+  CodeDiagnostic,
+  CodeSymbol,
+  WorkflowCode,
+  WorkflowCodeConfig,
+  WorkflowCodeTree,
+} from "@/app/api/workflows";
 import { workflowCodePath } from "@/app/paths";
 import { Card, Chip, EmptyState, cx } from "@/app/ui";
 
@@ -23,6 +29,8 @@ import { useUnsavedBuffer } from "../mode-guard";
 import { saveCode } from "./code-actions";
 import type { AnchoredDiagnostics, RevealRequest } from "./code-diagnostics";
 import { CodeEditor } from "./code-editor";
+import { type AnchoredOutline, type OutlineRow, outlineRows, stageReveal } from "./code-panel";
+import { CodePanel, CodePanelToggle } from "./code-panel-view";
 import { type CodeSaveStatus, codeSaveNote, isSaveKey } from "./code-save";
 import { ConflictDialog, DiagnosticsStrip, DivergedPanel, SaveFailedBanner } from "./code-save-surfaces";
 import { codeSessionStore, useCodeSession } from "./code-session";
@@ -59,6 +67,7 @@ import {
   NOTHING_OPEN_NOTE,
   NOTHING_OPEN_TITLE,
   PAUSED_NOTE,
+  type PanelReadings,
   READ_ONLY_BADGE,
   TABS_LABEL,
   TREE_FAILED_TITLE,
@@ -70,6 +79,8 @@ import {
   slugOfPath,
   workflowFilePath,
 } from "./code-view";
+import { hoverAt } from "./hover";
+import { indexSymbols } from "./symbols";
 import { type SaveCodeCall, useCodeSave } from "./use-code-save";
 
 import "./code-workbench.css";
@@ -120,6 +131,13 @@ import "./code-workbench.css";
  * fresh read over a buffer typed on a draft that has since moved is **diverged** (`isDiverged`): nothing
  * saves it until the person chooses, with the difference open in front of them.
  *
+ * ### The right panel (V.5, [#173](https://github.com/NobuData/ouroboros/issues/173))
+ *
+ * Beside the route's file, while its tab is open: Loop Checks, the Types card for the symbol at the
+ * editor's cursor, and the outline (`code-panel-view.tsx`). The outline is the file's span map, kept
+ * with the text it was counted in — the read's, then each save's — so a jump is placed in the text on
+ * screen the way a diagnostic is. Below 1000px the panel is hidden, and a toggle over the file shows it.
+ *
  * ### The keyboard
  *
  * The tree is the WAI-ARIA tree pattern (arrows, Home, End, Enter). The strip is the tabs pattern:
@@ -150,6 +168,14 @@ export interface CodeWorkbenchProps {
   readonly seat: ReactNode;
   /** The save. Defaults to the `saveCode` Server Action; a suite passes a stand-in. */
   readonly save?: SaveCodeCall;
+  /** The right panel's reads, or `null` (the default) for a route with no file to explain. */
+  readonly panel?: PanelReadings | null;
+}
+
+/** Where the editor's cursor is, with the text it is in. */
+interface Cursor {
+  readonly text: string;
+  readonly pos: number;
 }
 
 /** A conflict waiting for an answer, and when it was found. */
@@ -173,6 +199,7 @@ export function CodeWorkbench({
   editable,
   seat,
   save = saveCode,
+  panel = null,
 }: CodeWorkbenchProps) {
   const router = useRouter();
   const ids = useId();
@@ -193,6 +220,17 @@ export function CodeWorkbench({
   // The draft's etag as this page last knew it: the read's, then each save's. A first edit's buffer is
   // typed under it, and a buffer typed under anything else over other text is diverged.
   const [etag, setEtag] = useState(readEtag);
+  // The outline's span map and the text it counts — the read's, then each save's (V.5).
+  const [outline, setOutline] = useState<AnchoredOutline | null>(
+    file === null ? null : { anchor: file.text, spans: file.spans },
+  );
+  const [cursor, setCursor] = useState<Cursor | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  const symbolIndex = useMemo(() => (panel?.symbols.ok === true ? indexSymbols(panel.symbols.value) : null), [panel]);
+  const stages = useMemo(() => (outline === null ? [] : outlineRows(outline)), [outline]);
+  const cursorSymbol: CodeSymbol | null =
+    symbolIndex === null || cursor === null ? null : (hoverAt(symbolIndex, cursor.text, cursor.pos)?.symbol ?? null);
 
   // Decided from the session on every render rather than held: it ends by itself when the buffer is
   // dropped or measured from the draft as it is now, and this page's own saves move `etag` with the buffer.
@@ -207,6 +245,7 @@ export function CodeWorkbench({
     save,
     onSaved: (saved, sent) => {
       setEtag(saved.etag);
+      setOutline({ anchor: saved.text, spans: saved.spans });
       if (file !== null) store.update((current) => markSaved(current, file.path, sent, saved.etag));
       setDiagnostics(null);
     },
@@ -325,6 +364,15 @@ export function CodeWorkbench({
     if (diagnostics !== null) setReveal({ anchor: diagnostics.anchor, range: item.range });
   }
 
+  /**
+   * Put the cursor on an outline row's stage.
+   *
+   * @param row The row.
+   */
+  function jumpToStage(row: OutlineRow): void {
+    if (outline !== null) setReveal(stageReveal(outline, row));
+  }
+
   /** *Reload theirs*: drop the buffer, and read the draft again when the loop stopped on a conflict. */
   function reloadTheirs(): void {
     if (file === null) return;
@@ -371,8 +419,11 @@ export function CodeWorkbench({
   }
 
   const panelId = `${ids}-panel`;
+  const rightPanelId = `${ids}-right-panel`;
   const tabId = (index: number) => `${ids}-tab-${index}`;
   const activeIndex = session.active === null ? -1 : session.tabs.indexOf(session.active);
+  // The panel explains the route's file, so it stands only while that file is in the pane.
+  const showPanel = panel !== null && file !== null && session.active === routePath;
 
   const route =
     file === null ? (
@@ -383,6 +434,7 @@ export function CodeWorkbench({
         diverged={writable && diverged}
         editable={editable}
         file={file}
+        onCursor={(pos, text) => setCursor({ pos, text })}
         onEdit={edit}
         onReloadTheirs={reloadTheirs}
         onRetry={() => void flush()}
@@ -391,6 +443,15 @@ export function CodeWorkbench({
         reveal={reveal}
         status={saving.status}
         text={editable ? bufferText(session, file.path, file.text) : file.text}
+        toggle={
+          showPanel ? (
+            <CodePanelToggle
+              controls={rightPanelId}
+              onToggle={() => setPanelOpen((current) => !current)}
+              open={panelOpen}
+            />
+          ) : null
+        }
       />
     );
 
@@ -422,6 +483,18 @@ export function CodeWorkbench({
             />
           </div>
         </div>
+
+        {showPanel && (
+          <CodePanel
+            etag={etag}
+            id={rightPanelId}
+            onJump={jumpToStage}
+            open={panelOpen}
+            outline={stages}
+            readings={panel}
+            symbol={cursorSymbol}
+          />
+        )}
       </div>
 
       <ConflictDialog
@@ -802,6 +875,8 @@ function Pane({
  * @param props.onRetry Try a failed write again now.
  * @param props.onSaveMine Write the buffer over the draft as it is now.
  * @param props.onReloadTheirs Drop the buffer.
+ * @param props.onCursor Hear where the editor's cursor is.
+ * @param props.toggle The narrow viewport's right-panel toggle, or `null` when there is no panel.
  * @returns The pane's content.
  */
 function RouteFile({
@@ -817,6 +892,8 @@ function RouteFile({
   onRetry,
   onSaveMine,
   onReloadTheirs,
+  onCursor,
+  toggle,
 }: Readonly<{
   file: WorkflowCode;
   editable: boolean;
@@ -830,9 +907,12 @@ function RouteFile({
   onRetry: () => void;
   onSaveMine: () => void;
   onReloadTheirs: () => void;
+  onCursor: (pos: number, text: string) => void;
+  toggle: ReactNode;
 }>) {
   return (
     <>
+      {toggle}
       <p className="code-workbench__meta">
         {fileSource(file)} · {editable ? codeSaveNote(status, diverged) : FILE_READ_ONLY_NOTE}
       </p>
@@ -849,6 +929,7 @@ function RouteFile({
         key={file.path}
         label={file.path}
         onChange={editable ? onEdit : undefined}
+        onCursor={onCursor}
         readOnly={!editable}
         reveal={reveal}
         text={text}

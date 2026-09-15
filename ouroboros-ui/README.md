@@ -3197,13 +3197,58 @@ write on a fake clock. `dry-run-sheet.test.tsx` holds both branches and the loop
 `publish`, `dry-run` and `draft-actions` are unit suites, and `flows-styles.test.ts` holds the sheet's
 placement.
 
+### The right panel — checks, types, outline
+
+V.5 ([#173](https://github.com/NobuData/ouroboros/issues/173)) is mockup 05's `.rp`, beside the
+route's file while its tab is open. Every decision is in
+[`code-panel.ts`](app/workflows/code/code-panel.ts); the drawing is
+[`code-panel-view.tsx`](app/workflows/code/code-panel-view.tsx) and
+[`code-panel.css`](app/workflows/code/code-panel.css).
+
+```
+┌ LOOP CHECKS ─────────────────────────────┐
+│ ✓ Graph acyclic except declared gate loop │   GET …/{slug}/code/checks (W.2)
+│ ✓ All task routes resolve                 │
+│     models configured for analyze · …     │   no infra row (C7)
+├ TYPES ───────────────────────────────────┤
+│ route.task(name: TaskKind): ModelRoute    │   hoverAt(table, text, cursor) — or nothing
+├ OUTLINE ─────────────────────────────────┤
+│ 07 ▸ implement                            │   the file's spans, node order
+│ 11 ⟲ checks-green       back-edge → 07    │   onFail at the option depth
+└──────────────────────────────────────────┘   click a row ─▶ the editor's cursor on that call
+```
+
+**The route reads it beside the file.** `code-data.ts` asks `workflows.codeChecks(slug)` and
+`workflows.codeSymbols()` in parallel with the file, and each is its own degraded region: refused
+checks say why in place of the rows, and a refused table draws a sentence instead of a card.
+
+**Nothing is drawn that was not observed.** Only the row ids the panel knows (`graph`, `references`)
+are drawn, so mockup 05's *pool-a has 1 runner offline* cannot appear, even from a service that sent
+it (decision **C7**). The Types card is the table's card for the symbol at the cursor, and nothing for
+a word the table does not describe. Rows derived before a save say they predate it.
+
+**The outline is the span map, and its jump is a diagnostic's.** One row per stage call, numbered
+from `01` in node order. A call that declares `onFail` two spaces deeper than itself is the `⟲` row,
+in the accent, noted with the rows its loop edges return to. The span map is kept with the text it
+counts, the read's and then each save's, and a row's jump goes through `CodeEditor`'s `reveal`, so it
+lands on the call's line after lines are typed above it, and in a member's read-only editor too.
+
+**Below 1000px** the panel hides, as the mockup's media rule does. A **Checks & outline** disclosure
+button over the file shows it again as a row under the editor.
+
+The suites run on the golden files: `code-panel.test.ts` (decisions, with the printer's
+`standard-fix.loop.ts` and `spans.json`), `code-panel-view.test.tsx` (the drawing, C7 against the
+mockup's own row, both palettes), `code-panel-flow.test.tsx` (the whole page: the cursor, the jumps,
+the toggle) and `code-panel-styles.test.ts` (the sheet).
+
 ### Code intelligence — completions and hover docs
 
 The code editor itself is V.2's ([#170](https://github.com/NobuData/ouroboros/issues/170),
 [above](#the-editor-is-codemirror-6-and-that-is-a-recorded-exception)). What W.1
 ([#177](https://github.com/NobuData/ouroboros/issues/177)) ships is the intelligence that editor
-is built to mount, in [`app/workflows/code/`](app/workflows/code). It is not mounted yet, because no
-page reads the symbol table:
+is built to mount, in [`app/workflows/code/`](app/workflows/code). The code route now reads the
+symbol table for the right panel's Types card ([below](#the-right-panel--checks-types-outline)), but
+the editor extension itself is not mounted yet:
 
 ```ts
 const table = await workflows.codeSymbols();           // server-side, passed to the editor's client component
