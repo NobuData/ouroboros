@@ -142,6 +142,8 @@ export function CodeScreen({
           file={state.kind === "populated" ? state.file : null}
           // A fresh read of the file — a new etag — starts a fresh save loop over it (V.4, #172).
           key={state.kind === "populated" ? `${state.file.path}\n${state.file.etag}` : state.kind}
+          // The right panel (V.5, #173) is about the file in the pane, so only a file that opened has one.
+          panel={state.kind === "populated" ? readings.panel : null}
           scope={workspace.id}
           seat={<RouteSeat state={state} />}
           slug={state.kind === "missing" ? null : state.entry.slug}

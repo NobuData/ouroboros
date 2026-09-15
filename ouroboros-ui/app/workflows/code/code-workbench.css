@@ -274,9 +274,16 @@
 
 /* ---------- narrow panes ---------- */
 
-/* Mockup 05 hides the explorer below 1000px; the strip still reaches every open file. */
+/*
+ * Mockup 05 hides the explorer below 1000px; the strip still reaches every open file. The body wraps
+ * there, so the right panel its toggle shows (code-panel.css) takes a row of its own under the editor.
+ */
 @media (max-width: 62.5rem) {
   .code-tree {
     display: none;
+  }
+
+  .code-workbench__body {
+    flex-wrap: wrap;
   }
 }

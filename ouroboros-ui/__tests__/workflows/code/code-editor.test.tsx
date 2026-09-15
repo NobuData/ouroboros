@@ -321,7 +321,7 @@ describe("a refused save's diagnostics (V.4, #172)", () => {
     expect(document.activeElement).toBe(view.contentDOM);
   });
 
-  it("acts on each jump request once, and on none in the read-only variant", () => {
+  it("acts on each jump request once", () => {
     const reveal = { anchor: TYPO, range: RANGE };
     const { container, rerender } = render(<CodeEditor label={PATH} reveal={reveal} text={TYPO} />);
     const view = viewIn(container);
@@ -329,9 +329,50 @@ describe("a refused save's diagnostics (V.4, #172)", () => {
     view.dispatch({ selection: { anchor: 0 } });
     rerender(<CodeEditor label={PATH} reveal={reveal} text={TYPO} />);
     expect(view.state.selection.main.from).toBe(0);
+  });
 
-    const readOnly = render(<CodeEditor label={PATH} readOnly reveal={{ anchor: TYPO, range: RANGE }} text={TYPO} />);
-    expect(viewIn(readOnly.container).state.selection.main.from).toBe(0);
+  it("jumps in the read-only variant too, so a reader who may not type can reach a stage (V.5)", () => {
+    const { container } = render(<CodeEditor label={PATH} readOnly reveal={{ anchor: TYPO, range: RANGE }} text={TYPO} />);
+    const view = viewIn(container);
+
+    expect(view.state.selection.main.from).toBe(OFFSET);
+    expect(document.activeElement).toBe(view.contentDOM);
+  });
+});
+
+describe("the cursor (V.5, #173)", () => {
+  it("reports where the cursor moves, with the whole document", () => {
+    const onCursor = vi.fn();
+    const { container } = render(<CodeEditor label={PATH} onCursor={onCursor} text={GOLDEN} />);
+
+    viewIn(container).dispatch({ selection: { anchor: 42 } });
+
+    expect(onCursor).toHaveBeenLastCalledWith(42, GOLDEN);
+  });
+
+  it("reports the cursor after typing, with the typed document", () => {
+    const onCursor = vi.fn();
+    const { container } = render(<CodeEditor label={PATH} onCursor={onCursor} text={STANDARD_FIX_TEXT} />);
+
+    viewIn(container).dispatch({ changes: { from: 0, insert: "// a\n" }, selection: { anchor: 5 } });
+
+    expect(onCursor).toHaveBeenLastCalledWith(5, `// a\n${STANDARD_FIX_TEXT}`);
+  });
+
+  it("reports in the read-only variant, where the cursor still moves", () => {
+    const onCursor = vi.fn();
+    const { container } = render(<CodeEditor label={PATH} onCursor={onCursor} readOnly text={GOLDEN} />);
+
+    viewIn(container).dispatch({ selection: { anchor: 7 } });
+
+    expect(onCursor).toHaveBeenLastCalledWith(7, GOLDEN);
+  });
+
+  it("reports nothing until the cursor moves or the text changes", () => {
+    const onCursor = vi.fn();
+    render(<CodeEditor label={PATH} onCursor={onCursor} text={GOLDEN} />);
+
+    expect(onCursor).not.toHaveBeenCalled();
   });
 });
 

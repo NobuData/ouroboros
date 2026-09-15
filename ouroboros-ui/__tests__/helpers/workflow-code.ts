@@ -1,11 +1,18 @@
 import type {
   WorkflowCode,
+  WorkflowCodeChecks,
   WorkflowCodeConfig,
   WorkflowCodeTree,
   WorkflowRailEntry,
 } from "@/app/api/workflows";
-import type { CodeReadings, ExplorerReadings, FileReading } from "@/app/workflows/code/code-view";
+import type {
+  CodeReadings,
+  ExplorerReadings,
+  FileReading,
+  PanelReadings,
+} from "@/app/workflows/code/code-view";
 
+import { CODE_SYMBOLS } from "./code-symbols";
 import { railEntry, seededRail, unpublishedEntry, workflowDetail } from "./workflows";
 
 /**
@@ -142,6 +149,48 @@ export function explorerReadings(
 }
 
 /**
+ * The Loop Checks W.2's `GET …/{slug}/code/checks` serves for the seeded `standard-fix` over a
+ * routing matrix that routes every task kind — mockup 05's first two rows, as `ouroboros-rest`'s
+ * `code.checks.spec.ts` derives them, and no third (decision C7).
+ *
+ * @param overrides What this case is about.
+ * @returns The checks, carrying the draft's etag.
+ */
+export function codeChecks(overrides: Partial<WorkflowCodeChecks> = {}): WorkflowCodeChecks {
+  return {
+    path: "workflows/standard-fix.loop.ts",
+    slug: "standard-fix",
+    etag: workflowDetail().draft.etag,
+    readOnly: false,
+    version: null,
+    rows: [
+      { id: "graph", status: "ok", title: "Graph acyclic except declared gate loop" },
+      {
+        id: "references",
+        status: "ok",
+        title: "All task routes resolve",
+        note: "models configured for analyze · plan · split · implement · review",
+      },
+    ],
+    ...overrides,
+  };
+}
+
+/**
+ * The right panel's two reads, both clean: {@link codeChecks} and the golden symbol table.
+ *
+ * @param overrides What this case is about.
+ * @returns The readings.
+ */
+export function panelReadings(overrides: Partial<PanelReadings> = {}): PanelReadings {
+  return {
+    checks: { ok: true, value: codeChecks() },
+    symbols: { ok: true, value: CODE_SYMBOLS },
+    ...overrides,
+  };
+}
+
+/**
  * A file read cleanly.
  *
  * @param file The file. Defaults to the seeded `standard-fix`'s.
@@ -167,6 +216,7 @@ export function codeReadingsFor(entry: WorkflowRailEntry, file: FileReading): Co
     requested: entry.slug,
     selected: { entry, file },
     explorer: explorerReadings({}, value),
+    panel: panelReadings(),
   };
 }
 
@@ -182,6 +232,7 @@ export function codeReadings(overrides: Partial<CodeReadings> = {}): CodeReading
     requested: "standard-fix",
     selected: { entry: railEntry(), file: fileRead() },
     explorer: explorerReadings(),
+    panel: panelReadings(),
     ...overrides,
   };
 }

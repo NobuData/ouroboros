@@ -44,6 +44,7 @@ import {
   type CodeReadings,
   type ExplorerReadings,
   type FileReading,
+  type PanelReadings,
   readFindings,
 } from "./code-view";
 
@@ -89,7 +90,29 @@ async function readExplorer(): Promise<ExplorerReadings> {
 }
 
 /**
- * Read the code route: the rail, the file of the workflow the URL names, and the explorer.
+ * Read the right panel (V.5, [#173](https://github.com/NobuData/ouroboros/issues/173)): the
+ * workflow's Loop Checks and the code symbol table, in parallel, each kept as its own reading.
+ *
+ * @param slug The workflow's slug, resolved against the rail by the caller.
+ * @returns Both readings.
+ * @throws Whatever is not an `ApiError`.
+ */
+async function readPanel(slug: string): Promise<PanelReadings> {
+  const [checks, symbols] = await Promise.all([
+    attempt(async () => workflows.codeChecks(slug)),
+    attempt(async () => workflows.codeSymbols()),
+  ]);
+
+  return { checks, symbols };
+}
+
+/**
+ * Read the code route: the rail, the file of the workflow the URL names, the explorer, and the
+ * right panel.
+ *
+ * The panel is read beside the file rather than after it, so it adds no round trip. For a file that
+ * turns out unprojectable or refused, its readings go unused — the screen draws a panel only beside
+ * a file it could open.
  *
  * @param access The workspace the gate returned — a precondition made visible in the type, for
  *   the reason `readStudio` gives, and not read.
@@ -103,13 +126,14 @@ export async function readStudioCode(access: Workspace, slug: string): Promise<C
 
   const rail = await attempt(async () => workflows.list());
   if (!rail.ok || rail.value.length === 0) {
-    return { rail, requested: slug, selected: null, explorer: null };
+    return { rail, requested: slug, selected: null, explorer: null, panel: null };
   }
 
   const entry = rail.value.find((candidate) => candidate.slug === slug);
-  const [explorer, file] = await Promise.all([
+  const [explorer, file, panel] = await Promise.all([
     readExplorer(),
     entry === undefined ? null : readFile(entry.slug),
+    entry === undefined ? null : readPanel(entry.slug),
   ]);
 
   return {
@@ -117,5 +141,6 @@ export async function readStudioCode(access: Workspace, slug: string): Promise<C
     requested: slug,
     selected: entry === undefined || file === null ? null : { entry, file },
     explorer,
+    panel,
   };
 }
