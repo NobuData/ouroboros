@@ -16,20 +16,29 @@ import {
   CODE_SEAT_NOTHING_TITLE,
   CODE_SEAT_UNREAD_NOTE,
   CODE_SUBLINE,
+  CONFIG_FILE_PATH,
+  EXPLORER_UNREAD_REASON,
   FILE_READ_ONLY_NOTE,
   FILE_UNSAVED_NOTE,
+  UNREAD_EXPLORER,
   VALIDATE_SOON,
+  WORKFLOW_FILE_DIRECTORY,
+  baseName,
+  closeTabLabel,
   codeEntry,
   codeHead,
   codeMissingSubline,
   codeSeatCopy,
   codeState,
+  explorerHead,
   fileEditNote,
   fileEditable,
   fileName,
   fileSource,
   findingLine,
   readFindings,
+  slugOfPath,
+  workflowFilePath,
 } from "@/app/workflows/code/code-view";
 
 import {
@@ -44,6 +53,56 @@ import { railEntry, unpublishedEntry } from "../../helpers/workflows";
  * The code route's decisions (V.1, #169): which state two reads put the page in, what mockup
  * 05's head says in each, and how the file is laid out as lines.
  */
+
+describe("the virtual project's paths (V.3, #171)", () => {
+  it("places a workflow's file where U.3 serves it", () => {
+    expect(workflowFilePath("standard-fix")).toBe("workflows/standard-fix.loop.ts");
+    expect(workflowFilePath("hotfix-p0")).toBe(`${WORKFLOW_FILE_DIRECTORY}/${fileName("hotfix-p0")}`);
+  });
+
+  it("reads a workflow's slug back out of its file's path", () => {
+    for (const slug of ["standard-fix", "feature-loop", "hotfix-p0", "a"]) {
+      expect(slugOfPath(workflowFilePath(slug))).toBe(slug);
+    }
+  });
+
+  it("reads no slug out of anything that is not exactly one workflow's file", () => {
+    for (const path of [
+      CONFIG_FILE_PATH,
+      "workflows/.loop.ts",
+      "workflows/nested/deeper.loop.ts",
+      "workflows/standard-fix.ts",
+      "skills/repo-map.skill.md",
+      "other/standard-fix.loop.ts",
+      "workflows.loop.ts",
+      "",
+    ]) {
+      expect(slugOfPath(path)).toBeNull();
+    }
+  });
+
+  it("prints a path's last segment, and a top-level path whole", () => {
+    expect(baseName("workflows/standard-fix.loop.ts")).toBe("standard-fix.loop.ts");
+    expect(baseName("a/b/c.ts")).toBe("c.ts");
+    expect(baseName(CONFIG_FILE_PATH)).toBe("ouroboros.config.ts");
+  });
+
+  it("heads the explorer with the workspace, and without a dangling separator when it has no name", () => {
+    expect(explorerHead("Acme Robotics")).toBe("Explorer · Acme Robotics");
+    expect(explorerHead("")).toBe("Explorer");
+  });
+
+  it("names a tab's close button after its file", () => {
+    expect(closeTabLabel("workflows/hotfix-p0.loop.ts")).toBe("Close hotfix-p0.loop.ts");
+  });
+
+  it("stands an explorer that was never read in as two refused reads, each with its reason", () => {
+    expect(UNREAD_EXPLORER).toEqual({
+      tree: { ok: false, reason: EXPLORER_UNREAD_REASON },
+      config: { ok: false, reason: EXPLORER_UNREAD_REASON },
+    });
+  });
+});
 
 describe("codeState", () => {
   it("is populated when the rail and the file both answered", () => {

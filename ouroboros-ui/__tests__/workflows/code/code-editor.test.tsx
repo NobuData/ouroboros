@@ -3,7 +3,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { render } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { CodeEditor } from "@/app/workflows/code/code-editor";
 import { CARET_BLINK_MS, editorExtensions } from "@/app/workflows/code/code-editor-extensions";
@@ -135,11 +135,14 @@ describe("the read-only variant", () => {
 });
 
 describe("its lifetime", () => {
-  it("rebuilds over a new text, and over a change of variant", () => {
+  it("takes a new text in place, outside the undo history, and rebuilds over a change of variant", () => {
     const { container, rerender } = render(<CodeEditor label={PATH} text={STANDARD_FIX_TEXT} />);
+    const before = viewIn(container);
 
     rerender(<CodeEditor label={PATH} text={GOLDEN} />);
+    expect(viewIn(container)).toBe(before);
     expect(viewIn(container).state.doc.toString()).toBe(GOLDEN);
+    expect(undo(viewIn(container))).toBe(false);
     expect(container.querySelectorAll(".cm-editor")).toHaveLength(1);
 
     rerender(<CodeEditor label={PATH} readOnly text={GOLDEN} />);
@@ -156,6 +159,66 @@ describe("its lifetime", () => {
 
     expect(dom.isConnected).toBe(false);
     expect(document.querySelector(".cm-editor")).toBeNull();
+  });
+});
+
+describe("reporting edits (V.3, #171)", () => {
+  it("hears every edit made in the editor, with the whole document", () => {
+    const onChange = vi.fn();
+    const { container } = render(<CodeEditor label={PATH} onChange={onChange} text={STANDARD_FIX_TEXT} />);
+
+    viewIn(container).dispatch({ changes: { from: 0, insert: "// a\n" }, userEvent: "input.type" });
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(`// a\n${STANDARD_FIX_TEXT}`);
+  });
+
+  it("does not echo a text the parent put in, and does not rebuild when fed its own edit back", () => {
+    const onChange = vi.fn();
+    const { container, rerender } = render(<CodeEditor label={PATH} onChange={onChange} text={STANDARD_FIX_TEXT} />);
+    const view = viewIn(container);
+
+    rerender(<CodeEditor label={PATH} onChange={onChange} text={GOLDEN} />);
+    expect(onChange).not.toHaveBeenCalled();
+
+    view.dispatch({ changes: { from: 0, insert: "x" }, userEvent: "input.type" });
+    const edited = view.state.doc.toString();
+    rerender(<CodeEditor label={PATH} onChange={onChange} text={edited} />);
+
+    expect(viewIn(container)).toBe(view);
+    expect(view.state.doc.toString()).toBe(edited);
+    expect(onChange).toHaveBeenCalledOnce();
+    // The edit is still the person's to undo.
+    expect(undo(view)).toBe(true);
+    expect(view.state.doc.toString()).toBe(GOLDEN);
+  });
+
+  it("reports to the latest listener without rebuilding", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { container, rerender } = render(<CodeEditor label={PATH} onChange={first} text={GOLDEN} />);
+    const view = viewIn(container);
+
+    rerender(<CodeEditor label={PATH} onChange={second} text={GOLDEN} />);
+    view.dispatch({ changes: { from: 0, insert: "x" } });
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledOnce();
+    expect(viewIn(container)).toBe(view);
+  });
+
+  it("builds a new variant over the latest text", () => {
+    const { container, rerender } = render(<CodeEditor label={PATH} text={STANDARD_FIX_TEXT} />);
+
+    rerender(<CodeEditor label={PATH} text={GOLDEN} />);
+    rerender(<CodeEditor label={PATH} readOnly text={GOLDEN} />);
+
+    expect(viewIn(container).state.doc.toString()).toBe(GOLDEN);
+  });
+
+  it("reports nothing, and fails nothing, with no listener", () => {
+    const { container } = render(<CodeEditor label={PATH} text={GOLDEN} />);
+
+    expect(() => viewIn(container).dispatch({ changes: { from: 0, insert: "x" } })).not.toThrow();
   });
 });
 

@@ -129,6 +129,19 @@ export type CodeSignaturePart = components["schemas"]["WorkflowCodeSignaturePart
 export type WorkflowCode = components["schemas"]["WorkflowCode"];
 
 /**
+ * The code view's explorer — U.3's `GET /api/v1/workflows/code-tree`: every file the virtual
+ * project has, and nothing it does not (decision **C6**). **Directories are not entries**; a client
+ * groups the files by the directory in their `path`, so an empty directory cannot be drawn.
+ */
+export type WorkflowCodeTree = components["schemas"]["WorkflowCodeTree"];
+
+/** One file of the explorer: a workflow's `.loop.ts`, or `ouroboros.config.ts`. */
+export type WorkflowCodeTreeFile = components["schemas"]["WorkflowCodeTreeFile"];
+
+/** `ouroboros.config.ts` — read-only, printed from the registry on every read, stored nowhere. */
+export type WorkflowCodeConfig = components["schemas"]["WorkflowCodeConfig"];
+
+/**
  * The stage catalog — R.3 ([#145](https://github.com/NobuData/ouroboros/issues/145)): every node
  * type the published DSL schema declares, each with its glyph, its config JSON Schema and its
  * defaults, and this workspace's advisory suggestions (skill names, task routes).
@@ -245,5 +258,31 @@ export const workflows = {
     // its `$Write` marker). The contract serves it and it is always `null`, so it is restored
     // here rather than widening a type every caller reads.
     return { ...file, outlineRef: null };
+  },
+
+  /**
+   * The explorer — the code view's file list (V.3,
+   * [#171](https://github.com/NobuData/ouroboros/issues/171)).
+   *
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns One `workflows/<slug>.loop.ts` per workflow on the rail, in the rail's order, then
+   *   `ouroboros.config.ts`.
+   * @throws {ApiError} What the service answered.
+   */
+  async tree(client: ApiClient = api()): Promise<WorkflowCodeTree> {
+    return unwrap(await client.GET("/api/v1/workflows/code-tree", {}));
+  },
+
+  /**
+   * `ouroboros.config.ts`, as the code view opens it (V.3,
+   * [#171](https://github.com/NobuData/ouroboros/issues/171)).
+   *
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The file, always `readOnly: true` — a save is refused with a `405`, so nothing here
+   *   offers one.
+   * @throws {ApiError} What the service answered.
+   */
+  async config(client: ApiClient = api()): Promise<WorkflowCodeConfig> {
+    return unwrap(await client.GET("/api/v1/workflows/code-config", {}));
   },
 };

@@ -42,6 +42,7 @@ export default async function Page({
       mayAdminister={mayAdminister(access.membership.roles)}
       readings={readings}
       role={primaryRole(access.membership.roles)}
+      workspace={{ id: access.membership.id, name: access.membership.name }}
     />
   );
 }

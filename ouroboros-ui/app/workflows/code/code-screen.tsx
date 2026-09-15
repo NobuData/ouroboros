@@ -1,7 +1,7 @@
 import type { Role } from "@/app/api/membership";
-import type { WorkflowCode, WorkflowRailEntry } from "@/app/api/workflows";
+import type { WorkflowRailEntry } from "@/app/api/workflows";
 import { workflowPath } from "@/app/paths";
-import { Button, Card, CardHead, EmptyState } from "@/app/ui";
+import { Button, Card, EmptyState } from "@/app/ui";
 
 import { RAIL_FAILED_HEADLINE } from "../states";
 import { StudioFailedBanner } from "../studio-banner";
@@ -13,28 +13,26 @@ import {
   type CodeFinding,
   type CodeReadings,
   type CodeSeatState,
-  FILE_LABEL,
+  type CodeState,
   UNPROJECTABLE_ACTION,
   UNPROJECTABLE_TITLE,
+  UNREAD_EXPLORER,
   VALIDATE_LABEL,
   VALIDATE_SOON,
   codeEntry,
   codeHead,
   codeSeatCopy,
   codeState,
-  fileEditNote,
   fileEditable,
-  fileSource,
   findingLine,
 } from "./code-view";
-import { CodeEditor } from "./code-editor";
+import { CodeWorkbench } from "./code-workbench";
 
 import "./code-view.css";
 
 /**
  * The workflow studio's code view (V.1, [#169](https://github.com/NobuData/ouroboros/issues/169))
- * — `docs/mockups/05-workflow-code.html`'s page head and segmented control, over the workflow's
- * file.
+ * — `docs/mockups/05-workflow-code.html`'s page head and segmented control, over the workbench.
  *
  * It shares the visual editor's frame (`app/workflows/studio-frame.tsx`), so the two editors are
  * one surface with two tabs: the same eyebrow, the same sticky tab row with **Code** marked
@@ -42,14 +40,15 @@ import "./code-view.css";
  * **Workflows** entry. What differs is the head's words — mockup 05's filename and its promise —
  * its two actions, and what sits under the control.
  *
- * ### The file is the draft, in the editor
+ * ### The file is the draft, in the workbench
  *
- * Under the control is the file U.3 prints from the draft slot both editors share (decision
- * **C3**), with where it was printed from, in the CodeMirror editor of V.2
- * ([#170](https://github.com/NobuData/ouroboros/issues/170), `code-editor.tsx`). A role that may
- * publish can type into it; a member, or anyone reading a published version, gets the read-only
- * variant. Typed changes stay in the tab, and the card says so, until the save loop of V.4
- * ([#172](https://github.com/NobuData/ouroboros/issues/172)) replaces that note.
+ * Under the control is the workbench of V.3 ([#171](https://github.com/NobuData/ouroboros/issues/171),
+ * `code-workbench.tsx`): the explorer and the tab strip around the file U.3 prints from the draft
+ * slot both editors share (decision **C3**), in the CodeMirror editor of V.2
+ * ([#170](https://github.com/NobuData/ouroboros/issues/170)). A role that may publish can type into
+ * it; a member, or anyone reading a published version, gets the read-only variant. Typed changes
+ * are kept per file for the browser session, and the pane says they are not saved, until the save
+ * loop of V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)) replaces that note.
  *
  * ### The two actions wait, and say for what
  *
@@ -63,11 +62,23 @@ import "./code-view.css";
  *
  * The same `mayAdminister` and the same read-only note as the visual editor, so a member reaches
  * this page, reads the file, and is told once what they may not do. Every state the mockup does
- * not show is decided in `code-view.ts`: a refused rail and a refused file each wear the
- * DASH-I.7 banner, an empty workspace and an unknown slug point back at the Visual tab's rail,
- * and a draft with no faithful spelling as code yet lists what the validator found and leads to
- * the visual editor where it can be finished.
+ * not show is decided in `code-view.ts`. A refused rail and an empty workspace have no files, so
+ * they draw a seat in place of the workbench; every other state keeps the workbench, so the
+ * explorer is there to leave by — a refused file wears the DASH-I.7 banner above it, an unknown
+ * slug points back at the rail, and a draft with no faithful spelling as code yet lists what the
+ * validator found and leads to the visual editor where it can be finished.
  */
+
+/** The workspace the code view is in. */
+export interface CodeWorkspace {
+  /** Its id — whose tabs and buffers the workbench keeps. */
+  readonly id: string;
+  /** Its display name — the explorer's head. */
+  readonly name: string;
+}
+
+/** The workspace a screen rendered without one is given: no name, and one shared session. */
+export const UNNAMED_WORKSPACE: CodeWorkspace = { id: "", name: "" };
 
 /** What the screen takes. */
 export interface CodeScreenProps {
@@ -80,6 +91,8 @@ export interface CodeScreenProps {
   readonly mayAdminister?: boolean;
   /** The reader's strongest role, for the read-only note's one sentence. Defaults to `viewer`. */
   readonly role?: Role;
+  /** The workspace, for the explorer's head and the session's key. Defaults to {@link UNNAMED_WORKSPACE}. */
+  readonly workspace?: CodeWorkspace;
 }
 
 /**
@@ -88,7 +101,12 @@ export interface CodeScreenProps {
  * @param props See {@link CodeScreenProps}.
  * @returns The screen.
  */
-export function CodeScreen({ readings, mayAdminister = false, role = "viewer" }: CodeScreenProps) {
+export function CodeScreen({
+  readings,
+  mayAdminister = false,
+  role = "viewer",
+  workspace = UNNAMED_WORKSPACE,
+}: CodeScreenProps) {
   const state = codeState(readings);
   const head = codeHead(state);
   const entry = codeEntry(state);
@@ -113,11 +131,21 @@ export function CodeScreen({ readings, mayAdminister = false, role = "viewer" }:
         <StudioFailedBanner headline={CODE_FAILED_HEADLINE} reason={state.reason} />
       )}
 
-      {state.kind === "populated" && <CodeFile file={state.file} mayAdminister={mayAdminister} />}
-      {state.kind === "unprojectable" && (
-        <Unprojectable findings={state.findings} reason={state.reason} slug={state.entry.slug} />
+      {state.kind === "failed" || state.kind === "empty" ? (
+        <Card className="code-view__seat" fill>
+          <SeatBody state={state} />
+        </Card>
+      ) : (
+        <CodeWorkbench
+          editable={state.kind === "populated" && fileEditable(state.file, mayAdminister)}
+          explorer={readings.explorer ?? UNREAD_EXPLORER}
+          file={state.kind === "populated" ? state.file : null}
+          scope={workspace.id}
+          seat={<RouteSeat state={state} />}
+          slug={state.kind === "missing" ? null : state.entry.slug}
+          workspaceName={workspace.name}
+        />
       )}
-      {state.kind !== "populated" && state.kind !== "unprojectable" && <Seat state={state} />}
     </StudioFrame>
   );
 }
@@ -148,34 +176,21 @@ function Actions({
 }
 
 /**
- * The file: its path, where it was printed from and whether it can be typed into, then the
- * editor over its text.
+ * What the workbench's pane shows for the route when it has no file to open.
  *
- * The editor scrolls inside itself, so a long line never widens the pane (§ 1.3), and its
- * editable region is named by the file's path.
- *
- * @param props.file The file.
- * @param props.mayAdminister Whether the reader's role may publish.
- * @returns The card.
+ * @param props.state A state that draws the workbench.
+ * @returns The unprojectable draft's guidance, the seat for a refused or missing file, or nothing
+ *   for a file that was read.
  */
-function CodeFile({ file, mayAdminister }: Readonly<{ file: WorkflowCode; mayAdminister: boolean }>) {
-  const editable = fileEditable(file, mayAdminister);
-
-  return (
-    <Card aria-label={FILE_LABEL} as="section">
-      <CardHead
-        className="code-view__head"
-        title={<code className="code-view__path">{file.path}</code>}
-        trailing={
-          <span className="code-view__meta">
-            {fileSource(file)} · {fileEditNote(editable)}
-          </span>
-        }
-      />
-
-      <CodeEditor label={file.path} readOnly={!editable} text={file.text} />
-    </Card>
-  );
+function RouteSeat({ state }: Readonly<{ state: Exclude<CodeState, { kind: "failed" | "empty" }> }>) {
+  switch (state.kind) {
+    case "populated":
+      return null;
+    case "unprojectable":
+      return <Unprojectable findings={state.findings} reason={state.reason} slug={state.entry.slug} />;
+    default:
+      return <SeatBody state={state} />;
+  }
 }
 
 /**
@@ -188,7 +203,7 @@ function CodeFile({ file, mayAdminister }: Readonly<{ file: WorkflowCode; mayAdm
  * @param props.slug The workflow's slug, for the link to its canvas.
  * @param props.reason The service's sentence.
  * @param props.findings What the validator reported, in its order.
- * @returns The seat.
+ * @returns The panel.
  */
 function Unprojectable({
   slug,
@@ -196,25 +211,23 @@ function Unprojectable({
   findings,
 }: Readonly<{ slug: string; reason: string; findings: readonly CodeFinding[] }>) {
   return (
-    <Card className="code-view__seat" fill>
-      <EmptyState fill note={reason} title={UNPROJECTABLE_TITLE}>
-        {findings.length > 0 && (
-          <ul className="code-view__findings">
-            {findings.map((finding, index) => (
-              // The service's order is the list's; two findings may say the same words.
-              <li className="code-view__finding" key={index}>
-                {findingLine(finding)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <div>
-          <Button href={workflowPath(slug)} tone="primary">
-            {UNPROJECTABLE_ACTION}
-          </Button>
-        </div>
-      </EmptyState>
-    </Card>
+    <EmptyState fill note={reason} title={UNPROJECTABLE_TITLE}>
+      {findings.length > 0 && (
+        <ul className="code-view__findings">
+          {findings.map((finding, index) => (
+            // The service's order is the list's; two findings may say the same words.
+            <li className="code-view__finding" key={index}>
+              {findingLine(finding)}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div>
+        <Button href={workflowPath(slug)} tone="primary">
+          {UNPROJECTABLE_ACTION}
+        </Button>
+      </div>
+    </EmptyState>
   );
 }
 
@@ -223,14 +236,10 @@ function Unprojectable({
  * blank region (§ 3.3).
  *
  * @param props.state Which state the page is in.
- * @returns The seat.
+ * @returns The panel.
  */
-function Seat({ state }: Readonly<{ state: CodeSeatState }>) {
+function SeatBody({ state }: Readonly<{ state: CodeSeatState }>) {
   const copy = codeSeatCopy(state);
 
-  return (
-    <Card className="code-view__seat" fill>
-      <EmptyState fill note={copy.note} title={copy.title} />
-    </Card>
-  );
+  return <EmptyState fill note={copy.note} title={copy.title} />;
 }

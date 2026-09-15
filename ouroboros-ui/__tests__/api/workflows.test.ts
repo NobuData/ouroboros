@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 
 import { clientAnswering } from "../helpers/api";
-import { UNPROJECTABLE_REFUSAL, workflowCode } from "../helpers/workflow-code";
+import { UNPROJECTABLE_REFUSAL, codeConfig, codeTreeFor, workflowCode } from "../helpers/workflow-code";
 import { seededRail, workflowDetail } from "../helpers/workflows";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these
@@ -270,5 +270,51 @@ describe("workflows.code", () => {
     expect((failure as ApiError).status).toBe(409);
     expect((failure as ApiError).code).toBe(WORKFLOW_CODE_UNPROJECTABLE);
     expect((failure as ApiError).details).toEqual(UNPROJECTABLE_REFUSAL.details);
+  });
+});
+
+describe("workflows.tree", () => {
+  it("reads the explorer in one request and hands back the files as served", async () => {
+    const { client, requests } = clientAnswering(codeTreeFor());
+
+    const tree = await workflows.tree(client);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/workflows/code-tree");
+    expect(requests[0]?.method).toBe("GET");
+    // Files only, in the rail's order and then the configuration — no directory is an entry (C6).
+    expect(tree).toEqual(codeTreeFor());
+  });
+
+  it("rejects with what the service answered", async () => {
+    const { client } = clientAnswering(NO_ORGANIZATION, 400);
+
+    const failure = await workflows.tree(client).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).code).toBe("organization_required");
+  });
+});
+
+describe("workflows.config", () => {
+  it("reads ouroboros.config.ts in one request, read-only as served", async () => {
+    const { client, requests } = clientAnswering(codeConfig());
+
+    const config = await workflows.config(client);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/workflows/code-config");
+    expect(requests[0]?.method).toBe("GET");
+    expect(config).toEqual(codeConfig());
+    expect(config.readOnly).toBe(true);
+  });
+
+  it("rejects with what the service answered", async () => {
+    const { client } = clientAnswering(NO_ORGANIZATION, 400);
+
+    const failure = await workflows.config(client).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).code).toBe("organization_required");
   });
 });

@@ -33,7 +33,12 @@
  */
 
 import type { Reading } from "@/app/api/reading";
-import type { WorkflowCode, WorkflowRailEntry } from "@/app/api/workflows";
+import type {
+  WorkflowCode,
+  WorkflowCodeConfig,
+  WorkflowCodeTree,
+  WorkflowRailEntry,
+} from "@/app/api/workflows";
 
 import {
   EMPTY_TITLE,
@@ -94,6 +99,23 @@ export interface CodeReadings {
   readonly requested: string;
   /** The workflow and its file, or `null` when the rail was refused, empty, or lacks the slug. */
   readonly selected: SelectedFile | null;
+  /**
+   * The explorer's two reads (V.3, [#171](https://github.com/NobuData/ouroboros/issues/171)), or
+   * `null` when the rail was refused or is empty — the two states that draw no explorer, so
+   * nothing is asked for.
+   */
+  readonly explorer: ExplorerReadings | null;
+}
+
+/**
+ * The explorer's reads: the file list and `ouroboros.config.ts`. Each is its own reading, so a
+ * refused one degrades its own region — the tree, or the configuration's pane — and nothing else.
+ */
+export interface ExplorerReadings {
+  /** The explorer's files, or why they could not be read. */
+  readonly tree: Reading<WorkflowCodeTree>;
+  /** The configuration projection, or why it could not be read. */
+  readonly config: Reading<WorkflowCodeConfig>;
 }
 
 /**
@@ -102,7 +124,7 @@ export interface CodeReadings {
  * @param value Anything.
  * @returns `true` for a non-null object that is not an array.
  */
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -190,6 +212,9 @@ export function codeEntry(state: CodeState): WorkflowRailEntry | null {
 export const CODE_SUBLINE =
   "The same loop as the visual canvas — every graph compiles to this typed DSL and back, losslessly.";
 
+/** What every workflow's file name ends with. */
+export const WORKFLOW_FILE_SUFFIX = ".loop.ts";
+
 /**
  * A workflow's file name, as the `<h1>` prints it — mockup 05's `standard-fix.loop.ts`.
  *
@@ -200,7 +225,7 @@ export const CODE_SUBLINE =
  * @returns `<slug>.loop.ts`.
  */
 export function fileName(slug: string): string {
-  return `${slug}.loop.ts`;
+  return `${slug}${WORKFLOW_FILE_SUFFIX}`;
 }
 
 /** The subline for a workspace with no workflows — the code route has no rail, so it points at Visual's. */
@@ -321,7 +346,7 @@ export function findingLine(finding: CodeFinding): string {
 
 /* ------------------------------------------------------------------ the file */
 
-/** The file card's accessible name. */
+/** The workbench's accessible name — the card holding the explorer, the tabs and the open file. */
 export const FILE_LABEL = "Workflow code";
 
 /**
@@ -374,3 +399,116 @@ export function fileSource(file: WorkflowCode): string {
     ? "Printed from the draft"
     : `Printed from ${versionWord(file.version)} · no draft open`;
 }
+
+/* ------------------------------------------------------------------ the virtual project (V.3) */
+
+/** The directory U.3 serves every workflow's file from — `workflows/standard-fix.loop.ts`. */
+export const WORKFLOW_FILE_DIRECTORY = "workflows";
+
+/**
+ * The configuration projection's path — typed as the contract's constant, so a renamed file is a
+ * build error here rather than a tab that silently never matches.
+ */
+export const CONFIG_FILE_PATH: WorkflowCodeConfig["path"] = "ouroboros.config.ts";
+
+/**
+ * Where a workflow's file sits in the virtual project.
+ *
+ * @param slug The workflow's slug.
+ * @returns `workflows/<slug>.loop.ts` — the `path` U.3 serves for it.
+ */
+export function workflowFilePath(slug: string): string {
+  return `${WORKFLOW_FILE_DIRECTORY}/${fileName(slug)}`;
+}
+
+/**
+ * The workflow a path names — {@link workflowFilePath} read backwards.
+ *
+ * @param path A path from the explorer or a tab. A tab may have come back from session storage,
+ *   so the path is not trusted.
+ * @returns The slug, or `null` for anything that is not exactly one workflow's file —
+ *   `ouroboros.config.ts`, a nested path, an empty name.
+ */
+export function slugOfPath(path: string): string | null {
+  const prefix = `${WORKFLOW_FILE_DIRECTORY}/`;
+  if (!path.startsWith(prefix) || !path.endsWith(WORKFLOW_FILE_SUFFIX)) return null;
+
+  const slug = path.slice(prefix.length, path.length - WORKFLOW_FILE_SUFFIX.length);
+  return slug === "" || slug.includes("/") ? null : slug;
+}
+
+/**
+ * A path's last segment — what a row and a tab print.
+ *
+ * @param path The path.
+ * @returns `standard-fix.loop.ts` for `workflows/standard-fix.loop.ts`; the path itself when it
+ *   has no directory.
+ */
+export function baseName(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
+/** The explorer's accessible name — mockup 05's `aria-label`. */
+export const EXPLORER_LABEL = "File explorer";
+
+/**
+ * The explorer's head — mockup 05's `Explorer · helios-firmware`.
+ *
+ * @param workspaceName The workspace's display name; empty when the screen was not told it.
+ * @returns The head, without a separator when there is no name to follow it.
+ */
+export function explorerHead(workspaceName: string): string {
+  return workspaceName === "" ? "Explorer" : `Explorer · ${workspaceName}`;
+}
+
+/** The tree's accessible name. */
+export const TREE_LABEL = "Files";
+
+/** The tab strip's accessible name. */
+export const TABS_LABEL = "Open files";
+
+/** The badge on a file no save can change — `ouroboros.config.ts`. */
+export const READ_ONLY_BADGE = "read-only";
+
+/** What a screen reader hears after a paused workflow's name, where the page draws the err-dot. */
+export const PAUSED_NOTE = "paused";
+
+/** What a screen reader hears after a tab's name, where the page draws the modified-dot. */
+export const MODIFIED_NOTE = "unsaved changes";
+
+/**
+ * A tab's close button's tooltip.
+ *
+ * @param path The tab's file.
+ * @returns `Close standard-fix.loop.ts`.
+ */
+export function closeTabLabel(path: string): string {
+  return `Close ${baseName(path)}`;
+}
+
+/** The explorer's title when the file list could not be read. */
+export const TREE_FAILED_TITLE = "The file list could not be read.";
+
+/**
+ * The reason standing in for an explorer that was never read. The route reads the explorer in
+ * every state that draws one, so this completes a type rather than naming a state a reader meets.
+ */
+export const EXPLORER_UNREAD_REASON = "The file list was not read.";
+
+/** Both explorer reads, unread — see {@link EXPLORER_UNREAD_REASON}. */
+export const UNREAD_EXPLORER: ExplorerReadings = {
+  tree: { ok: false, reason: EXPLORER_UNREAD_REASON },
+  config: { ok: false, reason: EXPLORER_UNREAD_REASON },
+};
+
+/** Where `ouroboros.config.ts` came from, and that it cannot be typed into. */
+export const CONFIG_SOURCE = "Printed from the registry · Read-only";
+
+/** The pane's title when `ouroboros.config.ts` could not be read. */
+export const CONFIG_FAILED_TITLE = "ouroboros.config.ts could not be read.";
+
+/** The pane's title when every tab is closed. */
+export const NOTHING_OPEN_TITLE = "No file open";
+
+/** …and its note. */
+export const NOTHING_OPEN_NOTE = "Every tab is closed. Open a file from the explorer.";
