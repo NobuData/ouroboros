@@ -1345,7 +1345,7 @@ dark-only).
 | CI.4 | #594 | 🟢 Done | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
 | CI.5 | #595 | 🟢 Done | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
 | CI.6 | #596 | 🟢 Done | ouroboros-ui: [CI.6] Registry states & guards | Empty org, member read-only, load/error, unbound guidance | mvp, registry, ui, design | N (after CI.2–CI.5) | Y | S | ouroboros-ui |
-| CI.7 | #597 | 🟡 Open | ouroboros-ui: [CI.7] Registry e2e leg | Parity, lifecycle, rebind BYOK, import, guards, governance, themes | mvp, registry, ui, ci | N (after CI.1–CI.6) | Y | S | ouroboros-ui, .github |
+| CI.7 | #597 | 🟢 Done | ouroboros-ui: [CI.7] Registry e2e leg | Parity, lifecycle, rebind BYOK, import, guards, governance, themes | mvp, registry, ui, ci | N (after CI.1–CI.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue CI.1 — ouroboros-ui: [CI.1] Registry route, subnav & page frame
 
@@ -1885,7 +1885,28 @@ no snapshot ─▶ same rail + tag: (simulated — live runs arrive with invocat
 
 ### Issue CI.7 — ouroboros-ui: [CI.7] Registry e2e leg
 
-> **GitHub issue:** #597 · **Status:** 🟡 Open · **Parent epic:** #577
+> **GitHub issue:** #597 · **Status:** 🟢 Done · **Parent epic:** #577
+
+> **Shipped.** Leg 14 of #56's suite, `tests/e2e/specs/registry.spec.ts` with
+> `tests/e2e/support/registry.ts`: fifteen tests, green in about 20 s against a cold stack — well
+> inside the 2.5-minute allowance. Parity asserts all eight seeded rows position by position (CH.5
+> serves them **by name**, not in the drawing's order), the inspector's schema-drawn fields and
+> guards, the why-card and run #482's chain card, and diffs the page in both palettes
+> (`registry-{light,dark}`, 1920 × 2200, asserted not to scroll). The lifecycle reads the routing
+> matrix's resolution line **before and after** the inspector's rebind; import, *bind later* →
+> **Fix in Providers →**, the switch-off confirm → a routing simulation dropping the hop, a raw pin
+> refused at **Publish**, a member's inert page, the personal workspace's guidance (CI.6's hand-off)
+> and the shell assertions complete it. Every write is restored in teardown.
+>
+> **One divergence, argued in the spec's header:** the `409` is reached through a second tab drawn
+> before the route existed, because a page that knows the reference draws **Remove** inert and there
+> is no delete to attempt. **Spot-verified at the ticket** by stubbing each layer in `rest` and
+> rebuilding: a matrix pinned to its first binding failed only the post-rebind assertion; a delete
+> guard that never refuses fell through to the foreign key's `500`; a publish gate without CH.6's
+> rewrite showed the DSL's generic sentence. With `db` stopped the leg fails naming the sign-in
+> `500` — the pair `scripts/verify-failure-modes.sh` now registers. **Not fixed here:** the full
+> suite has eight failures in other legs (code-editor ×4, issues, providers ×2, shell-nav), all
+> against product changes on `main` or this machine's Docker group; main's nightly is red too.
 
 - **Problem Statement:** The registry's promises — BYOK rebind without
   breakage, guards that block, governance that rejects — span db, services,

@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and eight amended in since:
+deployment. Five legs from the issue, and nine amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -31,6 +31,7 @@ deployment. Five legs from the issue, and eight amended in since:
 | 11 | [`specs/issues.spec.ts`](specs/issues.spec.ts) | Mockup 03 against the intake seed: a selection refused by name and then queued, with the *dashboard page* moving by exactly one row's worth; a press of **Re-estimate** that really goes through the engine and comes back as a new version the panel draws without a reload; the filter bar's address reloaded into the identical view; and the personal workspace's guidance |
 | 12 | [`specs/studio.spec.ts`](specs/studio.spec.ts) | Mockup 04's canvas as a browser draws it: the five node treatments printing the chips the seeded document's configs become, the octagonal flow nodes and the mini pill, the ouroboros edge dashed and glowing in each palette's own accent-deep, and the `.sel` ring — with the canvas diffed in both palettes; and S.6's dry run of `#485`, painting the mockup's active path in the accent in both palettes and clearing on the first edit |
 | 13 | [`specs/code-editor.spec.ts`](specs/code-editor.spec.ts) | Mockup 05's editor as a browser draws it: the seeded file in CodeMirror with every syntax colour, the current line and the glow caret on each palette's own token and none of CodeMirror's defaults; a member served the read-only variant; a long line scrolling the editor and not the pane; keystrokes that cost a fraction of a frame — with the editor diffed in both palettes |
+| 14 | [`specs/registry.spec.ts`](specs/registry.spec.ts) | Mockup 21's promises composed: an alias created, tuned and **rebound in the inspector, with the routing matrix on another page redrawing its resolution line**; a delete refused by the service's `409` to a page drawn before the route existed; an import landing a row; an orphan's **Fix in Providers →**; a switch-off that drops a hop in the next simulation; a raw model id refused at **Publish**; and a member served every control inert — with the page diffed in both palettes |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -141,6 +142,21 @@ read-only variant with nothing to type into; types a 500-character line and find
 scrolling sideways and the pane not; types two hundred keystrokes and finds no key handler that
 took a frame; and screenshot-diffs the editor, caret on line 3, in both palettes. It writes
 nothing — the save loop is V.4's.
+
+Leg 14 is [#597](https://github.com/NobuData/ouroboros/issues/597)'s — CI.7, the model registry
+roadmap's MVP gate — and its sharpest assertion crosses a page: **an alias rebound in the
+registry's inspector must change the resolution line the routing matrix draws on `/models`.** The
+line is read before the rebind and after it, so a matrix that stopped re-reading bindings goes red.
+Around it: the eight seeded rows, the inspector, the why-card and run #482's chain card at parity
+in both palettes; a delete guard proved from both sides — **Remove** inert on a page that knows the
+alias is referenced, and the service's `409` answered to a second tab drawn before the route
+existed; an import through the head's dropdown; a *bind later* alias whose **Fix in Providers →**
+lands on Providers & keys; a switch-off whose confirm names the routes that will lose a hop, and a
+simulation on the routing page that drops it; a draft pinning a raw model id refused at
+**Publish** with CH.6's finding; the personal workspace's guidance; and the page served to
+`jorge@acme-robotics.dev` with every control inert and explained. It writes more than any leg
+before it, and puts every write back in teardown: its own aliases by their `e2e-` prefix, the
+`docs` route, `local-free`'s switch and `standard-fix`'s draft (`support/registry.ts`).
 
 ## Stack
 
@@ -289,6 +305,7 @@ tests/e2e/
 │   ├── providers.ts            # what mockup 07 renders, the stub's keys, and removing what leg 10 connects
 │   ├── issues.ts               # what mockup 03 renders against the intake seed, and what each flow leaves behind (leg 11)
 │   ├── studio.ts               # what mockup 04's canvas draws for the seeded standard-fix, stage by stage (leg 12)
+│   ├── registry.ts             # what mockup 21 renders, and putting back every alias, route, switch and draft leg 14 writes
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
@@ -424,9 +441,10 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10, 11, 12 and 13's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+Legs 6, 9, 10, 11, 12, 13 and 14's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
 --update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
-`specs/issues.spec.ts`, `specs/studio.spec.ts` or `specs/code-editor.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
+`specs/issues.spec.ts`, `specs/studio.spec.ts`, `specs/code-editor.spec.ts` or
+`specs/registry.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
 
 **Leg 11 makes the fresh volume a precondition of a green run, not only of a recording.**
 Two of its writes have no undo on the API — the queue row it creates (`GET /api/v1/queue`
@@ -519,3 +537,5 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#107](https://github.com/NobuData/ouroboros/issues/107) — the recovery sweep leg 11 asks the stack to hold still
 - [#149](https://github.com/NobuData/ouroboros/issues/149) — leg 12, the studio canvas in mockup 04's visual language
 - [#154](https://github.com/NobuData/ouroboros/issues/154) — S.8, the studio leg's extension: editing, publish, the dry-run highlight, the member view
+- [#597](https://github.com/NobuData/ouroboros/issues/597) — leg 14, the model registry, and the mockup 21 roadmap's MVP gate
+- [#582](https://github.com/NobuData/ouroboros/issues/582) — the registry seed leg 14 asserts against
