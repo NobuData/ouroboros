@@ -3,14 +3,11 @@
  * that stand in for it, and its loading skeleton.
  *
  * The head and the segmented control are the studio frame's (app/workflows/workflows.css), so
- * nothing here places them. The file card is the #46 Card primitive; this sheet lays out what is
- * inside it — the path and its provenance, then the listing — in mockup 05's `.ln` treatment:
- * a faint right-aligned number column beside the line, in mono.
- *
- * CodeMirror (V.2, #170) replaces the listing and brings its own sheet; what stays is the card
- * and its head. Every colour is a token from app/tokens.css, so both themes are the token
- * sheet's, and every length that should follow the reader's font-size preference is rem or a
- * token (docs/CONVENTIONS.md § 6).
+ * nothing here places them. The file card is the #46 Card primitive; this sheet lays out its
+ * head — the path and its provenance. The editor under the head is V.2's (#170) and brings its
+ * own sheet, code-editor.css. Every colour is a token from app/tokens.css, so both themes are the
+ * token sheet's, and every length that should follow the reader's font-size preference is rem or
+ * a token (docs/CONVENTIONS.md § 6).
  */
 
 /* ---------- the file card ---------- */
@@ -33,54 +30,11 @@
   overflow-wrap: anywhere;
 }
 
-/* Where the text was printed from, and why it cannot be typed into yet. */
+/* Where the text was printed from, and whether it can be typed into. */
 .code-view__meta {
   color: var(--ink-faint);
   font-size: var(--t-2xs);
   line-height: var(--lh-body);
-}
-
-/*
- * The listing: the inset well, scrolling inside itself so a long line never widens the pane
- * (docs/DESIGN_SYSTEM_APP_SHELL.md § 1.3). A `pre` keeps each line's indentation; its block
- * margin is the user agent's and is undone.
- */
-.code-view__listing {
-  margin: 0;
-  padding: var(--sp-6) 0;
-  overflow-x: auto;
-  border-radius: var(--r-md);
-  background: var(--inset);
-  color: var(--ink-dim);
-  font-family: var(--f-mono);
-  font-size: var(--t-xs);
-  line-height: var(--lh-loose);
-}
-
-.code-view__listing:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* One line — the mockup's `.ln`: the number column, then the text. */
-.code-view__line {
-  display: flex;
-}
-
-/* The mockup's `.ln .no`: faint, right-aligned, and never selected with the text it numbers. */
-.code-view__number {
-  flex: none;
-  width: 3.5rem;
-  padding-inline-end: var(--sp-6);
-  color: var(--ink-faint);
-  text-align: right;
-  user-select: none;
-}
-
-/* The mockup's `.ln .tx`: the line as printed, whitespace kept. */
-.code-view__text {
-  padding-inline-end: var(--sp-8);
-  white-space: pre;
 }
 
 /* ---------- the seats ---------- */

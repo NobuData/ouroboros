@@ -14,7 +14,6 @@ import {
   type CodeReadings,
   type CodeSeatState,
   FILE_LABEL,
-  FILE_READ_ONLY_NOTE,
   UNPROJECTABLE_ACTION,
   UNPROJECTABLE_TITLE,
   VALIDATE_LABEL,
@@ -23,10 +22,12 @@ import {
   codeHead,
   codeSeatCopy,
   codeState,
-  fileLines,
+  fileEditNote,
+  fileEditable,
   fileSource,
   findingLine,
 } from "./code-view";
+import { CodeEditor } from "./code-editor";
 
 import "./code-view.css";
 
@@ -41,13 +42,14 @@ import "./code-view.css";
  * **Workflows** entry. What differs is the head's words — mockup 05's filename and its promise —
  * its two actions, and what sits under the control.
  *
- * ### The file is the draft, read-only until the editor arrives
+ * ### The file is the draft, in the editor
  *
  * Under the control is the file U.3 prints from the draft slot both editors share (decision
- * **C3**), line-numbered, with where it was printed from. It is drawn as text rather than as an
- * editor, and says so: CodeMirror is V.2 ([#170](https://github.com/NobuData/ouroboros/issues/170))
- * and the save loop V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)), and each
- * replaces a region of this screen rather than the screen.
+ * **C3**), with where it was printed from, in the CodeMirror editor of V.2
+ * ([#170](https://github.com/NobuData/ouroboros/issues/170), `code-editor.tsx`). A role that may
+ * publish can type into it; a member, or anyone reading a published version, gets the read-only
+ * variant. Typed changes stay in the tab, and the card says so, until the save loop of V.4
+ * ([#172](https://github.com/NobuData/ouroboros/issues/172)) replaces that note.
  *
  * ### The two actions wait, and say for what
  *
@@ -111,7 +113,7 @@ export function CodeScreen({ readings, mayAdminister = false, role = "viewer" }:
         <StudioFailedBanner headline={CODE_FAILED_HEADLINE} reason={state.reason} />
       )}
 
-      {state.kind === "populated" && <CodeFile file={state.file} />}
+      {state.kind === "populated" && <CodeFile file={state.file} mayAdminister={mayAdminister} />}
       {state.kind === "unprojectable" && (
         <Unprojectable findings={state.findings} reason={state.reason} slug={state.entry.slug} />
       )}
@@ -146,16 +148,19 @@ function Actions({
 }
 
 /**
- * The file: its path and where it was printed from, then its lines, numbered.
+ * The file: its path, where it was printed from and whether it can be typed into, then the
+ * editor over its text.
  *
- * The listing is a `<pre>` that scrolls inside itself, so a long line never widens the pane
- * (§ 1.3), and it is focusable so a keyboard can scroll it. The line numbers are hidden from the
- * accessibility tree — a screen reader reads the file, not a column of integers.
+ * The editor scrolls inside itself, so a long line never widens the pane (§ 1.3), and its
+ * editable region is named by the file's path.
  *
  * @param props.file The file.
+ * @param props.mayAdminister Whether the reader's role may publish.
  * @returns The card.
  */
-function CodeFile({ file }: Readonly<{ file: WorkflowCode }>) {
+function CodeFile({ file, mayAdminister }: Readonly<{ file: WorkflowCode; mayAdminister: boolean }>) {
+  const editable = fileEditable(file, mayAdminister);
+
   return (
     <Card aria-label={FILE_LABEL} as="section">
       <CardHead
@@ -163,25 +168,12 @@ function CodeFile({ file }: Readonly<{ file: WorkflowCode }>) {
         title={<code className="code-view__path">{file.path}</code>}
         trailing={
           <span className="code-view__meta">
-            {fileSource(file)} · {FILE_READ_ONLY_NOTE}
+            {fileSource(file)} · {fileEditNote(editable)}
           </span>
         }
       />
 
-      <pre className="code-view__listing" tabIndex={0}>
-        <code>
-          {fileLines(file.text).map((line, index) => (
-            // The line's position is its identity: the listing is re-rendered whole, never
-            // reordered.
-            <span className="code-view__line" key={index}>
-              <span aria-hidden className="code-view__number">
-                {index + 1}
-              </span>
-              <span className="code-view__text">{line}</span>
-            </span>
-          ))}
-        </code>
-      </pre>
+      <CodeEditor label={file.path} readOnly={!editable} text={file.text} />
     </Card>
   );
 }

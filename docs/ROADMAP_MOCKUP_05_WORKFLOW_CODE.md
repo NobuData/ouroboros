@@ -418,7 +418,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | V.1 | #169 | 🟢 Done | ouroboros-ui: [V.1] Code route, head & mode switching | `/workflows/:slug/code`, seg control live, shared-draft state | mvp, workflow, code-view, ui | N (after WF-S.1, U.3) | Y | M | ouroboros-ui |
-| V.2 | #170 | 🟡 Open | ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting | Themed CM6, custom language package, line/current-line/caret parity | mvp, workflow, code-view, ui, design | N (after V.1) | Y | L | ouroboros-ui |
+| V.2 | #170 | 🟢 Done | ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting | Themed CM6, custom language package, line/current-line/caret parity | mvp, workflow, code-view, ui, design | N (after V.1) | Y | L | ouroboros-ui |
 | V.3 | #171 | 🟡 Open | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
 | V.4 | #172 | 🟡 Open | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
 | V.5 | #173 | 🟡 Open | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
@@ -481,7 +481,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 
 ### Issue V.2 — ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting
 
-> **GitHub issue:** #170 · **Status:** 🟡 Open · **Parent epic:** #162
+> **GitHub issue:** #170 · **Status:** 🟢 Done · **Parent epic:** #162
 
 - **Problem Statement:** The editor itself — CodeMirror 6 themed to the design
   system with a custom language package for the U.1 grammar — is the page's
@@ -499,6 +499,31 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 - **Parallelism/Dependencies:** Needs V.1, U.1 (grammar). Blocks V.4, V.5.
 - **Technical Stack:** @codemirror/* (MIT), Lezer, CSS tokens.
 - **Epic:** V
+- **Delivered (2026-09-15):** CodeMirror 6 in `ouroboros-ui`
+  (`app/workflows/code/code-editor{.tsx,.css,-extensions.ts}`, `dsl-language.ts`). It replaces
+  V.1's numbered listing in the code view's file card. Four decisions were taken in-issue.
+  - **Decision C1 is taken, and its cost is the record.** The code route's weight goes from 61.1 kB
+    to 159.0 kB gzipped (**+97.9 kB**), almost all of it one chunk only that route loads.
+    `ouroboros-ui`'s README § *The editor is CodeMirror 6, and that is a recorded exception* has
+    the table and the browser measurement: no dropped frame over 200 keystrokes on the seeded
+    file.
+  - **A stream parser, not a Lezer grammar.** It emits the five classes, and callees are names
+    followed by `(`. A generated tree would have no reader, since the parse that refuses a file
+    is the service's (V.4).
+  - **The extensions are listed, not `basicSetup`.** Only what is mounted can draw a colour, and
+    `code-editor-styles.test.ts` reads CodeMirror's base theme and holds every colour rule to a
+    token override or an unmounted extension. **W.1's `dslIntelligence(table)` is not mounted
+    yet**, despite W.1's note above: no page reads the symbol table. It joins the extension list
+    when one does.
+  - **Editable for a role that may publish, read-only otherwise.** A member, or a file the service
+    marks `readOnly`, gets the variant with no caret, current line, history or keymap. Typed
+    changes stay in the tab, and the card says *Edits are not saved yet — saving arrives with
+    #172*.
+
+  The screenshot pair is e2e leg 13 (`tests/e2e/specs/code-editor.spec.ts`). Its baselines are
+  recorded against the compose stack. `ouroboros-ui` is now 0.67.0, with
+  `@codemirror/language`, `@codemirror/commands` and `@lezer/highlight` as new direct
+  dependencies.
 
 ```
 CM6 + dsl-language-package ─▶ keywords/strings/nums/fns/comments → token palette

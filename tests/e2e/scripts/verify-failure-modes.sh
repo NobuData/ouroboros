@@ -37,6 +37,8 @@
 #   db        studio.spec.ts      the studio canvas's stages, chips and edges come out of
 #                                 the seeded workflow document rather than out of the
 #                                 mockup (#149)
+#   db        code-editor.spec.ts the code editor's file is printed from the seeded draft
+#                                 rather than drawn from the mockup's listing (#170)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -362,6 +364,15 @@ expect_red engine issues.spec.ts "needs human"
 # artwork. `db` rather than `rest` for the reason every pair above uses it, and the leg breaks
 # at its first step for the reason the dashboard's does: a session is a row.
 expect_red db studio.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# The code-editor leg (#170), against the layer its file is printed from. The text in the editor
+# is U.3's print of the seeded `standard-fix` draft, so an editor that still drew mockup 05's
+# listing with the database stopped would be a page drawing the artwork. `db` rather than `rest`
+# for the reason every pair above uses it, and the leg breaks at its first step for the reason
+# the dashboard's does: a session is a row. Its other failure mode — a CodeMirror colour leaking
+# through with everything healthy — is `ouroboros-ui`'s code-editor-styles suite, which reads
+# the library's base theme and goes red on any colour rule the sheet does not account for.
+expect_red db code-editor.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 
 printf '\n'
 if check_summary; then

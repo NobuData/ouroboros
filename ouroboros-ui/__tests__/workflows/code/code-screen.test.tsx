@@ -1,3 +1,4 @@
+import { EditorView } from "@codemirror/view";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,7 @@ import {
   CODE_SUBLINE,
   FILE_LABEL,
   FILE_READ_ONLY_NOTE,
+  FILE_UNSAVED_NOTE,
   UNPROJECTABLE_ACTION,
   UNPROJECTABLE_TITLE,
   VALIDATE_LABEL,
@@ -122,38 +124,68 @@ describe("the segmented control", () => {
   });
 });
 
+/**
+ * The editor's editable region inside the file card.
+ *
+ * @param file The file card.
+ * @returns CodeMirror's content element.
+ */
+function editorContent(file: HTMLElement): HTMLElement {
+  const content = file.querySelector<HTMLElement>(".cm-content");
+  expect(content, "the editor is mounted").not.toBeNull();
+  return content as HTMLElement;
+}
+
 describe("the file", () => {
-  it("draws the draft's file, line for line, numbered, and says it is read-only until the editor", () => {
-    const { container } = render(
-      <CodeScreen mayAdminister readings={codeReadings()} role="owner" />,
-    );
+  it("opens the draft's file in the editor, editable for a role that may publish, and says it is not saved", () => {
+    render(<CodeScreen mayAdminister readings={codeReadings()} role="owner" />);
 
     const file = screen.getByRole("region", { name: FILE_LABEL });
 
     expect(within(file).getByRole("heading")).toHaveTextContent("workflows/standard-fix.loop.ts");
     expect(file).toHaveTextContent("Printed from the draft");
-    expect(file).toHaveTextContent(FILE_READ_ONLY_NOTE);
+    expect(file).toHaveTextContent(FILE_UNSAVED_NOTE);
+    expect(file).not.toHaveTextContent(FILE_READ_ONLY_NOTE);
 
-    const lines = [...container.querySelectorAll(".code-view__text")].map((line) => line.textContent);
+    const content = editorContent(file);
 
-    // Every line of the file, in order, indentation and blank lines kept — the listing is the
-    // text the service printed, not a rendering of it.
-    expect(`${lines.join("\n")}\n`).toBe(STANDARD_FIX_TEXT);
-
-    const numbers = [...container.querySelectorAll(".code-view__number")];
-
-    expect(numbers.map((number) => number.textContent)).toEqual(
-      lines.map((_, index) => String(index + 1)),
-    );
-    for (const number of numbers) expect(number).toHaveAttribute("aria-hidden", "true");
+    // The editor holds the text the service printed, byte for byte, named by the file's path.
+    expect(EditorView.findFromDOM(content)?.state.doc.toString()).toBe(STANDARD_FIX_TEXT);
+    expect(content).toHaveAttribute("aria-label", "workflows/standard-fix.loop.ts");
+    expect(content).toHaveAttribute("contenteditable", "true");
   });
 
-  it("scrolls inside a listing the keyboard can reach", () => {
-    const { container } = render(
-      <CodeScreen mayAdminister readings={codeReadings()} role="owner" />,
+  it("gives a member the read-only variant, and says so", () => {
+    render(<CodeScreen readings={codeReadings()} role="member" />);
+
+    const file = screen.getByRole("region", { name: FILE_LABEL });
+    const content = editorContent(file);
+
+    expect(file).toHaveTextContent(FILE_READ_ONLY_NOTE);
+    expect(file).not.toHaveTextContent(FILE_UNSAVED_NOTE);
+    expect(content).toHaveAttribute("contenteditable", "false");
+    expect(content).toHaveAttribute("aria-readonly", "true");
+    expect(file.querySelector(".code-editor")).toHaveClass("code-editor--read-only");
+  });
+
+  it("gives even an owner the read-only variant of a file the service marks read-only", () => {
+    render(
+      <CodeScreen
+        mayAdminister
+        readings={codeReadings({
+          selected: {
+            entry: railEntry(),
+            file: { kind: "file", file: workflowCode({ readOnly: true, version: 14 }) },
+          },
+        })}
+        role="owner"
+      />,
     );
 
-    expect(container.querySelector("pre.code-view__listing")).toHaveAttribute("tabindex", "0");
+    const file = screen.getByRole("region", { name: FILE_LABEL });
+
+    expect(file).toHaveTextContent(FILE_READ_ONLY_NOTE);
+    expect(editorContent(file)).toHaveAttribute("contenteditable", "false");
   });
 
   it("says when it was printed from the version in force because no draft is open", () => {

@@ -17,13 +17,15 @@ import {
   CODE_SEAT_UNREAD_NOTE,
   CODE_SUBLINE,
   FILE_READ_ONLY_NOTE,
+  FILE_UNSAVED_NOTE,
   VALIDATE_SOON,
   codeEntry,
   codeHead,
   codeMissingSubline,
   codeSeatCopy,
   codeState,
-  fileLines,
+  fileEditNote,
+  fileEditable,
   fileName,
   fileSource,
   findingLine,
@@ -220,21 +222,20 @@ describe("the file", () => {
     expect(fileSource(workflowCode({ version: 14 }))).toBe("Printed from v14 · no draft open");
   });
 
-  it("says it is read-only, and which issues make it editable", () => {
-    expect(FILE_READ_ONLY_NOTE).toMatch(/#170/);
-    expect(FILE_READ_ONLY_NOTE).toMatch(/#172/);
+  it("is editable only for a role that may publish, on a file the service does not mark read-only", () => {
+    expect(fileEditable(workflowCode(), true)).toBe(true);
+    expect(fileEditable(workflowCode(), false)).toBe(false);
+    expect(fileEditable(workflowCode({ readOnly: true }), true)).toBe(false);
+    expect(fileEditable(workflowCode({ readOnly: true }), false)).toBe(false);
   });
 
-  it("splits on line feeds, keeping blank lines and indentation, without a line after the last feed", () => {
-    expect(fileLines("a\n\n  b\n")).toEqual(["a", "", "  b"]);
+  it("says an editable file's changes are not saved yet, naming the issue that saves them", () => {
+    expect(fileEditNote(true)).toBe(FILE_UNSAVED_NOTE);
+    expect(FILE_UNSAVED_NOTE).toMatch(/#172/);
   });
 
-  it("keeps a last line that has no line feed after it", () => {
-    expect(fileLines("a\nb")).toEqual(["a", "b"]);
-  });
-
-  it("has no lines for an empty text", () => {
-    expect(fileLines("")).toEqual([]);
-    expect(fileLines("\n")).toEqual([""]);
+  it("says a file the reader cannot change is read-only", () => {
+    expect(fileEditNote(false)).toBe(FILE_READ_ONLY_NOTE);
+    expect(FILE_READ_ONLY_NOTE).toBe("Read-only");
   });
 });

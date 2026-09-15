@@ -29,7 +29,9 @@
 > and the [workflow studio](#workflow-studio)
 > ([#147](https://github.com/NobuData/ouroboros/issues/147)) with its
 > [React Flow canvas](#the-canvas-is-react-flow-and-that-is-a-recorded-exception)
-> ([#148](https://github.com/NobuData/ouroboros/issues/148)) —
+> ([#148](https://github.com/NobuData/ouroboros/issues/148)) and its code view's
+> [CodeMirror editor](#the-editor-is-codemirror-6-and-that-is-a-recorded-exception)
+> ([#170](https://github.com/NobuData/ouroboros/issues/170)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
@@ -57,7 +59,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Runtime | Node 24 |
 | API client | `openapi-typescript` (types) + `openapi-fetch` (calls), generated from `ouroboros-rest/openapi.json` — see [The generated client](#the-generated-client) |
 | Auth client | `better-auth` with the organization plugin, for `/api/auth/*` only — see [The two-client rule](#the-two-client-rule) |
-| Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives). One documented exception: the workflow canvas is [React Flow](#the-canvas-is-react-flow-and-that-is-a-recorded-exception) (decision P2, [#148](https://github.com/NobuData/ouroboros/issues/148)), themed entirely from the tokens |
+| Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives). Two documented exceptions: the workflow canvas is [React Flow](#the-canvas-is-react-flow-and-that-is-a-recorded-exception) (decision P2, [#148](https://github.com/NobuData/ouroboros/issues/148)) and the code editor is [CodeMirror 6](#the-editor-is-codemirror-6-and-that-is-a-recorded-exception) (decision C1, [#170](https://github.com/NobuData/ouroboros/issues/170)), both themed entirely from the tokens |
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
 | Lint | ESLint flat config, plus stylelint on `app/**/*.css` — the px type ban (#648) that keeps every sheet scalable by the font-size preference |
@@ -2686,10 +2688,10 @@ The same loop as the visual canvas — every graph compiles to this typed DSL an
 ──────────────────────────────────────────────────────────────────────────────────────────
  Visual   Code   Copilot soon
           ▔▔▔▔
-┌ workflows/standard-fix.loop.ts    Printed from the draft · Read-only — editing arrives with #170 and #172. ┐
+┌ workflows/standard-fix.loop.ts    Printed from the draft · Edits are not saved yet — saving arrives with #172. ┐
 │  1  import { defineLoop, trigger, llm, … } from "@ouroboros/sdk";                            │
 │  2                                                                                            │
-│  3  export default defineLoop("standard-fix", {                                               │
+│  3▌ export default defineLoop("standard-fix", {▏                            ← current line    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -2710,10 +2712,11 @@ nothing held, a press on the open tab and a modified click are never interrupted
 [`app/workflows/mode-switch.ts`](app/workflows/mode-switch.ts)'s. A hold is released on a
 successful parse and when its editor unmounts, so a browser Back cannot leave a stale one behind.
 
-**Read-only until the editor arrives.** The file is drawn as numbered text in a listing that
-scrolls inside itself, and says it is read-only: CodeMirror (V.2,
-[#170](https://github.com/NobuData/ouroboros/issues/170)) and the save loop (V.4) replace that
-region. **Validate** waits for V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)) and
+**The file is in the editor.** It opens in CodeMirror (V.2,
+[#170](https://github.com/NobuData/ouroboros/issues/170),
+[below](#the-editor-is-codemirror-6-and-that-is-a-recorded-exception)): editable for a role that
+may publish, and read-only for a member or a published version. Until the save loop (V.4) lands,
+a change stays in the tab and the card says so. **Validate** waits for V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)) and
 **Publish vN+1** for S.6's shared dialog (#152), each inert with its issue as the reason. Publish
 is drawn for an `owner` or `admin`; a member reaches the route, reads the file, and gets the same
 role note the visual editor gives (`studio-readonly-note.tsx`, shared).
@@ -2726,6 +2729,90 @@ drawn with the validator's findings and a link to Visual rather than a retry, be
 failed. The route's skeleton is
 [`app/workflows/code/code-skeleton.tsx`](app/workflows/code/code-skeleton.tsx): the same head, two
 actions, and a file card instead of a rail and a canvas.
+
+### The editor is CodeMirror 6, and that is a recorded exception
+
+The code view's file (V.2, [#170](https://github.com/NobuData/ouroboros/issues/170)) is edited in
+[CodeMirror 6](https://codemirror.net/) (MIT). That is mockup 05's roadmap decision **C1**, and the
+second exception to the [stack table](#stack)'s no-framework rule. Monaco was the alternative, and a
+real one: the mockup's status bar reads `TypeScript 5.9 · LSP ready`, which Monaco's TypeScript
+worker gives almost for free. But the file is a closed grammar, not general TypeScript. Monaco's
+checker would pass code the service's parser refuses, the DSL's completions and diagnostics would
+still be ours to write, and it costs 2–5 MB gzipped. CodeMirror gives the same hooks for a fraction
+of that, with class-based theming precise enough for the mockup's skin. Its cost, measured as P2's
+was:
+
+| `/workflows/[slug]/code`, gzipped | before #170 | after | delta |
+|---|---:|---:|---:|
+| Everything the route loads (layouts + page) | 61.1 kB | 159.0 kB | **+97.9 kB** |
+| What the page adds over the shell | 0.3 kB | 98.4 kB | +98.1 kB |
+| The same, uncompressed | 0.4 kB | 306.8 kB | +306.4 kB |
+
+Almost all of it is one chunk of 304.1 kB (97.4 kB gzipped). It holds `@codemirror/view`, `state`,
+`language` and `commands`, `@lezer/common` and `@lezer/highlight`, and the editor's own modules,
+and only the code route loads it; the visual editor's route and every other page are unchanged. The
+issue estimated about 150 kB configured; the measured figure is about twice that uncompressed, and
+this table is the record. `yarn build && node scripts/route-weight.mjs
+'/(app)/workflows/[slug]/code/page'` re-measures it.
+
+**What is mounted, and what is not.**
+[`code-editor-extensions.ts`](app/workflows/code/code-editor-extensions.ts) builds the editor from
+extensions rather than `basicSetup`. Both variants get the DSL language, line numbers and
+special-character marks. The editable one adds undo history, the drawn selection and caret, the
+current line and its gutter, and the default keymap, with Tab left unbound so the keyboard can leave.
+There is no fold gutter, bracket matching, search panel or autocompletion, because each brings
+colours of its own. W.1's `dslIntelligence(table)` joins the list when a page reads the symbol
+table.
+
+**The language is a stream parser.** [`dsl-language.ts`](app/workflows/code/dsl-language.ts)
+tokenises U.1's grammar into mockup 05's five classes:
+
+- `c-kw`, keywords
+- `c-str`, strings and template-literal prompts
+- `c-num`, numbers, with `400_000` kept whole
+- `c-fn`, callees: a name followed by `(`, so `defineLoop` and `.lte` but not `route` or `effort.M`
+- `c-cm`, comments
+
+Between lines it carries only whether a prompt or a block comment is still open. A Lezer grammar
+would need a generator step and would build a tree nothing reads, since the parse that can refuse a
+file is the service's (V.4). The highlighter gives each class a CSS class and no style.
+
+**Two variants.** A role that may publish gets the editable editor on any file the service does not
+mark `readOnly`. The card says *Edits are not saved yet — saving arrives with #172*, because until
+V.4 a change stays in the tab. A member, or anyone reading a published version, gets the read-only
+variant. It has no caret, no current line, no history and no keymap, and carries `aria-readonly`.
+It stays focusable, so the keyboard can still scroll and select. The config file (V.3,
+[#171](https://github.com/NobuData/ouroboros/issues/171)) takes the same `readOnly`.
+
+**Both themes from tokens, and no library colour leaks.**
+[`code-editor.css`](app/workflows/code/code-editor.css) is mockup 05's `.ed` skin on tokens:
+
+- the inset well
+- `--ink-faint` line numbers in a 3.5rem column with no rule beside them
+- the current line in `--accent-tint`, its number in `--accent`, with a 2px `--accent-deep` inset
+- a two-pixel `--accent` caret under `--accent-glow`, blinking at the mockup's 1.1 s and held still
+  under `prefers-reduced-motion`
+- the selection in `--accent-select`
+- the five classes in `--accent`, `--ok`, `--warn`, `--model` and italic `--ink-faint`
+
+CodeMirror mounts a base theme with light and dark colours of its own.
+`__tests__/workflows/code/code-editor-styles.test.ts` reads that theme from the installed library.
+Every colour rule in it must either be re-coloured here on a token or belong to an extension that is
+not mounted, so an upgrade that adds a colour goes red. Every rule here is scoped `.code-editor
+.cm-editor`, which out-counts the base theme's generated selectors.
+
+The editor is capped at 70vh and scrolls both ways inside itself. Before it mounts, the text is
+served as a plain `<pre>` in the same metrics, and the sheet hides that once CodeMirror is in its
+host.
+
+**Measured in a browser.** jsdom paints nothing, so the picture was checked in Chromium over the
+golden `standard-fix.loop.ts`, in both palettes. Every colour above resolved to its token and none
+of CodeMirror's defaults did. Typing 200 characters mid-file at 40 a second dropped no frame: 335
+frames, none over 17.5 ms, with key-event processing under 0.2 ms against a 16.7 ms frame. A
+500-character line scrolled the editor and left the pane's horizontal overflow at zero.
+`code-editor.test.tsx` keeps a jsdom bound on the same work: the median keystroke under one frame. The
+screenshot pair is e2e leg 13,
+[`tests/e2e/specs/code-editor.spec.ts`](../tests/e2e/specs/code-editor.spec.ts).
 
 ### The canvas is React Flow, and that is a recorded exception
 
@@ -2931,9 +3018,11 @@ structurally sound.
 
 ### Code intelligence — completions and hover docs
 
-The code editor itself is V.2's ([#170](https://github.com/NobuData/ouroboros/issues/170)) and is
-not mounted yet. What W.1 ([#177](https://github.com/NobuData/ouroboros/issues/177)) ships is the
-intelligence that editor mounts, in [`app/workflows/code/`](app/workflows/code):
+The code editor itself is V.2's ([#170](https://github.com/NobuData/ouroboros/issues/170),
+[above](#the-editor-is-codemirror-6-and-that-is-a-recorded-exception)). What W.1
+([#177](https://github.com/NobuData/ouroboros/issues/177)) ships is the intelligence that editor
+is built to mount, in [`app/workflows/code/`](app/workflows/code). It is not mounted yet, because no
+page reads the symbol table:
 
 ```ts
 const table = await workflows.codeSymbols();           // server-side, passed to the editor's client component

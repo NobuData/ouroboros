@@ -325,14 +325,42 @@ export function findingLine(finding: CodeFinding): string {
 export const FILE_LABEL = "Workflow code";
 
 /**
- * What the file card says about its text until the editor arrives.
- *
- * The listing is the draft exactly as both editors read it, and it cannot be typed into yet:
- * CodeMirror is V.2 ([#170](https://github.com/NobuData/ouroboros/issues/170)) and the save loop
- * is V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)). Saying so is the difference
- * between a read-only file and an editor that looks broken.
+ * What the file card says about a file this reader cannot change: a published version, or any
+ * file for a role that may not publish.
  */
-export const FILE_READ_ONLY_NOTE = "Read-only — editing arrives with #170 and #172.";
+export const FILE_READ_ONLY_NOTE = "Read-only";
+
+/**
+ * What the file card says about a file the editor lets this reader type into.
+ *
+ * The editor is V.2 ([#170](https://github.com/NobuData/ouroboros/issues/170)); the save loop is
+ * V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)). Until it lands, a change stays
+ * in the tab, and saying so is the difference between an honest editor and one that loses work
+ * silently.
+ */
+export const FILE_UNSAVED_NOTE = "Edits are not saved yet — saving arrives with #172.";
+
+/**
+ * Whether the editor lets this reader type into the file.
+ *
+ * @param file The file. `readOnly` is the service's word: a published version is never edited.
+ * @param mayAdminister Whether the reader's role may publish, decided at the gate. A member reads
+ *   the file and does not change it, as on the visual editor.
+ * @returns `true` only when both allow it.
+ */
+export function fileEditable(file: WorkflowCode, mayAdminister: boolean): boolean {
+  return mayAdminister && !file.readOnly;
+}
+
+/**
+ * The file card's note about editing.
+ *
+ * @param editable What {@link fileEditable} decided.
+ * @returns {@link FILE_UNSAVED_NOTE} or {@link FILE_READ_ONLY_NOTE}.
+ */
+export function fileEditNote(editable: boolean): string {
+  return editable ? FILE_UNSAVED_NOTE : FILE_READ_ONLY_NOTE;
+}
 
 /**
  * Where the file's text was printed from, in words.
@@ -345,20 +373,4 @@ export function fileSource(file: WorkflowCode): string {
   return file.version === null
     ? "Printed from the draft"
     : `Printed from ${versionWord(file.version)} · no draft open`;
-}
-
-/**
- * A file's lines, as the listing numbers them.
- *
- * U.3 counts lines by line feeds only and ends every file with one, so the text is split on
- * `\n` and the empty string after the final line feed is not a line.
- *
- * @param text The file.
- * @returns Its lines, without their line feeds. Empty for an empty text.
- */
-export function fileLines(text: string): readonly string[] {
-  if (text === "") return [];
-
-  const lines = text.split("\n");
-  return text.endsWith("\n") ? lines.slice(0, -1) : lines;
 }
