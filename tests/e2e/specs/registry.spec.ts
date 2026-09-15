@@ -71,7 +71,6 @@ import {
   CODER_MAX_REFERRERS,
   DISABLE_TARGET,
   EM_DASH,
-  FINDINGS_MESSAGE,
   FIX_IN_PROVIDERS,
   IMPORT_SOURCE,
   LIFECYCLE_BINDING,
@@ -81,7 +80,6 @@ import {
   REGISTRY_PATH,
   REGISTRY_TITLE,
   SEEDED_REGISTRY,
-  STANDARD_FIX,
   TABLE_CAPTION,
   TABLE_NOTE,
   WHY_ROWS,
@@ -92,7 +90,6 @@ import {
   registryPathFor,
   removeRunAliases,
   restoreAliasEnabled,
-  restoreStandardFixDraft,
   routeThrough,
   runAliasName,
   seededAlias,
@@ -109,6 +106,7 @@ import {
   setFontScale,
 } from "../support/settings";
 import { PANE_SELECTOR } from "../support/shell";
+import { FINDINGS_MESSAGE, STANDARD_FIX, restoreStandardFixDraft } from "../support/studio";
 import { pinTheme } from "../support/theme";
 import { selectWorkspace } from "../support/workspace";
 

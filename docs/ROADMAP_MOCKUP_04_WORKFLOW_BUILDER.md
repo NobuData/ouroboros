@@ -1254,7 +1254,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 | S.5 | #151 | 🟢 Done | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
 | S.6 | #152 | 🟢 Done | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui, ouroboros-rest |
 | S.7 | #153 | 🟢 Done | ouroboros-ui: [S.7] Studio states & guards | Empty org, paused/err rail states, read-only member view, load/error | mvp, workflow, ui, design | N (after S.1–S.6) | Y | S | ouroboros-ui |
-| S.8 | #154 | 🟡 Open | ouroboros-ui: [S.8] Studio e2e leg | Seeded parity, edit→publish→version, dry-run highlight, themes | mvp, workflow, ui, ci | N (after S.1–S.7) | Y | S | ouroboros-ui, .github |
+| S.8 | #154 | 🟢 Done | ouroboros-ui: [S.8] Studio e2e leg | Seeded parity, edit→publish→version, dry-run highlight, themes | mvp, workflow, ui, ci | N (after S.1–S.7) | Y | S | ouroboros-ui, .github |
 
 ### Issue S.1 — ouroboros-ui: [S.1] Studio route, page head & workflow rail
 
@@ -1769,7 +1769,25 @@ no workflows ─▶ [Start blank] [Browse templates] (admin) · member ─▶ re
 
 ### Issue S.8 — ouroboros-ui: [S.8] Studio e2e leg
 
-> **GitHub issue:** #154 · **Status:** 🟡 Open · **Parent epic:** #130
+> **GitHub issue:** #154 · **Status:** 🟢 Done · **Parent epic:** #130
+
+> **Shipped.** Leg 12 of #56's suite, extended in `tests/e2e/specs/studio.spec.ts` with
+> `tests/e2e/support/studio.ts`: eight tests beside #149's and S.6's. Parity holds the rail's five
+> seeded entries (served captions, the lit entry, `hotfix-p0`'s err-dot) and *Implement*'s inspector
+> (mode, skill, template, the inherited route's `claude-fable-5` pill, limits, permissions, an inert
+> **Apply** saying why). A skill typed in moves no chip until **Apply**, moves it after, and survives a
+> reload. The publish leg sabotages the draft with `coder-maxx` — CH.6's unknown-alias finding rather
+> than the registry leg's raw id — asserts **that** finding on *Code the change*, follows it to the
+> stage, repairs the route in the inspector and publishes, requiring the version to move by exactly
+> one; the number is read off the head, so a re-run on the same volume stays green. A member gets the
+> read-only note, no **Publish**, inert controls with their reasons and the route's `403`; the shell
+> assertions and the 125% scale complete it. *Both themes* is the existing canvas pair plus the dry
+> run's per-palette path. `standard-fix`'s draft helpers moved here from `support/registry.ts`, and
+> `verify-failure-modes.sh` gains an `engine` pair (the repaired publish names the engine).
+>
+> **Not run at the ticket:** the machine that wrote it had no Docker access, so the leg was linted
+> and type-checked only — the cold-stack run, the 2.5-minute measurement and the failure-mode
+> spot-verify are owed to the first `workflow_dispatch` run of `e2e.yml` on this branch.
 
 - **Problem Statement:** The authoring loop (edit → publish → version → dry-run)
   spans UI, REST, engine, and DB — only e2e certifies it.
