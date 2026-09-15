@@ -34,15 +34,11 @@
  * which is only true because `docker-compose.e2e.yml` holds the provider health sweep still.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import type { BrowserContext } from "@playwright/test";
 
 import { quietly, requestAs, writeAs } from "./rest";
 import { type RouteBody, SEEDED_ROUTES } from "./routing";
-import { SESSION_COOKIE, sessionTokenOf } from "./session";
-import { REST_URL } from "./stack";
+import { seededDefinition, writeStandardFixDraft } from "./studio";
 
 /* ------------------------------------------------------------------ where the page lives */
 
@@ -478,14 +474,6 @@ export async function restoreAliasEnabled(context: BrowserContext, alias: string
 /* ------------------------------------------------------------------ the governance draft */
 
 /**
- * `standard-fix` — `workflows.id`, literal in `R__dev_seed_workflows.sql` (the rail's first).
- */
-export const STANDARD_FIX_ID = "5eed001b-0000-4000-8000-000000000001";
-
-/** The studio's route for it, and its `<h1>`. */
-export const STANDARD_FIX = { path: "/workflows/standard-fix", title: "standard-fix" } as const;
-
-/**
  * The stage the governance test pins to a raw model, the model, and what the gate answers.
  *
  * `plan` pins `coder-max` in the seeded document, and `coder-max` is bound to `claude-fable-5` —
@@ -500,68 +488,6 @@ export const RAW_PIN = {
     "Stage `plan` pins the raw model id `claude-fable-5` — raw model ids are not allowed; " +
     "reference a registry alias (did you mean coder-max?).",
 } as const;
-
-/** The studio's refusal headline over a list of findings (`app/workflows/publish.ts`). */
-export const FINDINGS_MESSAGE =
-  "This definition cannot be published yet. Select a finding to go to the stage it is about — " +
-  "nothing was published.";
-
-/**
- * The seeded `standard-fix` document — the committed DSL fixture the seed copies byte for byte.
- *
- * **Read from the fixture rather than written out**, and that is not the rule `support/seed.ts`
- * argues against: this is the seed's own *input*, which `tests/seed.test.sh` in `ouroboros-db`
- * holds identical to the seeded draft, not a payload the product under test produced. Copying
- * three hundred lines of it into this file would be a second copy for that test to miss. It is
- * the value a restore puts back, never one read off the stack.
- *
- * @returns A fresh copy of the document.
- */
-function seededDefinition(): Record<string, unknown> {
-  const fixture = resolve(
-    __dirname,
-    "../../../schemas/workflow-dsl/fixtures/valid/standard-fix.json",
-  );
-
-  return JSON.parse(readFileSync(fixture, "utf8")) as Record<string, unknown>;
-}
-
-/**
- * Write `standard-fix`'s draft, guarded by the etag the service currently holds.
- *
- * `PUT …/draft` requires `If-Match` (P.4), which `support/rest.ts`'s helpers do not send: the
- * etag is read immediately before the write, so this is *the latest draft, replaced*, which is
- * what an arrangement and a restore both mean.
- *
- * @param context - The context to act for. Its person must be an `owner` or an `admin`.
- * @param definition - The whole document.
- * @param what - What the write is for, for the failure message.
- * @returns When the service has stored it.
- * @throws {Error} If either request was refused, with the status and the body.
- */
-async function writeDraft(
-  context: BrowserContext,
-  definition: Record<string, unknown>,
-  what: string,
-): Promise<void> {
-  const path = `/api/v1/workflows/${STANDARD_FIX_ID}`;
-  const detail = await requestAs<{ draft: { etag: string } }>(context, "GET", path, null, what);
-  const token = await sessionTokenOf(context, what);
-
-  const response = await fetch(`${REST_URL}${path}/draft`, {
-    method: "PUT",
-    headers: {
-      "content-type": "application/json",
-      cookie: `${SESSION_COOKIE}=${token}`,
-      "if-match": detail?.draft.etag ?? "",
-    },
-    body: JSON.stringify({ definition }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`${what} answered ${response.status}: ${await response.text()}`);
-  }
-}
 
 /**
  * Put a raw model id where {@link RAW_PIN}'s stage pins an alias, in `standard-fix`'s draft.
@@ -583,19 +509,5 @@ export async function pinRawModel(context: BrowserContext): Promise<void> {
 
   node.config = { ...node.config, routing: { pinned_model: RAW_PIN.model } };
 
-  await writeDraft(context, definition, `pinning ${RAW_PIN.stage} to ${RAW_PIN.model}`);
-}
-
-/**
- * Put `standard-fix`'s draft back exactly as the seed wrote it.
- *
- * @param context - The context to act for.
- * @returns When the restore has been attempted. It never throws.
- */
-export function restoreStandardFixDraft(context: BrowserContext): Promise<void> {
-  return quietly(
-    () => writeDraft(context, seededDefinition(), "restoring standard-fix's draft"),
-    "standard-fix's draft was not restored — the studio's canvas, the code view's file and " +
-      "both their screenshot pairs start from a document that pins a raw model id.",
-  );
+  await writeStandardFixDraft(context, definition, `pinning ${RAW_PIN.stage} to ${RAW_PIN.model}`);
 }

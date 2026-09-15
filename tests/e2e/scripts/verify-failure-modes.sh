@@ -37,6 +37,9 @@
 #   db        studio.spec.ts      the studio canvas's stages, chips and edges come out of
 #                                 the seeded workflow document rather than out of the
 #                                 mockup (#149)
+#   engine    studio.spec.ts      a publish really asks the engine: with it stopped, the
+#                                 repaired draft is refused as the engine not answering,
+#                                 and no version is frozen (#154)
 #   db        code-editor.spec.ts the code editor's file is printed from the seeded draft
 #                                 rather than drawn from the mockup's listing (#170)
 #   db        registry.spec.ts    the registry's chips, health, prices and used-by counts are
@@ -392,6 +395,15 @@ expect_red engine issues.spec.ts "needs human"
 # artwork. `db` rather than `rest` for the reason every pair above uses it, and the leg breaks
 # at its first step for the reason the dashboard's does: a session is a row.
 expect_red db studio.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# …and the same leg against the engine (#154). With the engine stopped, sign-in, the canvas, the
+# inspector and the edit's autosave all still work — none of them asks the engine anything — and
+# so does the *sabotaged* publish, because the gate refuses an unknown alias before it makes the
+# engine call. What goes red is the step that needs the engine: the repaired draft's publish, which
+# the gate must hand to the engine and cannot, so the dialog says so and no version is frozen. The
+# marker is that sentence, which `expectPublished` in the spec prints as the reason the publish did
+# not take. The dry-run test goes red too, for the same reason, without a sentence of its own.
+expect_red engine studio.spec.ts "engine could not check this definition"
 
 # The code-editor leg (#170), against the layer its file is printed from. The text in the editor
 # is U.3's print of the seeded `standard-fix` draft, so an editor that still drew mockup 05's
