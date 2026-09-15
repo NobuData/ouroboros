@@ -1,0 +1,182 @@
+/*
+ * The workflow code editor — V.2 (#170): CodeMirror 6 in mockup 05's `.ed` skin.
+ *
+ * CodeMirror injects a base theme of its own, with light and dark colours for the caret, the
+ * selection, the gutters and the current line. This sheet re-colours every one of them that the
+ * mounted extensions can draw (code-editor-extensions.ts), each on a token, so no library colour
+ * reaches the page and both palettes are the token sheet's.
+ * __tests__/workflows/code/code-editor-styles.test.ts reads the library's base theme and holds
+ * that list equal, so an upgrade that adds a colour goes red there.
+ *
+ * Specificity is the reason every rule starts `.code-editor .cm-editor`. The base theme scopes
+ * its rules with generated classes — `&light .cm-gutters` becomes `.ͼ2 .cm-gutters`, two classes,
+ * and the focused selection is five — and its style tag is mounted after this sheet, so a rule
+ * here must out-count it rather than tie.
+ *
+ * The mockup is dark-only. Its values map to tokens as the rest of the studio's do: `--bg0` is
+ * the inset well, `--faint` is `--ink-faint`, `--glow-soft` is `--accent-tint`, `--glow` is
+ * `--accent-glow`, and `::selection`'s cyan is `--accent-select`.
+ */
+
+/* ---------- the wrapper ---------- */
+
+.code-editor {
+  min-width: 0;
+}
+
+/*
+ * CodeMirror's host is empty until the editor mounts; once it holds anything, the text drawn in
+ * its place is hidden.
+ */
+.code-editor__host:not(:empty) + .code-editor__static {
+  display: none;
+}
+
+/* The text before the editor mounts, in the editor's metrics: gutter-wide inset, same type. */
+.code-editor__static {
+  max-height: 70vh;
+  margin: 0;
+  padding-block: var(--sp-6) var(--sp-10);
+  padding-inline: 3.5rem var(--sp-8);
+  overflow: auto;
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+}
+
+/* ---------- the editor: mockup 05's `.ed` and `.ed-scroll` ---------- */
+
+/*
+ * The inset well, bounded so a long file scrolls inside the editor rather than lengthening the
+ * pane, and clipped to its radius so the gutter's corners do not stand out of it.
+ */
+.code-editor .cm-editor {
+  max-height: 70vh;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+}
+
+/* The editor scrolls both ways inside itself, so a long line never widens the pane (§ 1.3). */
+.code-editor .cm-editor .cm-scroller {
+  overflow: auto;
+  font-family: var(--f-mono);
+  line-height: var(--lh-loose);
+}
+
+/* `.ed-scroll`'s padding: a little above the first line, more below the last. */
+.code-editor .cm-editor .cm-content {
+  padding-block: var(--sp-6) var(--sp-10);
+  caret-color: var(--accent);
+}
+
+/* `.ln`: the text starts where the number column ends, and keeps room after its last character. */
+.code-editor .cm-editor .cm-line {
+  padding-inline: 0 var(--sp-8);
+}
+
+/*
+ * The editable editor needs no outline: the caret is where the focus is. The read-only one has no
+ * caret, so it is outlined in the accent when the keyboard is in it.
+ */
+.code-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.code-editor--read-only .cm-editor.cm-focused {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ---------- the gutter: `.ln .no` and `.ln.cur` ---------- */
+
+/*
+ * On the well's own ground, so a line scrolled sideways passes under it, with no rule between
+ * the numbers and the text — the mockup draws none.
+ */
+.code-editor .cm-editor .cm-gutters,
+.code-editor .cm-editor .cm-gutters.cm-gutters-before,
+.code-editor .cm-editor .cm-gutters.cm-gutters-after {
+  border: 0 solid var(--inset);
+  background: var(--inset);
+  color: var(--ink-faint);
+}
+
+/* `.ln .no`: right-aligned in a fixed column, the gap to the text inside it. */
+.code-editor .cm-editor .cm-lineNumbers .cm-gutterElement {
+  min-width: 3.5rem;
+  padding-inline: 0 var(--sp-6);
+}
+
+/* `.ln.cur`: the current line in the accent's tint … */
+.code-editor .cm-editor .cm-activeLine {
+  background: var(--accent-tint);
+}
+
+/* … and its number in the accent, with the accent-deep inset at the row's start. */
+.code-editor .cm-editor .cm-activeLineGutter {
+  background: var(--accent-tint);
+  box-shadow: inset 2px 0 0 var(--accent-deep);
+  color: var(--accent);
+}
+
+/* ---------- the caret and the selection ---------- */
+
+/* `.caret-i`: two pixels of accent under its own glow. */
+.code-editor .cm-editor .cm-cursor,
+.code-editor .cm-editor .cm-dropCursor {
+  margin-inline-start: -1px;
+  border-inline-start: 2px solid var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+/* For a reader who asked for less motion, the caret holds still rather than blinking. */
+@media (prefers-reduced-motion: reduce) {
+  .code-editor .cm-editor.cm-focused > .cm-scroller > .cm-cursorLayer {
+    animation: none;
+  }
+}
+
+/* The drawn selection, focused or not, in the accent's selection tint. */
+.code-editor .cm-editor .cm-selectionBackground,
+.code-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
+  background: var(--accent-select);
+}
+
+/* The read-only editor draws no selection layer; the browser's own selection takes the tint. */
+.code-editor .cm-editor .cm-content ::selection {
+  background: var(--accent-select);
+}
+
+/* A control character the file should not hold, marked in the error hue. */
+.code-editor .cm-editor .cm-specialChar {
+  color: var(--err);
+}
+
+/* ---------- the syntax palette: `c-kw`, `c-str`, `c-num`, `c-fn`, `c-cm` ---------- */
+
+.code-editor .code-editor__keyword {
+  color: var(--accent);
+}
+
+.code-editor .code-editor__string {
+  color: var(--ok);
+}
+
+.code-editor .code-editor__number {
+  color: var(--warn);
+}
+
+.code-editor .code-editor__callee {
+  color: var(--model);
+}
+
+.code-editor .code-editor__comment {
+  color: var(--ink-faint);
+  font-style: italic;
+}

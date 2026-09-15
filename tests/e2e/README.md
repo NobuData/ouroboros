@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and seven amended in since:
+deployment. Five legs from the issue, and eight amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -30,6 +30,7 @@ deployment. Five legs from the issue, and seven amended in since:
 | 10 | [`specs/providers.spec.ts`](specs/providers.spec.ts) | Mockup 07's credential lifecycle across four layers: a key the provider refuses connecting **no** card; a rotation that failed leaving the old key *still working*, proved by testing it; a reveal shown, recorded and masked again; a pull whose progress survives a reload; and a provider that really goes away |
 | 11 | [`specs/issues.spec.ts`](specs/issues.spec.ts) | Mockup 03 against the intake seed: a selection refused by name and then queued, with the *dashboard page* moving by exactly one row's worth; a press of **Re-estimate** that really goes through the engine and comes back as a new version the panel draws without a reload; the filter bar's address reloaded into the identical view; and the personal workspace's guidance |
 | 12 | [`specs/studio.spec.ts`](specs/studio.spec.ts) | Mockup 04's canvas as a browser draws it: the five node treatments printing the chips the seeded document's configs become, the octagonal flow nodes and the mini pill, the ouroboros edge dashed and glowing in each palette's own accent-deep, and the `.sel` ring — with the canvas diffed in both palettes |
+| 13 | [`specs/code-editor.spec.ts`](specs/code-editor.spec.ts) | Mockup 05's editor as a browser draws it: the seeded file in CodeMirror with every syntax colour, the current line and the glow caret on each palette's own token and none of CodeMirror's defaults; a member served the read-only variant; a long line scrolling the editor and not the pane; keystrokes that cost a fraction of a frame — with the editor diffed in both palettes |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -127,6 +128,19 @@ this leg asks a browser for what only a browser computes: the flow nodes' octago
 the mini pill's 176 × 44, the ouroboros edge's dash, glow and `--accent-deep` in each palette,
 and the selection's two-part glow. It screenshot-diffs the canvas region with *Implement*
 selected in both palettes, and writes nothing.
+
+Leg 13 is [#170](https://github.com/NobuData/ouroboros/issues/170)'s — V.2, the code view's
+CodeMirror editor — and the code view's first leg, which V.8
+([#176](https://github.com/NobuData/ouroboros/issues/176)) extends. `ouroboros-ui`'s suites prove
+which of CodeMirror's parts each variant mounts and that the sheet re-colours every rule of the
+library's base theme on a token; this leg asks the browser whether it does. In each palette it
+reads the five syntax colours, the gutter, the current line with its accent-deep inset and the
+glow caret against `support/code.ts`, and requires that neither CodeMirror's default gutter nor its
+default caret is what the browser computed. It opens the file as the seeded member and finds the
+read-only variant with nothing to type into; types a 500-character line and finds the editor
+scrolling sideways and the pane not; types two hundred keystrokes and finds no key handler that
+took a frame; and screenshot-diffs the editor, caret on line 3, in both palettes. It writes
+nothing — the save loop is V.4's.
 
 ## Stack
 
@@ -410,9 +424,9 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10, 11 and 12's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+Legs 6, 9, 10, 11, 12 and 13's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
 --update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
-`specs/issues.spec.ts` or `specs/studio.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
+`specs/issues.spec.ts`, `specs/studio.spec.ts` or `specs/code-editor.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
 
 **Leg 11 makes the fresh volume a precondition of a green run, not only of a recording.**
 Two of its writes have no undo on the API — the queue row it creates (`GET /api/v1/queue`

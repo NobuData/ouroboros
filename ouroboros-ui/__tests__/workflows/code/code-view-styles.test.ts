@@ -61,31 +61,9 @@ describe("the file card's head", () => {
   });
 });
 
-describe("the listing", () => {
-  it("scrolls inside itself, so a long line never widens the pane", () => {
-    expect(rule("\\.code-view__listing")).toMatch(/overflow-x:\s*auto/);
-    expect(rule("\\.code-view__listing")).toMatch(/margin:\s*0/);
-  });
-
-  it("is mono on the inset well, as mockup 05's editor is", () => {
-    expect(rule("\\.code-view__listing")).toMatch(/font-family:\s*var\(--f-mono\)/);
-    expect(rule("\\.code-view__listing")).toMatch(/background:\s*var\(--inset\)/);
-  });
-
-  it("numbers each line faintly, right-aligned, and never selects a number with the text", () => {
-    const number = rule("\\.code-view__number");
-
-    expect(number).toMatch(/color:\s*var\(--ink-faint\)/);
-    expect(number).toMatch(/text-align:\s*right/);
-    expect(number).toMatch(/user-select:\s*none/);
-  });
-
-  it("keeps each line's whitespace as printed", () => {
-    expect(rule("\\.code-view__text")).toMatch(/white-space:\s*pre/);
-  });
-
-  it("shows keyboard focus on the listing in the accent", () => {
-    expect(rule("\\.code-view__listing:focus-visible")).toMatch(/outline:[^;]*var\(--accent\)/);
+describe("the editor", () => {
+  it("is not styled here — it brings its own sheet", () => {
+    expect(CODE).not.toMatch(/\.cm-|\.code-editor/);
   });
 });
 
