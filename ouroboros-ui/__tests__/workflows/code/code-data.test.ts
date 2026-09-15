@@ -4,17 +4,24 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { TENANT_ID, membership, sessionUser } from "../../helpers/login";
-import { UNPROJECTABLE_REFUSAL, workflowCode } from "../../helpers/workflow-code";
+import {
+  UNPROJECTABLE_REFUSAL,
+  codeConfig,
+  codeTreeFor,
+  explorerReadings,
+  workflowCode,
+} from "../../helpers/workflow-code";
 import { seededRail } from "../../helpers/workflows";
 
 /**
- * The code route's reader (V.1, #169).
+ * The code route's reader (V.1, #169; the explorer, V.3, #171).
  *
  * The visual editor's reader's four properties, kept on the code route — **a refused read is a
  * value**, **anything that is not a refusal keeps travelling**, **one failed read is one degraded
- * region**, **the slug is resolved against the rail** — and one of its own: a `409
+ * region**, **the slug is resolved against the rail** — and two of its own: a `409
  * workflow_code_unprojectable` is kept apart from every other refusal, with its findings, because
- * the page guides a reader out of it rather than offering a retry.
+ * the page guides a reader out of it rather than offering a retry; and the explorer's two reads
+ * are made exactly when an explorer is drawn.
  */
 
 vi.mock("server-only", () => ({}));
@@ -25,9 +32,20 @@ const list = vi.fn();
 /** What the file endpoint answers this case with, keyed by the slug it was asked for. */
 const code = vi.fn();
 
+/** What the explorer's file list answers. */
+const tree = vi.fn();
+
+/** What `ouroboros.config.ts` answers. */
+const config = vi.fn();
+
 vi.mock("@/app/api/workflows", () => ({
   WORKFLOW_CODE_UNPROJECTABLE: "workflow_code_unprojectable",
-  workflows: { list: () => list(), code: (slug: string) => code(slug) },
+  workflows: {
+    list: () => list(),
+    code: (slug: string) => code(slug),
+    tree: () => tree(),
+    config: () => config(),
+  },
 }));
 
 const { readStudioCode } = await import("@/app/workflows/code/code-data");
@@ -47,17 +65,22 @@ const ACCESS: Workspace = {
 beforeEach(() => {
   list.mockReset().mockResolvedValue(seededRail());
   code.mockReset().mockResolvedValue(workflowCode());
+  tree.mockReset().mockResolvedValue(codeTreeFor());
+  config.mockReset().mockResolvedValue(codeConfig());
 });
 
 describe("a workflow the rail holds", () => {
-  it("reads the rail, then the file by its slug, and hands back both", async () => {
+  it("reads the rail, then the file by its slug and the explorer, and hands back all three", async () => {
     const readings = await readStudioCode(ACCESS, "standard-fix");
 
     expect(code).toHaveBeenCalledExactlyOnceWith("standard-fix");
+    expect(tree).toHaveBeenCalledOnce();
+    expect(config).toHaveBeenCalledOnce();
     expect(readings).toEqual({
       rail: { ok: true, value: seededRail() },
       requested: "standard-fix",
       selected: { entry: seededRail()[0], file: { kind: "file", file: workflowCode() } },
+      explorer: explorerReadings(),
     });
   });
 
@@ -66,10 +89,23 @@ describe("a workflow the rail holds", () => {
 
     expect(readings.selected?.file.kind === "file" && readings.selected.file.file.version).toBeNull();
   });
+
+  it("reads the file and the explorer in parallel, not one after the other", async () => {
+    let releaseFile: (value: unknown) => void = () => {};
+    code.mockReturnValue(new Promise((resolve) => (releaseFile = resolve)));
+
+    const pending = readStudioCode(ACCESS, "standard-fix");
+    // The file has not answered, and the explorer has already been asked.
+    await vi.waitFor(() => expect(tree).toHaveBeenCalledOnce());
+    expect(config).toHaveBeenCalledOnce();
+
+    releaseFile(workflowCode());
+    await expect(pending).resolves.toMatchObject({ explorer: explorerReadings() });
+  });
 });
 
 describe("a slug the rail does not hold", () => {
-  it("costs no file request and selects nothing", async () => {
+  it("costs no file request, selects nothing, and still reads the explorer to leave by", async () => {
     const readings = await readStudioCode(ACCESS, "retired-loop");
 
     expect(code).not.toHaveBeenCalled();
@@ -77,19 +113,23 @@ describe("a slug the rail does not hold", () => {
       rail: { ok: true, value: seededRail() },
       requested: "retired-loop",
       selected: null,
+      explorer: explorerReadings(),
     });
   });
 });
 
 describe("a refused rail", () => {
-  it("is a value, asks for no file, and keeps the service's reason", async () => {
+  it("is a value, asks for no file and no explorer, and keeps the service's reason", async () => {
     list.mockRejectedValue(new ApiError(503, "unavailable", "The service is unavailable."));
 
     const readings = await readStudioCode(ACCESS, "standard-fix");
 
     expect(code).not.toHaveBeenCalled();
+    expect(tree).not.toHaveBeenCalled();
+    expect(config).not.toHaveBeenCalled();
     expect(readings.rail).toEqual({ ok: false, reason: "The service is unavailable." });
     expect(readings.selected).toBeNull();
+    expect(readings.explorer).toBeNull();
   });
 
   it("lets anything that is not a refusal keep travelling — the redirect signal above all", async () => {
@@ -97,6 +137,23 @@ describe("a refused rail", () => {
     list.mockRejectedValue(redirect);
 
     await expect(readStudioCode(ACCESS, "standard-fix")).rejects.toBe(redirect);
+  });
+});
+
+describe("a workspace with no workflows", () => {
+  it("asks for no explorer — its page draws none", async () => {
+    list.mockResolvedValue([]);
+
+    const readings = await readStudioCode(ACCESS, "standard-fix");
+
+    expect(tree).not.toHaveBeenCalled();
+    expect(config).not.toHaveBeenCalled();
+    expect(readings).toEqual({
+      rail: { ok: true, value: [] },
+      requested: "standard-fix",
+      selected: null,
+      explorer: null,
+    });
   });
 });
 
@@ -131,6 +188,7 @@ describe("a refused file", () => {
     const readings = await readStudioCode(ACCESS, "standard-fix");
 
     expect(readings.selected?.file).toEqual({ kind: "failed", reason: "Something went wrong." });
+    expect(readings.explorer).toEqual(explorerReadings());
   });
 
   it("is failed, not unprojectable, for a 409 with another code", async () => {
@@ -144,6 +202,36 @@ describe("a refused file", () => {
   it("lets anything that is not a refusal keep travelling", async () => {
     const redirect = new Error("NEXT_REDIRECT");
     code.mockRejectedValue(redirect);
+
+    await expect(readStudioCode(ACCESS, "standard-fix")).rejects.toBe(redirect);
+  });
+});
+
+describe("a refused explorer read", () => {
+  it("is a value on its own region — the file list — and the rest still reads", async () => {
+    tree.mockRejectedValue(new ApiError(500, "internal_error", "The file list is unavailable."));
+
+    const readings = await readStudioCode(ACCESS, "standard-fix");
+
+    expect(readings.explorer).toEqual({
+      tree: { ok: false, reason: "The file list is unavailable." },
+      config: { ok: true, value: codeConfig() },
+    });
+    expect(readings.selected?.file).toEqual({ kind: "file", file: workflowCode() });
+  });
+
+  it("is a value on the configuration alone when that is the read refused", async () => {
+    config.mockRejectedValue(new ApiError(500, "internal_error", "The configuration is unavailable."));
+
+    const readings = await readStudioCode(ACCESS, "standard-fix");
+
+    expect(readings.explorer?.tree).toEqual({ ok: true, value: codeTreeFor() });
+    expect(readings.explorer?.config).toEqual({ ok: false, reason: "The configuration is unavailable." });
+  });
+
+  it("lets anything that is not a refusal keep travelling", async () => {
+    const redirect = new Error("NEXT_REDIRECT");
+    config.mockRejectedValue(redirect);
 
     await expect(readStudioCode(ACCESS, "standard-fix")).rejects.toBe(redirect);
   });

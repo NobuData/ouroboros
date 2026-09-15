@@ -1,41 +1,14 @@
 /*
- * The workflow studio's code view — V.1 (#169): the file card under mockup 05's head, the seats
- * that stand in for it, and its loading skeleton.
+ * The workflow studio's code view — V.1 (#169): the seat that stands in for the workbench when
+ * there are no files, what the unprojectable draft lists, and the loading skeleton.
  *
  * The head and the segmented control are the studio frame's (app/workflows/workflows.css), so
- * nothing here places them. The file card is the #46 Card primitive; this sheet lays out its
- * head — the path and its provenance. The editor under the head is V.2's (#170) and brings its
- * own sheet, code-editor.css. Every colour is a token from app/tokens.css, so both themes are the
- * token sheet's, and every length that should follow the reader's font-size preference is rem or
- * a token (docs/CONVENTIONS.md § 6).
+ * nothing here places them. The workbench under the control — explorer, tabs and the open file —
+ * is V.3's (#171) and brings its own sheet, code-workbench.css; the editor in it is V.2's (#170),
+ * with code-editor.css. Every colour is a token from app/tokens.css, so both themes are the token
+ * sheet's, and every length that should follow the reader's font-size preference is rem or a
+ * token (docs/CONVENTIONS.md § 6).
  */
-
-/* ---------- the file card ---------- */
-
-/* The path and the line under it may wrap on a narrow pane rather than pushing it sideways. */
-.code-view__head {
-  flex-wrap: wrap;
-}
-
-/*
- * The path — `workflows/standard-fix.loop.ts` — in mono, because it is a value. A card title is
- * set in capitals with wide tracking, and both are inherited; a path is case-sensitive, so it
- * keeps the case and the spacing it has.
- */
-.code-view__path {
-  font-family: var(--f-mono);
-  font-size: var(--t-sm);
-  letter-spacing: normal;
-  text-transform: none;
-  overflow-wrap: anywhere;
-}
-
-/* Where the text was printed from, and whether it can be typed into. */
-.code-view__meta {
-  color: var(--ink-faint);
-  font-size: var(--t-2xs);
-  line-height: var(--lh-body);
-}
 
 /* ---------- the seats ---------- */
 

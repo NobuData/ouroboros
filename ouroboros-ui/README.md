@@ -2730,6 +2730,53 @@ failed. The route's skeleton is
 [`app/workflows/code/code-skeleton.tsx`](app/workflows/code/code-skeleton.tsx): the same head, two
 actions, and a file card instead of a rail and a canvas.
 
+### The explorer and the tabs are the virtual project
+
+Under the control, the code view is mockup 05's `.ide` frame (V.3,
+[#171](https://github.com/NobuData/ouroboros/issues/171),
+[`app/workflows/code/code-workbench.tsx`](app/workflows/code/code-workbench.tsx)): the explorer
+beside a tab strip, over the open file.
+
+```
+┌ EXPLORER · ACME ROBOTICS ──┬ ●standard-fix.loop.ts × │ ouroboros.config.ts × ┐
+│ ▾ workflows/               │ Printed from the draft · Edits are not saved yet …  │
+│   standard-fix.loop.ts  ◀  │  1  import { defineLoop, … } from "@ouroboros/sdk"; │
+│   feature-loop.loop.ts     │  2                                                  │
+│   …                        │  3  export default defineLoop("standard-fix", {     │
+│   hotfix-p0.loop.ts  ●     │                                                     │
+│ ouroboros.config.ts read-only                                                    │
+└────────────────────────────┴─────────────────────────────────────────────────────┘
+```
+
+**The tree claims only what exists (decision C6).** Its rows are U.3's `GET …/code-tree`, grouped
+by the directory in each `path` ([`code-tree.ts`](app/workflows/code/code-tree.ts)). That is one
+`.loop.ts` per workflow on the rail, a paused workflow with the rail's err-dot, and
+`ouroboros.config.ts` with a read-only badge. A directory is drawn only when a file under it is
+served, so `skills/` and `lib/` arrive with X.2
+([#181](https://github.com/NobuData/ouroboros/issues/181)) and never as placeholders. The head
+names the workspace, because the files belong to it rather than to a repository.
+
+**A workflow's file is its route.** Opening another workflow, from a row or a tab, navigates to its
+`/workflows/<slug>/code`, so the head and a deep link always match the pane. `ouroboros.config.ts`
+(`GET …/code-config`) is read with the page and opens in place, in the editor's read-only variant.
+The route reads the file list and the configuration in parallel with the file, and a refusal
+degrades only its own region.
+
+**Tabs and buffers last for the browser session.** [`code-tabs.ts`](app/workflows/code/code-tabs.ts)
+decides the session: the tabs, the open one, and each file's unsaved text over the text it was
+typed on. [`code-session.ts`](app/workflows/code/code-session.ts) keeps one session per workspace
+in a store above any page, written through to `sessionStorage`. An edit therefore survives a detour
+to another workflow, and a reload. Storage that throws leaves the store working in memory. **The
+modified-dot is that buffer and nothing else.** The edit sets it. Typing the text back, a later read
+that caught up, or `markSaved` clears it. `markSaved` is the call V.4
+([#172](https://github.com/NobuData/ouroboros/issues/172)) makes when a save succeeds. Closing a
+tab keeps its buffer.
+
+**Keyboard.** The tree is the WAI-ARIA tree pattern: arrows, Home, End, and Enter or Space. The
+strip is the tabs pattern: one tab stop, Left and Right to move, and Delete to close. **Alt+W**
+closes the open tab from anywhere in the workbench, because ⌘W and Ctrl+W close the browser's tab.
+As in the mockup, the explorer is hidden below 1000px.
+
 ### The editor is CodeMirror 6, and that is a recorded exception
 
 The code view's file (V.2, [#170](https://github.com/NobuData/ouroboros/issues/170)) is edited in

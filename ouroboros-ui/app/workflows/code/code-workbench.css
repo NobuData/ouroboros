@@ -1,0 +1,282 @@
+/*
+ * The code view's workbench — V.3 (#171): mockup 05's `.ide` frame, its `.ft` explorer and its
+ * `.tabs` strip, around the editor V.2 (#170) brings with its own sheet (code-editor.css).
+ *
+ * Every colour is a token from app/tokens.css, so both themes are the token sheet's, and every
+ * length that should follow the reader's font-size preference is rem or a token
+ * (docs/CONVENTIONS.md § 6). The mockup is dark-only; its values map as code-editor.css records:
+ * `--border` is `--line`, `--mut` is `--ink-mut`, `--faint` is `--ink-faint`, `--glow-soft` is
+ * `--accent-tint` and `--glow` is `--accent-glow`.
+ */
+
+/* ---------- the frame: `.ide` and `.ide-body` ---------- */
+
+/*
+ * The card with no padding of its own, so the explorer and the strip run to its edges, clipped to
+ * its radius. Two classes, so it beats `.ou-card`'s padding whichever sheet the bundle orders first.
+ */
+.code-workbench.ou-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The explorer beside the editor column, at the seat's floor, so a short file keeps the frame's height. */
+.code-workbench__body {
+  display: flex;
+  align-items: stretch;
+  min-height: 24rem;
+}
+
+/* ---------- the explorer: `.ft` ---------- */
+
+.code-tree {
+  flex: none;
+  width: 14.5rem;
+  padding-block: var(--sp-5) var(--sp-8);
+  overflow-y: auto;
+  border-inline-end: 1px solid var(--line);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* `.ft-head`: `Explorer · Acme Robotics`, set as an eyebrow. */
+.code-tree__head {
+  margin: 0;
+  padding-block: var(--sp-2) var(--sp-5);
+  padding-inline: var(--sp-7);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+/* Lists, so the user agent's margin, padding and markers are undone. */
+.code-tree__list,
+.code-tree__group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* `.ft-group`: a directory's files, indented behind a hairline that hangs under its twisty. */
+.code-tree__group {
+  margin-inline-start: 1.1875rem;
+  padding-inline-start: var(--sp-4);
+  border-inline-start: 1px solid var(--line);
+}
+
+/*
+ * A directory's item also holds its group, so an outline on the item would box every file under
+ * it. The row draws the focus ring instead.
+ */
+.code-tree__item {
+  outline: none;
+}
+
+.code-tree__item:focus-visible > .code-tree__row {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* `.ft-row` */
+.code-tree__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-block: var(--sp-2);
+  padding-inline: var(--sp-7);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.code-tree__row:hover {
+  background: var(--raised);
+}
+
+/* `.ft-row.dir` */
+.code-tree__row--directory {
+  color: var(--ink-dim);
+  font-weight: 500;
+}
+
+/* `.ft-group .ft-row` */
+.code-tree__group .code-tree__row {
+  padding-inline-start: var(--sp-2);
+  color: var(--ink-mut);
+}
+
+/*
+ * `.ft-row.on`: the open file, in the accent inset treatment — the tint, the accent ink, and a
+ * 2px rule at the row's start. Qualified by `.code-tree` so it outranks the group's own row rule.
+ */
+.code-tree .code-tree__row--active,
+.code-tree .code-tree__row--active:hover {
+  background: var(--accent-tint);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
+}
+
+/* `.tw`: a directory's twisty — and the same width of nothing before a file at the top level. */
+.code-tree__twisty {
+  flex: none;
+  width: var(--sp-5);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+/* A long name ends in an ellipsis rather than widening the explorer. */
+.code-tree__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The rail's err-dot (workflows.css `.studio-rail__dot`) at the explorer's size: a paused
+ * workflow. The row also says *paused* to a screen reader, so hue is never the only signal.
+ */
+.code-tree__dot {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  flex: none;
+  border-radius: var(--r-round);
+  background: var(--err);
+}
+
+/* The read-only badge, at the row's trailing edge. */
+.code-tree__badge {
+  margin-inline-start: auto;
+}
+
+/* The explorer's sentence when the file list could not be read, on the rows' gutter. */
+.code-tree__failed {
+  padding-inline: var(--sp-7);
+}
+
+/* ---------- the editor column: `.ed` and `.tabs` ---------- */
+
+.code-workbench__editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* `.tabs`: one row on the explorer's well that scrolls sideways rather than wrapping. */
+.code-tabs {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  overflow-x: auto;
+  border-block-end: 1px solid var(--line);
+  background: var(--inset);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* `.tab`: a name and its close button, ruled off from the next. */
+.code-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-inline-end: 1px solid var(--line);
+  color: var(--ink-mut);
+  white-space: nowrap;
+}
+
+.code-tab:hover {
+  color: var(--ink-dim);
+}
+
+/* `.tab.on`: the open file, on the pane's own surface … */
+.code-tab--active,
+.code-tab--active:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* … under the accent top border and its glow. */
+.code-tab--active::after {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  border-block-start: 2px solid var(--accent);
+  box-shadow: 0 0 10px 1px var(--accent-glow);
+  content: "";
+}
+
+/* The name: a button with none of a button's own chrome. */
+.code-tab__select {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding-block: var(--sp-4);
+  padding-inline: var(--sp-7) var(--sp-2);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.code-tab__select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* `.tab .mod`: the modified-dot, in the accent. */
+.code-tab__modified {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  flex: none;
+  border-radius: var(--r-round);
+  background: var(--accent);
+}
+
+/* `.tab .x`: the pointer's close. */
+.code-tab__close {
+  padding-block: var(--sp-4);
+  padding-inline: var(--sp-2) var(--sp-7);
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: var(--t-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.code-tab__close:hover {
+  color: var(--ink);
+}
+
+/* ---------- the pane ---------- */
+
+/* Under the strip: where the open file came from, then the editor or what stands in for it. */
+.code-workbench__pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+  padding: var(--sp-6);
+}
+
+/* Where the text was printed from, and whether it can be typed into. */
+.code-workbench__meta {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- narrow panes ---------- */
+
+/* Mockup 05 hides the explorer below 1000px; the strip still reaches every open file. */
+@media (max-width: 62.5rem) {
+  .code-tree {
+    display: none;
+  }
+}

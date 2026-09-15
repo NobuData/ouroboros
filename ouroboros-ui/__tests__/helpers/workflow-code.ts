@@ -1,5 +1,10 @@
-import type { WorkflowCode, WorkflowRailEntry } from "@/app/api/workflows";
-import type { CodeReadings, FileReading } from "@/app/workflows/code/code-view";
+import type {
+  WorkflowCode,
+  WorkflowCodeConfig,
+  WorkflowCodeTree,
+  WorkflowRailEntry,
+} from "@/app/api/workflows";
+import type { CodeReadings, ExplorerReadings, FileReading } from "@/app/workflows/code/code-view";
 
 import { railEntry, seededRail, unpublishedEntry, workflowDetail } from "./workflows";
 
@@ -74,6 +79,69 @@ export const UNPROJECTABLE_REFUSAL = {
 };
 
 /**
+ * The explorer U.3's `GET /api/v1/workflows/code-tree` serves for a rail: one file per workflow,
+ * in the rail's order, then `ouroboros.config.ts` — and nothing under `skills/` or `lib/`.
+ *
+ * @param rail The rail. Defaults to the seeded workspace's five.
+ * @returns The tree.
+ */
+export function codeTreeFor(rail: readonly WorkflowRailEntry[] = seededRail()): WorkflowCodeTree {
+  return {
+    files: [
+      ...rail.map((entry) => ({
+        path: `workflows/${entry.slug}.loop.ts`,
+        kind: "workflow" as const,
+        readOnly: false,
+        slug: entry.slug,
+        status: entry.status,
+      })),
+      { path: "ouroboros.config.ts", kind: "config", readOnly: true, slug: null, status: null },
+    ],
+  };
+}
+
+/**
+ * A short, faithful-in-shape `ouroboros.config.ts`: a comment, an import, and the registry — for
+ * the reason {@link STANDARD_FIX_TEXT} is short.
+ */
+export const CONFIG_TEXT = [
+  "// Printed from the workflow registry. Read-only.",
+  'import { defineConfig } from "@ouroboros/sdk";',
+  "",
+  "export default defineConfig({",
+  '  workflows: { "standard-fix": { status: "active", version: 14 } },',
+  "});",
+  "",
+].join("\n");
+
+/**
+ * `ouroboros.config.ts` as `GET /api/v1/workflows/code-config` serves it.
+ *
+ * @returns The file.
+ */
+export function codeConfig(): WorkflowCodeConfig {
+  return { path: "ouroboros.config.ts", text: CONFIG_TEXT, readOnly: true };
+}
+
+/**
+ * The explorer's two reads, both clean.
+ *
+ * @param overrides What this case is about.
+ * @param rail The rail the tree is served for. Defaults to the seeded workspace's.
+ * @returns The readings.
+ */
+export function explorerReadings(
+  overrides: Partial<ExplorerReadings> = {},
+  rail: readonly WorkflowRailEntry[] = seededRail(),
+): ExplorerReadings {
+  return {
+    tree: { ok: true, value: codeTreeFor(rail) },
+    config: { ok: true, value: codeConfig() },
+    ...overrides,
+  };
+}
+
+/**
  * A file read cleanly.
  *
  * @param file The file. Defaults to the seeded `standard-fix`'s.
@@ -94,7 +162,12 @@ export function codeReadingsFor(entry: WorkflowRailEntry, file: FileReading): Co
   const rail = seededRail();
   const value = rail.some((candidate) => candidate.slug === entry.slug) ? rail : [...rail, entry];
 
-  return { rail: { ok: true, value }, requested: entry.slug, selected: { entry, file } };
+  return {
+    rail: { ok: true, value },
+    requested: entry.slug,
+    selected: { entry, file },
+    explorer: explorerReadings({}, value),
+  };
 }
 
 /**
@@ -108,6 +181,7 @@ export function codeReadings(overrides: Partial<CodeReadings> = {}): CodeReading
     rail: { ok: true, value: seededRail() },
     requested: "standard-fix",
     selected: { entry: railEntry(), file: fileRead() },
+    explorer: explorerReadings(),
     ...overrides,
   };
 }

@@ -50,20 +50,9 @@ describe("the sheet and the modules", () => {
   });
 });
 
-describe("the file card's head", () => {
-  it("keeps the path's own case and spacing inside a card title that sets capitals", () => {
-    // Seen in a browser: the inherited title treatment printed WORKFLOWS/STANDARD-FIX.LOOP.TS.
-    const path = rule("\\.code-view__path");
-
-    expect(path).toMatch(/text-transform:\s*none/);
-    expect(path).toMatch(/letter-spacing:\s*normal/);
-    expect(path).toMatch(/font-family:\s*var\(--f-mono\)/);
-  });
-});
-
-describe("the editor", () => {
-  it("is not styled here — it brings its own sheet", () => {
-    expect(CODE).not.toMatch(/\.cm-|\.code-editor/);
+describe("the editor and the workbench", () => {
+  it("are not styled here — each brings its own sheet", () => {
+    expect(CODE).not.toMatch(/\.cm-|\.code-editor|\.code-workbench|\.code-tree|\.code-tab/);
   });
 });
 

@@ -419,7 +419,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | V.1 | #169 | 🟢 Done | ouroboros-ui: [V.1] Code route, head & mode switching | `/workflows/:slug/code`, seg control live, shared-draft state | mvp, workflow, code-view, ui | N (after WF-S.1, U.3) | Y | M | ouroboros-ui |
 | V.2 | #170 | 🟢 Done | ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting | Themed CM6, custom language package, line/current-line/caret parity | mvp, workflow, code-view, ui, design | N (after V.1) | Y | L | ouroboros-ui |
-| V.3 | #171 | 🟡 Open | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
+| V.3 | #171 | 🟢 Done | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
 | V.4 | #172 | 🟡 Open | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
 | V.5 | #173 | 🟡 Open | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
 | V.6 | #174 | 🟡 Open | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui |
@@ -532,7 +532,7 @@ line gutter · cur-line accent inset · glow caret · light+dark themes
 
 ### Issue V.3 — ouroboros-ui: [V.3] File tree & tab strip
 
-> **GitHub issue:** #171 · **Status:** 🟡 Open · **Parent epic:** #162
+> **GitHub issue:** #171 · **Status:** 🟢 Done · **Parent epic:** #162
 
 - **Problem Statement:** The explorer and tabs organize the virtual project —
   registry-backed and honest (C6), with the mockup's active-row and
@@ -550,6 +550,31 @@ line gutter · cur-line accent inset · glow caret · light+dark themes
 - **Parallelism/Dependencies:** Needs V.1, U.3.
 - **Technical Stack:** React, #46 primitives.
 - **Epic:** V
+- **Delivered (2026-09-15):** The code view's workbench in `ouroboros-ui`
+  (`app/workflows/code/code-workbench{.tsx,.css}`, with `code-tree.ts`, `code-tabs.ts` and
+  `code-session.ts`). It replaces V.1's file card with mockup 05's `.ide` frame: the explorer and
+  the tab strip over the open file. Four decisions were taken in-issue.
+  - **The tree groups what U.3 serves, and draws nothing else (C6).** Directories come only from
+    the `path`s of `GET …/code-tree`, so `skills/` and `lib/` cannot be drawn until X.2 (#181)
+    serves a file under them. The head names the workspace (`Explorer · Acme Robotics`), not the
+    mockup's `helios-firmware`: that is a repository, and the files belong to the workspace.
+  - **A workflow's file is its route; the configuration opens in place.** Opening another
+    workflow navigates to `/workflows/<slug>/code`, so a deep link and the page head always match
+    the pane. `ouroboros.config.ts` has no route. It is read with the page and opens in the
+    read-only editor variant.
+  - **Tabs and buffers are one session per workspace, in `sessionStorage`.** A module-level store
+    outlives the navigation between workflows, so an edit survives a detour, and a reload too.
+    Storage that refuses degrades to memory. The modified-dot is exactly *a buffer that differs
+    from what it was typed over*. The edit sets it, and typing the text back, a read that caught
+    up or `markSaved` clears it. `markSaved` is the call V.4 (#172) makes on a successful save.
+    Closing a tab keeps its buffer, because discarding an edit is V.4's decision.
+  - **Keyboard: the WAI-ARIA tree and tabs patterns, with Alt+W to close.** ⌘W and Ctrl+W belong
+    to the browser. Delete closes the focused tab. The pointer's close button is hidden from
+    assistive technology, and the tab names both shortcuts in `aria-keyshortcuts`.
+
+  `CodeEditor` now reports edits through `onChange` and takes a new `text` in place instead of
+  rebuilding on each keystroke. The explorer is hidden below 1000px, as in the mockup. The browser
+  leg is V.8's (#176). `ouroboros-ui` is now 0.68.0.
 
 ```
 Explorer · helios-firmware          [●standard-fix.loop.ts ×][routing… ] tabs

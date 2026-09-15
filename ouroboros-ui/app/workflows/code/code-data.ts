@@ -2,14 +2,15 @@ import "server-only";
 
 /**
  * Everything the code route reads (V.1,
- * [#169](https://github.com/NobuData/ouroboros/issues/169)).
+ * [#169](https://github.com/NobuData/ouroboros/issues/169); the explorer, V.3,
+ * [#171](https://github.com/NobuData/ouroboros/issues/171)).
  *
- * Two calls — the rail, then the workflow's file — composed the way `app/workflows/data.ts`
- * composes the visual editor's: the route stays three lines, and **one failed read is one
- * degraded region**. The rail first, although `GET …/{slug}/code` takes the slug the URL already
- * carries, for two reasons: a slug the workspace does not have is answered from the listing and
- * costs no request, and the rail carries the version in force, which the head's **Publish vN+1**
- * counts from whether or not the file could be read.
+ * The rail, then the workflow's file beside the explorer's two reads — composed the way
+ * `app/workflows/data.ts` composes the visual editor's: the route stays three lines, and **one
+ * failed read is one degraded region**. The rail first, although `GET …/{slug}/code` takes the
+ * slug the URL already carries, for two reasons: a slug the workspace does not have is answered
+ * from the listing and costs no file request, and the rail carries the version in force, which the
+ * head's **Publish vN+1** counts from whether or not the file could be read.
  *
  * ### One draft, two editors
  *
@@ -24,6 +25,14 @@ import "server-only";
  * retry), or any other `ApiError`. Anything that is not an `ApiError` keeps travelling — Next.js's
  * redirect signal above all, which is how a session that expired mid-render reaches the login
  * screen.
+ *
+ * ### The explorer is read whenever it is drawn
+ *
+ * The file list (`GET …/code-tree`) and `ouroboros.config.ts` (`GET …/code-config`) are read in
+ * parallel with the file, and for a slug the rail lacks too — the explorer is how a reader who
+ * followed a stale link reaches a file that exists. They are not read for a refused or an empty
+ * rail, whose pages draw no explorer. The configuration is read with the page rather than when its
+ * tab is opened: it is small, and a tab that opens on a pending read would be one more state.
  */
 
 import type { Workspace } from "@/app/api/access";
@@ -31,7 +40,12 @@ import { isApiError } from "@/app/api/errors";
 import { attempt } from "@/app/api/reading";
 import { WORKFLOW_CODE_UNPROJECTABLE, workflows } from "@/app/api/workflows";
 
-import { type CodeReadings, type FileReading, readFindings } from "./code-view";
+import {
+  type CodeReadings,
+  type ExplorerReadings,
+  type FileReading,
+  readFindings,
+} from "./code-view";
 
 /**
  * Read one workflow's file.
@@ -59,7 +73,23 @@ async function readFile(slug: string): Promise<FileReading> {
 }
 
 /**
- * Read the code route: the rail, and the file of the workflow the URL names.
+ * Read the explorer: the file list and the configuration, in parallel, each kept as its own
+ * reading.
+ *
+ * @returns Both readings.
+ * @throws Whatever is not an `ApiError`.
+ */
+async function readExplorer(): Promise<ExplorerReadings> {
+  const [tree, config] = await Promise.all([
+    attempt(async () => workflows.tree()),
+    attempt(async () => workflows.config()),
+  ]);
+
+  return { tree, config };
+}
+
+/**
+ * Read the code route: the rail, the file of the workflow the URL names, and the explorer.
  *
  * @param access The workspace the gate returned — a precondition made visible in the type, for
  *   the reason `readStudio` gives, and not read.
@@ -72,10 +102,20 @@ export async function readStudioCode(access: Workspace, slug: string): Promise<C
   void access;
 
   const rail = await attempt(async () => workflows.list());
-  if (!rail.ok) return { rail, requested: slug, selected: null };
+  if (!rail.ok || rail.value.length === 0) {
+    return { rail, requested: slug, selected: null, explorer: null };
+  }
 
   const entry = rail.value.find((candidate) => candidate.slug === slug);
-  if (entry === undefined) return { rail, requested: slug, selected: null };
+  const [explorer, file] = await Promise.all([
+    readExplorer(),
+    entry === undefined ? null : readFile(entry.slug),
+  ]);
 
-  return { rail, requested: slug, selected: { entry, file: await readFile(entry.slug) } };
+  return {
+    rail,
+    requested: slug,
+    selected: entry === undefined || file === null ? null : { entry, file },
+    explorer,
+  };
 }

@@ -10,6 +10,7 @@ import {
   CODE_SEAT_NOTHING_TITLE,
   CODE_SEAT_UNREAD_NOTE,
   CODE_SUBLINE,
+  EXPLORER_LABEL,
   FILE_LABEL,
   FILE_READ_ONLY_NOTE,
   FILE_UNSAVED_NOTE,
@@ -27,7 +28,7 @@ import {
 } from "@/app/workflows/states";
 import { COPILOT_SOON_NOTE, PUBLISH_SOON, STUDIO_EYEBROW } from "@/app/workflows/view";
 
-import { PALETTES, renderInBothPalettes, renderInPalette } from "../../helpers/palettes";
+import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../../helpers/palettes";
 import {
   STANDARD_FIX_TEXT,
   codeReadings,
@@ -141,8 +142,12 @@ describe("the file", () => {
     render(<CodeScreen mayAdminister readings={codeReadings()} role="owner" />);
 
     const file = screen.getByRole("region", { name: FILE_LABEL });
+    const open = within(file).getByRole("tab", { selected: true });
 
-    expect(within(file).getByRole("heading")).toHaveTextContent("workflows/standard-fix.loop.ts");
+    // The open tab names the file, and the pane is labelled by it.
+    expect(open).toHaveTextContent(/^standard-fix\.loop\.ts$/);
+    expect(open).toHaveAttribute("title", "workflows/standard-fix.loop.ts");
+    expect(within(file).getByRole("tabpanel")).toHaveAttribute("aria-labelledby", open.id);
     expect(file).toHaveTextContent("Printed from the draft");
     expect(file).toHaveTextContent(FILE_UNSAVED_NOTE);
     expect(file).not.toHaveTextContent(FILE_READ_ONLY_NOTE);
@@ -330,7 +335,72 @@ describe("a draft with no faithful spelling as code yet", () => {
     );
     // Nothing failed, so there is nothing to retry.
     expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.queryByRole("region", { name: FILE_LABEL })).toBeNull();
+    // The workbench stays, so the explorer is there to leave by; there is no file to edit.
+    const workbench = screen.getByRole("region", { name: FILE_LABEL });
+    expect(within(workbench).getByRole("complementary", { name: EXPLORER_LABEL })).toBeInTheDocument();
+    expect(workbench.querySelector(".cm-editor")).toBeNull();
+  });
+});
+
+describe("the workbench", () => {
+  it("draws the explorer, headed by the workspace, and the tabs under the control (V.3, #171)", () => {
+    render(
+      <CodeScreen
+        mayAdminister
+        readings={codeReadings()}
+        role="owner"
+        workspace={{ id: "code-screen-workbench", name: "Acme Robotics" }}
+      />,
+    );
+
+    const workbench = screen.getByRole("region", { name: FILE_LABEL });
+
+    expect(within(workbench).getByRole("complementary", { name: EXPLORER_LABEL })).toHaveTextContent(
+      /^Explorer · Acme Robotics/,
+    );
+    expect(within(workbench).getByRole("tree")).toBeInTheDocument();
+    expect(within(workbench).getByRole("tablist")).toBeInTheDocument();
+  });
+
+  it("heads the explorer without a separator when the screen is not told the workspace", () => {
+    render(<CodeScreen mayAdminister readings={codeReadings()} role="owner" />);
+
+    expect(screen.getByText("Explorer", { selector: ".code-tree__head" })).toBeInTheDocument();
+  });
+
+  it("is drawn for a URL naming a workflow the rail does not hold, so the explorer leads on", () => {
+    render(<CodeScreen mayAdminister readings={codeReadings({ requested: "gone", selected: null })} role="owner" />);
+
+    expect(screen.getByRole("complementary", { name: EXPLORER_LABEL })).toBeInTheDocument();
+  });
+
+  it("is not drawn for a refused rail or an empty workspace — there are no files to list", () => {
+    const { unmount } = render(
+      <CodeScreen
+        mayAdminister
+        readings={codeReadings({ rail: { ok: false, reason: "Down." }, selected: null, explorer: null })}
+        role="owner"
+      />,
+    );
+    expect(screen.queryByRole("complementary", { name: EXPLORER_LABEL })).toBeNull();
+    unmount();
+
+    render(
+      <CodeScreen
+        mayAdminister
+        readings={codeReadings({ rail: { ok: true, value: [] }, selected: null, explorer: null })}
+        role="owner"
+      />,
+    );
+    expect(screen.queryByRole("complementary", { name: EXPLORER_LABEL })).toBeNull();
+  });
+
+  it("says why the file list is missing when a state that draws it was handed no explorer", () => {
+    render(<CodeScreen mayAdminister readings={codeReadings({ explorer: null })} role="owner" />);
+
+    expect(screen.getByRole("complementary", { name: EXPLORER_LABEL })).toHaveTextContent(
+      "The file list could not be read.",
+    );
   });
 });
 
@@ -367,6 +437,7 @@ describe("both palettes", () => {
       <CodeScreen mayAdminister readings={codeReadings()} role="owner" />,
     );
 
-    expect(light).toBe(dark);
+    // The tabs and their pane are tied together by generated ids, which differ per root.
+    expect(maskIds(light ?? "")).toBe(maskIds(dark ?? ""));
   });
 });
