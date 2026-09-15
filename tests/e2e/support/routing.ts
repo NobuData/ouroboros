@@ -449,7 +449,7 @@ export interface RouteBody {
 }
 
 /**
- * The two routes this leg edits, exactly as the seed left them.
+ * The routes the routing and registry legs edit, exactly as the seed left them.
  *
  * Written out rather than read back before each test, for the reason the rest of this module
  * is written out: a restore that re-sent whatever it found would put back a *broken* route
@@ -480,6 +480,19 @@ export const SEEDED_ROUTES = {
     hops: [
       { alias: "coder-fallback", note: null },
       { alias: "coder-std", note: null },
+    ],
+    allowLocalFallback: true,
+    floorHopIndex: null,
+    maxCostCentsPerRun: null,
+  },
+  /**
+   * The two-hop chain the registry leg ([#597](https://github.com/NobuData/ouroboros/issues/597))
+   * points at an alias of its own, so the matrix has a resolution line to redraw after a rebind.
+   */
+  docs: {
+    hops: [
+      { alias: "local-docs", note: null },
+      { alias: "sizer", note: null },
     ],
     allowLocalFallback: true,
     floorHopIndex: null,

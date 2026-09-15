@@ -39,6 +39,9 @@
 #                                 mockup (#149)
 #   db        code-editor.spec.ts the code editor's file is printed from the seeded draft
 #                                 rather than drawn from the mockup's listing (#170)
+#   db        registry.spec.ts    the registry's chips, health, prices and used-by counts are
+#                                 derived from the seeded rows rather than drawn from the
+#                                 mockup (#597)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -119,6 +122,31 @@
 # twenty-one tests green**: `audit_events` are not cleared between runs, so *the sheet says
 # `rotated` somewhere* was satisfied by a previous run's rotation. The leg now anchors on the
 # minute it started (`auditStamp` in support/providers.ts) and the stub takes it down.
+#
+# ## The registry leg's three hand-verified breakages (#597)
+#
+# #597 asks for each of its legs to "fail meaningfully when its layer is broken", and names one
+# outright: "the rebind leg fails if the routing matrix stops reflecting the new binding". The
+# three layers are code paths inside `rest`, so — for the reason the routing block above gives —
+# they were stubbed by hand at the ticket, the image rebuilt, and the matching tests re-run,
+# rather than automated here. What each stub took down, for the next person who repeats it:
+#
+#   the routing matrix pinning each alias to the first binding it saw
+#   (management.service.ts's `matrix()`)
+#                            -> only the lifecycle test, and at the assertion after the rebind:
+#                               the matrix still read `claude-sonnet-5 · Anthropic Claude` where
+#                               `deepseek-v3.2 · OpenAI-compatible · local vLLM` was required —
+#                               the line read *before* the rebind still passed, which is what
+#                               makes the failure about the binding and not about the page
+#   the delete guard never refusing (aliases.service.ts's `remove()`)
+#                            -> only the lifecycle test, at the stale tab's refusal: the delete
+#                               fell through to the route_hops foreign key and answered a 500
+#                               ("The alias could not be removed…") instead of the designed 409
+#                               naming the route that references it
+#   the publish gate's raw-model rewrite never matching (publish.gate.ts's `governed()`)
+#                            -> only the governance test: the finding carried the DSL
+#                               validator's generic sentence instead of CH.6's, which names the
+#                               stage and suggests `coder-max`
 #
 # ## The provider-stub pair, and the one thing it shares with the leg
 #
@@ -373,6 +401,16 @@ expect_red db studio.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 # through with everything healthy — is `ouroboros-ui`'s code-editor-styles suite, which reads
 # the library's base theme and goes red on any colour rule the sheet does not account for.
 expect_red db code-editor.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# The registry leg (#597), against the layer its every cell comes out of. A chip is CH.2's
+# derivation over `model_aliases.params`, `Used by` is a count over V023's reference index, a
+# price is CH.3's resolution over `model_prices` — so a table that still drew mockup 21 with the
+# database stopped would be a page drawing the artwork. `db` rather than `rest` for the reason
+# every pair above uses it, and the leg breaks at its first step for the reason the dashboard's
+# does: a session is a row. Its layer-by-layer breakages — the rebind's matrix line, the delete
+# guard's 409, the publish gate — were spot-verified by hand at the ticket, for the reason the
+# routing block in the header gives, and are recorded in the header beside that one.
+expect_red db registry.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 
 printf '\n'
 if check_summary; then
