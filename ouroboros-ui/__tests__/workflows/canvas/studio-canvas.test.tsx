@@ -690,8 +690,8 @@ describe("moving a stage", () => {
         node.id === "implement" ? { ...node, position: { x: 593, y: 420 } } : node,
       ),
     });
+    // Mounted on its own, nothing behind the canvas saves, and it says so.
     expect(screen.getByText(UNSAVED_NOTE)).toBeInTheDocument();
-    expect(UNSAVED_NOTE).toMatch(/#152/);
   });
 
   it("accumulates: a second move is written over the first", async () => {

@@ -51,9 +51,9 @@
  * everything else. `POST /v0/workflows/dry-run` is published beside it and answers, by default,
  * the **committed example** the engine's own document carries ({@link dryRunExample}) — read
  * from the document rather than typed here, so the stub's walk cannot drift from the engine's
- * description of one. Nothing in this service calls dry-run yet (S.6,
- * [#152](https://github.com/NobuData/ouroboros/issues/152), will); until then the route is here so
- * the contract is held, and so that caller inherits a stub rather than writing one.
+ * description of one. The studio's dry run (S.6,
+ * [#152](https://github.com/NobuData/ouroboros/issues/152)) is its caller, through
+ * `POST /api/v1/workflows/{id}/dry-run`.
  *
  * ```ts
  * const engine = await startEngineStub();
@@ -80,8 +80,8 @@ import { parse } from "yaml";
 
 import { DEVELOPMENT_ENVIRONMENT } from "../modules/config/configuration.fixture";
 import {
-  ENGINE_API_VERSION,
   ENGINE_ESTIMATE_ROUTE,
+  ENGINE_WORKFLOW_DRY_RUN_ROUTE,
   ENGINE_WORKFLOW_VALIDATE_ROUTE,
   INTERNAL_KEY_HEADER,
 } from "../modules/engine/engine.contract";
@@ -109,14 +109,8 @@ export const STATUS_PATH = "/v0/status";
 /** The engine's workflow validation route — R.2 (#144), the publish gate's second opinion. */
 export const WORKFLOW_VALIDATE_PATH = `/${ENGINE_WORKFLOW_VALIDATE_ROUTE}`;
 
-/**
- * The engine's dry-run simulator — R.2 (#144).
- *
- * Built here from the API version rather than imported as a route, because `engine.contract.ts`
- * mirrors only the operations this service calls, and nothing calls this one yet: S.6 (#152)
- * adds the constant when it adds the caller.
- */
-export const WORKFLOW_DRY_RUN_PATH = `/${ENGINE_API_VERSION}/workflows/dry-run`;
+/** The engine's dry-run simulator — R.2 (#144), called by the studio's dry run (S.6, #152). */
+export const WORKFLOW_DRY_RUN_PATH = `/${ENGINE_WORKFLOW_DRY_RUN_ROUTE}`;
 
 /** Where the engine's committed contract lives, from this file. */
 const ENGINE_SPECIFICATION_PATH = join(

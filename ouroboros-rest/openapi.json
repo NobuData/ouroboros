@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.35.3",
+    "version": "0.35.4",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -12339,6 +12339,231 @@
         }
       }
     },
+    "/api/v1/workflows/{id}/dry-run": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Walk the workflow for one issue, without running it",
+        "description": "The mockup's **Dry run with issue #485** — `ouroboros-engine`'s simulator (R.2,\n[#144](https://github.com/NobuData/ouroboros/issues/144)) brought to the studio (S.6,\n[#152](https://github.com/NobuData/ouroboros/issues/152)).\n\n**The stored draft is walked**, or the version in force when no draft is open. The\nstudio autosaves and flushes a pending save before asking, so the stored draft is the\npicture on the screen; a document sent in the body would let a caller simulate a\ndefinition nobody can see.\n\n**The ticket is read, not sent.** The request names an issue by id, and its labels and\nthe effort of its estimate in force are read from this workspace — so a dry run cannot\nbe about a ticket that does not exist, or one that is another workspace's. The ticket\nthe walk tested is echoed in the answer.\n\n**Zero model calls, zero provider calls, and nothing written.** A simulation is not\nrecorded anywhere a dashboard reads (decision **W4**).\n\n**A definition that does not validate is a `200`**, answered with its `findings` —\nnode-anchored, in the publish gate's shape — and an empty walk. Only publishing turns a\nfinding into a refusal.\n\n**Every member may ask**, `viewer` included: a dry run explains a definition they may\nalready read.",
+        "operationId": "dryRunWorkflow",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DryRunWorkflowRequest"
+              },
+              "example": {
+                "issueId": "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The walk: every stage reached in order, every edge out of each with what the walk\ndid with it and why, a verdict per stage, and the path the canvas paints.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDryRunResult"
+                },
+                "example": {
+                  "ticket": {
+                    "externalKey": "#485",
+                    "source": "github",
+                    "labels": [
+                      "bug",
+                      "i2c",
+                      "watchdog",
+                      "priority-high"
+                    ],
+                    "estimate": {
+                      "effort": "m"
+                    }
+                  },
+                  "findings": [],
+                  "steps": [
+                    {
+                      "nodeId": "effort-recheck",
+                      "type": "flow",
+                      "title": "Effort re-check",
+                      "verdict": "reached",
+                      "annotation": "A decision on: effort ≤ M. Every branch out of it is reported, taken or not.",
+                      "evaluation": {
+                        "holds": true,
+                        "assumed": false,
+                        "explanation": "#485 is effort M, and M ≤ M."
+                      },
+                      "edges": [
+                        {
+                          "from": "effort-recheck",
+                          "to": "plan",
+                          "kind": "branch",
+                          "label": "≤ M ↓",
+                          "outcome": "taken",
+                          "explanation": "Taken: #485 is effort M, and M ≤ M.",
+                          "evaluation": {
+                            "holds": true,
+                            "assumed": false,
+                            "explanation": "#485 is effort M, and M ≤ M."
+                          },
+                          "maxRetries": null
+                        },
+                        {
+                          "from": "effort-recheck",
+                          "to": "split",
+                          "kind": "branch",
+                          "label": "> M ↘",
+                          "outcome": "not_taken",
+                          "explanation": "Not taken: #485 is effort M, and M is not > M.",
+                          "evaluation": {
+                            "holds": false,
+                            "assumed": false,
+                            "explanation": "#485 is effort M, and M is not > M."
+                          },
+                          "maxRetries": null
+                        }
+                      ]
+                    },
+                    {
+                      "nodeId": "checks-green",
+                      "type": "flow",
+                      "title": "Checks green?",
+                      "verdict": "reached",
+                      "annotation": "A gate. Requires: every check passing.",
+                      "evaluation": {
+                        "holds": true,
+                        "assumed": true,
+                        "explanation": "A dry run has no check results, so it assumes every check passes."
+                      },
+                      "edges": [
+                        {
+                          "from": "checks-green",
+                          "to": "implement",
+                          "kind": "loop",
+                          "label": "fail ↺",
+                          "outcome": "loop",
+                          "explanation": "A loop back to implement, reported and never walked.",
+                          "evaluation": null,
+                          "maxRetries": 2
+                        }
+                      ]
+                    }
+                  ],
+                  "verdicts": [
+                    {
+                      "nodeId": "split",
+                      "verdict": "not_reached",
+                      "explanation": "Not reached: effort-recheck → split was not taken."
+                    }
+                  ],
+                  "highlightPath": [
+                    {
+                      "from": "issue-queued",
+                      "to": "analyze"
+                    },
+                    {
+                      "from": "analyze",
+                      "to": "effort-recheck"
+                    },
+                    {
+                      "from": "effort-recheck",
+                      "to": "plan"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no workflow with that id, or none this caller may know\nabout. `workflow_dry_run_issue_not_found` — the issue names nothing this workspace\nholds, which includes another workspace's issue; `details.issueId` echoes it.\n(`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "workflow_dry_run_issue_not_found",
+                  "message": "No such issue to dry-run this workflow with.",
+                  "details": {
+                    "issueId": "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_draft_absent` — the workflow has neither a draft nor a published version,\nso there is nothing to walk.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid, or `issueId` is missing or not one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`engine_unavailable` — `ouroboros-engine` could not walk the definition. Nothing\nstands in for a walk, so the dry run is refused rather than answered with a guess.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workflows/{id}/versions": {
       "get": {
         "tags": [
@@ -23838,6 +24063,416 @@
             "examples": [
               "Added the review gate before auto-merge."
             ]
+          }
+        }
+      },
+      "DryRunWorkflowRequest": {
+        "type": "object",
+        "title": "DryRunWorkflowRequest",
+        "description": "What **Dry run with issue",
+        "additionalProperties": false,
+        "required": [
+          "issueId"
+        ],
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The issue to walk the workflow for — `github_issues.id`. Its labels and effort are\nread by this service, never sent.",
+            "examples": [
+              "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
+            ]
+          }
+        }
+      },
+      "WorkflowDryRunTicket": {
+        "type": "object",
+        "title": "WorkflowDryRunTicket",
+        "description": "The ticket a dry run tested — what the trigger's conditions and the DSL's predicates read.",
+        "additionalProperties": false,
+        "required": [
+          "externalKey",
+          "source",
+          "labels",
+          "estimate"
+        ],
+        "properties": {
+          "externalKey": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The display form every explanation names it by.",
+            "examples": [
+              "#485"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "github",
+              "gitlab",
+              "jira",
+              "linear"
+            ],
+            "description": "Which tracker it came from. `github` for every issue that can carry an estimate today."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The tracker's label names, compared exactly as the tracker spells them."
+          },
+          "estimate": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "effort"
+                ],
+                "properties": {
+                  "effort": {
+                    "type": "string",
+                    "enum": [
+                      "xs",
+                      "s",
+                      "m",
+                      "l",
+                      "xl"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The estimate in force, or `null` for an issue nobody has sized."
+          }
+        }
+      },
+      "WorkflowFinding": {
+        "type": "object",
+        "title": "WorkflowFinding",
+        "description": "One reason a definition may not be published, anchored where the canvas can select it —\nthe shape `details.findings` carries on a refused publish, and a dry run's `findings`.",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "dsl",
+              "registry",
+              "engine"
+            ],
+            "description": "Which validator said so."
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Which rule broke, in that validator's vocabulary.",
+            "examples": [
+              "unreachable_node"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "What a person should read."
+          },
+          "path": {
+            "type": "string",
+            "description": "An RFC 6901 JSON Pointer to the offending value, when there is one.",
+            "examples": [
+              "/nodes/3"
+            ]
+          },
+          "node": {
+            "type": "string",
+            "description": "The node this anchors to — what the canvas selects when the finding is clicked.",
+            "examples": [
+              "review"
+            ]
+          },
+          "edge": {
+            "$ref": "#/components/schemas/WorkflowEdgeRef"
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "The registry alias the author most plausibly meant, when there is one."
+          }
+        }
+      },
+      "WorkflowEdgeRef": {
+        "type": "object",
+        "title": "WorkflowEdgeRef",
+        "description": "An edge, named by its ordered pair — a document allows at most one edge per pair.",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "The stage the edge leaves.",
+            "examples": [
+              "effort-recheck"
+            ]
+          },
+          "to": {
+            "type": "string",
+            "description": "The stage it arrives at.",
+            "examples": [
+              "plan"
+            ]
+          }
+        }
+      },
+      "WorkflowPredicateEvaluation": {
+        "type": "object",
+        "title": "WorkflowPredicateEvaluation",
+        "description": "One predicate — a trigger's conditions, a fork's test, an edge's condition — tested against the ticket.",
+        "additionalProperties": false,
+        "required": [
+          "holds",
+          "assumed",
+          "explanation"
+        ],
+        "properties": {
+          "holds": {
+            "type": "boolean",
+            "description": "Whether it holds."
+          },
+          "assumed": {
+            "type": "boolean",
+            "description": "`true` when it reads what only a run produces — check results — and `holds` is the\nsimulator's green-path assumption rather than a fact about the ticket."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Why, in one sentence.",
+            "examples": [
+              "#485 is effort M, and M ≤ M."
+            ]
+          }
+        }
+      },
+      "WorkflowDryRunEdge": {
+        "type": "object",
+        "title": "WorkflowDryRunEdge",
+        "description": "One edge out of a stage on the walk, and what the walk did with it.",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to",
+          "kind",
+          "label",
+          "outcome",
+          "explanation",
+          "evaluation",
+          "maxRetries"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "The stage the edge leaves."
+          },
+          "to": {
+            "type": "string",
+            "description": "The stage it arrives at."
+          },
+          "kind": {
+            "type": "string",
+            "description": "The edge's kind, as the document says — `default`, `branch` or `loop`.",
+            "examples": [
+              "branch"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the canvas prints beside it, or `null`."
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "taken",
+              "not_taken",
+              "loop"
+            ],
+            "description": "Whether the walk followed it. `loop` is its own outcome: a loop is reported with its\nretry bound and never walked."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Why — for a branch not taken, the road not taken, explained."
+          },
+          "evaluation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowPredicateEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edge's condition tested against the ticket, or `null` when it has none."
+          },
+          "maxRetries": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "For a loop, the retry bound — the `limits.max_retries` of the model stage it returns\nto. `null` for every other edge, and for a loop into a stage that declares none."
+          }
+        }
+      },
+      "WorkflowDryRunStep": {
+        "type": "object",
+        "title": "WorkflowDryRunStep",
+        "description": "One stage the walk reached, in the order it reached them.",
+        "additionalProperties": false,
+        "required": [
+          "nodeId",
+          "type",
+          "title",
+          "verdict",
+          "annotation",
+          "evaluation",
+          "edges"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "The stage's id."
+          },
+          "type": {
+            "type": "string",
+            "description": "Which of the DSL's node types it is.",
+            "examples": [
+              "flow"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "What the canvas prints as its name."
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "not_matched",
+              "reached",
+              "halted",
+              "ended"
+            ],
+            "description": "`matched` or `not_matched` for the trigger, `ended` for a terminal, `reached` for a\nstage the walk left, and `halted` for one no edge out of which is taken."
+          },
+          "annotation": {
+            "type": "string",
+            "description": "What the stage would do or require — always said without doing it."
+          },
+          "evaluation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowPredicateEvaluation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The trigger's conditions or a fork's predicate, tested; `null` for any other stage."
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowDryRunEdge"
+            },
+            "description": "Every edge out of the stage, in document order, each with its outcome."
+          }
+        }
+      },
+      "WorkflowNodeVerdict": {
+        "type": "object",
+        "title": "WorkflowNodeVerdict",
+        "description": "What the walk concluded about one stage, walked or not.",
+        "additionalProperties": false,
+        "required": [
+          "nodeId",
+          "verdict",
+          "explanation"
+        ],
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "The stage's id."
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "not_matched",
+              "reached",
+              "halted",
+              "ended",
+              "not_reached"
+            ],
+            "description": "A step's verdict for a stage the walk reached, and `not_reached` for one it did not."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Why."
+          }
+        }
+      },
+      "WorkflowDryRunResult": {
+        "type": "object",
+        "title": "WorkflowDryRunResult",
+        "description": "What a dry run answers — the engine's walk in this API's names, with the ticket it\ntested. Every explanation is the simulator's own sentence, relayed rather than recomposed.",
+        "additionalProperties": false,
+        "required": [
+          "ticket",
+          "findings",
+          "steps",
+          "verdicts",
+          "highlightPath"
+        ],
+        "properties": {
+          "ticket": {
+            "$ref": "#/components/schemas/WorkflowDryRunTicket"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowFinding"
+            },
+            "description": "The definition's errors. Non-empty means it did not validate and nothing was walked,\nso the three lists beside it are empty."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowDryRunStep"
+            },
+            "description": "The ordered walk."
+          },
+          "verdicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowNodeVerdict"
+            },
+            "description": "One verdict per stage, in document order."
+          },
+          "highlightPath": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEdgeRef"
+            },
+            "description": "Every edge the walk took, in the order it took them — the canvas's accent path."
           }
         }
       }

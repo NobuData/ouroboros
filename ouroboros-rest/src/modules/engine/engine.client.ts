@@ -43,19 +43,24 @@ import {
   ENGINE_ECHO_ROUTE,
   ENGINE_ESTIMATE_ROUTE,
   ENGINE_STATUS_ROUTE,
+  ENGINE_WORKFLOW_DRY_RUN_ROUTE,
   ENGINE_WORKFLOW_VALIDATE_ROUTE,
   INTERNAL_KEY_HEADER,
   echoRequestBody,
   echoResultSchema,
   engineRouteUrl,
   engineStatusSchema,
+  engineWorkflowDryRunSchema,
   engineWorkflowValidationSchema,
   estimateRequestBody,
   estimateSchema,
+  workflowDryRunRequestBody,
   workflowValidateRequestBody,
   type EchoResult,
   type EchoTask,
+  type EngineDryRunTicket,
   type EngineStatus,
+  type EngineWorkflowDryRun,
   type EngineWorkflowValidation,
   type Estimate,
   type EstimateRequest,
@@ -224,6 +229,35 @@ export class EngineClient {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(workflowValidateRequestBody(definition)),
+    });
+  }
+
+  /**
+   * Ask the engine to walk a workflow definition for one ticket.
+   *
+   * The studio's dry run (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)). The
+   * engine validates the definition first and answers an invalid one with its findings and an
+   * empty walk — a `200` either way, so a finding is a value here and never a throw.
+   *
+   * **The ticket must already be the contract's.** A body the engine refuses is a non-2xx, and
+   * every non-2xx here is `engine_unavailable` (see {@link call}); the caller builds the ticket
+   * from stored columns whose bounds are the contract's own, so a refusal is a contract break
+   * rather than a mistake a client could fix.
+   *
+   * @param definition - The document to walk, exactly as it is stored.
+   * @param ticket - The ticket, in this service's names.
+   * @returns The walk, parsed and in this service's names.
+   * @throws {UpstreamError} `engine_unavailable` for every way this can fail — see
+   *   {@link call}.
+   */
+  async dryRunWorkflow(
+    definition: unknown,
+    ticket: EngineDryRunTicket,
+  ): Promise<EngineWorkflowDryRun> {
+    return this.call(ENGINE_WORKFLOW_DRY_RUN_ROUTE, engineWorkflowDryRunSchema, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(workflowDryRunRequestBody(definition, ticket)),
     });
   }
 

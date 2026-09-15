@@ -2376,10 +2376,20 @@ engine.respondToValidation(() => engineFailure()); // → 502 engine_unavailable
 
 `POST /v0/workflows/dry-run` is published beside it and answers, by default, **the example
 exchange the engine's own document commits to** (`dryRunExample()`), read from the YAML rather
-than typed — so the stub's walk cannot drift from the engine's description of one. Nothing in
-this service calls dry-run yet; S.6 ([#152](https://github.com/NobuData/ouroboros/issues/152))
-inherits the stub when it adds the caller. Because the stub reads that document, `ci/rest`
-watches `ouroboros-engine/openapi.yaml`.
+than typed — so the stub's walk cannot drift from the engine's description of one. Its caller is
+the studio's dry run, S.6 ([#152](https://github.com/NobuData/ouroboros/issues/152)), and
+`engine.respondToDryRun` scripts findings or a failure for it the way `respondToValidation` does
+for the gate. Because the stub reads that document, `ci/rest` watches
+`ouroboros-engine/openapi.yaml`.
+
+**`POST /api/v1/workflows/{id}/dry-run` is the studio's *Dry run with issue #485*.** The request
+names an issue by id and nothing about it: `WorkflowDryRunService` reads the issue's labels and
+the effort of its estimate in force from this workspace (`dry-run.repository.ts`), walks the
+stored draft — or the version in force when none is open — through `EngineClient.dryRunWorkflow`,
+and relays the engine's walk in camelCase with the ticket it tested. A definition the engine
+finds fault with is a `200` carrying publish-shaped findings (`source: "engine"`, node-anchored);
+an issue or workflow that is not this workspace's is a `404`; an engine that cannot answer is a
+`502`. It writes nothing, so it carries no `@Roles()` — every member, viewers included.
 
 **The studio's cross-service behaviour is `studio.integration-spec.ts`**: the publish gate's
 engine refusals (nothing written, counted), a twenty-case R.1 trigger matrix through the queue

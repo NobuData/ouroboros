@@ -19,10 +19,10 @@ import {
   CODE_NEEDS_WORKFLOW_NOTE,
   COPILOT_SOON_NOTE,
   DRY_RUN_LABEL,
-  DRY_RUN_SOON,
+  DRY_RUN_NEEDS_WORKFLOW,
   NEW_WORKFLOW_LABEL,
   NEW_WORKFLOW_MEMBER_REASON,
-  PUBLISH_SOON,
+  PUBLISH_NEEDS_WORKFLOW,
   RAIL_LABEL,
   STUDIO_EYEBROW,
 } from "@/app/workflows/view";
@@ -49,6 +49,14 @@ import { railEntry, readings, seededRail, unpublishedEntry, workflowDetail } fro
 // The tile's dialog and the failed banner both want the App Router, and the dialog's action
 // sits on the server-only client; each is another suite's subject.
 vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
+// The session's save, publish and dry run sit on the server-only client too (#152); their
+// flows are `studio-flows.test.tsx`'s subject.
+vi.mock("@/app/workflows/draft-actions", () => ({
+  saveDraft: vi.fn(),
+  publishWorkflow: vi.fn(),
+  dryRunWorkflow: vi.fn(),
+  sizedTickets: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 
 // The populated page mounts React Flow, which measures — see the helper.
@@ -86,27 +94,33 @@ describe("the page head, on the seeded standard-fix", () => {
     );
   });
 
-  it("draws the mockup's three actions, each inert with the issue it waits for", () => {
+  it("draws the mockup's three actions: templates inert with its issue, Dry run and Publish live (#152)", () => {
     render(<StudioScreen mayAdminister readings={readings()} role="owner" />);
 
     const browse = screen.getByRole("button", { name: BROWSE_TEMPLATES_LABEL });
     const dryRun = screen.getByRole("button", { name: DRY_RUN_LABEL });
     const publish = screen.getByRole("button", { name: "Publish v15" });
 
-    for (const [control, reason] of [
-      [browse, BROWSE_TEMPLATES_SOON],
-      [dryRun, DRY_RUN_SOON],
-      [publish, PUBLISH_SOON],
-    ] as const) {
-      expect(control).toHaveAttribute("aria-disabled", "true");
-      expect(control).toHaveAttribute("title", reason);
-      expect(control.getAttribute("title")).toMatch(/#\d+/);
-      // `aria-disabled` rather than `disabled`, so the explanation stays reachable.
-      expect(control).not.toBeDisabled();
+    expect(browse).toHaveAttribute("aria-disabled", "true");
+    expect(browse).toHaveAttribute("title", BROWSE_TEMPLATES_SOON);
+    // `aria-disabled` rather than `disabled`, so the explanation stays reachable.
+    expect(browse).not.toBeDisabled();
+
+    for (const control of [dryRun, publish]) {
+      expect(control).not.toHaveAttribute("aria-disabled");
+      expect(control).not.toHaveAttribute("title");
     }
+    expect(publish).toHaveClass("ou-btn--primary");
   });
 
-  it("counts the publish label from the version in force", () => {
+  it("offers a member the dry run, which writes nothing, and still no Publish", () => {
+    render(<StudioScreen readings={readings()} role="member" />);
+
+    expect(screen.getByRole("button", { name: DRY_RUN_LABEL })).not.toHaveAttribute("aria-disabled");
+    expect(screen.queryByRole("button", { name: /^Publish v/ })).toBeNull();
+  });
+
+  it("counts the publish label from the version in force, inert with its reason when the workflow could not be read", () => {
     render(
       <StudioScreen
         mayAdminister
@@ -115,7 +129,10 @@ describe("the page head, on the seeded standard-fix", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Publish v1" })).toBeInTheDocument();
+    const publish = screen.getByRole("button", { name: "Publish v1" });
+    expect(publish).toHaveAttribute("aria-disabled", "true");
+    expect(publish).toHaveAttribute("title", PUBLISH_NEEDS_WORKFLOW);
+    expect(screen.getByRole("button", { name: DRY_RUN_LABEL })).toHaveAttribute("title", DRY_RUN_NEEDS_WORKFLOW);
   });
 });
 

@@ -32,6 +32,13 @@ vi.mock("@/app/workflows/data", () => ({
 // The tile's dialog sits on the server-only client and wants the App Router; the failed
 // banner wants the router too. Both are other suites' subjects.
 vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
+// The session's save, publish and dry run (#152) sit on the server-only client as well.
+vi.mock("@/app/workflows/draft-actions", () => ({
+  saveDraft: vi.fn(),
+  publishWorkflow: vi.fn(),
+  dryRunWorkflow: vi.fn(),
+  sizedTickets: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 
 // The populated page mounts the React Flow canvas (#148), which measures — see the helper.

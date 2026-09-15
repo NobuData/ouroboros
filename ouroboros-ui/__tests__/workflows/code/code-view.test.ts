@@ -212,8 +212,8 @@ describe("the head", () => {
 describe("the actions' reasons", () => {
   it("names the issue each inert action waits for", () => {
     expect(VALIDATE_SOON).toMatch(/#174/);
-    // Publish opens the shared dialog, so it waits on the same issue the visual editor's does.
-    expect(PUBLISH_SOON).toMatch(/#152/);
+    // The visual editor's dialog is #152's; the code view opens it once V.6 (#174) wires it in.
+    expect(PUBLISH_SOON).toMatch(/#174/);
   });
 });
 

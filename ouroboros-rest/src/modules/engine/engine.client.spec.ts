@@ -359,6 +359,87 @@ describe("validating a workflow definition", () => {
   });
 });
 
+describe("dry-running a workflow definition", () => {
+  const DEFINITION = { dsl_version: "1.0", nodes: [{ id: "issue-queued", type: "trigger" }] };
+  const TICKET = {
+    externalKey: "#485",
+    source: "github",
+    labels: ["bug"],
+    estimate: { effort: "m" },
+  } as const;
+
+  /** A walk of the trigger alone, in the engine's names. */
+  function walked(): Response {
+    return jsonResponse({
+      findings: [],
+      steps: [
+        {
+          node_id: "issue-queued",
+          type: "trigger",
+          title: "Issue queued",
+          verdict: "matched",
+          annotation: "Starts a run when a ticket is queued.",
+          evaluation: { holds: true, assumed: false, explanation: "Every condition holds." },
+          edges: [],
+        },
+      ],
+      verdicts: [
+        { node_id: "issue-queued", verdict: "matched", explanation: "Every condition holds." },
+      ],
+      highlight_path: [],
+    });
+  }
+
+  it("posts the definition and the ticket, in the engine's names, to its dry-run route", async () => {
+    const engine = alwaysAnswering(walked);
+
+    await clientWith(engine).dryRunWorkflow(DEFINITION, TICKET);
+
+    expect(engine.calls[0].url).toBe(`${ENGINE_URL}/v0/workflows/dry-run`);
+    expect(engine.calls[0].method).toBe("POST");
+    expect(JSON.parse(engine.calls[0].body ?? "")).toEqual({
+      definition: DEFINITION,
+      ticket: {
+        external_key: "#485",
+        source: "github",
+        labels: ["bug"],
+        estimate: { effort: "m" },
+      },
+    });
+    expect(headerOf(engine, "X-Ouro-Internal-Key")).toBe(SHARED_SECRET);
+  });
+
+  it("reads the walk back in this service's names", async () => {
+    const engine = alwaysAnswering(walked);
+
+    await expect(clientWith(engine).dryRunWorkflow(DEFINITION, TICKET)).resolves.toMatchObject({
+      steps: [{ nodeId: "issue-queued", verdict: "matched" }],
+      verdicts: [{ nodeId: "issue-queued" }],
+      highlightPath: [],
+    });
+  });
+
+  it.each([
+    ["an engine that refused the ticket", HttpStatus.UNPROCESSABLE_ENTITY],
+    ["an engine that is unwell", HttpStatus.SERVICE_UNAVAILABLE],
+    ["an engine that failed", HttpStatus.INTERNAL_SERVER_ERROR],
+  ])("answers engine_unavailable for %s", async (_name, status) => {
+    const engine = alwaysAnswering(() => engineError(status));
+
+    await expect(clientWith(engine).dryRunWorkflow(DEFINITION, TICKET)).rejects.toMatchObject({
+      response: { code: ENGINE_ERRORS.unavailable },
+    });
+  });
+
+  it("refuses a body outside the contract rather than answering undefined", async () => {
+    const engine = alwaysAnswering(() => jsonResponse({ findings: [] }));
+
+    await expect(clientWith(engine).dryRunWorkflow(DEFINITION, TICKET)).rejects.toMatchObject({
+      response: { code: ENGINE_ERRORS.unavailable },
+    });
+  });
+});
+
 describe("when the engine cannot be reached", () => {
   it.each([...RETRYABLE_CONNECT_CODES])("retries once after %s", async (code) => {
     const engine = failingThenAnswering(() => connectFailure(code), jsonResponse);

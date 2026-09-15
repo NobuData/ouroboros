@@ -132,3 +132,37 @@ export const SELECTED_STAGE = "implement";
  * path in both palettes rather than the library's grey.
  */
 export const ACCENT_DEEP = { light: "rgb(5, 88, 114)", dark: "rgb(23, 147, 196)" } as const;
+
+/**
+ * Mockup 04's four accent edges — trigger → analyze → decision → plan → implement — as the canvas names
+ * its edges. S.6's dry run of the seeded `standard-fix` for `#485`
+ * ([#152](https://github.com/NobuData/ouroboros/issues/152)) must paint every one of them: they are the
+ * prefix of the engine's walk, which `ouroboros-engine`'s own suite asserts.
+ */
+export const MOCKUP_ACTIVE_EDGES = [
+  "issue-queued→analyze",
+  "analyze→effort-recheck",
+  "effort-recheck→plan",
+  "plan→implement",
+] as const;
+
+/** An edge the walk does not take: the decision's `> M ↘` branch, which `#485` (effort M) does not satisfy. */
+export const NOT_TAKEN_EDGE = "effort-recheck→split";
+
+/** The head's action (`app/workflows/view.ts`'s `DRY_RUN_LABEL`). */
+export const DRY_RUN_LABEL = "Dry run";
+
+/** The picker dialog's title (`app/workflows/dry-run.ts`'s `DRY_RUN_DIALOG_TITLE`). */
+export const DRY_RUN_DIALOG_TITLE = "Dry run";
+
+/** The picker's label. */
+export const TICKET_LABEL = "Issue";
+
+/** The picker's primary action. */
+export const RUN_LABEL = "Run dry run";
+
+/** What the picker opens on: the seeded `#485`, whatever the backlog lists around it. */
+export const SEEDED_TICKET = /^#485 · .* · effort M$/;
+
+/** The step sheet's name — mockup 04's action, for the ticket walked. */
+export const DRY_RUN_SHEET_TITLE = "Dry run with issue #485";

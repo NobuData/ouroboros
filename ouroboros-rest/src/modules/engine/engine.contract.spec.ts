@@ -4,9 +4,14 @@ import { join } from "node:path";
 import { parse } from "yaml";
 
 import {
+  DRY_RUN_EDGE_OUTCOMES,
+  DRY_RUN_NODE_VERDICTS,
+  DRY_RUN_SOURCES,
+  DRY_RUN_STEP_VERDICTS,
   ENGINE_ECHO_ROUTE,
   ENGINE_ESTIMATE_ROUTE,
   ENGINE_STATUS_ROUTE,
+  ENGINE_WORKFLOW_DRY_RUN_ROUTE,
   ENGINE_WORKFLOW_VALIDATE_ROUTE,
   ESTIMATE_EFFORTS,
   ESTIMATE_RISKS,
@@ -15,10 +20,13 @@ import {
   echoResultSchema,
   engineRouteUrl,
   engineStatusSchema,
+  engineWorkflowDryRunSchema,
   engineWorkflowValidationSchema,
   estimateRequestBody,
   estimateSchema,
+  workflowDryRunRequestBody,
   workflowValidateRequestBody,
+  type EngineDryRunTicket,
 } from "./engine.contract";
 import { ENGINE_ESTIMATE_BODY, ESTIMATE_REQUEST } from "./engine.fixture";
 
@@ -395,6 +403,138 @@ describe("workflowValidateRequestBody", () => {
   });
 });
 
+/** A walk as the engine sends one: the decision at `effort-recheck`, reduced to its two branches. */
+const ENGINE_DRY_RUN_BODY = {
+  findings: [],
+  steps: [
+    {
+      node_id: "effort-recheck",
+      type: "flow",
+      title: "Effort re-check",
+      verdict: "reached",
+      annotation: "A decision on: effort ≤ M.",
+      evaluation: { holds: true, assumed: false, explanation: "#485 is effort M, and M ≤ M." },
+      edges: [
+        {
+          from: "effort-recheck",
+          to: "implement",
+          kind: "branch",
+          label: "≤ M ↓",
+          outcome: "taken",
+          explanation: "Taken: #485 is effort M, and M ≤ M.",
+          evaluation: { holds: true, assumed: false, explanation: "#485 is effort M, and M ≤ M." },
+          max_retries: null,
+        },
+        {
+          from: "checks-green",
+          to: "implement",
+          kind: "loop",
+          label: "fail ↺",
+          outcome: "loop",
+          explanation: "A loop back to implement, reported and never walked.",
+          evaluation: null,
+          max_retries: 2,
+        },
+      ],
+    },
+  ],
+  verdicts: [
+    { node_id: "back-to-queue", verdict: "not_reached", explanation: "No edge reached it." },
+  ],
+  highlight_path: [{ from: "effort-recheck", to: "implement" }],
+};
+
+describe("the workflow dry-run schema", () => {
+  it("renames every field, at every depth", () => {
+    const parsed = engineWorkflowDryRunSchema.parse(ENGINE_DRY_RUN_BODY);
+
+    expect(parsed.highlightPath).toEqual([{ from: "effort-recheck", to: "implement" }]);
+    expect(parsed.steps[0]).toMatchObject({ nodeId: "effort-recheck", verdict: "reached" });
+    expect(parsed.steps[0].edges[1]).toEqual({
+      from: "checks-green",
+      to: "implement",
+      kind: "loop",
+      label: "fail ↺",
+      outcome: "loop",
+      explanation: "A loop back to implement, reported and never walked.",
+      evaluation: null,
+      maxRetries: 2,
+    });
+    expect(parsed.verdicts).toEqual([
+      { nodeId: "back-to-queue", verdict: "not_reached", explanation: "No edge reached it." },
+    ]);
+  });
+
+  it("carries a definition's findings through the validation schema's reading", () => {
+    // An invalid definition is a 200 with findings and an empty walk — the same finding shape the
+    // publish gate reads, so the studio anchors both the same way.
+    const parsed = engineWorkflowDryRunSchema.parse({
+      findings: [{ code: "graph_cyclic", message: "…", node_id: "plan", path: "/nodes/3" }],
+      steps: [],
+      verdicts: [],
+      highlight_path: [],
+    });
+
+    expect(parsed.findings).toEqual([
+      { code: "graph_cyclic", message: "…", node: "plan", path: "/nodes/3" },
+    ]);
+  });
+
+  it("ignores a field the engine added", () => {
+    const parsed = engineWorkflowDryRunSchema.parse({ ...ENGINE_DRY_RUN_BODY, elapsed_ms: 3 });
+
+    expect(parsed).not.toHaveProperty("elapsed_ms");
+  });
+
+  it.each([
+    ["an outcome the contract does not publish", { outcome: "skipped" }],
+    ["a negative retry bound", { max_retries: -1 }],
+    ["a missing explanation", { explanation: undefined }],
+  ])("refuses an edge with %s", (_name, change) => {
+    const [step] = ENGINE_DRY_RUN_BODY.steps;
+    const body = {
+      ...ENGINE_DRY_RUN_BODY,
+      steps: [{ ...step, edges: [{ ...step.edges[0], ...change }] }],
+    };
+
+    expect(engineWorkflowDryRunSchema.safeParse(body).success).toBe(false);
+  });
+
+  it("refuses a body with no highlight path", () => {
+    const { highlight_path: _omitted, ...body } = ENGINE_DRY_RUN_BODY;
+
+    expect(engineWorkflowDryRunSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe("workflowDryRunRequestBody", () => {
+  const TICKET: EngineDryRunTicket = {
+    externalKey: "#485",
+    source: "github",
+    labels: ["bug", "i2c"],
+    estimate: { effort: "m" },
+  };
+
+  it("writes the ticket in the engine's names, and the document untouched", () => {
+    const definition = { dsl_version: "1.0" };
+    const body = workflowDryRunRequestBody(definition, TICKET);
+
+    expect(body.definition).toBe(definition);
+    expect(body.ticket).toEqual({
+      external_key: "#485",
+      source: "github",
+      labels: ["bug", "i2c"],
+      estimate: { effort: "m" },
+    });
+  });
+
+  it("states an unsized ticket as the null the contract requires, never by omission", () => {
+    const body = workflowDryRunRequestBody({}, { ...TICKET, estimate: null });
+
+    expect(body.ticket).toHaveProperty("estimate", null);
+  });
+});
+
 describe("the engine's own specification", () => {
   it("serves the status route this client calls", () => {
     expect(engineDocument().paths).toHaveProperty(`/${ENGINE_STATUS_ROUTE}`);
@@ -421,6 +561,19 @@ describe("the engine's own specification", () => {
     // alone. The engine publishes it now, so the tolerance went with the tripwire, and a `404`
     // is `engine_unavailable` like any other refusal.
     expect(engineDocument().paths).toHaveProperty(`/${ENGINE_WORKFLOW_VALIDATE_ROUTE}`);
+  });
+
+  it("serves the dry-run route the studio's dry run calls", () => {
+    expect(engineDocument().paths).toHaveProperty(`/${ENGINE_WORKFLOW_DRY_RUN_ROUTE}`);
+  });
+
+  it.each([
+    ["DryRunTicket", "source", DRY_RUN_SOURCES],
+    ["DryRunEdge", "outcome", DRY_RUN_EDGE_OUTCOMES],
+    ["DryRunStep", "verdict", DRY_RUN_STEP_VERDICTS],
+    ["NodeVerdict", "verdict", DRY_RUN_NODE_VERDICTS],
+  ])("enumerates %s.%s exactly as this client mirrors it", (name, field, values) => {
+    expect(engineDocument().components.schemas[name].properties[field].enum).toEqual([...values]);
   });
 
   it("leaves a finding's anchors optional, because the engine omits the ones it lacks", () => {
@@ -456,6 +609,17 @@ describe("the engine's own specification", () => {
     ["WorkflowValidateRequest", ["definition"]],
     ["WorkflowValidation", ["findings"]],
     ["WorkflowFinding", ["code", "message", "path"]],
+    ["WorkflowDryRunRequest", ["definition", "ticket"]],
+    ["DryRunTicket", ["external_key", "source", "labels", "estimate"]],
+    ["WorkflowDryRun", ["findings", "steps", "verdicts", "highlight_path"]],
+    ["DryRunStep", ["node_id", "type", "title", "verdict", "annotation", "evaluation", "edges"]],
+    [
+      "DryRunEdge",
+      ["from", "to", "kind", "label", "outcome", "explanation", "evaluation", "max_retries"],
+    ],
+    ["NodeVerdict", ["node_id", "verdict", "explanation"]],
+    ["PredicateEvaluation", ["holds", "assumed", "explanation"]],
+    ["EdgeRef", ["from", "to"]],
   ])("describes %s with the fields this client reads", (name, fields) => {
     // The schemas above ignore what they do not know about, which is the compatibility rule
     // working — and is also what would let a *removed* field go unnoticed until a call

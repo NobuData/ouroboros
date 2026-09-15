@@ -6,11 +6,12 @@ import {
   BROWSE_TEMPLATES_SOON,
   CODE_NEEDS_WORKFLOW_NOTE,
   COPILOT_SOON_NOTE,
-  DRY_RUN_SOON,
+  DRY_RUN_NEEDS_WORKFLOW,
   NEW_WORKFLOW_MEMBER_REASON,
   NOT_PUBLISHED,
   NO_DRAFT,
   NO_TRIGGER,
+  PUBLISH_NEEDS_WORKFLOW,
   PUBLISH_SOON,
   STUDIO_EYEBROW,
   BLANK_DEFINITION,
@@ -25,6 +26,7 @@ import {
   readTrigger,
   studioSubline,
   studioTabs,
+  sublineOf,
   triggerSentence,
   versionWord,
 } from "@/app/workflows/view";
@@ -287,6 +289,42 @@ describe("the subline", () => {
       `${NO_TRIGGER} Last edited 2h ago · ${NOT_PUBLISHED} · used by 42% of runs.`,
     );
   });
+
+  it("says `draft edits` beside the version when the open draft is not the version in force (#152)", () => {
+    const edited = standardFixDefinition();
+    (edited.nodes as Record<string, unknown>[])[0].title = "Issue queued, edited";
+    const detail = workflowDetail({ draft: { etag: "e", definition: edited, updatedAt: DRAFT_EDITED_AT } });
+
+    expect(studioSubline(detail, railEntry(), NOW)).toBe(
+      "Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 · draft edits · used by 42% of runs.",
+    );
+  });
+
+  it("says nothing about draft edits for a draft equal to the version, whatever order its keys are in", () => {
+    const version = standardFixDefinition();
+    const reordered = Object.fromEntries(Object.entries(standardFixDefinition()).reverse());
+    const detail = workflowDetail({
+      draft: { etag: "e", definition: reordered, updatedAt: DRAFT_EDITED_AT },
+      version: { ...workflowDetail().version!, definition: version },
+    });
+
+    expect(studioSubline(detail, railEntry(), NOW)).not.toMatch(/draft edits/);
+  });
+
+  it("composes the same sentence from facts, which is what the browser's session hands it", () => {
+    expect(
+      sublineOf(
+        {
+          definition: standardFixDefinition(),
+          draftUpdatedAt: DRAFT_EDITED_AT,
+          currentVersion: 15,
+          draftEdits: false,
+          usageCaption: "used by 42% of runs",
+        },
+        NOW,
+      ),
+    ).toBe("Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v15 · used by 42% of runs.");
+  });
 });
 
 describe("the actions", () => {
@@ -298,9 +336,16 @@ describe("the actions", () => {
   it("names the issue each inert action waits for", () => {
     // § 3.5: a control that cannot act says what is missing, and the reason is a usable answer
     // to "when?" rather than the word *soon*.
-    for (const reason of [BROWSE_TEMPLATES_SOON, DRY_RUN_SOON, PUBLISH_SOON]) {
+    for (const reason of [BROWSE_TEMPLATES_SOON, PUBLISH_SOON]) {
       expect(reason).toMatch(/#\d+/);
     }
+  });
+
+  it("says why Dry run and Publish cannot act on a page with no workflow it could read", () => {
+    // Built controls with nothing to act on: the reason is what is missing, not an issue number.
+    expect(DRY_RUN_NEEDS_WORKFLOW).toMatch(/could read/);
+    expect(PUBLISH_NEEDS_WORKFLOW).toMatch(/could read/);
+    expect(DRY_RUN_NEEDS_WORKFLOW).not.toMatch(/#\d+/);
   });
 
   it("makes the tile inert for a role that may not create, and only for that role", () => {

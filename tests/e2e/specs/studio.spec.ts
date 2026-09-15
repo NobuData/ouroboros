@@ -28,31 +28,41 @@
  *
  * ## What it deliberately leaves to the legs after it
  *
- * The baselines show the page as the product serves it today: plain edges and the dashed loop,
- * with **no accent path**. The mockup's four accent edges are an execution path, and nothing on
- * the page draws one until S.6's dry run ([#152](https://github.com/NobuData/ouroboros/issues/152))
- * hands the canvas its `highlight_path`; `ouroboros-ui`'s suites exercise that mode with the
- * mockup's own path as a fixture. S.6 re-records this pair with the walk drawn. Editing, publish,
- * the member's read-only view and the font-scale check are S.8's.
+ * The baselines show the page as the product opens it: plain edges and the dashed loop, with **no
+ * accent path**. The mockup's four accent edges are an execution path, which the page draws once S.6's
+ * dry run ([#152](https://github.com/NobuData/ouroboros/issues/152)) hands the canvas its
+ * `highlight_path` — and that is its own case below rather than a re-recorded pair: *parity* is the
+ * canvas as it opens, and *the dry run paints the mockup's path in both palettes* is asserted edge by
+ * edge, which a screenshot of a walk the engine may lengthen would not survive. Editing, publish, the
+ * member's read-only view and the font-scale check are S.8's.
  *
- * Nothing here writes: the leg reads the seeded workflow and selects a stage, which is the
- * browser's state and not the workspace's.
+ * Nothing here writes. The leg reads the seeded workflow and selects a stage, which is the browser's
+ * state and not the workspace's; the dry run writes nothing by design, and its case moves a stage as
+ * the seeded **member**, whose page never saves, so the draft every other leg reads is left as seeded.
  */
 
 import { type BrowserContext, type Locator, type Page, expect, test } from "@playwright/test";
 
-import { SEED_OWNER, SEED_TENANT } from "../support/seed";
+import { SEED_MEMBER, SEED_OWNER, SEED_TENANT } from "../support/seed";
 import { signIn } from "../support/session";
 import { PANE_SELECTOR } from "../support/shell";
 import {
   ACCENT_DEEP,
   CANVAS_LABEL,
+  DRY_RUN_DIALOG_TITLE,
+  DRY_RUN_LABEL,
+  DRY_RUN_SHEET_TITLE,
   LOOP_EDGE,
+  MOCKUP_ACTIVE_EDGES,
+  NOT_TAKEN_EDGE,
+  RUN_LABEL,
   SEEDED_LABELS,
   SEEDED_STAGES,
+  SEEDED_TICKET,
   SELECTED_STAGE,
   STUDIO_PATH,
   STUDIO_TITLE,
+  TICKET_LABEL,
 } from "../support/studio";
 import { pinTheme } from "../support/theme";
 import { selectWorkspace } from "../support/workspace";
@@ -62,10 +72,15 @@ import { selectWorkspace } from "../support/workspace";
  *
  * @param context - The browser context, which receives the session.
  * @param page - The page to drive.
+ * @param person - Who signs in. Defaults to the seeded owner.
  * @returns The canvas region, once every stage, edge and label has been drawn.
  */
-async function enterStudio(context: BrowserContext, page: Page): Promise<Locator> {
-  await signIn(context, SEED_OWNER.id);
+async function enterStudio(
+  context: BrowserContext,
+  page: Page,
+  person: string = SEED_OWNER.id,
+): Promise<Locator> {
+  await signIn(context, person);
   await selectWorkspace(context, SEED_TENANT.slug);
   await page.goto(STUDIO_PATH);
 
@@ -233,5 +248,56 @@ test.describe("the studio canvas is drawn in both palettes", () => {
     await pinTheme(page, "dark");
     await expect(stage(canvas, SELECTED_STAGE)).toHaveClass(/\bselected\b/);
     await expect(canvas).toHaveScreenshot("studio-canvas-dark.png");
+  });
+});
+
+test.describe("S.6's dry run paints the engine's walk on the canvas", () => {
+  test("#485 on standard-fix draws the mockup's active path in both palettes, and the first edit clears it", async ({
+    context,
+    page,
+  }) => {
+    // As the member: a dry run is every member's, and the edit that clears it is one a member's page
+    // never saves — so the seeded draft is left exactly as the other legs read it.
+    const canvas = await enterStudio(context, page, SEED_MEMBER.id);
+
+    await page.getByRole("button", { name: DRY_RUN_LABEL, exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: DRY_RUN_DIALOG_TITLE });
+    await expect(
+      dialog.getByRole("combobox", { name: TICKET_LABEL }).locator("option:checked"),
+    ).toHaveText(SEEDED_TICKET);
+    await dialog.getByRole("button", { name: RUN_LABEL }).click();
+
+    // The walk, from the running engine: both of the decision's roads, and the loop's bound.
+    const sheet = page.getByRole("complementary", { name: DRY_RUN_SHEET_TITLE });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.locator(".studio-dryrun__edge--taken").first()).toBeVisible();
+    await expect(sheet.locator(".studio-dryrun__edge--skipped").first()).toBeVisible();
+    await expect(sheet.locator(".studio-dryrun__loop").first()).toHaveText(/retry bound/);
+
+    for (const palette of ["light", "dark"] as const) {
+      await pinTheme(page, palette);
+
+      for (const id of MOCKUP_ACTIVE_EDGES) {
+        await expect(edgeLine(canvas, id), `${id} in ${palette}`).toHaveClass(
+          /\bstudio-edge--active\b/,
+        );
+      }
+      await expect(edgeLine(canvas, NOT_TAKEN_EDGE)).not.toHaveClass(/\bstudio-edge--active\b/);
+
+      // The accent reaches the path in this palette: a walked edge is not stroked as the road not taken.
+      const walked = await edgeLine(canvas, MOCKUP_ACTIVE_EDGES[0]).evaluate(
+        (element) => getComputedStyle(element).stroke,
+      );
+      const skipped = await edgeLine(canvas, NOT_TAKEN_EDGE).evaluate(
+        (element) => getComputedStyle(element).stroke,
+      );
+      expect(walked, `the active stroke in ${palette}`).not.toBe(skipped);
+    }
+
+    await stage(canvas, "plan").click();
+    await page.keyboard.press("ArrowRight");
+
+    await expect(sheet).toBeHidden();
+    await expect(canvas.locator(".react-flow__edge-path.studio-edge--active")).toHaveCount(0);
   });
 });

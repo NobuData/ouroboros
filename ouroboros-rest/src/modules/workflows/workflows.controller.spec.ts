@@ -5,6 +5,7 @@ import { ADMINISTRATORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
 import { TENANT_OPTIONAL } from "../tenancy/tenant.decorators";
 import type { WorkflowCatalogService } from "./catalog.service";
 import type { WorkflowCodeService } from "./code.service";
+import type { WorkflowDryRunService } from "./dry-run.service";
 import { WorkflowsController, type HeaderTarget } from "./workflows.controller";
 import type { WorkflowsService } from "./workflows.service";
 
@@ -38,6 +39,7 @@ describe("the workflows controller", () => {
   let service: jest.Mocked<WorkflowsService>;
   let catalog: jest.Mocked<Pick<WorkflowCatalogService, "catalog" | "codeSymbols">>;
   let code: jest.Mocked<Pick<WorkflowCodeService, "read" | "checks" | "save" | "tree" | "config">>;
+  let dryRuns: jest.Mocked<Pick<WorkflowDryRunService, "dryRun">>;
   let controller: WorkflowsController;
   let reflector: Reflector;
 
@@ -65,10 +67,13 @@ describe("the workflows controller", () => {
       config: jest.fn().mockResolvedValue({ readOnly: true }),
     };
 
+    dryRuns = { dryRun: jest.fn().mockResolvedValue({ steps: [] }) };
+
     controller = new WorkflowsController(
       service,
       catalog as unknown as WorkflowCatalogService,
       code as unknown as WorkflowCodeService,
+      dryRuns as unknown as WorkflowDryRunService,
     );
     reflector = new Reflector();
   });
@@ -149,6 +154,14 @@ describe("the workflows controller", () => {
       );
     });
 
+    it("hands the dry run the workspace, the workflow and the issue", async () => {
+      const issueId = "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
+
+      await controller.dryRun(TENANT, { id: WORKFLOW }, { issueId });
+
+      expect(dryRuns.dryRun).toHaveBeenCalledWith("acme-robotics-id", WORKFLOW, { issueId });
+    });
+
     it("hands the history the window", async () => {
       await controller.versions(TENANT, { id: WORKFLOW }, { limit: 10, offset: 20 });
 
@@ -226,6 +239,7 @@ describe("the workflows controller", () => {
         controller.update,
         controller.saveDraft,
         controller.publish,
+        controller.dryRun,
         controller.versions,
       ]) {
         expect(reflector.get<boolean>(TENANT_OPTIONAL, handler)).toBeUndefined();
@@ -244,6 +258,8 @@ describe("the workflows controller", () => {
       ["a workflow's Loop Checks", () => controller.readCodeChecks],
       ["the detail", () => controller.read],
       ["the history", () => controller.versions],
+      // A dry run writes nothing and calls no model, so it is a read in every way that matters.
+      ["a dry run", () => controller.dryRun],
     ])("leaves %s open to every member, viewers included", (_name, handler) => {
       // A viewer is a role that exists to be able to look at a workflow.
       expect(reflector.get<string[]>(REQUIRED_ROLES, handler())).toBeUndefined();

@@ -244,7 +244,7 @@ ouroboros-ui/
 │   │   ├── routing.ts       #   routing.providers() — the model page's health strip
 │   │   ├── audit.ts         #   audit.events() — the credential trail, org-scoped
 │   │   ├── sources.ts       #   sources.* — /api/v1/sources, the catalog, test, sync, status
-│   │   ├── workflows.ts     #   workflows.list() / read() / create() — the studio's share of P.3
+│   │   ├── workflows.ts     #   workflows.list() / read() / create() / saveDraft() / publish() / dryRun()
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
@@ -303,6 +303,14 @@ ouroboros-ui/
 │   │   ├── new-workflow.tsx #   the dashed tile and its dialog
 │   │   ├── workflow-rail.tsx #  the .wf-list rail: one link per workflow, the err-dot, the tile
 │   │   ├── studio-screen.tsx #  the head, the segmented control, the rail and the canvas's seat
+│   │   ├── studio-session.tsx #  one open workflow's session: autosave, publish, dry run — #152
+│   │   ├── autosave.ts      #   when a draft is written, the save line, draft edits, the conflict's words
+│   │   ├── use-autosave.ts  #   the debounced, serial, etag-guarded write
+│   │   ├── publish.ts       #   the change note, the findings and the stage each is anchored to
+│   │   ├── dry-run.ts       #   the picker's issues, the painted path, the sheet's words
+│   │   ├── draft-actions.ts #   the Server Actions: save · publish · dry run · sized issues
+│   │   ├── publish-dialog.tsx · dry-run-dialog.tsx · reload-dialog.tsx # the three dialogs
+│   │   ├── dry-run-sheet.tsx #  the step sheet, in the inspector's track
 │   │   └── canvas/          #   the React Flow canvas — #148 — in mockup 04's visual language #149
 │   │       ├── graph.ts     #     the document ⇄ graph projection, and the execution path laid over it
 │   │       ├── viewport.ts  #     the zoom ladder, and each reader's place per workflow
@@ -2585,9 +2593,10 @@ Copilot control, the three actions, and the `.wf-list` rail down the left edge. 
 [#148](https://github.com/NobuData/ouroboros/issues/148)) sits in the seat the frame reserved
 for it, with the inspector (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)) beside
 it and [the editing operations](#the-canvas-builds-and-refuses-what-the-dsl-forbids) (S.5,
-[#151](https://github.com/NobuData/ouroboros/issues/151)) on its toolbar; the draft, publish and
-dry-run flows (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)) are what the head's
-actions — and the canvas's own *not saved* — wait for. `/workflows/<slug>` is the same screen opened on a named
+[#151](https://github.com/NobuData/ouroboros/issues/151)) on its toolbar; and
+[the draft, publish and dry-run flows](#drafts-save-publishes-gate-dry-runs-walk) (S.6,
+[#152](https://github.com/NobuData/ouroboros/issues/152)) behind the head's actions and the canvas's
+save line. `/workflows/<slug>` is the same screen opened on a named
 workflow, which is what the rail links to, and `/workflows/<slug>/code` is
 [the code view](#the-code-view-is-a-second-face-of-the-same-draft) (V.1,
 [#169](https://github.com/NobuData/ouroboros/issues/169)) — the same workflow's other tab.
@@ -2652,12 +2661,15 @@ reader edits it, checked live against the rail, and sent explicitly because it i
 thing `PATCH` cannot change later. On success the page lands on the workflow it made. A
 member sees the tile inert with the reason, no **Publish**, and a note naming their role.
 
-### The three actions wait, and say for what
+### The three actions
 
-**Browse templates**, **Dry run** and **Publish vN+1** are drawn where the mockup draws them
-and are inert with the issue each waits for as its reason
-([#159](https://github.com/NobuData/ouroboros/issues/159), #152, #152). **Publish** is drawn
-for an `owner` or `admin` and for nobody else, and its label counts from the version in force.
+**Browse templates** is drawn where the mockup draws it and is inert, naming
+[#159](https://github.com/NobuData/ouroboros/issues/159). **Dry run** opens the picker for every
+member, because a dry run writes nothing. **Publish vN+1** is drawn for an `owner` or `admin` and for
+nobody else, and its label counts from the version in force — the session's, so it moves the moment a
+publish takes. On a page whose workflow could not be read, Dry run and Publish are inert and say that
+there is no definition to walk or to freeze. Both flows are
+[below](#drafts-save-publishes-gate-dry-runs-walk).
 
 ### Every state the mockup does not show
 
@@ -3062,6 +3074,78 @@ click-to-connect, the path jsdom can drive, which runs the same `onConnect` a dr
 `auto-layout.test.ts` lays the seeded graph out with no overlaps and every non-loop edge ending in a
 later column; `edit.test.ts` inserts a stage into every seeded edge and finds each result
 structurally sound.
+
+### Drafts save, publishes gate, dry runs walk
+
+S.6 ([#152](https://github.com/NobuData/ouroboros/issues/152)) makes the editor's draft durable,
+publishable and explainable. One open workflow's page is wrapped in
+[`studio-session.tsx`](app/workflows/studio-session.tsx), keyed by the workflow's id. It holds the draft
+the editor hands up, the etag it was saved under, the version in force and the dry run on the canvas.
+The head's actions and subline, the editor and the toast read it through
+`studio-session-context.ts`. That module is kept apart from the provider because the provider calls the
+Server Actions, and a part that only reads the session must still render on its own.
+
+```
+edit ─▶ autosave (1.2 s, If-Match etag) ─┬─ 200 ─▶ "All changes saved." · head: Last edited · v14 · draft edits
+                                         └─ 409 ─▶ reload dialog — nothing overwritten, autosave stops
+Publish v15 ─▶ write what waits ─▶ POST /publish ─┬─ 422 findings ─▶ click one = select that stage
+                                                  └─ 200 ─▶ "Published v15." · Publish v16 · rail refreshed
+Dry run ─▶ pick a sized issue (#485) ─▶ write what waits ─▶ POST /dry-run ─▶ accent path + step sheet ─▶ any edit clears it
+```
+
+**Autosave never clobbers.** [`use-autosave.ts`](app/workflows/use-autosave.ts) writes an edit once it
+has rested ([`autosave.ts`](app/workflows/autosave.ts)'s `AUTOSAVE_DELAY_MS`), one write at a time, each
+carrying the etag the previous write was answered with. A `409 workflow_draft_conflict` stops it for
+good. The reload dialog then says which editor changed the draft and when, that nothing was
+overwritten, and that **Reload the draft** reloads the page. **Not now** leaves the page readable, and
+the toolbar says autosave is paused. A document equal to the stored one is never written (the editor's
+opening hand-up, an undo back to it), and key order does not count. When the tab is hidden, left or
+unmounted, whatever is waiting is written at once, and leaving with an unwritten edit asks first. That
+is how *edit → close the tab → reopen* finds the draft intact. A member's page writes nothing.
+
+**The head says when the draft is not what runs.** `view.ts`' `sublineOf` composes the subline from
+facts, so the server and the session share one sentence. `draft edits` joins it beside the version
+whenever the draft diverges from the version in force.
+
+**Publish gates, and a refusal is something to act on.** [`publish-dialog.tsx`](app/workflows/publish-dialog.tsx)
+takes an optional change note. The session writes any waiting edit first, so the version is the
+picture on the screen, then asks the gate. A `422` lists every finding in
+[`finding-list.tsx`](app/workflows/finding-list.tsx) with the validator that raised it.
+[`publish.ts`](app/workflows/publish.ts)' `findingAnchor` resolves a finding's `node`, else the stage its
+`edge` leaves, else the node its JSON Pointer points into, and that finding becomes a button. Pressing
+it closes the dialog and asks the canvas (its `focus` prop) to select the stage, report it to the
+inspector and bring it into view. A finding about the whole document is listed as text. A success moves
+the version, leaves a toast that stays until dismissed, and refreshes the route so the rail's captions
+follow.
+
+**The dry run is the engine's walk, on the canvas.** The picker
+([`dry-run-dialog.tsx`](app/workflows/dry-run-dialog.tsx)) offers the workspace's open, sized issues and
+opens on `#485` when the workspace has it. `ouroboros-rest`'s `POST /api/v1/workflows/{id}/dry-run`
+(added by this ticket) reads that issue's labels and effort itself, walks the stored draft through the
+engine, and answers in camelCase. The canvas paints the whole `highlightPath`. For the seeded
+`standard-fix` and `#485`, the mockup's four accent edges are its prefix, as the engine's own suite
+asserts.
+
+[`dry-run-sheet.tsx`](app/workflows/dry-run-sheet.tsx) takes the inspector's track. It lists every stage
+reached, with the simulator's verdict and annotation and the predicate it tested (marked when only a run
+could answer it). Under each stage it lists **every edge out of it**: taken, not taken or loop, each with
+the engine's explanation and each loop with its retry bound. A step's title selects its stage without
+closing the sheet. **Any new draft clears the overlay**, a move or an undo included, because a walk of
+another draft would be a lie about this one. The code view's **Publish** stays inert, naming
+[#174](https://github.com/NobuData/ouroboros/issues/174), which wires the same dialog in.
+
+**Each criterion is a suite.** `studio-flows.test.tsx` drives the session, head, editor on the real
+canvas, dialogs and toast over mocked Server Actions:
+- a hidden tab writes the moved stage with the page's etag;
+- a `409` opens the reload dialog and nothing more is sent;
+- an invalid publish's finding selects `implement`;
+- a publish moves the head to `v15` and the label to `Publish v16`;
+- the dry run paints `MOCKUP_ACTIVE_PATH`, and a move clears it.
+
+`use-autosave.test.tsx` holds the debounce, the serial etags, the stop on conflict and the page-hide
+write on a fake clock. `dry-run-sheet.test.tsx` holds both branches and the loop bound. `autosave`,
+`publish`, `dry-run` and `draft-actions` are unit suites, and `flows-styles.test.ts` holds the sheet's
+placement.
 
 ### Code intelligence — completions and hover docs
 

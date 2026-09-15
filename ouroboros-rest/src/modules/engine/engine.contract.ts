@@ -354,9 +354,8 @@ export function estimateRequestBody(request: EstimateRequest): Record<string, un
  * Mirrored from `ouroboros-engine/openapi.yaml`'s `WorkflowValidateRequest` and
  * `WorkflowValidation`, like every other route in this file, and `engine.contract.spec.ts`
  * asserts the route and the fields read below. The engine publishes `POST
- * /v0/workflows/dry-run` beside it, which nothing in this service calls yet — the studio's
- * dry-run flow (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)) is what will, and
- * mirrors that operation when it does.
+ * /v0/workflows/dry-run` beside it, mirrored after this route's shapes — the studio's dry-run
+ * flow (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)) is its caller.
  */
 export const ENGINE_WORKFLOW_VALIDATE_ROUTE = `${ENGINE_API_VERSION}/workflows/validate`;
 
@@ -444,4 +443,232 @@ export const engineWorkflowValidationSchema = z
  */
 export function workflowValidateRequestBody(definition: unknown): Record<string, unknown> {
   return { definition };
+}
+
+/**
+ * `POST` — the engine's simulation of one workflow for one ticket. R.2
+ * ([#144](https://github.com/NobuData/ouroboros/issues/144)), called by the studio's **Dry run
+ * with issue #485** (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)).
+ *
+ * Mirrored from `ouroboros-engine/openapi.yaml`'s `WorkflowDryRunRequest` and `WorkflowDryRun`.
+ * The simulator makes no model call and fetches nothing — the ticket is what this service sends —
+ * so the request carries the three facts a predicate can test and the key every explanation names
+ * the ticket by.
+ */
+export const ENGINE_WORKFLOW_DRY_RUN_ROUTE = `${ENGINE_API_VERSION}/workflows/dry-run`;
+
+/** The trackers a dry-run ticket may come from — `ticket_sources.kind`'s vocabulary. */
+export const DRY_RUN_SOURCES = ["github", "gitlab", "jira", "linear"] as const;
+
+/** One of the four. */
+export type DryRunSource = (typeof DRY_RUN_SOURCES)[number];
+
+/** What the walk did with an edge: followed it, did not, or reported a loop it never walks. */
+export const DRY_RUN_EDGE_OUTCOMES = ["taken", "not_taken", "loop"] as const;
+
+/** One of the three. */
+export type DryRunEdgeOutcome = (typeof DRY_RUN_EDGE_OUTCOMES)[number];
+
+/** What the walk concluded about a stage it reached. */
+export const DRY_RUN_STEP_VERDICTS = [
+  "matched",
+  "not_matched",
+  "reached",
+  "halted",
+  "ended",
+] as const;
+
+/** One of the five. */
+export type DryRunStepVerdict = (typeof DRY_RUN_STEP_VERDICTS)[number];
+
+/** What the walk concluded about any stage — a step's verdict, or `not_reached`. */
+export const DRY_RUN_NODE_VERDICTS = [...DRY_RUN_STEP_VERDICTS, "not_reached"] as const;
+
+/** One of the six. */
+export type DryRunNodeVerdict = (typeof DRY_RUN_NODE_VERDICTS)[number];
+
+/** The ticket a dry run is about, in this service's names. */
+export interface EngineDryRunTicket {
+  /** The display form every explanation names it by — `#485`. */
+  externalKey: string;
+  /** Which tracker it came from. */
+  source: DryRunSource;
+  /** The tracker's label names, compared exactly as the tracker spells them. */
+  labels: readonly string[];
+  /** The estimate in force, or `null` for a ticket nobody has sized — stated, never omitted. */
+  estimate: { effort: Effort } | null;
+}
+
+/** One predicate tested against the ticket. */
+export interface EnginePredicateEvaluation {
+  /** Whether it holds. */
+  holds: boolean;
+  /** `true` when it reads what only a run produces — check results — and `holds` is assumed. */
+  assumed: boolean;
+  /** Why, in one sentence. */
+  explanation: string;
+}
+
+/** One edge out of a stage on the walk, and what the walk did with it. */
+export interface EngineDryRunEdge {
+  /** The stage it leaves. */
+  from: string;
+  /** The stage it arrives at. */
+  to: string;
+  /** Its kind, as the document says — `default`, `branch` or `loop`. */
+  kind: string;
+  /** What the canvas prints beside it, or `null`. */
+  label: string | null;
+  /** Whether the walk followed it. */
+  outcome: DryRunEdgeOutcome;
+  /** Why — for a branch not taken, the road not taken, explained. */
+  explanation: string;
+  /** Its condition tested against the ticket, or `null` when it has none. */
+  evaluation: EnginePredicateEvaluation | null;
+  /** For a loop, the retry bound of the stage it returns to; `null` otherwise, or when undeclared. */
+  maxRetries: number | null;
+}
+
+/** One stage the walk reached, in the order it reached them. */
+export interface EngineDryRunStep {
+  /** The stage's id. */
+  nodeId: string;
+  /** Which of the DSL's node types it is. */
+  type: string;
+  /** What the canvas prints as its name. */
+  title: string;
+  /** What the walk concluded. */
+  verdict: DryRunStepVerdict;
+  /** What the stage would do or require, said without doing it. */
+  annotation: string;
+  /** The trigger's conditions or a fork's predicate, tested; `null` for any other stage. */
+  evaluation: EnginePredicateEvaluation | null;
+  /** Every edge out of the stage, in document order, each with its outcome. */
+  edges: EngineDryRunEdge[];
+}
+
+/** What the walk concluded about one stage, walked or not. */
+export interface EngineNodeVerdict {
+  /** The stage's id. */
+  nodeId: string;
+  /** The verdict. */
+  verdict: DryRunNodeVerdict;
+  /** Why. */
+  explanation: string;
+}
+
+/** What `POST /v0/workflows/dry-run` answers, in this service's names. */
+export interface EngineWorkflowDryRun {
+  /** The definition's errors. Non-empty means nothing was walked and the three lists are empty. */
+  findings: EngineFinding[];
+  /** The ordered walk. */
+  steps: EngineDryRunStep[];
+  /** One verdict per stage, in document order. */
+  verdicts: EngineNodeVerdict[];
+  /** Every edge the walk took, in the order it took them — what the canvas paints. */
+  highlightPath: EngineEdgeAnchor[];
+}
+
+/** A predicate evaluation, as it arrives. */
+const enginePredicateEvaluationSchema = z
+  .object({ holds: z.boolean(), assumed: z.boolean(), explanation: z.string() })
+  .transform((body): EnginePredicateEvaluation => ({
+    holds: body.holds,
+    assumed: body.assumed,
+    explanation: body.explanation,
+  }));
+
+/** One edge of a step, as it arrives. */
+const engineDryRunEdgeSchema = z
+  .object({
+    from: z.string(),
+    to: z.string(),
+    kind: z.string(),
+    label: z.string().nullable(),
+    outcome: z.enum(DRY_RUN_EDGE_OUTCOMES),
+    explanation: z.string(),
+    evaluation: enginePredicateEvaluationSchema.nullable(),
+    max_retries: z.number().int().min(0).nullable(),
+  })
+  .transform((body): EngineDryRunEdge => ({
+    from: body.from,
+    to: body.to,
+    kind: body.kind,
+    label: body.label,
+    outcome: body.outcome,
+    explanation: body.explanation,
+    evaluation: body.evaluation,
+    maxRetries: body.max_retries,
+  }));
+
+/** One step, as it arrives. */
+const engineDryRunStepSchema = z
+  .object({
+    node_id: z.string(),
+    type: z.string(),
+    title: z.string(),
+    verdict: z.enum(DRY_RUN_STEP_VERDICTS),
+    annotation: z.string(),
+    evaluation: enginePredicateEvaluationSchema.nullable(),
+    edges: z.array(engineDryRunEdgeSchema),
+  })
+  .transform((body): EngineDryRunStep => ({
+    nodeId: body.node_id,
+    type: body.type,
+    title: body.title,
+    verdict: body.verdict,
+    annotation: body.annotation,
+    evaluation: body.evaluation,
+    edges: body.edges,
+  }));
+
+/** One node verdict, as it arrives. */
+const engineNodeVerdictSchema = z
+  .object({
+    node_id: z.string(),
+    verdict: z.enum(DRY_RUN_NODE_VERDICTS),
+    explanation: z.string(),
+  })
+  .transform((body): EngineNodeVerdict => ({
+    nodeId: body.node_id,
+    verdict: body.verdict,
+    explanation: body.explanation,
+  }));
+
+/** `POST /v0/workflows/dry-run`, as it arrives. */
+export const engineWorkflowDryRunSchema = z
+  .object({
+    findings: z.array(engineFindingSchema),
+    steps: z.array(engineDryRunStepSchema),
+    verdicts: z.array(engineNodeVerdictSchema),
+    highlight_path: z.array(engineEdgeAnchorSchema),
+  })
+  .transform((body): EngineWorkflowDryRun => ({
+    findings: body.findings,
+    steps: body.steps,
+    verdicts: body.verdicts,
+    highlightPath: body.highlight_path,
+  }));
+
+/**
+ * A definition and a ticket, as the engine's request body.
+ *
+ * @param definition - The document to walk, exactly as it is stored — never reshaped, for
+ *   {@link workflowValidateRequestBody}'s reason.
+ * @param ticket - The ticket, in this service's names.
+ * @returns The body to serialise, in the engine's.
+ */
+export function workflowDryRunRequestBody(
+  definition: unknown,
+  ticket: EngineDryRunTicket,
+): Record<string, unknown> {
+  return {
+    definition,
+    ticket: {
+      external_key: ticket.externalKey,
+      source: ticket.source,
+      labels: [...ticket.labels],
+      estimate: ticket.estimate === null ? null : { effort: ticket.estimate.effort },
+    },
+  };
 }

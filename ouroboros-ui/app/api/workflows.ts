@@ -1,12 +1,11 @@
 /**
  * Workflows — what mockup 04's studio reads and writes through `ouroboros-rest`.
  *
- * Two reads and one write, which is what S.1
- * ([#147](https://github.com/NobuData/ouroboros/issues/147)) needs of P.3's seven operations
- * ([#134](https://github.com/NobuData/ouroboros/issues/134)): the rail, one workflow in full,
- * and **+ New workflow**. The draft save, the publish and the version history are S.6's
- * ([#152](https://github.com/NobuData/ouroboros/issues/152)) and arrive here with it, so this
- * module is deliberately the studio *frame's* share of the contract and no more.
+ * The rail, one workflow in full and **+ New workflow** are S.1's
+ * ([#147](https://github.com/NobuData/ouroboros/issues/147)) share of P.3's operations
+ * ([#134](https://github.com/NobuData/ouroboros/issues/134)); the draft save, the publish and the
+ * dry run are S.6's ([#152](https://github.com/NobuData/ouroboros/issues/152)). The version
+ * history is not read by anything yet, so it is not here.
  *
  * ### The rail is served, never recomposed
  *
@@ -157,6 +156,31 @@ export type WorkflowStageType = components["schemas"]["WorkflowStageType"];
 /** The names the inspector offers — advice, never an enumeration (decision **P7**). */
 export type WorkflowStageSuggestions = components["schemas"]["WorkflowStageSuggestions"];
 
+/**
+ * One reason a definition may not be published, anchored where the canvas can select it — what a
+ * refused publish carries in `details.findings`, and what a dry run of an invalid definition
+ * answers with.
+ */
+export type WorkflowFinding = components["schemas"]["WorkflowFinding"];
+
+/** An edge, named by its ordered pair — the dry run's `highlightPath` is a list of these. */
+export type WorkflowEdgeRef = components["schemas"]["WorkflowEdgeRef"];
+
+/** What a dry run answers: the ticket it tested, any findings, the walk and the path to paint. */
+export type WorkflowDryRunResult = components["schemas"]["WorkflowDryRunResult"];
+
+/** One stage the dry run reached. */
+export type WorkflowDryRunStep = components["schemas"]["WorkflowDryRunStep"];
+
+/** One edge out of a stage on the walk, and what the walk did with it. */
+export type WorkflowDryRunEdge = components["schemas"]["WorkflowDryRunEdge"];
+
+/** One predicate tested against the ticket. */
+export type WorkflowPredicateEvaluation = components["schemas"]["WorkflowPredicateEvaluation"];
+
+/** The ticket a dry run tested. */
+export type WorkflowDryRunTicket = components["schemas"]["WorkflowDryRunTicket"];
+
 /** The code a `409` answers for a draft that has no faithful spelling as a file (U.3). */
 export const WORKFLOW_CODE_UNPROJECTABLE = "workflow_code_unprojectable";
 
@@ -284,5 +308,79 @@ export const workflows = {
    */
   async config(client: ApiClient = api()): Promise<WorkflowCodeConfig> {
     return unwrap(await client.GET("/api/v1/workflows/code-config", {}));
+  },
+
+  /**
+   * Save the draft — the canvas's autosave (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)).
+   *
+   * **A replacement guarded by the etag.** The whole document is written, and only if the draft is
+   * still the one `etag` names: a second tab that saved in between makes this a `409`, and nothing is
+   * overwritten. `*` is never sent from here — opting out of the guard is not something autosave does.
+   *
+   * @param id The workflow's id.
+   * @param etag The etag of the draft this document was edited from — the last save's, or the page read's.
+   * @param definition The whole document, as the canvas holds it.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The draft slot after the write: the etag the next save sends, and the *Last edited* stamp.
+   * @throws {ApiError} What the service answered — `409 workflow_draft_conflict` for a stale etag
+   *   (`app/workflows/autosave.ts` names the code for the client), `403 forbidden` for a role that
+   *   may not edit.
+   */
+  async saveDraft(
+    id: string,
+    etag: string,
+    definition: WorkflowDefinition,
+    client: ApiClient = api(),
+  ): Promise<WorkflowDraft> {
+    return unwrap(
+      await client.PUT("/api/v1/workflows/{id}/draft", {
+        params: { path: { id }, header: { "If-Match": etag } },
+        body: { definition },
+      }),
+    );
+  },
+
+  /**
+   * Publish the draft as the next immutable version — **Publish v15**.
+   *
+   * @param id The workflow's id.
+   * @param changeNote What changed, in the publisher's words, or `undefined` for a publish with
+   *   nothing to say — a blank note is never sent, because the contract refuses one.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The version now in force.
+   * @throws {ApiError} What the service answered — `422 workflow_definition_invalid` with the
+   *   findings (`app/workflows/publish.ts` names the code for the client), `409` when the draft or
+   *   the version number moved, `502 engine_unavailable`.
+   */
+  async publish(
+    id: string,
+    changeNote: string | undefined,
+    client: ApiClient = api(),
+  ): Promise<WorkflowVersion> {
+    return unwrap(
+      await client.POST("/api/v1/workflows/{id}/publish", {
+        params: { path: { id } },
+        body: changeNote === undefined ? {} : { changeNote },
+      }),
+    );
+  },
+
+  /**
+   * Walk the stored draft for one issue — **Dry run with issue #485**.
+   *
+   * @param id The workflow's id.
+   * @param issueId The issue's `github_issues.id` — its facts are read by the service, never sent.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The walk, the ticket it tested, and the findings of a definition that does not validate.
+   * @throws {ApiError} What the service answered — `404 workflow_dry_run_issue_not_found`,
+   *   `409 workflow_draft_absent`, `502 engine_unavailable`.
+   */
+  async dryRun(id: string, issueId: string, client: ApiClient = api()): Promise<WorkflowDryRunResult> {
+    return unwrap(
+      await client.POST("/api/v1/workflows/{id}/dry-run", {
+        params: { path: { id } },
+        body: { issueId },
+      }),
+    );
   },
 };
