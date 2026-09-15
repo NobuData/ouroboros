@@ -18,6 +18,7 @@ import {
   draftAbsent,
   draftConflict,
   draftEtagRequired,
+  dryRunIssueNotFound,
   publishConflict,
   slugRequired,
   slugTaken,
@@ -53,6 +54,7 @@ describe("the codes", () => {
       slugRequired: "workflow_slug_required",
       definitionInvalid: "workflow_definition_invalid",
       publishConflict: "workflow_publish_conflict",
+      dryRunIssueNotFound: "workflow_dry_run_issue_not_found",
     });
   });
 
@@ -194,6 +196,17 @@ describe("the conflicts", () => {
 
     expect(error.getStatus()).toBe(HttpStatus.CONFLICT);
     expect(error.getResponse()).toMatchObject({ code: "workflow_publish_conflict" });
+  });
+
+  it("answers 404 for a dry run's issue this workspace does not hold, naming the id it was sent", () => {
+    const issueId = "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
+    const error = dryRunIssueNotFound(issueId);
+
+    expect(error.getStatus()).toBe(HttpStatus.NOT_FOUND);
+    expect(error.getResponse()).toMatchObject({
+      code: "workflow_dry_run_issue_not_found",
+      details: { issueId },
+    });
   });
 });
 

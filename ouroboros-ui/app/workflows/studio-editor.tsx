@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { WorkflowDefinition, WorkflowStageType } from "@/app/api/workflows";
 
+import { saveNote } from "./autosave";
 import {
   type Deletion,
   type EdgeFields,
@@ -17,9 +18,11 @@ import { type CanvasSelection, type EdgeRef, stageEntry, withStage } from "./can
 import { edgeProblem } from "./canvas/rules";
 import { StudioCanvas } from "./canvas/studio-canvas";
 import { ConfirmDelete } from "./confirm-delete";
+import { DryRunSheet } from "./dry-run-sheet";
 import { type History, canRedo, canUndo, record, redo, startHistory, undo } from "./history";
 import { type ConfigRecord, MEMBER_REASON } from "./inspector/inspector";
 import { InspectorPanel } from "./inspector/inspector-panel";
+import { useStudioSession } from "./studio-session-context";
 import type { InspectorReadings } from "./view";
 
 /** What the editor takes. */
@@ -33,8 +36,8 @@ export interface StudioEditorProps {
   /** Whether the reader may change the workflow. */
   readonly mayAdminister: boolean;
   /**
-   * Told the draft each time it changes — and once with the document it opens on. The seam S.6's
-   * autosave ([#152](https://github.com/NobuData/ouroboros/issues/152)) writes from; nothing here saves.
+   * Told the draft each time it changes — and once with the document it opens on. The session's autosave
+   * (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)) is told the same, through its own seam.
    */
   readonly onDraftChange?: (draft: WorkflowDefinition) => void;
 }
@@ -42,7 +45,8 @@ export interface StudioEditorProps {
 /**
  * The canvas and the inspector, holding one draft between them (S.4,
  * [#150](https://github.com/NobuData/ouroboros/issues/150); editing S.5,
- * [#151](https://github.com/NobuData/ouroboros/issues/151)).
+ * [#151](https://github.com/NobuData/ouroboros/issues/151); saving and dry runs S.6,
+ * [#152](https://github.com/NobuData/ouroboros/issues/152)).
  *
  * The **draft** lives here, as a bounded **history** of documents (`history.ts`): every edit —
  * a move, an added, inserted or connected stage or an auto-layout on the canvas; an **Apply**, a
@@ -54,26 +58,30 @@ export interface StudioEditorProps {
  * **Deletes are confirmed** (`confirm-delete.tsx`): the canvas's Delete key and the inspector's two
  * Delete buttons all ask here, and nothing is removed until the reader agrees.
  *
- * **Nothing here saves.** The draft is this page's until S.6's autosave
- * ([#152](https://github.com/NobuData/ouroboros/issues/152)) writes it, and both the canvas and the
- * inspector say so.
+ * **Inside the studio's session** (`studio-session.tsx`) every new draft is handed to autosave, the
+ * canvas's toolbar prints where the save stands, a dry run's path is painted on the canvas and its step
+ * sheet takes the inspector's track, and a finding or a step can ask the canvas to select a stage.
+ * Rendered on its own — as its suites render it — it edits in memory and says so.
  *
  * It renders its parts as siblings rather than inside a wrapper, so the canvas and the inspector take
  * the studio grid's tracks (`workflows.css`); the dialog is portalled out of the grid.
  *
  * @param props See {@link StudioEditorProps}.
- * @returns The canvas, the inspector and the delete confirmation.
+ * @returns The canvas, the inspector or the dry run's sheet, and the delete confirmation.
  */
 export function StudioEditor({ workflowId, definition, inspector, mayAdminister, onDraftChange }: StudioEditorProps) {
+  const session = useStudioSession();
   const [history, setHistory] = useState<History<WorkflowDefinition>>(() => startHistory(definition));
   const [selection, setSelection] = useState<CanvasSelection>(null);
   const [pendingDelete, setPendingDelete] = useState<Deletion | null>(null);
 
   const draft = history.present;
+  const sessionDraftChange = session?.onDraftChange;
 
   useEffect(() => {
     onDraftChange?.(draft);
-  }, [draft, onDraftChange]);
+    sessionDraftChange?.(draft);
+  }, [draft, onDraftChange, sessionDraftChange]);
   const selectedId = selection?.kind === "node" ? selection.id : null;
   const entry = selectedId === null ? null : stageEntry(draft, selectedId);
   const catalog = inspector?.catalog.ok === true ? inspector.catalog.value : null;
@@ -134,6 +142,8 @@ export function StudioEditor({ workflowId, definition, inspector, mayAdminister,
       <StudioCanvas
         catalog={catalog}
         definition={draft}
+        focus={session?.focus ?? null}
+        highlight={session?.highlight ?? null}
         history={{
           canUndo: canUndo(history),
           canRedo: canRedo(history),
@@ -144,21 +154,32 @@ export function StudioEditor({ workflowId, definition, inspector, mayAdminister,
         onDeleteRequest={setPendingDelete}
         onSelectionChange={setSelection}
         readOnlyReason={mayAdminister ? undefined : MEMBER_REASON}
+        saveNote={session === null ? undefined : saveNote(session.save)}
         workflowId={workflowId}
       />
-      <InspectorPanel
-        definition={draft}
-        entry={entry}
-        mayAdminister={mayAdminister}
-        onApply={apply}
-        onApplyEdge={applyEdge}
-        onConnect={connect}
-        onDelete={(id) => setPendingDelete({ stages: [id], edges: [] })}
-        onDeleteEdge={(ref) => setPendingDelete({ stages: [], edges: [ref] })}
-        onInsert={insert}
-        readings={inspector}
-        selection={selection}
-      />
+      {session?.dryRun ? (
+        <DryRunSheet
+          onClose={session.closeDryRun}
+          onFocus={session.focusStage}
+          onSelect={session.selectStage}
+          result={session.dryRun.result}
+          walked={session.dryRun.walked}
+        />
+      ) : (
+        <InspectorPanel
+          definition={draft}
+          entry={entry}
+          mayAdminister={mayAdminister}
+          onApply={apply}
+          onApplyEdge={applyEdge}
+          onConnect={connect}
+          onDelete={(id) => setPendingDelete({ stages: [id], edges: [] })}
+          onDeleteEdge={(ref) => setPendingDelete({ stages: [], edges: [ref] })}
+          onInsert={insert}
+          readings={inspector}
+          selection={selection}
+        />
+      )}
       <ConfirmDelete
         definition={draft}
         deletion={pendingDelete}

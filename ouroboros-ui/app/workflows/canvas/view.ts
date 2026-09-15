@@ -137,13 +137,14 @@ export const CANVAS_HINT =
   "⌥ drag to pan · double-click edge to add stage · Tab to a stage, arrows move it, Delete removes it · ⌘/Ctrl+Z undoes";
 
 /**
- * What the toolbar says once the canvas has been edited.
+ * What the toolbar says once a canvas with no autosave behind it has been edited.
  *
- * The edit is in the draft the page holds and nowhere else until S.6's autosave
- * ([#152](https://github.com/NobuData/ouroboros/issues/152)) writes it, and a page that let a
- * reader build a graph and reload would have lied by omission.
+ * In the studio the session's autosave (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152))
+ * hands the canvas its own status line instead (`saveNote`); a canvas mounted on its own holds its
+ * edits in memory only, and a page that let a reader build a graph and reload would have lied by
+ * omission.
  */
-export const UNSAVED_NOTE = "Edited, not saved — autosave arrives with #152.";
+export const UNSAVED_NOTE = "Edited, not saved.";
 
 /** What the toolbar says over a document with no stages — a blank draft. */
 export const NO_STAGES_NOTE = "No stages yet — add one from Add stage ▾.";

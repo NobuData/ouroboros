@@ -37,6 +37,8 @@ import type {
 import { relativeAgo } from "@/app/format";
 import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
 
+import { DRAFT_EDITS, draftDiverges } from "./autosave";
+
 /* ------------------------------------------------------------------ what the page reads */
 
 /**
@@ -337,12 +339,46 @@ export function versionWord(version: number | null): string {
   return version === null ? NOT_PUBLISHED : `v${version}`;
 }
 
+/** What the subline is composed from — read off a workflow on the server, off the session in the browser. */
+export interface SublineFacts {
+  /** The document the trigger sentence describes: the version in force, else the draft. */
+  readonly definition: WorkflowDefinition | null;
+  /** The draft's *Last edited* stamp, or `null` when there is no draft. */
+  readonly draftUpdatedAt: string | null;
+  /** The version in force, or `null`. */
+  readonly currentVersion: number | null;
+  /** Whether the draft diverges from the version in force — the ticket's `v14 · draft edits`. */
+  readonly draftEdits: boolean;
+  /** P.4's usage caption, printed as it arrived. */
+  readonly usageCaption: string;
+}
+
 /**
- * The subline, as the mockup composes it: the trigger in words, then the three facts.
+ * The subline, from its facts: the trigger in words, then *Last edited*, the version, `draft edits` when
+ * the draft diverges from it (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)), and the
+ * usage caption.
+ *
+ * @param facts What it is composed from.
+ * @param now The instant *Last edited* is measured from.
+ * @returns The subline.
+ */
+export function sublineOf(facts: SublineFacts, now: Date): string {
+  const parts = [
+    lastEdited(facts.draftUpdatedAt, now),
+    versionWord(facts.currentVersion),
+    ...(facts.draftEdits ? [DRAFT_EDITS] : []),
+    facts.usageCaption,
+  ];
+
+  return `${triggerSentence(facts.definition)} ${parts.join(SEPARATOR)}.`;
+}
+
+/**
+ * The subline, as the mockup composes it: the trigger in words, then the facts.
  *
  * *Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 · used by 61%
  * of runs.* — the first sentence derived here, the usage caption served by P.4 and printed as
- * it arrived, and the two between them read off the workflow itself.
+ * it arrived, and the ones between them read off the workflow itself.
  *
  * @param detail The workflow, for its definition, its draft's stamp and its version.
  * @param entry Its rail entry, for the usage caption.
@@ -350,13 +386,18 @@ export function versionWord(version: number | null): string {
  * @returns The subline.
  */
 export function studioSubline(detail: WorkflowDetail, entry: WorkflowRailEntry, now: Date): string {
-  const facts = [
-    lastEdited(detail.draft.updatedAt, now),
-    versionWord(detail.currentVersion),
-    entry.usageCaption,
-  ].join(SEPARATOR);
-
-  return `${triggerSentence(describedDefinition(detail))} ${facts}.`;
+  return sublineOf(
+    {
+      definition: describedDefinition(detail),
+      draftUpdatedAt: detail.draft.updatedAt,
+      currentVersion: detail.currentVersion,
+      draftEdits:
+        detail.draft.definition !== null &&
+        draftDiverges(detail.draft.definition, detail.version?.definition ?? null),
+      usageCaption: entry.usageCaption,
+    },
+    now,
+  );
 }
 
 /* ------------------------------------------------------------------ the actions */
@@ -379,15 +420,13 @@ export const BROWSE_TEMPLATES_SOON =
 
 /**
  * The mockup's second ghost action, without the mockup's `#485`: the issue a dry run walks is
- * chosen from the queue when the flow exists, and a number this page did not compute is not a
- * number it may print.
+ * chosen in the picker (S.6, #152), and the sheet's title names it once it is walked.
  */
 export const DRY_RUN_LABEL = "Dry run";
 
-/** Why it cannot act yet — the flow is S.6's. */
-export const DRY_RUN_SOON =
-  "Dry runs arrive with #152 — a queued issue is walked through the definition, and the path " +
-  "it takes is highlighted on the canvas.";
+/** Why **Dry run** cannot act on a page whose workflow could not be read. */
+export const DRY_RUN_NEEDS_WORKFLOW =
+  "A dry run walks a workflow's definition, and this page has none it could read.";
 
 /**
  * The primary action's label — *Publish v15* beside a `v14` chip.
@@ -403,10 +442,17 @@ export function publishLabel(currentVersion: number | null): string {
   return `Publish v${(currentVersion ?? 0) + 1}`;
 }
 
-/** Why **Publish** cannot act yet — the dialog, its validation findings and the change note are S.6's. */
+/** Why **Publish** cannot act on a page whose workflow could not be read. */
+export const PUBLISH_NEEDS_WORKFLOW =
+  "Publishing freezes a workflow's draft, and this page has none it could read.";
+
+/**
+ * Why the code view's **Publish** cannot act yet. The visual editor's dialog is S.6's (#152); the code
+ * view opens the same dialog once V.6 wires its status bar and validate flow to it.
+ */
 export const PUBLISH_SOON =
-  "Publishing arrives with #152 — the dialog, the validation findings it shows, and the " +
-  "change note it records.";
+  "Publishing from the code view arrives with #174 — it opens the visual editor's publish dialog, " +
+  "with the same validation findings and change note.";
 
 /* ------------------------------------------------------------------ the segmented control */
 

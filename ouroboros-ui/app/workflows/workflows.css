@@ -345,6 +345,307 @@
   margin-top: var(--sp-8);
 }
 
+/* ---------- the draft, publish and dry-run flows (#152) ---------- */
+
+/*
+ * The toast a publish that took leaves above the grid — `.issues-toast`'s treatment: the accent rim
+ * and tint, the message, a dismissal. It stays until dismissed. The grid's own bottom rhythm, so the
+ * rail and the canvas move down by the toast and nothing else.
+ */
+.studio-toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-6);
+  margin: 0 0 var(--sp-9);
+  padding: var(--sp-5) var(--sp-8);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  line-height: var(--lh-body);
+}
+
+.studio-toast__text {
+  flex: 1;
+  min-width: 14rem;
+}
+
+/*
+ * The publish dialog's and the dry-run picker's form: the fields, the refusal, the write in flight
+ * and the controls, in the create dialog's rhythm. The dialog around it is .shell-overlay's.
+ */
+.studio-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.studio-dialog__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.studio-dialog__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.studio-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/*
+ * Validation findings — a list whose anchored entries are buttons that select the stage they are
+ * about. Each is a hairline box with the error rule on its leading edge (the rail's 3px rule, for the
+ * rail's reason), the validator in mono, the message, and where the button goes in the accent. The
+ * list scrolls inside the dialog rather than pushing its controls out of reach.
+ */
+.studio-findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-height: 20rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.studio-findings__item {
+  min-width: 0;
+}
+
+.studio-findings__finding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-4);
+  width: 100%;
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--err);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  text-align: start;
+}
+
+.studio-findings__finding--anchored {
+  cursor: pointer;
+}
+
+.studio-findings__finding--anchored:hover,
+.studio-findings__finding--anchored:focus-visible {
+  border-color: var(--line-strong);
+  border-left-color: var(--err);
+}
+
+.studio-findings__source {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.studio-findings__message {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.studio-findings__target {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+/*
+ * The dry run's side sheet, in the inspector's track and with the inspector's placement: sticky under
+ * the page's sticky chrome, never taller than the viewport below it, scrolling inside itself. The rim
+ * is the accent's line, because the sheet is about the path the canvas paints in the accent.
+ */
+.studio-dryrun {
+  position: sticky;
+  top: calc(var(--ou-chrome-subnav, 0rem) + var(--ou-chrome-bar, 0rem) + var(--sp-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+  max-height: calc(100vh - var(--ou-chrome-subnav, 0rem) - var(--ou-chrome-bar, 0rem) - var(--sp-10));
+  padding: var(--sp-8);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.studio-dryrun__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.studio-dryrun__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* The facts the walk tested, in mono because each is a value. */
+.studio-dryrun__facts {
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.studio-dryrun__close {
+  align-self: flex-start;
+}
+
+.studio-dryrun__note,
+.studio-dryrun__clears {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* An `ol`, so the user-agent's margin, padding and markers are undone; the index is drawn in the row. */
+.studio-dryrun__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.studio-dryrun__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-block-start: var(--sp-5);
+  border-block-start: 1px solid var(--line);
+}
+
+.studio-dryrun__step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.studio-dryrun__index {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The stage's title is a button that selects it on the canvas, drawn as the title it is. */
+.studio-dryrun__stage {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.studio-dryrun__stage:hover,
+.studio-dryrun__stage:focus-visible {
+  color: var(--accent);
+}
+
+.studio-dryrun__annotation,
+.studio-dryrun__evaluation {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* A predicate only a run could answer: said in words, and in the warn hue as a second signal. */
+.studio-dryrun__assumed {
+  color: var(--warn);
+}
+
+.studio-dryrun__edges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * One edge out of the stage, with a leading rule in the canvas's own edge language: the accent for
+ * the road taken, the strong line for the road not taken, dashed accent-deep for a loop. The outcome
+ * is also the row's first word, so the rule is never the only signal (§ 3.4).
+ */
+.studio-dryrun__edge {
+  padding: var(--sp-2) var(--sp-4);
+  border-left: 3px solid var(--line);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.studio-dryrun__edge--taken {
+  border-left-color: var(--accent);
+}
+
+.studio-dryrun__edge--skipped {
+  border-left-color: var(--line-strong);
+  color: var(--ink-mut);
+}
+
+.studio-dryrun__edge--loop {
+  border-left-style: dashed;
+  border-left-color: var(--accent-deep);
+}
+
+.studio-dryrun__outcome {
+  font-weight: 600;
+}
+
+.studio-dryrun__explanation,
+.studio-dryrun__loop {
+  margin: var(--sp-1) 0 0;
+}
+
+.studio-dryrun__loop {
+  color: var(--ink-dim);
+}
+
+/* The mockup's own break: the sheet stacks under the canvas and scrolls with the page, as the inspector does. */
+@media (max-width: 68.75rem) {
+  .studio-dryrun {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
 /* ---------- the create dialog (#147) ---------- */
 
 /*

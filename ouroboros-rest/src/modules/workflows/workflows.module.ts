@@ -24,6 +24,9 @@
  * code.checks          the Loop Checks rows, derived from that stream — no infra row (C7)
  * code.resources       the code view's wire shapes: a workflow's file, its checks, the explorer, the config
  * code.service         WorkflowCodeService — read, checks, save through the draft guard, tree, config
+ * dry-run.repository   the one issue a dry run is about, with its estimate in force            · #152
+ * dry-run.resources    the dry run's wire shape: the ticket, the engine's walk, publish-shaped findings
+ * dry-run.service      WorkflowDryRunService — the stored draft walked by the engine for one issue
  * workflows.controller the lifecycle's routes and the code view's
  * catalog.schema       the published DSL schema, read as per-type config schemas               · #145
  * catalog.presentation the mockup's glyphs and classes, and what a dropped node contains
@@ -46,8 +49,9 @@
  * **`EngineModule` is imported for the publish gate.** `docs/ARCHITECTURE.md` § 3.2: the UI
  * never calls the engine, this service does — so R.2's second opinion on a definition reaches
  * the studio through `EngineClient`, and the import is the answer to *who may call the engine
- * about a workflow*. `EngineClient` is the only provider it exports, and `publish.gate.ts` is
- * the only thing here that injects it.
+ * about a workflow*. `EngineClient` is the only provider it exports, and `publish.gate.ts` and
+ * `dry-run.service.ts` (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)) are the
+ * only things here that inject it.
  *
  * **It exports three services**, in `PricingModule`'s pattern and for its reason — the second
  * caller is the point:
@@ -92,6 +96,8 @@ import { WorkflowCatalogRepository } from "./catalog.repository";
 import { readPublishedDslSchema } from "./catalog.schema";
 import { PUBLISHED_DSL_SCHEMA, WorkflowCatalogService } from "./catalog.service";
 import { WorkflowCodeService } from "./code.service";
+import { WorkflowDryRunRepository } from "./dry-run.repository";
+import { WorkflowDryRunService } from "./dry-run.service";
 import { WorkflowPublishGate } from "./publish.gate";
 import { WorkflowRegistryService } from "./registry.service";
 import { WorkflowStatsRepository } from "./stats.repository";
@@ -110,6 +116,8 @@ import { WorkflowsService } from "./workflows.service";
     WorkflowCodeService,
     WorkflowsRepository,
     WorkflowPublishGate,
+    WorkflowDryRunService,
+    WorkflowDryRunRepository,
     WorkflowStatsService,
     WorkflowRegistryService,
     WorkflowStatsRepository,

@@ -1,6 +1,5 @@
 import type { Role } from "@/app/api/membership";
-import type { WorkflowRailEntry } from "@/app/api/workflows";
-import { Button, Card, EmptyState } from "@/app/ui";
+import { Card, EmptyState } from "@/app/ui";
 
 import {
   DEV_SEED_NOTE,
@@ -12,20 +11,15 @@ import {
   studioHead,
   studioState,
 } from "./states";
+import { StudioActions } from "./studio-actions";
 import { StudioFailedBanner } from "./studio-banner";
 import { StudioEditor } from "./studio-editor";
 import { StudioFrame } from "./studio-frame";
 import { StudioReadOnlyNote } from "./studio-readonly-note";
-import {
-  BROWSE_TEMPLATES_LABEL,
-  BROWSE_TEMPLATES_SOON,
-  DRY_RUN_LABEL,
-  DRY_RUN_SOON,
-  PUBLISH_SOON,
-  type StudioReadings,
-  canvasDefinition,
-  publishLabel,
-} from "./view";
+import { StudioSession } from "./studio-session";
+import { StudioSubline } from "./studio-subline";
+import { StudioToast } from "./studio-toast";
+import { type StudioReadings, canvasDefinition } from "./view";
 import { WorkflowRail } from "./workflow-rail";
 
 import "./workflows.css";
@@ -52,7 +46,9 @@ import "./workflows.css";
  * service's, *Last edited 2h ago* is the draft's stamp against the instant the page was read,
  * and *Runs when a sized issue with effort ≤ M is queued* is composed from the definition's
  * trigger on every render and stored nowhere — the ticket's *head values are real* criterion,
- * with `view.ts` carrying the argument for each.
+ * with `view.ts` carrying the argument for each. Once a workflow is open, the subline follows the
+ * session (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)): a save moves *Last edited*,
+ * a publish moves the version, and a draft that diverges from the version in force says `draft edits`.
  *
  * ### The canvas sits in the seat, when there is a workflow to draw
  *
@@ -63,14 +59,20 @@ import "./workflows.css";
  * another workflow is a new canvas rather than one re-derived under a reader's selection. The
  * seat itself draws only in the four states that have no workflow to draw.
  *
+ * ### One session per open workflow
+ *
+ * A populated page is wrapped in `StudioSession` (S.6), keyed by the workflow's id: the draft's
+ * autosave and its reload dialog, **Publish vN+1** and its dialog, **Dry run** and its picker, the
+ * overlay the dry run paints and the toast a publish leaves. The head's actions and subline, the
+ * editor and the toast read it; the frame around them stays a Server Component.
+ *
  * ### What this page does not pretend
  *
- * The frame is honest about being a frame. **Code** and **Copilot** are labelled *soon* rather
- * than linked to a `404`; **Browse templates**, **Dry run** and **Publish vN+1** are drawn
- * where the mockup draws them and are inert with the issue each waits for as its reason
- * (§ 3.5) — a control that cannot act says what is missing, never quietly does nothing. The
- * canvas's own toolbar keeps the same rule for every edit it refuses (S.5, #151), and says out
- * loud that an edit is not saved yet.
+ * **Code** and **Copilot** are labelled *soon* rather than linked to a `404`; **Browse templates**
+ * is drawn where the mockup draws it and is inert with the issue it waits for as its reason (§ 3.5).
+ * **Dry run** and **Publish** act on an open workflow and, on a page whose workflow could not be read,
+ * are inert with that reason — a control that cannot act says what is missing, never quietly does
+ * nothing.
  *
  * ### The role decides what is drawn, and is explained
  *
@@ -131,12 +133,14 @@ export function StudioScreen({
   // The rail as served, or nothing for a rail nobody could read — the tile still draws.
   const entries = readings.rail.ok ? readings.rail.value : [];
 
-  return (
+  const page = (
     <StudioFrame
-      actions={<Actions entry={entry} mayAdminister={mayAdminister} />}
+      actions={<StudioActions entry={entry} mayAdminister={mayAdminister} />}
       current="visual"
       slug={slug}
-      subline={head.subline}
+      subline={
+        state.kind === "populated" ? <StudioSubline entry={state.entry} fallback={head.subline} /> : head.subline
+      }
       title={head.title}
     >
       {/* The role, explained, for a reader who may look and not change. */}
@@ -149,6 +153,9 @@ export function StudioScreen({
       {state.kind === "unread" && (
         <StudioFailedBanner headline={WORKFLOW_FAILED_HEADLINE} reason={state.reason} />
       )}
+
+      {/* What a publish that took says, above the grid it changed. */}
+      <StudioToast />
 
       <div className="studio__grid">
         <WorkflowRail activeSlug={slug} entries={entries} mayAdminister={mayAdminister} />
@@ -168,37 +175,13 @@ export function StudioScreen({
       </div>
     </StudioFrame>
   );
-}
 
-/**
- * The mockup's three head actions, each inert with the issue it waits for.
- *
- * **Publish vN+1** is drawn for a role that may publish and only when there is a workflow to
- * publish: its label counts from the version in force, which is the rail's fact and so is
- * known even when the workflow's own read failed.
- *
- * @param props.entry The selected workflow's rail entry, or `null` when nothing is selected.
- * @param props.mayAdminister Whether the reader may publish.
- * @returns The actions.
- */
-function Actions({
-  entry,
-  mayAdminister,
-}: Readonly<{ entry: WorkflowRailEntry | null; mayAdminister: boolean }>) {
+  if (state.kind !== "populated") return page;
+
   return (
-    <>
-      <Button reason={BROWSE_TEMPLATES_SOON} tone="ghost">
-        {BROWSE_TEMPLATES_LABEL}
-      </Button>
-      <Button reason={DRY_RUN_SOON} tone="ghost">
-        {DRY_RUN_LABEL}
-      </Button>
-      {mayAdminister && entry !== null && (
-        <Button reason={PUBLISH_SOON} tone="primary">
-          {publishLabel(entry.currentVersion)}
-        </Button>
-      )}
-    </>
+    <StudioSession key={state.workflow.id} mayAdminister={mayAdminister} now={readings.now} workflow={state.workflow}>
+      {page}
+    </StudioSession>
   );
 }
 

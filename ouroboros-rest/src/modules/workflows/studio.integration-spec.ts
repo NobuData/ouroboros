@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { workspaceWithRepo, type SeededWorkspace } from "../../testing/dashboard.fixture";
 import {
   contractViolation,
+  dryRunAnswer,
   dryRunExample,
   ENGINE_STUB_SECRET,
   engineFailure,
@@ -25,6 +26,7 @@ import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import type { StageCatalog } from "./catalog.resources";
 import type { WorkflowCodeConfig, WorkflowCodeTree } from "./code.resources";
 import type { CodeSymbolTable } from "./code.symbols";
+import type { WorkflowDryRunResource } from "./dry-run.resources";
 import { EffortSchema, TriggerSchema, type SourceKind } from "./dsl.schema";
 import { seedPinnedAliases } from "./pins.fixture";
 import type { PublishFinding } from "./publish.gate";
@@ -50,12 +52,13 @@ import type { WorkflowRail } from "./workflows.service";
  *     applies it: effort bounds, labels, source, paused/archived/draft-only workflows, an explicit
  *     choice, and the precedence order with its reasons. Each case is asserted on the response
  *     *and* on the stored `queue_items` row, because the pin is what T.6 will read.
- *   * **Dry-run contract fidelity** — nothing in this service calls
- *     `POST /v0/workflows/dry-run` yet (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152),
- *     will), so what can be proved is that what REST *holds* already fits what the engine *takes*:
- *     the seeded `#485` is the ticket the engine's own example sends, a stored canvas and that
- *     ticket make a request the contract accepts, and REST's trigger evaluator agrees with the
- *     engine's documented verdict.
+ *   * **Dry-run contract fidelity** — what REST *holds* fits what the engine *takes*: the seeded
+ *     `#485` is the ticket the engine's own example sends, a stored canvas and that ticket make a
+ *     request the contract accepts, and REST's trigger evaluator agrees with the engine's
+ *     documented verdict. Then **the dry run through this service** (S.6,
+ *     [#152](https://github.com/NobuData/ouroboros/issues/152)): `POST …/{id}/dry-run` sends
+ *     exactly that request, relays the walk, answers findings as a `200`, an engine failure as a
+ *     `502`, and an issue it does not hold as a `404`.
  *   * **Org isolation on every workflow route**, enumerated from the route table rather than
  *     listed: a workflow route added without a case here fails the suite.
  *
@@ -731,6 +734,126 @@ describe("the studio across services, against a migrated database", () => {
     });
   });
 
+  describe("the dry run through this service (S.6, #152)", () => {
+    /**
+     * `github_issues.id` of the seeded `#485`.
+     *
+     * @param place - A bench whose backlog has been seeded.
+     * @returns The id.
+     */
+    async function issue485(place: Bench): Promise<string> {
+      const { rows } = await api.sql.query<{ id: string }>(
+        `select id from ${SCHEMA_NAME}.github_issues where organization_id = $1 and number = 485`,
+        [place.workspace.id],
+      );
+
+      return rows[0].id;
+    }
+
+    /**
+     * A workflow holding mockup 04's canvas as its draft.
+     *
+     * @param place - Where.
+     * @returns The workflow's id.
+     */
+    async function drafted(place: Bench): Promise<string> {
+      const created = await create(place);
+      await saveDraft(place, created.id, created.draft.etag, STANDARD_FIX);
+
+      return created.id;
+    }
+
+    it("sends the stored draft and the held #485 to the engine, and relays its walk", async () => {
+      const place = await bench();
+      await seedIntake(api, place.workspace);
+      const id = await drafted(place);
+
+      const response = await as(place)("post", `${WORKFLOWS}/${id}/dry-run`)
+        .send({ issueId: await issue485(place) })
+        .expect(200);
+      const answer = bodyOf<WorkflowDryRunResource>(response);
+      const { answer: example } = dryRunExample();
+
+      // What reached the engine is what the contract's own example sends, for this document.
+      expect(engine.dryRuns).toEqual([
+        { definition: STANDARD_FIX, ticket: dryRunExample().request.ticket },
+      ]);
+      expect(answer.ticket).toEqual({
+        externalKey: "#485",
+        source: "github",
+        labels: (dryRunExample().request.ticket as { labels: string[] }).labels,
+        estimate: { effort: "m" },
+      });
+      expect(answer.highlightPath).toEqual(example.highlight_path);
+      expect(answer.steps.map((step) => step.nodeId)).toEqual(
+        (example.steps as { node_id: string }[]).map((step) => step.node_id),
+      );
+    });
+
+    it("answers a definition the engine finds fault with as findings, not a refusal", async () => {
+      const place = await bench();
+      await seedIntake(api, place.workspace);
+      const id = await drafted(place);
+      engine.respondToDryRun(() =>
+        dryRunAnswer({
+          findings: [
+            {
+              code: "unreachable_node",
+              message: "Nothing reaches this node.",
+              path: "/nodes/4",
+              node_id: "review",
+            },
+          ],
+          steps: [],
+          verdicts: [],
+          highlight_path: [],
+        }),
+      );
+
+      const answer = bodyOf<WorkflowDryRunResource>(
+        await as(place)("post", `${WORKFLOWS}/${id}/dry-run`)
+          .send({ issueId: await issue485(place) })
+          .expect(200),
+      );
+
+      expect(answer.findings).toEqual([
+        {
+          source: "engine",
+          code: "unreachable_node",
+          message: "Nothing reaches this node.",
+          path: "/nodes/4",
+          node: "review",
+        },
+      ]);
+      expect(answer.highlightPath).toEqual([]);
+    });
+
+    it("answers 502 when the engine cannot walk it", async () => {
+      const place = await bench();
+      await seedIntake(api, place.workspace);
+      const id = await drafted(place);
+      engine.respondToDryRun(() => engineFailure());
+
+      const response = await as(place)("post", `${WORKFLOWS}/${id}/dry-run`)
+        .send({ issueId: await issue485(place) })
+        .expect(502);
+
+      expect(bodyOf<ErrorEnvelope>(response).code).toBe("engine_unavailable");
+    });
+
+    it("answers 404 for an issue that names nothing, and never asks the engine", async () => {
+      const place = await bench();
+      const id = await drafted(place);
+
+      const response = await as(place)("post", `${WORKFLOWS}/${id}/dry-run`)
+        .send({ issueId: "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f" })
+        .expect(404);
+
+      expect(bodyOf<ErrorEnvelope>(response).code).toBe("workflow_dry_run_issue_not_found");
+      expect(engine.dryRuns).toEqual([]);
+    });
+  });
+
   describe("org isolation, on every workflow route", () => {
     /** Two workspaces, with the other one's workflow published and its task kinds seeded. */
     interface Isolation {
@@ -875,6 +998,29 @@ describe("the studio across services, against a migrated database", () => {
       },
       [`GET ${WORKFLOWS}/:id/versions`]: async ({ ours, theirId }) => {
         await notFound(as(ours)("get", `${WORKFLOWS}/${theirId}/versions`));
+      },
+      [`POST ${WORKFLOWS}/:id/dry-run`]: async ({ ours, theirs, theirId }) => {
+        await seedIntake(api, theirs.workspace);
+        const { rows } = await api.sql.query<{ id: string }>(
+          `select id from ${SCHEMA_NAME}.github_issues where organization_id = $1 and number = 485`,
+          [theirs.workspace.id],
+        );
+        const theirIssue = rows[0].id;
+
+        // Their workflow, from our side: the same 404 an id naming nothing gets.
+        await notFound(
+          as(ours)("post", `${WORKFLOWS}/${theirId}/dry-run`).send({ issueId: theirIssue }),
+        );
+
+        // Our workflow, their issue: absent too — the facts of another workspace's ticket are
+        // never read into a walk.
+        const mine = await create(ours, "Docs Loop");
+        const refused = await as(ours)("post", `${WORKFLOWS}/${mine.id}/dry-run`)
+          .send({ issueId: theirIssue })
+          .expect(404);
+
+        expect(bodyOf<ErrorEnvelope>(refused).code).toBe("workflow_dry_run_issue_not_found");
+        expect(engine.dryRuns).toEqual([]);
       },
       [`GET ${WORKFLOWS}/code-tree`]: async ({ ours }) => {
         await create(ours, "Docs Loop");

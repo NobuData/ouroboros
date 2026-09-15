@@ -53,9 +53,10 @@ describe("the stage's words", () => {
 });
 
 describe("the toolbar's words", () => {
-  it("says an edit is not saved, naming the issue that saves it", () => {
+  it("says an edit is not saved, for a canvas with no autosave behind it", () => {
     expect(UNSAVED_NOTE).toMatch(/not saved/);
-    expect(UNSAVED_NOTE).toMatch(/#152/);
+    // Autosave has shipped (#152): the sentence no longer promises it.
+    expect(UNSAVED_NOTE).not.toMatch(/#152/);
   });
 
   it("says where a blank canvas's first stage comes from", () => {

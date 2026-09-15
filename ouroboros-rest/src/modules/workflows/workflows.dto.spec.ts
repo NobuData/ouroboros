@@ -5,6 +5,7 @@ import { WORKFLOW_STATUSES } from "../db/schema";
 import { CHANGE_NOTE_MAX_LENGTH, NAME_MAX_LENGTH, SLUG_MAX_LENGTH } from "./slug";
 import {
   CreateWorkflowBody,
+  DryRunWorkflowBody,
   PublishWorkflowBody,
   ReadWorkflowQuery,
   SaveDraftBody,
@@ -163,6 +164,22 @@ describe("the publish body", () => {
     expect(
       await violations(PublishWorkflowBody, { changeNote: "a".repeat(CHANGE_NOTE_MAX_LENGTH) }),
     ).toEqual([]);
+  });
+});
+
+describe("the dry-run body", () => {
+  it("admits an issue named by its uuid", async () => {
+    expect(
+      await violations(DryRunWorkflowBody, { issueId: "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f" }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["no issue at all", {}],
+    ["an issue number rather than its id", { issueId: 485 }],
+    ["a key rather than an id", { issueId: "#485" }],
+  ])("refuses %s, naming the field", async (_name, body) => {
+    expect(await violations(DryRunWorkflowBody, body)).toEqual(["issueId"]);
   });
 });
 

@@ -62,6 +62,8 @@ export const WORKFLOW_ERRORS = {
   definitionInvalid: "workflow_definition_invalid",
   /** Two publishes raced and this one lost the version number. */
   publishConflict: "workflow_publish_conflict",
+  /** The issue a dry run was asked about is not this workspace's (S.6, #152). */
+  dryRunIssueNotFound: "workflow_dry_run_issue_not_found",
 } as const;
 
 /**
@@ -75,6 +77,24 @@ export function workflowNotFound(id: string): NotFoundError {
   return new NotFoundError(WORKFLOW_ERRORS.workflowNotFound, "No such workflow.", {
     workflowId: id,
   });
+}
+
+/**
+ * `404` — the issue a dry run names does not exist for this caller.
+ *
+ * Distinct from {@link workflowNotFound} because the two are different things to pick again: the
+ * workflow is readable, and the *issue* is what names nothing — one synced away since the picker
+ * listed it, or another workspace's, which the org-scoped read cannot tell apart from absent.
+ *
+ * @param issueId - The id the request named, echoed into `details.issueId`.
+ * @returns The error to throw.
+ */
+export function dryRunIssueNotFound(issueId: string): NotFoundError {
+  return new NotFoundError(
+    WORKFLOW_ERRORS.dryRunIssueNotFound,
+    "No such issue to dry-run this workflow with.",
+    { issueId },
+  );
 }
 
 /**

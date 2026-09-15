@@ -63,8 +63,11 @@ import {
 } from "./code.resources";
 import { WorkflowCodeService } from "./code.service";
 import type { CodeSymbolTable } from "./code.symbols";
+import type { WorkflowDryRunResource } from "./dry-run.resources";
+import { WorkflowDryRunService } from "./dry-run.service";
 import {
   CreateWorkflowBody,
+  DryRunWorkflowBody,
   PublishWorkflowBody,
   ReadWorkflowQuery,
   SaveDraftBody,
@@ -95,11 +98,13 @@ export class WorkflowsController {
    * @param workflows - The lifecycle's rules.
    * @param stages - The stage catalog (R.3).
    * @param code - The code view (U.3).
+   * @param dryRuns - The studio's dry run (S.6).
    */
   constructor(
     private readonly workflows: WorkflowsService,
     private readonly stages: WorkflowCatalogService,
     private readonly code: WorkflowCodeService,
+    private readonly dryRuns: WorkflowDryRunService,
   ) {}
 
   /**
@@ -366,6 +371,28 @@ export class WorkflowsController {
     @Body() body: PublishWorkflowBody,
   ): Promise<WorkflowVersionResource> {
     return this.workflows.publish(tenant.id, params.id, body, principal.user.id);
+  }
+
+  /**
+   * `POST /api/v1/workflows/{id}/dry-run` — the engine's walk of this workflow for one issue
+   * (S.6, [#152](https://github.com/NobuData/ouroboros/issues/152)).
+   *
+   * No `@Roles()`: it writes nothing, so it is every member's, like the reads. `200` rather than
+   * `201`, because nothing is created — a simulation is not recorded.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The workflow's id.
+   * @param body - The issue to walk it for.
+   * @returns The walk, the ticket it tested, and any findings.
+   */
+  @Post(":id/dry-run")
+  @HttpCode(HttpStatus.OK)
+  dryRun(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: WorkflowParams,
+    @Body() body: DryRunWorkflowBody,
+  ): Promise<WorkflowDryRunResource> {
+    return this.dryRuns.dryRun(tenant.id, params.id, body);
   }
 
   /**

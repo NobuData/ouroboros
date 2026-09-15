@@ -203,3 +203,16 @@ export class PublishWorkflowBody {
   @Length(1, CHANGE_NOTE_MAX_LENGTH)
   changeNote?: string;
 }
+
+/** The body of `POST /api/v1/workflows/{id}/dry-run` (S.6, #152). */
+export class DryRunWorkflowBody {
+  /**
+   * The issue to walk the workflow for — `github_issues.id`, a uuid.
+   *
+   * An id rather than the ticket's facts, deliberately: the labels and the effort a dry run tests
+   * are read from what this workspace holds, so a caller cannot simulate a ticket that does not
+   * exist, and cannot name one that is another workspace's.
+   */
+  @IsUUID()
+  issueId!: string;
+}

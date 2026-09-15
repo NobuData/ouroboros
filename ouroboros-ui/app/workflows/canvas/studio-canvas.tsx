@@ -192,6 +192,18 @@ export interface StudioCanvasProps {
    */
   readonly highlight?: readonly EdgeRef[] | null;
   /**
+   * A stage asked for from outside the canvas — a publish finding, a dry-run step (S.6,
+   * [#152](https://github.com/NobuData/ouroboros/issues/152)). Each new request selects the stage,
+   * reports the selection as a click would, and brings the stage into view; `nonce` makes asking for
+   * the same stage twice a second request.
+   */
+  readonly focus?: { readonly id: string; readonly nonce: number } | null;
+  /**
+   * What the toolbar says about saving, from the caller's autosave — `null` for nothing to say. Absent,
+   * the canvas says {@link UNSAVED_NOTE} once it has been edited, because nothing behind it saves.
+   */
+  readonly saveNote?: string | null;
+  /**
    * Told the document an edit on the canvas produced — a settled move, a connection, an added or
    * inserted stage, an auto-layout. The caller is expected to hand it back as `definition`.
    */
@@ -295,6 +307,8 @@ function Canvas({
   workflowId,
   definition,
   highlight = null,
+  focus = null,
+  saveNote,
   onDefinitionChange,
   onSelectionChange,
   onDeleteRequest,
@@ -336,10 +350,43 @@ function Canvas({
   const stageRef = useRef<HTMLDivElement>(null);
   // Set by Auto-layout, read once the laid-out nodes have committed, so the fit sees them.
   const fitPending = useRef(false);
-  const { setViewport, zoomTo, getZoom, screenToFlowPosition, fitView } = useReactFlow<
+  const { setViewport, zoomTo, getZoom, screenToFlowPosition, fitView, setCenter } = useReactFlow<
     StageNodeType,
     StageEdgeType
   >();
+
+  // A stage asked for from outside is selected during render, the way a new document is reconciled —
+  // React Flow then reports the selection through `onSelectionChange` as it reports a click's.
+  const [heldFocus, setHeldFocus] = useState(focus);
+  if (heldFocus !== focus) {
+    setHeldFocus(focus);
+    if (focus !== null) {
+      setNodes((current) =>
+        current.map((node) =>
+          node.selected === (node.id === focus.id) ? node : { ...node, selected: node.id === focus.id },
+        ),
+      );
+      setEdges((current) => current.map((edge) => (edge.selected === true ? { ...edge, selected: false } : edge)));
+      const target = nodes.find((node) => node.id === focus.id);
+      if (target !== undefined) setSelection({ kind: "node", id: focus.id, stage: target.data.stage });
+    }
+  }
+
+  // …and brought into view once it has committed, and handed to the caller, once per request.
+  const focusHandled = useRef<number | null>(null);
+  useEffect(() => {
+    if (focus === null || focusHandled.current === focus.nonce) return;
+    focusHandled.current = focus.nonce;
+
+    const target = nodesRef.current.find((node) => node.id === focus.id);
+    if (target === undefined) return;
+
+    onSelectionChange?.({ kind: "node", id: focus.id, stage: target.data.stage });
+
+    const width = target.measured?.width ?? STAGE_BOX.width;
+    const height = target.measured?.height ?? STAGE_BOX.height;
+    void setCenter(target.position.x + width / 2, target.position.y + height / 2, { zoom: getZoom() });
+  }, [focus, getZoom, onSelectionChange, setCenter]);
 
   const addReason = readOnlyReason ?? (catalog === null ? CATALOG_UNREAD_REASON : undefined);
 
@@ -548,6 +595,7 @@ function Canvas({
 
   const status = selectionSentence(selection, nodes.length);
   const unsaved = edited || definition !== openedOn;
+  const note = saveNote === undefined ? (unsaved ? UNSAVED_NOTE : null) : saveNote;
 
   return (
     <section aria-label={CANVAS_LABEL} className="studio-canvas" onKeyDown={onKeyDown}>
@@ -640,7 +688,7 @@ function Canvas({
         <p className="studio-canvas__status" role="status">
           {status}
         </p>
-        {unsaved && <p className="studio-canvas__unsaved">{UNSAVED_NOTE}</p>}
+        {note !== null && <p className="studio-canvas__unsaved">{note}</p>}
         <span className="studio-canvas__hint">{CANVAS_HINT}</span>
         {/* An edit refused, with the rule it would have broken — never a silent no. */}
         {notice !== null && (

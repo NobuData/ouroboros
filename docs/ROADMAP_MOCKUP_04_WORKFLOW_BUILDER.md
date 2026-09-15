@@ -1199,7 +1199,8 @@ suites: publish gate ✓ · trigger matrix ✓ · dry-run contract ✓ · catalo
   two new routes:**
 
   * **Dry-run fidelity is held at the contract, not at a caller.** Nothing in `ouroboros-rest`
-    calls `POST /v0/workflows/dry-run` yet — S.6 (#152) adds that call — so the stub publishes the
+    called `POST /v0/workflows/dry-run` yet — S.6 (#152) has since added that call, and the suite
+    drives it through `POST /api/v1/workflows/{id}/dry-run` — so the stub publishes the
     route, holds requests to `WorkflowDryRunRequest` and answers to `WorkflowDryRun`, and answers
     by default with **the example the engine's own document commits to**, read from
     `ouroboros-engine/openapi.yaml` rather than typed. The suite proves what REST *holds* fits what
@@ -1251,7 +1252,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 | S.3 | #149 | 🟢 Done | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
 | S.4 | #150 | 🟢 Done | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
 | S.5 | #151 | 🟢 Done | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
-| S.6 | #152 | 🟡 Open | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui |
+| S.6 | #152 | 🟢 Done | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui, ouroboros-rest |
 | S.7 | #153 | 🟡 Open | ouroboros-ui: [S.7] Studio states & guards | Empty org, paused/err rail states, read-only member view, load/error | mvp, workflow, ui, design | N (after S.1–S.6) | Y | S | ouroboros-ui |
 | S.8 | #154 | 🟡 Open | ouroboros-ui: [S.8] Studio e2e leg | Seeded parity, edit→publish→version, dry-run highlight, themes | mvp, workflow, ui, ci | N (after S.1–S.7) | Y | S | ouroboros-ui, .github |
 
@@ -1665,7 +1666,43 @@ Limits [retries 2][budget 400k] · Permissions [fixup ✓][CI ✗]   [Delete] [A
 
 ### Issue S.6 — ouroboros-ui: [S.6] Draft, publish & dry-run flows
 
-> **GitHub issue:** #152 · **Status:** 🟡 Open · **Parent epic:** #130
+> **GitHub issue:** #152 · **Status:** 🟢 Done · **Parent epic:** #130
+>
+> **Shipped** as `ouroboros-ui/app/workflows/` (`studio-session.tsx` and its context, `autosave.ts`,
+> `use-autosave.ts`, `publish.ts`, `dry-run.ts`, `draft-actions.ts`, the publish, dry-run and reload
+> dialogs, `dry-run-sheet.tsx`, `finding-list.tsx`, the head's live actions and subline, the toast),
+> the canvas's `focus` and `saveNote` props, and `workflows.saveDraft/publish/dryRun()`. Also REST's
+> `POST /api/v1/workflows/{id}/dry-run` (`dry-run.service.ts`, `dry-run.repository.ts`,
+> `EngineClient.dryRunWorkflow`). Versions: `ouroboros-ui` 0.69.0, `ouroboros-rest` 0.35.4,
+> `ouroboros-e2e` 0.10.1.
+>
+> * **Autosave.** Writes are debounced, serial and carry `If-Match`, each with the etag the last write
+>   returned. A `409` stops autosave and opens the reload dialog: nothing is overwritten, and it is
+>   never retried with `*`. A hidden, left or unmounted page writes what is waiting at once, which is
+>   *close the tab → reopen: draft intact*. A document equal to the stored draft is not written.
+> * **Head.** The subline is composed from facts shared by the server and the session, and reads
+>   `v14 · draft edits` while the draft diverges from the version in force.
+> * **Publish.** The dialog writes any waiting edit first. Each finding is anchored by `node`, the
+>   stage its `edge` leaves, or the node its `/nodes/N` pointer names, and clicking it selects that stage
+>   through the canvas. A success moves the version, leaves a toast and refreshes the rail.
+> * **Decided in-issue.**
+>   - **REST gets the dry-run route here.** It was not in the contract, and the browser cannot reach
+>     the engine. The request names an issue by id and REST reads its labels and effort, so a caller
+>     cannot simulate a ticket it does not hold. The route writes nothing, so it is every member's, and
+>     it walks the stored draft (else the version in force).
+>   - **The picker lists open, sized backlog issues** and defaults to `#485` when present.
+>   - **The overlay paints the engine's whole `highlight_path`**, the ticket's *engine's real walk*. For
+>     seeded `standard-fix` + `#485` the mockup's four accent edges are its prefix, which the engine's own
+>     suite asserts.
+>   - **The step sheet takes the inspector's track**, and any new draft clears it, a move or an undo
+>     included.
+>   - **Reload is a page reload**, the one way the canvas, history and etag all restart from the stored
+>     draft.
+> * **Left where it was:**
+>   - The code view's Publish is V.6's (#174) and now names it.
+>   - The e2e leg's parity baselines stay as recorded: the dry run is its own case, as a member so
+>     nothing is written, and asserts the painted path in both palettes.
+>   - Editing and publishing in a browser are S.8's (#154).
 
 - **Problem Statement:** Edits must persist safely (autosave, conflict-aware),
   publishing must gate on validation with designed feedback, and dry-run must
