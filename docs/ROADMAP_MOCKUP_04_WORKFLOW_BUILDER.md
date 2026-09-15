@@ -1253,7 +1253,7 @@ system via the #16 tokens (both themes; the mockup is dark-only).
 | S.4 | #150 | 🟢 Done | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
 | S.5 | #151 | 🟢 Done | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
 | S.6 | #152 | 🟢 Done | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui, ouroboros-rest |
-| S.7 | #153 | 🟡 Open | ouroboros-ui: [S.7] Studio states & guards | Empty org, paused/err rail states, read-only member view, load/error | mvp, workflow, ui, design | N (after S.1–S.6) | Y | S | ouroboros-ui |
+| S.7 | #153 | 🟢 Done | ouroboros-ui: [S.7] Studio states & guards | Empty org, paused/err rail states, read-only member view, load/error | mvp, workflow, ui, design | N (after S.1–S.6) | Y | S | ouroboros-ui |
 | S.8 | #154 | 🟡 Open | ouroboros-ui: [S.8] Studio e2e leg | Seeded parity, edit→publish→version, dry-run highlight, themes | mvp, workflow, ui, ci | N (after S.1–S.7) | Y | S | ouroboros-ui, .github |
 
 ### Issue S.1 — ouroboros-ui: [S.1] Studio route, page head & workflow rail
@@ -1730,7 +1730,24 @@ dry-run(#485) ─▶ canvas highlight: trigger→analyze→decision→plan→imp
 
 ### Issue S.7 — ouroboros-ui: [S.7] Studio states & guards
 
-> **GitHub issue:** #153 · **Status:** 🟡 Open · **Parent epic:** #130
+> **GitHub issue:** #153 · **Status:** 🟢 Done · **Parent epic:** #130
+>
+> **Shipped** in `ouroboros-ui/app/workflows/`. `states.ts` gives the empty seat S.7's title and a
+> role-aware note, and `studio-screen.tsx` draws **Start blank** (the rail tile's create dialog, via
+> `NewWorkflow`'s new `label`/`tone`/`className`) and an inert **Browse templates** for an owner or
+> admin. A member gets no buttons and is told who can create a workflow. `studio-skeleton.tsx` now
+> reserves the canvas card (stage on `.studio-canvas__stage`'s own height rules, plus the toolbar row)
+> and the inspector's track. Version: `ouroboros-ui` 0.73.0.
+>
+> * **Decided in-issue.**
+>   - **"Paused and error" is one state.** The contract's `WorkflowStatus` is
+>     `active | paused | archived`, and the mockup's `hotfix-p0` err-dot *is* its paused treatment.
+>     S.1 already draws it (dot + `paused` caption), so no error status is invented here.
+>   - **Member read-only and the API-error banner** were built by S.1–S.6 (`readOnlyReason`, the
+>     disabled inspector fieldset, the role-gated Publish, `StudioFailedBanner` with the service's
+>     reason). S.7 verifies them at the screen level rather than rebuilding them.
+>   - **The personal-org seed is empty by construction.** Every seeded workflow belongs to
+>     `acme-robotics`, so `kensuenobu` opens on the empty state.
 
 - **Problem Statement:** The mockup shows a populated studio; reality includes a
   fresh org (no workflows), paused/error workflows, members without edit

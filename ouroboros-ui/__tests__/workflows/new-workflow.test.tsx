@@ -111,6 +111,27 @@ describe("the tile", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("is the rail's dashed ghost tile when told nothing about its look", () => {
+    render(<NewWorkflow mayAdminister slugs={TAKEN} />);
+
+    const tile = screen.getByRole("button", { name: NEW_WORKFLOW_LABEL });
+
+    expect(tile).toHaveClass("studio-rail__new", "ou-btn--ghost");
+  });
+
+  it("opens the same dialog under another label, tone and placement — the empty seat's Start blank (#153)", () => {
+    render(<NewWorkflow className="studio__seat-start" label="Start blank" mayAdminister slugs={[]} tone="primary" />);
+
+    const start = screen.getByRole("button", { name: "Start blank" });
+
+    expect(start).toHaveClass("studio__seat-start", "ou-btn--primary");
+    expect(start).not.toHaveClass("studio-rail__new");
+
+    fireEvent.click(start);
+
+    expect(screen.getByRole("dialog")).toHaveAccessibleName(CREATE_TITLE);
+  });
+
   it("stays reachable by keyboard for a member, so its explanation is reachable too", () => {
     render(<NewWorkflow mayAdminister={false} slugs={TAKEN} />);
 

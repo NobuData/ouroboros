@@ -5,7 +5,7 @@ import { useId, useState, useTransition } from "react";
 
 import { workflowPath } from "@/app/paths";
 import { ShellOverlay } from "@/app/shell/overlay";
-import { Button, TextField } from "@/app/ui";
+import { Button, type ButtonTone, TextField } from "@/app/ui";
 
 import { type CreateOutcome, createWorkflow } from "./create-actions";
 import {
@@ -79,6 +79,18 @@ export interface NewWorkflowProps {
   readonly mayAdminister: boolean;
   /** Every slug this workspace has, as the rail read them, for the live uniqueness check. */
   readonly slugs: readonly string[];
+  /**
+   * What the control says. Defaults to the rail tile's **+ New workflow**; the empty seat (S.7,
+   * [#153](https://github.com/NobuData/ouroboros/issues/153)) opens the same dialog as **Start blank**.
+   */
+  readonly label?: string;
+  /** The control's treatment. Defaults to the tile's ghost tone. */
+  readonly tone?: ButtonTone;
+  /**
+   * Placement classes for the control. Defaults to the rail's dashed tile, `studio-rail__new`;
+   * pass another where the control is not the rail's tile, so it does not wear the tile's shape.
+   */
+  readonly className?: string;
 }
 
 /**
@@ -87,7 +99,13 @@ export interface NewWorkflowProps {
  * @param props See {@link NewWorkflowProps}.
  * @returns The tile, with the dialog beside it while it is open.
  */
-export function NewWorkflow({ mayAdminister, slugs }: NewWorkflowProps) {
+export function NewWorkflow({
+  mayAdminister,
+  slugs,
+  label = NEW_WORKFLOW_LABEL,
+  tone = "ghost",
+  className = "studio-rail__new",
+}: NewWorkflowProps) {
   const router = useRouter();
   const fields = useId();
 
@@ -177,13 +195,13 @@ export function NewWorkflow({ mayAdminister, slugs }: NewWorkflowProps) {
   return (
     <>
       <Button
-        className="studio-rail__new"
+        className={className}
         onClick={openDialog}
         reason={newWorkflowReason(mayAdminister)}
-        tone="ghost"
+        tone={tone}
         type="button"
       >
-        {NEW_WORKFLOW_LABEL}
+        {label}
       </Button>
 
       <ShellOverlay label={CREATE_TITLE} onClose={close} open={open}>

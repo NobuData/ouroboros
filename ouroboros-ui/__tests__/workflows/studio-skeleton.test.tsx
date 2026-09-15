@@ -73,6 +73,28 @@ describe("below the control", () => {
     expect(container.querySelector(".studio__grid > .studio-skeleton__seat")).not.toBeNull();
   });
 
+  it("draws the seat as the canvas card it will be: a stage, then the toolbar's row (#153)", () => {
+    const { container } = render(<StudioSkeleton />);
+    const seat = container.querySelector(".studio-skeleton__seat");
+
+    expect(Array.from(seat?.children ?? [], (child) => child.className)).toEqual([
+      "studio-skeleton__stage",
+      "studio-skeleton__toolbar",
+    ]);
+  });
+
+  it("reserves the inspector's track beside the canvas, so the canvas does not narrow when it lands (#153)", () => {
+    const { container } = render(<StudioSkeleton />);
+    const tracks = container.querySelectorAll(".studio__grid > *");
+
+    // The grid's three columns, in the screen's order: rail, canvas, inspector.
+    expect(Array.from(tracks, (track) => track.className)).toEqual([
+      "studio-skeleton__rail",
+      "studio-skeleton__seat",
+      "studio-skeleton__inspector",
+    ]);
+  });
+
   it("says one thing to a screen reader, not twenty", () => {
     // The frame is busy and labelled once; the region below the control is hidden.
     const { container } = render(<StudioSkeleton />);

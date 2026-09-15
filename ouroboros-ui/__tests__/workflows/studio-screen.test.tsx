@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { CANVAS_LABEL } from "@/app/workflows/canvas/view";
+import { ADD_STAGE_LABEL, CANVAS_LABEL, ZOOM_IN_LABEL } from "@/app/workflows/canvas/view";
+import { APPLY_LABEL, INSPECTOR_LABEL, MEMBER_REASON } from "@/app/workflows/inspector/inspector";
 import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
 import {
   DEV_SEED_NOTE,
@@ -9,8 +10,12 @@ import {
   FAILED_TITLE,
   MISSING_TITLE,
   RAIL_FAILED_HEADLINE,
+  SEAT_EMPTY_MEMBER_NOTE,
+  SEAT_EMPTY_NOTE,
+  SEAT_EMPTY_TITLE,
   SEAT_FAILED_NOTE,
   SEAT_UNREAD_TITLE,
+  START_BLANK_LABEL,
   WORKFLOW_FAILED_HEADLINE,
 } from "@/app/workflows/states";
 import {
@@ -244,6 +249,71 @@ describe("the role", () => {
   });
 });
 
+describe("a member's studio is read-only, and navigable (#153)", () => {
+  /** Let React Flow's effects and its zero-delay timers run. */
+  async function settle(): Promise<void> {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  /**
+   * Render the seeded studio for a member and select one stage from the keyboard.
+   *
+   * @param id The stage to select.
+   * @returns The render's container.
+   */
+  async function openAsMember(id: string): Promise<HTMLElement> {
+    const { container } = render(<StudioScreen mayAdminister={false} readings={readings()} role="member" />);
+    await settle();
+
+    const node = container.querySelector<HTMLElement>(`.react-flow__node[data-id="${id}"]`);
+    if (node === null) throw new Error(`no stage ${id}`);
+    node.focus();
+    fireEvent.keyDown(node, { key: "Enter" });
+    await settle();
+
+    return container;
+  }
+
+  it("keeps the canvas navigable: every stage drawn, zoom live, a stage selectable", async () => {
+    const container = await openAsMember("plan");
+
+    expect(container.querySelectorAll(".react-flow__node")).toHaveLength(12);
+    expect(screen.getByRole("button", { name: ZOOM_IN_LABEL })).not.toHaveAttribute("aria-disabled");
+    // Selecting is inspecting: the inspector opens on the stage the member chose.
+    expect(within(screen.getByRole("complementary", { name: INSPECTOR_LABEL })).getByRole("heading", { level: 2 })).not.toHaveTextContent("");
+    expect(container.querySelector('.react-flow__node[data-id="plan"]')).toHaveClass("selected");
+  });
+
+  it("renders the inspector's values disabled, with the reason stated on its controls", async () => {
+    await openAsMember("plan");
+
+    const inspector = screen.getByRole("complementary", { name: INSPECTOR_LABEL });
+
+    // The panel's form is one fieldset, disabled whole: every value renders, none can be changed.
+    expect(inspector.querySelector("fieldset.studio-inspector__form")).toBeDisabled();
+    expect(within(inspector).getByRole("button", { name: APPLY_LABEL })).toHaveAttribute("title", MEMBER_REASON);
+    expect(within(inspector).getByRole("button", { name: APPLY_LABEL })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("draws Publish nowhere, states the role once, and says why the canvas's edits are inert", async () => {
+    await openAsMember("plan");
+
+    expect(screen.queryByRole("button", { name: /^Publish/ })).toBeNull();
+    expect(screen.getAllByRole("note")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: ADD_STAGE_LABEL })).toHaveAttribute("title", MEMBER_REASON);
+  });
+
+  it("is not read-only for an owner — the same page with every control live", async () => {
+    render(<StudioScreen mayAdminister readings={readings()} role="owner" />);
+    await settle();
+
+    expect(screen.getByRole("button", { name: ADD_STAGE_LABEL })).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: "Publish v15" })).toBeInTheDocument();
+  });
+});
+
 describe("a refused rail", () => {
   const failed = readings({ rail: { ok: false, reason: "Down." }, selected: null });
 
@@ -286,6 +356,65 @@ describe("a workspace with no workflows", () => {
     render(<StudioScreen mayAdminister readings={empty} role="owner" />);
 
     expect(screen.queryByRole("button", { name: /^Publish v/ })).toBeNull();
+  });
+
+  it("shows the empty state rather than an empty canvas (#153)", () => {
+    const { container } = render(<StudioScreen mayAdminister readings={empty} role="owner" />);
+
+    expect(screen.getByText(SEAT_EMPTY_TITLE)).toBeInTheDocument();
+    expect(container.querySelector(".react-flow")).toBeNull();
+    expect(screen.queryByRole("region", { name: CANVAS_LABEL })).toBeNull();
+  });
+
+  it("gives an owner the two ways to begin: Start blank opens the create dialog, templates say what they wait for", () => {
+    const { container } = render(<StudioScreen mayAdminister readings={empty} role="owner" />);
+    const seat = container.querySelector<HTMLElement>(".studio__seat");
+    if (seat === null) throw new Error("no seat");
+
+    expect(within(seat).getByText(SEAT_EMPTY_NOTE)).toBeInTheDocument();
+
+    const browse = within(seat).getByRole("button", { name: BROWSE_TEMPLATES_LABEL });
+
+    expect(browse).toHaveAttribute("title", BROWSE_TEMPLATES_SOON);
+
+    const start = within(seat).getByRole("button", { name: START_BLANK_LABEL });
+
+    expect(start).not.toHaveAttribute("aria-disabled");
+    expect(start).toHaveClass("ou-btn--primary");
+
+    fireEvent.click(start);
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("gives a member no buttons in the seat, and says who can create one", () => {
+    const { container } = render(<StudioScreen mayAdminister={false} readings={empty} role="member" />);
+    const seat = container.querySelector<HTMLElement>(".studio__seat");
+    if (seat === null) throw new Error("no seat");
+
+    expect(within(seat).getByText(SEAT_EMPTY_MEMBER_NOTE)).toBeInTheDocument();
+    expect(within(seat).queryAllByRole("button")).toEqual([]);
+    expect(screen.queryByRole("button", { name: START_BLANK_LABEL })).toBeNull();
+  });
+
+  it.each(PALETTES)("draws the owner's empty state in the %s palette", (palette) => {
+    renderInPalette(palette, <StudioScreen mayAdminister readings={empty} role="owner" />);
+
+    expect(document.documentElement).toHaveAttribute("data-theme", palette);
+    expect(screen.getByRole("button", { name: START_BLANK_LABEL })).toBeInTheDocument();
+  });
+
+  it.each(PALETTES)("draws the member's empty state in the %s palette", (palette) => {
+    renderInPalette(palette, <StudioScreen mayAdminister={false} readings={empty} role="member" />);
+
+    expect(document.documentElement).toHaveAttribute("data-theme", palette);
+    expect(screen.getByText(SEAT_EMPTY_MEMBER_NOTE)).toBeInTheDocument();
+  });
+
+  it("draws the same empty-state markup in both palettes, because the palette is CSS's business", () => {
+    const [light, dark] = renderInBothPalettes(<StudioScreen mayAdminister readings={empty} role="owner" />);
+
+    expect(light).toBe(dark);
   });
 });
 

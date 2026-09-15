@@ -2701,15 +2701,28 @@ there is no definition to walk or to freeze. Both flows are
 ### Every state the mockup does not show
 
 [`app/workflows/states.ts`](app/workflows/states.ts) decides five. A refused rail wears the
-DASH-I.7 banner over an empty seat; an empty workspace says so and points at the tile, with
-the development seed named for a developer; a URL naming a workflow the rail does not hold
+DASH-I.7 banner over an empty seat, carrying the service's own reason; an empty workspace
+(the personal-org seed) reads *No workflows yet — start from a template or blank* (S.7,
+[#153](https://github.com/NobuData/ouroboros/issues/153)). Its calls to action depend on the role:
+an owner or admin gets **Start blank**, which opens the tile's create dialog, and **Browse
+templates**, inert until #159; a member gets no buttons and a note saying who can create one.
+The development seed is named for a developer. A URL naming a workflow the rail does not hold
 draws the studio's own *No such workflow* beside the rail rather than the framework's
 not-found page, because the rail is what a reader who followed a stale link needs next; a
 workflow whose own read failed keeps the rail's facts in the head and says which read failed.
 The fifth, populated, is the canvas. Loading is
 [`app/workflows/studio-skeleton.tsx`](app/workflows/studio-skeleton.tsx): one skeleton for
 both visual routes, at the frame's own geometry, with the title and subline as bars because —
-unlike the routing page's — both depend on the reads. The code view has its own.
+unlike the routing page's — both depend on the reads. Below the control it reserves all three
+grid tracks: the rail, the canvas card (its stage held to `.studio-canvas__stage`'s own height
+rules by a style test, then the toolbar row), and the inspector. The code view has its own.
+
+**A member's studio is read-only and still navigable.** The canvas pans, zooms and selects; the
+inspector renders every value inside a disabled fieldset, and each control that would change the
+draft is inert, with *Only an owner or admin may change a workflow.* as its reason; Publish is not
+drawn. The paused rail row (`hotfix-p0`) wears the mockup's err-dot and says *paused* in its
+caption — the contract's statuses are `active`, `paused` and `archived`, so the err-dot is the
+paused state rather than a separate error state.
 
 ### The code view is a second face of the same draft
 

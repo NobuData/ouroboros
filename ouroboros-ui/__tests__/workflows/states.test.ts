@@ -8,6 +8,8 @@ import {
   FAILED_TITLE,
   MISSING_TITLE,
   READ_ONLY_BODY,
+  SEAT_EMPTY_MEMBER_NOTE,
+  SEAT_EMPTY_NOTE,
   SEAT_EMPTY_TITLE,
   SEAT_FAILED_NOTE,
   SEAT_MISSING_TITLE,
@@ -155,6 +157,34 @@ describe("the seat", () => {
 
     expect(titles).toEqual([SEAT_EMPTY_TITLE, SEAT_MISSING_TITLE, SEAT_UNREAD_TITLE]);
     expect(new Set(titles).size).toBe(3);
+  });
+
+  it("titles the empty workspace with S.7's sentence, whoever is reading (#153)", () => {
+    expect(SEAT_EMPTY_TITLE).toBe("No workflows yet — start from a template or blank");
+    expect(seatCopy({ kind: "empty" }, true).title).toBe(SEAT_EMPTY_TITLE);
+    expect(seatCopy({ kind: "empty" }, false).title).toBe(SEAT_EMPTY_TITLE);
+  });
+
+  it("points a reader who may create at the way to start, and tells one who may not who can", () => {
+    expect(seatCopy({ kind: "empty" }, true).note).toBe(SEAT_EMPTY_NOTE);
+    expect(seatCopy({ kind: "empty" }, false).note).toBe(SEAT_EMPTY_MEMBER_NOTE);
+    expect(SEAT_EMPTY_MEMBER_NOTE).toMatch(/owner or an admin/);
+    // Nothing a member cannot press is named to them as a thing to press.
+    expect(SEAT_EMPTY_MEMBER_NOTE).not.toMatch(/Start blank|New workflow/);
+  });
+
+  it("defaults the empty note to the member's, rather than to controls the service would refuse", () => {
+    expect(seatCopy({ kind: "empty" }).note).toBe(SEAT_EMPTY_MEMBER_NOTE);
+  });
+
+  it("says the same thing to every role in the states that are facts about the reads", () => {
+    for (const state of [
+      { kind: "failed", reason: "r" },
+      { kind: "missing", slug: "gone" },
+      { kind: "unread", entry: railEntry(), reason: "r" },
+    ] as const) {
+      expect(seatCopy(state, true)).toEqual(seatCopy(state, false));
+    }
   });
 
   it("names the issue the canvas waits for in none of them, because the canvas is here", () => {
