@@ -30,7 +30,7 @@ deployment. Five legs from the issue, and nine amended in since:
 | 10 | [`specs/providers.spec.ts`](specs/providers.spec.ts) | Mockup 07's credential lifecycle across four layers: a key the provider refuses connecting **no** card; a rotation that failed leaving the old key *still working*, proved by testing it; a reveal shown, recorded and masked again; a pull whose progress survives a reload; and a provider that really goes away |
 | 11 | [`specs/issues.spec.ts`](specs/issues.spec.ts) | Mockup 03 against the intake seed: a selection refused by name and then queued, with the *dashboard page* moving by exactly one row's worth; a press of **Re-estimate** that really goes through the engine and comes back as a new version the panel draws without a reload; the filter bar's address reloaded into the identical view; and the personal workspace's guidance |
 | 12 | [`specs/studio.spec.ts`](specs/studio.spec.ts) | Mockup 04's canvas as a browser draws it: the five node treatments printing the chips the seeded document's configs become, the octagonal flow nodes and the mini pill, the ouroboros edge dashed and glowing in each palette's own accent-deep, and the `.sel` ring — with the canvas diffed in both palettes; S.6's dry run of `#485`, painting the mockup's active path in the accent in both palettes and clearing on the first edit; and S.8's authoring loop — the rail and *Implement*'s inspector at parity, a chip that moves only on **Apply** and survives a reload, a sabotaged draft refused at **Publish** by *its* finding on *Code the change*, repaired in the inspector and published as the next version, a member served no **Publish** and the service's `403`, and the shell at 125% |
-| 13 | [`specs/code-editor.spec.ts`](specs/code-editor.spec.ts) | Mockup 05's editor as a browser draws it: the seeded file in CodeMirror with every syntax colour, the current line and the glow caret on each palette's own token and none of CodeMirror's defaults; a member served the read-only variant; a long line scrolling the editor and not the pane; keystrokes that cost a fraction of a frame — with the editor diffed in both palettes |
+| 13 | [`specs/code-editor.spec.ts`](specs/code-editor.spec.ts) | Mockup 05's editor as a browser draws it: the seeded file in CodeMirror with every syntax colour, the current line and the glow caret on each palette's own token and none of CodeMirror's defaults; a member served the read-only variant; a long line scrolling the editor and not the pane; keystrokes that cost a fraction of a frame — with the editor diffed in both palettes; and V.8's cross-editor round-trip — the file at parity with U.1's golden listing, a token budget typed in code that *Implement*'s inspector shows and a stage nudged on the canvas that the file's layout block moves, in one test; an unknown alias typed in code refused at **Publish** by its finding, marked back on *Implement*'s lines, repaired and published as the next version in both editors; a member served no **Publish** and the service's `403`; the workbench diffed in both palettes; and the shell at 125% |
 | 14 | [`specs/registry.spec.ts`](specs/registry.spec.ts) | Mockup 21's promises composed: an alias created, tuned and **rebound in the inspector, with the routing matrix on another page redrawing its resolution line**; a delete refused by the service's `409` to a page drawn before the route existed; an import landing a row; an orphan's **Fix in Providers →**; a switch-off that drops a hop in the next simulation; a raw model id refused at **Publish**; and a member served every control inert — with the page diffed in both palettes |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
@@ -155,8 +155,29 @@ glow caret against `support/code.ts`, and requires that neither CodeMirror's def
 default caret is what the browser computed. It opens the file as the seeded member and finds the
 read-only variant with nothing to type into; types a 500-character line and finds the editor
 scrolling sideways and the pane not; types two hundred keystrokes and finds no key handler that
-took a frame; and screenshot-diffs the editor, caret on line 3, in both palettes. It writes
-nothing — the save loop is V.4's.
+took a frame; and screenshot-diffs the editor, caret on line 3, in both palettes. Those cases write
+nothing.
+
+V.8 ([#176](https://github.com/NobuData/ouroboros/issues/176)), the workflow-as-code roadmap's MVP
+gate, extends the leg with the page's central claim — *every graph compiles to this typed DSL and
+back, losslessly* — which spans the browser, `ouroboros-rest`, the engine and the database. Its
+sharpest assertion is the round-trip's, **in both directions in one test**: `tokenBudget: 400_000`
+retyped as `500_000` in the file must be the `500k` the canvas's inspector shows after the **Visual**
+tab, and *Implement* nudged on that canvas must be the position the file's layout block prints after
+the **Code** tab — with the budget still there, so neither editor's write undid the other's. Around it:
+the file at parity with U.1's golden fixture, line for line and whitespace for whitespace, under
+mockup 05's subline and over a synced status bar; a publish gate proved from code — `coder-maxx`
+typed over *Implement*'s route refused with CH.6's finding, the finding's jump putting the cursor on
+`llm("implement", {` and the error marked on that stage's lines and not on *Understand & scope*'s, the
+line typed back and published, and the version moving by exactly one in the code view, after a
+reload, and on the Visual tab; the seeded member served the read-only note, no **Publish**, a file
+nobody can type into and the service's `403`; the whole workbench diffed in both palettes, with the
+status bar's `vN draft` masked because every green publish moves it; and the shell's fixed chrome,
+lit entries and 125% font scale. The whole-file cases run in a 4200px-tall window, because CodeMirror
+draws only the lines near its viewport. It writes `standard-fix`'s draft and restores it in teardown;
+the publish is append-only and needs no undoing, for S.8's reason. `verify-failure-modes.sh` registers
+an `engine` pair for it beside the `db` one. `openPublish` and `expectPublished` moved to
+`support/studio.ts` so both editors' legs drive the one dialog the same way.
 
 Leg 14 is [#597](https://github.com/NobuData/ouroboros/issues/597)'s — CI.7, the model registry
 roadmap's MVP gate — and its sharpest assertion crosses a page: **an alias rebound in the

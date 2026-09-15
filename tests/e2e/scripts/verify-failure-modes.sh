@@ -42,6 +42,9 @@
 #                                 and no version is frozen (#154)
 #   db        code-editor.spec.ts the code editor's file is printed from the seeded draft
 #                                 rather than drawn from the mockup's listing (#170)
+#   engine    code-editor.spec.ts a publish from code really asks the engine: with it
+#                                 stopped, the repaired file is refused as the engine not
+#                                 answering, and no version is frozen (#176)
 #   db        registry.spec.ts    the registry's chips, health, prices and used-by counts are
 #                                 derived from the seeded rows rather than drawn from the
 #                                 mockup (#597)
@@ -401,7 +404,7 @@ expect_red db studio.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 # so does the *sabotaged* publish, because the gate refuses an unknown alias before it makes the
 # engine call. What goes red is the step that needs the engine: the repaired draft's publish, which
 # the gate must hand to the engine and cannot, so the dialog says so and no version is frozen. The
-# marker is that sentence, which `expectPublished` in the spec prints as the reason the publish did
+# marker is that sentence, which `expectPublished` in `support/studio.ts` prints as the reason the publish did
 # not take. The dry-run test goes red too, for the same reason, without a sentence of its own.
 expect_red engine studio.spec.ts "engine could not check this definition"
 
@@ -413,6 +416,13 @@ expect_red engine studio.spec.ts "engine could not check this definition"
 # through with everything healthy — is `ouroboros-ui`'s code-editor-styles suite, which reads
 # the library's base theme and goes red on any colour rule the sheet does not account for.
 expect_red db code-editor.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# …and the same leg against the engine (#176). With the engine stopped, sign-in, the file, both
+# editors' autosaves and the round-trip all still work — none of them asks the engine anything — and
+# so does the *sabotaged* publish, because the gate refuses the unknown alias before the engine call.
+# What goes red is the repaired file's publish, which the gate must hand to the engine and cannot:
+# the shared dialog says so, and `expectPublished` prints that sentence as the reason.
+expect_red engine code-editor.spec.ts "engine could not check this definition"
 
 # The registry leg (#597), against the layer its every cell comes out of. A chip is CH.2's
 # derivation over `model_aliases.params`, `Used by` is a count over V023's reference index, a
