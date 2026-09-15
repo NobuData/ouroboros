@@ -1,9 +1,11 @@
 import type { Role } from "@/app/api/membership";
-import { Card, EmptyState } from "@/app/ui";
+import { Button, Card, EmptyState } from "@/app/ui";
 
+import { NewWorkflow } from "./new-workflow";
 import {
   DEV_SEED_NOTE,
   RAIL_FAILED_HEADLINE,
+  START_BLANK_LABEL,
   type SeatState,
   WORKFLOW_FAILED_HEADLINE,
   seatCopy,
@@ -19,7 +21,7 @@ import { StudioReadOnlyNote } from "./studio-readonly-note";
 import { StudioSession } from "./studio-session";
 import { StudioSubline } from "./studio-subline";
 import { StudioToast } from "./studio-toast";
-import { type StudioReadings, canvasDefinition } from "./view";
+import { BROWSE_TEMPLATES_LABEL, BROWSE_TEMPLATES_SOON, type StudioReadings, canvasDefinition } from "./view";
 import { WorkflowRail } from "./workflow-rail";
 
 import "./workflows.css";
@@ -170,7 +172,7 @@ export function StudioScreen({
             workflowId={state.workflow.id}
           />
         ) : (
-          <Seat state={state} />
+          <Seat mayAdminister={mayAdminister} state={state} />
         )}
       </div>
     </StudioFrame>
@@ -190,16 +192,33 @@ export function StudioScreen({
  * copy that differs by state because the states are different facts: *nothing could be read*,
  * *nothing exists yet*, *nothing is selected*, *this one could not be read*.
  *
+ * ### The empty workspace's calls to action are role-aware (S.7)
+ *
+ * A reader who may create gets the two ways a workflow begins, as buttons: **Start blank**, which
+ * opens the rail tile's own create dialog, and **Browse templates**, inert with the issue it waits
+ * for, as the head's is. A reader who may not gets no buttons at all — a control that would be
+ * refused is not drawn — and the note says who can create one instead.
+ *
  * @param props.state Which state the page is in, decided once by the screen — any but
  *   populated, which has a canvas instead.
+ * @param props.mayAdminister Whether the reader may create workflows.
  * @returns The seat.
  */
-function Seat({ state }: Readonly<{ state: SeatState }>) {
-  const copy = seatCopy(state);
+function Seat({ state, mayAdminister }: Readonly<{ state: SeatState; mayAdminister: boolean }>) {
+  const copy = seatCopy(state, mayAdminister);
 
   return (
     <Card className="studio__seat" fill>
       <EmptyState fill note={copy.note} title={copy.title}>
+        {state.kind === "empty" && mayAdminister && (
+          <div className="studio__seat-actions">
+            {/* An empty workspace has no slugs to collide with. */}
+            <NewWorkflow className="studio__seat-start" label={START_BLANK_LABEL} mayAdminister slugs={[]} tone="primary" />
+            <Button reason={BROWSE_TEMPLATES_SOON} tone="ghost">
+              {BROWSE_TEMPLATES_LABEL}
+            </Button>
+          </div>
+        )}
         {state.kind === "empty" && <p className="studio__dev">{DEV_SEED_NOTE}</p>}
       </EmptyState>
     </Card>

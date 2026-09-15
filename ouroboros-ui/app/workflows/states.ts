@@ -7,8 +7,8 @@
  * no workflows yet, a rail nobody could read, a link to a workflow that was archived last week,
  * a reader who may only look — and each is a **judgement** about the two reads the page makes,
  * so each lives here as a rule with a unit test rather than as a branch inside a component.
- * S.7 ([#153](https://github.com/NobuData/ouroboros/issues/153)) is where the studio's states
- * are *designed* in full; what is here is what the frame cannot ship without.
+ * S.7 ([#153](https://github.com/NobuData/ouroboros/issues/153)) designs them in full: the
+ * empty seat's role-aware copy is decided here, and its calls to action are drawn by the screen.
  *
  * **Framework-free and pure**, the way `app/workflows/view.ts` is: nothing here imports React,
  * `next/*` or the server-only client. The only import beyond the reads' shape is a `.d.ts`,
@@ -213,13 +213,28 @@ export const SEAT_FAILED_NOTE =
   "Nothing below the head could be read. The banner above carries the service's reason, " +
   "and the retry.";
 
-/** The seat's title for an empty workspace. */
-export const SEAT_EMPTY_TITLE = "Nothing to draw yet";
+/**
+ * The seat's title for an empty workspace — the one sentence S.7
+ * ([#153](https://github.com/NobuData/ouroboros/issues/153)) asks for, word for word.
+ */
+export const SEAT_EMPTY_TITLE = "No workflows yet — start from a template or blank";
 
-/** …and its note. */
+/** …and its note, for a reader who may create one: what a blank start leaves behind. */
 export const SEAT_EMPTY_NOTE =
-  "A workflow starts as a blank draft and runs once it is published. The rail's + New " +
-  "workflow tile is where one begins.";
+  "A workflow starts as a blank draft and runs once it is published. Start blank here or " +
+  "from the rail's + New workflow tile.";
+
+/**
+ * …and its note for a reader who may not create one. It names **who** can, because a member
+ * shown an empty studio and no buttons needs to know whom to ask — not a row of controls that
+ * would fail on click.
+ */
+export const SEAT_EMPTY_MEMBER_NOTE =
+  "Workflows are created by an owner or an admin of this workspace. Ask one of them to start " +
+  "one; it will be listed here as soon as it exists.";
+
+/** The empty seat's call to action for a reader who may create: the create dialog, blank. */
+export const START_BLANK_LABEL = "Start blank";
 
 /**
  * The note for somebody exploring on a development stack, under the empty seat.
@@ -251,15 +266,21 @@ export const SEAT_UNREAD_NOTE =
  * Total over {@link SeatState} and not over `StudioState`: a populated page has a canvas where
  * the seat would be, and a sentence for it would be a sentence nothing draws.
  *
+ * Only the empty state's note depends on the role (S.7): a reader who may create is pointed at
+ * the buttons the screen draws under it, and a reader who may not is told who can. The other
+ * three are facts about the reads, which are the same whoever is reading.
+ *
  * @param state The page's state, other than populated.
+ * @param mayAdminister Whether the reader may create workflows. Defaults to `false`, the page a
+ *   member sees, for the reason `StudioScreenProps.mayAdminister` gives.
  * @returns The title and the note.
  */
-export function seatCopy(state: SeatState): SeatCopy {
+export function seatCopy(state: SeatState, mayAdminister = false): SeatCopy {
   switch (state.kind) {
     case "failed":
       return { title: SEAT_FAILED_TITLE, note: SEAT_FAILED_NOTE };
     case "empty":
-      return { title: SEAT_EMPTY_TITLE, note: SEAT_EMPTY_NOTE };
+      return { title: SEAT_EMPTY_TITLE, note: mayAdminister ? SEAT_EMPTY_NOTE : SEAT_EMPTY_MEMBER_NOTE };
     case "missing":
       return { title: SEAT_MISSING_TITLE, note: SEAT_MISSING_NOTE };
     case "unread":

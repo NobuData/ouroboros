@@ -26,8 +26,11 @@ import "./workflows.css";
  * A skeleton exists to stop the page moving when the data lands, and the only way it can is
  * by reserving the height each region will take
  * ([#86](https://github.com/NobuData/ouroboros/issues/86)): the rail is five items at an
- * item's height and the dashed tile at its own, in the rail's own gap, and the seat is the
- * card's floor. Five is the seeded workspace's count, which is the height most first paints
+ * item's height and the dashed tile at its own, in the rail's own gap; the seat is the canvas
+ * card — its stage at the stage's own height rules and its toolbar's row — and the third track
+ * is the inspector at its nothing-selected panel (S.7,
+ * [#153](https://github.com/NobuData/ouroboros/issues/153)), so the canvas does not narrow when
+ * the inspector lands beside it. Five is the seeded workspace's count, which is the height most first paints
  * resolve to; a workspace with more or fewer moves by the difference, and no skeleton can
  * know that in advance.
  *
@@ -77,7 +80,14 @@ export function StudioSkeleton() {
           <span className="studio-skeleton__new" />
         </div>
 
-        <span className="studio-skeleton__seat" />
+        {/* The canvas card: its stage, then its toolbar — S.7's loaded geometry (#153). */}
+        <span className="studio-skeleton__seat">
+          <span className="studio-skeleton__stage" />
+          <span className="studio-skeleton__toolbar" />
+        </span>
+
+        {/* The inspector's track, at the nothing-selected panel a first paint opens on. */}
+        <span className="studio-skeleton__inspector" />
       </div>
     </StudioFrame>
   );

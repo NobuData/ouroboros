@@ -147,6 +147,18 @@
   min-height: 40rem;
 }
 
+/*
+ * The empty workspace's two calls to action (S.7, #153) — Start blank and Browse templates —
+ * centred under the note, wrapping rather than overflowing a narrow seat.
+ */
+.studio__seat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-6);
+  margin-top: var(--sp-4);
+}
+
 /* The development note under the empty seat, ruled off from it: it is for a developer, not a tenant. */
 .studio__dev {
   margin: var(--sp-8) 0 0;
@@ -760,13 +772,47 @@
   border-radius: var(--r-md);
 }
 
-/* The seat: the card's floor, on the inset well behind a dashed line — `.ou-empty--fill`'s own. */
+/*
+ * The seat: the canvas card (S.7, #153) — `.studio-canvas`'s hairline, radius and inset well,
+ * with its stage and its toolbar inside, so a populated page lands without moving.
+ */
 .studio-skeleton__seat {
-  display: block;
-  min-height: 40rem;
-  border: 1px dashed var(--line-strong);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--inset);
+}
+
+/* The stage, on `.studio-canvas__stage`'s three height rules exactly. */
+.studio-skeleton__stage {
+  display: block;
+  height: 50rem;
+  min-height: 40rem;
+  max-height: 76vh;
+}
+
+/*
+ * The toolbar's row: `.studio-canvas__toolbar`'s hairline and surface, at its padding plus a
+ * small button's box — 0.625rem either side of a 2rem control.
+ */
+.studio-skeleton__toolbar {
+  display: block;
+  height: 3.25rem;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/*
+ * The inspector's track: a card at the nothing-selected panel's height — the card's padding
+ * around an empty state's padding, its title and a two-line note.
+ */
+.studio-skeleton__inspector {
+  display: block;
+  height: 9.5rem;
+  border-radius: var(--r-lg);
+  background: var(--raised);
 }
 
 /* The rail's own break, mirrored, so the skeleton's tiles wrap where the rail's will. */
@@ -788,7 +834,8 @@
   .studio-skeleton__action,
   .studio-skeleton__item,
   .studio-skeleton__new,
-  .studio-skeleton__seat {
+  .studio-skeleton__seat,
+  .studio-skeleton__inspector {
     animation: studio-skeleton-pulse 1.6s ease-in-out infinite;
   }
 }

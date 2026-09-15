@@ -93,11 +93,34 @@ describe("the studio grid", () => {
     );
   });
 
-  it("reserves the seat at the mockup's canvas height, and the skeleton at the same", () => {
-    // Nothing moves by more than the canvas's own chrome when #148 fills it — and nothing
-    // moves at all when the data lands.
+  it("reserves the seat at the mockup's canvas height", () => {
+    // Nothing moves by more than the canvas's own chrome when #148 fills it.
     expect(rule("\\.studio__seat")).toMatch(/min-height:\s*40rem/);
-    expect(rule("\\.studio-skeleton__seat")).toMatch(/min-height:\s*40rem/);
+  });
+
+  it("holds the skeleton's stage to the canvas stage's own three height rules (#153)", () => {
+    // Read from the canvas's sheet rather than restated, so a change to the stage that forgets
+    // the skeleton fails here instead of making first paint jump.
+    const canvas = readFileSync(join(UI, "app", "workflows", "canvas", "canvas.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      " ",
+    );
+    const stage = /\.studio-canvas__stage\s*\{([^}]*)\}/.exec(canvas)?.[1] ?? "";
+    const skeleton = rule("\\.studio-skeleton__stage");
+
+    for (const property of ["height", "min-height", "max-height"]) {
+      const pattern = new RegExp(`(?:^|[;\\s])${property}:\\s*([^;]+);`);
+      const loaded = pattern.exec(stage)?.[1];
+
+      expect(loaded, `the canvas stage has no ${property}`).toBeDefined();
+      expect(pattern.exec(skeleton)?.[1], property).toBe(loaded);
+    }
+  });
+
+  it("draws the skeleton's seat on the canvas card's hairline and well, not the empty seat's dashes (#153)", () => {
+    expect(rule("\\.studio-skeleton__seat")).toMatch(/border:\s*1px solid var\(--line\)/);
+    expect(rule("\\.studio-skeleton__seat")).toMatch(/background:\s*var\(--inset\)/);
+    expect(rule("\\.studio-skeleton__toolbar")).toMatch(/border-top:\s*1px solid var\(--line\)/);
   });
 });
 
@@ -169,6 +192,12 @@ describe("the states above the grid", () => {
     expect(rule("\\.studio-readonly")).toMatch(/color:\s*var\(--ink-mut\)/);
   });
 
+  it("lets the empty seat's calls to action wrap on a token gap, centred under the note (#153)", () => {
+    expect(rule("\\.studio__seat-actions")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule("\\.studio__seat-actions")).toMatch(/justify-content:\s*center/);
+    expect(rule("\\.studio__seat-actions")).toMatch(/gap:\s*var\(--sp-6\)/);
+  });
+
   it("rules the development note off from the seat with a hairline", () => {
     expect(rule("\\.studio__dev")).toMatch(/border-block-start:\s*1px solid var\(--line\)/);
     expect(rule("\\.studio__dev")).toMatch(/color:\s*var\(--ink-faint\)/);
@@ -193,8 +222,9 @@ describe("the loading skeleton", () => {
     // one at every other — which is the whole failure it exists to prevent.
     const block = CODE.slice(CODE.indexOf(".studio-skeleton"));
 
+    // `vh` is admitted for one rule: the stage's viewport cap, copied from the canvas's own (#153).
     for (const [, value] of block.matchAll(/(?:height|width):\s*([^;]+);/g)) {
-      expect(value.trim()).toMatch(/^(var\(--|[\d.]+rem|100%|\d+%|auto|1px)/);
+      expect(value.trim()).toMatch(/^(var\(--|[\d.]+rem|100%|\d+%|\d+vh|auto|1px)/);
     }
   });
 
@@ -215,7 +245,7 @@ describe("the loading skeleton", () => {
   it("animates every shape the skeleton draws", () => {
     const guarded = /@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?)\n\}/.exec(CODE);
 
-    for (const shape of ["__title", "__sub", "__action", "__item", "__new", "__seat"]) {
+    for (const shape of ["__title", "__sub", "__action", "__item", "__new", "__seat", "__inspector"]) {
       expect(guarded?.[1], `${shape} does not pulse`).toContain(`.studio-skeleton${shape}`);
     }
   });
