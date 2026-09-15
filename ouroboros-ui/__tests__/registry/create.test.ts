@@ -24,6 +24,8 @@ import {
   submitReason,
 } from "@/app/registry/create";
 
+import { UNBOUND_STATE } from "@/app/registry/table";
+
 import { seededRegistry } from "../helpers/registry";
 
 /**
@@ -273,7 +275,9 @@ describe("what a refusal draws", () => {
 describe("the bind-later notice", () => {
   it("describes the row the mode produces, before it is produced", () => {
     // Saying so first is what makes mockup 21's orphan row read as a state somebody chose.
-    expect(UNBOUND_NOTICE).toMatch(/stay disabled until a provider is connected/);
+    // Since #596 the state itself is the shared sentence the switch and the inspector also say.
+    expect(UNBOUND_NOTICE).toContain(UNBOUND_STATE);
+    expect(UNBOUND_NOTICE).toMatch(/stays switched off/);
     expect(UNBOUND_NOTICE).toMatch(/no provider and no key/);
   });
 

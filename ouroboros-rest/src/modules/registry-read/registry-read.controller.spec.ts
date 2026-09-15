@@ -27,7 +27,7 @@ describe("the registry read controller", () => {
   let controller: RegistryReadController;
 
   beforeEach(() => {
-    service = { read: jest.fn().mockResolvedValue({ aliases: [] }) };
+    service = { read: jest.fn().mockResolvedValue({ aliases: [], degraded: { pricing: null } }) };
     controller = new RegistryReadController(service as unknown as RegistryReadService);
   });
 
@@ -38,7 +38,7 @@ describe("the registry read controller", () => {
   });
 
   it("answers the payload the service composed, unchanged", async () => {
-    const composed = { aliases: [] };
+    const composed = { aliases: [], degraded: { pricing: "pricing away" } };
     service.read.mockResolvedValue(composed);
 
     await expect(controller.read(WORKSPACE)).resolves.toBe(composed);

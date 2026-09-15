@@ -18,6 +18,7 @@ import {
   INSPECTOR_EMPTY_TITLE,
   MANAGE_PROVIDERS,
   NO_PROVIDER,
+  PRICE_UNAVAILABLE_TITLE,
   TABLE_CAPTION,
   TABLE_NOTE,
   TABLE_TITLE,
@@ -114,6 +115,13 @@ export interface RegistryTableProps {
    * Computed once by the screen from the page's routes read.
    */
   readonly routes: Readonly<Record<string, RouteLookup>>;
+  /**
+   * Why the price column is blank, or `null` when pricing answered (CI.6,
+   * [#596](https://github.com/NobuData/ouroboros/issues/596)). When set, every price cell's `—`
+   * says on hover that it is an outage rather than an unpriced model, and the service's sentence
+   * is printed under the table; every other column renders as it always does.
+   */
+  readonly pricing?: string | null;
 }
 
 /** The id the table card's `aria-labelledby` points at. */
@@ -146,9 +154,10 @@ const INSPECTOR_TITLE_ID = "registry-inspector-title";
  * alias they have landed on.
  *
  * @param mayAdminister Whether the switches may be pressed.
+ * @param pricingDown Whether pricing could not answer, so every price cell's hover says so.
  * @returns The eight columns.
  */
-function columns(mayAdminister: boolean): readonly Column<TableRow>[] {
+function columns(mayAdminister: boolean, pricingDown: boolean): readonly Column<TableRow>[] {
   return [
     {
       key: "alias",
@@ -210,8 +219,11 @@ function columns(mayAdminister: boolean): readonly Column<TableRow>[] {
       className: "registry-table__num",
       cell: (row) => (
         // The provenance is the hover — `bundled@…` or `org override` — so the figure is
-        // auditable without a column for it. A price that does not exist has none.
-        <span title={row.price.provenance ?? undefined}>{row.price.display}</span>
+        // auditable without a column for it. A price that does not exist has none, and while
+        // pricing is down the `—` says it is an outage rather than an unpriced model (#596).
+        <span title={pricingDown ? PRICE_UNAVAILABLE_TITLE : (row.price.provenance ?? undefined)}>
+          {row.price.display}
+        </span>
       ),
     },
     {
@@ -276,6 +288,7 @@ export function RegistryTable({
   sources,
   aliasNames,
   routes,
+  pricing = null,
 }: RegistryTableProps) {
   /**
    * The selection, and the prop it was last adopted from.
@@ -304,7 +317,8 @@ export function RegistryTable({
     reflect(alias);
   }, []);
 
-  const cols = useMemo(() => columns(mayAdminister), [mayAdminister]);
+  const pricingDown = pricing !== null;
+  const cols = useMemo(() => columns(mayAdminister, pricingDown), [mayAdminister, pricingDown]);
   const row = rows.find((candidate) => candidate.alias === selected) ?? null;
 
   return (
@@ -332,6 +346,16 @@ export function RegistryTable({
         />
 
         <p className="registry-table__caption">{TABLE_NOTE}</p>
+
+        {/*
+          A degraded column, explained in words under the table rather than only on hover: the
+          service's own sentence, as a note — it is a fact about this read, not an interruption.
+        */}
+        {pricing !== null && (
+          <p className="registry-table__pricing" role="note">
+            {pricing}
+          </p>
+        )}
 
         {/*
           Where the selection is said out loud. `role="status"` rather than an alert: moving

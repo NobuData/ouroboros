@@ -411,6 +411,56 @@ describe("the alias inspector (#593)", () => {
   });
 });
 
+describe("the page's states and guards (#596)", () => {
+  it("reserves the table's own column widths in the skeleton row, in rem", () => {
+    const row = rule("\\.registry-skeleton__row");
+
+    expect(row).toMatch(/grid-template-columns:/);
+    // The params floor, the numeric columns' shared width and the switch's track.
+    for (const [column, width] of [
+      ["\\.registry-table__params", "12rem"],
+      ["\\.registry-table__num", "7rem"],
+      ["\\.registry-table__switch", "4rem"],
+    ]) {
+      expect(rule(column), column).toContain(width);
+      expect(row, width).toContain(width);
+    }
+    // A hairline rule is the one pixel value the design system draws in; nothing else is.
+    expect(row).not.toMatch(/(?:\b[02-9]|\d{2,})px/);
+  });
+
+  it("pulses the skeleton only for a reader who has not asked for less motion", () => {
+    expect(CODE).toMatch(
+      /@media \(prefers-reduced-motion: no-preference\)\s*\{[^@]*\.registry-skeleton__bar[^@]*animation:\s*registry-skeleton-pulse/,
+    );
+    expect(CODE).toMatch(/@keyframes registry-skeleton-pulse/);
+  });
+
+  it("sizes every skeleton shape in rem or tokens, so it holds at 125% type", () => {
+    const skeleton = [...CODE.matchAll(/\.registry-skeleton[^{]*\{([^}]*)\}/g)].map((match) => match[1]).join("\n");
+
+    expect(skeleton.length).toBeGreaterThan(0);
+    // 1px hairlines excepted, as everywhere in the token sheet's rules.
+    expect(skeleton).not.toMatch(/(?:\b[02-9]|\d{2,})px/);
+  });
+
+  it("draws the guidance's next step in the accent, not the routing page's violet", () => {
+    const current = rule("\\.registry-guidance__step--current \\.models-foundations__mark");
+
+    expect(current).toContain("var(--accent)");
+    expect(current).not.toContain("--model");
+  });
+
+  it("explains a degraded price column in the warn hue", () => {
+    expect(rule("\\.registry-table__pricing")).toContain("var(--warn)");
+  });
+
+  it("sets the read-only note and the banner at the seat row's rhythm", () => {
+    expect(rule("\\.registry-readonly")).toContain("var(--sp-8)");
+    expect(rule("\\.registry-failed")).toContain("var(--sp-8)");
+  });
+});
+
 describe("the why-aliases and resolution-chain cards (#595)", () => {
   it("resets both lists, since the claims and the hops are not bullets", () => {
     for (const list of ["\\.registry-why", "\\.registry-chain"]) {

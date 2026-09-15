@@ -48,6 +48,35 @@ import { type Monogram, monogramFor } from "@/app/providers/cards";
 // pages, and two constants holding one word are two things that can come to differ.
 export { EM_DASH, NO_PROVIDER };
 
+/* ------------------------------------------------------------------ the shared stories */
+
+/**
+ * The one sentence every unbound-alias message on the page is built from (CI.6,
+ * [#596](https://github.com/NobuData/ouroboros/issues/596)).
+ *
+ * Three surfaces describe the same state — the create dialog's *bind later* notice (CI.4), the
+ * table's inert switch (CI.2) and the inspector's banner (CI.3) — and a reader who meets all
+ * three on one visit should read one story, not three wordings of it. So each message is this
+ * sentence plus a tail about where the reader is standing, and `__tests__/registry/table.test.ts`
+ * holds all three to it.
+ */
+export const UNBOUND_STATE =
+  "An alias with no provider stays switched off, and nothing resolves through it, until it is " +
+  "bound to a connection.";
+
+/**
+ * Why a member may read and not change something here — one explanation, worded once.
+ *
+ * Every write affordance on the page says the same clause after naming itself, so a member
+ * sweeping the page learns one rule rather than collecting four variants of it (CI.6).
+ *
+ * @param action What the control does, as a gerund phrase — *Switching an alias on or off*.
+ * @returns The reason the control carries.
+ */
+export function ownersAndAdmins(action: string): string {
+  return `${action} is for workspace owners and admins.`;
+}
+
 /* ------------------------------------------------------------------ the provider cell */
 
 /**
@@ -401,21 +430,24 @@ export const MANAGE_PROVIDERS = "Manage providers →";
 export const TABLE_FAILED_TITLE = "The allowed-models table could not be read";
 
 /**
- * …and what to do about it. The reason is the service's own sentence and is drawn beside this;
- * the page's retry is CI.6's ([#596](https://github.com/NobuData/ouroboros/issues/596)).
+ * …and where the explanation is. DASH-I.7's rule
+ * ([#86](https://github.com/NobuData/ouroboros/issues/86)): the service's reason and the retry
+ * are said **once**, in the banner above (CI.6,
+ * [#596](https://github.com/NobuData/ouroboros/issues/596)), so the seat points up rather than
+ * repeating either. The *no aliases yet* state is `app/registry/view.ts`'s guidance card.
  */
-export const TABLE_FAILED_NOTE = "Nothing is wrong with the registry — reload the page to try again.";
-
-/** What the card says for a workspace that has no aliases yet. */
-export const TABLE_EMPTY_TITLE = "No aliases yet";
+export const TABLE_FAILED_NOTE =
+  "Nothing below the tabs could be listed. The banner above carries the service's reason, and " +
+  "the retry.";
 
 /**
- * …and how to get one. The full empty-workspace guidance — the two-step path out, the
- * reader's place on it — is CI.6's ([#596](https://github.com/NobuData/ouroboros/issues/596)).
+ * What a price cell says on hover while pricing is down (CI.6).
+ *
+ * The `—` the service serves then is the same glyph as *the catalog covers nothing*; this is
+ * what tells the two apart without a hover being the only way — the service's own sentence is
+ * also printed under the table.
  */
-export const TABLE_EMPTY_NOTE =
-  "Create one with + New alias, or import from a connected provider. Every route points at " +
-  "an alias, so this is where routing starts.";
+export const PRICE_UNAVAILABLE_TITLE = "Pricing could not be read — this is not an unpriced model.";
 
 /* ------------------------------------------------------------------ the inspector's seat */
 
@@ -478,11 +510,10 @@ export function switchLabel(alias: string): string {
  * the fix is.
  */
 export const SWITCH_UNBOUND =
-  "No provider is bound to this alias, so it cannot be switched on. Connect one in " +
-  "Providers & keys first.";
+  `${UNBOUND_STATE} Bind it in the inspector, or connect a provider in Providers & keys first.`;
 
 /** What every switch says to a role that may not press it. */
-export const SWITCH_READ_ONLY = "Switching an alias on or off is for workspace owners and admins.";
+export const SWITCH_READ_ONLY = ownersAndAdmins("Switching an alias on or off");
 
 /** What a switch says when its press did not persist, for any reason but the ones named. */
 export const SWITCH_FAILED =

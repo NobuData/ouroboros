@@ -5,6 +5,7 @@ import type { ModelAliasResource } from "../registry/aliases.resources";
 import type { VaultService } from "../vault/vault.service";
 import { ALIAS_HEALTH_STATES, NO_KEY_NOTE } from "./alias.health";
 import type { RegistryReadRepository } from "./registry-read.repository";
+import { PRICING_UNAVAILABLE } from "./registry-read.resources";
 import { RegistryReadService } from "./registry-read.service";
 import type { RegistryConnectionRow } from "./registry-read.rows";
 
@@ -351,7 +352,53 @@ describe("the registry read service", () => {
       repository.sealedCredentials.mockResolvedValue(new Map());
       pricing.resolveMany.mockResolvedValue([]);
 
-      await expect(service.read(ORG)).resolves.toEqual({ aliases: [] });
+      await expect(service.read(ORG)).resolves.toEqual({
+        aliases: [],
+        degraded: { pricing: null },
+      });
+    });
+  });
+
+  describe("a pricing failure (#596)", () => {
+    it("reports nothing degraded when pricing answers", async () => {
+      const { degraded } = await service.read(ORG);
+
+      expect(degraded).toEqual({ pricing: null });
+    });
+
+    it("blanks the price column and keeps every other cell of the row", async () => {
+      // One failed subsystem is one degraded column: the binding, the health and the count say
+      // nothing about money and must not disappear because the catalog lookup did.
+      const warn = jest.spyOn(service["logger"], "warn").mockImplementation(() => undefined);
+      pricing.resolveMany.mockRejectedValue(new Error("pricing: catalog unavailable"));
+
+      const { aliases: rows, degraded } = await service.read(ORG);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        alias: "coder-max",
+        binding: { kind: "anthropic", monogram: "AN" },
+        health: { state: ALIAS_HEALTH_STATES.ok },
+        price: {
+          connectionKind: "anthropic",
+          modelId: "claude-fable-5",
+          price: null,
+          display: "—",
+        },
+      });
+      expect(degraded).toEqual({ pricing: PRICING_UNAVAILABLE });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain("catalog unavailable");
+    });
+
+    it("tells the reader in words that name nothing about the service's internals", async () => {
+      jest.spyOn(service["logger"], "warn").mockImplementation(() => undefined);
+      pricing.resolveMany.mockRejectedValue(new Error("pricing: connection refused 10.0.0.4"));
+
+      const { degraded } = await service.read(ORG);
+
+      expect(degraded.pricing).not.toContain("10.0.0.4");
+      expect(degraded.pricing).not.toContain("connection refused");
     });
   });
 });

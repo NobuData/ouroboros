@@ -77,11 +77,18 @@ export async function readRegistry(access: Workspace): Promise<RegistryReadings>
   // All at once: no read depends on another, and a page that waited for the connections before
   // asking for the table would be paying extra round trips for one screen. The routes are the
   // chain card's (CI.5, #595) — which task kind to simulate for an alias no run has used yet.
-  const [connections, aliases, routes] = await Promise.all([
+  const [connections, read, routes] = await Promise.all([
     attempt(async () => (await providers.list()).items),
-    attempt(async () => (await registry.read()).aliases),
+    attempt(() => registry.read()),
     attempt(async () => (await routing.matrix()).taskKinds),
   ]);
 
-  return { providers: connections, aliases, routes };
+  return {
+    providers: connections,
+    aliases: read.ok ? { ok: true, value: read.value.aliases } : read,
+    routes,
+    // One payload, two facts: a subsystem the read degraded around (CI.6, #596) arrives beside
+    // the rows it degraded, so the table and its explanation cannot come from different reads.
+    pricing: read.ok ? read.value.degraded.pricing : null,
+  };
 }

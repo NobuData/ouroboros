@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import type { Role } from "@/app/api/membership";
 import { ModelsFrame } from "@/app/models/models-frame";
 import { Card, CardHead, EmptyState, Tag } from "@/app/ui";
 
@@ -7,10 +8,10 @@ import { routeLookups } from "./chain";
 import { ChainCard } from "./chain-card";
 import { ImportMenu } from "./import-menu";
 import { NewAlias } from "./new-alias";
+import { RegistryFreshness } from "./registry-freshness";
+import { RegistryGuidance } from "./registry-guidance";
 import { InspectorSeat, RegistryTable } from "./registry-table";
 import {
-  TABLE_EMPTY_NOTE,
-  TABLE_EMPTY_TITLE,
   TABLE_FAILED_NOTE,
   TABLE_FAILED_TITLE,
   TABLE_TITLE,
@@ -23,10 +24,12 @@ import {
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
   type RegistryReadings,
-  type TableState,
   aliasNames,
   aliasSources,
+  guidanceState,
   importState,
+  registryFailure,
+  registryReadOnlyNote,
   tableState,
 } from "./view";
 import { WhyCard } from "./why-card";
@@ -76,33 +79,28 @@ import "./registry.css";
  * the state the mockup's own `gpt5-experiments` row is in.
  *
  * Both actions take the same two facts from this screen: the workspace's connections
- * (`aliasSources`, which flattens the import control's three blocked reasons into the one thing
- * a create dialog needs — a list, possibly empty) and every alias name it already has
- * (`aliasNames`, for the live uniqueness check, off the same read the table draws so the two
- * cannot disagree).
- *
- * Both are inert for a member or a viewer. The full gating pass is CI.6
- * ([#596](https://github.com/NobuData/ouroboros/issues/596)); what this ticket owes is that the
- * two controls it builds are already honest about who may press them, and that the writes
- * behind them are the service's to refuse.
- *
- * ### The table, and the two states in which there is not one
- *
- * With rows, the seat below the tab set is `app/registry/registry-table.tsx`'s: the table,
- * its selection, and the inspector card (CI.3,
- * [#593](https://github.com/NobuData/ouroboros/issues/593)) that selection drives. Without — a
- * refused read, or a workspace that has created nothing — the seat is the same card with a
- * captioned empty state in it, and the two are kept apart (`tableState`): *could not be read*
- * names the service's own sentence, *no aliases yet* names the two ways to get one. Neither is
- * a blank region, and the head and the tab set above them work in every case (§ 3.5).
- *
- * **The same two facts feed all three surfaces.** `aliasSources` and `aliasNames` are computed
- * once here and handed to the import menu, the create dialog *and* the inspector, so the
+ * (`aliasSources`) and every alias name it already has (`aliasNames`), computed once here and
+ * handed to the import menu, the create dialog, the guidance card *and* the inspector, so the
  * provider a reader may import from, bind to and rebind to is one list, and the names a create
  * refuses and a rename refuses are one set.
  *
- * A Server Component. Its interactive pieces — the import menu, the table with its switches —
- * declare their own client boundaries.
+ * ### The page's states and guards (CI.6, [#596](https://github.com/NobuData/ouroboros/issues/596))
+ *
+ * - **A member reads everything and changes nothing.** Every write affordance — both head
+ *   actions, every switch, every inspector control and its foot — is in its place, inert with
+ *   the same *owners and admins* explanation, and the page names the reader's role once under
+ *   the tab set (`registryReadOnlyNote`). Nothing is hidden, so a member can still see and
+ *   discuss the configuration.
+ * - **An empty registry is guided, not blank.** *Name your first model*
+ *   (`app/registry/registry-guidance.tsx`) teaches the two ways in and knows which is possible
+ *   yet; a workspace with no connection is led to Providers & keys first.
+ * - **A failed read does not blank the table.** The banner says why once, with the page's
+ *   retry, and `app/registry/registry-freshness.tsx` keeps the last table this browser read
+ *   under it. A failed pricing lookup degrades the one column instead (`readings.pricing`).
+ * - **Loading is the page's own shape**: `app/registry/registry-skeleton.tsx`.
+ *
+ * A Server Component. Its interactive pieces — the import menu, the table with its switches,
+ * the banner and the boundary that holds the last table — declare their own client boundaries.
  */
 
 /** What the screen needs to draw itself. */
@@ -118,6 +116,12 @@ export interface RegistryScreenProps {
    */
   readonly mayAdminister: boolean;
   /**
+   * The reader's strongest role, **for one sentence**: the read-only note names it. Nothing on
+   * the page is decided from it — that is `mayAdminister`'s. Defaults to `member`, the role the
+   * note is written for.
+   */
+  readonly role?: Role;
+  /**
    * The alias the URL asked for — `?alias=` as the route read it — or `null` when it carried
    * nothing. Validated against the rows before it selects anything (`selectedAlias`): a name
    * the workspace does not have selects nothing.
@@ -131,7 +135,12 @@ export interface RegistryScreenProps {
  * @param props See {@link RegistryScreenProps}.
  * @returns The screen.
  */
-export function RegistryScreen({ readings, mayAdminister, alias = null }: RegistryScreenProps) {
+export function RegistryScreen({
+  readings,
+  mayAdminister,
+  role = "member",
+  alias = null,
+}: RegistryScreenProps) {
   const importing = importState(readings.providers, mayAdminister);
   const table = tableState(readings.aliases);
   const names = aliasNames(readings.aliases);
@@ -171,26 +180,61 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
         </>
       }
     >
-      {table.kind === "populated" ? (
-        <RegistryTable
-          aliasNames={names}
-          mayAdminister={mayAdminister}
-          routes={routes}
-          rows={table.rows}
-          selected={selectedAlias(table.rows, alias)}
-          sources={sources}
-        />
-      ) : (
-        <>
-          <TableSeat state={table} />
-          <div className="registry-aside">
-            <InspectorSeat row={null} />
-            <WhyCard />
-            <ChainCard route={null} row={null} />
-          </div>
-        </>
-      )}
+      {!mayAdminister && <ReadOnlyNote role={role} />}
+
+      <RegistryFreshness failure={registryFailure(readings.aliases)}>
+        {table.kind === "populated" ? (
+          <RegistryTable
+            aliasNames={names}
+            mayAdminister={mayAdminister}
+            pricing={readings.pricing ?? null}
+            routes={routes}
+            rows={table.rows}
+            selected={selectedAlias(table.rows, alias)}
+            sources={sources}
+          />
+        ) : (
+          <>
+            {table.kind === "empty" ? (
+              <RegistryGuidance
+                aliasNames={names}
+                importing={importing}
+                mayAdminister={mayAdminister}
+                sources={sources}
+                state={guidanceState(readings.providers, mayAdminister)}
+              />
+            ) : (
+              <FailedSeat />
+            )}
+            <div className="registry-aside">
+              <InspectorSeat row={null} />
+              <WhyCard />
+              <ChainCard route={null} row={null} />
+            </div>
+          </>
+        )}
+      </RegistryFreshness>
     </ModelsFrame>
+  );
+}
+
+/**
+ * The sentence a reader who may look and not change is given — once, under the tab set.
+ *
+ * A `note` rather than a `status`: it is a fact about the reader that does not change while the
+ * page is open. The routing page's arrangement (`app/models/models-screen.tsx`), so a member is
+ * named the same way on both.
+ *
+ * @param props.role The reader's strongest role.
+ * @returns The paragraph.
+ */
+function ReadOnlyNote({ role }: Readonly<{ role: Role }>) {
+  const note = registryReadOnlyNote(role);
+
+  return (
+    <p className="registry-readonly" role="note">
+      <span className="registry-readonly__head">{note.head}</span> {note.body}
+    </p>
   );
 }
 
@@ -198,23 +242,17 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
 const SEAT_TITLE_ID = "registry-table-title";
 
 /**
- * The table's card when there is no table to draw: the same head, with a true count of zero,
- * over the sentence that says why.
+ * The table's card when the read behind it was refused: the same head, with a true count of
+ * zero, over a note pointing at the banner — which carries the service's reason and the retry,
+ * said once (DASH-I.7).
  *
- * @param props.state Which of the two reasons.
  * @returns The card.
  */
-function TableSeat({ state }: Readonly<{ state: Exclude<TableState, { kind: "populated" }> }>) {
+function FailedSeat() {
   return (
     <Card aria-labelledby={SEAT_TITLE_ID} as="section" className="models__next" fill>
       <CardHead beside={<Tag>{aliasCount(0)}</Tag>} title={TABLE_TITLE} titleId={SEAT_TITLE_ID} />
-      {state.kind === "failed" ? (
-        // The service's own sentence, then what to do: a refused read must not look like a
-        // workspace that has created nothing.
-        <EmptyState fill note={`${state.reason} ${TABLE_FAILED_NOTE}`} title={TABLE_FAILED_TITLE} />
-      ) : (
-        <EmptyState fill note={TABLE_EMPTY_NOTE} title={TABLE_EMPTY_TITLE} />
-      )}
+      <EmptyState fill note={TABLE_FAILED_NOTE} title={TABLE_FAILED_TITLE} />
     </Card>
   );
 }

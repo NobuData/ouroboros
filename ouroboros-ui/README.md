@@ -2342,7 +2342,7 @@ ALLOWED MODELS · 8 aliases                                                    M
  (gpt5-experiments) no provider     gpt-5.2-preview  —                     ● no key — connect a provider
                                                                            [Fix in Providers →]   —    0 routes [off ⓘ]   ← dimmed, health cell exempt
  Aliases are unique per workspace. Deleting one is blocked while any route or workflow references it.
-┌ EDIT — CODER-MAX (coder-max) · the alias inspector arrives next — #593, #595, #596 ┐
+┌ EDIT — CODER-MAX (coder-max) ┐ ┌ WHY ALIASES ┐ ┌ RESOLUTION CHAIN ┐
 ```
 
 ### The head is the product's argument, and it is verbatim
@@ -2381,9 +2381,9 @@ who cannot reach it. The keyboard is [`app/shell/menu.ts`](app/shell/menu.ts)'s 
 menu pattern the shell's two menus use, and a third copy of it would be a third copy to keep
 correct.
 
-Both actions are inert for a member or a viewer, with the role reason; the full gating pass is
-CI.6 ([#596](https://github.com/NobuData/ouroboros/issues/596)), and the writes behind both
-flows are the service's to refuse whatever the page draws.
+Both actions are inert for a member or a viewer, with the role reason — see *States & guards*
+below for the whole page's read-only pass — and the writes behind both flows are the service's
+to refuse whatever the page draws.
 
 ### The tab, from the same list as the other two
 
@@ -2440,10 +2440,37 @@ with the pill beside it — which is what CI.3's inspector
 ([#593](https://github.com/NobuData/ouroboros/issues/593)) builds on; its body names the
 issues that fill the rest of the page.
 
-**When there is no table**, `tableState` keeps *could not be read* (the service's sentence,
-under a head and a tab set that still work) apart from *no aliases yet*. The designed
-empty-workspace guidance and the page's retry are CI.6's
-([#596](https://github.com/NobuData/ouroboros/issues/596)).
+**When there is no table**, `tableState` keeps *could not be read* apart from *no aliases yet*,
+and each has its own designed state — see *States & guards* below.
+
+### States & guards
+
+CI.6 ([#596](https://github.com/NobuData/ouroboros/issues/596)) is what the page looks like
+before it has anything to show, while it loads, when it fails, and to somebody who may only read
+it. Every decision is a pure function in [`app/registry/view.ts`](app/registry/view.ts).
+
+```
+empty (has providers)   ─▶ "Name your first model"  ① Connect a provider ✓  ② Name a model · next  [+ New alias] [Import ▾]
+empty (no providers)    ─▶ ① Connect a provider · next [Connect a provider first →]  ② then [+ New alias] (bind later)
+member                  ─▶ "Viewing the registry as a member." · every control in place, inert, same reason
+loading                 ─▶ loading.tsx → 8 skeleton rows on the table's own column widths · 3 cards in place
+registry read refused   ─▶ [The registry could not be read. <reason> (Retry)] over the last table this browser read
+pricing subsystem down  ─▶ price column "—" + hover "not an unpriced model" + the service's sentence under the table
+```
+
+| State | Where | What keeps it honest |
+| --- | --- | --- |
+| **Empty** | [`registry-guidance.tsx`](app/registry/registry-guidance.tsx) | the routing page's two-step path, so a reader sees step two coming; which ways in exist is decided by the provider read (`guidanceState`), and a member gets the path without the controls |
+| **Member** | the note under the tab set, and every control's `reason` | nothing hidden: a member can read the table, the inspector and both cards; every refusal ends in the same clause (`ownersAndAdmins` in `table.ts`) |
+| **Loading** | [`registry-skeleton.tsx`](app/registry/registry-skeleton.tsx) | the head is the real head; the rows' grid mirrors `.registry-table__*`'s widths in rem, so nothing moves when the table lands, at 125% type too |
+| **Failed read** | [`registry-banner.tsx`](app/registry/registry-banner.tsx), [`registry-freshness.tsx`](app/registry/registry-freshness.tsx) | DASH-I.7's rule — the reason and the retry said once; the dashboard's technique — the last table that read is held under the banner, in the same slot, so the selection and an unsaved inspector draft survive |
+| **Pricing down** | `degraded.pricing` on `GET /api/v1/registry` | the service degrades the column instead of failing the page, and says so, because `—` alone cannot tell an outage from an unpriced model |
+
+**One unbound story.** The create dialog's *bind later* notice, the unbound row's switch, the
+inspector's banner and the no-providers guidance each open with `UNBOUND_STATE` — *an alias
+with no provider stays switched off, and nothing resolves through it, until it is bound to a
+connection* — and add only where the reader is standing. `__tests__/registry/table.test.ts`
+holds all four to it.
 
 The fixture behind all of it ([`__tests__/helpers/registry.ts`](__tests__/helpers/registry.ts))
 transcribes the REST integration suite's eight expected rows rather than inventing eight

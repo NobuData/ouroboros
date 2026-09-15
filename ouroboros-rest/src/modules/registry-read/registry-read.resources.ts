@@ -153,7 +153,35 @@ export interface RegistryReadModelResource {
    * list that short would cost a client a second request to discover there was nothing more.
    */
   readonly aliases: readonly RegistryAliasResource[];
+  /**
+   * Which subsystems could not answer for this read, each with a sentence for a person.
+   *
+   * CI.6 ([#596](https://github.com/NobuData/ouroboros/issues/596)): one failed subsystem is
+   * one degraded column, never a failed page. Always present, so a client never has to tell
+   * *nothing failed* from *this server predates the field*.
+   */
+  readonly degraded: RegistryDegradedResource;
 }
+
+/** The subsystems a registry read may degrade around, each `null` when it answered. */
+export interface RegistryDegradedResource {
+  /**
+   * Why the price column is blank, or `null` when pricing answered.
+   *
+   * When set, every row's price is `price: null` and `display: "—"` — the same fact as *the
+   * catalog covers nothing*, which is why this field exists: without it a client could not tell
+   * an outage from an unpriced model, and would say the wrong thing about money.
+   */
+  readonly pricing: string | null;
+}
+
+/**
+ * What a reader is told when prices could not be resolved. Written for a person, and naming
+ * nothing about the service's internals — the cause is logged for an operator instead.
+ */
+export const PRICING_UNAVAILABLE =
+  "Prices could not be looked up just now, so the price column is blank. Nothing else in the " +
+  "registry is affected.";
 
 /**
  * The letters one connection is drawn with.

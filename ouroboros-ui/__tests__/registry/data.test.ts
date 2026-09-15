@@ -73,7 +73,28 @@ describe("reading the page", () => {
       providers: { ok: true, value: seededCards() },
       aliases: { ok: true, value: seededRegistry() },
       routes: { ok: true, value: seededTaskKinds() },
+      pricing: null,
     });
+  });
+
+  it("carries a degraded pricing lookup beside the rows it degraded (#596)", async () => {
+    // One payload, two facts: the rows arrive with every price `—`, and this is the sentence
+    // that says it is an outage — from the same read, so they cannot disagree.
+    read.mockResolvedValue(registryPayload(seededRegistry(), "pricing away"));
+
+    const readings = await readRegistry(ACCESS);
+
+    expect(readings.aliases).toEqual({ ok: true, value: seededRegistry() });
+    expect(readings.pricing).toBe("pricing away");
+  });
+
+  it("says nothing about pricing when the registry read itself was refused", async () => {
+    read.mockRejectedValue(new ApiError(503, "upstream_unavailable", "registry away"));
+
+    const readings = await readRegistry(ACCESS);
+
+    expect(readings.aliases).toEqual({ ok: false, reason: "registry away" });
+    expect(readings.pricing).toBeNull();
   });
 
   it("degrades only the chain card's input when the routes could not be read", async () => {

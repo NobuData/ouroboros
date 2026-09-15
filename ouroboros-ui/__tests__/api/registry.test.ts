@@ -105,7 +105,10 @@ describe("registry.read", () => {
   it("answers an empty workspace with an empty list rather than a failure", async () => {
     const { client } = clientAnswering(registryPayload([]));
 
-    await expect(registry.read(client)).resolves.toEqual({ aliases: [] });
+    await expect(registry.read(client)).resolves.toEqual({
+      aliases: [],
+      degraded: { pricing: null },
+    });
   });
 
   it("rejects with the service's refusal, code and message intact", async () => {

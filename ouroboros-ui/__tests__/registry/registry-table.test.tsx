@@ -10,6 +10,7 @@ import {
   MANAGE_PROVIDERS,
   NO_PROVIDER,
   ORG_OVERRIDE,
+  PRICE_UNAVAILABLE_TITLE,
   SWITCH_READ_ONLY,
   SWITCH_UNBOUND,
   TABLE_CAPTION,
@@ -106,6 +107,68 @@ beforeEach(() => {
 
 afterEach(() => {
   window.history.replaceState(null, "", AT);
+});
+
+describe("a degraded pricing lookup (#596)", () => {
+  /**
+   * The seeded table, with the price column degraded — or not.
+   *
+   * @param pricing Why pricing is down, or `null`.
+   * @returns The Testing Library render result.
+   */
+  function degraded(pricing: string | null) {
+    const rows = tableRows(
+      seededRegistry().map((alias) => ({ ...alias, price: { ...alias.price, price: null, display: EM_DASH } })),
+    );
+
+    return render(
+      <RegistryTable
+        aliasNames={NAMES}
+        mayAdminister
+        pricing={pricing}
+        routes={ROUTES}
+        rows={rows}
+        selected={null}
+        sources={SOURCES}
+      />,
+    );
+  }
+
+  it("renders every row and every other column as it always does", () => {
+    degraded("pricing away");
+
+    expect(screen.getAllByRole("row")).toHaveLength(ROWS.length + 1);
+    expect(screen.getAllByRole("switch")).toHaveLength(ROWS.length);
+    expect(screen.getByText(FIX_IN_PROVIDERS)).toBeInTheDocument();
+  });
+
+  it("says on every price cell's hover that the dash is an outage", () => {
+    const { container } = degraded("pricing away");
+    const cells = container.querySelectorAll("td.registry-table__num > span");
+
+    expect(cells).toHaveLength(ROWS.length);
+
+    for (const cell of cells) {
+      expect(cell).toHaveTextContent(EM_DASH);
+      expect(cell).toHaveAttribute("title", PRICE_UNAVAILABLE_TITLE);
+    }
+  });
+
+  it("prints the service's sentence under the table, as a note", () => {
+    degraded("pricing away");
+
+    const note = screen.getByRole("note");
+
+    expect(note).toHaveTextContent("pricing away");
+    expect(note).toHaveClass("registry-table__pricing");
+  });
+
+  it("says nothing extra when pricing answered", () => {
+    degraded(null);
+
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(document.querySelector(`[title="${PRICE_UNAVAILABLE_TITLE}"]`)).toBeNull();
+  });
 });
 
 /**

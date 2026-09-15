@@ -47,13 +47,21 @@
  * read the table draws, so nothing on the screen can disagree about which names are taken.
  */
 
+import type { Role } from "@/app/api/membership";
 import type { ProviderConnection } from "@/app/api/providers";
 import type { Reading } from "@/app/api/reading";
 import type { RegistryAlias } from "@/app/api/registry";
 import type { RoutingTaskKind } from "@/app/api/routing";
+import { article } from "@/app/format";
+import {
+  CONNECT_PROVIDER,
+  type ReadOnlyNote,
+  type StepStatus,
+  connectedNote,
+} from "@/app/models/states";
 import { PROVIDERS_PATH } from "@/app/paths";
 
-import { type TableRow, tableRows } from "./table";
+import { type TableRow, UNBOUND_STATE, ownersAndAdmins, tableRows } from "./table";
 
 /* ------------------------------------------------------------------ what the page reads */
 
@@ -103,6 +111,15 @@ export interface RegistryReadings {
    * than claiming nothing routes through the alias.
    */
   readonly routes: Reading<readonly RoutingTaskKind[]>;
+  /**
+   * Why the price column is blank, or `null`/absent when pricing answered.
+   *
+   * Since CI.6 ([#596](https://github.com/NobuData/ouroboros/issues/596)): the registry read
+   * degrades around a pricing failure rather than failing (`degraded.pricing` on CH.5's payload),
+   * so the rows arrive with every price `—` and this is the sentence that says it is an outage
+   * rather than a catalog with nothing in it. Optional, because only the registry read carries it.
+   */
+  readonly pricing?: string | null;
 }
 
 /* ------------------------------------------------------------------ the table's seat */
@@ -187,13 +204,12 @@ export const NEW_ALIAS_LABEL = "+ New alias";
 /**
  * Why neither head action may be used by a member or a viewer.
  *
- * The full role-gating pass is CI.6 ([#596](https://github.com/NobuData/ouroboros/issues/596));
- * what this ticket owes is that the two controls it *builds* are already honest about who may
- * press them. A member who can see a control they may not use should learn that from the
- * control, not from a `403` after filling in a dialog.
+ * A member who can see a control they may not use should learn that from the control, not from
+ * a `403` after filling in a dialog. Worded through `ownersAndAdmins` since CI.6
+ * ([#596](https://github.com/NobuData/ouroboros/issues/596)), so every write affordance on the
+ * page gives the same explanation after naming itself.
  */
-export const MEMBER_REASON =
-  "Creating and importing aliases is for workspace owners and admins.";
+export const MEMBER_REASON = ownersAndAdmins("Creating and importing aliases");
 
 /** Why the import action is inert for a workspace that has connected no provider. */
 export const NO_PROVIDERS_REASON =
@@ -364,4 +380,246 @@ export function aliasSources(
  */
 export function aliasNames(aliases: Reading<readonly RegistryAlias[]>): readonly string[] {
   return aliases.ok ? aliases.value.map((alias) => alias.alias) : [];
+}
+
+/* ------------------------------------------------------------------ read-only (CI.6) */
+
+/**
+ * The sentence every read-only reader of the registry gets, whatever their role is called.
+ *
+ * *Nothing hidden* is the point (CI.6, [#596](https://github.com/NobuData/ouroboros/issues/596)):
+ * a member is not a spectator — routing decisions and prices are exactly what a team member
+ * should be able to read and discuss — so every control stays in its place, inert with its
+ * reason, and this says once, near the top, what that means.
+ */
+export const REGISTRY_READ_ONLY_BODY =
+  "Aliases are created, rebound and switched by an owner or an admin. Everything here — the " +
+  "table, the inspector and both cards — can be read; nothing here can be changed.";
+
+/**
+ * Explain the role rather than leaving a page of inert controls to explain itself.
+ *
+ * The shape is `app/models/states.ts`'s `readOnlyNote`, so the routing page and this one name a
+ * member the same way. Total over every role; the screen draws it only for a role
+ * `mayAdminister` refuses.
+ *
+ * @param role The reader's strongest role, from `primaryRole`.
+ * @returns The head naming the role, and the body saying what it means here.
+ */
+export function registryReadOnlyNote(role: Role): ReadOnlyNote {
+  return {
+    head: `Viewing the registry as ${article(role)} ${role}.`,
+    body: REGISTRY_READ_ONLY_BODY,
+  };
+}
+
+/* ------------------------------------------------------------------ the failed read (CI.6) */
+
+/**
+ * The banner's headline when the registry read was refused — the state, in words.
+ *
+ * DASH-I.7's rule ([#86](https://github.com/NobuData/ouroboros/issues/86)): the banner says
+ * why, once, with the page's only retry; the table's seat says what is missing and points up.
+ * The two other reads have their own honest degraded surfaces already — the import control for
+ * the providers, the chain card for the routes — and are not repeated here.
+ */
+export const REGISTRY_FAILED_HEADLINE = "The registry could not be read.";
+
+/**
+ * Why the page's banner is drawn, or `null` when it is not.
+ *
+ * @param aliases The registry read.
+ * @returns The service's sentence when the read was refused, otherwise `null`.
+ */
+export function registryFailure(aliases: Reading<readonly RegistryAlias[]>): string | null {
+  return aliases.ok ? null : aliases.reason;
+}
+
+/* ------------------------------------------------------------------ the empty registry (CI.6) */
+
+/** The guidance card's title — the product's argument, as an instruction. */
+export const GUIDANCE_CARD_TITLE = "Name your first model";
+
+/**
+ * Which guidance a registry with no aliases gets.
+ *
+ * Decided by the provider read, because *which of the two ways in is possible yet* is the
+ * whole difference: with a connection, a model can be imported; without one, only a name can be
+ * reserved. `readOnly` rides along rather than being a fourth kind — a member sees the same
+ * explanation and the same path, only without the controls.
+ */
+export type GuidanceState =
+  /** At least one connection: both ways in are open. */
+  | { readonly kind: "has-providers"; readonly connected: number; readonly readOnly: boolean }
+  /** No connection at all: the guidance leads with Providers & keys. */
+  | { readonly kind: "no-providers"; readonly readOnly: boolean }
+  /** The provider read failed, so whether a connection exists is unknown. */
+  | { readonly kind: "providers-unknown"; readonly readOnly: boolean };
+
+/**
+ * The guidance for a registry with no aliases.
+ *
+ * @param providers The provider read, or why it failed.
+ * @param mayAdminister Whether this reader may create aliases.
+ * @returns The state.
+ */
+export function guidanceState(
+  providers: Reading<readonly ProviderConnection[]>,
+  mayAdminister: boolean,
+): GuidanceState {
+  const readOnly = !mayAdminister;
+
+  if (!providers.ok) return { kind: "providers-unknown", readOnly };
+
+  return providers.value.length === 0
+    ? { kind: "no-providers", readOnly }
+    : { kind: "has-providers", connected: providers.value.length, readOnly };
+}
+
+/** The headline for a workspace with a connection and no aliases. */
+export const NO_ALIASES_TITLE = "No aliases yet";
+
+/** …and why naming a model matters. */
+export const NO_ALIASES_NOTE =
+  "Every route points at an alias, never at a raw model id — so naming a model is where " +
+  "routing starts. Create one by hand, or import what a connected provider already offers.";
+
+/** The headline for a workspace with no connection at all. */
+export const NO_PROVIDERS_TITLE = "Connect a provider first";
+
+/**
+ * …and the honest half: a name can still be reserved before its key exists, and what that name
+ * will look like until then — the shared unbound sentence, so this is the same story the create
+ * dialog, the switch and the inspector tell.
+ */
+export const NO_PROVIDERS_NOTE =
+  "An alias binds a provider key to a model id, so the usual first step is a connection. A " +
+  `name can still be reserved now with + New alias → Bind later. ${UNBOUND_STATE}`;
+
+/** What a member is told beneath the path, in place of the controls. */
+export const GUIDANCE_READ_ONLY =
+  "Naming models is done by a workspace owner or admin — the first alias they create or " +
+  "import will appear here.";
+
+/** The first step's note while no provider is connected. */
+export const CONNECT_STEP_NOTE =
+  "API keys and local hosts are added on the Providers & keys tab.";
+
+/** The first step's note when the provider read failed. */
+export const CONNECT_STEP_UNKNOWN_NOTE =
+  "The connected providers could not be read just now, so whether this step is done is unknown.";
+
+/** The link that takes the first step. */
+export const CONNECT_STEP_LINK = "Connect a provider first →";
+
+/** The second step's title. */
+export const NAME_STEP_TITLE = "Name a model";
+
+/** The second step's note. */
+export const NAME_STEP_NOTE =
+  "Create an alias with + New alias, or import from a connected provider — suggested names, " +
+  "reviewed before anything is created.";
+
+/**
+ * What a step offers its reader.
+ *
+ * - `connect` — the link into Providers & keys;
+ * - `name` — both ways in: **+ New alias** and **Import from provider**;
+ * - `reserve` — **+ New alias** alone, for a workspace with nothing to import from;
+ * - `null` — nothing, for a step that is done or behind another, and for every step a member
+ *   reads.
+ */
+export type GuidanceAction = "connect" | "name" | "reserve" | null;
+
+/** One step of the path from an empty registry to a populated one. */
+export interface GuidanceStep {
+  /** Which step — the React key. */
+  readonly key: "provider" | "alias";
+  /** What to do. */
+  readonly title: string;
+  /** How, or what was found. */
+  readonly note: string;
+  /** Where the reader is relative to it — `app/models/states.ts`'s vocabulary. */
+  readonly status: StepStatus;
+  /** What the step offers. */
+  readonly action: GuidanceAction;
+}
+
+/**
+ * The guidance's headline.
+ *
+ * @param state Which guidance.
+ * @returns The title.
+ */
+export function guidanceTitle(state: GuidanceState): string {
+  return state.kind === "no-providers" ? NO_PROVIDERS_TITLE : NO_ALIASES_TITLE;
+}
+
+/**
+ * The guidance's explanation.
+ *
+ * @param state Which guidance.
+ * @returns The note.
+ */
+export function guidanceNote(state: GuidanceState): string {
+  return state.kind === "no-providers" ? NO_PROVIDERS_NOTE : NO_ALIASES_NOTE;
+}
+
+/**
+ * The path, with the reader's place on it marked — both steps, always, in order.
+ *
+ * The routing page's arrangement (`app/models/states.ts`'s `foundationSteps`): a reader on step
+ * one sees step two coming, and a reader on step two sees what is behind them. That is what
+ * makes *empty → connect a provider → import → populated* one walk with the guidance correct at
+ * each stop rather than three unrelated messages.
+ *
+ * @param state Which guidance.
+ * @returns The two steps.
+ */
+export function guidanceSteps(state: GuidanceState): readonly GuidanceStep[] {
+  const act = (action: GuidanceAction): GuidanceAction => (state.readOnly ? null : action);
+
+  if (state.kind === "no-providers") {
+    return [
+      {
+        key: "provider",
+        title: CONNECT_PROVIDER,
+        note: CONNECT_STEP_NOTE,
+        status: "current",
+        action: act("connect"),
+      },
+      {
+        key: "alias",
+        title: NAME_STEP_TITLE,
+        note: NAME_STEP_NOTE,
+        status: "pending",
+        action: act("reserve"),
+      },
+    ];
+  }
+
+  return [
+    state.kind === "has-providers"
+      ? {
+          key: "provider",
+          title: CONNECT_PROVIDER,
+          note: connectedNote(state.connected),
+          status: "done",
+          action: null,
+        }
+      : {
+          key: "provider",
+          title: CONNECT_PROVIDER,
+          note: CONNECT_STEP_UNKNOWN_NOTE,
+          status: "unknown",
+          action: null,
+        },
+    {
+      key: "alias",
+      title: NAME_STEP_TITLE,
+      note: NAME_STEP_NOTE,
+      status: "current",
+      action: act("name"),
+    },
+  ];
 }

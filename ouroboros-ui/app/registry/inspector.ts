@@ -56,7 +56,7 @@ import { MODELS_PATH, PROVIDERS_PATH, ROUTING_MATRIX_HASH, ROUTING_RULES_HASH } 
 import { type NameProblem, NOTHING_CREATED } from "./create";
 import { documentsEqual } from "./params";
 import type { ImportSource } from "./view";
-import { usedByCell } from "./table";
+import { UNBOUND_STATE, ownersAndAdmins, usedByCell } from "./table";
 
 /* ------------------------------------------------------------------ what the card holds */
 
@@ -373,10 +373,12 @@ export function unlistedNote(modelId: string): string {
  * in its health cell, and this says the same thing in the one place a reader who has selected
  * that row is looking. It is the *only* thing the card can offer that alias: there is no
  * provider to show, no model list to read, and no parameters to tune until there is a binding.
+ *
+ * Built on `UNBOUND_STATE` since CI.6 ([#596](https://github.com/NobuData/ouroboros/issues/596)):
+ * the create dialog's notice and the table's switch say the same sentence first.
  */
 export const UNBOUND_BANNER =
-  "This alias has no provider, so nothing resolves through it and it cannot be switched on. " +
-  "Bind it to a connection below, or connect a provider first.";
+  `${UNBOUND_STATE} Bind it to a connection below, or connect a provider first.`;
 
 /** Where the banner's link goes. Spelled from `app/paths.ts`, never typed out. */
 export const UNBOUND_BANNER_HREF = PROVIDERS_PATH;
@@ -480,8 +482,7 @@ export const WRITE_LABELS: Readonly<Record<InspectorWrite, string>> = {
 };
 
 /** What every control on this card says to a role that may read it and not write to it. */
-export const INSPECTOR_READ_ONLY =
-  "Editing an alias is for workspace owners and admins.";
+export const INSPECTOR_READ_ONLY = ownersAndAdmins("Editing an alias");
 
 /**
  * Why **Save alias** cannot be pressed, or `undefined` when it can.

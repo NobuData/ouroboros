@@ -1,27 +1,39 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { Role } from "@/app/api/membership";
 import type { Reading } from "@/app/api/reading";
 import type { RegistryAlias } from "@/app/api/registry";
 import type { ProviderConnection } from "@/app/api/providers";
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 import {
   INSPECTOR_EMPTY_TITLE,
-  TABLE_EMPTY_TITLE,
+  PRICE_UNAVAILABLE_TITLE,
+  SWITCH_READ_ONLY,
   TABLE_FAILED_TITLE,
   TABLE_TITLE,
+  UNBOUND_STATE,
 } from "@/app/registry/table";
 import {
   CONNECT_PROVIDER_LABEL,
+  CONNECT_STEP_LINK,
+  GUIDANCE_CARD_TITLE,
+  GUIDANCE_READ_ONLY,
   IMPORT_LABEL,
   MEMBER_REASON,
   NEW_ALIAS_LABEL,
+  NO_ALIASES_TITLE,
   NO_PROVIDERS_REASON,
+  NO_PROVIDERS_TITLE,
   PROVIDERS_UNREADABLE_REASON,
+  REGISTRY_FAILED_HEADLINE,
+  REGISTRY_READ_ONLY_BODY,
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
   type RegistryReadings,
 } from "@/app/registry/view";
+import { DUPLICATE_LABEL, INSPECTOR_READ_ONLY, REMOVE_LABEL, SAVE_LABEL } from "@/app/registry/inspector";
+import { RETRY_LABEL } from "@/app/ui";
 
 import { CHAIN_EMPTY_TITLE, CHAIN_TITLE, WHY_TITLE } from "@/app/registry/chain";
 import { CREATE_TITLE, NAME_LABEL, NAME_TAKEN, PROVIDER_LABEL } from "@/app/registry/create";
@@ -115,13 +127,19 @@ const TABLE_UNREADABLE: Reading<readonly RegistryAlias[]> = { ok: false, reason:
  * @returns The render result.
  */
 function page(
-  over: Partial<{ readings: RegistryReadings; mayAdminister: boolean; alias: string | string[] | null }> = {},
+  over: Partial<{
+    readings: RegistryReadings;
+    mayAdminister: boolean;
+    alias: string | string[] | null;
+    role: Role;
+  }> = {},
 ) {
   return render(
     <RegistryScreen
       alias={over.alias ?? null}
       mayAdminister={over.mayAdminister ?? true}
       readings={over.readings ?? readings()}
+      role={over.role}
     />,
   );
 }
@@ -498,7 +516,7 @@ describe("a workspace whose registry could not be read", () => {
 
     expect(screen.getByText(TABLE_FAILED_TITLE)).toBeInTheDocument();
     expect(screen.getByText(/registry away/)).toBeInTheDocument();
-    expect(screen.queryByText(TABLE_EMPTY_TITLE)).toBeNull();
+    expect(screen.queryByRole("region", { name: GUIDANCE_CARD_TITLE })).toBeNull();
     expect(screen.queryByRole("grid")).toBeNull();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(REGISTRY_TITLE);
     expect(screen.getByRole("button", { name: IMPORT_LABEL })).toHaveAttribute("aria-haspopup", "menu");
@@ -510,10 +528,215 @@ describe("a workspace with no aliases yet", () => {
   it("says so rather than drawing an empty grid, and keeps the two states apart", () => {
     page({ readings: readings(seededCards(), []) });
 
-    expect(screen.getByText(TABLE_EMPTY_TITLE)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: GUIDANCE_CARD_TITLE })).toBeInTheDocument();
+    expect(screen.getByText(NO_ALIASES_TITLE)).toBeInTheDocument();
     expect(screen.getByText("0 aliases")).toBeInTheDocument();
     expect(screen.queryByText(TABLE_FAILED_TITLE)).toBeNull();
     expect(screen.queryByRole("grid")).toBeNull();
+  });
+});
+
+describe("the walk from an empty registry to a populated one (#596)", () => {
+  /**
+   * The step the guidance marks as next, and the card it is in.
+   *
+   * @returns The card and its current step.
+   */
+  function guidance() {
+    const card = screen.getByRole("region", { name: GUIDANCE_CARD_TITLE });
+    const current = card.querySelector<HTMLElement>('[aria-current="step"]');
+
+    return { card, current: current! };
+  }
+
+  it("leads a workspace with no connection to Providers & keys first", () => {
+    page({ readings: readings([], []) });
+
+    const { card, current } = guidance();
+
+    expect(within(card).getByText(NO_PROVIDERS_TITLE)).toBeInTheDocument();
+    expect(within(current).getByRole("link", { name: CONNECT_STEP_LINK })).toHaveAttribute(
+      "href",
+      PROVIDERS_PATH,
+    );
+    // …and explains that a name can still be reserved, in the shared unbound words.
+    expect(card).toHaveTextContent(UNBOUND_STATE);
+    expect(within(card).getByRole("button", { name: NEW_ALIAS_LABEL })).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: IMPORT_LABEL })).toBeNull();
+  });
+
+  it("marks the provider done and offers both ways in once a connection exists", () => {
+    page({ readings: readings(seededCards(), []) });
+
+    const { card, current } = guidance();
+
+    expect(within(card).queryByText(NO_PROVIDERS_TITLE)).toBeNull();
+    expect(within(card).queryByRole("link", { name: CONNECT_STEP_LINK })).toBeNull();
+    expect(within(current).getByRole("button", { name: NEW_ALIAS_LABEL })).toBeInTheDocument();
+    expect(within(current).getByRole("button", { name: IMPORT_LABEL })).toHaveAttribute(
+      "aria-haspopup",
+      "menu",
+    );
+  });
+
+  it("stops guiding the moment an alias exists, and draws the table instead", () => {
+    page({ readings: readings(seededCards(), seededRegistry().slice(0, 1)) });
+
+    expect(screen.queryByRole("region", { name: GUIDANCE_CARD_TITLE })).toBeNull();
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+    expect(screen.getByText("1 alias")).toBeInTheDocument();
+  });
+
+  it("shows a member the same explanation and path without a single control in it", () => {
+    for (const providers of [[], seededCards()]) {
+      const view = page({ readings: readings(providers, []), mayAdminister: false });
+      const { card } = guidance();
+
+      expect(within(card).queryAllByRole("button")).toHaveLength(0);
+      expect(within(card).queryAllByRole("link")).toHaveLength(0);
+      expect(within(card).getByText(GUIDANCE_READ_ONLY)).toBeInTheDocument();
+      expect(card.querySelectorAll("li")).toHaveLength(2);
+
+      view.unmount();
+    }
+  });
+});
+
+describe("a member's session (#596)", () => {
+  it("names the reader's role once, under the tab set", () => {
+    page({ mayAdminister: false, role: "viewer" });
+
+    const note = screen.getByRole("note");
+
+    expect(note).toHaveTextContent("Viewing the registry as a viewer.");
+    expect(note).toHaveTextContent(REGISTRY_READ_ONLY_BODY);
+  });
+
+  it("draws no read-only note for a reader who may administer", () => {
+    page();
+
+    expect(screen.queryByText(REGISTRY_READ_ONLY_BODY)).toBeNull();
+  });
+
+  it("disables every write affordance with a reason, and hides none of them", () => {
+    page({ mayAdminister: false, alias: "coder-max" });
+
+    // Both head actions.
+    for (const label of [IMPORT_LABEL, NEW_ALIAS_LABEL]) {
+      const action = screen.getByRole("button", { name: label });
+
+      expect(action, label).toHaveAttribute("aria-disabled", "true");
+      expect(action, label).toHaveAttribute("title", MEMBER_REASON);
+    }
+
+    // Every switch, one per row.
+    const switches = screen.getAllByRole("switch");
+
+    expect(switches).toHaveLength(seededRegistry().length);
+
+    for (const control of switches) {
+      expect(control).toHaveAttribute("aria-disabled", "true");
+      expect(control).toHaveAttribute("title", SWITCH_READ_ONLY);
+    }
+
+    // The inspector: its inputs, and the whole foot.
+    const card = screen.getByRole("region", { name: "Edit — coder-max" });
+
+    for (const input of [...within(card).getAllByRole("textbox"), ...within(card).getAllByRole("combobox")]) {
+      expect(input).toBeDisabled();
+    }
+
+    for (const label of [SAVE_LABEL, DUPLICATE_LABEL, REMOVE_LABEL]) {
+      const control = within(card).getByRole("button", { name: label });
+
+      expect(control, label).toHaveAttribute("aria-disabled", "true");
+      expect(control, label).toHaveAttribute("title", INSPECTOR_READ_ONLY);
+    }
+  });
+
+  it("explains every refusal with the same clause", () => {
+    for (const reason of [MEMBER_REASON, SWITCH_READ_ONLY, INSPECTOR_READ_ONLY]) {
+      expect(reason).toMatch(/ is for workspace owners and admins\.$/);
+    }
+  });
+
+  it("keeps the page fully readable: the table, the inspector's values and both cards", () => {
+    page({ mayAdminister: false, alias: "coder-max" });
+
+    expect(screen.getAllByRole("row")).toHaveLength(seededRegistry().length + 1);
+    expect(screen.getByLabelText("Alias")).toHaveValue("coder-max");
+    expect(screen.getByRole("region", { name: WHY_TITLE })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: CHAIN_TITLE })).toBeInTheDocument();
+  });
+});
+
+describe("a failed registry read (#596)", () => {
+  it("explains it once, in a banner with the page's retry", () => {
+    page({ readings: { ...readings(), aliases: TABLE_UNREADABLE } });
+
+    const banner = screen.getByRole("status", { name: "" });
+
+    expect(screen.getByText(REGISTRY_FAILED_HEADLINE)).toBeInTheDocument();
+    expect(screen.getAllByText(/registry away/)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: RETRY_LABEL })).toBeInTheDocument();
+    expect(banner).toBeInTheDocument();
+  });
+
+  it("draws no banner when the read worked", () => {
+    page();
+
+    expect(screen.queryByText(REGISTRY_FAILED_HEADLINE)).toBeNull();
+    expect(screen.queryByRole("button", { name: RETRY_LABEL })).toBeNull();
+  });
+
+  it("keeps the table it already drew when a refresh comes back refused", () => {
+    // The page never blanks on refresh: the rerender is what `router.refresh()` delivers.
+    const view = page({ alias: "coder-max" });
+
+    view.rerender(
+      <RegistryScreen
+        alias="coder-max"
+        mayAdminister
+        readings={{ ...readings(), aliases: TABLE_UNREADABLE }}
+      />,
+    );
+
+    expect(screen.getByText(REGISTRY_FAILED_HEADLINE)).toBeInTheDocument();
+    expect(screen.getByRole("grid")).toBeInTheDocument();
+    expect(screen.getByRole("row", { selected: true })).toHaveAttribute("data-row-key", "coder-max");
+    expect(screen.queryByText(TABLE_FAILED_TITLE)).toBeNull();
+  });
+});
+
+describe("a degraded pricing lookup (#596)", () => {
+  it("renders the whole table and says why the price column is blank", () => {
+    page({ readings: { ...readings(), pricing: "pricing away" } });
+
+    expect(screen.getAllByRole("row")).toHaveLength(seededRegistry().length + 1);
+    expect(screen.getByRole("note")).toHaveTextContent("pricing away");
+    expect(document.querySelectorAll(`[title="${PRICE_UNAVAILABLE_TITLE}"]`)).toHaveLength(
+      seededRegistry().length,
+    );
+    expect(screen.queryByText(REGISTRY_FAILED_HEADLINE)).toBeNull();
+  });
+});
+
+describe("every state in both palettes (#596)", () => {
+  it.each([
+    ["empty, with providers", { readings: readings(seededCards(), []) }],
+    ["empty, with no providers", { readings: readings([], []) }],
+    ["a member", { mayAdminister: false, alias: "coder-max" }],
+    ["a failed read", { readings: { ...readings(), aliases: TABLE_UNREADABLE } }],
+    ["degraded pricing", { readings: { ...readings(), pricing: "pricing away" } }],
+  ] as const)("draws the same markup in both for %s", (_, over) => {
+    const props = {
+      alias: "alias" in over ? over.alias : null,
+      mayAdminister: "mayAdminister" in over ? over.mayAdminister : true,
+      readings: "readings" in over ? over.readings : readings(),
+    };
+    const [light, dark] = renderInBothPalettes(<RegistryScreen {...props} />);
+
+    expect(maskIds(light)).toBe(maskIds(dark));
   });
 });
 
