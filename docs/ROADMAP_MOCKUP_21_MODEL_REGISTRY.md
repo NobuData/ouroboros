@@ -1344,7 +1344,7 @@ dark-only).
 | CI.3 | #593 | 🟢 Done | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
 | CI.4 | #594 | 🟢 Done | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
 | CI.5 | #595 | 🟢 Done | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
-| CI.6 | #596 | 🟡 Open | ouroboros-ui: [CI.6] Registry states & guards | Empty org, member read-only, load/error, unbound guidance | mvp, registry, ui, design | N (after CI.2–CI.5) | Y | S | ouroboros-ui |
+| CI.6 | #596 | 🟢 Done | ouroboros-ui: [CI.6] Registry states & guards | Empty org, member read-only, load/error, unbound guidance | mvp, registry, ui, design | N (after CI.2–CI.5) | Y | S | ouroboros-ui |
 | CI.7 | #597 | 🟡 Open | ouroboros-ui: [CI.7] Registry e2e leg | Parity, lifecycle, rebind BYOK, import, guards, governance, themes | mvp, registry, ui, ci | N (after CI.1–CI.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue CI.1 — ouroboros-ui: [CI.1] Registry route, subnav & page frame
@@ -1840,7 +1840,31 @@ no snapshot ─▶ same rail + tag: (simulated — live runs arrive with invocat
 
 ### Issue CI.6 — ouroboros-ui: [CI.6] Registry states & guards
 
-> **GitHub issue:** #596 · **Status:** 🟡 Open · **Parent epic:** #577
+> **GitHub issue:** #596 · **Status:** 🟢 Done · **Parent epic:** #577
+>
+> **Shipped.** `ouroboros-ui` 0.72.0, `ouroboros-rest` 0.35.5. **Empty:**
+> [`registry-guidance.tsx`](../ouroboros-ui/app/registry/registry-guidance.tsx) — *Name your first
+> model* — draws the routing page's two-step path (`.models-foundations*`, next step in the
+> accent) from `guidanceState`/`guidanceSteps` in `view.ts`: with connections, provider ✓ and
+> **+ New alias** + **Import from provider**; with none, *Connect a provider first →* to
+> `/models/providers`, and a *Bind later* explanation; provider read failed, the step is
+> `unknown`. A member gets the same path with no controls and one sentence in their place.
+> **Member read-only:** one note under the tab set naming the role (`registryReadOnlyNote`), and
+> every write affordance's reason worded through `ownersAndAdmins` — both head actions, every
+> switch, the inspector's inputs and Save/Duplicate/Remove — nothing hidden. **Loading:**
+> `app/(app)/models/registry/loading.tsx` → `registry-skeleton.tsx`, eight rows on a grid mirroring
+> the table's column rules in rem, the three seat cards skeletoned in place. **Error:**
+> `registry-banner.tsx` (DASH-I.7 `RetryBanner`, `router.refresh()`) and `registry-freshness.tsx`,
+> which holds the last table that read under the banner so a failed refresh never blanks the
+> page or loses the selection. **Pricing degrade — a contract amendment:** the registry read
+> awaited `PricingService.resolveMany` with no catch, so a pricing failure failed the whole page,
+> and `—` could not tell *outage* from *unpriced*. `RegistryReadService` now catches it, serves
+> every price `—`, and `RegistryReadModel` gains a required `degraded: { pricing }` (additive,
+> 0.35.4 → 0.35.5); the table prints the service's sentence under the caption and every price
+> cell's hover says it is an outage. **Unbound coherence:** `UNBOUND_STATE` in `table.ts` is the
+> one sentence the create notice, the switch reason, the inspector banner and the no-providers
+> guidance are built from, held by `table.test.ts`. The e2e walk across a real member session and
+> the personal-org seed is CI.7's (#597).
 
 - **Problem Statement:** A fresh org has an empty registry; a member must
   browse without touching; errors and loading must not blank the densest

@@ -1,5 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister } from "@/app/api/membership";
+import { mayAdminister, primaryRole } from "@/app/api/membership";
 import { ALIAS_PARAM } from "@/app/paths";
 import { readRegistry } from "@/app/registry/data";
 import { RegistryScreen } from "@/app/registry/registry-screen";
@@ -54,6 +54,7 @@ export default async function Page({
       alias={query[ALIAS_PARAM] ?? null}
       mayAdminister={mayAdminister(access.membership.roles)}
       readings={readings}
+      role={primaryRole(access.membership.roles)}
     />
   );
 }

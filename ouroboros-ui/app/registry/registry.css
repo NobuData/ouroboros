@@ -1224,3 +1224,257 @@
   font-size: var(--t-xs);
   line-height: var(--lh-body);
 }
+
+/* ---------- states & guards (#596) ---------- */
+
+/*
+ * The read-only note — one line under the tab set naming the reader's role. The routing page's
+ * `.models-readonly` measure, type and rhythm, so a member meets the same line on both pages.
+ */
+.registry-readonly {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-8);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.registry-readonly__head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/*
+ * The failed-read banner's placement: above the table's seat, at the seat row's own gap. The
+ * box itself is the design system's `.ou-retry`.
+ */
+.registry-failed {
+  margin: 0 0 var(--sp-8);
+}
+
+/*
+ * A degraded price column, explained under the table: the service's sentence in the warn hue,
+ * because it is an outage somebody may need to hear about — and never the hue alone (§ 3.4).
+ */
+.registry-table__pricing {
+  margin: var(--sp-3) 0 0;
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The guidance card's next step, in mockup 21's accent. Everything else about the path is the
+ * routing page's `.models-foundations*`; this is the one hue the two mockups draw differently.
+ */
+.registry-guidance__step--current .models-foundations__mark {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* The step's two ways in, abreast, wrapping when the column is narrow. */
+.registry-guidance__actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+/* What a member is told in place of the controls, ruled off from the path. */
+.registry-guidance__readonly {
+  margin: var(--sp-8) 0 0;
+  padding-block-start: var(--sp-6);
+  border-block-start: 1px solid var(--line);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * ---------- the loading skeleton (#596) ----------
+ *
+ * What `app/(app)/models/registry/loading.tsx` draws while the reads are in flight. Every shape
+ * is a region's own geometry (#86): the row grid's tracks mirror the column rules above — the
+ * params column's 12rem floor, the numeric columns' shared 7rem, the switch's 4rem — at the
+ * table primitive's cell padding, so nothing moves when the rows land. All in rem or tokens, so
+ * the reservation holds at the 125% font-size preference. Hidden from the accessibility tree by
+ * its container's `aria-hidden`; pulses only for a reader who has not asked for less motion.
+ */
+.registry-skeleton {
+  display: block;
+}
+
+/* The two head actions, at a default button's box. */
+.registry-skeleton__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+.registry-skeleton__action {
+  display: inline-block;
+  width: 9rem;
+  height: 2.375rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* A card head, at `.ou-card__head`'s own height and bottom margin. */
+.registry-skeleton__head {
+  display: block;
+  width: 40%;
+  height: var(--sp-7);
+  margin-bottom: var(--sp-7);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The plain bar, at a line of `--t-xs`. */
+.registry-skeleton__bar {
+  display: block;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.registry-skeleton__bar--grow {
+  flex: 1;
+}
+
+.registry-skeleton__bar--half {
+  width: 55%;
+}
+
+/* A figure, right-aligned in `.registry-table__num`'s width. */
+.registry-skeleton__bar--num {
+  width: 4rem;
+  justify-self: end;
+}
+
+/* The caption line under the table — `.registry-table__caption`'s margin. */
+.registry-skeleton__bar--caption {
+  width: 60%;
+  margin-top: var(--sp-5);
+}
+
+/* The table: the head row's height and rule, then the rows. */
+.registry-skeleton__table {
+  display: flex;
+  flex-direction: column;
+}
+
+.registry-skeleton__thead {
+  display: block;
+  height: var(--sp-9);
+  border-block-end: 1px solid var(--line);
+}
+
+/*
+ * One row: the eight columns on the table's own proportions, at `.ou-table td`'s padding and
+ * ruled off like the primitive's rows.
+ */
+.registry-skeleton__row {
+  display: grid;
+  grid-template-columns:
+    minmax(7rem, 1fr) minmax(9rem, 1.2fr) minmax(8rem, 1fr) minmax(12rem, 1.4fr)
+    minmax(7rem, 1fr) 7rem 7rem 4rem;
+  gap: var(--sp-6);
+  align-items: center;
+  padding: var(--sp-6) 0;
+  border-block-end: 1px solid var(--line);
+}
+
+.registry-skeleton__row:last-child {
+  border-block-end: none;
+}
+
+/* An alias pill, at `.ou-chip`'s box. */
+.registry-skeleton__pill {
+  display: block;
+  width: 6rem;
+  height: var(--sp-8);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+.registry-skeleton__pill--short {
+  width: 4.5rem;
+}
+
+/* The provider cell: the monogram's square beside the name. */
+.registry-skeleton__provider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+/* The mockup's 24px `.mg`, in rem. */
+.registry-skeleton__monogram {
+  display: block;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The switch's track. */
+.registry-skeleton__switch {
+  display: block;
+  width: 2.25rem;
+  height: 1.25rem;
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+/* The inspector's empty seat: `.ou-empty--fill`'s well, at its floor. */
+.registry-skeleton__panel {
+  display: block;
+  flex: 1;
+  min-height: 8rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+/* The why-card's claims and the chain card's hops: a dot and a line each. */
+.registry-skeleton__claims,
+.registry-skeleton__rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.registry-skeleton__claim,
+.registry-skeleton__hop {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.registry-skeleton__tick {
+  display: block;
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: var(--r-round);
+  background: var(--raised);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .registry-skeleton__action,
+  .registry-skeleton__head,
+  .registry-skeleton__bar,
+  .registry-skeleton__pill,
+  .registry-skeleton__monogram,
+  .registry-skeleton__switch,
+  .registry-skeleton__panel,
+  .registry-skeleton__tick {
+    animation: registry-skeleton-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes registry-skeleton-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}

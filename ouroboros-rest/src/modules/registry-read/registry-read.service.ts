@@ -86,8 +86,20 @@ import { zeroize } from "../vault/envelope";
 import { VaultService } from "../vault/vault.service";
 import { aliasHealth, type AliasHealthConnection } from "./alias.health";
 import { RegistryReadRepository } from "./registry-read.repository";
-import { toRegistryAliasResource, type RegistryReadModelResource } from "./registry-read.resources";
+import {
+  PRICING_UNAVAILABLE,
+  toRegistryAliasResource,
+  type RegistryReadModelResource,
+} from "./registry-read.resources";
 import type { RegistryConnectionRow } from "./registry-read.rows";
+
+/** The price column, and why it is blank when pricing could not answer. */
+interface PricedTable {
+  /** One price per row, in the rows' order. */
+  readonly cells: readonly ModelPriceResource[];
+  /** The sentence the page shows, or `null` when pricing answered. */
+  readonly failure: string | null;
+}
 
 /**
  * A connection as this read holds it: the health facts, and the mask its inspector line shows.
@@ -140,7 +152,7 @@ export class RegistryReadService {
       this.registry.sealedCredentials(organizationId),
     ]);
 
-    const [connections, prices] = await Promise.all([
+    const [connections, priced] = await Promise.all([
       this.connectionStates(organizationId, connectionRows, envelopes),
       this.prices(organizationId, list.aliases),
     ]);
@@ -172,9 +184,10 @@ export class RegistryReadService {
             discovered: binding !== null && discovered.has(pairKey(binding.id, alias.modelId)),
             catalogued: binding !== null && catalogued.has(binding.id),
           }),
-          prices[index],
+          priced.cells[index],
         );
       }),
+      degraded: { pricing: priced.failure },
     };
   }
 
@@ -260,13 +273,23 @@ export class RegistryReadService {
    *
    * @param organizationId - The workspace.
    * @param aliases - The rows, in the order they will be published.
-   * @returns One price resource per row, `price: null` and `display: "—"` where the catalog
-   *   covers nothing. That is not `$0`, which is a `free` row.
+   * **A pricing failure degrades the column, not the page** (CI.6,
+   * [#596](https://github.com/NobuData/ouroboros/issues/596)). Health, bindings and references
+   * say nothing about money and should not disappear because the catalog lookup did, so the
+   * failure is logged for an operator, every cell is the unpriced `—`, and `failure` carries the
+   * sentence the page shows — which is what tells that `—` apart from *the catalog covers
+   * nothing*.
+   *
+   * @param organizationId - The workspace.
+   * @param aliases - The rows, in the order they will be published.
+   * @returns One price resource per row — `price: null` and `display: "—"` where the catalog
+   *   covers nothing (not `$0`, which is a `free` row) — and why pricing could not answer, or
+   *   `null` when it did.
    */
   private async prices(
     organizationId: string,
     aliases: readonly ModelAliasResource[],
-  ): Promise<ModelPriceResource[]> {
+  ): Promise<PricedTable> {
     const keys: ModelKey[] = aliases.map((alias) => ({
       // Null for an unbound alias: nothing has told us who would be billing, so it resolves to
       // nothing and renders `—` rather than to a zero somebody could size a budget from.
@@ -274,9 +297,24 @@ export class RegistryReadService {
       modelId: alias.modelId,
     }));
 
-    const resolved = await this.pricing.resolveMany(keys, organizationId);
+    try {
+      const resolved = await this.pricing.resolveMany(keys, organizationId);
 
-    return keys.map((key, index) => modelPriceResource(key, resolved[index]));
+      return {
+        cells: keys.map((key, index) => modelPriceResource(key, resolved[index])),
+        failure: null,
+      };
+    } catch (failure) {
+      this.logger.warn(
+        `the registry could not resolve prices, so the price column is blank: ` +
+          describeForLog(failure),
+      );
+
+      return {
+        cells: keys.map((key) => modelPriceResource(key, undefined)),
+        failure: PRICING_UNAVAILABLE,
+      };
+    }
   }
 }
 

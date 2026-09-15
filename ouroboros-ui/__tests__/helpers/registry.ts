@@ -336,8 +336,11 @@ export function seededRegistry(): RegistryAlias[] {
  * @param aliases The rows. Defaults to the seeded eight.
  * @returns `{aliases}`, as the contract serves it.
  */
-export function registryPayload(aliases: readonly RegistryAlias[] = seededRegistry()): RegistryReadModel {
-  return { aliases: [...aliases] };
+export function registryPayload(
+  aliases: readonly RegistryAlias[] = seededRegistry(),
+  pricing: string | null = null,
+): RegistryReadModel {
+  return { aliases: [...aliases], degraded: { pricing } };
 }
 
 /**

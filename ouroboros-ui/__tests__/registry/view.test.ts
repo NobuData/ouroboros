@@ -5,21 +5,35 @@ import { describe, expect, it } from "vitest";
 import type { ProviderConnection } from "@/app/api/providers";
 import type { Reading } from "@/app/api/reading";
 import { PROVIDERS_PATH } from "@/app/paths";
+import { connectedNote } from "@/app/models/states";
+import { UNBOUND_STATE, ownersAndAdmins } from "@/app/registry/table";
 import {
   CONNECT_PROVIDER_HREF,
   CONNECT_PROVIDER_LABEL,
+  CONNECT_STEP_UNKNOWN_NOTE,
   IMPORT_LABEL,
   MEMBER_REASON,
   NEW_ALIAS_LABEL,
+  NO_ALIASES_NOTE,
+  NO_ALIASES_TITLE,
+  NO_PROVIDERS_NOTE,
   NO_PROVIDERS_REASON,
+  NO_PROVIDERS_TITLE,
   PROVIDERS_UNREADABLE_REASON,
+  REGISTRY_READ_ONLY_BODY,
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
   aliasNames,
   aliasSources,
+  guidanceNote,
+  guidanceState,
+  guidanceSteps,
+  guidanceTitle,
   importSources,
   importState,
   newAliasReason,
+  registryFailure,
+  registryReadOnlyNote,
   tableState,
 } from "@/app/registry/view";
 
@@ -268,5 +282,89 @@ describe("which providers the menu offers", () => {
 
     expect(sources[0].mask).toBe(seededCards()[0].mask);
     expect(sources.some((source) => source.mask === null)).toBe(true);
+  });
+});
+
+describe("the empty registry's guidance (#596)", () => {
+  it("decides which guidance from the provider read, with the role riding along", () => {
+    expect(guidanceState(read([]), true)).toEqual({ kind: "no-providers", readOnly: false });
+    expect(guidanceState(read(seededCards()), true)).toEqual({
+      kind: "has-providers",
+      connected: seededCards().length,
+      readOnly: false,
+    });
+    expect(guidanceState(FAILED, true)).toEqual({ kind: "providers-unknown", readOnly: false });
+    expect(guidanceState(read([]), false)).toEqual({ kind: "no-providers", readOnly: true });
+  });
+
+  it("leads a workspace with no connection with connecting one, and reserving a name after", () => {
+    const [provider, alias] = guidanceSteps({ kind: "no-providers", readOnly: false });
+
+    expect(provider).toMatchObject({ key: "provider", status: "current", action: "connect" });
+    expect(alias).toMatchObject({ key: "alias", status: "pending", action: "reserve" });
+    expect(guidanceTitle({ kind: "no-providers", readOnly: false })).toBe(NO_PROVIDERS_TITLE);
+    expect(guidanceNote({ kind: "no-providers", readOnly: false })).toBe(NO_PROVIDERS_NOTE);
+  });
+
+  it("ticks the provider step for a workspace with connections, and offers both ways in", () => {
+    const state = { kind: "has-providers", connected: 3, readOnly: false } as const;
+    const [provider, alias] = guidanceSteps(state);
+
+    expect(provider).toMatchObject({ status: "done", note: connectedNote(3), action: null });
+    expect(alias).toMatchObject({ status: "current", action: "name" });
+    expect(guidanceTitle(state)).toBe(NO_ALIASES_TITLE);
+    expect(guidanceNote(state)).toBe(NO_ALIASES_NOTE);
+  });
+
+  it("marks the provider step unknown when the read failed, never done", () => {
+    const [provider, alias] = guidanceSteps({ kind: "providers-unknown", readOnly: false });
+
+    expect(provider).toMatchObject({ status: "unknown", note: CONNECT_STEP_UNKNOWN_NOTE, action: null });
+    expect(alias).toMatchObject({ status: "current", action: "name" });
+  });
+
+  it("keeps a member's path and statuses exactly, with no action on any step", () => {
+    for (const kind of ["no-providers", "providers-unknown"] as const) {
+      const admin = guidanceSteps({ kind, readOnly: false });
+      const member = guidanceSteps({ kind, readOnly: true });
+
+      expect(member.map((step) => step.status)).toEqual(admin.map((step) => step.status));
+      expect(member.every((step) => step.action === null)).toBe(true);
+    }
+
+    const member = guidanceSteps({ kind: "has-providers", connected: 1, readOnly: true });
+
+    expect(member.every((step) => step.action === null)).toBe(true);
+  });
+
+  it("explains a name reserved before its key in the shared unbound words", () => {
+    expect(NO_PROVIDERS_NOTE).toContain(UNBOUND_STATE);
+  });
+});
+
+describe("the read-only note (#596)", () => {
+  it("names the role with the right article, and says what it means here", () => {
+    expect(registryReadOnlyNote("member")).toEqual({
+      head: "Viewing the registry as a member.",
+      body: REGISTRY_READ_ONLY_BODY,
+    });
+    expect(registryReadOnlyNote("viewer").head).toBe("Viewing the registry as a viewer.");
+    expect(registryReadOnlyNote("admin").head).toBe("Viewing the registry as an admin.");
+  });
+
+  it("says nothing is hidden: the table, the inspector and both cards are readable", () => {
+    expect(REGISTRY_READ_ONLY_BODY).toMatch(/table, the inspector and both cards/);
+  });
+
+  it("words the head actions' reason through the shared clause", () => {
+    expect(MEMBER_REASON).toBe(ownersAndAdmins("Creating and importing aliases"));
+  });
+});
+
+describe("the failed read (#596)", () => {
+  it("is the service's sentence when the registry read was refused, and null otherwise", () => {
+    expect(registryFailure({ ok: false, reason: "registry away" })).toBe("registry away");
+    expect(registryFailure({ ok: true, value: seededRegistry() })).toBeNull();
+    expect(registryFailure({ ok: true, value: [] })).toBeNull();
   });
 });

@@ -154,6 +154,23 @@ describe("the registry route", () => {
     );
   });
 
+  it("names the reader's strongest role in the read-only note (#596)", async () => {
+    requireWorkspace.mockResolvedValue({
+      ...ACCESS,
+      membership: membership({ roles: ["member"] }),
+    });
+
+    render(await Page());
+
+    expect(screen.getByText("Viewing the registry as a member.")).toBeInTheDocument();
+  });
+
+  it("draws no read-only note for an owner", async () => {
+    render(await Page());
+
+    expect(screen.queryByText(/Viewing the registry as/)).toBeNull();
+  });
+
   it("reads the selected alias out of the URL, so the first paint has the right row", async () => {
     // The other half of *a selected alias survives a reload*: read on the server, the same
     // arrangement the routing page makes for `?route=`.

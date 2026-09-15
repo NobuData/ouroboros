@@ -42,6 +42,8 @@
 import type { ErrorEnvelope } from "@/app/api/errors";
 import { PROVIDERS_PATH } from "@/app/paths";
 
+import { UNBOUND_STATE } from "./table";
+
 /* ------------------------------------------------------------------ the two modes */
 
 /**
@@ -430,10 +432,13 @@ export const MODEL_ID_HINT = "as the provider spells it — gpt-5.2-preview, qwe
  * The row this creates is mockup 21's orphan: dimmed, switch off, `✗ no key — connect a
  * provider`. Saying so *before* the create is what makes that row read as a state somebody
  * chose rather than as something that went wrong.
+ *
+ * Built on `app/registry/table.ts`'s `UNBOUND_STATE` since CI.6
+ * ([#596](https://github.com/NobuData/ouroboros/issues/596)), so the switch and the inspector
+ * describe the row this creates in the same words.
  */
 export const UNBOUND_NOTICE =
-  "This alias will stay disabled until a provider is connected — it will appear in the table " +
-  "with no provider and no key.";
+  `This alias will appear in the table with no provider and no key. ${UNBOUND_STATE}`;
 
 /** The link out of the unbound notice, to the page that fixes the state it describes. */
 export const UNBOUND_LINK = "Providers & keys →";

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.4"
+  version: "0.35.5"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -4873,6 +4873,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/RegistryReadModel"
               example:
+                degraded:
+                  pricing: null
                 aliases:
                   - id: 5eed000f-0000-4000-8000-000000000004
                     alias: coder-fallback
@@ -16484,13 +16486,35 @@ components:
       title: RegistryReadModel
       description: The registry page, in one payload. Unpaged — a workspace's registry is a handful of names.
       additionalProperties: false
-      required: [aliases]
+      required: [aliases, degraded]
       properties:
         aliases:
           type: array
           description: Every alias in the workspace, ordered by name, unbound ones included.
           items:
             $ref: "#/components/schemas/RegistryAlias"
+        degraded:
+          $ref: "#/components/schemas/RegistryDegraded"
+
+    RegistryDegraded:
+      type: object
+      title: RegistryDegraded
+      description: |-
+        Which subsystems could not answer for this read, each with a sentence written for a
+        person ([#596](https://github.com/NobuData/ouroboros/issues/596)). One failed subsystem
+        is one degraded column, never a failed page. Always present, every member `null` when
+        everything answered.
+      additionalProperties: false
+      required: [pricing]
+      properties:
+        pricing:
+          type: [string, "null"]
+          description: |-
+            Why the price column is blank, or **null** when pricing answered. When set, every
+            row's `price` is `null` and its `display` is `"—"` — the same shape as *the catalog
+            covers nothing*, which is exactly why this field exists: it is the only way to tell
+            an outage from an unpriced model.
+          examples: ["Prices could not be looked up just now, so the price column is blank. Nothing else in the registry is affected."]
 
     ModelAliasWarning:
       type: object

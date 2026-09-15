@@ -6717,6 +6717,24 @@ export interface components {
         RegistryReadModel: {
             /** @description Every alias in the workspace, ordered by name, unbound ones included. */
             aliases: components["schemas"]["RegistryAlias"][];
+            degraded: components["schemas"]["RegistryDegraded"];
+        };
+        /**
+         * RegistryDegraded
+         * @description Which subsystems could not answer for this read, each with a sentence written for a
+         *     person ([#596](https://github.com/NobuData/ouroboros/issues/596)). One failed subsystem
+         *     is one degraded column, never a failed page. Always present, every member `null` when
+         *     everything answered.
+         */
+        RegistryDegraded: {
+            /**
+             * @description Why the price column is blank, or **null** when pricing answered. When set, every
+             *     row's `price` is `null` and its `display` is `"—"` — the same shape as *the catalog
+             *     covers nothing*, which is exactly why this field exists: it is the only way to tell
+             *     an outage from an unpriced model.
+             * @example Prices could not be looked up just now, so the price column is blank. Nothing else in the registry is affected.
+             */
+            pricing: string | null;
         };
         /**
          * ModelAliasWarning
@@ -16601,6 +16619,9 @@ export interface operations {
                 content: {
                     /**
                      * @example {
+                     *       "degraded": {
+                     *         "pricing": null
+                     *       },
                      *       "aliases": [
                      *         {
                      *           "id": "5eed000f-0000-4000-8000-000000000004",

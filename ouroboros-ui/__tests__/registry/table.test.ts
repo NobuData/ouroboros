@@ -14,10 +14,15 @@ import {
   MANAGE_PROVIDERS,
   NO_PROVIDER,
   ORG_OVERRIDE,
+  PRICE_UNAVAILABLE_TITLE,
   SWITCH_OFF_CONFIRM,
+  SWITCH_READ_ONLY,
   SWITCH_UNBOUND,
+  TABLE_FAILED_NOTE,
   TABLE_NOTE,
   TABLE_TITLE,
+  UNBOUND_STATE,
+  ownersAndAdmins,
   aliasCount,
   healthCell,
   inspectorTitle,
@@ -33,6 +38,10 @@ import {
   tableRows,
   usedByCell,
 } from "@/app/registry/table";
+import { PROVIDERS_PATH } from "@/app/paths";
+import { UNBOUND_HREF, UNBOUND_NOTICE } from "@/app/registry/create";
+import { INSPECTOR_READ_ONLY, UNBOUND_BANNER, UNBOUND_BANNER_HREF } from "@/app/registry/inspector";
+import { MEMBER_REASON, NO_PROVIDERS_NOTE } from "@/app/registry/view";
 
 import { SEEDED_ANTHROPIC_ID } from "../helpers/providers";
 import {
@@ -380,6 +389,38 @@ describe("the switch", () => {
 
   it("explains the unbound row's switch by pointing at the page that fixes it", () => {
     expect(SWITCH_UNBOUND).toMatch(/Providers & keys/);
+  });
+
+  it("tells the same unbound story the create dialog and the inspector tell (#596)", () => {
+    // Three surfaces, one state: each message is the shared sentence plus where the reader is
+    // standing, and each points at the page that fixes it.
+    for (const message of [SWITCH_UNBOUND, UNBOUND_BANNER, UNBOUND_NOTICE, NO_PROVIDERS_NOTE]) {
+      expect(message).toContain(UNBOUND_STATE);
+    }
+
+    expect(UNBOUND_BANNER_HREF).toBe(PROVIDERS_PATH);
+    expect(UNBOUND_HREF).toBe(PROVIDERS_PATH);
+    // …and none of them contradicts it with an older wording.
+    for (const message of [SWITCH_UNBOUND, UNBOUND_BANNER, UNBOUND_NOTICE]) {
+      expect(message).not.toMatch(/cannot be switched on|stay disabled/);
+    }
+  });
+
+  it("gives every read-only control the same explanation after naming itself (#596)", () => {
+    expect(ownersAndAdmins("Doing a thing")).toBe("Doing a thing is for workspace owners and admins.");
+    expect(SWITCH_READ_ONLY).toBe(ownersAndAdmins("Switching an alias on or off"));
+    expect(INSPECTOR_READ_ONLY).toBe(ownersAndAdmins("Editing an alias"));
+    expect(MEMBER_REASON).toBe(ownersAndAdmins("Creating and importing aliases"));
+  });
+
+  it("says a degraded price cell is an outage, not an unpriced model (#596)", () => {
+    expect(PRICE_UNAVAILABLE_TITLE).toMatch(/not an unpriced model/);
+    expect(PRICE_UNAVAILABLE_TITLE).not.toBe(ORG_OVERRIDE);
+  });
+
+  it("points the failed seat at the banner rather than repeating the reason or a reload", () => {
+    expect(TABLE_FAILED_NOTE).toMatch(/banner above/);
+    expect(TABLE_FAILED_NOTE).not.toMatch(/reload/i);
   });
 
   it("labels the confirmation's two controls", () => {
