@@ -137,6 +137,14 @@ export type WorkflowCodeChecks = components["schemas"]["WorkflowCodeChecks"];
  */
 export type LoopCheckRow = components["schemas"]["LoopCheckRow"];
 
+/**
+ * What **Validate** answers — V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)): the publish
+ * gate's verdict on one workflow file, with nothing written. `file.diagnostics` carries every registry and
+ * engine finding on its stage's lines, `checks` are the Loop Checks rows for them, and `findings` are the
+ * gate's own — what a publish of this draft would be refused with.
+ */
+export type WorkflowCodeValidation = components["schemas"]["WorkflowCodeValidation"];
+
 /** Where one stage call sits in a workflow file — the printer's span map entry (W.2). */
 export type NodeSpan = components["schemas"]["NodeSpan"];
 
@@ -323,6 +331,29 @@ export const workflows = {
     return unwrap(
       await client.GET("/api/v1/workflows/{slug}/code/checks", { params: { path: { slug } } }),
     );
+  },
+
+  /**
+   * **Validate** one workflow file — the code view's head action (V.6,
+   * [#174](https://github.com/NobuData/ouroboros/issues/174)).
+   *
+   * The draft's file, as {@link workflows.code} reads it, through the gate a publish runs — zod, the
+   * registry, then the engine — with **nothing written and no version created**.
+   *
+   * @param slug The workflow's slug, resolved against the rail by the caller.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The file with every finding on its lines, its Loop Checks rows, and the gate's findings.
+   * @throws {ApiError} What the service answered — `502 engine_unavailable` when the engine could not
+   *   check it, `409 workflow_code_unprojectable` for a draft with no spelling as code,
+   *   `404 workflow_not_found`.
+   */
+  async validateCode(slug: string, client: ApiClient = api()): Promise<WorkflowCodeValidation> {
+    const validation = unwrap(
+      await client.POST("/api/v1/workflows/{slug}/code/validate", { params: { path: { slug } } }),
+    );
+
+    // Restored for the reason `code` gives.
+    return { ...validation, file: { ...validation.file, outlineRef: null } };
   },
 
   /**

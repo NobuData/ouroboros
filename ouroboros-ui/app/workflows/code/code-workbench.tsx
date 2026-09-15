@@ -29,11 +29,15 @@ import { useUnsavedBuffer } from "../mode-guard";
 import { saveCode } from "./code-actions";
 import type { AnchoredDiagnostics, RevealRequest } from "./code-diagnostics";
 import { CodeEditor } from "./code-editor";
+import { useCodeFlows } from "./code-flows-context";
+import { stageRevealOf } from "./code-findings";
 import { type AnchoredOutline, type OutlineRow, outlineRows, stageReveal } from "./code-panel";
 import { CodePanel, CodePanelToggle } from "./code-panel-view";
-import { type CodeSaveStatus, codeSaveNote, isSaveKey } from "./code-save";
+import { type CodeSaveState, type CodeSaveStatus, codeSaveNote, isSaveKey } from "./code-save";
 import { ConflictDialog, DiagnosticsStrip, DivergedPanel, SaveFailedBanner } from "./code-save-surfaces";
 import { codeSessionStore, useCodeSession } from "./code-session";
+import { CURSOR_START, codeSync, cursorPosition, draftLabel } from "./code-status";
+import { CodeStatusBar } from "./code-status-bar";
 import {
   type CodeSession,
   EMPTY_SESSION,
@@ -137,6 +141,16 @@ import "./code-workbench.css";
  * editor's cursor, and the outline (`code-panel-view.tsx`). The outline is the file's span map, kept
  * with the text it was counted in — the read's, then each save's — so a jump is placed in the text on
  * screen the way a diagnostic is. Below 1000px the panel is hidden, and a toggle over the file shows it.
+ *
+ * ### The status bar, Validate and Publish (V.6, [#174](https://github.com/NobuData/ouroboros/issues/174))
+ *
+ * Under the route's file, the status bar says where the save loop stands against the visual editor's draft,
+ * which version the draft would publish as, and where the cursor is (`code-status.ts`). The head's
+ * **Validate** and **Publish** reach this file through the page's flows (`code-flows-session.tsx`): the
+ * workbench hands them a bench — write what is waiting, say what the page holds, put the cursor on a stage —
+ * and draws what they found. A validation's rows replace Loop Checks, and its findings, or a refused
+ * publish's, are drawn in the editor while the page still holds the draft they were found in. A parse error
+ * of the page's own save takes precedence, because it is about the text on the screen.
  *
  * ### The keyboard
  *
@@ -257,6 +271,48 @@ export function CodeWorkbench({
     onReverted: () => setDiagnostics(null),
   });
   const { schedule, flush, cancel } = saving;
+
+  // V.6 (#174): the page's Validate and Publish, and what they draw back here.
+  const flows = useCodeFlows();
+  const register = flows?.register;
+  const hasFile = file !== null;
+  // What the bench reads when the flows ask, so they see what the page holds now without registering again.
+  const held = useRef({ outline, etag, diverged });
+  useLayoutEffect(() => {
+    held.current = { outline, etag, diverged };
+  });
+
+  useLayoutEffect(() => {
+    if (register === undefined || !hasFile) return;
+
+    register({
+      // A kept text waiting beside a draft that moved is saved by nothing until the person chooses.
+      flush: () => (held.current.diverged ? Promise.resolve<CodeSaveState>("conflict") : flush()),
+      snapshot: () => ({ outline: held.current.outline, etag: held.current.etag }),
+      reveal: (node) => {
+        const current = held.current.outline;
+        const request = current === null ? null : stageRevealOf(current, node);
+        if (request !== null) setReveal(request);
+      },
+    });
+    return () => register(null);
+  }, [register, hasFile, flush]);
+
+  // Findings a validation or a refused publish drew — only over the draft they were found in. Once a save
+  // moves the etag they describe another text, and the checks panel says its rows predate the save instead.
+  const checked = flows?.checked ?? null;
+  const findings = useMemo<AnchoredDiagnostics | null>(
+    () => (checked !== null && checked.etag === etag ? { anchor: checked.anchor, items: checked.items } : null),
+    [checked, etag],
+  );
+  const validation = flows?.validation ?? null;
+  const readings = useMemo<PanelReadings | null>(
+    () =>
+      panel !== null && validation !== null && validation.checks.slug === file?.slug
+        ? { ...panel, checks: { ok: true, value: validation.checks } }
+        : panel,
+    [panel, validation, file?.slug],
+  );
 
   // Forget tabs and buffers of files the project no longer has. Not when the list could not be
   // read: an unread list is not an empty project.
@@ -422,8 +478,8 @@ export function CodeWorkbench({
   const rightPanelId = `${ids}-right-panel`;
   const tabId = (index: number) => `${ids}-tab-${index}`;
   const activeIndex = session.active === null ? -1 : session.tabs.indexOf(session.active);
-  // The panel explains the route's file, so it stands only while that file is in the pane.
-  const showPanel = panel !== null && file !== null && session.active === routePath;
+  // The panel and the status bar are about the route's file, so they stand only while it is in the pane.
+  const routeShown = file !== null && session.active === routePath;
 
   const route =
     file === null ? (
@@ -434,6 +490,7 @@ export function CodeWorkbench({
         diverged={writable && diverged}
         editable={editable}
         file={file}
+        findings={findings}
         onCursor={(pos, text) => setCursor({ pos, text })}
         onEdit={edit}
         onReloadTheirs={reloadTheirs}
@@ -444,7 +501,7 @@ export function CodeWorkbench({
         status={saving.status}
         text={editable ? bufferText(session, file.path, file.text) : file.text}
         toggle={
-          showPanel ? (
+          routeShown && readings !== null ? (
             <CodePanelToggle
               controls={rightPanelId}
               onToggle={() => setPanelOpen((current) => !current)}
@@ -484,18 +541,30 @@ export function CodeWorkbench({
           </div>
         </div>
 
-        {showPanel && (
+        {routeShown && readings !== null && (
           <CodePanel
             etag={etag}
             id={rightPanelId}
             onJump={jumpToStage}
             open={panelOpen}
             outline={stages}
-            readings={panel}
+            readings={readings}
             symbol={cursorSymbol}
           />
         )}
       </div>
+
+      {routeShown && (
+        <CodeStatusBar
+          cursor={cursor === null ? CURSOR_START : cursorPosition(cursor.text, cursor.pos)}
+          // A file printed from the version in force is a draft once anything has been written over it.
+          draft={draftLabel(
+            flows?.currentVersion ?? file.currentVersion,
+            saving.status.state === "idle" ? file.version : null,
+          )}
+          sync={writable ? codeSync(saving.status, diverged) : "synced"}
+        />
+      )}
 
       <ConflictDialog
         at={conflict?.at ?? new Date()}
@@ -869,6 +938,8 @@ function Pane({
  * @param props.status Where the save stands.
  * @param props.diverged Whether the buffer waits for the person's choice.
  * @param props.diagnostics The last refused save's diagnostics, or `null`.
+ * @param props.findings What a validation or a refused publish found in this draft, or `null` — drawn in the
+ *   editor when there are no parse diagnostics, which are about the text on the screen.
  * @param props.reveal The last jump asked for, or `null`.
  * @param props.onEdit Record an edit.
  * @param props.onReveal Jump to a diagnostic.
@@ -886,6 +957,7 @@ function RouteFile({
   status,
   diverged,
   diagnostics,
+  findings,
   reveal,
   onEdit,
   onReveal,
@@ -901,6 +973,7 @@ function RouteFile({
   status: CodeSaveStatus;
   diverged: boolean;
   diagnostics: AnchoredDiagnostics | null;
+  findings: AnchoredDiagnostics | null;
   reveal: RevealRequest | null;
   onEdit: (text: string) => void;
   onReveal: (item: CodeDiagnostic) => void;
@@ -925,7 +998,7 @@ function RouteFile({
       )}
 
       <CodeEditor
-        diagnostics={diagnostics}
+        diagnostics={diagnostics ?? findings}
         key={file.path}
         label={file.path}
         onChange={editable ? onEdit : undefined}

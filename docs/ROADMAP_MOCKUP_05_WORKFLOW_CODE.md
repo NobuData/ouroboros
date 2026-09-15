@@ -422,7 +422,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 | V.3 | #171 | 🟢 Done | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
 | V.4 | #172 | 🟢 Done | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
 | V.5 | #173 | 🟢 Done | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
-| V.6 | #174 | 🟡 Open | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui |
+| V.6 | #174 | 🟢 Done | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui, ouroboros-rest |
 | V.7 | #175 | 🟡 Open | ouroboros-ui: [V.7] Code-view states & guards | Read-only member mode, empty org, load/error, narrow-viewport | mvp, workflow, code-view, ui, design | N (after V.1–V.6) | Y | S | ouroboros-ui |
 | V.8 | #176 | 🟡 Open | ouroboros-ui: [V.8] Code-view e2e leg | Parity, edit→visual round-trip, publish, diagnostics, themes | mvp, workflow, code-view, ui, ci | N (after V.1–V.7) | Y | S | ouroboros-ui, .github |
 
@@ -694,7 +694,7 @@ OUTLINE      01▸analyze … 08⟲gate back-edge→04 · 09▸openPr   (click =
 
 ### Issue V.6 — ouroboros-ui: [V.6] Status bar & validate/publish flows
 
-> **GitHub issue:** #174 · **Status:** 🟡 Open · **Parent epic:** #162
+> **GitHub issue:** #174 · **Status:** 🟢 Done · **Parent epic:** #162
 
 - **Problem Statement:** The status bar states the editor's truth (sync, draft
   version, cursor), and Validate/Publish must run the shared pipelines.
@@ -710,6 +710,37 @@ OUTLINE      01▸analyze … 08⟲gate back-edge→04 · 09▸openPr   (click =
 - **Parallelism/Dependencies:** Needs V.4, WF-S.6, WF-R.2.
 - **Technical Stack:** React, generated client.
 - **Epic:** V
+- **Delivered (2026-09-15):** The status bar and both head actions, in `ouroboros-ui`:
+  - `app/workflows/code/code-status.ts` with `code-status-bar.tsx` and `.css`;
+  - `code-flows.ts`, `code-flows-context.ts`, `code-flows-session.tsx`, `code-flows-view.tsx` and
+    `code-flows.css`;
+  - `code-findings.ts`;
+  - a `validateCode` Server Action;
+  - one new REST route.
+
+  Four decisions were taken in-issue.
+  - **Validate got its own route, because none existed.** Engine validation ran only inside publish
+    or a dry run, and a dry run needs an issue. Asked on 2026-09-15, the choice was
+    `POST /api/v1/workflows/{slug}/code/validate` in `ouroboros-rest`. It is an additive contract
+    change, so `ouroboros-rest` and both OpenAPI documents went to 0.35.6. The route runs
+    `publish.gate.ts` itself (zod, registry, engine) over the stored draft and writes nothing.
+    Registry and engine findings are placed on their stages' lines by the new `placeFindings`, and
+    the Loop Checks rows are derived from the merged stream. It is every member's, like a dry run. An
+    engine that cannot answer is a `502`, never a pass.
+  - **The strip has a fifth state.** V.4's `failed` (a write waiting for its retry) reads *not
+    saved*, because calling it *synced* would be the optimistic reading the issue forbids. A kept
+    text beside a moved draft reads *conflict*. A file printed from the version in force with nothing
+    written reads `v14 in force`, not `v15 draft`.
+  - **Publish failures are anchored client-side, through the span map.** The dialog's `FindingList`
+    reads a definition holding only the file's stage ids in node order. Selecting a finding puts the
+    editor's cursor on the stage, and every finding is drawn on its stage's lines as the service
+    places Validate's.
+  - **Findings are drawn only over the draft they were found in.** After a later save the editor
+    drops them and the panel says its rows predate the save. A parse error from the page's own save
+    always takes precedence.
+
+  The visual head reflects a code-view publish because the success refreshes the route and both
+  heads read the rail. The two inert `…_SOON` reasons are retired. `ouroboros-ui` is now 0.74.0.
 
 ```
 ⟲ synced with visual editor · v15 draft            DSL analyzer · Ln 24, Col 18 · UTF-8

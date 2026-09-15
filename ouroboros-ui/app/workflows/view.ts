@@ -446,14 +446,6 @@ export function publishLabel(currentVersion: number | null): string {
 export const PUBLISH_NEEDS_WORKFLOW =
   "Publishing freezes a workflow's draft, and this page has none it could read.";
 
-/**
- * Why the code view's **Publish** cannot act yet. The visual editor's dialog is S.6's (#152); the code
- * view opens the same dialog once V.6 wires its status bar and validate flow to it.
- */
-export const PUBLISH_SOON =
-  "Publishing from the code view arrives with #174 — it opens the visual editor's publish dialog, " +
-  "with the same validation findings and change note.";
-
 /* ------------------------------------------------------------------ the segmented control */
 
 /**

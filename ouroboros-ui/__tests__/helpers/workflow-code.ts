@@ -3,6 +3,7 @@ import type {
   WorkflowCodeChecks,
   WorkflowCodeConfig,
   WorkflowCodeTree,
+  WorkflowCodeValidation,
   WorkflowRailEntry,
 } from "@/app/api/workflows";
 import type {
@@ -172,6 +173,23 @@ export function codeChecks(overrides: Partial<WorkflowCodeChecks> = {}): Workflo
         note: "models configured for analyze · plan · split · implement · review",
       },
     ],
+    ...overrides,
+  };
+}
+
+/**
+ * What V.6's `POST …/{slug}/code/validate` answers for the seeded `standard-fix` (#174): the file, its
+ * checks, and the gate's findings — none, by default, with the engine asked.
+ *
+ * @param overrides What this case is about.
+ * @returns The validation.
+ */
+export function codeValidation(overrides: Partial<WorkflowCodeValidation> = {}): WorkflowCodeValidation {
+  return {
+    file: workflowCode(),
+    checks: codeChecks(),
+    findings: [],
+    engineConsulted: true,
     ...overrides,
   };
 }

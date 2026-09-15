@@ -2768,10 +2768,12 @@ successful parse and when its editor unmounts, so a browser Back cannot leave a 
 [#170](https://github.com/NobuData/ouroboros/issues/170),
 [below](#the-editor-is-codemirror-6-and-that-is-a-recorded-exception)): editable for a role that
 may publish, and read-only for a member or a published version. A change is saved into the draft as
-it is typed ([below](#the-file-saves-as-it-is-typed)). **Validate** waits for V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)) and
-**Publish vN+1** for S.6's shared dialog (#152), each inert with its issue as the reason. Publish
-is drawn for an `owner` or `admin`; a member reaches the route, reads the file, and gets the same
-role note the visual editor gives (`studio-readonly-note.tsx`, shared).
+it is typed ([below](#the-file-saves-as-it-is-typed)). **Validate** runs the shared checks without
+publishing, and **Publish vN+1** opens S.6's shared dialog (#152) — both V.6's
+([#174](https://github.com/NobuData/ouroboros/issues/174),
+[below](#the-status-bar-validate-and-publish)). Publish is drawn for an `owner` or `admin`; a member
+reaches the route, reads the file, may validate it, and gets the same role note the visual editor
+gives (`studio-readonly-note.tsx`, shared).
 
 **States.** [`app/workflows/code/code-view.ts`](app/workflows/code/code-view.ts) decides six: the
 visual editor's five, in the code view's words — an empty workspace and an unknown slug point at
@@ -3221,8 +3223,8 @@ reached, with the simulator's verdict and annotation and the predicate it tested
 could answer it). Under each stage it lists **every edge out of it**: taken, not taken or loop, each with
 the engine's explanation and each loop with its retry bound. A step's title selects its stage without
 closing the sheet. **Any new draft clears the overlay**, a move or an undo included, because a walk of
-another draft would be a lie about this one. The code view's **Publish** stays inert, naming
-[#174](https://github.com/NobuData/ouroboros/issues/174), which wires the same dialog in.
+another draft would be a lie about this one. The code view's **Publish** opens the same dialog
+([#174](https://github.com/NobuData/ouroboros/issues/174), [below](#the-status-bar-validate-and-publish)).
 
 **Each criterion is a suite.** `studio-flows.test.tsx` drives the session, head, editor on the real
 canvas, dialogs and toast over mocked Server Actions:
@@ -3280,6 +3282,57 @@ The suites run on the golden files: `code-panel.test.ts` (decisions, with the pr
 `standard-fix.loop.ts` and `spans.json`), `code-panel-view.test.tsx` (the drawing, C7 against the
 mockup's own row, both palettes), `code-panel-flow.test.tsx` (the whole page: the cursor, the jumps,
 the toggle) and `code-panel-styles.test.ts` (the sheet).
+
+### The status bar, Validate and Publish
+
+V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)) closes the workbench with mockup 05's
+`.statusbar` and makes the head's two actions run the pipelines the visual editor runs.
+
+```
+⟲ synced with visual editor · v15 draft               DSL analyzer · Ln 24, Col 18 · UTF-8
+  └ saving… │ parse error │ conflict │ not saved          └ C5: never "LSP ready"
+
+[Validate]    ─▶ flush the save ─▶ POST …/{slug}/code/validate ─▶ Loop Checks + editor diagnostics
+                                    (zod ▸ registry ▸ engine, nothing written)
+[Publish v15] ─▶ S.6's PublishDialog ─▶ flush ─▶ publishWorkflow ─┬ refused: findings in the dialog and the file
+                                                                   └ taken: v16 on the head, the strip, and Visual
+```
+
+**The strip says only what was observed** ([`code-status.ts`](app/workflows/code/code-status.ts),
+drawn by [`code-status-bar.tsx`](app/workflows/code/code-status-bar.tsx)). *synced with visual editor*
+holds only while nothing typed is unwritten. From the first keystroke it reads *saving…*, then
+*parse error* while the service refuses the text, *conflict* when another editor's change stops the
+loop or a kept text waits beside a moved draft, and *not saved* while a failed write waits for its
+retry. `vN draft` counts from the version in force, as Publish does; a file printed from the version
+in force with nothing written reads `v14 in force`. `Ln`/`Col` is the editor's cursor in line feeds
+and UTF-16 units, the service's own range units. The right cluster reads **`DSL analyzer`**, not the
+mockup's `TypeScript 5.9 · LSP ready` (decision **C5**): there is no language server behind this editor,
+and #183's ADR is where that wording is revisited.
+
+**Validate is "check my work".** It writes what is waiting, then calls the `validateCode` Server
+Action. `ouroboros-rest` runs the publish gate itself (zod, the registry, then the engine) over the
+stored draft and writes nothing. The answer's rows replace Loop Checks. Its findings are drawn in the
+editor while the page still holds the draft they were found in; after a later save, the panel says
+its rows predate the save instead. A file that does not parse, a conflict or a failed write stops it
+first, and an engine that cannot answer is said in words, never reported green. Every member may
+validate.
+
+**Publish is S.6's dialog** ([`code-flows-session.tsx`](app/workflows/code/code-flows-session.tsx)).
+Its submit writes what is waiting, then calls the same `publishWorkflow` the canvas calls. A refusal's
+findings are listed in the dialog, anchored through the file's span map
+([`code-findings.ts`](app/workflows/code/code-findings.ts)). Each one puts the editor's cursor on its
+stage when selected, and all are drawn on their stages' lines. A success moves **Publish** and the
+strip to the next version and leaves the notice. It also refreshes the route, so the rail, and the
+visual editor's head that reads it, show the same version.
+
+Without a file on the page (a refused read, or a draft with no spelling as code) both actions are
+inert and say why.
+
+`code-status.test.ts`, `code-flows.test.ts` and `code-findings.test.ts` hold the decisions.
+`code-flows-flow.test.tsx` drives the page over the three mocked Server Actions: every save state in the
+strip, the live cursor, Validate's checks and diagnostics with no publish, the version bump, and a
+refused publish's findings. `code-status-bar-styles.test.ts` holds the sheets, and
+`workflows-code-validate.test.ts` holds the wire.
 
 ### Code intelligence — completions and hover docs
 

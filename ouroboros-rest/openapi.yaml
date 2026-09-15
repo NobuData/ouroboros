@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.5"
+  version: "0.35.6"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -12913,6 +12913,103 @@ paths:
                     status: down
                     message: SELECT 1 failed (ECONNREFUSED)
 
+  /api/v1/workflows/{slug}/code/validate:
+    post:
+      tags: [workflows]
+      summary: Validate a workflow file without publishing it
+      description: |-
+        Mockup 05's **Validate** — V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)).
+        The file `GET /api/v1/workflows/{slug}/code` serves is put through **the publish gate**,
+        exactly as `POST /api/v1/workflows/{id}/publish` puts it: the DSL's zod stage, then the
+        registry's governance stage, then `ouroboros-engine`'s `POST /v0/workflows/validate`. A
+        document one stage refuses is not shown to the next.
+
+        **Nothing is written and no version is created.** This is *check my work*: a draft this
+        answers green is one publishing would accept at this moment, and one it refuses is refused
+        with the same findings a publish would carry.
+
+        The answer is drawn by the code view. `file.diagnostics` carries every `registry` and
+        `engine` finding as an `error` on the lines of the stage it is about, beside the file's own
+        diagnostics; `checks` are the Loop Checks rows derived from them; `findings` are the gate's,
+        verbatim.
+
+        **A check that could not run is not a pass**: an engine that cannot answer is a
+        `502 engine_unavailable`, never a green verdict on the zod stage alone.
+
+        **Every member may validate**, `viewer` included — it writes nothing.
+      operationId: validateWorkflowCode
+      parameters:
+        - $ref: "#/components/parameters/WorkflowSlug"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The verdict, drawn as the file's diagnostics and its Loop Checks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowCodeValidation"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `workflow_not_found` — no workflow with that slug, **or none this caller may know
+            about**; `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: workflow_not_found
+                message: No such workflow.
+                details:
+                  slug: standard-fix
+        "409":
+          description: |-
+            `workflow_code_unprojectable` — the document cannot be shown as code without changing
+            it, so there is no file to validate. `details.findings` carries what the shared validator
+            reports about it. Finish the draft on the canvas.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the slug is not a slug.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `engine_unavailable` — `ouroboros-engine` could not validate the definition. Nothing
+            stands in for its opinion, so the validation is refused rather than answered green.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately. Nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   # How a caller is recognised. One scheme, because there is one: the cookie the sign-in
   # flow lands.
@@ -21382,6 +21479,38 @@ components:
             against task routes, or a reference failed.
           items:
             $ref: "#/components/schemas/LoopCheckRow"
+
+    WorkflowCodeValidation:
+      type: object
+      title: WorkflowCodeValidation
+      description: |-
+        What mockup 05's **Validate** answers (V.6,
+        [#174](https://github.com/NobuData/ouroboros/issues/174)) — the publish gate's verdict on
+        one workflow file, as the code view draws it. Nothing is written and no version is created.
+      additionalProperties: false
+      required: [file, checks, findings, engineConsulted]
+      properties:
+        file:
+          $ref: "#/components/schemas/WorkflowCode"
+          description: |-
+            The file validated, as `GET …/code` serves it — except that `diagnostics` also carries
+            every `registry` and `engine` finding, as an `error` on the lines of the stage it is
+            about. The zod stage's findings are already among the file's own diagnostics.
+        checks:
+          $ref: "#/components/schemas/WorkflowCodeChecks"
+          description: The Loop Checks rows derived from those diagnostics.
+        findings:
+          type: array
+          description: |-
+            Every finding the gate reported, in its order — what a publish of this draft would be
+            refused with right now. Empty is the only verdict that may publish.
+          items:
+            $ref: "#/components/schemas/WorkflowFinding"
+        engineConsulted:
+          type: boolean
+          description: |-
+            Whether the engine was asked. `false` exactly when the zod or registry stage refused
+            first, so a verdict with no findings always carries `true`.
 
     SaveWorkflowCodeRequest:
       type: object

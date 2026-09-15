@@ -288,13 +288,10 @@ export function codeHead(state: CodeState): StudioHead {
 
 /* ------------------------------------------------------------------ the actions */
 
-/** Mockup 05's ghost action. */
+/**
+ * Mockup 05's ghost action — V.6's **Validate** (#174). Its flow and its reasons are `code-flows.ts`'.
+ */
 export const VALIDATE_LABEL = "Validate";
-
-/** Why **Validate** cannot act yet — V.6 runs it, and fills Loop Checks with what it finds. */
-export const VALIDATE_SOON =
-  "Validating arrives with #174 — it runs the shared checks and fills Loop Checks without " +
-  "publishing.";
 
 /* ------------------------------------------------------------------ the failed banner */
 

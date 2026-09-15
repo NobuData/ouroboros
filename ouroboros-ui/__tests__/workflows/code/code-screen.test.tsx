@@ -17,8 +17,9 @@ import {
   UNPROJECTABLE_ACTION,
   UNPROJECTABLE_TITLE,
   VALIDATE_LABEL,
-  VALIDATE_SOON,
 } from "@/app/workflows/code/code-view";
+import { PUBLISH_NEEDS_FILE, VALIDATE_NEEDS_FILE } from "@/app/workflows/code/code-flows";
+import { STATUS_BAR_LABEL } from "@/app/workflows/code/code-status";
 import {
   EMPTY_TITLE,
   FAILED_TITLE,
@@ -26,7 +27,7 @@ import {
   RAIL_FAILED_HEADLINE,
   SEAT_FAILED_NOTE,
 } from "@/app/workflows/states";
-import { COPILOT_SOON_NOTE, PUBLISH_SOON, STUDIO_EYEBROW } from "@/app/workflows/view";
+import { COPILOT_SOON_NOTE, STUDIO_EYEBROW } from "@/app/workflows/view";
 
 import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../../helpers/palettes";
 import {
@@ -51,8 +52,13 @@ import { railEntry } from "../../helpers/workflows";
 
 // The failed banner's retry wants the App Router.
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
-// The file's save is a Server Action (V.4, #172). Nothing here types, so it is never answered.
-vi.mock("@/app/workflows/code/code-actions", () => ({ saveCode: vi.fn(() => new Promise(() => undefined)) }));
+// The file's save and Validate are Server Actions (V.4, #172; V.6, #174), and Publish is S.6's shared one.
+// Nothing here types, validates or publishes — the flows are `code-flows-flow.test.tsx`'s.
+vi.mock("@/app/workflows/code/code-actions", () => ({
+  saveCode: vi.fn(() => new Promise(() => undefined)),
+  validateCode: vi.fn(() => new Promise(() => undefined)),
+}));
+vi.mock("@/app/workflows/draft-actions", () => ({ publishWorkflow: vi.fn(() => new Promise(() => undefined)) }));
 
 const { CodeScreen } = await import("@/app/workflows/code/code-screen");
 
@@ -75,7 +81,7 @@ describe("the page head, on the seeded standard-fix", () => {
     expect(screen.getByText(CODE_SUBLINE, { selector: ".studio__sub" })).toBeInTheDocument();
   });
 
-  it("draws the mockup's two actions — Validate and Publish v15 — each inert with the issue it waits for", () => {
+  it("draws the mockup's two actions — Validate (ghost) and Publish v15 (primary) — live over a file (V.6)", () => {
     const { container } = render(
       <CodeScreen mayAdminister readings={codeReadings()} role="owner" />,
     );
@@ -83,17 +89,26 @@ describe("the page head, on the seeded standard-fix", () => {
     const validate = screen.getByRole("button", { name: VALIDATE_LABEL });
     const publish = screen.getByRole("button", { name: "Publish v15" });
 
-    for (const [control, reason] of [
-      [validate, VALIDATE_SOON],
-      [publish, PUBLISH_SOON],
-    ] as const) {
-      expect(control).toHaveAttribute("aria-disabled", "true");
-      expect(control).toHaveAttribute("title", reason);
-      expect(control).not.toBeDisabled();
+    for (const control of [validate, publish]) {
+      expect(control).not.toHaveAttribute("aria-disabled");
+      expect(control).not.toHaveAttribute("title");
     }
     expect(validate).toHaveClass("ou-btn--ghost");
     expect(publish).toHaveClass("ou-btn--primary");
     expect(container.querySelectorAll(".studio__actions button")).toHaveLength(2);
+  });
+
+  it("closes the workbench with mockup 05's status bar", () => {
+    render(<CodeScreen mayAdminister readings={codeReadings()} role="owner" />);
+
+    const bar = within(screen.getByRole("region", { name: FILE_LABEL })).getByRole("group", {
+      name: STATUS_BAR_LABEL,
+    });
+
+    expect(bar).toHaveTextContent("⟲ synced with visual editor");
+    expect(bar).toHaveTextContent("v15 draft");
+    expect(bar).toHaveTextContent("DSL analyzer · Ln 1, Col 1 · UTF-8");
+    expect(bar).not.toHaveTextContent(/LSP ready|TypeScript/);
   });
 
   it("counts the publish label from the version in force", () => {
@@ -314,7 +329,17 @@ describe("a file whose read was refused", () => {
     expect(banner).toHaveTextContent(CODE_FAILED_HEADLINE);
     expect(banner).toHaveTextContent("Refused.");
     expect(screen.getByText(CODE_SEAT_UNREAD_NOTE)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Publish v15" })).toBeInTheDocument();
+
+    // Both act on the file, and there is none: inert, saying so (design system § 3.5).
+    for (const [name, reason] of [
+      [VALIDATE_LABEL, VALIDATE_NEEDS_FILE],
+      ["Publish v15", PUBLISH_NEEDS_FILE],
+    ] as const) {
+      const control = screen.getByRole("button", { name });
+      expect(control).toHaveAttribute("aria-disabled", "true");
+      expect(control).toHaveAttribute("title", reason);
+    }
+    expect(screen.queryByRole("group", { name: STATUS_BAR_LABEL })).toBeNull();
   });
 });
 

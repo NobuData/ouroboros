@@ -4,6 +4,7 @@ import {
   diagnoseDocument,
   fromParseIssues,
   mergeCodeDiagnostics,
+  placeFindings,
   sortCodeDiagnostics,
   spanRange,
   type CodeDiagnostic,
@@ -326,6 +327,96 @@ describe("where a finding lands", () => {
     const elsewhere = spans.map((span) => ({ ...span, startLine: span.startLine + 900 }));
 
     expect(() => diagnoseDocument({ text, spans: elsewhere, document })).toThrow(RangeError);
+  });
+});
+
+describe("placing the publish gate's findings (V.6)", () => {
+  /** The minimal document, printed — `start` then `done`. */
+  function printedMinimal() {
+    const document = minimal();
+    const { text, spans } = printWorkflowCode("minimal", document);
+    return { text, spans, document };
+  }
+
+  it("puts a finding with a node pointer on that stage's lines, as an error by default", () => {
+    const input = printedMinimal();
+
+    expect(
+      placeFindings(
+        [
+          {
+            code: "engine.stage_refused",
+            message: "The engine refuses it.",
+            path: "/nodes/1",
+            node: "done",
+          },
+        ],
+        input,
+      ),
+    ).toEqual([
+      {
+        severity: "error",
+        range: spanRange(input.text, new LineMap(input.text), input.spans[1]),
+        code: "engine.stage_refused",
+        message: "The engine refuses it.",
+        node: "done",
+      },
+    ]);
+  });
+
+  it("reads a finding with no path by its node, and an edge's by the stage it leaves", () => {
+    const input = printedMinimal();
+    const lines = new LineMap(input.text);
+
+    const [byNode] = placeFindings(
+      [{ code: "reference.unknown_alias", message: "No such alias.", node: "done" }],
+      input,
+    );
+    const [byEdge] = placeFindings(
+      [
+        {
+          code: "engine.edge_refused",
+          message: "No such route.",
+          edge: { from: "start", to: "done" },
+        },
+      ],
+      input,
+    );
+
+    expect(byNode.range).toEqual(spanRange(input.text, lines, input.spans[1]));
+    expect(byEdge).toMatchObject({
+      node: "start",
+      range: spanRange(input.text, lines, input.spans[0]),
+    });
+  });
+
+  it("puts a finding about no stage on the defineLoop line", () => {
+    const input = printedMinimal();
+
+    expect(placeFindings([{ code: "engine.document", message: "Not runnable." }], input)).toEqual([
+      {
+        severity: "error",
+        range: { line: 3, column: 1, endLine: 3, endColumn: 39 },
+        code: "engine.document",
+        message: "Not runnable.",
+      },
+    ]);
+  });
+
+  it("takes the severity it is given, and sorts what it places", () => {
+    const placed = placeFindings(
+      [
+        { code: "b", message: "Later in the file.", node: "done" },
+        { code: "a", message: "Earlier in the file.", node: "start" },
+      ],
+      printedMinimal(),
+      "warning",
+    );
+
+    expect(placed.map((item) => [item.severity, item.code])).toEqual([
+      ["warning", "a"],
+      ["warning", "b"],
+    ]);
   });
 });
 

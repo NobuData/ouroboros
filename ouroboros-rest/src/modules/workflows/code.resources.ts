@@ -6,6 +6,7 @@
  * ```
  * WorkflowCode          one workflow as a file: its text, span map and diagnostics, the draft's etag
  * WorkflowCodeChecks    the Loop Checks panel for that file
+ * WorkflowCodeValidation the publish gate's verdict on that file, drawn as diagnostics and checks
  * WorkflowCodeTree      the explorer: every file the project has, and nothing it does not
  * WorkflowCodeConfig    ouroboros.config.ts, read-only and printed from the registry
  * WorkflowCodeIssue     one reason a saved file was refused, where an editor underlines it
@@ -46,6 +47,7 @@ import type { LoopCheckRow } from "./code.checks";
 import type { CodeDiagnostic } from "./code.diagnostics";
 import type { CodeRange, WorkflowCodeErrorCode } from "./code.errors";
 import type { NodeSpan } from "./code.printer";
+import type { PublishFinding, PublishVerdict } from "./publish.gate";
 import type { WorkflowRegistryRow } from "./stats.repository";
 
 /** The directory the workflow files live in. */
@@ -135,6 +137,24 @@ export interface WorkflowCodeChecks {
   readonly version: number | null;
   /** The rows, in the panel's order. Never an infra row (decision **C7**). */
   readonly rows: readonly LoopCheckRow[];
+}
+
+/**
+ * What **Validate** answers — V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)): the
+ * publish gate's verdict on the file's document, as the code view draws it, and nothing written.
+ */
+export interface WorkflowCodeValidation {
+  /**
+   * The file validated, its `diagnostics` now also carrying every registry and engine finding on
+   * the lines of the stage it is about, as an `error`.
+   */
+  readonly file: WorkflowCode;
+  /** The Loop Checks rows for those diagnostics — the panel as the gate left it. */
+  readonly checks: WorkflowCodeChecks;
+  /** Every finding the gate reported, in its order. Empty is what may be published. */
+  readonly findings: readonly PublishFinding[];
+  /** Whether the engine was asked: `false` exactly when an earlier stage refused first. */
+  readonly engineConsulted: boolean;
 }
 
 /** What a file of the explorer is. */
@@ -255,6 +275,29 @@ export function workflowCodeChecks(
     readOnly: file.readOnly,
     version: file.version,
     rows,
+  };
+}
+
+/**
+ * One file's validation.
+ *
+ * @param workflow - The entity: its slug and the version in force.
+ * @param file - The file, its diagnostics already merged with the gate's findings.
+ * @param rows - The rows for those diagnostics, from `code.checks.ts`.
+ * @param verdict - What the publish gate decided.
+ * @returns The validation.
+ */
+export function workflowCodeValidation(
+  workflow: Pick<Workflow, "slug" | "current_version">,
+  file: ProjectedFile,
+  rows: readonly LoopCheckRow[],
+  verdict: PublishVerdict,
+): WorkflowCodeValidation {
+  return {
+    file: workflowCode(workflow, file),
+    checks: workflowCodeChecks(workflow, file, rows),
+    findings: verdict.findings,
+    engineConsulted: verdict.engineConsulted,
   };
 }
 

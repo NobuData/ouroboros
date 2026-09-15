@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
 
-import { workflowCode } from "../../helpers/workflow-code";
+import { codeValidation, workflowCode } from "../../helpers/workflow-code";
 
 /**
  * The code editor's save hop (V.4, #172).
@@ -14,15 +14,46 @@ import { workflowCode } from "../../helpers/workflow-code";
  */
 
 const saveCodeCall = vi.fn();
+const validateCodeCall = vi.fn();
 
 vi.mock("@/app/api/workflows", () => ({
-  workflows: { saveCode: (...args: unknown[]) => saveCodeCall(...args) },
+  workflows: {
+    saveCode: (...args: unknown[]) => saveCodeCall(...args),
+    validateCode: (...args: unknown[]) => validateCodeCall(...args),
+  },
 }));
 
-const { saveCode } = await import("@/app/workflows/code/code-actions");
+const { saveCode, validateCode } = await import("@/app/workflows/code/code-actions");
 
 beforeEach(() => {
   saveCodeCall.mockReset();
+  validateCodeCall.mockReset();
+});
+
+describe("validateCode (V.6, #174)", () => {
+  it("passes the slug and nothing else through, and answers the gate's verdict", async () => {
+    const validation = codeValidation();
+    validateCodeCall.mockResolvedValue(validation);
+
+    await expect(validateCode("standard-fix")).resolves.toEqual({ ok: true, value: validation });
+    expect(validateCodeCall).toHaveBeenCalledExactlyOnceWith("standard-fix");
+  });
+
+  it("answers an engine that could not check the file as a refusal the page draws", async () => {
+    validateCodeCall.mockRejectedValue(new ApiError(502, "engine_unavailable", "The engine is down.", {}));
+
+    await expect(validateCode("standard-fix")).resolves.toEqual({
+      ok: false,
+      refusal: { code: "engine_unavailable", message: "The engine is down.", details: {} },
+    });
+  });
+
+  it("lets anything that is not an ApiError travel — the redirect signal above all", async () => {
+    const redirect = new Error("NEXT_REDIRECT");
+    validateCodeCall.mockRejectedValue(redirect);
+
+    await expect(validateCode("standard-fix")).rejects.toBe(redirect);
+  });
 });
 
 describe("saveCode", () => {

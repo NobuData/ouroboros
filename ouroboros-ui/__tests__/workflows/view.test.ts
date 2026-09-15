@@ -12,7 +12,6 @@ import {
   NO_DRAFT,
   NO_TRIGGER,
   PUBLISH_NEEDS_WORKFLOW,
-  PUBLISH_SOON,
   STUDIO_EYEBROW,
   BLANK_DEFINITION,
   canvasDefinition,
@@ -336,7 +335,7 @@ describe("the actions", () => {
   it("names the issue each inert action waits for", () => {
     // § 3.5: a control that cannot act says what is missing, and the reason is a usable answer
     // to "when?" rather than the word *soon*.
-    for (const reason of [BROWSE_TEMPLATES_SOON, PUBLISH_SOON]) {
+    for (const reason of [BROWSE_TEMPLATES_SOON]) {
       expect(reason).toMatch(/#\d+/);
     }
   });
