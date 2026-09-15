@@ -2700,7 +2700,7 @@ The same loop as the visual canvas — every graph compiles to this typed DSL an
 ──────────────────────────────────────────────────────────────────────────────────────────
  Visual   Code   Copilot soon
           ▔▔▔▔
-┌ workflows/standard-fix.loop.ts    Printed from the draft · Edits are not saved yet — saving arrives with #172. ┐
+┌ workflows/standard-fix.loop.ts                              Printed from the draft · Saves as you type. ┐
 │  1  import { defineLoop, trigger, llm, … } from "@ouroboros/sdk";                            │
 │  2                                                                                            │
 │  3▌ export default defineLoop("standard-fix", {▏                            ← current line    │
@@ -2727,8 +2727,8 @@ successful parse and when its editor unmounts, so a browser Back cannot leave a 
 **The file is in the editor.** It opens in CodeMirror (V.2,
 [#170](https://github.com/NobuData/ouroboros/issues/170),
 [below](#the-editor-is-codemirror-6-and-that-is-a-recorded-exception)): editable for a role that
-may publish, and read-only for a member or a published version. Until the save loop (V.4) lands,
-a change stays in the tab and the card says so. **Validate** waits for V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)) and
+may publish, and read-only for a member or a published version. A change is saved into the draft as
+it is typed ([below](#the-file-saves-as-it-is-typed)). **Validate** waits for V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)) and
 **Publish vN+1** for S.6's shared dialog (#152), each inert with its issue as the reason. Publish
 is drawn for an `owner` or `admin`; a member reaches the route, reads the file, and gets the same
 role note the visual editor gives (`studio-readonly-note.tsx`, shared).
@@ -2751,7 +2751,7 @@ beside a tab strip, over the open file.
 
 ```
 ┌ EXPLORER · ACME ROBOTICS ──┬ ●standard-fix.loop.ts × │ ouroboros.config.ts × ┐
-│ ▾ workflows/               │ Printed from the draft · Edits are not saved yet …  │
+│ ▾ workflows/               │ Printed from the draft · Saves as you type.         │
 │   standard-fix.loop.ts  ◀  │  1  import { defineLoop, … } from "@ouroboros/sdk"; │
 │   feature-loop.loop.ts     │  2                                                  │
 │   …                        │  3  export default defineLoop("standard-fix", {     │
@@ -2782,12 +2782,62 @@ to another workflow, and a reload. Storage that throws leaves the store working 
 modified-dot is that buffer and nothing else.** The edit sets it. Typing the text back, a later read
 that caught up, or `markSaved` clears it. `markSaved` is the call V.4
 ([#172](https://github.com/NobuData/ouroboros/issues/172)) makes when a save succeeds. Closing a
-tab keeps its buffer.
+tab keeps its buffer, and each buffer keeps the etag it was typed under.
 
 **Keyboard.** The tree is the WAI-ARIA tree pattern: arrows, Home, End, and Enter or Space. The
 strip is the tabs pattern: one tab stop, Left and Right to move, and Delete to close. **Alt+W**
 closes the open tab from anywhere in the workbench, because ⌘W and Ctrl+W close the browser's tab.
 As in the mockup, the explorer is hidden below 1000px.
+
+### The file saves as it is typed
+
+V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)) is the editing loop, on U.3's
+`PUT /api/v1/workflows/{slug}/code`. Every edit goes to the tab's buffer first, then to
+[`use-code-save.ts`](app/workflows/code/use-code-save.ts), which writes the whole file once typing has
+rested for 800 ms, or at once on **⌘S** / **Ctrl+S**. The write goes through the `saveCode` Server
+Action ([`code-actions.ts`](app/workflows/code/code-actions.ts)) with the draft's etag in `If-Match`.
+What each answer means is decided in [`code-save.ts`](app/workflows/code/code-save.ts):
+
+```
+type ─ debounce ─ PUT (If-Match) ─▶ 200  dot clears · etag moves
+                                  ├▶ 422  squiggles + gutter markers + strip · text kept · draft untouched
+                                  ├▶ 409  conflict dialog: Keep mine │ Reload theirs
+                                  └▶ offline / 5xx  banner with the real reason · retried
+```
+
+**A typo never reaches the draft (decision C4).** The service parses before it writes, so a file that
+does not read is a `422 workflow_code_invalid` that changes nothing. The canvas keeps showing the last
+draft that parsed. The text stays in the tab with its dot. The response's `details.diagnostics` are
+drawn by CodeMirror's lint gutter as squiggles, gutter markers and a hover card, and counted in a strip
+under the editor. The strip's first message jumps to its place. The ranges count the text that was
+*sent*, so [`code-diagnostics.ts`](app/workflows/code/code-diagnostics.ts) moves them past anything typed
+since. After that, CodeMirror carries them through later edits. While the file does not parse, the mode
+guard holds the buffer, so switching to Visual asks first. Confirming the switch drops the buffer, which
+keeps the prompt's *discards it* true. The next edit is the next attempt, and a save that parses clears
+all of it.
+
+**No keystroke is lost.** One write is in flight at most. Whatever is typed meanwhile is pending, and is
+written next with the etag the first write was answered with. A save's answer is the file printed
+canonically, and it never replaces the editor's text. The dot is measured from the text that was
+*sent*, so it stays up for anything typed while the save was in flight. When the page is hidden, left
+or unmounted, anything waiting is written at once.
+
+**A concurrent edit asks.** A `409 workflow_draft_conflict` stops the loop, and nothing is ever sent
+with `*`. The dialog names the editor that changed the draft and when. **Keep mine** keeps the buffer
+and re-reads the page. The route keys the workbench by the file's etag, so the fresh read starts a fresh
+loop. A buffer whose base is neither the text read nor typed under the etag read is **diverged**
+(`isDiverged`). Nothing saves it; a panel shows a line diff
+([`code-diff.ts`](app/workflows/code/code-diff.ts)) with **Save mine over theirs** and **Reload
+theirs**. The same check catches a buffer an earlier page left over a draft that has since moved. The
+dialog's **Reload theirs** drops the buffer and re-reads; dismissing the dialog with Escape keeps mine,
+because dismissing a question must never be the answer that drops text.
+
+**A write that did not arrive says why.** Offline, or a service error, keeps the text and draws
+DASH-I.7's retry banner ([#86](https://github.com/NobuData/ouroboros/issues/86)) over the editor. Its
+reason is *This browser is offline* first, then the service's own sentence, then that nothing came
+back. The write is retried after 2 s, doubling up to 30 s, at once when the browser comes back online,
+and whenever **Retry** is pressed. A refusal a retry cannot change, such as `403`, is said and not
+retried on its own.
 
 ### The editor is CodeMirror 6, and that is a recorded exception
 
@@ -2837,8 +2887,8 @@ would need a generator step and would build a tree nothing reads, since the pars
 file is the service's (V.4). The highlighter gives each class a CSS class and no style.
 
 **Two variants.** A role that may publish gets the editable editor on any file the service does not
-mark `readOnly`. The card says *Edits are not saved yet — saving arrives with #172*, because until
-V.4 a change stays in the tab. A member, or anyone reading a published version, gets the read-only
+mark `readOnly`. It carries the lint gutter for a refused save, and the card says where the save
+stands. A member, or anyone reading a published version, gets the read-only
 variant. It has no caret, no current line, no history and no keymap, and carries `aria-readonly`.
 It stays focusable, so the keyboard can still scroll and select. The config file (V.3,
 [#171](https://github.com/NobuData/ouroboros/issues/171)) takes the same `readOnly`.

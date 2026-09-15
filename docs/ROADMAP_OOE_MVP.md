@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**199 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**200 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
-| 🟡 **In progress** | P7 | **34** of 43 |
+| 🟡 **In progress** | P7 | **35** of 43 |
 | — **Not started** | P8–P17 | 0 of 246 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1321,7 +1321,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **43 issues** · 137 complexity points · order **#166–#208** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md`, `ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`, + the held-back registry tail
-> **Status:** 🟡 **In progress** — 33 of 43 issues closed
+> **Status:** 🟡 **In progress** — 35 of 43 issues closed
 
 **Goal.** Define the workflow domain and its immutable versioning, the DSL JSON Schema shared by REST and engine, the pluggable `TicketSourceProvider` SPI, validation/triggers/dry-run, the authoring studio (mockup 04), and the code projection with proven round-trip (mockup 05).
 
@@ -1367,7 +1367,7 @@ the blockquote above that records what it did and what it did differently.
 | 197 | **V.2** | ✅ [#170](https://github.com/NobuData/ouroboros/issues/170) | CodeMirror foundation & DSL highlighting | ouroboros-ui | L | V.1 |
 | 198 | **V.3** | ✅ [#171](https://github.com/NobuData/ouroboros/issues/171) | File tree & tab strip | ouroboros-ui | M | U.3, V.1 |
 | 199 | **S.6** | ✅ [#152](https://github.com/NobuData/ouroboros/issues/152) | Draft, publish & dry-run flows | ouroboros-ui | M | R.2, S.4, S.5 |
-| 200 | **V.4** | [#172](https://github.com/NobuData/ouroboros/issues/172) | Edit, autosave & parse-error surfaces | ouroboros-ui | M | U.3, V.2 |
+| 200 | **V.4** | ✅ [#172](https://github.com/NobuData/ouroboros/issues/172) | Edit, autosave & parse-error surfaces | ouroboros-ui | M | U.3, V.2 |
 | 201 | **V.5** | [#173](https://github.com/NobuData/ouroboros/issues/173) | Right panel — checks, types, outline | ouroboros-ui | M | V.2, W.1, W.2 |
 | 202 | **CI.6** | [#596](https://github.com/NobuData/ouroboros/issues/596) | Registry states & guards | ouroboros-ui | S | CI.2, CI.5 |
 | 203 | **S.7** | [#153](https://github.com/NobuData/ouroboros/issues/153) | Studio states & guards | ouroboros-ui | S | S.1, S.6 |

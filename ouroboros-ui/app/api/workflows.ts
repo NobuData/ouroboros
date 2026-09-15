@@ -118,6 +118,14 @@ export type CodeSymbol = components["schemas"]["WorkflowCodeSymbol"];
 export type CodeSignaturePart = components["schemas"]["WorkflowCodeSignaturePart"];
 
 /**
+ * One entry of the code view's diagnostics stream — W.2
+ * ([#178](https://github.com/NobuData/ouroboros/issues/178)): a 1-based line and column range, and what
+ * to say about it. A refused save's parse errors take this shape too, in `details.diagnostics`, which is
+ * what the code editor draws (V.4, [#172](https://github.com/NobuData/ouroboros/issues/172)).
+ */
+export type CodeDiagnostic = components["schemas"]["CodeDiagnostic"];
+
+/**
  * One workflow as a file of the code view — U.3
  * ([#167](https://github.com/NobuData/ouroboros/issues/167)): the TypeScript projection of its
  * draft, with the draft slot's etag.
@@ -338,6 +346,37 @@ export const workflows = {
         body: { definition },
       }),
     );
+  },
+
+  /**
+   * Save a file into the shared draft — the code editor's autosave (V.4,
+   * [#172](https://github.com/NobuData/ouroboros/issues/172)), on U.3's contract.
+   *
+   * **A file that does not read changes nothing** (decision C4): the service parses before it writes,
+   * so a typo is a `422` and the draft — and the canvas showing it — stays as it was. **A replacement
+   * guarded by the etag**, as {@link workflows.saveDraft} is: the canvas and the code editor write one
+   * row, so a stale etag from either is a `409` naming the editor that won. `*` is never sent.
+   *
+   * @param slug The workflow's slug — this endpoint takes the slug, as {@link workflows.code} does.
+   * @param etag The etag of the draft this text was typed over — the last save's, or the page read's.
+   * @param text The whole file.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The file as it now reads from the stored draft — printed canonically, so its text may differ
+   *   from `text` in formatting, never in meaning — with the etag the next save sends.
+   * @throws {ApiError} What the service answered — `422 workflow_code_invalid` with the parse errors in
+   *   `details.diagnostics`, `409 workflow_draft_conflict` for a stale etag, `403 forbidden` for a role
+   *   that may not edit, `404 workflow_not_found`, `413 payload_too_large`.
+   */
+  async saveCode(slug: string, etag: string, text: string, client: ApiClient = api()): Promise<WorkflowCode> {
+    const file = unwrap(
+      await client.PUT("/api/v1/workflows/{slug}/code", {
+        params: { path: { slug }, header: { "If-Match": etag } },
+        body: { text },
+      }),
+    );
+
+    // Restored for the reason `code` gives.
+    return { ...file, outlineRef: null };
   },
 
   /**

@@ -47,8 +47,8 @@ import "./code-view.css";
  * slot both editors share (decision **C3**), in the CodeMirror editor of V.2
  * ([#170](https://github.com/NobuData/ouroboros/issues/170)). A role that may publish can type into
  * it; a member, or anyone reading a published version, gets the read-only variant. Typed changes
- * are kept per file for the browser session, and the pane says they are not saved, until the save
- * loop of V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)) replaces that note.
+ * are kept per file for the browser session and saved into the draft as they are typed, by the save
+ * loop of V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)).
  *
  * ### The two actions wait, and say for what
  *
@@ -140,6 +140,8 @@ export function CodeScreen({
           editable={state.kind === "populated" && fileEditable(state.file, mayAdminister)}
           explorer={readings.explorer ?? UNREAD_EXPLORER}
           file={state.kind === "populated" ? state.file : null}
+          // A fresh read of the file — a new etag — starts a fresh save loop over it (V.4, #172).
+          key={state.kind === "populated" ? `${state.file.path}\n${state.file.etag}` : state.kind}
           scope={workspace.id}
           seat={<RouteSeat state={state} />}
           slug={state.kind === "missing" ? null : state.entry.slug}

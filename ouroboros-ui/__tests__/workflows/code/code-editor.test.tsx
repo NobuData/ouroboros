@@ -1,15 +1,17 @@
 import { undo } from "@codemirror/commands";
+import { diagnosticCount, forEachDiagnostic } from "@codemirror/lint";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { render } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CodeEditor } from "@/app/workflows/code/code-editor";
 import { CARET_BLINK_MS, editorExtensions } from "@/app/workflows/code/code-editor-extensions";
 
 import { STANDARD_FIX as GOLDEN } from "../../helpers/code-symbols";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../../helpers/palettes";
+import { stubRangeLayout } from "../../helpers/range-layout";
 import { STANDARD_FIX_TEXT } from "../../helpers/workflow-code";
 
 /**
@@ -219,6 +221,117 @@ describe("reporting edits (V.3, #171)", () => {
     const { container } = render(<CodeEditor label={PATH} text={GOLDEN} />);
 
     expect(() => viewIn(container).dispatch({ changes: { from: 0, insert: "x" } })).not.toThrow();
+  });
+});
+
+describe("a refused save's diagnostics (V.4, #172)", () => {
+  // A jump scrolls a range into view, which CodeMirror measures.
+  beforeAll(() => {
+    stubRangeLayout();
+  });
+
+  /** `dsl` on line 4 written as a number — the contract's own example. */
+  const TYPO = STANDARD_FIX_TEXT.replace('  dsl: "1.0",', "  dsl: 1.0,");
+  const RANGE = { line: 4, column: 8, endLine: 4, endColumn: 11 };
+  const DIAGNOSTICS = {
+    anchor: TYPO,
+    items: [
+      {
+        severity: "error" as const,
+        range: RANGE,
+        code: "code_out_of_grammar",
+        message: "`dsl` is written as a string literal.",
+        note: "Supported in the full SDK (v2)",
+      },
+    ],
+  };
+  /** Where line 4, column 8 is in the typo. */
+  const OFFSET = TYPO.indexOf("1.0,");
+
+  /**
+   * Every diagnostic the editor holds, as offsets.
+   *
+   * @param view The editor.
+   * @returns Each one's range, severity and message.
+   */
+  function drawn(view: EditorView) {
+    const found: { from: number; to: number; severity: string; message: string; source?: string }[] = [];
+    forEachDiagnostic(view.state, (diagnostic, from, to) =>
+      found.push({ from, to, severity: diagnostic.severity, message: diagnostic.message, source: diagnostic.source }),
+    );
+    return found;
+  }
+
+  it("draws each one where it is — a squiggle over the range, a marker in the lint gutter", () => {
+    const { container } = render(<CodeEditor diagnostics={DIAGNOSTICS} label={PATH} text={TYPO} />);
+    const view = viewIn(container);
+
+    expect(drawn(view)).toEqual([
+      {
+        from: OFFSET,
+        to: OFFSET + 3,
+        severity: "error",
+        message: "`dsl` is written as a string literal.\nSupported in the full SDK (v2)",
+        source: "code_out_of_grammar",
+      },
+    ]);
+    expect(container.querySelector(".cm-gutter-lint")).not.toBeNull();
+    expect(container.querySelector(".cm-lintRange-error")?.textContent).toBe("1.0");
+  });
+
+  it("places ranges counted in the text that was sent into the text typed since", () => {
+    const typedAbove = `// a\n${TYPO}`;
+    const { container } = render(<CodeEditor diagnostics={DIAGNOSTICS} label={PATH} text={typedAbove} />);
+
+    expect(drawn(viewIn(container))).toMatchObject([{ from: OFFSET + 5, to: OFFSET + 8 }]);
+  });
+
+  it("clears them when the next answer has none, without rebuilding the editor", () => {
+    const { container, rerender } = render(<CodeEditor diagnostics={DIAGNOSTICS} label={PATH} text={TYPO} />);
+    const view = viewIn(container);
+
+    rerender(<CodeEditor diagnostics={null} label={PATH} text={TYPO} />);
+
+    expect(viewIn(container)).toBe(view);
+    expect(diagnosticCount(view.state)).toBe(0);
+  });
+
+  it("dispatches nothing for an editor nobody refused", () => {
+    const { container } = render(<CodeEditor label={PATH} text={GOLDEN} />);
+
+    expect(diagnosticCount(viewIn(container).state)).toBe(0);
+    expect(container.querySelector(".cm-lintRange")).toBeNull();
+  });
+
+  it("draws nothing in the read-only variant, which has no lint gutter", () => {
+    const { container } = render(<CodeEditor diagnostics={DIAGNOSTICS} label={PATH} readOnly text={TYPO} />);
+
+    expect(diagnosticCount(viewIn(container).state)).toBe(0);
+    expect(container.querySelector(".cm-gutter-lint")).toBeNull();
+  });
+
+  it("jumps to a range when asked: the range selected, and the keyboard in the editor", () => {
+    const { container, rerender } = render(<CodeEditor diagnostics={DIAGNOSTICS} label={PATH} text={TYPO} />);
+    const view = viewIn(container);
+
+    rerender(<CodeEditor diagnostics={DIAGNOSTICS} label={PATH} reveal={{ anchor: TYPO, range: RANGE }} text={TYPO} />);
+
+    expect(view.state.selection.main.from).toBe(OFFSET);
+    expect(view.state.selection.main.to).toBe(OFFSET + 3);
+    expect(document.activeElement).toBe(view.contentDOM);
+  });
+
+  it("acts on each jump request once, and on none in the read-only variant", () => {
+    const reveal = { anchor: TYPO, range: RANGE };
+    const { container, rerender } = render(<CodeEditor label={PATH} reveal={reveal} text={TYPO} />);
+    const view = viewIn(container);
+
+    view.dispatch({ selection: { anchor: 0 } });
+    rerender(<CodeEditor label={PATH} reveal={reveal} text={TYPO} />);
+    expect(view.state.selection.main.from).toBe(0);
+
+    const readOnly = render(<CodeEditor label={PATH} readOnly reveal={{ anchor: TYPO, range: RANGE }} text={TYPO} />);
+    expect(viewIn(readOnly.container).state.selection.main.from).toBe(0);
   });
 });
 

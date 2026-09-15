@@ -19,7 +19,6 @@ import {
   CONFIG_FILE_PATH,
   EXPLORER_UNREAD_REASON,
   FILE_READ_ONLY_NOTE,
-  FILE_UNSAVED_NOTE,
   UNREAD_EXPLORER,
   VALIDATE_SOON,
   WORKFLOW_FILE_DIRECTORY,
@@ -31,7 +30,6 @@ import {
   codeSeatCopy,
   codeState,
   explorerHead,
-  fileEditNote,
   fileEditable,
   fileName,
   fileSource,
@@ -288,13 +286,7 @@ describe("the file", () => {
     expect(fileEditable(workflowCode({ readOnly: true }), false)).toBe(false);
   });
 
-  it("says an editable file's changes are not saved yet, naming the issue that saves them", () => {
-    expect(fileEditNote(true)).toBe(FILE_UNSAVED_NOTE);
-    expect(FILE_UNSAVED_NOTE).toMatch(/#172/);
-  });
-
-  it("says a file the reader cannot change is read-only", () => {
-    expect(fileEditNote(false)).toBe(FILE_READ_ONLY_NOTE);
+  it("says a file the reader cannot change is read-only — an editable one says where its save stands (code-save.ts)", () => {
     expect(FILE_READ_ONLY_NOTE).toBe("Read-only");
   });
 });

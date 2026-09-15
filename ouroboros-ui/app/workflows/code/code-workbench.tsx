@@ -5,6 +5,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   type ReactNode,
+  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -13,11 +14,17 @@ import {
 } from "react";
 
 import type { Reading } from "@/app/api/reading";
-import type { WorkflowCode, WorkflowCodeConfig, WorkflowCodeTree } from "@/app/api/workflows";
+import type { CodeDiagnostic, WorkflowCode, WorkflowCodeConfig, WorkflowCodeTree } from "@/app/api/workflows";
 import { workflowCodePath } from "@/app/paths";
 import { Card, Chip, EmptyState, cx } from "@/app/ui";
 
+import type { DraftConflict } from "../autosave";
+import { useUnsavedBuffer } from "../mode-guard";
+import { saveCode } from "./code-actions";
+import type { AnchoredDiagnostics, RevealRequest } from "./code-diagnostics";
 import { CodeEditor } from "./code-editor";
+import { type CodeSaveStatus, codeSaveNote, isSaveKey } from "./code-save";
+import { ConflictDialog, DiagnosticsStrip, DivergedPanel, SaveFailedBanner } from "./code-save-surfaces";
 import { codeSessionStore, useCodeSession } from "./code-session";
 import {
   type CodeSession,
@@ -27,11 +34,15 @@ import {
   arrive,
   bufferText,
   closeTab,
+  discardBuffer,
   editBuffer,
   isCloseFocusedTabKey,
   isCloseTabKey,
+  isDiverged,
   isModified,
+  markSaved,
   openTab,
+  rebaseBuffer,
   retainPaths,
   tabKeyTarget,
 } from "./code-tabs";
@@ -43,6 +54,7 @@ import {
   EXPLORER_LABEL,
   type ExplorerReadings,
   FILE_LABEL,
+  FILE_READ_ONLY_NOTE,
   MODIFIED_NOTE,
   NOTHING_OPEN_NOTE,
   NOTHING_OPEN_TITLE,
@@ -54,11 +66,11 @@ import {
   baseName,
   closeTabLabel,
   explorerHead,
-  fileEditNote,
   fileSource,
   slugOfPath,
   workflowFilePath,
 } from "./code-view";
+import { type SaveCodeCall, useCodeSave } from "./use-code-save";
 
 import "./code-workbench.css";
 
@@ -88,7 +100,25 @@ import "./code-workbench.css";
  * workspace by `code-session.ts` above any single page. So an edit to `standard-fix` survives a
  * detour to `hotfix-p0` and back, and a reload. The modified-dot is exactly *this file has a buffer
  * that differs from what it was typed over*: set by the edit, cleared the moment the text is back —
- * by typing, by a read that caught up, or by a successful save (`markSaved`, V.4's call).
+ * by typing, by a read that caught up, or by a successful save.
+ *
+ * ### The route's file saves as it is typed (V.4, [#172](https://github.com/NobuData/ouroboros/issues/172))
+ *
+ * Every edit goes to the buffer first, then to the save loop (`use-code-save.ts`), which writes it once
+ * typing rests — or at once on **⌘S** / **Ctrl+S**. What each answer does here:
+ *
+ * - **Saved** — the buffer is measured from the text that was sent (`markSaved`), so the dot clears if
+ *   nothing was typed meanwhile and stays if something was. The editor's text is never replaced.
+ * - **Did not parse** — the draft is untouched and the text stays; the diagnostics are drawn in the
+ *   editor and counted in the strip under it, whose message jumps to its place. While they stand, the
+ *   mode guard holds the buffer, so switching to Visual asks first — and dropping it is then true.
+ * - **Changed elsewhere** — the conflict dialog: *Reload theirs* drops the buffer and reads the draft;
+ *   *Keep mine* reads the draft and keeps the buffer beside it.
+ * - **Did not arrive** — DASH-I.7's banner with the real reason, retried on its own.
+ *
+ * The route's screen keys the workbench by the file's etag, so every fresh read starts a fresh loop. A
+ * fresh read over a buffer typed on a draft that has since moved is **diverged** (`isDiverged`): nothing
+ * saves it until the person chooses, with the difference open in front of them.
  *
  * ### The keyboard
  *
@@ -118,6 +148,14 @@ export interface CodeWorkbenchProps {
    * read, the missing workflow. Unused when `file` is set.
    */
   readonly seat: ReactNode;
+  /** The save. Defaults to the `saveCode` Server Action; a suite passes a stand-in. */
+  readonly save?: SaveCodeCall;
+}
+
+/** A conflict waiting for an answer, and when it was found. */
+interface OpenConflict {
+  readonly found: DraftConflict;
+  readonly at: Date;
 }
 
 /**
@@ -134,6 +172,7 @@ export function CodeWorkbench({
   file,
   editable,
   seat,
+  save = saveCode,
 }: CodeWorkbenchProps) {
   const router = useRouter();
   const ids = useId();
@@ -145,6 +184,40 @@ export function CodeWorkbench({
   // Primitives, so the effects below run when what they are about changes and not on every render.
   const known = explorer.tree.ok ? explorer.tree.value.files.map((entry) => entry.path).join("\n") : null;
   const read = file?.text ?? null;
+  const readEtag = file?.etag ?? null;
+  const writable = editable && file !== null;
+
+  const [diagnostics, setDiagnostics] = useState<AnchoredDiagnostics | null>(null);
+  const [reveal, setReveal] = useState<RevealRequest | null>(null);
+  const [conflict, setConflict] = useState<OpenConflict | null>(null);
+  // The draft's etag as this page last knew it: the read's, then each save's. A first edit's buffer is
+  // typed under it, and a buffer typed under anything else over other text is diverged.
+  const [etag, setEtag] = useState(readEtag);
+
+  // Decided from the session on every render rather than held: it ends by itself when the buffer is
+  // dropped or measured from the draft as it is now, and this page's own saves move `etag` with the buffer.
+  const diverged =
+    writable && routePath !== null && read !== null && etag !== null && isDiverged(session, routePath, read, etag);
+
+  const saving = useCodeSave({
+    slug: file?.slug ?? "",
+    etag: readEtag ?? "",
+    stored: read ?? "",
+    enabled: writable,
+    save,
+    onSaved: (saved, sent) => {
+      setEtag(saved.etag);
+      if (file !== null) store.update((current) => markSaved(current, file.path, sent, saved.etag));
+      setDiagnostics(null);
+    },
+    onInvalid: (items, sent) => setDiagnostics({ anchor: sent, items }),
+    onConflict: (found) => {
+      setDiagnostics(null);
+      setConflict({ found, at: new Date() });
+    },
+    onReverted: () => setDiagnostics(null),
+  });
+  const { schedule, flush, cancel } = saving;
 
   // Forget tabs and buffers of files the project no longer has. Not when the list could not be
   // read: an unread list is not an empty project.
@@ -165,6 +238,28 @@ export function CodeWorkbench({
     if (routePath === null || read === null) return;
     store.update((current) => adoptRead(current, routePath, read));
   }, [store, routePath, read]);
+
+  // A read over a buffer that is not diverged — on arrival, or once the person has chosen — is written, so
+  // a buffer left by an earlier page is parsed and saved again rather than sitting unsaved behind its dot.
+  useEffect(() => {
+    if (!writable || diverged || routePath === null || read === null) return;
+
+    const current = store.get();
+    if (isModified(current, routePath)) schedule(bufferText(current, routePath, read));
+  }, [writable, diverged, store, routePath, read, schedule]);
+
+  // While the file does not parse, a switch to Visual asks first — and confirming drops the buffer.
+  useUnsavedBuffer(
+    writable && diagnostics !== null
+      ? {
+          surface: "code",
+          discard: () => {
+            cancel();
+            if (routePath !== null) store.update((current) => discardBuffer(current, routePath));
+          },
+        }
+      : null,
+  );
 
   /**
    * Open a file: in place for the route's own file and the configuration; by navigating to its
@@ -202,17 +297,73 @@ export function CodeWorkbench({
   }
 
   /**
-   * Record an edit to the route's file.
+   * Record an edit to the route's file, and hand it to the save loop — unless the buffer is diverged,
+   * which nothing saves until the person has chosen.
    *
    * @param text The editor's whole text.
    */
   function edit(text: string): void {
     if (file === null) return;
-    store.update((current) => editBuffer(current, file.path, file.text, text));
+    store.update((current) => editBuffer(current, file.path, file.text, text, etag));
+    if (!diverged) schedule(text);
   }
 
-  /** Alt+W, from anywhere inside: close the open tab. */
+  /** ⌘S: write the route's file now, whatever the debounce was waiting for. */
+  function saveNow(): void {
+    if (!writable || diverged || file === null) return;
+
+    schedule(bufferText(store.get(), file.path, file.text));
+    void flush();
+  }
+
+  /**
+   * Put the cursor on a diagnostic's place in the file.
+   *
+   * @param item The diagnostic.
+   */
+  function revealDiagnostic(item: CodeDiagnostic): void {
+    if (diagnostics !== null) setReveal({ anchor: diagnostics.anchor, range: item.range });
+  }
+
+  /** *Reload theirs*: drop the buffer, and read the draft again when the loop stopped on a conflict. */
+  function reloadTheirs(): void {
+    if (file === null) return;
+
+    const stopped = saving.status.state === "conflict";
+    cancel();
+    store.update((current) => discardBuffer(current, file.path));
+    setConflict(null);
+    setDiagnostics(null);
+    // A diverged panel is already over a fresh read; a conflict is over the read the page started from.
+    if (stopped) router.refresh();
+  }
+
+  /** *Keep mine*: keep the buffer, and read the draft so it can be shown beside it. */
+  function keepMine(): void {
+    setConflict(null);
+    router.refresh();
+  }
+
+  /**
+   * *Save mine over theirs*: measure the buffer from the draft as it is read now — which ends the
+   * divergence — and write it under that read's etag, which is the one the save loop holds.
+   */
+  function saveMine(): void {
+    if (file === null) return;
+
+    store.update((current) => rebaseBuffer(current, file.path, file.text, file.etag));
+    schedule(bufferText(store.get(), file.path, file.text));
+  }
+
+  /** Alt+W closes the open tab and ⌘S saves, from anywhere inside. */
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (isSaveKey(event)) {
+      // Always the page's, never the browser's *Save page as…*, while the keyboard is in the workbench.
+      event.preventDefault();
+      saveNow();
+      return;
+    }
+
     if (session.active === null || !isCloseTabKey(event)) return;
 
     event.preventDefault();
@@ -222,6 +373,26 @@ export function CodeWorkbench({
   const panelId = `${ids}-panel`;
   const tabId = (index: number) => `${ids}-tab-${index}`;
   const activeIndex = session.active === null ? -1 : session.tabs.indexOf(session.active);
+
+  const route =
+    file === null ? (
+      seat
+    ) : (
+      <RouteFile
+        diagnostics={writable ? diagnostics : null}
+        diverged={writable && diverged}
+        editable={editable}
+        file={file}
+        onEdit={edit}
+        onReloadTheirs={reloadTheirs}
+        onRetry={() => void flush()}
+        onReveal={revealDiagnostic}
+        onSaveMine={saveMine}
+        reveal={reveal}
+        status={saving.status}
+        text={editable ? bufferText(session, file.path, file.text) : file.text}
+      />
+    );
 
   return (
     <Card aria-label={FILE_LABEL} as="section" className="code-workbench">
@@ -245,16 +416,20 @@ export function CodeWorkbench({
             <Pane
               active={session.active}
               config={explorer.config}
-              editable={editable}
-              file={file}
-              onEdit={edit}
+              route={route}
               routePath={routePath}
               seat={seat}
-              session={session}
             />
           </div>
         </div>
       </div>
+
+      <ConflictDialog
+        at={conflict?.at ?? new Date()}
+        conflict={conflict?.found ?? null}
+        onKeepMine={keepMine}
+        onReloadTheirs={reloadTheirs}
+      />
     </Card>
   );
 }
@@ -585,56 +760,103 @@ function Tabs({
  *
  * @param props.active The open tab.
  * @param props.routePath The route's file, or `null` when the URL's workflow does not exist.
- * @param props.file The route's file, when it could be read.
- * @param props.editable Whether the route's file may be typed into.
+ * @param props.route What the route's file draws — its editor and save surfaces, or its seat.
  * @param props.seat What stands in for the route's file when there is none.
  * @param props.config The configuration read.
- * @param props.session The session, for the route's buffer.
- * @param props.onEdit Record an edit to the route's file.
  * @returns The configuration, the route's file or its seat, or the nothing-open panel.
  */
 function Pane({
   active,
   routePath,
-  file,
-  editable,
+  route,
   seat,
   config,
-  session,
-  onEdit,
 }: Readonly<{
   active: string | null;
   routePath: string | null;
-  file: WorkflowCode | null;
-  editable: boolean;
+  route: ReactNode;
   seat: ReactNode;
   config: Reading<WorkflowCodeConfig>;
-  session: CodeSession;
-  onEdit: (text: string) => void;
 }>) {
   if (active === CONFIG_FILE_PATH) return <ConfigPane config={config} />;
 
   // `null === null` included: a route whose workflow is missing shows its seat while nothing is open.
-  if (active === routePath) {
-    if (file === null) return seat;
-
-    return (
-      <>
-        <p className="code-workbench__meta">
-          {fileSource(file)} · {fileEditNote(editable)}
-        </p>
-        <CodeEditor
-          key={file.path}
-          label={file.path}
-          onChange={editable ? onEdit : undefined}
-          readOnly={!editable}
-          text={editable ? bufferText(session, file.path, file.text) : file.text}
-        />
-      </>
-    );
-  }
+  if (active === routePath) return route;
 
   return routePath === null ? seat : <EmptyState fill note={NOTHING_OPEN_NOTE} title={NOTHING_OPEN_TITLE} />;
+}
+
+/**
+ * The route's file: where it came from and where its save stands, then the failure banner or the
+ * diverged panel when there is one, the editor, and the diagnostics strip while the file does not parse.
+ *
+ * @param props.file The file as the page read it.
+ * @param props.editable Whether the reader may type into it.
+ * @param props.text What the editor holds — the buffer's text, or the read.
+ * @param props.status Where the save stands.
+ * @param props.diverged Whether the buffer waits for the person's choice.
+ * @param props.diagnostics The last refused save's diagnostics, or `null`.
+ * @param props.reveal The last jump asked for, or `null`.
+ * @param props.onEdit Record an edit.
+ * @param props.onReveal Jump to a diagnostic.
+ * @param props.onRetry Try a failed write again now.
+ * @param props.onSaveMine Write the buffer over the draft as it is now.
+ * @param props.onReloadTheirs Drop the buffer.
+ * @returns The pane's content.
+ */
+function RouteFile({
+  file,
+  editable,
+  text,
+  status,
+  diverged,
+  diagnostics,
+  reveal,
+  onEdit,
+  onReveal,
+  onRetry,
+  onSaveMine,
+  onReloadTheirs,
+}: Readonly<{
+  file: WorkflowCode;
+  editable: boolean;
+  text: string;
+  status: CodeSaveStatus;
+  diverged: boolean;
+  diagnostics: AnchoredDiagnostics | null;
+  reveal: RevealRequest | null;
+  onEdit: (text: string) => void;
+  onReveal: (item: CodeDiagnostic) => void;
+  onRetry: () => void;
+  onSaveMine: () => void;
+  onReloadTheirs: () => void;
+}>) {
+  return (
+    <>
+      <p className="code-workbench__meta">
+        {fileSource(file)} · {editable ? codeSaveNote(status, diverged) : FILE_READ_ONLY_NOTE}
+      </p>
+
+      {editable && status.reason !== null && (
+        <SaveFailedBanner onRetry={onRetry} reason={status.reason} retrying={status.state === "saving"} />
+      )}
+      {diverged && (
+        <DivergedPanel mine={text} onReloadTheirs={onReloadTheirs} onSaveMine={onSaveMine} theirs={file.text} />
+      )}
+
+      <CodeEditor
+        diagnostics={diagnostics}
+        key={file.path}
+        label={file.path}
+        onChange={editable ? onEdit : undefined}
+        readOnly={!editable}
+        reveal={reveal}
+        text={text}
+      />
+
+      {diagnostics !== null && <DiagnosticsStrip items={diagnostics.items} onReveal={onReveal} />}
+    </>
+  );
 }
 
 /**

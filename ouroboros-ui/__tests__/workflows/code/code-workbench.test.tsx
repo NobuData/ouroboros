@@ -51,6 +51,9 @@ import { seededRail } from "../../helpers/workflows";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
+// The file's save is a Server Action (V.4, #172) — its answers are `code-save-flow.test.tsx`'s. Here
+// it is never answered, so what these cases type stays exactly as V.3 keeps it.
+vi.mock("@/app/workflows/code/code-actions", () => ({ saveCode: vi.fn(() => new Promise(() => undefined)) }));
 
 const { CodeScreen } = await import("@/app/workflows/code/code-screen");
 
@@ -416,7 +419,7 @@ describe("the modified-dot is truthful", () => {
     typeInto(EDITED);
 
     // What V.4's save loop does when the service accepts the file.
-    act(() => codeSessionStore(workspace.id).update((session) => markSaved(session, STANDARD_FIX, EDITED)));
+    act(() => codeSessionStore(workspace.id).update((session) => markSaved(session, STANDARD_FIX, EDITED, "etag-2")));
 
     expect(dotted(STANDARD_FIX)).toBe(false);
     expect(editor().state.doc.toString()).toBe(EDITED);
@@ -428,7 +431,7 @@ describe("the modified-dot is truthful", () => {
     typeInto(EDITED);
     typeInto(`${EDITED}// more\n`);
 
-    act(() => codeSessionStore(workspace.id).update((session) => markSaved(session, STANDARD_FIX, EDITED)));
+    act(() => codeSessionStore(workspace.id).update((session) => markSaved(session, STANDARD_FIX, EDITED, "etag-2")));
 
     expect(dotted(STANDARD_FIX)).toBe(true);
   });
@@ -754,7 +757,7 @@ describe("both palettes", () => {
   it("draws the same markup in both, an edit's dot included, because the palette is CSS's business", () => {
     const workspace = freshWorkspace();
     codeSessionStore(workspace.id).update((session) =>
-      editBuffer(openTab(session, STANDARD_FIX), STANDARD_FIX, STANDARD_FIX_TEXT, EDITED),
+      editBuffer(openTab(session, STANDARD_FIX), STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, null),
     );
 
     const [light, dark] = renderInBothPalettes(page(workspace));

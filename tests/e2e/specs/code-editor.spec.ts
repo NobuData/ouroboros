@@ -39,8 +39,8 @@ import {
   FILE_PATH,
   FRAME_MS,
   READ_ONLY_NOTE,
+  SAVE_NOTE,
   SYNTAX_SAMPLES,
-  UNSAVED_NOTE,
 } from "../support/code";
 import { SEED_MEMBER, SEED_OWNER, SEED_TENANT } from "../support/seed";
 import { signIn } from "../support/session";
@@ -151,7 +151,7 @@ test.describe("the code editor is drawn in both palettes", () => {
     const file = await enterCode(context, page, SEED_OWNER.id);
     const editor = file.locator(".code-editor");
 
-    await expect(file).toContainText(UNSAVED_NOTE);
+    await expect(file).toContainText(SAVE_NOTE);
     await caretOn(page, file, CARET_LINE);
 
     for (const theme of THEMES) {

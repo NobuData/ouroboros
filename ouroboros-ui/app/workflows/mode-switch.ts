@@ -39,6 +39,12 @@ export type BufferSurface = Extract<StudioSurface, "code">;
 export interface UnsavedBuffer {
   /** The surface holding it — the one a switch would leave it behind on. */
   readonly surface: BufferSurface;
+  /**
+   * Drop the buffer, for a switch the reader confirmed. The code editor keeps its text for the
+   * browser session (V.3, [#171](https://github.com/NobuData/ouroboros/issues/171)), so without this
+   * the prompt's *discards it* would not be true; an editor with nothing to drop leaves it out.
+   */
+  readonly discard?: () => void;
 }
 
 /** What each surface is called on the segmented control, and so in the prompt. */
