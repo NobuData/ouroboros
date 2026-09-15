@@ -7,6 +7,8 @@
  * read    the draft, or a published version, as a file — when the file would be the document
  *           └ with its span map, and its findings on the lines of the stages they are about
  * checks  the same file's Loop Checks rows
+ * validate the same file through the publish gate ─▶ its findings on the lines, and the rows
+ *           └ writes nothing: Validate is "check my work", not a publish (V.6, #174)
  * save    parse ─▶ check the slug ─▶ the shared guarded write
  *           └ refused whole, before anything is opened, when the file does not read
  * tree    the explorer, from the rail's statement
@@ -37,7 +39,12 @@ import type { Organization, Workflow, WorkflowVersion } from "../db/schema";
 import { WorkflowCatalogService } from "./catalog.service";
 import { loopCheckRows } from "./code.checks";
 import { printWorkflowConfig } from "./code.config";
-import { diagnoseDocument, type DocumentDiagnosis } from "./code.diagnostics";
+import {
+  diagnoseDocument,
+  mergeCodeDiagnostics,
+  placeFindings,
+  type DocumentDiagnosis,
+} from "./code.diagnostics";
 import { parseWorkflowCode, slugRangeOf } from "./code.parser";
 import type { PrintedWorkflowCode } from "./code.printer";
 import { projectWorkflowCode } from "./code.projection";
@@ -47,14 +54,17 @@ import {
   workflowCodeChecks,
   workflowCodeConfig,
   workflowCodeTree,
+  workflowCodeValidation,
   type ProjectedFile,
   type WorkflowCode,
   type WorkflowCodeChecks,
   type WorkflowCodeConfig,
   type WorkflowCodeTree,
+  type WorkflowCodeValidation,
 } from "./code.resources";
 import { draftEtag } from "./draft.etag";
 import { validateWorkflowDocument } from "./dsl.validator";
+import { WorkflowPublishGate } from "./publish.gate";
 import { WorkflowStatsRepository } from "./stats.repository";
 import {
   codeInvalid,
@@ -77,6 +87,8 @@ interface OpenedFile {
   readonly file: ProjectedFile;
   /** The diagnosis behind `file.diagnostics`, and whether task routes were checked. */
   readonly diagnosis: Diagnosis;
+  /** The document the file was printed from, as stored. */
+  readonly definition: WorkflowVersion["definition"];
 }
 
 /** A diagnosis, and whether the catalogue let it check task routes. */
@@ -93,12 +105,15 @@ export class WorkflowCodeService {
    * @param lifecycle - The guarded draft write the canvas saves through.
    * @param catalog - The workspace's skill and task-route names, which references are checked
    *   against.
+   * @param gate - The publish gate — zod, the registry, then the engine — which **Validate** runs
+   *   without publishing (V.6, #174).
    */
   constructor(
     private readonly workflows: WorkflowsRepository,
     private readonly registry: WorkflowStatsRepository,
     private readonly lifecycle: WorkflowsService,
     private readonly catalog: WorkflowCatalogService,
+    private readonly gate: WorkflowPublishGate,
   ) {}
 
   /**
@@ -150,6 +165,49 @@ export class WorkflowCodeService {
         tasksChecked: diagnosis.tasksChecked,
         ...(diagnosis.document === undefined ? {} : { document: diagnosis.document }),
       }),
+    );
+  }
+
+  /**
+   * **Validate** — V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)): the file
+   * {@link read} serves, through the gate publishing runs, with nothing written.
+   *
+   * The gate is `publish.gate.ts`' own, so a document Validate calls green is one the gate would
+   * let publish at this moment, and one it refuses is refused for the same findings. The file's
+   * diagnostics already hold the zod stage's errors and warnings, so the gate's `dsl` findings are
+   * not placed twice; its `registry` and `engine` findings are placed on their stages' lines as
+   * errors, and the Loop Checks rows are derived from the merged stream.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param slug - The workflow.
+   * @returns The file with the merged diagnostics, its rows, and the gate's findings.
+   * @throws {NotFoundError} As {@link read}.
+   * @throws {ConflictError} As {@link read}: a file that cannot be shown cannot be validated as one.
+   * @throws {UpstreamError} `engine_unavailable` when the engine could not answer — a check that
+   *   could not run is not reported as a pass.
+   */
+  async validate(organizationId: string, slug: string): Promise<WorkflowCodeValidation> {
+    const { workflow, file, diagnosis, definition } = await this.open(
+      organizationId,
+      slug,
+      undefined,
+    );
+    const verdict = await this.gate.check(organizationId, definition);
+    const outside = verdict.findings.filter((finding) => finding.source !== "dsl");
+    const diagnostics = mergeCodeDiagnostics(
+      file.diagnostics,
+      placeFindings(outside, { text: file.text, spans: file.spans, document: definition }),
+    );
+
+    return workflowCodeValidation(
+      workflow,
+      { ...file, diagnostics },
+      loopCheckRows({
+        diagnostics,
+        tasksChecked: diagnosis.tasksChecked,
+        ...(diagnosis.document === undefined ? {} : { document: diagnosis.document }),
+      }),
+      verdict,
     );
   }
 
@@ -287,6 +345,7 @@ export class WorkflowCodeService {
     return {
       workflow,
       diagnosis,
+      definition: shown.definition,
       file: {
         text: printed.text,
         spans: printed.spans,

@@ -30,6 +30,8 @@ vi.mock("@/app/workflows/code/code-data", () => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 // The file's save is a Server Action on the server-only client (V.4, #172). Nothing here types.
 vi.mock("@/app/workflows/code/code-actions", () => ({ saveCode: vi.fn(() => new Promise(() => undefined)) }));
+// Publish is S.6's shared Server Action on the server-only client (V.6, #174); nothing here publishes.
+vi.mock("@/app/workflows/draft-actions", () => ({ publishWorkflow: vi.fn() }));
 
 const CodePage = (await import("@/app/(app)/workflows/[slug]/code/page")).default;
 const WorkflowLayout = (await import("@/app/(app)/workflows/[slug]/layout")).default;

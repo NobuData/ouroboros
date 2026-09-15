@@ -2817,6 +2817,9 @@ PUT /api/v1/workflows/standard-fix/code   If-Match: <etag> · { text }
  ├ stale etag                            ─▶ 409 workflow_draft_conflict {editedIn: visual | code, updatedAt, current}
  └ WorkflowsService.writeGuarded(…, "code") ─▶ 200, the file as it now reads, with the new etag
 GET /api/v1/workflows/standard-fix/code/checks ─▶ { path, slug, etag, readOnly, version, rows: [graph, references?] }
+POST /api/v1/workflows/standard-fix/code/validate ─▶ the publish gate (zod ▸ registry ▸ engine), nothing written
+ ├ engine cannot answer                  ─▶ 502 engine_unavailable — never a pass
+ └ 200 { file (diagnostics + registry/engine findings on their lines), checks, findings, engineConsulted }
 GET /api/v1/workflows/code-tree          ─▶ { files: [workflows/<slug>.loop.ts …, ouroboros.config.ts] }
 GET /api/v1/workflows/code-config        ─▶ { path: ouroboros.config.ts, text, readOnly: true }
 PUT /api/v1/workflows/code-config        ─▶ 405 workflow_code_read_only, Allow: GET
@@ -2831,6 +2834,7 @@ PUT /api/v1/workflows/code-config        ─▶ 405 workflow_code_read_only, All
 | `ouroboros.config.ts` is the registry, printed read-only | `code.config.ts` |
 | Findings and reference checks sit on the lines of the stage they are about, through the printer's span map, errors first (W.2) | `code.diagnostics.ts` |
 | Loop Checks rows say only what was checked, and no infra row can be built (C7) | `code.checks.ts` |
+| Validate is the publish gate with nothing written (V.6, [#174](https://github.com/NobuData/ouroboros/issues/174)): the gate publishing runs, its registry and engine findings placed on their stages' lines, every member's | `WorkflowCodeService.validate`, `code.diagnostics.ts`' `placeFindings` |
 
 **A draft that has no faithful file is refused, not approximated.** The printer takes valid documents
 and a draft is saved as the canvas holds it, so the rule is the round trip itself: `GET` shows a

@@ -1,8 +1,10 @@
 "use server";
 
 /**
- * The server hop for the code editor's save — V.4
- * ([#172](https://github.com/NobuData/ouroboros/issues/172)).
+ * The server hops for the code editor's save — V.4
+ * ([#172](https://github.com/NobuData/ouroboros/issues/172)) — and its **Validate** — V.6
+ * ([#174](https://github.com/NobuData/ouroboros/issues/174)). **Publish** is S.6's shared
+ * `publishWorkflow` (`draft-actions.ts`), which the visual editor calls too.
  *
  * `draft-actions.ts` states the rule this exists under: the browser cannot reach REST, so the
  * workbench's Client Component calls this Server Action, and this calls the API.
@@ -20,9 +22,25 @@
  * Refusals come back as values (`action-outcome.ts`).
  */
 
-import { type WorkflowCode, workflows } from "@/app/api/workflows";
+import { type WorkflowCode, type WorkflowCodeValidation, workflows } from "@/app/api/workflows";
 
 import { type ActionOutcome, attempt } from "../action-outcome";
+
+/**
+ * Validate a workflow's file without publishing it — the code view's **Validate** (V.6,
+ * [#174](https://github.com/NobuData/ouroboros/issues/174)).
+ *
+ * Every member's, as a dry run is: it writes nothing. The slug goes to the service as the page composed
+ * it, and the service decides whether it names a workflow this session may read.
+ *
+ * @param slug The workflow's slug.
+ * @returns The gate's verdict drawn as the file's diagnostics and Loop Checks; or the refusal —
+ *   `engine_unavailable` when the engine could not check it. Nothing was written either way.
+ * @throws Whatever is not an `ApiError`.
+ */
+export async function validateCode(slug: string): Promise<ActionOutcome<WorkflowCodeValidation>> {
+  return attempt(() => workflows.validateCode(slug));
+}
 
 /**
  * Save a workflow's file into the shared draft — the code editor's autosave write.

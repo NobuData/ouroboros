@@ -1,0 +1,13 @@
+/*
+ * The code view's flow notice — V.6 (#174). A success wears the studio toast as it is
+ * (workflows.css `.studio-toast`); a stopped validation or publish wears it on the error line and tint,
+ * the status pair the product uses for the same fact. The notice says its state in words as well, so
+ * hue is never the only signal.
+ *
+ * Every colour is a token from app/tokens.css, so both themes are the token sheet's.
+ */
+
+.studio-toast.code-flows__notice--err {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+}

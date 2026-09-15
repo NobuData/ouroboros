@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { PUBLISH_SOON } from "@/app/workflows/view";
 import {
   EMPTY_TITLE,
   FAILED_SUBLINE,
@@ -20,7 +19,6 @@ import {
   EXPLORER_UNREAD_REASON,
   FILE_READ_ONLY_NOTE,
   UNREAD_EXPLORER,
-  VALIDATE_SOON,
   WORKFLOW_FILE_DIRECTORY,
   baseName,
   closeTabLabel,
@@ -204,14 +202,6 @@ describe("the head", () => {
       'This workspace has no workflow called "retired-loop". The Visual tab lists every workflow it has.',
     );
     expect(CODE_EMPTY_SUBLINE).toMatch(/Visual tab's rail/);
-  });
-});
-
-describe("the actions' reasons", () => {
-  it("names the issue each inert action waits for", () => {
-    expect(VALIDATE_SOON).toMatch(/#174/);
-    // The visual editor's dialog is #152's; the code view opens it once V.6 (#174) wires it in.
-    expect(PUBLISH_SOON).toMatch(/#174/);
   });
 });
 

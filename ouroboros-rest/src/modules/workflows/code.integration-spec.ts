@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { startEngineStub, type EngineStub } from "../../testing/engine.stub.fixture";
+import {
+  engineFailure,
+  startEngineStub,
+  validationFindings,
+  type EngineStub,
+} from "../../testing/engine.stub.fixture";
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME } from "../db/schema";
@@ -15,6 +20,7 @@ import type {
   WorkflowCodeConfig,
   WorkflowCodeIssue,
   WorkflowCodeTree,
+  WorkflowCodeValidation,
 } from "./code.resources";
 import { seedPinnedAliases } from "./pins.fixture";
 import type { WorkflowDetail } from "./workflows.resources";
@@ -821,6 +827,122 @@ describe("the code view, against a migrated database", () => {
         await as(place.owner, place)("get", `${WORKFLOWS}/blank-loop/code/checks`).expect(409),
       );
       expect(blank.code).toBe("workflow_code_unprojectable");
+    });
+
+    describe("Validate (V.6, #174)", () => {
+      /**
+       * Validate `standard-fix` as somebody.
+       *
+       * @param place - Where.
+       * @param person - Who presses Validate; the owner by default.
+       * @returns The validation.
+       */
+      async function validate(place: Bench, person = place.owner) {
+        return bodyOf<WorkflowCodeValidation>(
+          await as(person, place)("post", `${CODE}/validate`).expect(200),
+        );
+      }
+
+      it("runs the gate over the draft and answers the file, its checks and no findings, publishing nothing", async () => {
+        const place = await bench();
+        await routes(place, ROUTED_TASKS);
+        const created = await workflow(place);
+        const opened = await readFile(place);
+
+        const validated = await validate(place);
+
+        // The engine leg ran against a real socket, on exactly the stored draft.
+        expect(engine.validations).toEqual([{ definition: STANDARD_FIX }]);
+        expect(validated.findings).toEqual([]);
+        expect(validated.engineConsulted).toBe(true);
+        expect(validated.file).toEqual(opened);
+        expect(validated.checks).toEqual(await readChecks(place));
+        expect((await detail(place, created.id)).currentVersion).toBeNull();
+      });
+
+      it("puts the engine's finding on the lines of the stage it names, and counts it in the graph row", async () => {
+        const place = await bench();
+        await routes(place, ROUTED_TASKS);
+        await workflow(place);
+        engine.respondToValidation(() =>
+          validationFindings({
+            code: "loop.unbounded",
+            message: "The engine will not run this stage as written.",
+            path: "/nodes/6",
+            node_id: "implement",
+          }),
+        );
+
+        const validated = await validate(place);
+
+        expect(validated.findings).toEqual([
+          {
+            source: "engine",
+            code: "loop.unbounded",
+            message: "The engine will not run this stage as written.",
+            path: "/nodes/6",
+            node: "implement",
+          },
+        ]);
+        expect(validated.file.diagnostics).toEqual([
+          {
+            severity: "error",
+            range: { line: 71, column: 5, endLine: 85, endColumn: 8 },
+            code: "loop.unbounded",
+            message: "The engine will not run this stage as written.",
+            node: "implement",
+          },
+        ]);
+        expect(validated.checks.rows).toEqual([
+          {
+            id: "graph",
+            status: "err",
+            title: "1 validation error",
+            note: "The engine will not run this stage as written.",
+          },
+        ]);
+      });
+
+      it("asks the engine nothing about a draft zod refuses, and draws zod's findings once", async () => {
+        const place = await bench();
+        await routes(place, ROUTED_TASKS);
+        await workflow(place, "Standard Fix", withoutSplitBranch());
+        const opened = await readFile(place);
+
+        const validated = await validate(place);
+
+        expect(engine.validations).toEqual([]);
+        expect(validated.engineConsulted).toBe(false);
+        expect(validated.findings.length).toBeGreaterThan(0);
+        expect(validated.findings.every((finding) => finding.source === "dsl")).toBe(true);
+        expect(validated.file.diagnostics).toEqual(opened.diagnostics);
+      });
+
+      it("is a 502 when the engine cannot answer, rather than a pass", async () => {
+        const place = await bench();
+        await workflow(place);
+        engine.respondToValidation(() => engineFailure());
+
+        const refused = bodyOf<ErrorEnvelope>(
+          await as(place.owner, place)("post", `${CODE}/validate`).expect(502),
+        );
+        expect(refused.code).toBe("engine_unavailable");
+      });
+
+      it("lets a viewer validate, and refuses a blank canvas as its file is refused", async () => {
+        const place = await bench();
+        await workflow(place);
+        await workflow(place, "Blank Loop", null);
+        const viewer = await api.signIn({ email: "viewer@ouroboros.invalid" });
+        await api.join(place.id, viewer, "viewer");
+
+        expect((await validate(place, viewer)).engineConsulted).toBe(true);
+
+        const blank = bodyOf<ErrorEnvelope>(
+          await as(place.owner, place)("post", `${WORKFLOWS}/blank-loop/code/validate`).expect(409),
+        );
+        expect(blank.code).toBe("workflow_code_unprojectable");
+      });
     });
   });
 

@@ -4053,6 +4053,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflows/{slug}/code/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a workflow file without publishing it
+         * @description Mockup 05's **Validate** — V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)).
+         *     The file `GET /api/v1/workflows/{slug}/code` serves is put through **the publish gate**,
+         *     exactly as `POST /api/v1/workflows/{id}/publish` puts it: the DSL's zod stage, then the
+         *     registry's governance stage, then `ouroboros-engine`'s `POST /v0/workflows/validate`. A
+         *     document one stage refuses is not shown to the next.
+         *
+         *     **Nothing is written and no version is created.** This is *check my work*: a draft this
+         *     answers green is one publishing would accept at this moment, and one it refuses is refused
+         *     with the same findings a publish would carry.
+         *
+         *     The answer is drawn by the code view. `file.diagnostics` carries every `registry` and
+         *     `engine` finding as an `error` on the lines of the stage it is about, beside the file's own
+         *     diagnostics; `checks` are the Loop Checks rows derived from them; `findings` are the gate's,
+         *     verbatim.
+         *
+         *     **A check that could not run is not a pass**: an engine that cannot answer is a
+         *     `502 engine_unavailable`, never a green verdict on the zod stage alone.
+         *
+         *     **Every member may validate**, `viewer` included — it writes nothing.
+         */
+        post: operations["validateWorkflowCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -10657,6 +10695,32 @@ export interface components {
              *     against task routes, or a reference failed.
              */
             rows: components["schemas"]["LoopCheckRow"][];
+        };
+        /**
+         * WorkflowCodeValidation
+         * @description What mockup 05's **Validate** answers (V.6,
+         *     [#174](https://github.com/NobuData/ouroboros/issues/174)) — the publish gate's verdict on
+         *     one workflow file, as the code view draws it. Nothing is written and no version is created.
+         */
+        WorkflowCodeValidation: {
+            /**
+             * @description The file validated, as `GET …/code` serves it — except that `diagnostics` also carries
+             *     every `registry` and `engine` finding, as an `error` on the lines of the stage it is
+             *     about. The zod stage's findings are already among the file's own diagnostics.
+             */
+            file: components["schemas"]["WorkflowCode"];
+            /** @description The Loop Checks rows derived from those diagnostics. */
+            checks: components["schemas"]["WorkflowCodeChecks"];
+            /**
+             * @description Every finding the gate reported, in its order — what a publish of this draft would be
+             *     refused with right now. Empty is the only verdict that may publish.
+             */
+            findings: components["schemas"]["WorkflowFinding"][];
+            /**
+             * @description Whether the engine was asked. `false` exactly when the zod or registry stage refused
+             *     first, so a verdict with no findings always carries `true`.
+             */
+            engineConsulted: boolean;
         };
         /**
          * SaveWorkflowCodeRequest
@@ -27981,6 +28045,163 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["HealthReport"];
+                };
+            };
+        };
+    };
+    validateWorkflowCode: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow by its slug — `workflows.slug`, lower-case words separated by single hyphens,
+                 *     at most 64 characters (V029). The code view names a workflow as mockup 05 does, by the file
+                 *     it is: `standard-fix` is `workflows/standard-fix.loop.ts`. Anything that could not be a
+                 *     slug is a `422` naming the field, before anything is read; a slug that names nothing *this
+                 *     caller may see* is a `404`.
+                 * @example standard-fix
+                 */
+                slug: components["parameters"]["WorkflowSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verdict, drawn as the file's diagnostics and its Loop Checks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowCodeValidation"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_not_found` — no workflow with that slug, **or none this caller may know
+             *     about**; `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "workflow_not_found",
+                     *       "message": "No such workflow.",
+                     *       "details": {
+                     *         "slug": "standard-fix"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_code_unprojectable` — the document cannot be shown as code without changing
+             *     it, so there is no file to validate. `details.findings` carries what the shared validator
+             *     reports about it. Finish the draft on the canvas.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the slug is not a slug. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately. Nothing was written.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `engine_unavailable` — `ouroboros-engine` could not validate the definition. Nothing
+             *     stands in for its opinion, so the validation is refused rather than answered green.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

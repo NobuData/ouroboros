@@ -5,6 +5,7 @@ import * as projection from "./code.projection";
 import { WorkflowCodeService } from "./code.service";
 import { NO_DRAFT, draftEtag } from "./draft.etag";
 import { readFixture } from "./dsl.golden.fixture";
+import type { PublishVerdict, WorkflowPublishGate } from "./publish.gate";
 import type { WorkflowStatsRepository } from "./stats.repository";
 import { draftConflict } from "./workflows.errors";
 import type { WorkflowsRepository } from "./workflows.repository";
@@ -113,7 +114,11 @@ interface Harness {
   registry: jest.Mocked<WorkflowStatsRepository>;
   lifecycle: jest.Mocked<WorkflowsService>;
   catalog: jest.Mocked<Pick<WorkflowCatalogService, "dslCatalogue">>;
+  gate: jest.Mocked<Pick<WorkflowPublishGate, "check">>;
 }
+
+/** The gate's green verdict: nothing found, the engine asked. */
+const GREEN: PublishVerdict = { findings: [], engineConsulted: true };
 
 /**
  * A service over spies: a workspace with the `minimal` workflow, its draft and its versions.
@@ -153,6 +158,7 @@ function harness(): Harness {
   } as unknown as jest.Mocked<WorkflowsService>;
 
   const catalog = { dslCatalogue: jest.fn().mockResolvedValue({ tasks: ["implement"] }) };
+  const gate = { check: jest.fn().mockResolvedValue(GREEN) };
 
   return {
     service: new WorkflowCodeService(
@@ -160,11 +166,13 @@ function harness(): Harness {
       registry,
       lifecycle,
       catalog as unknown as WorkflowCatalogService,
+      gate as unknown as WorkflowPublishGate,
     ),
     workflows,
     registry,
     lifecycle,
     catalog,
+    gate,
   };
 }
 
@@ -372,6 +380,146 @@ describe("a file's Loop Checks", () => {
     expect((await refusal(service.checks(WORKSPACE, "minimal"))).code).toBe(
       "workflow_code_unprojectable",
     );
+  });
+});
+
+describe("validating a file (V.6)", () => {
+  it("runs the publish gate over the document the file was printed from, in this workspace, and writes nothing", async () => {
+    const { service, gate, lifecycle } = harness();
+
+    const validated = await service.validate(WORKSPACE, "minimal");
+
+    expect(gate.check).toHaveBeenCalledTimes(1);
+    expect(gate.check).toHaveBeenCalledWith(WORKSPACE, MINIMAL);
+    expect(lifecycle.writeGuarded).not.toHaveBeenCalled();
+    expect(validated).toEqual({
+      file: await service.read(WORKSPACE, "minimal"),
+      checks: await service.checks(WORKSPACE, "minimal"),
+      findings: [],
+      engineConsulted: true,
+    });
+  });
+
+  it("puts an engine finding on the lines of the stage it names, as an error the checks count", async () => {
+    const { service, gate } = harness();
+    const finding = {
+      source: "engine" as const,
+      code: "engine.stage_refused",
+      message: "The engine cannot run this stage.",
+      path: "/nodes/1",
+      node: "done",
+    };
+    gate.check.mockResolvedValue({ findings: [finding], engineConsulted: true });
+
+    const validated = await service.validate(WORKSPACE, "minimal");
+
+    expect(validated.file.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "engine.stage_refused",
+        message: "The engine cannot run this stage.",
+        node: "done",
+      }),
+    ]);
+    expect(validated.file.diagnostics[0].range.line).toBe(MINIMAL_SPANS[1].startLine);
+    expect(validated.checks.rows).toEqual([
+      {
+        id: "graph",
+        status: "err",
+        title: "1 validation error",
+        note: "The engine cannot run this stage.",
+      },
+    ]);
+    expect(validated.findings).toEqual([finding]);
+  });
+
+  it("places a registry finding as an error too, by its node when it carries no path", async () => {
+    const { service, gate } = harness();
+    gate.check.mockResolvedValue({
+      findings: [
+        {
+          source: "registry",
+          code: "reference.unknown_alias",
+          message: "start pins coder-maxx, which the registry does not hold.",
+          node: "start",
+        },
+      ],
+      engineConsulted: false,
+    });
+
+    const validated = await service.validate(WORKSPACE, "minimal");
+
+    expect(validated.file.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "error",
+        code: "reference.unknown_alias",
+        node: "start",
+      }),
+    ]);
+    expect(validated.file.diagnostics[0].range.line).toBe(MINIMAL_SPANS[0].startLine);
+    expect(validated.engineConsulted).toBe(false);
+  });
+
+  it("does not place the zod stage's findings twice — the file's diagnosis already holds them", async () => {
+    const { service, gate, workflows } = harness();
+    workflows.draftOf.mockResolvedValue(draft({ definition: withOrphan() }));
+    gate.check.mockResolvedValue({
+      findings: [
+        {
+          source: "dsl",
+          code: "node.unreachable",
+          message: "No path of edges reaches this stage from the trigger.",
+          path: "/nodes/2",
+          node: "orphan",
+        },
+      ],
+      engineConsulted: false,
+    });
+
+    const validated = await service.validate(WORKSPACE, "minimal");
+
+    expect(validated.file.diagnostics).toEqual([
+      expect.objectContaining({ severity: "error", code: "node.unreachable", node: "orphan" }),
+    ]);
+    expect(validated.checks.rows[0]).toMatchObject({ id: "graph", status: "err" });
+  });
+
+  it("validates the version in force for a workflow with no draft open", async () => {
+    const { service, gate, workflows } = harness();
+    workflows.draftOf.mockResolvedValue(undefined);
+
+    const validated = await service.validate(WORKSPACE, "minimal");
+
+    expect(workflows.versionAt).toHaveBeenCalledWith(WORKFLOW, 3);
+    expect(gate.check).toHaveBeenCalledWith(WORKSPACE, MINIMAL);
+    expect(validated.file).toMatchObject({ version: 3, readOnly: false, etag: NO_DRAFT });
+    expect(validated.checks).toMatchObject({ version: 3, etag: NO_DRAFT });
+  });
+
+  it("refuses a document that cannot be shown as code, before the gate is asked", async () => {
+    const { service, gate, workflows } = harness();
+    workflows.draftOf.mockResolvedValue(draft({ definition: {} }));
+
+    expect((await refusal(service.validate(WORKSPACE, "minimal"))).code).toBe(
+      "workflow_code_unprojectable",
+    );
+    expect(gate.check).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 for a slug this workspace does not have, before the gate is asked", async () => {
+    const { service, gate, workflows } = harness();
+    workflows.findBySlug.mockResolvedValue(undefined);
+
+    expect((await refusal(service.validate(WORKSPACE, "gone"))).code).toBe("workflow_not_found");
+    expect(gate.check).not.toHaveBeenCalled();
+  });
+
+  it("lets an engine that could not answer refuse the validation, rather than report a pass", async () => {
+    const { service, gate } = harness();
+    const unavailable = new Error("engine_unavailable");
+    gate.check.mockRejectedValue(unavailable);
+
+    await expect(service.validate(WORKSPACE, "minimal")).rejects.toBe(unavailable);
   });
 });
 

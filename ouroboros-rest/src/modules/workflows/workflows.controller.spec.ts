@@ -38,7 +38,9 @@ const PRINCIPAL = { user: { id: "user-1" } } as never;
 describe("the workflows controller", () => {
   let service: jest.Mocked<WorkflowsService>;
   let catalog: jest.Mocked<Pick<WorkflowCatalogService, "catalog" | "codeSymbols">>;
-  let code: jest.Mocked<Pick<WorkflowCodeService, "read" | "checks" | "save" | "tree" | "config">>;
+  let code: jest.Mocked<
+    Pick<WorkflowCodeService, "read" | "checks" | "validate" | "save" | "tree" | "config">
+  >;
   let dryRuns: jest.Mocked<Pick<WorkflowDryRunService, "dryRun">>;
   let controller: WorkflowsController;
   let reflector: Reflector;
@@ -62,6 +64,7 @@ describe("the workflows controller", () => {
     code = {
       read: jest.fn().mockResolvedValue({ slug: "standard-fix" }),
       checks: jest.fn().mockResolvedValue({ rows: [] }),
+      validate: jest.fn().mockResolvedValue({ findings: [] }),
       save: jest.fn().mockResolvedValue({ etag: "token" }),
       tree: jest.fn().mockResolvedValue({ files: [] }),
       config: jest.fn().mockResolvedValue({ readOnly: true }),
@@ -195,6 +198,12 @@ describe("the workflows controller", () => {
       expect(code.checks).toHaveBeenCalledWith("acme-robotics-id", "standard-fix", 2);
     });
 
+    it("hands Validate the workspace and the slug, and nothing else", async () => {
+      await controller.validateCode(TENANT, { slug: "standard-fix" });
+
+      expect(code.validate).toHaveBeenCalledWith("acme-robotics-id", "standard-fix");
+    });
+
     it("hands a file save the If-Match header verbatim, and the text", async () => {
       await controller.saveCode(TENANT, { slug: "standard-fix" }, 'W/"token"', { text: "…" });
 
@@ -256,6 +265,8 @@ describe("the workflows controller", () => {
       ["ouroboros.config.ts", () => controller.codeConfig],
       ["a workflow's file", () => controller.readCode],
       ["a workflow's Loop Checks", () => controller.readCodeChecks],
+      // Validate writes nothing and creates no version — "check my work", not a publish (V.6).
+      ["validating a workflow's file", () => controller.validateCode],
       ["the detail", () => controller.read],
       ["the history", () => controller.versions],
       // A dry run writes nothing and calls no model, so it is a read in every way that matters.
@@ -334,6 +345,12 @@ describe("the workflows controller", () => {
     it("serves a workflow's Loop Checks at `:slug/code/checks`", () => {
       expect(Reflect.getMetadata(PATH_METADATA, WorkflowsController.prototype.readCodeChecks)).toBe(
         ":slug/code/checks",
+      );
+    });
+
+    it("serves Validate at `:slug/code/validate`", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, WorkflowsController.prototype.validateCode)).toBe(
+        ":slug/code/validate",
       );
     });
   });

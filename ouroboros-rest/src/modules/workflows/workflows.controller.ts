@@ -60,6 +60,7 @@ import {
   type WorkflowCodeChecks,
   type WorkflowCodeConfig,
   type WorkflowCodeTree,
+  type WorkflowCodeValidation,
 } from "./code.resources";
 import { WorkflowCodeService } from "./code.service";
 import type { CodeSymbolTable } from "./code.symbols";
@@ -287,6 +288,27 @@ export class WorkflowsController {
     @Query() query: ReadWorkflowQuery,
   ): Promise<WorkflowCodeChecks> {
     return this.code.checks(tenant.id, params.slug, query.version);
+  }
+
+  /**
+   * `POST /api/v1/workflows/{slug}/code/validate` — mockup 05's **Validate** (V.6,
+   * [#174](https://github.com/NobuData/ouroboros/issues/174)).
+   *
+   * The file `GET …/code` serves, through the publish gate — zod, the registry, then the engine —
+   * with nothing written and no version created. No `@Roles()`: it writes nothing, so it is every
+   * member's, as a dry run is. `200` rather than `201`, because nothing is created.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The workflow's slug.
+   * @returns The file with every finding on its lines, the Loop Checks rows, and the findings.
+   */
+  @Post(":slug/code/validate")
+  @HttpCode(HttpStatus.OK)
+  validateCode(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: WorkflowSlugParams,
+  ): Promise<WorkflowCodeValidation> {
+    return this.code.validate(tenant.id, params.slug);
   }
 
   /**

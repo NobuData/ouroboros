@@ -32,6 +32,8 @@ import { codeReadings, fileRead, panelReadings, workflowCode } from "../../helpe
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 // The file's save is a Server Action (V.4, #172); here it never answers, so typing stays unsaved.
 vi.mock("@/app/workflows/code/code-actions", () => ({ saveCode: vi.fn(() => new Promise(() => undefined)) }));
+// Publish is S.6's shared Server Action on the server-only client (V.6, #174); nothing here publishes.
+vi.mock("@/app/workflows/draft-actions", () => ({ publishWorkflow: vi.fn() }));
 
 const { CodeScreen } = await import("@/app/workflows/code/code-screen");
 

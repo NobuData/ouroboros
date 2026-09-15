@@ -203,6 +203,67 @@ export function fromParseIssues(issues: readonly RangedIssue[]): CodeDiagnostic[
 }
 
 /**
+ * A finding from outside the file's own diagnosis — the publish gate's registry or engine stage —
+ * in the shape `publish.gate.ts`' `PublishFinding` has, where `path` may be absent.
+ */
+export interface PlaceableFinding {
+  /** Which rule broke, in the reporting validator's vocabulary. */
+  readonly code: string;
+  /** What a person should read. */
+  readonly message: string;
+  /** An RFC 6901 JSON Pointer to the offending value, when the validator gave one. */
+  readonly path?: string;
+  /** The node it anchors to, when it anchors to one. */
+  readonly node?: string;
+  /** The edge it anchors to, when it is about one. */
+  readonly edge?: { readonly from: string; readonly to: string };
+}
+
+/**
+ * Place findings the file's own diagnosis did not produce on the lines of the stage each is
+ * about, by the rules in this file's header — V.6's **Validate**
+ * ([#174](https://github.com/NobuData/ouroboros/issues/174)), whose engine findings reach the
+ * editor this way.
+ *
+ * @param findings - The findings. A missing `path` is read as the document itself, so the stage
+ *   comes from `node` or `edge.from`, else the `defineLoop(` line.
+ * @param input - The printed file, its span map and the document it was printed from.
+ * @param severity - How much they block. Defaults to `error`: a gate finding refuses a publish.
+ * @returns One diagnostic per finding, in {@link sortCodeDiagnostics}' order.
+ * @throws {RangeError} When a span names a line `text` does not have, as {@link diagnoseDocument}.
+ */
+export function placeFindings(
+  findings: readonly PlaceableFinding[],
+  input: Omit<DiagnosisInput, "catalogue">,
+  severity: CodeDiagnosticSeverity = "error",
+): CodeDiagnostic[] {
+  const placement: Placement = {
+    text: input.text,
+    lines: new LineMap(input.text),
+    spans: input.spans,
+    document: input.document,
+  };
+
+  return sortCodeDiagnostics(
+    findings.map((finding) =>
+      placeFinding(
+        {
+          code: finding.code,
+          message: finding.message,
+          path: finding.path ?? "",
+          ...(finding.node === undefined ? {} : { node: finding.node }),
+          ...(finding.edge === undefined
+            ? {}
+            : { edge: { from: finding.edge.from, to: finding.edge.to } }),
+        },
+        severity,
+        placement,
+      ),
+    ),
+  );
+}
+
+/**
  * Merge diagnostic streams into one.
  *
  * @param streams - Each source's diagnostics, in any order.

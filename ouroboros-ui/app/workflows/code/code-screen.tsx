@@ -1,5 +1,4 @@
 import type { Role } from "@/app/api/membership";
-import type { WorkflowRailEntry } from "@/app/api/workflows";
 import { workflowPath } from "@/app/paths";
 import { Button, Card, EmptyState } from "@/app/ui";
 
@@ -7,7 +6,8 @@ import { RAIL_FAILED_HEADLINE } from "../states";
 import { StudioFailedBanner } from "../studio-banner";
 import { StudioFrame } from "../studio-frame";
 import { StudioReadOnlyNote } from "../studio-readonly-note";
-import { PUBLISH_SOON, publishLabel } from "../view";
+import { CodeFlows } from "./code-flows-session";
+import { CodeFlowsNotice, CodeHeadActions } from "./code-flows-view";
 import {
   CODE_FAILED_HEADLINE,
   type CodeFinding,
@@ -17,8 +17,6 @@ import {
   UNPROJECTABLE_ACTION,
   UNPROJECTABLE_TITLE,
   UNREAD_EXPLORER,
-  VALIDATE_LABEL,
-  VALIDATE_SOON,
   codeEntry,
   codeHead,
   codeSeatCopy,
@@ -50,13 +48,14 @@ import "./code-view.css";
  * are kept per file for the browser session and saved into the draft as they are typed, by the save
  * loop of V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)).
  *
- * ### The two actions wait, and say for what
+ * ### The two actions run the shared pipelines
  *
- * **Validate** is V.6's ([#174](https://github.com/NobuData/ouroboros/issues/174)) and **Publish
- * vN+1** opens S.6's publish dialog ([#152](https://github.com/NobuData/ouroboros/issues/152)),
- * the one the visual editor will open — so both are drawn where the mockup draws them and inert
- * with the issue each waits for as the reason (design system § 3.5). **Publish** is drawn for a
- * role that may publish and only when there is a workflow, exactly as on the visual editor.
+ * V.6 ([#174](https://github.com/NobuData/ouroboros/issues/174)): **Validate** runs the publish gate
+ * without publishing and draws what it finds in the editor and Loop Checks; **Publish vN+1** opens S.6's
+ * publish dialog ([#152](https://github.com/NobuData/ouroboros/issues/152)), the one the visual editor
+ * opens. `code-flows-session.tsx` holds both around the page, and the notice either leaves sits above
+ * the workbench. **Publish** is drawn for a role that may publish and only when there is a workflow,
+ * exactly as on the visual editor; both are inert, saying why, when there is no file to act on.
  *
  * ### The role, and the states
  *
@@ -111,9 +110,9 @@ export function CodeScreen({
   const head = codeHead(state);
   const entry = codeEntry(state);
 
-  return (
+  const page = (
     <StudioFrame
-      actions={<Actions entry={entry} mayAdminister={mayAdminister} />}
+      actions={<CodeHeadActions entry={entry} mayAdminister={mayAdminister} />}
       current="code"
       // The slug the URL named, whatever the reads found: Code is this page, and Visual leads to
       // the same workflow's canvas — which, for a slug the rail does not hold, is the visual
@@ -123,6 +122,7 @@ export function CodeScreen({
       title={head.title}
     >
       {!mayAdminister && <StudioReadOnlyNote role={role} />}
+      <CodeFlowsNotice />
 
       {state.kind === "failed" && (
         <StudioFailedBanner headline={RAIL_FAILED_HEADLINE} reason={state.reason} />
@@ -152,30 +152,14 @@ export function CodeScreen({
       )}
     </StudioFrame>
   );
-}
 
-/**
- * Mockup 05's two head actions, each inert with the issue it waits for.
- *
- * @param props.entry The selected workflow's rail entry, or `null` when nothing is selected.
- * @param props.mayAdminister Whether the reader may publish.
- * @returns The actions.
- */
-function Actions({
-  entry,
-  mayAdminister,
-}: Readonly<{ entry: WorkflowRailEntry | null; mayAdminister: boolean }>) {
-  return (
-    <>
-      <Button reason={VALIDATE_SOON} tone="ghost">
-        {VALIDATE_LABEL}
-      </Button>
-      {mayAdminister && entry !== null && (
-        <Button reason={PUBLISH_SOON} tone="primary">
-          {publishLabel(entry.currentVersion)}
-        </Button>
-      )}
-    </>
+  // Keyed by the workflow, so another workflow's page starts its flows afresh.
+  return entry === null ? (
+    page
+  ) : (
+    <CodeFlows entry={entry} key={entry.slug}>
+      {page}
+    </CodeFlows>
   );
 }
 
