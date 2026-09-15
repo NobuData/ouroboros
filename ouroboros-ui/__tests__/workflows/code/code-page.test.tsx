@@ -28,6 +28,8 @@ vi.mock("@/app/workflows/code/code-data", () => ({
   readStudioCode: (access: unknown, slug: string) => readStudioCode(access, slug),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+// The file's save is a Server Action on the server-only client (V.4, #172). Nothing here types.
+vi.mock("@/app/workflows/code/code-actions", () => ({ saveCode: vi.fn(() => new Promise(() => undefined)) }));
 
 const CodePage = (await import("@/app/(app)/workflows/[slug]/code/page")).default;
 const WorkflowLayout = (await import("@/app/(app)/workflows/[slug]/layout")).default;

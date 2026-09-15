@@ -180,3 +180,118 @@
   color: var(--ink-faint);
   font-style: italic;
 }
+
+/* ---------- a refused save: squiggles, gutter markers and the hover card (V.4, #172) ---------- */
+
+/*
+ * The squiggle. CodeMirror draws it as an SVG background in a fixed hue; here it is the text's own
+ * wavy underline, on the status token, so both palettes draw it.
+ */
+.code-editor .cm-editor .cm-lintRange-error {
+  background-image: none;
+  text-decoration: underline wavy var(--err);
+  text-decoration-skip-ink: none;
+}
+
+.code-editor .cm-editor .cm-lintRange-warning {
+  background-image: none;
+  text-decoration: underline wavy var(--warn);
+  text-decoration-skip-ink: none;
+}
+
+.code-editor .cm-editor .cm-lintRange-info,
+.code-editor .cm-editor .cm-lintRange-hint {
+  background-image: none;
+  text-decoration: underline dotted var(--ink-faint);
+}
+
+/* The range the lint panel has selected — the panel is not mounted, but the rule is re-coloured all the same. */
+.code-editor .cm-editor .cm-lintRange-active {
+  background-color: var(--warn-tint);
+}
+
+/* An empty range — a token that is missing — is a small wedge under the place it is missing from. */
+.code-editor .cm-editor .cm-lintPoint::after {
+  border-bottom-color: var(--err);
+}
+
+.code-editor .cm-editor .cm-lintPoint-warning::after {
+  border-bottom-color: var(--warn);
+}
+
+.code-editor .cm-editor .cm-lintPoint-info::after,
+.code-editor .cm-editor .cm-lintPoint-hint::after {
+  border-bottom-color: var(--ink-faint);
+}
+
+/* The gutter marker: the library's SVG replaced by a dot in the status hue, on the gutter's own well. */
+.code-editor .cm-editor .cm-lint-marker-error,
+.code-editor .cm-editor .cm-lint-marker-warning,
+.code-editor .cm-editor .cm-lint-marker-info {
+  content: normal;
+  border-radius: var(--r-round);
+}
+
+.code-editor .cm-editor .cm-lint-marker-error {
+  background: radial-gradient(circle, var(--err) 0 32%, transparent 36%);
+}
+
+.code-editor .cm-editor .cm-lint-marker-warning {
+  background: radial-gradient(circle, var(--warn) 0 32%, transparent 36%);
+}
+
+.code-editor .cm-editor .cm-lint-marker-info {
+  background: radial-gradient(circle, var(--ink-faint) 0 32%, transparent 36%);
+}
+
+/* The hover card: a raised panel on a hairline, in the UI face. */
+.code-editor .cm-editor .cm-tooltip {
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--ink);
+  font-family: var(--f-ui);
+}
+
+.code-editor .cm-editor .cm-tooltip-section:not(:first-child) {
+  border-top: 1px solid var(--line);
+}
+
+/* No hover card here asks for an arrow; the rule is closed so none can appear in a library hue. */
+.code-editor .cm-editor .cm-tooltip-arrow {
+  display: none;
+}
+
+/* One diagnostic in the card: its message, and the service's note under it, ruled in its hue. */
+.code-editor .cm-editor .cm-diagnostic {
+  padding-block: var(--sp-2);
+  padding-inline: var(--sp-5);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.code-editor .cm-editor .cm-diagnostic-error {
+  border-inline-start: 3px solid var(--err);
+}
+
+.code-editor .cm-editor .cm-diagnostic-warning {
+  border-inline-start: 3px solid var(--warn);
+}
+
+.code-editor .cm-editor .cm-diagnostic-info,
+.code-editor .cm-editor .cm-diagnostic-hint {
+  border-inline-start: 3px solid var(--ink-faint);
+}
+
+/* The rule's code, after the message. */
+.code-editor .cm-editor .cm-diagnosticSource {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+}
+
+/* A diagnostic's action — the service sends none today; re-coloured so one could never arrive in grey. */
+.code-editor .cm-editor .cm-diagnosticAction {
+  background-color: var(--accent);
+  color: var(--accent-ink);
+}

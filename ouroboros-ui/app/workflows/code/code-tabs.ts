@@ -7,9 +7,10 @@
  *
  * A **tab** is a file's path. The **active** tab is the file in the pane, and is always one of the
  * tabs or nothing. A **buffer** is what a person typed into a file that the service has not yet
- * accepted: the text the editor holds (`text`) and the text it was typed over (`base`). Every
- * function here takes a session and returns the next one — **the same object when nothing
- * changed**, so a store that compares identities notifies no one for a no-op.
+ * accepted: the text the editor holds (`text`), the text it was typed over (`base`), and the draft's
+ * etag when that base was read or saved (`etag`). Every function here takes a session and returns the
+ * next one — **the same object when nothing changed**, so a store that compares identities notifies
+ * no one for a no-op.
  *
  * ### The modified-dot is the buffer, and nothing else
  *
@@ -27,11 +28,19 @@
  * at the save would put the pre-save read back into the editor. A clean buffer over the page's own
  * read holds nothing the read does not, and is never kept.
  *
+ * ### A buffer knows which draft it was typed over (V.4)
+ *
+ * The buffer outlives the page, and the draft can move while it is away — the visual editor, another
+ * tab. Saving it then with the etag of a fresh read would write the person's text over a change they
+ * never saw. So each buffer keeps the etag of its base, and a buffer whose text was typed over a draft
+ * that is neither the one read now nor the same text is **diverged** ({@link isDiverged}): nothing saves
+ * it until the person has chosen, with the difference in front of them — keep it over the draft as it is
+ * now ({@link rebaseBuffer}), or drop it ({@link discardBuffer}).
+ *
  * ### Closing a tab discards nothing
  *
- * A closed tab's buffer stays, and its dot comes back with it when the file is opened again. There
- * is no prompt to write yet — discarding an edit is a decision the save loop owns — and keeping the
- * text is the choice that cannot lose work.
+ * A closed tab's buffer stays, and its dot comes back with it when the file is opened again. Closing
+ * is not the moment to decide to lose text; dropping a buffer is always an explicit answer.
  *
  * **Framework-free and pure**, like `code-view.ts`: the store that holds a session for the length
  * of a browser session is `code-session.ts`.
@@ -49,6 +58,11 @@ export interface FileBuffer {
    * this module's header); the dot is `text !== base`.
    */
   readonly text: string;
+  /**
+   * The draft's etag when `base` was read or saved — the `If-Match` a save of `text` sends — or `null`
+   * when it is not known, as for a buffer kept by a page from before V.4.
+   */
+  readonly etag: string | null;
 }
 
 /** The code view's tab state for one workspace, in one browser session. */
@@ -233,7 +247,14 @@ function withBuffer(session: CodeSession, path: string, buffer: FileBuffer | nul
   const current = bufferOf(session, path);
 
   if (buffer === null && current === undefined) return session;
-  if (buffer !== null && current?.base === buffer.base && current.text === buffer.text) return session;
+  if (
+    buffer !== null &&
+    current?.base === buffer.base &&
+    current.text === buffer.text &&
+    current.etag === buffer.etag
+  ) {
+    return session;
+  }
 
   const others = Object.entries(session.buffers).filter(([key]) => key !== path);
   const buffers = buffer === null ? others : [...others, [path, buffer] as const];
@@ -250,6 +271,8 @@ function withBuffer(session: CodeSession, path: string, buffer: FileBuffer | nul
  *   its buffer already has, so a read that changed underneath an edit does not move the line the
  *   dot is measured from.
  * @param text The whole text the editor holds after the edit.
+ * @param etag The etag a first edit's base was read under — the save loop's current one. A later edit
+ *   keeps its buffer's, for the reason `read` gives.
  * @returns The session with the buffer. It carries no dot when the text is back to its base, and
  *   is dropped altogether when that base is the page's own read.
  */
@@ -258,9 +281,13 @@ export function editBuffer(
   path: string,
   read: string,
   text: string,
+  etag: string | null,
 ): CodeSession {
-  const base = bufferOf(session, path)?.base ?? read;
-  return withBuffer(session, path, text === base && base === read ? null : { base, text });
+  const current = bufferOf(session, path);
+  const base = current?.base ?? read;
+  const kept = current === undefined ? etag : current.etag;
+
+  return withBuffer(session, path, text === base && base === read ? null : { base, text, etag: kept });
 }
 
 /**
@@ -269,7 +296,7 @@ export function editBuffer(
  * a fresh read supersedes.
  *
  * A read that differs from a buffer with unsaved text leaves it alone: the person's text is kept,
- * and reconciling it with a draft that moved is V.4's conflict flow.
+ * and whether it may be saved over that read is {@link isDiverged}'s question.
  *
  * @param session The session.
  * @param path The file.
@@ -288,17 +315,67 @@ export function adoptRead(session: CodeSession, path: string, read: string): Cod
  *
  * @param session The session.
  * @param path The file.
- * @param saved The text the service accepted.
+ * @param saved The text the service accepted — what was sent, not the canonical text it answered with,
+ *   because the editor holds what was sent.
+ * @param etag The draft's etag after the save — what the next save sends.
  * @returns The session with the buffer measured from the saved text. When the editor still holds
  *   exactly that text the buffer is clean — no dot — and keeps the saved text in the editor until
  *   the next read ({@link adoptRead}); when the person typed on while the save was in flight, the
  *   dot stays, truthfully.
  */
-export function markSaved(session: CodeSession, path: string, saved: string): CodeSession {
+export function markSaved(session: CodeSession, path: string, saved: string, etag: string): CodeSession {
   const buffer = bufferOf(session, path);
   if (buffer === undefined) return session;
 
-  return withBuffer(session, path, { base: saved, text: buffer.text });
+  return withBuffer(session, path, { base: saved, text: buffer.text, etag });
+}
+
+/**
+ * Drop a file's buffer — *Reload theirs*, or a mode switch the person confirmed.
+ *
+ * @param session The session.
+ * @param path The file.
+ * @returns The session without the buffer, so the editor opens on the file as it is read.
+ */
+export function discardBuffer(session: CodeSession, path: string): CodeSession {
+  return withBuffer(session, path, null);
+}
+
+/**
+ * Keep a buffer's text over the draft as it is read now — *Save mine over theirs*.
+ *
+ * @param session The session.
+ * @param path The file.
+ * @param read The file as the page reads it now — the new base.
+ * @param etag That read's etag — what the save of the kept text sends.
+ * @returns The session with the buffer measured from the read, or without it when its text is the read.
+ */
+export function rebaseBuffer(session: CodeSession, path: string, read: string, etag: string): CodeSession {
+  const buffer = bufferOf(session, path);
+  if (buffer === undefined) return session;
+
+  return withBuffer(session, path, buffer.text === read ? null : { base: read, text: buffer.text, etag });
+}
+
+/**
+ * Whether a file's buffer was typed over a draft that has moved since — so that saving it would write
+ * over a change the person never saw.
+ *
+ * Asked when a file is read, not while it is edited: between reads, the save loop's own saves move the
+ * buffer's etag ahead of the page's read, which is not a move of the draft.
+ *
+ * @param session The session.
+ * @param path The file.
+ * @param read The file as the page read it.
+ * @param etag That read's etag.
+ * @returns `true` for a buffer with unsaved text whose base is neither the text read nor typed under the
+ *   etag read. A base equal to the read is never diverged, whatever its etag: the person typed over
+ *   exactly what the draft says now.
+ */
+export function isDiverged(session: CodeSession, path: string, read: string, etag: string): boolean {
+  const buffer = bufferOf(session, path);
+
+  return buffer !== undefined && buffer.text !== buffer.base && buffer.base !== read && buffer.etag !== etag;
 }
 
 /**
@@ -336,7 +413,8 @@ export function bufferText(session: CodeSession, path: string, read: string): st
  *
  * @param raw What storage held, or `null`.
  * @returns The session it describes, with a duplicate tab, an active path that is not a tab and
- *   a malformed or unmodified buffer each dropped; {@link EMPTY_SESSION} for anything unreadable.
+ *   a malformed or unmodified buffer each dropped, and an etag that is not a string read as unknown;
+ *   {@link EMPTY_SESSION} for anything unreadable.
  */
 export function parseSession(raw: string | null): CodeSession {
   if (raw === null) return EMPTY_SESSION;
@@ -359,7 +437,16 @@ export function parseSession(raw: string | null): CodeSession {
         typeof buffer.base === "string" &&
         typeof buffer.text === "string" &&
         buffer.base !== buffer.text
-          ? [[path, { base: buffer.base, text: buffer.text }] as const]
+          ? [
+              [
+                path,
+                {
+                  base: buffer.base,
+                  text: buffer.text,
+                  etag: typeof buffer.etag === "string" ? buffer.etag : null,
+                },
+              ] as const,
+            ]
           : [],
       )
     : [];

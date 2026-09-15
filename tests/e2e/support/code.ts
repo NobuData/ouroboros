@@ -20,8 +20,8 @@ export const FILE_LABEL = "Workflow code";
 /** The editable region's accessible name: the file's path. */
 export const FILE_PATH = "workflows/standard-fix.loop.ts";
 
-/** The file card's note for a role that may type into the file. */
-export const UNSAVED_NOTE = "Edits are not saved yet — saving arrives with #172.";
+/** The file card's note for a role that may type into the file, before anything is typed (V.4, #172). */
+export const SAVE_NOTE = "Saves as you type.";
 
 /** The file card's note for a reader who may not. */
 export const READ_ONLY_NOTE = "Read-only";

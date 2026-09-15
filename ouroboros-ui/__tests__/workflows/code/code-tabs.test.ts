@@ -9,13 +9,16 @@ import {
   bufferOf,
   bufferText,
   closeTab,
+  discardBuffer,
   editBuffer,
   isCloseFocusedTabKey,
   isCloseTabKey,
+  isDiverged,
   isModified,
   markSaved,
   openTab,
   parseSession,
+  rebaseBuffer,
   retainPaths,
   tabKeyTarget,
 } from "@/app/workflows/code/code-tabs";
@@ -25,13 +28,18 @@ import { STANDARD_FIX_TEXT } from "../../helpers/workflow-code";
 /**
  * The tab strip and its buffers, as decisions (V.3, #171) — the acceptance criteria this suite
  * holds in data: **switching files preserves each file's buffer**, and **the modified-dot is
- * truthful: set on edit, cleared on successful save**. The drawing and the navigation are
- * `code-workbench.test.tsx`'s; keeping the session for a browser session is `code-session.test.ts`'s.
+ * truthful: set on edit, cleared on successful save**. V.4 (#172) adds the etag each buffer was typed
+ * under, and the one question it answers: **may this buffer be saved over the draft as it is read now,
+ * or did the draft move under it?** The drawing and the navigation are `code-workbench.test.tsx`'s;
+ * keeping the session for a browser session is `code-session.test.ts`'s.
  */
 
 const STANDARD_FIX = "workflows/standard-fix.loop.ts";
 const HOTFIX = "workflows/hotfix-p0.loop.ts";
 const CONFIG = "ouroboros.config.ts";
+
+/** The etag the page read the file under. */
+const ETAG = "etag-1";
 
 /** `STANDARD_FIX_TEXT` with one comment typed at the top. */
 const EDITED = `// note\n${STANDARD_FIX_TEXT}`;
@@ -99,7 +107,7 @@ describe("closing", () => {
   });
 
   it("keeps the closed file's buffer, so closing a tab never loses what was typed", () => {
-    const edited = editBuffer(withTabs([STANDARD_FIX], STANDARD_FIX), STANDARD_FIX, STANDARD_FIX_TEXT, EDITED);
+    const edited = editBuffer(withTabs([STANDARD_FIX], STANDARD_FIX), STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG);
     const closed = closeTab(edited, STANDARD_FIX);
 
     expect(isModified(closed, STANDARD_FIX)).toBe(true);
@@ -109,7 +117,7 @@ describe("closing", () => {
 
 describe("forgetting files the project no longer has", () => {
   it("drops their tabs and buffers, and the open file with them", () => {
-    const session = editBuffer(withTabs([STANDARD_FIX, HOTFIX], HOTFIX), HOTFIX, "a", "b");
+    const session = editBuffer(withTabs([STANDARD_FIX, HOTFIX], HOTFIX), HOTFIX, "a", "b", ETAG);
 
     expect(retainPaths(session, new Set([STANDARD_FIX, CONFIG]))).toEqual(withTabs([STANDARD_FIX], null));
   });
@@ -131,43 +139,44 @@ describe("the buffer, and the modified-dot it is", () => {
     expect(bufferText(opened, STANDARD_FIX, STANDARD_FIX_TEXT)).toBe(STANDARD_FIX_TEXT);
   });
 
-  it("is set by the edit, over the file as it was read", () => {
-    const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED);
+  it("is set by the edit, over the file as it was read and under the etag it was read with", () => {
+    const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG);
 
-    expect(bufferOf(edited, STANDARD_FIX)).toEqual({ base: STANDARD_FIX_TEXT, text: EDITED });
+    expect(bufferOf(edited, STANDARD_FIX)).toEqual({ base: STANDARD_FIX_TEXT, text: EDITED, etag: ETAG });
     expect(isModified(edited, STANDARD_FIX)).toBe(true);
     expect(bufferText(edited, STANDARD_FIX, STANDARD_FIX_TEXT)).toBe(EDITED);
     expect(isModified(edited, HOTFIX)).toBe(false);
   });
 
   it("clears the moment the text is typed back to what it was", () => {
-    const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED);
-    const reverted = editBuffer(edited, STANDARD_FIX, STANDARD_FIX_TEXT, STANDARD_FIX_TEXT);
+    const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG);
+    const reverted = editBuffer(edited, STANDARD_FIX, STANDARD_FIX_TEXT, STANDARD_FIX_TEXT, ETAG);
 
     expect(isModified(reverted, STANDARD_FIX)).toBe(false);
     expect(reverted.buffers).toEqual({});
   });
 
-  it("keeps the base it started from when the read moves underneath an edit", () => {
-    const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED);
-    const again = editBuffer(edited, STANDARD_FIX, "a newer read", `${EDITED}x`);
+  it("keeps the base and the etag it started from when the read moves underneath an edit", () => {
+    const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG);
+    const again = editBuffer(edited, STANDARD_FIX, "a newer read", `${EDITED}x`, "etag-9");
 
-    expect(bufferOf(again, STANDARD_FIX)).toEqual({ base: STANDARD_FIX_TEXT, text: `${EDITED}x` });
+    expect(bufferOf(again, STANDARD_FIX)).toEqual({ base: STANDARD_FIX_TEXT, text: `${EDITED}x`, etag: ETAG });
   });
 
   it("returns the same session for an edit that changes nothing", () => {
-    const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED);
+    const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG);
 
-    expect(editBuffer(edited, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED)).toBe(edited);
-    expect(editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, STANDARD_FIX_TEXT)).toBe(opened);
+    expect(editBuffer(edited, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG)).toBe(edited);
+    expect(editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, STANDARD_FIX_TEXT, ETAG)).toBe(opened);
   });
 
   it("is kept per file, so switching files preserves each one's", () => {
     const both = editBuffer(
-      editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED),
+      editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG),
       HOTFIX,
       "hotfix",
       "hotfix, edited",
+      ETAG,
     );
     const switched = openTab(openTab(both, HOTFIX), STANDARD_FIX);
 
@@ -177,41 +186,43 @@ describe("the buffer, and the modified-dot it is", () => {
 });
 
 describe("a successful save", () => {
-  const edited = editBuffer(withTabs([STANDARD_FIX], STANDARD_FIX), STANDARD_FIX, STANDARD_FIX_TEXT, EDITED);
+  const edited = editBuffer(withTabs([STANDARD_FIX], STANDARD_FIX), STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG);
 
   it("clears the dot when the editor still holds exactly what was saved, and keeps that text until a read", () => {
-    const saved = markSaved(edited, STANDARD_FIX, EDITED);
+    const saved = markSaved(edited, STANDARD_FIX, EDITED, "etag-2");
 
     expect(isModified(saved, STANDARD_FIX)).toBe(false);
     // The page's read is still the pre-save text; the editor must not fall back to it.
     expect(bufferText(saved, STANDARD_FIX, STANDARD_FIX_TEXT)).toBe(EDITED);
-    expect(markSaved(saved, STANDARD_FIX, EDITED)).toBe(saved);
+    expect(markSaved(saved, STANDARD_FIX, EDITED, "etag-2")).toBe(saved);
   });
 
-  it("measures the next edit from the saved text", () => {
-    const saved = markSaved(edited, STANDARD_FIX, EDITED);
+  it("measures the next edit from the saved text, under the saved etag", () => {
+    const saved = markSaved(edited, STANDARD_FIX, EDITED, "etag-2");
+    const next = editBuffer(saved, STANDARD_FIX, STANDARD_FIX_TEXT, STANDARD_FIX_TEXT, ETAG);
 
-    expect(isModified(editBuffer(saved, STANDARD_FIX, STANDARD_FIX_TEXT, STANDARD_FIX_TEXT), STANDARD_FIX)).toBe(true);
-    expect(editBuffer(saved, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED)).toBe(saved);
+    expect(isModified(next, STANDARD_FIX)).toBe(true);
+    expect(bufferOf(next, STANDARD_FIX)?.etag).toBe("etag-2");
+    expect(editBuffer(saved, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG)).toBe(saved);
   });
 
   it("keeps the dot, measured from the saved text, when the person typed on while it was in flight", () => {
-    const typedOn = editBuffer(edited, STANDARD_FIX, STANDARD_FIX_TEXT, `${EDITED}more`);
-    const saved = markSaved(typedOn, STANDARD_FIX, EDITED);
+    const typedOn = editBuffer(edited, STANDARD_FIX, STANDARD_FIX_TEXT, `${EDITED}more`, ETAG);
+    const saved = markSaved(typedOn, STANDARD_FIX, EDITED, "etag-2");
 
-    expect(bufferOf(saved, STANDARD_FIX)).toEqual({ base: EDITED, text: `${EDITED}more` });
+    expect(bufferOf(saved, STANDARD_FIX)).toEqual({ base: EDITED, text: `${EDITED}more`, etag: "etag-2" });
     expect(isModified(saved, STANDARD_FIX)).toBe(true);
   });
 
   it("changes nothing for a file with nothing unsaved", () => {
     const session = withTabs([HOTFIX], HOTFIX);
 
-    expect(markSaved(session, HOTFIX, "anything")).toBe(session);
+    expect(markSaved(session, HOTFIX, "anything", "etag-2")).toBe(session);
   });
 });
 
 describe("a read that caught up", () => {
-  const edited = editBuffer(withTabs([STANDARD_FIX], STANDARD_FIX), STANDARD_FIX, STANDARD_FIX_TEXT, EDITED);
+  const edited = editBuffer(withTabs([STANDARD_FIX], STANDARD_FIX), STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG);
 
   it("retires a buffer whose text the file now reads as — a save made elsewhere", () => {
     expect(isModified(adoptRead(edited, STANDARD_FIX, EDITED), STANDARD_FIX)).toBe(false);
@@ -223,10 +234,61 @@ describe("a read that caught up", () => {
   });
 
   it("retires the clean buffer a save left, whatever the fresh read says — the read is newer", () => {
-    const saved = markSaved(edited, STANDARD_FIX, EDITED);
+    const saved = markSaved(edited, STANDARD_FIX, EDITED, "etag-2");
 
     expect(adoptRead(saved, STANDARD_FIX, EDITED).buffers).toEqual({});
     expect(adoptRead(saved, STANDARD_FIX, "someone else's newer draft").buffers).toEqual({});
+  });
+});
+
+describe("a buffer over a draft that moved (V.4, #172)", () => {
+  const opened = withTabs([STANDARD_FIX], STANDARD_FIX);
+  const edited = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, ETAG);
+  const THEIRS = `${STANDARD_FIX_TEXT}// theirs\n`;
+
+  it("is diverged when its base is not the text read and it was typed under another etag", () => {
+    expect(isDiverged(edited, STANDARD_FIX, THEIRS, "etag-theirs")).toBe(true);
+  });
+
+  it("is diverged when the etag it was typed under is unknown and its base is not the text read", () => {
+    const unknown = editBuffer(opened, STANDARD_FIX, STANDARD_FIX_TEXT, EDITED, null);
+
+    expect(isDiverged(unknown, STANDARD_FIX, THEIRS, "etag-theirs")).toBe(true);
+    expect(isDiverged(unknown, STANDARD_FIX, STANDARD_FIX_TEXT, "etag-theirs")).toBe(false);
+  });
+
+  it("is not diverged over the read it was typed on, whatever the etag — the draft says exactly what it was typed over", () => {
+    expect(isDiverged(edited, STANDARD_FIX, STANDARD_FIX_TEXT, "etag-reprinted")).toBe(false);
+  });
+
+  it("is not diverged under the etag read — the canonical text of this editor's own save", () => {
+    const saved = markSaved(editBuffer(edited, STANDARD_FIX, STANDARD_FIX_TEXT, `${EDITED}x`, ETAG), STANDARD_FIX, EDITED, "etag-2");
+
+    expect(isDiverged(saved, STANDARD_FIX, "the same draft, printed canonically", "etag-2")).toBe(false);
+  });
+
+  it("is never diverged with nothing unsaved: no buffer, or a clean one", () => {
+    expect(isDiverged(opened, STANDARD_FIX, THEIRS, "etag-theirs")).toBe(false);
+    expect(isDiverged(markSaved(edited, STANDARD_FIX, EDITED, "etag-2"), STANDARD_FIX, THEIRS, "etag-theirs")).toBe(false);
+  });
+
+  it("is measured from the draft as it is read now when the person keeps their text — Save mine", () => {
+    const rebased = rebaseBuffer(edited, STANDARD_FIX, THEIRS, "etag-theirs");
+
+    expect(bufferOf(rebased, STANDARD_FIX)).toEqual({ base: THEIRS, text: EDITED, etag: "etag-theirs" });
+    expect(isModified(rebased, STANDARD_FIX)).toBe(true);
+    expect(isDiverged(rebased, STANDARD_FIX, THEIRS, "etag-theirs")).toBe(false);
+  });
+
+  it("is dropped when kept over a read that says the same, and changes nothing with no buffer", () => {
+    expect(rebaseBuffer(edited, STANDARD_FIX, EDITED, "etag-theirs").buffers).toEqual({});
+    expect(rebaseBuffer(opened, STANDARD_FIX, THEIRS, "etag-theirs")).toBe(opened);
+  });
+
+  it("is dropped by Reload theirs, and dropping nothing changes nothing", () => {
+    expect(discardBuffer(edited, STANDARD_FIX).buffers).toEqual({});
+    expect(bufferText(discardBuffer(edited, STANDARD_FIX), STANDARD_FIX, THEIRS)).toBe(THEIRS);
+    expect(discardBuffer(opened, STANDARD_FIX)).toBe(opened);
   });
 });
 
@@ -279,8 +341,8 @@ describe("the tab keyboard", () => {
 });
 
 describe("storage", () => {
-  it("round-trips a session", () => {
-    const session = editBuffer(withTabs([STANDARD_FIX, CONFIG], CONFIG), STANDARD_FIX, "a", "b");
+  it("round-trips a session, each buffer's etag included", () => {
+    const session = editBuffer(withTabs([STANDARD_FIX, CONFIG], CONFIG), STANDARD_FIX, "a", "b", ETAG);
 
     expect(parseSession(JSON.stringify(session))).toEqual(session);
   });
@@ -292,14 +354,16 @@ describe("storage", () => {
     expect(parseSession("42")).toBe(EMPTY_SESSION);
   });
 
-  it("drops whatever in a session is not a session's", () => {
+  it("drops whatever in a session is not a session's, and reads an etag that is not a string as unknown", () => {
     const raw = JSON.stringify({
       tabs: [STANDARD_FIX, 7, STANDARD_FIX, HOTFIX],
       active: CONFIG,
       buffers: {
-        [STANDARD_FIX]: { base: "a", text: "b" },
+        [STANDARD_FIX]: { base: "a", text: "b", etag: ETAG },
         [HOTFIX]: { base: "same", text: "same" },
         [CONFIG]: { base: 1, text: "b" },
+        "workflows/feature-loop.loop.ts": { base: "c", text: "d", etag: 5 },
+        "workflows/docs-loop.loop.ts": { base: "e", text: "f" },
         broken: "text",
       },
     });
@@ -307,7 +371,11 @@ describe("storage", () => {
     expect(parseSession(raw)).toEqual({
       tabs: [STANDARD_FIX, HOTFIX],
       active: null,
-      buffers: { [STANDARD_FIX]: { base: "a", text: "b" } },
+      buffers: {
+        [STANDARD_FIX]: { base: "a", text: "b", etag: ETAG },
+        "workflows/feature-loop.loop.ts": { base: "c", text: "d", etag: null },
+        "workflows/docs-loop.loop.ts": { base: "e", text: "f", etag: null },
+      },
     });
   });
 

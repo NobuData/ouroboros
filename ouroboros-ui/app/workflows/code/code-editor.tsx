@@ -1,9 +1,11 @@
 "use client";
 
+import { diagnosticCount, setDiagnostics } from "@codemirror/lint";
 import { Annotation, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useEffect, useRef } from "react";
 
+import { type AnchoredDiagnostics, type RevealRequest, anchoredSpan, editorDiagnostics } from "./code-diagnostics";
 import { editorExtensions } from "./code-editor-extensions";
 
 import "./code-editor.css";
@@ -33,6 +35,14 @@ import "./code-editor.css";
  * `onChange` hears every change made in the editor, with the whole document. A change put in from
  * `text` is not reported, so the parent never hears its own value echoed back. Saving what it hears
  * is the save loop's (V.4, [#172](https://github.com/NobuData/ouroboros/issues/172)).
+ *
+ * ### A refused save is drawn where it is (V.4)
+ *
+ * `diagnostics` are the service's, with the text they were counted in; they are placed in the text
+ * on screen (`code-diagnostics.ts`) and drawn by the lint gutter as squiggles, gutter markers and a
+ * hover card, then carried through every later edit by CodeMirror. `reveal` puts the cursor on a
+ * range, scrolls it to the middle and moves the keyboard into the editor — the diagnostics strip's
+ * jump. Neither does anything in the read-only variant, which nobody saves.
  */
 
 /** Marks a change that came from the `text` prop rather than from the editor. */
@@ -48,6 +58,10 @@ export interface CodeEditorProps {
   readonly readOnly?: boolean;
   /** Called with the whole document after each change made in the editor. */
   readonly onChange?: (text: string) => void;
+  /** A refused save's diagnostics, with the text they were counted in; `null` or absent for none. */
+  readonly diagnostics?: AnchoredDiagnostics | null;
+  /** Put the cursor on a range and scroll to it. Each new request object is acted on once. */
+  readonly reveal?: RevealRequest | null;
 }
 
 /**
@@ -56,7 +70,7 @@ export interface CodeEditorProps {
  * @param props See {@link CodeEditorProps}.
  * @returns The editor's wrapper: CodeMirror's host, and the text drawn until it mounts.
  */
-export function CodeEditor({ text, label, readOnly = false, onChange }: CodeEditorProps) {
+export function CodeEditor({ text, label, readOnly = false, onChange, diagnostics = null, reveal = null }: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   // What the editor is built over and who hears it, read when a view is built or reports — so
@@ -102,6 +116,31 @@ export function CodeEditor({ text, label, readOnly = false, onChange }: CodeEdit
       annotations: [FROM_PROP.of(true), Transaction.addToHistory.of(false)],
     });
   }, [text]);
+
+  // After the text, so a rebuilt editor or a restored buffer is what the ranges are placed in.
+  useEffect(() => {
+    const current = view.current;
+    if (current === null || readOnly) return;
+
+    const drawn = diagnostics === null ? [] : editorDiagnostics(diagnostics, current.state.doc.toString());
+    // Nothing to draw over nothing drawn: no transaction, so an editor nobody refused never loads lint state.
+    if (drawn.length === 0 && diagnosticCount(current.state) === 0) return;
+
+    current.dispatch(setDiagnostics(current.state, drawn));
+  }, [diagnostics, label, readOnly]);
+
+  useEffect(() => {
+    const current = view.current;
+    if (current === null || readOnly || reveal === null) return;
+
+    const span = anchoredSpan(reveal.anchor, current.state.doc.toString(), reveal.range);
+    current.dispatch({
+      selection: { anchor: span.from, head: span.to },
+      effects: EditorView.scrollIntoView(span.from, { y: "center" }),
+      userEvent: "select",
+    });
+    current.focus();
+  }, [reveal, readOnly]);
 
   return (
     <div className={readOnly ? "code-editor code-editor--read-only" : "code-editor"}>

@@ -420,7 +420,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 | V.1 | #169 | 🟢 Done | ouroboros-ui: [V.1] Code route, head & mode switching | `/workflows/:slug/code`, seg control live, shared-draft state | mvp, workflow, code-view, ui | N (after WF-S.1, U.3) | Y | M | ouroboros-ui |
 | V.2 | #170 | 🟢 Done | ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting | Themed CM6, custom language package, line/current-line/caret parity | mvp, workflow, code-view, ui, design | N (after V.1) | Y | L | ouroboros-ui |
 | V.3 | #171 | 🟢 Done | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
-| V.4 | #172 | 🟡 Open | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
+| V.4 | #172 | 🟢 Done | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
 | V.5 | #173 | 🟡 Open | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
 | V.6 | #174 | 🟡 Open | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui |
 | V.7 | #175 | 🟡 Open | ouroboros-ui: [V.7] Code-view states & guards | Read-only member mode, empty org, load/error, narrow-viewport | mvp, workflow, code-view, ui, design | N (after V.1–V.6) | Y | S | ouroboros-ui |
@@ -585,7 +585,7 @@ Explorer · helios-firmware          [●standard-fix.loop.ts ×][routing… ] t
 
 ### Issue V.4 — ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces
 
-> **GitHub issue:** #172 · **Status:** 🟡 Open · **Parent epic:** #162
+> **GitHub issue:** #172 · **Status:** 🟢 Done · **Parent epic:** #162
 
 - **Problem Statement:** The editing loop must be safe: debounced parse+save on
   the U.3 contract, 422s rendered as anchored diagnostics, etag conflicts
@@ -603,6 +603,39 @@ Explorer · helios-firmware          [●standard-fix.loop.ts ×][routing… ] t
 - **Parallelism/Dependencies:** Needs V.2, U.3.
 - **Technical Stack:** CM6 lint/decorations, generated client.
 - **Epic:** V
+- **Delivered (2026-09-15):** The code editor's save loop in `ouroboros-ui`
+  (`app/workflows/code/use-code-save.ts`, with `code-save.ts`, `code-diagnostics.ts`, `code-diff.ts`,
+  `code-save-surfaces.tsx`, `code-save.css` and the `saveCode` Server Action in `code-actions.ts`) on
+  U.3's `PUT …/{slug}/code`. Five decisions were taken in-issue.
+  - **Serial writes, the latest text always pending — no keystroke is lost.** One write is in flight
+    at most; what is typed meanwhile is written next under the etag the first was answered with. A
+    `200`'s canonical text never replaces the editor's, and `markSaved` measures the dot from the text
+    *sent*, so it stays up for anything typed during the flight. Verified with scripted typing, one
+    character at a time, during an in-flight request.
+  - **A `422` keeps going; a `409` stops.** A file that does not parse draws its
+    `details.diagnostics` with `@codemirror/lint` (new direct dependency) as squiggles, gutter markers
+    and a hover card, plus a strip with the count and the first message, which jumps to its place. The
+    ranges count the text sent, and are carried past anything typed since. The next edit is the next
+    attempt. A conflict opens a dialog naming the other editor: *Keep mine* or *Reload theirs*.
+    Escape keeps mine.
+  - **Each buffer keeps the etag it was typed under, and a moved draft is *diverged*.** *Keep mine*
+    re-reads the page. The route keys the workbench by the file's etag, so a fresh read starts a fresh
+    loop. A buffer whose base is neither the text read nor typed under the etag read is not saved. A
+    panel shows a line diff with *Save mine over theirs* and *Reload theirs*. The same check covers a
+    buffer an earlier page left in `sessionStorage` over a draft that has since moved.
+  - **Failures say the real reason and retry.** DASH-I.7's `RetryBanner` over the editor reads
+    *offline* first, then the service's sentence, then *could not be reached*. Retries run at 2 s,
+    doubling to 30 s, at once on `online`, and on **Retry**. A `403` and the other final refusals are
+    not retried on their own.
+  - **The mode guard's first real caller, and its discard is now true.** While the file does not
+    parse, `useUnsavedBuffer` holds it. `UnsavedBuffer` gains an optional `discard`, which the guard
+    calls on confirm, so the prompt's *discards it* drops the session's buffer. **⌘S / Ctrl+S** forces
+    a cycle.
+
+  `ActionOutcome`/`attempt` moved from `draft-actions.ts` to a shared `action-outcome.ts`. The code
+  editor's sheet re-colours the lint and tooltip themes on tokens, and its styles test now reads those
+  themes too. The status bar's `⟲ synced` states are V.6's (#174) and the browser leg is V.8's (#176).
+  `ouroboros-ui` is now 0.70.0.
 
 ```
 type ─ debounce ─ PUT ─▶ 200 ✓ (dot clears) │ 422 ▶ squiggles + strip (draft safe) │ 409 ▶ conflict dialog

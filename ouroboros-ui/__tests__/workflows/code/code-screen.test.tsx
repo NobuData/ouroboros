@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { workflowCodePath, workflowPath } from "@/app/paths";
+import { CODE_IDLE_NOTE } from "@/app/workflows/code/code-save";
 import {
   CODE_FAILED_HEADLINE,
   CODE_SEAT_EMPTY_TITLE,
@@ -13,7 +14,6 @@ import {
   EXPLORER_LABEL,
   FILE_LABEL,
   FILE_READ_ONLY_NOTE,
-  FILE_UNSAVED_NOTE,
   UNPROJECTABLE_ACTION,
   UNPROJECTABLE_TITLE,
   VALIDATE_LABEL,
@@ -51,6 +51,8 @@ import { railEntry } from "../../helpers/workflows";
 
 // The failed banner's retry wants the App Router.
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+// The file's save is a Server Action (V.4, #172). Nothing here types, so it is never answered.
+vi.mock("@/app/workflows/code/code-actions", () => ({ saveCode: vi.fn(() => new Promise(() => undefined)) }));
 
 const { CodeScreen } = await import("@/app/workflows/code/code-screen");
 
@@ -138,7 +140,7 @@ function editorContent(file: HTMLElement): HTMLElement {
 }
 
 describe("the file", () => {
-  it("opens the draft's file in the editor, editable for a role that may publish, and says it is not saved", () => {
+  it("opens the draft's file in the editor, editable for a role that may publish, and says it saves as it is typed", () => {
     render(<CodeScreen mayAdminister readings={codeReadings()} role="owner" />);
 
     const file = screen.getByRole("region", { name: FILE_LABEL });
@@ -149,7 +151,7 @@ describe("the file", () => {
     expect(open).toHaveAttribute("title", "workflows/standard-fix.loop.ts");
     expect(within(file).getByRole("tabpanel")).toHaveAttribute("aria-labelledby", open.id);
     expect(file).toHaveTextContent("Printed from the draft");
-    expect(file).toHaveTextContent(FILE_UNSAVED_NOTE);
+    expect(file).toHaveTextContent(CODE_IDLE_NOTE);
     expect(file).not.toHaveTextContent(FILE_READ_ONLY_NOTE);
 
     const content = editorContent(file);
@@ -167,7 +169,7 @@ describe("the file", () => {
     const content = editorContent(file);
 
     expect(file).toHaveTextContent(FILE_READ_ONLY_NOTE);
-    expect(file).not.toHaveTextContent(FILE_UNSAVED_NOTE);
+    expect(file).not.toHaveTextContent(CODE_IDLE_NOTE);
     expect(content).toHaveAttribute("contenteditable", "false");
     expect(content).toHaveAttribute("aria-readonly", "true");
     expect(file.querySelector(".code-editor")).toHaveClass("code-editor--read-only");

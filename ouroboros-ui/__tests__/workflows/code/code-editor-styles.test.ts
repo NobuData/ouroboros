@@ -38,6 +38,20 @@ const TOKENS = readFileSync(join(UI, "app", "tokens.css"), "utf8").replace(/\/\*
 /** CodeMirror's view module, as installed. */
 const LIBRARY = readFileSync(createRequire(import.meta.url).resolve("@codemirror/view"), "utf8");
 
+/** CodeMirror's lint module, as installed — the refused save's squiggles and gutter (V.4, #172). */
+const LINT = readFileSync(createRequire(import.meta.url).resolve("@codemirror/lint"), "utf8");
+
+/**
+ * Every base theme the mounted extensions bring: the view's own, the view's tooltips (the lint hover
+ * card's frame), the lint state's, and the lint gutter's.
+ */
+const THEME_BLOCKS: readonly string[] = [
+  /baseTheme\$1 = [^{]*\{([\s\S]*?)\n\}, lightDarkIDs\);/.exec(LIBRARY)?.[1] ?? "",
+  /const baseTheme = [^{]*\{([\s\S]*?)\n\}\);/.exec(LIBRARY)?.[1] ?? "",
+  /const baseTheme = [^{]*\{([\s\S]*?)\n\}\);/.exec(LINT)?.[1] ?? "",
+  /const lintGutterTheme = [^{]*\{([\s\S]*?)\n\}\);/.exec(LINT)?.[1] ?? "",
+];
+
 /** One rule of the sheet: its selectors and its declarations. */
 interface Rule {
   readonly selectors: readonly string[];
@@ -74,12 +88,22 @@ function definedIn(selector: string): Set<string> {
 }
 
 /**
- * The top-level rules of CodeMirror's base theme that write a colour, by their spec key.
+ * The top-level rules of CodeMirror's base themes that write a colour, by their spec key.
  *
- * @returns The keys — `"&light .cm-gutters"`, `".cm-cursor, .cm-dropCursor"` — in source order.
+ * @returns The keys — `"&light .cm-gutters"`, `".cm-cursor, .cm-dropCursor"` — in source order, every
+ *   theme in {@link THEME_BLOCKS} in turn.
  */
 function libraryColourRules(): string[] {
-  const block = /baseTheme\$1 = [^{]*\{([\s\S]*?)\n\}, lightDarkIDs\);/.exec(LIBRARY)?.[1] ?? "";
+  return THEME_BLOCKS.flatMap((block) => colourRulesIn(block));
+}
+
+/**
+ * The top-level rules of one base theme that write a colour.
+ *
+ * @param block The theme's spec, between its braces.
+ * @returns The keys, in source order.
+ */
+function colourRulesIn(block: string): string[] {
   const keys: string[] = [];
   let key: string | null = null;
   let body = "";
@@ -113,7 +137,7 @@ function libraryColourRules(): string[] {
  * A colour as CodeMirror's base theme writes one: a hex — plain, or URL-encoded inside an SVG data
  * URL (`%23888`) — a colour function, or a named colour.
  */
-const COLOUR = /#[0-9a-fA-F]{3,8}\b|%23[0-9a-fA-F]{3,6}\b|rgba?\(|\b(?:black|white|red|silver|gr[ae]y)\b/;
+const COLOUR = /#[0-9a-fA-F]{3,8}\b|%23[0-9a-fA-F]{3,6}\b|rgba?\(|\b(?:black|white|red|orange|silver|gr[ae]y)\b/;
 
 /**
  * Every base-theme colour rule this sheet re-colours: the library's key, the rule here that
@@ -149,6 +173,42 @@ const OVERRIDDEN: Record<string, { readonly selector: string; readonly property:
   "&dark .cm-gutters": { selector: ".code-editor .cm-editor .cm-gutters", property: "background" },
   "&light .cm-activeLineGutter": { selector: ".code-editor .cm-editor .cm-activeLineGutter", property: "background" },
   "&dark .cm-activeLineGutter": { selector: ".code-editor .cm-editor .cm-activeLineGutter", property: "background" },
+  // A refused save (V.4, #172): the squiggles, the empty-range wedge, the gutter markers and the hover card.
+  ".cm-lintRange-error": { selector: ".code-editor .cm-editor .cm-lintRange-error", property: "text-decoration" },
+  ".cm-lintRange-warning": { selector: ".code-editor .cm-editor .cm-lintRange-warning", property: "text-decoration" },
+  ".cm-lintRange-info": { selector: ".code-editor .cm-editor .cm-lintRange-info", property: "text-decoration" },
+  ".cm-lintRange-hint": { selector: ".code-editor .cm-editor .cm-lintRange-hint", property: "text-decoration" },
+  ".cm-lintRange-active": { selector: ".code-editor .cm-editor .cm-lintRange-active", property: "background-color" },
+  "&dark .cm-lintRange-active": {
+    selector: ".code-editor .cm-editor .cm-lintRange-active",
+    property: "background-color",
+  },
+  ".cm-lintPoint": { selector: ".code-editor .cm-editor .cm-lintPoint::after", property: "border-bottom-color" },
+  ".cm-lintPoint-warning": {
+    selector: ".code-editor .cm-editor .cm-lintPoint-warning::after",
+    property: "border-bottom-color",
+  },
+  ".cm-lintPoint-info": { selector: ".code-editor .cm-editor .cm-lintPoint-info::after", property: "border-bottom-color" },
+  ".cm-lintPoint-hint": { selector: ".code-editor .cm-editor .cm-lintPoint-hint::after", property: "border-bottom-color" },
+  ".cm-lint-marker-error": { selector: ".code-editor .cm-editor .cm-lint-marker-error", property: "background" },
+  ".cm-lint-marker-warning": { selector: ".code-editor .cm-editor .cm-lint-marker-warning", property: "background" },
+  ".cm-lint-marker-info": { selector: ".code-editor .cm-editor .cm-lint-marker-info", property: "background" },
+  ".cm-diagnostic-error": { selector: ".code-editor .cm-editor .cm-diagnostic-error", property: "border-inline-start" },
+  ".cm-diagnostic-warning": {
+    selector: ".code-editor .cm-editor .cm-diagnostic-warning",
+    property: "border-inline-start",
+  },
+  ".cm-diagnostic-info": { selector: ".code-editor .cm-editor .cm-diagnostic-info", property: "border-inline-start" },
+  ".cm-diagnostic-hint": { selector: ".code-editor .cm-editor .cm-diagnostic-hint", property: "border-inline-start" },
+  ".cm-diagnosticAction": { selector: ".code-editor .cm-editor .cm-diagnosticAction", property: "background-color" },
+  "&light .cm-tooltip": { selector: ".code-editor .cm-editor .cm-tooltip", property: "background" },
+  "&dark .cm-tooltip": { selector: ".code-editor .cm-editor .cm-tooltip", property: "background" },
+  "&light .cm-tooltip-section:not(:first-child)": {
+    selector: ".code-editor .cm-editor .cm-tooltip-section:not(:first-child)",
+    property: "border-top",
+  },
+  ".cm-tooltip-arrow": { selector: ".code-editor .cm-editor .cm-tooltip-arrow", property: "display" },
+  "&dark .cm-tooltip .cm-tooltip-arrow": { selector: ".code-editor .cm-editor .cm-tooltip-arrow", property: "display" },
 };
 
 /**
@@ -169,6 +229,9 @@ const NOT_MOUNTED: Record<string, string> = {
   ".cm-textfield": "@codemirror/search",
   "&light .cm-textfield": "@codemirror/search",
   "&dark .cm-textfield": "@codemirror/search",
+  // The lint panel opens only from `lintKeymap`'s ⌘⇧M or `openLintPanel`; the editor mounts neither.
+  ".cm-panel.cm-panel-lint": "lintKeymap",
+  "&dark .cm-panel.cm-panel-lint ul": "lintKeymap",
 };
 
 describe("CodeMirror's default colours", () => {
@@ -197,6 +260,13 @@ describe("CodeMirror's default colours", () => {
 
   it.each(Object.entries(NOT_MOUNTED))("%s is never drawn: %s is not mounted", (_key, extension) => {
     expect(EXTENSIONS).not.toContain(extension);
+  });
+
+  it("reads the lint module's themes too, so a lint upgrade that adds a colour goes red here", () => {
+    expect(found).toContain(".cm-lintRange-error");
+    expect(found).toContain(".cm-lint-marker-error");
+    expect(found).toContain("&light .cm-tooltip");
+    expect(EXTENSIONS).not.toContain("openLintPanel");
   });
 
   it("is out-counted by every rule here: each one is scoped under the wrapper and the editor", () => {
@@ -325,6 +395,13 @@ describe("both themes", () => {
     "--warn",
     "--model",
     "--err",
+    // The refused save's surfaces (V.4, #172): the hover card, and the lint panel's selection tint.
+    "--ink",
+    "--line",
+    "--line-strong",
+    "--raised",
+    "--warn-tint",
+    "--accent-ink",
   ];
 
   it("names no colour literal — every hue is a token", () => {
@@ -349,9 +426,9 @@ describe("both themes", () => {
     }
   });
 
-  it("writes pixels only for hairlines, rings, the caret and its glow", () => {
+  it("writes pixels only for hairlines, rules, rings, the caret and its glow", () => {
     for (const [declaration] of CODE.matchAll(/[\w-]+:[^;{}]*?-?\b[\d.]+px/g)) {
-      expect(declaration).toMatch(/^(?:border-inline-start|outline|box-shadow|margin-inline-start)/);
+      expect(declaration).toMatch(/^(?:border(?:-inline-start|-top)?|outline|box-shadow|margin-inline-start)/);
     }
   });
 });

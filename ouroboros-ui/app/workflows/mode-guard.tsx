@@ -8,7 +8,9 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -39,7 +41,7 @@ import "./workflows.css";
  *
  * - {@link StudioModeGuard} is mounted by the workflow's layout
  *   (`app/(app)/workflows/[slug]/layout.tsx`), which both editors' routes share, and owns the
- *   prompt.
+ *   prompt. Confirming it calls the held buffer's `discard`, so *discards it* is what happens.
  * - {@link useUnsavedBuffer} is how an editor says it holds a buffer. The code editor's save
  *   loop calls it (V.4, [#172](https://github.com/NobuData/ouroboros/issues/172)); the hold is
  *   released when the editor says so or unmounts, so a buffer cannot outlive its page.
@@ -113,10 +115,11 @@ export function StudioModeGuard({ children }: Readonly<{ children: ReactNode }>)
     setPending(null);
   }
 
-  /** Discard the buffer, then take the switch the reader asked for. */
+  /** Discard the buffer — the editor drops it, when it keeps one — then take the switch the reader asked for. */
   function discard(): void {
     if (pending === null) return;
 
+    holder.get()?.discard?.();
     holder.set(null);
     setPending(null);
     router.push(pending.href);
@@ -157,18 +160,24 @@ export function StudioModeGuard({ children }: Readonly<{ children: ReactNode }>)
  *
  * Outside a {@link StudioModeGuard} it does nothing.
  *
- * @param buffer The buffer held, or `null` when everything the editor shows has saved.
+ * @param buffer The buffer held, or `null` when everything the editor shows has saved. Its
+ *   `discard` may be a new function on every render; the guard calls the latest.
  */
 export function useUnsavedBuffer(buffer: UnsavedBuffer | null): void {
   const guard = useContext(GuardContext);
   // The surface, not the object: a caller that builds `{surface: "code"}` on every render must
   // not re-run the hold on every render.
   const surface: BufferSurface | null = buffer === null ? null : buffer.surface;
+  const discard = useRef(buffer?.discard);
+
+  useLayoutEffect(() => {
+    discard.current = buffer?.discard;
+  });
 
   useEffect(() => {
     if (guard === null || surface === null) return;
 
-    guard.holder.set({ surface });
+    guard.holder.set({ surface, discard: () => discard.current?.() });
     return () => {
       guard.holder.set(null);
     };

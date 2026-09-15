@@ -58,10 +58,11 @@ const { StudioSubnav } = await import("@/app/workflows/studio-subnav");
  * A stand-in for the code editor: it holds a buffer or it does not.
  *
  * @param props.holding Whether it holds code that has not parsed.
+ * @param props.discard What it does to drop the buffer, when it keeps one (V.4, #172).
  * @returns Nothing drawn.
  */
-function Editor({ holding }: Readonly<{ holding: boolean }>) {
-  useUnsavedBuffer(holding ? { surface: "code" } : null);
+function Editor({ holding, discard }: Readonly<{ holding: boolean; discard?: () => void }>) {
+  useUnsavedBuffer(holding ? (discard === undefined ? { surface: "code" } : { surface: "code", discard }) : null);
   return null;
 }
 
@@ -70,12 +71,17 @@ function Editor({ holding }: Readonly<{ holding: boolean }>) {
  *
  * @param props.holding Whether the editor holds a buffer.
  * @param props.editor Whether the editor is mounted at all.
+ * @param props.discard The editor's discard, when it has one.
  * @returns The tree.
  */
-function CodePage({ holding = true, editor = true }: Readonly<{ holding?: boolean; editor?: boolean }>) {
+function CodePage({
+  holding = true,
+  editor = true,
+  discard,
+}: Readonly<{ holding?: boolean; editor?: boolean; discard?: () => void }>) {
   return (
     <StudioModeGuard>
-      {editor && <Editor holding={holding} />}
+      {editor && <Editor discard={discard} holding={holding} />}
       <StudioSubnav current="code" slug="standard-fix" />
     </StudioModeGuard>
   );
@@ -197,6 +203,44 @@ describe("a switch that would discard a buffer", () => {
 
     expect(prompt()).toBeNull();
     expect(navigate).toHaveBeenCalledOnce();
+  });
+});
+
+describe("a discard the reader confirmed (V.4, #172)", () => {
+  it("drops the editor's buffer before switching — so the prompt's *discards it* is what happens", () => {
+    const discard = vi.fn();
+    render(<CodePage discard={discard} />);
+
+    fireEvent.click(segment("Visual"));
+    fireEvent.click(within(prompt()!).getByRole("button", { name: "Discard and open Visual" }));
+
+    expect(discard).toHaveBeenCalledOnce();
+    expect(discard.mock.invocationCallOrder[0]).toBeLessThan(push.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it("never drops it when the reader keeps editing, or dismisses the prompt", () => {
+    const discard = vi.fn();
+    render(<CodePage discard={discard} />);
+
+    fireEvent.click(segment("Visual"));
+    fireEvent.click(within(prompt()!).getByRole("button", { name: SWITCH_PROMPT_CANCEL }));
+    fireEvent.click(segment("Visual"));
+    fireEvent.keyDown(prompt()!, { key: "Escape" });
+
+    expect(discard).not.toHaveBeenCalled();
+  });
+
+  it("calls the editor's latest discard, not the one it first held with", () => {
+    const first = vi.fn();
+    const latest = vi.fn();
+    const { rerender } = render(<CodePage discard={first} />);
+
+    rerender(<CodePage discard={latest} />);
+    fireEvent.click(segment("Visual"));
+    fireEvent.click(within(prompt()!).getByRole("button", { name: "Discard and open Visual" }));
+
+    expect(first).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledOnce();
   });
 });
 

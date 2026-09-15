@@ -1,4 +1,5 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { lintGutter } from "@codemirror/lint";
 import { EditorState, type Extension } from "@codemirror/state";
 import {
   EditorView,
@@ -26,7 +27,11 @@ import { dslSyntax } from "./dsl-language";
  *
  * - **Editable** — the mockup's editor: numbered lines, the current line and its accent gutter,
  *   the drawn selection and the glow caret, undo history and the default keymap. Tab is not
- *   bound, so the keyboard can still leave the editor.
+ *   bound, so the keyboard can still leave the editor. It also carries the lint gutter (V.4,
+ *   [#172](https://github.com/NobuData/ouroboros/issues/172)): a refused save's diagnostics are
+ *   drawn as squiggles, gutter markers and a hover card — pushed in by `code-editor.tsx`, never
+ *   computed here, because the parse that refuses a file is the service's. The lint panel and its
+ *   keymap are not mounted.
  * - **Read-only** — for a file no reader may change (the config file, V.3) and for a role that
  *   may not publish. No caret, no current line, no history and no keymap: nothing that suggests
  *   the text can be typed into. It is still focusable, so the keyboard can scroll it and select
@@ -78,6 +83,7 @@ export function editorExtensions({ readOnly, label }: EditorOptions): Extension[
     drawSelection({ cursorBlinkRate: CARET_BLINK_MS }),
     highlightActiveLine(),
     highlightActiveLineGutter(),
+    lintGutter(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
   ];
 }

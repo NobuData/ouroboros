@@ -351,19 +351,10 @@ export const FILE_LABEL = "Workflow code";
 
 /**
  * What the file card says about a file this reader cannot change: a published version, or any
- * file for a role that may not publish.
+ * file for a role that may not publish. A file the reader can type into says where its save stands
+ * instead — `code-save.ts`' `codeSaveNote` (V.4, [#172](https://github.com/NobuData/ouroboros/issues/172)).
  */
 export const FILE_READ_ONLY_NOTE = "Read-only";
-
-/**
- * What the file card says about a file the editor lets this reader type into.
- *
- * The editor is V.2 ([#170](https://github.com/NobuData/ouroboros/issues/170)); the save loop is
- * V.4 ([#172](https://github.com/NobuData/ouroboros/issues/172)). Until it lands, a change stays
- * in the tab, and saying so is the difference between an honest editor and one that loses work
- * silently.
- */
-export const FILE_UNSAVED_NOTE = "Edits are not saved yet — saving arrives with #172.";
 
 /**
  * Whether the editor lets this reader type into the file.
@@ -375,16 +366,6 @@ export const FILE_UNSAVED_NOTE = "Edits are not saved yet — saving arrives wit
  */
 export function fileEditable(file: WorkflowCode, mayAdminister: boolean): boolean {
   return mayAdminister && !file.readOnly;
-}
-
-/**
- * The file card's note about editing.
- *
- * @param editable What {@link fileEditable} decided.
- * @returns {@link FILE_UNSAVED_NOTE} or {@link FILE_READ_ONLY_NOTE}.
- */
-export function fileEditNote(editable: boolean): string {
-  return editable ? FILE_UNSAVED_NOTE : FILE_READ_ONLY_NOTE;
 }
 
 /**
