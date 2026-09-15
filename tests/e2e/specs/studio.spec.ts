@@ -119,8 +119,9 @@ import {
   STUDIO_SUBNAV_LABEL,
   STUDIO_TITLE,
   TICKET_LABEL,
+  expectPublished,
+  openPublish,
   publishStatusFor,
-  publishedToast,
   publishedVersion,
   restoreStandardFixDraft,
   sabotageDraft,
@@ -237,58 +238,6 @@ async function select(page: Page, canvas: Locator, id: string): Promise<void> {
   await stage(canvas, id).click();
   await page.mouse.move(0, 0);
   await expect(stage(canvas, id)).toHaveClass(/\bselected\b/);
-}
-
-/**
- * Press the head's **Publish vN** and wait for its dialog.
- *
- * @param page - The page, as an owner or admin.
- * @returns The dialog, and the action's label — which is also the dialog's title and its submit.
- */
-async function openPublish(
-  page: Page,
-): Promise<{ readonly dialog: Locator; readonly label: string }> {
-  const head = page.getByRole("button", { name: PUBLISH_LABEL });
-
-  await expect(head).toHaveCount(1);
-  const label = (await head.textContent())?.trim() ?? "";
-
-  await head.click();
-
-  const dialog = page.getByRole("dialog", { name: label });
-  await expect(dialog).toBeVisible();
-
-  return { dialog, label };
-}
-
-/**
- * Require a pressed publish to have taken — and, when it did not, fail with the sentence the dialog
- * said instead.
- *
- * A bare wait for the toast would fail as a timeout naming a locator, which is the failure somebody
- * marks flaky. A refusal is the dialog's alert, and its words name the layer that refused — the
- * engine's *could not check this definition* above all, which is the text
- * `scripts/verify-failure-modes.sh` looks for with the engine stopped.
- *
- * @param page - The page.
- * @param dialog - The publish dialog the submit was pressed in.
- * @param version - The version the publish must have frozen.
- * @returns When the toast is up and the dialog is gone.
- */
-async function expectPublished(page: Page, dialog: Locator, version: number): Promise<void> {
-  const toast = page.getByRole("status").filter({ hasText: publishedToast(version) });
-  const refusal = dialog.getByRole("alert");
-
-  await expect(toast.or(refusal)).toBeVisible();
-
-  if (await refusal.isVisible()) {
-    expect(
-      await refusal.textContent(),
-      `Publish v${version} refused the repaired draft`,
-    ).toBeNull();
-  }
-
-  await expect(dialog).toBeHidden();
 }
 
 /* ------------------------------------------------------------------ #149: the canvas's language */

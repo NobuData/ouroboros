@@ -424,7 +424,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 | V.5 | #173 | 🟢 Done | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
 | V.6 | #174 | 🟢 Done | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui, ouroboros-rest |
 | V.7 | #175 | 🟢 Done | ouroboros-ui: [V.7] Code-view states & guards | Read-only member mode, empty org, load/error, narrow-viewport | mvp, workflow, code-view, ui, design | N (after V.1–V.6) | Y | S | ouroboros-ui |
-| V.8 | #176 | 🟡 Open | ouroboros-ui: [V.8] Code-view e2e leg | Parity, edit→visual round-trip, publish, diagnostics, themes | mvp, workflow, code-view, ui, ci | N (after V.1–V.7) | Y | S | ouroboros-ui, .github |
+| V.8 | #176 | 🟢 Done | ouroboros-ui: [V.8] Code-view e2e leg | Parity, edit→visual round-trip, publish, diagnostics, themes | mvp, workflow, code-view, ui, ci | N (after V.1–V.7) | Y | S | ouroboros-ui, .github |
 
 ### Issue V.1 — ouroboros-ui: [V.1] Code route, head & mode switching
 
@@ -796,7 +796,27 @@ OUTLINE      01▸analyze … 08⟲gate back-edge→04 · 09▸openPr   (click =
 
 ### Issue V.8 — ouroboros-ui: [V.8] Code-view e2e leg
 
-> **GitHub issue:** #176 · **Status:** 🟡 Open · **Parent epic:** #162
+> **GitHub issue:** #176 · **Status:** 🟢 Done · **Parent epic:** #162
+
+> **Shipped.** Leg 13 of #56's suite, extended in `tests/e2e/specs/code-editor.spec.ts` with
+> `tests/e2e/support/code.ts`: seven tests beside #170's. Parity holds the editor's lines equal to
+> U.1's golden `standard-fix.loop.ts`, read from the fixture, under mockup 05's subline and over a
+> synced status bar. The round-trip is one test, both ways: `tokenBudget: 400_000` retyped as
+> `500_000` is *Implement*'s `500k` on the Visual tab, and *Implement* nudged there is the file's
+> `// node implement …` line back on the Code tab, with the budget edit intact. The publish leg types
+> `coder-maxx` over *Implement*'s route — S.8's refusal, reached through the file — and requires the
+> finding's jump to land on `Ln 71` and its error mark on that stage's lines only; the line typed back
+> publishes, and the version moves by exactly one in the code view, after a reload and on Visual. A
+> member gets the note, no **Publish**, a read-only file and the route's `403`; the workbench is
+> diffed in both palettes with `vN draft` masked; the shell assertions and 125% complete it. The
+> whole-file cases run in a 4200px-tall window because CodeMirror draws only lines near its viewport.
+> `openPublish` and `expectPublished` moved into `support/studio.ts`, and `verify-failure-modes.sh`
+> gains an `engine` pair. `ouroboros-e2e` is 0.13.0.
+>
+> **Not run at the ticket:** the machine that wrote it had no Docker access, so the leg was linted
+> and type-checked only. The cold-stack run, the recording of the two new `code-workbench-*`
+> baselines, the ≤ 2-minute measurement and the per-layer failure-mode spot-verify are owed to the
+> first `workflow_dispatch` run of `e2e.yml` on this branch.
 
 - **Problem Statement:** The cross-editor round-trip is the page's core claim —
   only e2e across UI/REST/engine/DB certifies it.
