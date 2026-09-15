@@ -1,5 +1,5 @@
 import type { CodeSymbol, LoopCheckRow } from "@/app/api/workflows";
-import { Button, EmptyState, cx } from "@/app/ui";
+import { EmptyState, cx } from "@/app/ui";
 
 import {
   CHECKS_EMPTY_NOTE,
@@ -21,6 +21,7 @@ import {
   drawnCheckRows,
   jumpToStageTitle,
 } from "./code-panel";
+import { CodeToggle } from "./code-toggle";
 import type { PanelReadings } from "./code-view";
 import { HoverDocCard } from "./hover-doc";
 
@@ -203,15 +204,12 @@ export interface CodePanelToggleProps {
  */
 export function CodePanelToggle({ controls, open, onToggle }: CodePanelToggleProps) {
   return (
-    <Button
-      aria-controls={controls}
-      aria-expanded={open}
+    <CodeToggle
       className="code-panel-toggle"
-      onClick={onToggle}
-      size="sm"
-      tone="ghost"
-    >
-      {PANEL_TOGGLE_LABEL}
-    </Button>
+      controls={controls}
+      label={PANEL_TOGGLE_LABEL}
+      onToggle={onToggle}
+      open={open}
+    />
   );
 }

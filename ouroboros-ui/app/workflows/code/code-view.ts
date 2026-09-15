@@ -47,6 +47,8 @@ import {
   FAILED_SUBLINE,
   FAILED_TITLE,
   MISSING_TITLE,
+  SEAT_EMPTY_MEMBER_NOTE,
+  SEAT_EMPTY_TITLE,
   SEAT_FAILED_NOTE,
   type SeatCopy,
   type StudioHead,
@@ -306,13 +308,27 @@ export type CodeSeatState = Extract<CodeState, { kind: "failed" | "empty" | "mis
 /** The seat's title when there is nothing to show. */
 export const CODE_SEAT_NOTHING_TITLE = "No code to show";
 
-/** The seat's title for an empty workspace. */
-export const CODE_SEAT_EMPTY_TITLE = "No code yet";
+/**
+ * The seat's title for an empty workspace — the visual editor's own sentence (S.7,
+ * [#153](https://github.com/NobuData/ouroboros/issues/153)), because an empty workspace is the same
+ * fact on both tabs, with the same two ways out (V.7, [#175](https://github.com/NobuData/ouroboros/issues/175)).
+ */
+export const CODE_SEAT_EMPTY_TITLE = SEAT_EMPTY_TITLE;
 
-/** …and its note. */
+/**
+ * …and its note, for a reader who may create one: where a blank start goes, since this tab has no
+ * rail. A blank draft has no faithful spelling as code yet, so it opens on the canvas.
+ */
 export const CODE_SEAT_EMPTY_NOTE =
-  "A workflow's code is its definition, printed. Create a workflow from the Visual tab's " +
-  "rail, and its file opens here.";
+  "A workflow starts as a blank draft and runs once it is published. Start blank here — it opens " +
+  "on the Visual tab's canvas, and its file reads here once the draft can be printed.";
+
+/** …and its note for a reader who may not create one: the visual editor's, naming who can. */
+export const CODE_SEAT_EMPTY_MEMBER_NOTE = SEAT_EMPTY_MEMBER_NOTE;
+
+/** The empty seat's code-flavoured line: what this tab would show, in the virtual project's own terms. */
+export const CODE_SEAT_EMPTY_LINE =
+  "There is no workflows/*.loop.ts to open — a workflow's code is its definition, printed.";
 
 /** The seat's title for a slug the rail does not hold. */
 export const CODE_SEAT_MISSING_TITLE = "No such file";
@@ -324,15 +340,24 @@ export const CODE_SEAT_UNREAD_NOTE =
 /**
  * What the seat says, for a state in which no file is drawn.
  *
+ * Only the empty state's note depends on the role, as on the visual editor (`states.ts`' `seatCopy`):
+ * a reader who may create is pointed at the buttons the screen draws under it, and a reader who may
+ * not is told who can.
+ *
  * @param state The page's state.
+ * @param mayAdminister Whether the reader may create workflows. Defaults to `false`, the page a member
+ *   sees, for the reason `CodeScreenProps.mayAdminister` gives.
  * @returns The title and the note.
  */
-export function codeSeatCopy(state: CodeSeatState): SeatCopy {
+export function codeSeatCopy(state: CodeSeatState, mayAdminister = false): SeatCopy {
   switch (state.kind) {
     case "failed":
       return { title: CODE_SEAT_NOTHING_TITLE, note: SEAT_FAILED_NOTE };
     case "empty":
-      return { title: CODE_SEAT_EMPTY_TITLE, note: CODE_SEAT_EMPTY_NOTE };
+      return {
+        title: CODE_SEAT_EMPTY_TITLE,
+        note: mayAdminister ? CODE_SEAT_EMPTY_NOTE : CODE_SEAT_EMPTY_MEMBER_NOTE,
+      };
     case "missing":
       return {
         title: CODE_SEAT_MISSING_TITLE,
@@ -446,6 +471,13 @@ export function baseName(path: string): string {
 
 /** The explorer's accessible name — mockup 05's `aria-label`. */
 export const EXPLORER_LABEL = "File explorer";
+
+/**
+ * The narrow viewport's disclosure button for the explorer (V.7,
+ * [#175](https://github.com/NobuData/ouroboros/issues/175)). Mockup 05 hides the explorer below
+ * 1000px; this shows it again, so the files stay reachable.
+ */
+export const EXPLORER_TOGGLE_LABEL = "Explorer";
 
 /**
  * The explorer's head — mockup 05's `Explorer · helios-firmware`.

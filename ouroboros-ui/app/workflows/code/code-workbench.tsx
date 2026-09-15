@@ -38,6 +38,7 @@ import { ConflictDialog, DiagnosticsStrip, DivergedPanel, SaveFailedBanner } fro
 import { codeSessionStore, useCodeSession } from "./code-session";
 import { CURSOR_START, codeSync, cursorPosition, draftLabel } from "./code-status";
 import { CodeStatusBar } from "./code-status-bar";
+import { CodeToggle } from "./code-toggle";
 import {
   type CodeSession,
   EMPTY_SESSION,
@@ -64,6 +65,7 @@ import {
   CONFIG_FILE_PATH,
   CONFIG_SOURCE,
   EXPLORER_LABEL,
+  EXPLORER_TOGGLE_LABEL,
   type ExplorerReadings,
   FILE_LABEL,
   FILE_READ_ONLY_NOTE,
@@ -140,7 +142,15 @@ import "./code-workbench.css";
  * Beside the route's file, while its tab is open: Loop Checks, the Types card for the symbol at the
  * editor's cursor, and the outline (`code-panel-view.tsx`). The outline is the file's span map, kept
  * with the text it was counted in — the read's, then each save's — so a jump is placed in the text on
- * screen the way a diagnostic is. Below 1000px the panel is hidden, and a toggle over the file shows it.
+ * screen the way a diagnostic is.
+ *
+ * ### Below 1000px (V.7, [#175](https://github.com/NobuData/ouroboros/issues/175))
+ *
+ * Mockup 05's media rule hides the explorer and the panel there. Neither disappears: a row of toggles
+ * opens the card — **Explorer**, and **Checks & outline** while the route's file has a panel — and
+ * each shows its region again as a full-width row, the explorer above the editor and the panel under
+ * it. The editor keeps the whole width between them. The row is CSS's to draw, so the markup is one in
+ * every width.
  *
  * ### The status bar, Validate and Publish (V.6, [#174](https://github.com/NobuData/ouroboros/issues/174))
  *
@@ -239,7 +249,9 @@ export function CodeWorkbench({
     file === null ? null : { anchor: file.text, spans: file.spans },
   );
   const [cursor, setCursor] = useState<Cursor | null>(null);
+  // What the narrow viewport's toggles have shown. No effect above 1000px, where both always show.
   const [panelOpen, setPanelOpen] = useState(false);
+  const [explorerOpen, setExplorerOpen] = useState(false);
 
   const symbolIndex = useMemo(() => (panel?.symbols.ok === true ? indexSymbols(panel.symbols.value) : null), [panel]);
   const stages = useMemo(() => (outline === null ? [] : outlineRows(outline)), [outline]);
@@ -476,6 +488,7 @@ export function CodeWorkbench({
 
   const panelId = `${ids}-panel`;
   const rightPanelId = `${ids}-right-panel`;
+  const explorerId = `${ids}-explorer`;
   const tabId = (index: number) => `${ids}-tab-${index}`;
   const activeIndex = session.active === null ? -1 : session.tabs.indexOf(session.active);
   // The panel and the status bar are about the route's file, so they stand only while it is in the pane.
@@ -500,24 +513,33 @@ export function CodeWorkbench({
         reveal={reveal}
         status={saving.status}
         text={editable ? bufferText(session, file.path, file.text) : file.text}
-        toggle={
-          routeShown && readings !== null ? (
-            <CodePanelToggle
-              controls={rightPanelId}
-              onToggle={() => setPanelOpen((current) => !current)}
-              open={panelOpen}
-            />
-          ) : null
-        }
       />
     );
 
   return (
     <Card aria-label={FILE_LABEL} as="section" className="code-workbench">
+      <div className="code-workbench__toggles">
+        <CodeToggle
+          controls={explorerId}
+          label={EXPLORER_TOGGLE_LABEL}
+          onToggle={() => setExplorerOpen((current) => !current)}
+          open={explorerOpen}
+        />
+        {routeShown && readings !== null && (
+          <CodePanelToggle
+            controls={rightPanelId}
+            onToggle={() => setPanelOpen((current) => !current)}
+            open={panelOpen}
+          />
+        )}
+      </div>
+
       <div className="code-workbench__body" onKeyDown={onKeyDown}>
         <Explorer
           activePath={session.active}
+          id={explorerId}
           onOpen={show}
+          open={explorerOpen}
           tree={explorer.tree}
           workspaceName={workspaceName}
         />
@@ -581,6 +603,8 @@ export function CodeWorkbench({
 /**
  * Mockup 05's `.ft`: the head, then the tree — or why it could not be read.
  *
+ * @param props.id Its element id, which the narrow viewport's toggle controls.
+ * @param props.open Whether that toggle has shown it. No effect above 1000px, where it always shows.
  * @param props.workspaceName The workspace's display name.
  * @param props.tree The file list.
  * @param props.activePath The file in the pane, whose row takes the accent inset treatment.
@@ -588,11 +612,15 @@ export function CodeWorkbench({
  * @returns The explorer.
  */
 function Explorer({
+  id,
+  open,
   workspaceName,
   tree,
   activePath,
   onOpen,
 }: Readonly<{
+  id: string;
+  open: boolean;
   workspaceName: string;
   tree: Reading<WorkflowCodeTree>;
   activePath: string | null;
@@ -665,7 +693,7 @@ function Explorer({
   }
 
   return (
-    <aside aria-label={EXPLORER_LABEL} className="code-tree">
+    <aside aria-label={EXPLORER_LABEL} className={cx("code-tree", open && "code-tree--open")} id={id}>
       <p className="code-tree__head">{explorerHead(workspaceName)}</p>
 
       {tree.ok ? (
@@ -947,7 +975,6 @@ function Pane({
  * @param props.onSaveMine Write the buffer over the draft as it is now.
  * @param props.onReloadTheirs Drop the buffer.
  * @param props.onCursor Hear where the editor's cursor is.
- * @param props.toggle The narrow viewport's right-panel toggle, or `null` when there is no panel.
  * @returns The pane's content.
  */
 function RouteFile({
@@ -965,7 +992,6 @@ function RouteFile({
   onSaveMine,
   onReloadTheirs,
   onCursor,
-  toggle,
 }: Readonly<{
   file: WorkflowCode;
   editable: boolean;
@@ -981,11 +1007,9 @@ function RouteFile({
   onSaveMine: () => void;
   onReloadTheirs: () => void;
   onCursor: (pos: number, text: string) => void;
-  toggle: ReactNode;
 }>) {
   return (
     <>
-      {toggle}
       <p className="code-workbench__meta">
         {fileSource(file)} · {editable ? codeSaveNote(status, diverged) : FILE_READ_ONLY_NOTE}
       </p>

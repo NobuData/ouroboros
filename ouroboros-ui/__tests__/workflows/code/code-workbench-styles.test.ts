@@ -95,6 +95,22 @@ describe("mockup 05's treatments", () => {
     expect(rule(narrow, "\\.code-tree")).toMatch(/display:\s*none/);
   });
 
+  it("keeps the explorer reachable below 1000px: a row of toggles, and the explorer's shows it as a bounded row (V.7)", () => {
+    const narrow = /@media \(max-width: 62\.5rem\)\s*\{([\s\S]*?)\n\}/.exec(WORKBENCH)?.[1] ?? "";
+
+    // Above 1000px both regions always show, so the toggles are not drawn.
+    expect(rule(WORKBENCH, "\\.code-workbench__toggles")).toMatch(/display:\s*none/);
+    expect(rule(narrow, "\\.code-workbench__toggles")).toMatch(/display:\s*flex/);
+
+    const open = rule(narrow, "\\.code-tree\\.code-tree--open");
+
+    expect(open).toMatch(/display:\s*block/);
+    expect(open).toMatch(/width:\s*100%/);
+    expect(open).toMatch(/max-height:\s*[\d.]+rem/);
+    // The open explorer comes after the rule that hides it, so it wins in the cascade.
+    expect(narrow.indexOf(".code-tree.code-tree--open")).toBeGreaterThan(narrow.indexOf(".code-tree {"));
+  });
+
   it("keeps the frame at the seat's floor, so nothing moves between a state with files and one without", () => {
     const floor = /min-height:\s*([^;]+);/.exec(rule(VIEW, "\\.code-view__seat"))?.[1];
 

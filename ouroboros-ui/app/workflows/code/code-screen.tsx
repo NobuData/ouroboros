@@ -2,6 +2,7 @@ import type { Role } from "@/app/api/membership";
 import { workflowPath } from "@/app/paths";
 import { Button, Card, EmptyState } from "@/app/ui";
 
+import { EmptyWorkspaceActions } from "../empty-workspace-actions";
 import { RAIL_FAILED_HEADLINE } from "../states";
 import { StudioFailedBanner } from "../studio-banner";
 import { StudioFrame } from "../studio-frame";
@@ -10,6 +11,7 @@ import { CodeFlows } from "./code-flows-session";
 import { CodeFlowsNotice, CodeHeadActions } from "./code-flows-view";
 import {
   CODE_FAILED_HEADLINE,
+  CODE_SEAT_EMPTY_LINE,
   type CodeFinding,
   type CodeReadings,
   type CodeSeatState,
@@ -60,8 +62,10 @@ import "./code-view.css";
  * ### The role, and the states
  *
  * The same `mayAdminister` and the same read-only note as the visual editor, so a member reaches
- * this page, reads the file, and is told once what they may not do. Every state the mockup does
- * not show is decided in `code-view.ts`. A refused rail and an empty workspace have no files, so
+ * this page, reads the file, and is told once what they may not do: no save loop runs, no **Publish**
+ * is drawn, and the explorer, the tabs and the outline stay navigable. Every state the mockup does
+ * not show is decided in `code-view.ts` (V.7, [#175](https://github.com/NobuData/ouroboros/issues/175),
+ * verifies them at the screen level). A refused rail and an empty workspace have no files, so
  * they draw a seat in place of the workbench; every other state keeps the workbench, so the
  * explorer is there to leave by — a refused file wears the DASH-I.7 banner above it, an unknown
  * slug points back at the rail, and a draft with no faithful spelling as code yet lists what the
@@ -133,7 +137,7 @@ export function CodeScreen({
 
       {state.kind === "failed" || state.kind === "empty" ? (
         <Card className="code-view__seat" fill>
-          <SeatBody state={state} />
+          <SeatBody mayAdminister={mayAdminister} state={state} />
         </Card>
       ) : (
         <CodeWorkbench
@@ -177,7 +181,8 @@ function RouteSeat({ state }: Readonly<{ state: Exclude<CodeState, { kind: "fail
     case "unprojectable":
       return <Unprojectable findings={state.findings} reason={state.reason} slug={state.entry.slug} />;
     default:
-      return <SeatBody state={state} />;
+      // The role changes only the empty seat's words, which is not a state the workbench draws.
+      return <SeatBody mayAdminister={false} state={state} />;
   }
 }
 
@@ -223,11 +228,25 @@ function Unprojectable({
  * Where the file would be, in the states with none — a designed empty state rather than a
  * blank region (§ 3.3).
  *
+ * An empty workspace mirrors the visual editor's seat (S.7, #153; V.7, #175): the same title, the
+ * same role-aware calls to action and development note (`EmptyWorkspaceActions`), and one line of its
+ * own about the files this tab would list.
+ *
  * @param props.state Which state the page is in.
+ * @param props.mayAdminister Whether the reader may create workflows — only the empty seat asks.
  * @returns The panel.
  */
-function SeatBody({ state }: Readonly<{ state: CodeSeatState }>) {
-  const copy = codeSeatCopy(state);
+function SeatBody({ state, mayAdminister }: Readonly<{ state: CodeSeatState; mayAdminister: boolean }>) {
+  const copy = codeSeatCopy(state, mayAdminister);
 
-  return <EmptyState fill note={copy.note} title={copy.title} />;
+  return (
+    <EmptyState fill note={copy.note} title={copy.title}>
+      {state.kind === "empty" && (
+        <>
+          <p className="code-view__empty-line">{CODE_SEAT_EMPTY_LINE}</p>
+          <EmptyWorkspaceActions mayAdminister={mayAdminister} />
+        </>
+      )}
+    </EmptyState>
+  );
 }

@@ -33,23 +33,70 @@
   overflow-wrap: anywhere;
 }
 
+/* The empty workspace's code-flavoured line (V.7, #175): the virtual project's words, in its mono type. */
+.code-view__empty-line {
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
 /* ---------- the loading skeleton ---------- */
 
 /*
- * The file card while the reads are in flight: the seat's floor, on the inset well behind a
- * dashed line — `.ou-empty--fill`'s own, as the visual skeleton's seat is. The head's bars are
- * the studio skeleton's (workflows.css), because they are the same head.
+ * The workbench card while the reads are in flight (V.7, #175). Its regions are the workbench's own
+ * layout classes (code-workbench.css, code-panel.css, code-status-bar.css), so every track, strip and
+ * floor is theirs; only what fills them is here. The head's bars are the studio skeleton's
+ * (workflows.css), because they are the same head. Nothing in it answers the pointer.
  */
-.code-skeleton__file {
+.code-skeleton {
+  pointer-events: none;
+}
+
+/* A bar: its row's own line box (it holds a zero-width space), on the raised ground. */
+.code-skeleton__bar {
+  display: inline-block;
+  flex: none;
+  width: 8rem;
+  max-width: 100%;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: transparent;
+}
+
+.code-skeleton__bar--short {
+  width: 4.5rem;
+}
+
+.code-skeleton__bar--wide {
+  width: 12rem;
+}
+
+/* The narrow viewport's toggles, at a small button's own box — they wear its classes. */
+.code-skeleton .code-skeleton__toggle {
+  width: 7rem;
+  border-color: transparent;
+  background: var(--raised);
+  color: transparent;
+}
+
+/*
+ * The editor's well, at the height the editor is bounded to (code-editor.css `.cm-editor`), which a
+ * workflow's file fills — so the pane does not grow when the text lands.
+ */
+.code-skeleton__editor {
   display: block;
-  min-height: 24rem;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-lg);
+  height: 70vh;
+  border-radius: var(--r-md);
   background: var(--inset);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .code-skeleton__file {
+  .code-skeleton__bar,
+  .code-skeleton .code-skeleton__toggle,
+  .code-skeleton__editor {
     animation: code-skeleton-pulse 1.6s ease-in-out infinite;
   }
 }

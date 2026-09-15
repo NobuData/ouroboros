@@ -56,12 +56,39 @@ describe("the editor and the workbench", () => {
   });
 });
 
-describe("the skeleton", () => {
-  it("reserves the seat's own floor, so nothing moves when the file lands in a state with none", () => {
-    const floor = /min-height:\s*([^;]+);/.exec(rule("\\.code-view__seat"))?.[1];
+describe("the skeleton (V.7, #175)", () => {
+  it("reserves the editor's well at the height the editor is bounded to, so the pane does not grow", () => {
+    const editor = readFileSync(join(CODE_DIR, "code-editor.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+    const bound = /\.code-editor \.cm-editor\s*\{[^}]*max-height:\s*([^;]+);/.exec(editor)?.[1];
 
-    expect(floor).toBeDefined();
-    expect(rule("\\.code-skeleton__file")).toContain(`min-height: ${floor};`);
+    expect(bound).toBeDefined();
+    expect(rule("\\.code-skeleton__editor")).toContain(`height: ${bound};`);
+  });
+
+  it("draws its regions on the workbench's own layout classes, and styles none of them here", () => {
+    const skeleton = readFileSync(join(CODE_DIR, "code-skeleton.tsx"), "utf8");
+
+    for (const region of [
+      "code-workbench__toggles",
+      "code-workbench__body",
+      "code-tree",
+      "code-workbench__editor",
+      "code-tabs",
+      "code-workbench__pane",
+      "code-panel",
+      "code-status",
+    ]) {
+      expect(skeleton).toContain(`"${region}"`);
+    }
+    expect(CODE).not.toMatch(/\.code-panel|\.code-status/);
+  });
+
+  it("lets its bars take their row's line box rather than a height of their own", () => {
+    const bar = rule("\\.code-skeleton__bar");
+
+    expect(bar).toMatch(/display:\s*inline-block/);
+    expect(bar).not.toMatch(/(?:^|\s)height:/);
+    expect(bar).toMatch(/color:\s*transparent/);
   });
 
   it("pulses only for a reader who has not asked for less motion, and pulses opacity only", () => {
