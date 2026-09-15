@@ -5,10 +5,14 @@ import {
   FAILED_SUBLINE,
   FAILED_TITLE,
   MISSING_TITLE,
+  SEAT_EMPTY_MEMBER_NOTE,
+  SEAT_EMPTY_TITLE,
   SEAT_FAILED_NOTE,
 } from "@/app/workflows/states";
 import {
   CODE_EMPTY_SUBLINE,
+  CODE_SEAT_EMPTY_LINE,
+  CODE_SEAT_EMPTY_MEMBER_NOTE,
   CODE_SEAT_EMPTY_NOTE,
   CODE_SEAT_EMPTY_TITLE,
   CODE_SEAT_MISSING_TITLE,
@@ -211,7 +215,7 @@ describe("the seat", () => {
       title: CODE_SEAT_NOTHING_TITLE,
       note: SEAT_FAILED_NOTE,
     });
-    expect(codeSeatCopy({ kind: "empty" })).toEqual({
+    expect(codeSeatCopy({ kind: "empty" }, true)).toEqual({
       title: CODE_SEAT_EMPTY_TITLE,
       note: CODE_SEAT_EMPTY_NOTE,
     });
@@ -223,6 +227,27 @@ describe("the seat", () => {
       title: CODE_SEAT_NOTHING_TITLE,
       note: CODE_SEAT_UNREAD_NOTE,
     });
+  });
+
+  it("mirrors the visual editor's empty seat: its title, and a role-aware note (V.7, #175)", () => {
+    expect(CODE_SEAT_EMPTY_TITLE).toBe(SEAT_EMPTY_TITLE);
+    // A member is told who can create one, in the visual editor's words — and that is the default.
+    expect(CODE_SEAT_EMPTY_MEMBER_NOTE).toBe(SEAT_EMPTY_MEMBER_NOTE);
+    expect(codeSeatCopy({ kind: "empty" })).toEqual({ title: CODE_SEAT_EMPTY_TITLE, note: CODE_SEAT_EMPTY_MEMBER_NOTE });
+    expect(codeSeatCopy({ kind: "empty" }, false)).toEqual(codeSeatCopy({ kind: "empty" }));
+    // The code view has no rail, so a reader who may create is not pointed at one.
+    expect(CODE_SEAT_EMPTY_NOTE).not.toMatch(/rail/);
+    expect(CODE_SEAT_EMPTY_LINE).toMatch(/\.loop\.ts/);
+  });
+
+  it("says the same about every other state whoever is reading", () => {
+    for (const state of [
+      { kind: "failed", reason: "x" },
+      { kind: "missing", slug: "retired-loop" },
+      { kind: "unread", entry: railEntry(), reason: "x" },
+    ] as const) {
+      expect(codeSeatCopy(state, true)).toEqual(codeSeatCopy(state, false));
+    }
   });
 });
 

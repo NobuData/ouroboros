@@ -274,13 +274,38 @@
 
 /* ---------- narrow panes ---------- */
 
+/* Above 1000px the explorer and the panel always show, so the row of toggles for them is not drawn. */
+.code-workbench__toggles {
+  display: none;
+}
+
 /*
- * Mockup 05 hides the explorer below 1000px; the strip still reaches every open file. The body wraps
- * there, so the right panel its toggle shows (code-panel.css) takes a row of its own under the editor.
+ * Mockup 05 hides the explorer below 1000px; the strip still reaches every open file. V.7 (#175) keeps
+ * it reachable: the row of toggles opens the card, and the explorer's shows it again as a full-width
+ * row above the editor, bounded so the editor stays in view. The body wraps there, so the right panel
+ * its toggle shows (code-panel.css) takes a row of its own under the editor.
  */
 @media (max-width: 62.5rem) {
   .code-tree {
     display: none;
+  }
+
+  .code-tree.code-tree--open {
+    display: block;
+    width: 100%;
+    max-height: 16rem;
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--line);
+  }
+
+  .code-workbench__toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-4);
+    padding-block: var(--sp-4);
+    padding-inline: var(--sp-6);
+    border-block-end: 1px solid var(--line);
+    background: var(--inset);
   }
 
   .code-workbench__body {

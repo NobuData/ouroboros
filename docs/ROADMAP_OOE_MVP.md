@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**204 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**205 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
-| 🟡 **In progress** | P7 | **40** of 43 |
+| 🟡 **In progress** | P7 | **41** of 43 |
 | — **Not started** | P8–P17 | 0 of 246 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -110,7 +110,7 @@ position is not forced by dependencies, one of these decided it.
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
 | **P6** | Issue intake & estimation | ✅ 23/23 | 23 | 68 | Mockup 03 |
-| **P7** | Workflow authoring (visual + code) | 🟡 40/43 | 43 | 137 | Mockups 04, 05 |
+| **P7** | Workflow authoring (visual + code) | 🟡 41/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | — 0/17 | 17 | 55 | Mockup 10 |
@@ -1374,7 +1374,7 @@ the blockquote above that records what it did and what it did differently.
 | 204 | **V.6** | ✅ [#174](https://github.com/NobuData/ouroboros/issues/174) | Status bar & validate/publish flows | ouroboros-ui, ouroboros-rest | S | S.6, V.4 |
 | 205 | **CI.7** | ✅ [#597](https://github.com/NobuData/ouroboros/issues/597) | Registry e2e leg | ouroboros-ui, .github | S | CI.1, CI.6 |
 | 206 | **S.8** | ✅ [#154](https://github.com/NobuData/ouroboros/issues/154) | Studio e2e leg | ouroboros-ui, .github | S | S.1, S.7 |
-| 207 | **V.7** | [#175](https://github.com/NobuData/ouroboros/issues/175) | Code-view states & guards | ouroboros-ui | S | V.1, V.6 |
+| 207 | **V.7** | ✅ [#175](https://github.com/NobuData/ouroboros/issues/175) | Code-view states & guards | ouroboros-ui | S | V.1, V.6 |
 | 208 | **V.8** | [#176](https://github.com/NobuData/ouroboros/issues/176) | Code-view e2e leg | ouroboros-ui, .github | S | V.1, V.7 |
 
 ## P8 — Planning — Batch Work Creation

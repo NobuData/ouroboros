@@ -2773,16 +2773,37 @@ publishing, and **Publish vN+1** opens S.6's shared dialog (#152) — both V.6's
 ([#174](https://github.com/NobuData/ouroboros/issues/174),
 [below](#the-status-bar-validate-and-publish)). Publish is drawn for an `owner` or `admin`; a member
 reaches the route, reads the file, may validate it, and gets the same role note the visual editor
-gives (`studio-readonly-note.tsx`, shared).
+gives (`studio-readonly-note.tsx`, shared). A member's session is verified read-only at screen level
+(V.7, [#175](https://github.com/NobuData/ouroboros/issues/175)): the note names the role and why,
+the file says *Read-only*, ⌘S writes nothing, no Publish is drawn, and the explorer, the tabs and the
+right panel stay navigable.
 
 **States.** [`app/workflows/code/code-view.ts`](app/workflows/code/code-view.ts) decides six: the
-visual editor's five, in the code view's words — an empty workspace and an unknown slug point at
-the Visual tab's rail, since this route has none — and **unprojectable**: a draft U.3 cannot print
-faithfully yet (the blank canvas **+ New workflow** leaves) is a `409 workflow_code_unprojectable`,
-drawn with the validator's findings and a link to Visual rather than a retry, because nothing
-failed. The route's skeleton is
-[`app/workflows/code/code-skeleton.tsx`](app/workflows/code/code-skeleton.tsx): the same head, two
-actions, and a file card instead of a rail and a canvas.
+visual editor's five, in the code view's words — an unknown slug points at the Visual tab's rail,
+since this route has none — and **unprojectable**: a draft U.3 cannot print faithfully yet (the
+blank canvas **+ New workflow** leaves) is a `409 workflow_code_unprojectable`, drawn with the
+validator's findings and a link to Visual rather than a retry, because nothing failed. A refused
+rail or file wears the DASH-I.7 banner with the service's own reason.
+
+**An empty workspace is S.7's seat** (the personal-org seed opens on it). Both tabs draw
+[`app/workflows/empty-workspace-actions.tsx`](app/workflows/empty-workspace-actions.tsx) under
+*No workflows yet — start from a template or blank*: **Start blank** and an inert **Browse
+templates** for an owner or admin, no buttons and a note naming who can create one for a member,
+and the development-seed note. The code view adds one mono line of its own — *There is no
+workflows/\*.loop.ts to open* — and its owner note points at the canvas, not a rail.
+
+**The skeleton is the workbench's geometry.**
+[`app/workflows/code/code-skeleton.tsx`](app/workflows/code/code-skeleton.tsx) draws the same head
+and two actions, then the workbench card **on the workbench's own layout classes**: the row of
+toggles, the explorer's track with the seeded five files, one open tab, the source line over the
+editor's well (held to the editor's `70vh` bound by a style test), the right panel's track and the
+status bar. Every track, strip and floor — and the 1000px collapse — is therefore the loaded page's;
+only the bars inside are the skeleton's.
+
+**Below 1000px** mockup 05 hides the explorer and the right panel. A row of toggles opens the card
+instead (`code-toggle.tsx`): **Explorer** shows the tree as a bounded full-width row above the
+editor, and **Checks & outline** shows the panel under it. The editor keeps the width between them,
+and the explorer's toggle is drawn in every state that has a workbench.
 
 ### The explorer and the tabs are the virtual project
 
@@ -3276,7 +3297,8 @@ counts, the read's and then each save's, and a row's jump goes through `CodeEdit
 lands on the call's line after lines are typed above it, and in a member's read-only editor too.
 
 **Below 1000px** the panel hides, as the mockup's media rule does. A **Checks & outline** disclosure
-button over the file shows it again as a row under the editor.
+button in the workbench's row of toggles (V.7, beside **Explorer**) shows it again as a row under the
+editor.
 
 The suites run on the golden files: `code-panel.test.ts` (decisions, with the printer's
 `standard-fix.loop.ts` and `spans.json`), `code-panel-view.test.tsx` (the drawing, C7 against the

@@ -423,7 +423,7 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 | V.4 | #172 | 🟢 Done | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
 | V.5 | #173 | 🟢 Done | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
 | V.6 | #174 | 🟢 Done | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui, ouroboros-rest |
-| V.7 | #175 | 🟡 Open | ouroboros-ui: [V.7] Code-view states & guards | Read-only member mode, empty org, load/error, narrow-viewport | mvp, workflow, code-view, ui, design | N (after V.1–V.6) | Y | S | ouroboros-ui |
+| V.7 | #175 | 🟢 Done | ouroboros-ui: [V.7] Code-view states & guards | Read-only member mode, empty org, load/error, narrow-viewport | mvp, workflow, code-view, ui, design | N (after V.1–V.6) | Y | S | ouroboros-ui |
 | V.8 | #176 | 🟡 Open | ouroboros-ui: [V.8] Code-view e2e leg | Parity, edit→visual round-trip, publish, diagnostics, themes | mvp, workflow, code-view, ui, ci | N (after V.1–V.7) | Y | S | ouroboros-ui, .github |
 
 ### Issue V.1 — ouroboros-ui: [V.1] Code route, head & mode switching
@@ -749,7 +749,7 @@ OUTLINE      01▸analyze … 08⟲gate back-edge→04 · 09▸openPr   (click =
 
 ### Issue V.7 — ouroboros-ui: [V.7] Code-view states & guards
 
-> **GitHub issue:** #175 · **Status:** 🟡 Open · **Parent epic:** #162
+> **GitHub issue:** #175 · **Status:** 🟢 Done · **Parent epic:** #162
 
 - **Problem Statement:** Members without edit rights, empty orgs, load
   failures, and narrow viewports all need designed handling the mockup doesn't
@@ -764,6 +764,35 @@ OUTLINE      01▸analyze … 08⟲gate back-edge→04 · 09▸openPr   (click =
 - **Parallelism/Dependencies:** Needs V.1–V.6.
 - **Technical Stack:** React, #46 EmptyState/Skeleton.
 - **Epic:** V
+- **Delivered (2026-09-15):** The code view's states in `ouroboros-ui`, in `app/workflows/code/`
+  (`code-screen.tsx`, `code-view.ts`, `code-skeleton.tsx`, `code-workbench.{tsx,css}`, the new
+  `code-toggle.tsx`) and the new shared `app/workflows/empty-workspace-actions.tsx`. Four decisions
+  were taken in-issue.
+  - **The empty workspace is S.7's seat, drawn by one component on both tabs.** It has the same title
+    (*No workflows yet — start from a template or blank*), and the same role-aware **Start blank** and
+    inert **Browse templates** for an owner or admin. A member gets no buttons and a note naming who
+    can create one. The development-seed note is shared too. The code view adds one mono line of its
+    own: *There is no workflows/\*.loop.ts to open*. Its owner note points at the canvas rather than a
+    rail, because this tab has no rail. The personal-org seed opens on it.
+  - **Member read-only and the API-error banner were built by V.1–V.6.** They are the shared
+    `StudioReadOnlyNote`, the read-only CodeMirror variant, the disabled save loop, the role-gated
+    Publish and `StudioFailedBanner` with the service's reason. V.7 verifies them at screen level
+    rather than rebuilding them. The shared note is kept over the issue diagram's illustrative
+    *You have read access…* sentence, so the reason a member reads is word for word the visual
+    editor's. ⌘S writes nothing for a member, and the explorer, tabs and right panel stay navigable.
+  - **The skeleton is drawn on the workbench's own layout classes.** The row of toggles, the explorer
+    track (directory, five seeded files, config), one open tab, the source line and the editor's well
+    are all the workbench's classes. The well is held by a style test to the editor's `70vh` bound.
+    The panel track (two checks, twelve outline rows) and the status bar follow the same rule. So the
+    tracks, strips and floors are the loaded ones, including the 1000px collapse. Only the bars are
+    the skeleton's.
+  - **Below 1000px, a row of toggles opens the card.** **Explorer** shows the tree as a bounded
+    full-width row above the editor. **Checks & outline** is V.5's toggle, moved here from over the
+    file, and shows the panel under the editor. The explorer toggle is drawn in every state that has
+    a workbench, so a missing or unprojectable file can still be left by the tree. Both toggles share
+    `CodeToggle`.
+
+  The browser leg is V.8's (#176). `ouroboros-ui` is now 0.75.0.
 
 ### Issue V.8 — ouroboros-ui: [V.8] Code-view e2e leg
 

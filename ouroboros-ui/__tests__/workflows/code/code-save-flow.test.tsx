@@ -64,6 +64,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 vi.mock("@/app/workflows/code/code-actions", () => ({ saveCode: (...args: unknown[]) => saveCall(...args) }));
 // Publish is S.6's shared Server Action on the server-only client (V.6, #174); nothing here publishes.
 vi.mock("@/app/workflows/draft-actions", () => ({ publishWorkflow: vi.fn() }));
+// The empty seat's Start blank is S.1's create dialog on a Server Action (V.7, #175); nothing here creates.
+vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
 // `next/link` wants the App Router; the stand-in keeps the one behaviour the mode guard relies on.
 vi.mock("next/link", () => ({
   default: ({ href, onClick, children, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (

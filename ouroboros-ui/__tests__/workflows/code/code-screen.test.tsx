@@ -1,17 +1,22 @@
 import { EditorView } from "@codemirror/view";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { workflowCodePath, workflowPath } from "@/app/paths";
+import { PANEL_LABEL, PANEL_TOGGLE_LABEL } from "@/app/workflows/code/code-panel";
 import { CODE_IDLE_NOTE } from "@/app/workflows/code/code-save";
 import {
   CODE_FAILED_HEADLINE,
+  CODE_SEAT_EMPTY_LINE,
+  CODE_SEAT_EMPTY_MEMBER_NOTE,
+  CODE_SEAT_EMPTY_NOTE,
   CODE_SEAT_EMPTY_TITLE,
   CODE_SEAT_MISSING_TITLE,
   CODE_SEAT_NOTHING_TITLE,
   CODE_SEAT_UNREAD_NOTE,
   CODE_SUBLINE,
   EXPLORER_LABEL,
+  EXPLORER_TOGGLE_LABEL,
   FILE_LABEL,
   FILE_READ_ONLY_NOTE,
   UNPROJECTABLE_ACTION,
@@ -21,13 +26,21 @@ import {
 import { PUBLISH_NEEDS_FILE, VALIDATE_NEEDS_FILE } from "@/app/workflows/code/code-flows";
 import { STATUS_BAR_LABEL } from "@/app/workflows/code/code-status";
 import {
+  DEV_SEED_NOTE,
   EMPTY_TITLE,
   FAILED_TITLE,
   MISSING_TITLE,
   RAIL_FAILED_HEADLINE,
+  READ_ONLY_BODY,
   SEAT_FAILED_NOTE,
+  START_BLANK_LABEL,
 } from "@/app/workflows/states";
-import { COPILOT_SOON_NOTE, STUDIO_EYEBROW } from "@/app/workflows/view";
+import {
+  BROWSE_TEMPLATES_LABEL,
+  BROWSE_TEMPLATES_SOON,
+  COPILOT_SOON_NOTE,
+  STUDIO_EYEBROW,
+} from "@/app/workflows/view";
 
 import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../../helpers/palettes";
 import {
@@ -59,8 +72,11 @@ vi.mock("@/app/workflows/code/code-actions", () => ({
   validateCode: vi.fn(() => new Promise(() => undefined)),
 }));
 vi.mock("@/app/workflows/draft-actions", () => ({ publishWorkflow: vi.fn(() => new Promise(() => undefined)) }));
+// The empty seat's Start blank opens S.1's create dialog, on a Server Action (V.7, #175); nothing here creates.
+vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
 
 const { CodeScreen } = await import("@/app/workflows/code/code-screen");
+const { saveCode } = await import("@/app/workflows/code/code-actions");
 
 /** The head's `<h1>`. */
 function title(): HTMLElement {
@@ -271,20 +287,169 @@ describe("a refused rail", () => {
   });
 });
 
-describe("a workspace with no workflows", () => {
-  it("says so, points at the Visual tab's rail, and draws no Publish", () => {
-    render(
-      <CodeScreen
-        mayAdminister
-        readings={codeReadings({ rail: { ok: true, value: [] }, selected: null })}
-        role="owner"
-      />,
-    );
+describe("a workspace with no workflows — the personal-org seed (V.7, #175, mirroring #153)", () => {
+  const empty = codeReadings({ rail: { ok: true, value: [] }, selected: null });
+
+  /**
+   * The empty seat's card.
+   *
+   * @param container What was rendered.
+   * @returns The seat.
+   */
+  function seat(container: HTMLElement): HTMLElement {
+    const found = container.querySelector<HTMLElement>(".code-view__seat");
+    expect(found, "the seat").not.toBeNull();
+    return found as HTMLElement;
+  }
+
+  it("says so, with the visual editor's title, a code-flavoured line and the development seed, and draws no Publish", () => {
+    const { container } = render(<CodeScreen mayAdminister readings={empty} role="owner" />);
 
     expect(title()).toHaveTextContent(EMPTY_TITLE);
-    expect(screen.getByText(CODE_SEAT_EMPTY_TITLE)).toBeInTheDocument();
+    expect(within(seat(container)).getByText(CODE_SEAT_EMPTY_TITLE)).toBeInTheDocument();
+    expect(within(seat(container)).getByText(CODE_SEAT_EMPTY_LINE)).toHaveClass("code-view__empty-line");
+    expect(within(seat(container)).getByText(DEV_SEED_NOTE)).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.queryByRole("button", { name: /^Publish v/ })).toBeNull();
+  });
+
+  it("gives an owner the two ways to begin: Start blank opens the create dialog, templates say what they wait for", () => {
+    const { container } = render(<CodeScreen mayAdminister readings={empty} role="owner" />);
+
+    expect(within(seat(container)).getByText(CODE_SEAT_EMPTY_NOTE)).toBeInTheDocument();
+    expect(within(seat(container)).getByRole("button", { name: BROWSE_TEMPLATES_LABEL })).toHaveAttribute(
+      "title",
+      BROWSE_TEMPLATES_SOON,
+    );
+
+    const start = within(seat(container)).getByRole("button", { name: START_BLANK_LABEL });
+
+    expect(start).not.toHaveAttribute("aria-disabled");
+    expect(start).toHaveClass("ou-btn--primary");
+
+    fireEvent.click(start);
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("gives a member no buttons in the seat, and says who can create one", () => {
+    const { container } = render(<CodeScreen readings={empty} role="member" />);
+
+    expect(within(seat(container)).getByText(CODE_SEAT_EMPTY_MEMBER_NOTE)).toBeInTheDocument();
+    expect(within(seat(container)).getByText(CODE_SEAT_EMPTY_LINE)).toBeInTheDocument();
+    expect(within(seat(container)).queryAllByRole("button")).toEqual([]);
+    expect(screen.getByRole("note")).toHaveTextContent(READ_ONLY_BODY);
+  });
+
+  it.each([
+    ["an owner", true],
+    ["a member", false],
+  ] as const)("draws the same empty state for %s in both palettes", (_, mayAdminister) => {
+    const [light, dark] = renderInBothPalettes(
+      <CodeScreen mayAdminister={mayAdminister} readings={empty} role={mayAdminister ? "owner" : "member"} />,
+    );
+
+    expect(light).toBe(dark);
+  });
+});
+
+describe("a member session (V.7, #175)", () => {
+  it("is read-only with the reason stated: the note names the role and why, and the file says Read-only", () => {
+    render(<CodeScreen readings={codeReadings()} role="member" />);
+
+    const note = screen.getByRole("note");
+
+    expect(note).toHaveTextContent("Viewing the studio as a member.");
+    expect(note).toHaveTextContent(READ_ONLY_BODY);
+    expect(screen.getByRole("region", { name: FILE_LABEL })).toHaveTextContent(FILE_READ_ONLY_NOTE);
+  });
+
+  it("has no save and no publish: ⌘S writes nothing, and no Publish is drawn", () => {
+    vi.mocked(saveCode).mockClear();
+    render(<CodeScreen readings={codeReadings()} role="member" />);
+
+    const file = screen.getByRole("region", { name: FILE_LABEL });
+
+    fireEvent.keyDown(editorContent(file), { key: "s", code: "KeyS", ctrlKey: true });
+    fireEvent.keyDown(editorContent(file), { key: "s", code: "KeyS", metaKey: true });
+
+    expect(saveCode).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /^Publish/ })).toBeNull();
+    expect(editorContent(file)).toHaveAttribute("contenteditable", "false");
+  });
+
+  it("keeps the explorer, the tabs and the right panel navigable", () => {
+    render(<CodeScreen readings={codeReadings()} role="member" />);
+
+    const file = screen.getByRole("region", { name: FILE_LABEL });
+
+    expect(within(file).getByRole("tree")).toBeInTheDocument();
+    expect(within(file).getByRole("tab", { selected: true })).toHaveTextContent("standard-fix.loop.ts");
+    expect(within(file).getByRole("complementary", { name: PANEL_LABEL })).toBeInTheDocument();
+  });
+
+  it("draws the same read-only page in both palettes", () => {
+    const [light, dark] = renderInBothPalettes(<CodeScreen readings={codeReadings()} role="member" />);
+
+    expect(maskIds(light ?? "")).toBe(maskIds(dark ?? ""));
+  });
+});
+
+describe("below 1000px (V.7, #175)", () => {
+  /**
+   * The workbench's row of toggles.
+   *
+   * @returns The row.
+   */
+  function toggles(): HTMLElement {
+    const row = screen.getByRole("region", { name: FILE_LABEL }).querySelector<HTMLElement>(".code-workbench__toggles");
+    expect(row, "the row of toggles").not.toBeNull();
+    return row as HTMLElement;
+  }
+
+  it("opens the card with a toggle for each hidden region, the explorer first", () => {
+    render(<CodeScreen mayAdminister readings={codeReadings()} role="owner" />);
+
+    expect(within(toggles()).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      EXPLORER_TOGGLE_LABEL,
+      PANEL_TOGGLE_LABEL,
+    ]);
+  });
+
+  it("shows the explorer again from its toggle, and the editor stays usable beside it", () => {
+    render(<CodeScreen mayAdminister readings={codeReadings()} role="owner" />);
+
+    const toggle = within(toggles()).getByRole("button", { name: EXPLORER_TOGGLE_LABEL });
+    const explorer = screen.getByRole("complementary", { name: EXPLORER_LABEL });
+
+    expect(toggle).toHaveAttribute("aria-controls", explorer.id);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(explorer).not.toHaveClass("code-tree--open");
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(explorer).toHaveClass("code-tree--open");
+    expect(within(explorer).getByRole("tree")).toBeInTheDocument();
+    // The editor is untouched by the explorer's row: still mounted, still editable.
+    expect(editorContent(screen.getByRole("region", { name: FILE_LABEL }))).toHaveAttribute("contenteditable", "true");
+
+    fireEvent.click(toggle);
+
+    expect(explorer).not.toHaveClass("code-tree--open");
+  });
+
+  it("keeps the explorer's toggle where there is no file, and draws the panel's only when there is a panel", () => {
+    render(<CodeScreen mayAdminister readings={codeReadings({ requested: "gone", selected: null })} role="owner" />);
+
+    expect(within(toggles()).getByRole("button", { name: EXPLORER_TOGGLE_LABEL })).toBeInTheDocument();
+    expect(within(toggles()).queryByRole("button", { name: PANEL_TOGGLE_LABEL })).toBeNull();
+  });
+
+  it("draws the toggles for a member too, since reading needs the files as much as editing does", () => {
+    render(<CodeScreen readings={codeReadings()} role="member" />);
+
+    expect(within(toggles()).getAllByRole("button")).toHaveLength(2);
   });
 });
 

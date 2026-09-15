@@ -65,6 +65,8 @@ vi.mock("@/app/workflows/code/code-actions", () => ({
 vi.mock("@/app/workflows/draft-actions", () => ({
   publishWorkflow: (...args: unknown[]) => publishCall(...args),
 }));
+// The empty seat's Start blank is S.1's create dialog on a Server Action (V.7, #175); nothing here creates.
+vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
 
 const { CodeScreen } = await import("@/app/workflows/code/code-screen");
 
