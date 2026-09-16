@@ -36,6 +36,8 @@ from ouroboros_engine.estimation.contract import (
 )
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
 from ouroboros_engine.main import _PUBLIC_PATHS, create_app
+from ouroboros_engine.planning.contract import Draft, Plan, PlanningContext, PlanRequest
+from ouroboros_engine.planning.outline_planner import OutlinePlanner
 from ouroboros_engine.settings import Settings
 from ouroboros_engine.workflows.contract import (
     DryRunEdge,
@@ -87,6 +89,10 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "DryRunStep": DryRunStep,
     "NodeVerdict": NodeVerdict,
     "WorkflowDryRun": WorkflowDryRun,
+    "PlanningContext": PlanningContext,
+    "PlanRequest": PlanRequest,
+    "Draft": Draft,
+    "Plan": Plan,
     "Error": ErrorEnvelope,
 }
 
@@ -479,6 +485,22 @@ def test_the_documented_dry_run_is_the_walk_the_simulator_gives(document: dict) 
 
     request = WorkflowDryRunRequest.model_validate(sent)
     answer = dry_run(request.definition, request.ticket)
+
+    assert answer.model_dump(mode="json") == documented
+
+
+def test_the_documented_plan_is_the_one_the_installed_planner_gives(
+    document: dict,
+) -> None:
+    # The request and response examples on `POST /v0/plan` are one worked case, like the
+    # estimate's: the outline documented is the outline that produces the batch documented
+    # beside it. A change to a rule in `planning.outline` moves the answer without touching
+    # this document, which is the drift this catches.
+    operation = document["paths"]["/v0/plan"]["post"]
+    sent = operation["requestBody"]["content"]["application/json"]["example"]
+    documented = operation["responses"]["200"]["content"]["application/json"]["example"]
+
+    answer = OutlinePlanner().plan(PlanRequest.model_validate(sent))
 
     assert answer.model_dump(mode="json") == documented
 

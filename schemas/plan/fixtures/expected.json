@@ -1,0 +1,278 @@
+{
+  "about": [
+    "The contract for POST /v0/plan (#277), recorded: one case per rule the planner",
+    "answers by, and the exact batch it has to answer with.",
+    "",
+    "AL.1 implements this contract with a deterministic outline parser and AN.1 (#289)",
+    "implements the SAME contract with a real planner once the invocation gateway",
+    "exists. The `response` bodies here are outline-v0's and are asserted verbatim by",
+    "ouroboros-engine's tests/test_planning_golden.py. What AN.1 inherits is the",
+    "SHAPE -- v0.json beside this file -- not these values: a planner that decomposes",
+    "a narrative properly will answer `narrative-only` with several drafts, and that is",
+    "the point of it. A case's `planner` field is therefore part of the recording too.",
+    "",
+    "Determinism is the property this file exists to pin. The same request produces the",
+    "same batch, the same local keys and the same notes in the same order, in every",
+    "process -- which is what makes a regenerate that CHANGED something meaningful.",
+    "",
+    "Regenerating this file is not how it is maintained. It is reviewed and frozen; a",
+    "change to it is a change to the contract."
+  ],
+  "cases": [
+    {
+      "name": "ota-outline",
+      "about": "The mockup's own outcome and an outline for it: six drafts carrying mockup 09's dependency shape and workflow tags, and nothing to explain.",
+      "request": {
+        "narrative": "We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad.",
+        "outline": "- Partition table & bootloader slot flag for A/B scheme  blocks: OTA-3\n  - two slots, with the active one named in the bootloader header\n  - fall back to the previous slot when the flag is unset\n- SHA-256 checksum verification before slot swap  blocks: OTA-3\n  - verify the staged image before the swap, never after it\n- Rollback state machine on failed boot confirmation  blocks: OTA-5\n  - restore the previous slot\n  - emit a telemetry event\n- BLE recovery beacon when both slots fail checksum  blocks: OTA-5\n  - advertise a recovery service when neither slot verifies\n- Power-loss integration tests on HIL rig (kill power mid-flash)  [hil-verify]\n  - cut power during erase, during write, and during the swap\n- Operator docs: recovery procedure & beacon pairing  [docs]",
+        "context": {
+          "workflow_tags": [
+            "feature-loop",
+            "hil-verify",
+            "docs-loop",
+            "standard-fix"
+          ],
+          "milestone": "Helios 2.1",
+          "local_key_prefix": "OTA"
+        }
+      },
+      "response": {
+        "drafts": [
+          {
+            "local_key": "OTA-1",
+            "title": "Partition table & bootloader slot flag for A/B scheme",
+            "body": "- two slots, with the active one named in the bootloader header\n- fall back to the previous slot when the flag is unset",
+            "suggested_workflow": "feature-loop",
+            "dependencies": []
+          },
+          {
+            "local_key": "OTA-2",
+            "title": "SHA-256 checksum verification before slot swap",
+            "body": "- verify the staged image before the swap, never after it",
+            "suggested_workflow": "feature-loop",
+            "dependencies": []
+          },
+          {
+            "local_key": "OTA-3",
+            "title": "Rollback state machine on failed boot confirmation",
+            "body": "- restore the previous slot\n- emit a telemetry event",
+            "suggested_workflow": "feature-loop",
+            "dependencies": [
+              "OTA-1",
+              "OTA-2"
+            ]
+          },
+          {
+            "local_key": "OTA-4",
+            "title": "BLE recovery beacon when both slots fail checksum",
+            "body": "- advertise a recovery service when neither slot verifies",
+            "suggested_workflow": "feature-loop",
+            "dependencies": []
+          },
+          {
+            "local_key": "OTA-5",
+            "title": "Power-loss integration tests on HIL rig (kill power mid-flash)",
+            "body": "- cut power during erase, during write, and during the swap",
+            "suggested_workflow": "hil-verify",
+            "dependencies": [
+              "OTA-3",
+              "OTA-4"
+            ]
+          },
+          {
+            "local_key": "OTA-6",
+            "title": "Operator docs: recovery procedure & beacon pairing",
+            "body": "",
+            "suggested_workflow": "docs-loop",
+            "dependencies": []
+          }
+        ],
+        "planner": "outline-v0",
+        "notes": []
+      }
+    },
+    {
+      "name": "narrative-only",
+      "about": "The degradation decision N2 exists to protect: the same outcome with no outline is ONE draft and a note, never five plausible inventions.",
+      "request": {
+        "narrative": "We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad.",
+        "outline": null,
+        "context": {
+          "workflow_tags": [
+            "feature-loop",
+            "hil-verify",
+            "docs-loop",
+            "standard-fix"
+          ],
+          "milestone": "Helios 2.1",
+          "local_key_prefix": "OTA"
+        }
+      },
+      "response": {
+        "drafts": [
+          {
+            "local_key": "OTA-1",
+            "title": "We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad.",
+            "body": "We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad.",
+            "suggested_workflow": "feature-loop",
+            "dependencies": []
+          }
+        ],
+        "planner": "outline-v0",
+        "notes": [
+          "Add a structured outline to split this into multiple tickets, or wait for the full planner."
+        ]
+      }
+    },
+    {
+      "name": "numbered-sequence",
+      "about": "A numbered list is somebody writing down an order, so each item depends on the one before it -- and the plan discloses that it drew those edges.",
+      "request": {
+        "narrative": "Migrate the fleet to the new provisioning flow.",
+        "outline": "1. Stand up the provisioning service\n2. Migrate the first cohort\n3. Cut over the remaining fleet",
+        "context": {
+          "workflow_tags": [
+            "feature-loop",
+            "hil-verify",
+            "docs-loop",
+            "standard-fix"
+          ],
+          "milestone": null,
+          "local_key_prefix": "PROV"
+        }
+      },
+      "response": {
+        "drafts": [
+          {
+            "local_key": "PROV-1",
+            "title": "Stand up the provisioning service",
+            "body": "",
+            "suggested_workflow": "feature-loop",
+            "dependencies": []
+          },
+          {
+            "local_key": "PROV-2",
+            "title": "Migrate the first cohort",
+            "body": "",
+            "suggested_workflow": "feature-loop",
+            "dependencies": [
+              "PROV-1"
+            ]
+          },
+          {
+            "local_key": "PROV-3",
+            "title": "Cut over the remaining fleet",
+            "body": "",
+            "suggested_workflow": "feature-loop",
+            "dependencies": [
+              "PROV-2"
+            ]
+          }
+        ],
+        "planner": "outline-v0",
+        "notes": [
+          "Numbered items are read as a sequence: each depends on the one before it. Use `-` bullets for work that can run in parallel."
+        ]
+      }
+    },
+    {
+      "name": "after-annotation",
+      "about": "`after:` is the same edge written from the other end, and an unordered list gets no edges it was not given.",
+      "request": {
+        "narrative": "Replace the telemetry pipeline.",
+        "outline": "- Define the new event schema\n- Ship the collector  after: TEL-1\n- Backfill historical events  after: TEL-2",
+        "context": {
+          "workflow_tags": [
+            "feature-loop",
+            "hil-verify",
+            "docs-loop",
+            "standard-fix"
+          ],
+          "milestone": null,
+          "local_key_prefix": "TEL"
+        }
+      },
+      "response": {
+        "drafts": [
+          {
+            "local_key": "TEL-1",
+            "title": "Define the new event schema",
+            "body": "",
+            "suggested_workflow": "feature-loop",
+            "dependencies": []
+          },
+          {
+            "local_key": "TEL-2",
+            "title": "Ship the collector",
+            "body": "",
+            "suggested_workflow": "feature-loop",
+            "dependencies": [
+              "TEL-1"
+            ]
+          },
+          {
+            "local_key": "TEL-3",
+            "title": "Backfill historical events",
+            "body": "",
+            "suggested_workflow": "feature-loop",
+            "dependencies": [
+              "TEL-2"
+            ]
+          }
+        ],
+        "planner": "outline-v0",
+        "notes": []
+      }
+    },
+    {
+      "name": "ignored-and-explained",
+      "about": "Everything this planner will not invent, in one batch: a marker no workflow matches, a dependency on a key that is not in the batch, an annotation indented under a bullet, and prose before the first one. Each is ignored and each produces a note.",
+      "request": {
+        "narrative": "Harden the update path.",
+        "outline": "Here is roughly what I think it takes:\n- Audit the bootloader  [security-sweep]  blocks: HRD-9\n- Add the recovery beacon\n    blocks: HRD-1\n- Write it up  [docs]",
+        "context": {
+          "workflow_tags": [
+            "feature-loop",
+            "hil-verify",
+            "docs-loop",
+            "standard-fix"
+          ],
+          "milestone": "Helios 2.1",
+          "local_key_prefix": "HRD"
+        }
+      },
+      "response": {
+        "drafts": [
+          {
+            "local_key": "HRD-1",
+            "title": "Audit the bootloader",
+            "body": "",
+            "suggested_workflow": "feature-loop",
+            "dependencies": []
+          },
+          {
+            "local_key": "HRD-2",
+            "title": "Add the recovery beacon",
+            "body": "blocks: HRD-1",
+            "suggested_workflow": "feature-loop",
+            "dependencies": []
+          },
+          {
+            "local_key": "HRD-3",
+            "title": "Write it up",
+            "body": "",
+            "suggested_workflow": "docs-loop",
+            "dependencies": []
+          }
+        ],
+        "planner": "outline-v0",
+        "notes": [
+          "Ignored dependency annotations naming keys that are not in this batch: HRD-9. Keys are assigned by position, so the third bullet is the third key.",
+          "Ignored workflow markers that match no workflow this installation has: [security-sweep].",
+          "`blocks:` and `after:` are read from a bullet's own line. 1 indented line(s) carrying one were kept as body text instead.",
+          "1 line(s) before the first bullet are not part of any ticket. Describe the outcome in the narrative and keep the outline to a list."
+        ]
+      }
+    }
+  ]
+}

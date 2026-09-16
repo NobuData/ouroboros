@@ -384,7 +384,7 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AL.1 | #277 | 🟡 Open | ouroboros-engine: [AL.1] Plan contract & outline parser v0 | `/v0/plan`: narrative+outline → drafts+deps, versioned, provenance | mvp, planning, engine | N (after #52) | Y | M | ouroboros-engine |
+| AL.1 | #277 | 🟢 Done | ouroboros-engine: [AL.1] Plan contract & outline parser v0 | `/v0/plan`: narrative+outline → drafts+deps, versioned, provenance | mvp, planning, engine | N (after #52) | Y | M | ouroboros-engine |
 | AL.2 | #278 | 🟡 Open | ouroboros-rest: [AL.2] Write-capability SPI extension | `createTicket`/`linkDependency`/`ensureEpic` + conformance kit cases | mvp, planning, sources, rest | N (after WF-Q.2) | Y | M | ouroboros-rest |
 | AL.3 | #279 | 🟡 Open | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
 | AL.4 | #280 | 🟡 Open | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
@@ -393,7 +393,7 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 
 ### Issue AL.1 — ouroboros-engine: [AL.1] Plan contract & outline parser v0
 
-> **GitHub issue:** #277 · **Status:** 🟡 Open · **Parent epic:** #269
+> **GitHub issue:** #277 · **Status:** 🟢 Done · **Parent epic:** #269
 
 
 - **Problem Statement:** Generation needs a versioned engine contract today
@@ -421,6 +421,50 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 /v0/plan {narrative, outline: "- Partition table… blocks: OTA-3\n- …"}
   ─▶ {drafts[6]{local_key, deps}, planner: outline-v0}   (AN.1: llm-v1, same shape)
 ```
+
+- **Delivered (2026-09-16):** `POST /v0/plan` in `ouroboros-engine`, as
+  `src/ouroboros_engine/planning/` (`contract.py`, `planner.py`, `outline.py`,
+  `outline_planner.py`) and `api/plan.py`, with the contract published as
+  `schemas/plan/v0.json`. Five decisions were taken in-issue.
+  - **The contract is a package, and the planner is a line in `create_app`.** The split
+    mirrors `estimation/` exactly: `contract.py` is what `ouroboros-rest` is written against
+    and may not change, `planner.py` is a one-method protocol plus the check that holds every
+    batch to the caller's vocabulary, `outline.py` is the five parsing rules, and
+    `outline_planner.py` decides what a reading *means*. AN.1 (#289) is a new class and an
+    edit to one line, not a rewrite of a route — which is decision **N2** made structural
+    rather than promised.
+  - **Sequencing is inferred only from a numbered list, and is disclosed when it is.** An
+    unordered list is a *set*: its bullets get no edges unless an annotation gives them one,
+    because the order somebody typed their tasks in is not a claim that one blocks another.
+    Writing `1. 2. 3.` **is** that claim, so those items chain — and the batch carries a note
+    saying it drew those edges. That asymmetry is the issue's "ordering heuristics" read as
+    conservatively as the honesty discipline allows: an edge that appears without having been
+    typed is the thing this staging exists to prevent.
+  - **A draft with no marker takes the first tag the caller offered.** Not a default this
+    service holds — decision **K5** means it holds no list of tags at all — but the caller's
+    own first choice, which is the only ranking available to something that ascribes a tag no
+    meaning. It is the same fall-through `heuristic-v0` makes, and it is what lets the
+    mockup's four unmarked bullets come out `feature-loop`. `workflow_tags` is therefore
+    documented as an *ordered* field.
+  - **Everything ignored is named in `notes`.** An annotation naming a key outside the batch,
+    a marker matching no workflow, a `blocks:` on an indented line, prose before the first
+    bullet, a bullet with no text after its markers — each is ignored rather than guessed at,
+    and each produces a sentence AM.2 renders as guidance. A cycle is *drafted as written* and
+    reported rather than silently redrawn, so it is caught at draft time instead of by a
+    tracker half way through a push.
+  - **The batch's consistency is the contract's rule, not the parser's.** `Plan` itself
+    refuses duplicate local keys, an edge naming a key that is not in the batch, and a draft
+    depending on itself — so AN.1's planner is held to them too. A rule that lives in an
+    implementation is a rule the next implementation has to remember.
+
+  Verified against the mockup: the OTA outcome with an outline fixture yields its six drafts
+  carrying mockup 09's dependency shape (`OTA-3 ← OTA-1, OTA-2`; `OTA-5 ← OTA-3, OTA-4`) and
+  its workflow tags, with no notes. `schemas/plan/fixtures/expected.json` records that case and
+  four others verbatim, and `tests/test_planning_golden.py` asserts both the values and — the
+  criterion AN.1 inherits — the *shape*, against the published schema. `ouroboros-engine` is
+  now 0.7.1; the OpenAPI document gained the operation and its four schemas, drift-checked as
+  ever. Sizing is deliberately absent (decision **N3**), and the drafts are persisted by AL.4
+  (#280).
 
 ### Issue AL.2 — ouroboros-rest: [AL.2] Write-capability SPI extension
 
