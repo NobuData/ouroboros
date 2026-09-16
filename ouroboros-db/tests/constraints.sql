@@ -10760,6 +10760,468 @@ select pg_temp.must_hold(
   'a deleted workspace takes its batches, their drafts and every estimate of them');
 
 -- ===========================================================================
+-- V035 — ticket_dependencies, one blocks relation over drafts and tickets (#273)
+-- ===========================================================================
+--
+-- AK.2 is decision **N4**: mockup 09's `blocks OTA-3` draft note and the Backlog Health card's
+-- `Blocked 4` meter are the same relation at two moments in its life, so they are one table with
+-- polymorphic endpoints rather than a draft-local list beside a ticket table and a translation
+-- step between them.
+--
+-- Nothing writes it yet: AL.3 (#279) is the push that rewrites draft references to ticket
+-- references, AL.4 (#280) the API that enforces acyclicity, AL.5 (#281) the Blocked metric. So,
+-- as with every read-model table before it, each rule lives in the migration rather than in a
+-- service.
+--
+-- The issue's eight acceptance criteria are this section, in order: all three endpoint pairings
+-- are representable; the exactly-one-kind CHECK rejects both and neither; a push rewrites
+-- references atomically; a self-reference is refused; duplicate pairs are refused whatever kinds
+-- their ends are; `origin` tells planned from synced and the Blocked metric counts both; a
+-- planted cycle is found by the recursive-CTE probe AK.5 (#276) wires into ci/db; and
+-- organization isolation holds across all four references.
+--
+-- Its own fixtures, and **two workspaces**: the isolation rule is a claim about an edge naming
+-- one workspace and another's draft or ticket, so there has to be another workspace to name.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-deps',      'Dependency Works',     'dependency-works',     now()),
+  ('org-deps-next', 'Dependency Next Door', 'dependency-next-door', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified")
+  values ('user-deps', 'Dee Planner', 'dee@dependency-works.dev', true);
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('c0350000-0000-0000-0000-000000000001', 'org-deps',      'github', 'GitHub · deps'),
+  ('c0350000-0000-0000-0000-000000000002', 'org-deps-next', 'github', 'GitHub · next door');
+
+insert into ouroboros.draft_batches
+    (id, organization_id, source_prompt, planner, target_source_id, created_by)
+  values
+    ('c0350000-0000-0000-0000-0000000000b1', 'org-deps',
+     'Ship over-the-air firmware updates for the Helios controller.',
+     'outline-v0', 'c0350000-0000-0000-0000-000000000001', 'user-deps'),
+    ('c0350000-0000-0000-0000-0000000000b2', 'org-deps-next',
+     'Somebody else''s roadmap.',
+     'outline-v0', 'c0350000-0000-0000-0000-000000000002', null);
+
+-- The mockup's own drafts, and one in the workspace next door for the isolation rule to name.
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title) values
+  ('c0350000-0000-0000-0000-0000000000d1', 'c0350000-0000-0000-0000-0000000000b1', 'OTA-1',
+   'Bootloader A/B slots'),
+  ('c0350000-0000-0000-0000-0000000000d2', 'c0350000-0000-0000-0000-0000000000b1', 'OTA-2',
+   'Delta packaging'),
+  ('c0350000-0000-0000-0000-0000000000d3', 'c0350000-0000-0000-0000-0000000000b1', 'OTA-3',
+   'Rollback path'),
+  ('c0350000-0000-0000-0000-0000000000d9', 'c0350000-0000-0000-0000-0000000000b2', 'OTA-9',
+   'Somebody else''s draft');
+
+-- The live backlog: the two issues a push will create, two that were already there — one of them
+-- linked to the other in GitHub directly, which is what `synced` records — and one next door.
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('c0350000-0000-0000-0000-00000000a612', 'org-deps',
+     'c0350000-0000-0000-0000-000000000001', '612', '#612',
+     'https://github.com/nobudata/helios-firmware/issues/612', 'Bootloader A/B slots', 'open',
+     now(), now()),
+    ('c0350000-0000-0000-0000-00000000a614', 'org-deps',
+     'c0350000-0000-0000-0000-000000000001', '614', '#614',
+     'https://github.com/nobudata/helios-firmware/issues/614', 'Rollback path', 'open',
+     now(), now()),
+    ('c0350000-0000-0000-0000-00000000a601', 'org-deps',
+     'c0350000-0000-0000-0000-000000000001', '601', '#601',
+     'https://github.com/nobudata/helios-firmware/issues/601', 'OTA bootloader slot', 'open',
+     now(), now()),
+    ('c0350000-0000-0000-0000-00000000a607', 'org-deps',
+     'c0350000-0000-0000-0000-000000000001', '607', '#607',
+     'https://github.com/nobudata/helios-firmware/issues/607', 'Watchdog reset', 'open',
+     now(), now()),
+    ('c0350000-0000-0000-0000-00000000a777', 'org-deps-next',
+     'c0350000-0000-0000-0000-000000000002', '777', '#777',
+     'https://github.com/nextdoor/thing/issues/777', 'Somebody else''s ticket', 'open',
+     now(), now());
+
+-- --- all three pairings are representable ---------------------------------------
+--
+-- Acceptance criterion, and the whole of decision N4: draft→draft is the batch under review,
+-- ticket→ticket is the live backlog, and the spanning pair is both the half-pushed batch and the
+-- ordinary case of a new draft blocked by an issue that already exists.
+insert into ouroboros.ticket_dependencies
+    (id, organization_id, blocker_draft_id, blocked_draft_id)
+  values
+    ('c0350000-0000-0000-0000-00000000e001', 'org-deps',
+     'c0350000-0000-0000-0000-0000000000d1', 'c0350000-0000-0000-0000-0000000000d3');
+
+insert into ouroboros.ticket_dependencies
+    (id, organization_id, blocker_ticket_id, blocked_ticket_id, origin)
+  values
+    ('c0350000-0000-0000-0000-00000000e002', 'org-deps',
+     'c0350000-0000-0000-0000-00000000a601', 'c0350000-0000-0000-0000-00000000a607', 'synced');
+
+insert into ouroboros.ticket_dependencies
+    (id, organization_id, blocker_ticket_id, blocked_draft_id)
+  values
+    ('c0350000-0000-0000-0000-00000000e003', 'org-deps',
+     'c0350000-0000-0000-0000-00000000a601', 'c0350000-0000-0000-0000-0000000000d2');
+
+insert into ouroboros.ticket_dependencies
+    (id, organization_id, blocker_draft_id, blocked_ticket_id)
+  values
+    ('c0350000-0000-0000-0000-00000000e004', 'org-deps',
+     'c0350000-0000-0000-0000-0000000000d2', 'c0350000-0000-0000-0000-00000000a614');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.ticket_dependencies where organization_id = 'org-deps'),
+  'draft-to-draft, ticket-to-ticket and both spanning pairs are all representable');
+
+select pg_temp.must_hold(
+  (select origin = 'planned' from ouroboros.ticket_dependencies
+    where id = 'c0350000-0000-0000-0000-00000000e001'),
+  'and an edge nobody said otherwise about was authored here, not mirrored from a tracker');
+
+-- --- exactly one kind per endpoint ----------------------------------------------
+--
+-- Acceptance criterion. Both set is an edge claiming one end is simultaneously a draft and a live
+-- ticket; neither is an end attached to nothing, which no cascade can reach and no reader can
+-- render. Each end names its own constraint, so a rejected write says which end was wrong.
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_draft_id, blocker_ticket_id, blocked_draft_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-0000000000d1',
+            'c0350000-0000-0000-0000-00000000a601', 'c0350000-0000-0000-0000-0000000000d3')$$,
+  'a blocker that is both a draft and a ticket is refused',
+  'ticket_dependencies_blocker_one_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies (organization_id, blocked_draft_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-0000000000d3')$$,
+  'and a blocker that is neither is refused, because an edge from nothing is not an edge',
+  'ticket_dependencies_blocker_one_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_draft_id, blocked_draft_id, blocked_ticket_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-0000000000d1',
+            'c0350000-0000-0000-0000-0000000000d3', 'c0350000-0000-0000-0000-00000000a614')$$,
+  'the blocked end carries the same rule',
+  'ticket_dependencies_blocked_one_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies (organization_id, blocker_draft_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-0000000000d1')$$,
+  'and states it separately, so a rejected write names the end that was wrong',
+  'ticket_dependencies_blocked_one_kind');
+
+-- --- a push rewrites references atomically --------------------------------------
+--
+-- Acceptance criterion: *a mid-push crash never leaves an edge pointing at a draft whose ticket
+-- already exists*. What the schema owes that is not a constraint — atomicity is the
+-- transaction's — but it is exactly what the nullable pairs make **expressible**: repointing an
+-- end is one statement, so AL.3 (#279) can do it in the same transaction that creates the ticket.
+--
+-- Both halves are asserted here, because the criterion is about the crash rather than the happy
+-- path: the rewrite inside a savepoint that is rolled back leaves the edge as it was, and the one
+-- that is kept leaves a ticket→ticket edge with no draft reference surviving anywhere in it.
+savepoint mid_push;
+
+update ouroboros.ticket_dependencies
+   set blocker_draft_id = null, blocker_ticket_id = 'c0350000-0000-0000-0000-00000000a612'
+ where id = 'c0350000-0000-0000-0000-00000000e001';
+
+rollback to savepoint mid_push;
+
+select pg_temp.must_hold(
+  (select blocker_draft_id = 'c0350000-0000-0000-0000-0000000000d1'
+      and blocker_ticket_id is null
+     from ouroboros.ticket_dependencies where id = 'c0350000-0000-0000-0000-00000000e001'),
+  'a push that fails half way leaves the edge pointing at the drafts it always did');
+
+update ouroboros.ticket_dependencies
+   set blocker_draft_id  = null, blocker_ticket_id = 'c0350000-0000-0000-0000-00000000a612',
+       blocked_draft_id  = null, blocked_ticket_id = 'c0350000-0000-0000-0000-00000000a614'
+ where id = 'c0350000-0000-0000-0000-00000000e001';
+
+select pg_temp.must_hold(
+  (select blocker_draft_id is null and blocked_draft_id is null
+      and blocker_ticket_id = 'c0350000-0000-0000-0000-00000000a612'
+      and blocked_ticket_id = 'c0350000-0000-0000-0000-00000000a614'
+      and origin = 'planned'
+     from ouroboros.ticket_dependencies where id = 'c0350000-0000-0000-0000-00000000e001'),
+  'and one that succeeds leaves the same relation between the two issues it became');
+
+-- The row is the same row throughout, which is the point of one table: `blocks OTA-3` became
+-- `#612 blocks #614` without anything being deleted, re-inserted or translated.
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.ticket_dependencies where organization_id = 'org-deps'),
+  'the push rewrote an edge rather than replacing it, so the graph never changed size');
+
+-- --- nothing blocks itself ------------------------------------------------------
+--
+-- Acceptance criterion, and the one unpushable shape a CHECK can catch without walking the
+-- graph: a self-edge is a one-node cycle.
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_draft_id, blocked_draft_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-0000000000d3',
+            'c0350000-0000-0000-0000-0000000000d3')$$,
+  'a draft cannot block itself',
+  'ticket_dependencies_no_self_reference');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_ticket_id, blocked_ticket_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-00000000a607',
+            'c0350000-0000-0000-0000-00000000a607')$$,
+  'nor can a ticket, which is the same rule after a push',
+  'ticket_dependencies_no_self_reference');
+
+-- The null-guarded spelling is what makes those two rejections compatible with every edge
+-- accepted above: `is distinct from` would have read better and refused every same-kind pair,
+-- because `null is distinct from null` is false.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.ticket_dependencies
+    where id = 'c0350000-0000-0000-0000-00000000e002'),
+  'while two different tickets, both with null draft ends, remain a legal edge');
+
+-- --- one edge, once, whichever kinds its ends are -------------------------------
+--
+-- Acceptance criterion: *duplicate pairs are rejected regardless of which endpoint kinds are
+-- used*. `nulls not distinct` is the whole of it — under the default rule three null columns make
+-- every row unique against its own twin, and this key would accept the same edge without limit.
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_ticket_id, blocked_ticket_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-00000000a601',
+            'c0350000-0000-0000-0000-00000000a607')$$,
+  'the same ticket-to-ticket edge cannot be stored twice',
+  'ticket_dependencies_pair_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_ticket_id, blocked_draft_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-00000000a601',
+            'c0350000-0000-0000-0000-0000000000d2')$$,
+  'nor can a spanning one, which is where nulls-are-distinct would have let a duplicate through',
+  'ticket_dependencies_pair_key');
+
+-- A duplicate is refused whatever `origin` claims, because `origin` is not in the key: the same
+-- relation mirrored back from a tracker is the same relation.
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_draft_id, blocked_ticket_id, origin)
+    values ('org-deps', 'c0350000-0000-0000-0000-0000000000d2',
+            'c0350000-0000-0000-0000-00000000a614', 'synced')$$,
+  'and re-authoring an existing edge under the other origin is still a duplicate',
+  'ticket_dependencies_pair_key');
+
+-- Which is what makes the sync an **upsert** rather than a second row — the key is inferrable, so
+-- WF-Q can adopt an edge the tracker reports without doubling it in the Blocked meter.
+insert into ouroboros.ticket_dependencies
+    (organization_id, blocker_draft_id, blocked_ticket_id, origin)
+  values ('org-deps', 'c0350000-0000-0000-0000-0000000000d2',
+          'c0350000-0000-0000-0000-00000000a614', 'synced')
+  on conflict (blocker_draft_id, blocker_ticket_id, blocked_draft_id, blocked_ticket_id)
+    do update set origin = excluded.origin;
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and min(origin) = 'synced' from ouroboros.ticket_dependencies
+    where id = 'c0350000-0000-0000-0000-00000000e004'),
+  'a tracker reporting an edge Ouroboros authored adopts the row rather than duplicating it');
+
+-- Put it back, so the fixtures below read as the graph this section described.
+update ouroboros.ticket_dependencies set origin = 'planned'
+ where id = 'c0350000-0000-0000-0000-00000000e004';
+
+-- The reverse pair is a different edge, and deliberately storable: `A blocks B` and `B blocks A`
+-- are two rows, and together they are a two-node cycle — which is AL.4's (#280) to refuse and the
+-- probe below's to find, not this key's to prevent.
+insert into ouroboros.ticket_dependencies
+    (id, organization_id, blocker_ticket_id, blocked_ticket_id)
+  values
+    ('c0350000-0000-0000-0000-00000000e005', 'org-deps',
+     'c0350000-0000-0000-0000-00000000a607', 'c0350000-0000-0000-0000-00000000a601');
+
+-- Both ends are pinned to the pair, because `#601` also blocks a draft at this point and a
+-- blocker-only count would be counting that edge too.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.ticket_dependencies
+    where organization_id = 'org-deps'
+      and blocker_ticket_id in ('c0350000-0000-0000-0000-00000000a601',
+                                'c0350000-0000-0000-0000-00000000a607')
+      and blocked_ticket_id in ('c0350000-0000-0000-0000-00000000a601',
+                                'c0350000-0000-0000-0000-00000000a607')),
+  'the reverse of an edge is a different edge, which the unique key does not refuse');
+
+-- --- origin tells planned from synced, and Blocked counts both ------------------
+--
+-- Acceptance criterion. A blocked ticket is blocked whether the link was planned in Ouroboros or
+-- created by somebody in GitHub, so AL.5's (#281) metric counts both origins — and the column
+-- still has to be able to tell them apart, because only one of the two is this product's to
+-- retract in a tracker.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_dependencies set origin = 'inferred'
+     where id = 'c0350000-0000-0000-0000-00000000e002'$$,
+  'origin admits no third provenance: a dependency is read out of a tracker or it is not',
+  'ticket_dependencies_origin');
+
+select pg_temp.must_hold(
+  (select count(distinct blocked_ticket_id) = 3 from ouroboros.ticket_dependencies
+    where organization_id = 'org-deps' and blocked_ticket_id is not null),
+  'the Blocked metric counts a blocked ticket once, whichever origin blocked it');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.ticket_dependencies
+    where organization_id = 'org-deps' and origin = 'synced')
+   and (select count(*) = 4 from ouroboros.ticket_dependencies
+         where organization_id = 'org-deps' and origin = 'planned'),
+  'and the two provenances remain distinguishable underneath that one number');
+
+-- The metric is an indexed read rather than a scan of every edge a workspace has, which is what
+-- ticket_dependencies_organization_blocked_ticket_idx is for. Sequential scans are discouraged
+-- for the check because the fixture is five rows, where a scan is genuinely cheaper: what is
+-- asserted is that a usable index exists at all.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select count(distinct blocked_ticket_id) from ouroboros.ticket_dependencies
+     where organization_id = 'org-deps' and blocked_ticket_id is not null$$,
+  'ticket_dependencies_organization_blocked_ticket_idx');
+reset enable_seqscan;
+
+-- --- a planted cycle is found by the probe AK.5 wires into ci/db ----------------
+--
+-- Acceptance criterion, and the reason there is no acyclicity constraint here: detecting a cycle
+-- means walking the graph, so AL.4 (#280) enforces it on every write and this proves the *stored*
+-- graph stays walkable. A cycle is not an error anybody sees — it is a batch that can never be
+-- pushed, because AL.3 (#279) pushes in dependency order and a cycle has no order.
+--
+-- Node identity is `coalesce(draft_id, ticket_id)`, which is what makes this one CTE rather than
+-- a four-branch join: both are uuid primary keys from two different tables, so one expression
+-- names a node whichever kind it is. The walk is depth-bounded, because an unbounded recursion
+-- over a graph that *does* contain a cycle never terminates — the bound is what turns
+-- non-termination into a finding.
+create function pg_temp.dependency_graph_has_cycle(org text) returns boolean
+language sql as $$
+  with recursive edges as (
+    select coalesce(blocker_draft_id, blocker_ticket_id) as blocker,
+           coalesce(blocked_draft_id, blocked_ticket_id) as blocked
+      from ouroboros.ticket_dependencies
+     where organization_id = org
+  ),
+  walk (start_node, node, depth, closed) as (
+    select blocker, blocked, 1, blocker = blocked from edges
+    union all
+    select w.start_node, e.blocked, w.depth + 1, e.blocked = w.start_node
+      from walk w
+      join edges e on e.blocker = w.node
+     where not w.closed and w.depth < 64
+  )
+  select exists (select 1 from walk where closed);
+$$;
+
+-- The two-node cycle inserted above is already in this workspace's graph, so the probe has to see
+-- it. Removing it has to make the probe go quiet — a probe that reports a cycle either way is
+-- reporting nothing.
+select pg_temp.must_hold(
+  pg_temp.dependency_graph_has_cycle('org-deps'),
+  'a stored cycle is detectable by a recursive walk of the graph — AK.5''s (#276) probe');
+
+delete from ouroboros.ticket_dependencies where id = 'c0350000-0000-0000-0000-00000000e005';
+
+select pg_temp.must_hold(
+  not pg_temp.dependency_graph_has_cycle('org-deps'),
+  'and the same probe is quiet on an acyclic graph, so it is watching the cycle and not the rows');
+
+-- A longer cycle, spanning both kinds of endpoint, because the interesting failure is the one no
+-- CHECK could ever have caught: three edges, draft and ticket ends mixed, closing on itself.
+-- `#601 blocks OTA-2` and `OTA-2 blocks #614` are already stored, so one edge closes the loop —
+-- and every hop of it changes endpoint kind, which is the case a draft-local dependency list
+-- beside a ticket table could not have represented at all, let alone walked.
+insert into ouroboros.ticket_dependencies (organization_id, blocker_ticket_id, blocked_ticket_id)
+  values ('org-deps', 'c0350000-0000-0000-0000-00000000a614',
+          'c0350000-0000-0000-0000-00000000a601');
+
+select pg_temp.must_hold(
+  pg_temp.dependency_graph_has_cycle('org-deps'),
+  'a cycle that runs through both drafts and tickets is found the same way');
+
+delete from ouroboros.ticket_dependencies
+ where blocker_ticket_id = 'c0350000-0000-0000-0000-00000000a614'
+   and blocked_ticket_id = 'c0350000-0000-0000-0000-00000000a601';
+
+-- --- organization isolation, across all four references -------------------------
+--
+-- Acceptance criterion, and four references rather than one: a ticket reaches a workspace
+-- directly, a draft reaches one through its batch. Two foreign keys do not make each other agree,
+-- and neither makes either agree with `organization_id`.
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_draft_id, blocked_draft_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-0000000000d9',
+            'c0350000-0000-0000-0000-0000000000d3')$$,
+  'an edge cannot name another workspace''s draft as its blocker',
+  'ticket_dependencies_endpoints_in_organization');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_dependencies
+      (organization_id, blocker_ticket_id, blocked_ticket_id)
+    values ('org-deps', 'c0350000-0000-0000-0000-00000000a601',
+            'c0350000-0000-0000-0000-00000000a777')$$,
+  'nor another workspace''s ticket as the thing it blocks',
+  'ticket_dependencies_endpoints_in_organization');
+
+-- Including on the rewrite, which is the statement a push makes: repointing an end has to be
+-- checked exactly as the original insert was, or the push is the way across the boundary.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_dependencies
+       set blocker_ticket_id = 'c0350000-0000-0000-0000-00000000a777'
+     where id = 'c0350000-0000-0000-0000-00000000e002'$$,
+  'and the push rewrite is held to it too, so repointing an end cannot cross a workspace',
+  'ticket_dependencies_endpoints_in_organization');
+
+-- --- regeneration takes an edge with the draft it belonged to --------------------
+--
+-- `V034`'s placement argument, inherited: replacing the unselected drafts must take their edges
+-- and nobody else's. Deleting one draft is what regeneration does to it.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.ticket_dependencies
+    where blocked_draft_id = 'c0350000-0000-0000-0000-0000000000d2'),
+  'a draft that something blocks has an edge pointing at it');
+
+delete from ouroboros.ticket_drafts where id = 'c0350000-0000-0000-0000-0000000000d2';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.ticket_dependencies
+    where blocked_draft_id = 'c0350000-0000-0000-0000-0000000000d2'
+       or blocker_draft_id = 'c0350000-0000-0000-0000-0000000000d2'),
+  'and regenerating that draft away takes every edge it was an end of, in both directions');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.ticket_dependencies where organization_id = 'org-deps'),
+  'while the edges between what survived are exactly where they were');
+
+-- A deleted ticket takes its edges too, which is the other cascade and the one place this table
+-- deliberately differs from `ticket_drafts.pushed_ticket_id`: a draft whose ticket is gone was
+-- still truthfully pushed, but an edge whose end is gone is a dependency on nothing.
+delete from ouroboros.tickets where id = 'c0350000-0000-0000-0000-00000000a601';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.ticket_dependencies
+    where blocker_ticket_id = 'c0350000-0000-0000-0000-00000000a601'
+       or blocked_ticket_id = 'c0350000-0000-0000-0000-00000000a601'),
+  'a deleted ticket takes the edges it was an end of, rather than leaving half of one behind');
+
+-- --- and the workspace takes all of it with it ----------------------------------
+delete from ouroboros.organization where "id" in ('org-deps', 'org-deps-next');
+delete from ouroboros."user" where "id" = 'user-deps';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.ticket_dependencies)
+   and (select count(*) = 0 from ouroboros.draft_batches)
+   and (select count(*) = 0 from ouroboros.ticket_drafts),
+  'a deleted workspace takes its dependency graph with its batches and drafts');
+
+-- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)
 -- ===========================================================================
 --
