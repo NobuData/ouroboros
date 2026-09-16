@@ -11222,6 +11222,503 @@ select pg_temp.must_hold(
   'a deleted workspace takes its dependency graph with its batches and drafts');
 
 -- ===========================================================================
+-- V036 — planning_epics, epic_tickets and epic_mirrors, the gantt's lanes (#274)
+-- ===========================================================================
+--
+-- AK.3 is decision **N5** (option 4-A), the ownership split: Ouroboros owns a lane's dates, tint,
+-- status and order, the tracker owns ticket content, and `12 issues · 8 done` is **computed** on
+-- every read. There is no field both sides can edit, so there is nothing to merge.
+--
+-- The criterion that separates this from every read-model table before it is that one of its
+-- numbers is *deliberately absent*: a stored counter would read `8 done` while the tracker said
+-- nine, and nobody could tell which to believe. So the assertions below do not only check that
+-- the chip is right — they change a ticket's state underneath it and require the chip to move,
+-- which is the only way to tell a computed number from a cached one that happens to agree.
+--
+-- Nothing writes any of it yet: AL.4 (#280) is the epic CRUD and the roadmap payload, AL.3 (#279)
+-- the push that fills `epic_mirrors`, AM.4 (#286) the gantt. So, as with every planning table
+-- before it, each rule lives in the migration rather than in a service.
+--
+-- The issue's eight acceptance criteria are this section, in order: all five mockup lanes are
+-- representable including the dashed unscoped case; dates are nullable as a pair; a range runs
+-- forwards; the progress chip is computed and matches fixtures; both vocabularies are closed;
+-- mirror rows round-trip and a second push adopts rather than creates; `sort_order` orders the
+-- lanes deterministically; and organization isolation holds across all three tables.
+--
+-- Two workspaces again, because every isolation rule here is a claim about an epic in one
+-- workspace naming a ticket, a source or a batch in another.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-epics',      'Epic Works',     'epic-works',     now()),
+  ('org-epics-next', 'Epic Next Door', 'epic-next-door', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified")
+  values ('user-epics', 'Ada Planner', 'ada@epic-works.dev', true);
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('c0360000-0000-0000-0000-000000000001', 'org-epics',      'github', 'GitHub · epics'),
+  ('c0360000-0000-0000-0000-000000000002', 'org-epics-next', 'github', 'GitHub · next door');
+
+-- The mockup's five lanes, exactly: four scheduled and tinted, and `Zephyr 4.2 migration` with
+-- **no dates at all**, which is the case this table was shaped around.
+insert into ouroboros.planning_epics
+    (id, organization_id, name, tint, start_month, end_month, status, sort_order,
+     roadmap_name, roadmap_window)
+  values
+    ('c0360000-0000-0000-0000-00000000ee01', 'org-epics', 'OTA hardening',
+     'accent',  date '2026-07-01', date '2026-09-01', 'active',   1, 'Helios 2.1', 'Q3–Q4 2026'),
+    ('c0360000-0000-0000-0000-00000000ee02', 'org-epics', 'BLE provisioning v2',
+     'model',   date '2026-08-01', date '2026-10-01', 'active',   2, 'Helios 2.1', 'Q3–Q4 2026'),
+    ('c0360000-0000-0000-0000-00000000ee03', 'org-epics', 'Motor control refactor',
+     'warn',    date '2026-09-01', date '2026-11-01', 'active',   3, 'Helios 2.1', 'Q3–Q4 2026'),
+    ('c0360000-0000-0000-0000-00000000ee04', 'org-epics', 'Fleet telemetry dashboard',
+     'ok',      date '2026-10-01', date '2026-12-01', 'active',   4, 'Helios 2.1', 'Q3–Q4 2026'),
+    ('c0360000-0000-0000-0000-00000000ee05', 'org-epics', 'Zephyr 4.2 migration',
+     'neutral', null,              null,              'unscoped', 5, 'Helios 2.1', 'Q3–Q4 2026');
+
+-- The lane next door, for the isolation rules to name.
+insert into ouroboros.planning_epics (id, organization_id, name, sort_order)
+  values ('c0360000-0000-0000-0000-00000000ee09', 'org-epics-next', 'Somebody else''s lane', 1);
+
+-- The backlog the chips are computed from: 12 · 8, 9 · 2, 14 · 0 and 7 · 0, generated rather than
+-- written out, because forty-two literal inserts would hide the four numbers that are the point.
+-- The uuid is derived from the lane and the index so the link rows below can name the same rows
+-- without a lookup.
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+select ('c0360000-0000-0000-0000-' || lpad((lane.ord * 1000 + n)::text, 12, '0'))::uuid,
+       'org-epics', 'c0360000-0000-0000-0000-000000000001',
+       (lane.ord * 1000 + n)::text, '#' || (lane.ord * 1000 + n)::text,
+       'https://github.com/nobudata/helios-firmware/issues/' || (lane.ord * 1000 + n)::text,
+       lane.label || ' — ' || n, case when n <= lane.done then 'closed' else 'open' end,
+       now(), now()
+  from (values (1, 'OTA hardening',             12, 8),
+               (2, 'BLE provisioning v2',        9, 2),
+               (3, 'Motor control refactor',    14, 0),
+               (4, 'Fleet telemetry dashboard',  7, 0))
+         as lane (ord, label, total, done),
+       lateral generate_series(1, lane.total) as n;
+
+insert into ouroboros.epic_tickets (epic_id, ticket_id)
+select lane.epic_id,
+       ('c0360000-0000-0000-0000-' || lpad((lane.ord * 1000 + n)::text, 12, '0'))::uuid
+  from (values ('c0360000-0000-0000-0000-00000000ee01'::uuid, 1, 12),
+               ('c0360000-0000-0000-0000-00000000ee02'::uuid, 2,  9),
+               ('c0360000-0000-0000-0000-00000000ee03'::uuid, 3, 14),
+               ('c0360000-0000-0000-0000-00000000ee04'::uuid, 4,  7))
+         as lane (epic_id, ord, total),
+       lateral generate_series(1, lane.total) as n;
+
+-- The ticket next door, and a batch in each workspace — the batch is what `draft_batches.epic_id`
+-- is asserted against, which is the column V034 deferred to this migration.
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('c0360000-0000-0000-0000-00000000a777', 'org-epics-next',
+     'c0360000-0000-0000-0000-000000000002', '777', '#777',
+     'https://github.com/nextdoor/thing/issues/777', 'Somebody else''s ticket', 'open',
+     now(), now());
+
+insert into ouroboros.draft_batches
+    (id, organization_id, source_prompt, planner, target_source_id, created_by, epic_id)
+  values
+    ('c0360000-0000-0000-0000-0000000000b1', 'org-epics',
+     'Ship over-the-air firmware updates for the Helios controller.',
+     'outline-v0', 'c0360000-0000-0000-0000-000000000001', 'user-epics',
+     'c0360000-0000-0000-0000-00000000ee05'),
+    ('c0360000-0000-0000-0000-0000000000b2', 'org-epics-next',
+     'Somebody else''s roadmap.',
+     'outline-v0', 'c0360000-0000-0000-0000-000000000002', null, null);
+
+-- --- all five mockup lanes are representable ------------------------------------
+--
+-- Acceptance criterion, and the unscoped one is the half that needed designing for: a lane with
+-- no dates is a first-class row rather than one carrying placeholders and a flag saying to ignore
+-- them.
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.planning_epics where organization_id = 'org-epics'),
+  'all five of mockup 09''s lanes are rows');
+
+select pg_temp.must_hold(
+  (select start_month is null and end_month is null and status = 'unscoped' and tint = 'neutral'
+     from ouroboros.planning_epics where id = 'c0360000-0000-0000-0000-00000000ee05'),
+  'and the dashed Zephyr lane carries no dates at all, which is what unscoped means');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.planning_epics
+    where organization_id = 'org-epics' and start_month is not null),
+  'while the four scheduled lanes carry the month range the gantt draws them at');
+
+-- --- the two vocabularies are closed --------------------------------------------
+--
+-- Acceptance criterion. Both are partitions something renders — a tint class over one, a pill and
+-- a dash pattern over the other — so a sixth value is a lane that appears under no rule at all.
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epics (organization_id, name, tint, sort_order)
+    values ('org-epics', 'Purple lane', 'purple', 90)$$,
+  'a tint outside the mockup''s five is refused',
+  'planning_epics_tint');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epics (organization_id, name, status, sort_order)
+    values ('org-epics', 'Archived lane', 'archived', 91)$$,
+  'and so is a fifth lane status',
+  'planning_epics_status');
+
+select pg_temp.must_hold(
+  (select count(distinct tint) = 5 from ouroboros.planning_epics
+    where organization_id = 'org-epics'),
+  'the five lanes use the five tints, which is what makes the vocabulary the mockup''s');
+
+-- --- the months are a pair, are months, and run forwards ------------------------
+--
+-- Acceptance criteria. Half a range is not a degraded range: it is a bar with one end, which
+-- nothing can draw.
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epics
+      (organization_id, name, start_month, sort_order)
+    values ('org-epics', 'Half a range', date '2026-07-01', 92)$$,
+  'a lane cannot carry a start with no end',
+  'planning_epics_months_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epics
+      (organization_id, name, end_month, sort_order)
+    values ('org-epics', 'The other half', date '2026-09-01', 93)$$,
+  'nor an end with no start — the pair is refused in both directions',
+  'planning_epics_months_paired');
+
+select pg_temp.must_reject(
+  $$update ouroboros.planning_epics set end_month = null
+     where id = 'c0360000-0000-0000-0000-00000000ee01'$$,
+  'and unscheduling half of a scheduled lane is refused too, not only insertion',
+  'planning_epics_months_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epics
+      (organization_id, name, start_month, end_month, sort_order)
+    values ('org-epics', 'Mid-month', date '2026-07-15', date '2026-09-01', 94)$$,
+  'a date that is not the first of its month is refused: the axis is months',
+  'planning_epics_months_are_months');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epics
+      (organization_id, name, start_month, end_month, sort_order)
+    values ('org-epics', 'Backwards', date '2026-09-01', date '2026-07-01', 95)$$,
+  'a lane cannot end before it starts — a bar with negative width',
+  'planning_epics_months_ordered');
+
+-- A single month is a legal range, which the `<=` is what allows: a lane that starts and ends in
+-- September is one column wide rather than an error.
+insert into ouroboros.planning_epics
+    (id, organization_id, name, start_month, end_month, sort_order)
+  values ('c0360000-0000-0000-0000-00000000ee06', 'org-epics', 'One month long',
+          date '2026-09-01', date '2026-09-01', 6);
+
+select pg_temp.must_hold(
+  (select start_month = end_month from ouroboros.planning_epics
+    where id = 'c0360000-0000-0000-0000-00000000ee06'),
+  'while a lane that starts and ends in one month is one column wide, not an error');
+
+delete from ouroboros.planning_epics where id = 'c0360000-0000-0000-0000-00000000ee06';
+
+-- --- sort_order orders the lanes, deterministically ------------------------------
+--
+-- Acceptance criterion. Two lanes sharing a number have no deterministic order: the tie would be
+-- broken by whichever plan the server picked, so the roadmap would reorder itself between reads.
+--
+-- The key is `deferrable initially deferred`, which makes a duplicate invisible to a savepoint
+-- probe — it is raised at commit, and this whole file is one transaction. Making it immediate for
+-- the length of the probe is what puts the rejection where the assertion can see it.
+set constraints ouroboros.planning_epics_organization_sort_order_key immediate;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epics (organization_id, name, sort_order)
+    values ('org-epics', 'Second lane one', 1)$$,
+  'two lanes cannot share a place in the roadmap',
+  'planning_epics_organization_sort_order_key');
+
+set constraints ouroboros.planning_epics_organization_sort_order_key deferred;
+
+-- The other half of the same decision, and the reason it is deferred: a reorder is plain SQL
+-- inside a transaction. The intermediate state after the first statement has two lanes at 2,
+-- which an immediate key would refuse — so this pair of statements passing *is* the deferral.
+update ouroboros.planning_epics set sort_order = 2
+ where id = 'c0360000-0000-0000-0000-00000000ee01';
+update ouroboros.planning_epics set sort_order = 1
+ where id = 'c0360000-0000-0000-0000-00000000ee02';
+
+select pg_temp.must_hold(
+  (select string_agg(name, ' | ' order by sort_order) =
+          'BLE provisioning v2 | OTA hardening | Motor control refactor | '
+          'Fleet telemetry dashboard | Zephyr 4.2 migration'
+     from ouroboros.planning_epics where organization_id = 'org-epics'),
+  'and a reorder is two plain statements inside a transaction, which is what deferral buys');
+
+-- Put the mockup's order back, so the assertions below read as the roadmap it draws.
+update ouroboros.planning_epics set sort_order = 1
+ where id = 'c0360000-0000-0000-0000-00000000ee01';
+update ouroboros.planning_epics set sort_order = 2
+ where id = 'c0360000-0000-0000-0000-00000000ee02';
+
+-- The same number in the workspace next door is a different lane's place, not a collision: the
+-- key is per workspace.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.planning_epics
+    where organization_id = 'org-epics-next' and sort_order = 1),
+  'while lane 1 next door is a different lane''s place — the order is per workspace');
+
+-- --- the progress chip is computed, and matches the fixtures ---------------------
+--
+-- The acceptance criterion this table exists for, and decision N5's whole point. First that the
+-- four chips are the mockup's, and that the unscoped lane reads 0 · 0 rather than going missing.
+select pg_temp.must_hold(
+  (select ticket_count = 12 and done_count = 8 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee01'),
+  'OTA hardening computes the mockup''s "12 issues · 8 done"');
+
+select pg_temp.must_hold(
+  (select ticket_count = 9 and done_count = 2 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee02'),
+  'BLE provisioning v2 computes "9 issues · 2 done"');
+
+select pg_temp.must_hold(
+  (select ticket_count = 14 and done_count = 0 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee03'),
+  'Motor control refactor computes "14 issues · 0 done"');
+
+select pg_temp.must_hold(
+  (select ticket_count = 7 and done_count = 0 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee04'),
+  'Fleet telemetry dashboard computes "7 issues · 0 done"');
+
+select pg_temp.must_hold(
+  (select ticket_count = 0 and done_count = 0 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee05'),
+  'and the unscoped lane is 0 · 0 rather than absent — a missing lane is the worst reading of it');
+
+-- The assertion that tells a computed number from a cached one that happens to agree: close a
+-- ticket underneath the chip and require the chip to move. A stored counter passes every
+-- assertion above and fails this one, which is why it is here.
+update ouroboros.tickets set state = 'closed'
+ where id = 'c0360000-0000-0000-0000-000000001009';
+
+select pg_temp.must_hold(
+  (select ticket_count = 12 and done_count = 9 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee01'),
+  'closing a ticket moves the chip to 9 done with no write to the epic — it is computed, not kept');
+
+update ouroboros.tickets set state = 'open'
+ where id = 'c0360000-0000-0000-0000-000000001009';
+
+select pg_temp.must_hold(
+  (select done_count = 8 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee01'),
+  'and re-opening it moves the chip back, which a stored counter could only do by being rewritten');
+
+-- Stated the other way round, against the catalogue, because the criterion is about a column that
+-- must *not* exist: no counter can go stale if there is no counter. A later migration that added
+-- one for a cheaper read fails here rather than quietly in production six months on.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'planning_epics'
+      and (column_name like '%count%' or column_name like '%done%'
+           or column_name like '%progress%')),
+  'planning_epics stores no progress counter at all, which is what cannot go stale');
+
+-- --- a ticket may serve two lanes ------------------------------------------------
+--
+-- The unique key is the pair rather than the ticket, deliberately: the mockup's lanes partition
+-- its backlog, but that is that workspace's planning rather than a rule of the schema.
+insert into ouroboros.epic_tickets (epic_id, ticket_id)
+  values ('c0360000-0000-0000-0000-00000000ee02',
+          'c0360000-0000-0000-0000-000000001001');
+
+select pg_temp.must_hold(
+  (select ticket_count = 10 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee02'),
+  'a ticket may belong to a second lane, and both lanes count it');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.epic_tickets (epic_id, ticket_id)
+    values ('c0360000-0000-0000-0000-00000000ee02',
+            'c0360000-0000-0000-0000-000000001001')$$,
+  'but the same ticket cannot be in the same lane twice, which would double it in the chip',
+  'epic_tickets_epic_ticket_key');
+
+delete from ouroboros.epic_tickets
+ where epic_id = 'c0360000-0000-0000-0000-00000000ee02'
+   and ticket_id = 'c0360000-0000-0000-0000-000000001001';
+
+select pg_temp.must_hold(
+  (select ticket_count = 9 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee02'),
+  'and removing the link puts the chip back, once more without touching the epic');
+
+-- *Which lanes is this ticket in* is an indexed read rather than a scan of every link a workspace
+-- has — the cascade a per-ticket sync delete enters through. As everywhere else in this file,
+-- sequential scans are discouraged for the check because the fixture is small enough that a scan
+-- is genuinely cheaper; what is asserted is that a usable index exists at all.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select epic_id from ouroboros.epic_tickets
+     where ticket_id = 'c0360000-0000-0000-0000-000000001001'$$,
+  'epic_tickets_ticket_idx');
+reset enable_seqscan;
+
+-- --- mirror rows round-trip, and a second push adopts rather than creates --------
+--
+-- Acceptance criterion, and N6's idempotency one level above the drafts V034 gave a push_state:
+-- if the parent issue is not found, the next push creates a second one and the epic is split
+-- across two containers.
+insert into ouroboros.epic_mirrors (id, epic_id, source_id, kind, external_ref) values
+  ('c0360000-0000-0000-0000-00000000cc01', 'c0360000-0000-0000-0000-00000000ee01',
+   'c0360000-0000-0000-0000-000000000001', 'parent_issue', '600'),
+  ('c0360000-0000-0000-0000-00000000cc02', 'c0360000-0000-0000-0000-00000000ee01',
+   'c0360000-0000-0000-0000-000000000001', 'milestone',    'Helios 2.1');
+
+select pg_temp.must_hold(
+  (select kind = 'parent_issue' and external_ref = '600'
+     from ouroboros.epic_mirrors where id = 'c0360000-0000-0000-0000-00000000cc01'),
+  'a mirror row round-trips the tracker''s own handle for the container');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.epic_mirrors
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee01'),
+  'and one epic holds a parent issue and a milestone in one source: two containers, not a clash');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.epic_mirrors (epic_id, source_id, kind, external_ref)
+    values ('c0360000-0000-0000-0000-00000000ee01',
+            'c0360000-0000-0000-0000-000000000001', 'parent_issue', '601')$$,
+  'a second parent issue for the same epic in the same source is refused — this is the criterion',
+  'epic_mirrors_epic_source_kind_key');
+
+-- Which is what makes the push an **upsert**: the key is inferrable, so AL.3 (#279) running twice
+-- adopts the container it already created rather than creating another beside it.
+insert into ouroboros.epic_mirrors (epic_id, source_id, kind, external_ref)
+  values ('c0360000-0000-0000-0000-00000000ee01',
+          'c0360000-0000-0000-0000-000000000001', 'parent_issue', '600')
+  on conflict (epic_id, source_id, kind) do update set external_ref = excluded.external_ref;
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and min(external_ref) = '600' from ouroboros.epic_mirrors
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee01' and kind = 'parent_issue'),
+  'a second push finds the existing parent issue rather than creating another');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.epic_mirrors (epic_id, source_id, kind, external_ref)
+    values ('c0360000-0000-0000-0000-00000000ee01',
+            'c0360000-0000-0000-0000-000000000001', 'github_epic', '602')$$,
+  'the mirror kind vocabulary is closed, so a container nothing can push to is unrepresentable',
+  'epic_mirrors_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.epic_mirrors (epic_id, source_id, kind, external_ref)
+    values ('c0360000-0000-0000-0000-00000000ee02',
+            'c0360000-0000-0000-0000-000000000001', 'parent_issue', '   ')$$,
+  'and a blank reference is refused: it would send the next push looking for a nameless container',
+  'epic_mirrors_external_ref_present');
+
+-- `jira_epic` is in the vocabulary ahead of its writer, so AN.2 (#290) needs no migration before
+-- it can store its first row. Asserting it here is what keeps that promise from rotting.
+insert into ouroboros.epic_mirrors (epic_id, source_id, kind, external_ref)
+  values ('c0360000-0000-0000-0000-00000000ee02',
+          'c0360000-0000-0000-0000-000000000001', 'jira_epic', 'PROJ-12');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.epic_mirrors where kind = 'jira_epic'),
+  'jira_epic is storable today, which is what stops AN.2 (#290) needing a migration first');
+
+-- --- organization isolation, across all three tables ----------------------------
+--
+-- Acceptance criterion. Neither join table carries an organization_id — the epic is the whole of
+-- their tenancy — so what has to hold is that the *other* reference agrees with the epic, which
+-- no foreign key can state.
+select pg_temp.must_reject(
+  $$insert into ouroboros.epic_tickets (epic_id, ticket_id)
+    values ('c0360000-0000-0000-0000-00000000ee01',
+            'c0360000-0000-0000-0000-00000000a777')$$,
+  'a lane cannot count another workspace''s ticket into its progress chip',
+  'epic_tickets_ticket_in_organization');
+
+select pg_temp.must_reject(
+  $$update ouroboros.epic_tickets set ticket_id = 'c0360000-0000-0000-0000-00000000a777'
+     where epic_id = 'c0360000-0000-0000-0000-00000000ee01'
+       and ticket_id = 'c0360000-0000-0000-0000-000000001001'$$,
+  'and repointing an existing link across the boundary is refused the same way',
+  'epic_tickets_ticket_in_organization');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.epic_mirrors (epic_id, source_id, kind, external_ref)
+    values ('c0360000-0000-0000-0000-00000000ee01',
+            'c0360000-0000-0000-0000-000000000002', 'parent_issue', '999')$$,
+  'an epic cannot be mirrored into another workspace''s tracker — a real issue in their repository',
+  'epic_mirrors_source_in_organization');
+
+select pg_temp.must_reject(
+  $$update ouroboros.draft_batches set epic_id = 'c0360000-0000-0000-0000-00000000ee01'
+     where id = 'c0360000-0000-0000-0000-0000000000b2'$$,
+  'and a batch cannot be filed under another workspace''s lane',
+  'draft_batches_epic_in_organization');
+
+-- The column V034 deferred works in the ordinary direction, which is the other half of that rule.
+select pg_temp.must_hold(
+  (select epic_id = 'c0360000-0000-0000-0000-00000000ee05' from ouroboros.draft_batches
+    where id = 'c0360000-0000-0000-0000-0000000000b1'),
+  'a batch carries the epic its drafts inherit — the column V034 deferred to this migration');
+
+-- --- a deleted lane leaves the work behind --------------------------------------
+--
+-- `draft_batches.epic_id` sets null where the join tables cascade, and the difference is the
+-- decision: a batch whose epic is deleted is still a batch somebody generated and possibly
+-- pushed, so deleting that record to tidy up a lane would lose which issues exist.
+delete from ouroboros.planning_epics where id = 'c0360000-0000-0000-0000-00000000ee05';
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.draft_batches
+    where id = 'c0360000-0000-0000-0000-0000000000b1' and epic_id is null),
+  'deleting a lane clears the batch''s reference and keeps the batch, which was still pushed');
+
+-- The join tables cascade, because a link or a mirror whose epic is gone is a membership in
+-- nothing — and the tickets themselves are untouched, since they belong to a tracker rather than
+-- to a lane.
+delete from ouroboros.planning_epics where id = 'c0360000-0000-0000-0000-00000000ee01';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.epic_tickets
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee01')
+   and (select count(*) = 0 from ouroboros.epic_mirrors
+         where epic_id = 'c0360000-0000-0000-0000-00000000ee01'),
+  'a deleted lane takes its ticket links and its tracker mirrors with it');
+
+select pg_temp.must_hold(
+  (select count(*) = 12 from ouroboros.tickets
+    where organization_id = 'org-epics' and external_id like '1%'),
+  'while the tickets stay, because they belong to a tracker rather than to a lane');
+
+-- A deleted ticket leaves the lane it was in, which is the cascade the other way and the reason
+-- the chip cannot count a row that no longer exists.
+delete from ouroboros.tickets where id = 'c0360000-0000-0000-0000-000000002001';
+
+select pg_temp.must_hold(
+  (select ticket_count = 8 and done_count = 1 from ouroboros.planning_epic_progress
+    where epic_id = 'c0360000-0000-0000-0000-00000000ee02'),
+  'and deleting a closed ticket drops it out of both halves of its lane''s chip');
+
+-- --- and the workspace takes all of it with it ----------------------------------
+delete from ouroboros.organization where "id" in ('org-epics', 'org-epics-next');
+delete from ouroboros."user" where "id" = 'user-epics';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.planning_epics)
+   and (select count(*) = 0 from ouroboros.epic_tickets)
+   and (select count(*) = 0 from ouroboros.epic_mirrors),
+  'a deleted workspace takes its roadmap, its ticket links and its tracker mirrors');
+
+-- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)
 -- ===========================================================================
 --

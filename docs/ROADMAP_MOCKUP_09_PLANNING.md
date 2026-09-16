@@ -225,7 +225,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AK.1 | #272 | 🟢 Done | ouroboros-db: [AK.1] Draft batches & ticket drafts schema | Pre-push draft entities with generation provenance & push state | mvp, planning, db | N (after WF-Q.1) | Y | M | ouroboros-db |
 | AK.2 | #273 | 🟢 Done | ouroboros-db: [AK.2] Ticket dependencies schema | Canonical + draft `blocks` relations (N4), health-metric feeds | mvp, planning, db | N (after AK.1) | Y | S | ouroboros-db |
-| AK.3 | #274 | 🟡 Open | ouroboros-db: [AK.3] Planning epics & tracker mirrors | Lanes: tint, month range, status, mirror refs, ticket links | mvp, planning, db | N (after AK.1) | Y | M | ouroboros-db |
+| AK.3 | #274 | 🟢 Done | ouroboros-db: [AK.3] Planning epics & tracker mirrors | Lanes: tint, month range, status, mirror refs, ticket links | mvp, planning, db | N (after AK.1) | Y | M | ouroboros-db |
 | AK.4 | #275 | 🟡 Open | ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity | Batch OTA-1…6, five epics, health-shaping tickets | mvp, planning, db | N (after AK.2, AK.3) | Y | S | ouroboros-db |
 | AK.5 | #276 | 🟡 Open | ouroboros-db: [AK.5] Planning constraints in ci/db | Dependency acyclicity probe, push-state vocab, range checks | mvp, planning, db, ci | N (after AK.4, #24) | Y | XS | ouroboros-db, .github |
 
@@ -400,7 +400,7 @@ push: OTA-1(draft)→OTA-3(draft) ⇒ #612(ticket)→#614(ticket) · origin: pla
 
 ### Issue AK.3 — ouroboros-db: [AK.3] Planning epics & tracker mirrors
 
-> **GitHub issue:** #274 · **Status:** 🟡 Open · **Parent epic:** #268
+> **GitHub issue:** #274 · **Status:** 🟢 Done · **Parent epic:** #268
 
 
 - **Problem Statement:** The gantt's lanes — tinted, month-ranged,
@@ -426,6 +426,69 @@ push: OTA-1(draft)→OTA-3(draft) ⇒ #612(ticket)→#614(ticket) · origin: pla
 planning_epics{tint, Jul→Sep, active, "Helios 2.1"} ──< epic_tickets >── tickets
   progress chip = count(done)/count(*)   mirrors: GH parent issue #600 · milestone "Helios 2.1"
 ```
+
+- **Delivered (2026-09-16):** `V036__planning_epics_mirrors.sql` in `ouroboros-db` —
+  `planning_epics`, `epic_tickets` and `epic_mirrors`, together with the
+  `draft_batches.epic_id` column AK.1 (#272) deferred to this migration because it is the
+  one that creates the epics it would otherwise dangle from. Decision **N5** is the shape
+  of all three tables, and six decisions were taken in-issue.
+  - **The progress chip is a view, not two integers.** *"12 issues · 8 done"* is tracker
+    truth, and the acceptance criterion is that no stored counter exists to go stale — so
+    `planning_epic_progress` computes it from joined ticket states on every read and
+    `planning_epics` has no counter column at all. It is a *view* rather than an
+    expression documented for each caller to re-type, which is `ticket_sources_public`'s
+    argument (`V030`): AL.4 (#280) and AM.4 (#286) both need this number, and two
+    hand-written counts would eventually disagree about which states are done — so the
+    card and the API would print different chips for the same epic. The suite asserts it
+    the only way a computed number can be told from a cached one that happens to agree:
+    it closes a ticket underneath the chip and requires the chip to move.
+  - **Months are a pair, and they are months.** `num_nonnulls(…) <> 1` is `V035`'s
+    endpoint idiom inverted — there exactly one was required, here exactly one is what is
+    refused — because half a range is not a degraded range, it is a bar with one end that
+    nothing can draw. They are held to the first of the month because the gantt's axis is
+    months, and a day-precision date is an answer to a question nobody asked that two
+    renderers would round differently. The `::timestamp` cast in that CHECK is
+    load-bearing: `date_trunc` over `timestamptz` reads the session's `TimeZone` and is
+    not immutable, which is `V026`'s reason for checking an instant by regex.
+  - **`status = 'unscoped'` is deliberately *not* tied to null dates.** The criterion is
+    that the dashed lane is *representable*, which the nullable pair already makes true.
+    A CHECK binding the two would refuse the ordinary intermediate state of an epic being
+    scheduled, and would leave AL.4 (#280) writing two columns in an order this migration
+    had decided for it.
+  - **`sort_order` is unique per workspace and deferrable.** Uniqueness is the
+    acceptance criterion rather than tidiness: two lanes sharing a number have no
+    deterministic order, so the tie would be broken by whichever plan the server picked
+    and the roadmap would reorder itself between two reads. Deferral is what makes a
+    reorder plain SQL inside one transaction — `task_kinds.sort_order`'s arrangement
+    (`V016`) — and it is why the duplicate probe makes the key immediate first: deferred
+    to commit is exactly what would make a duplicate invisible to a savepoint probe in a
+    file that is one transaction.
+  - **`epic_mirrors_epic_source_kind_key` is the idempotency key**, not decoration. It is
+    what makes the criterion *"a second push finds the existing parent issue rather than
+    creating another"* true, and `kind` is **in** it rather than beside it because a
+    `parent_issue` and a `milestone` in one GitHub source are two different containers for
+    one epic — a key without it would make the push's second write overwrite its first.
+    `jira_epic` is in the vocabulary ahead of its writer, so AN.2 (#290) needs no
+    migration before its first row.
+  - **`draft_batches.epic_id` sets null where the join tables cascade.** A batch whose
+    epic is deleted is still a batch somebody generated, reviewed and possibly pushed, so
+    deleting that record to tidy up a lane would lose which issues exist — the batch
+    survives with a cleared reference, which is `ticket_drafts.pushed_ticket_id`'s
+    posture. A link or a mirror whose epic is gone is a membership in nothing, so those go.
+
+  Neither join table carries an `organization_id`: the epic is the whole of their tenancy,
+  as the batch is a draft's (`V034`) and the issue is an estimate's (`V026`). That is the
+  **opposite** answer from `ticket_dependencies` (`V035`), and the difference is the
+  reason rather than an inconsistency — an edge there has two parents of two possible
+  *kinds* and no single one to inherit from. What no foreign key can state is that the
+  *other* reference agrees with the epic, so `epic_tickets`, `epic_mirrors` and
+  `draft_batches` each carry a trigger that says it: without them one workspace's closed
+  tickets would be counted into another's chip, and an epic could be pushed into somebody
+  else's repository. All eight acceptance criteria are asserted in
+  `ouroboros-db/tests/constraints.sql` against a migrated database. Nothing in
+  `ouroboros-rest` changed: the tables stay out of the schema mirror until AL.3 (#279),
+  AL.4 (#280) and AM.4 (#286) read them, which is that module's *"a mirrored table with no
+  reader is drift"* rule.
 
 ### Issue AK.4 — ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity
 
