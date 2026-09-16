@@ -642,8 +642,15 @@ export interface EstimateTraceDocument {
  */
 export interface IssueEstimatesTable {
   id: Generated<string>;
-  /** The issue this sizes — the row's only parent and the whole of its tenancy. Cascades. */
-  github_issue_id: string;
+  /**
+   * The issue this sizes, when the subject is an issue. Cascades.
+   *
+   * **Nullable since V034** ([#272](https://github.com/NobuData/ouroboros/issues/272)): an
+   * estimate now has exactly one subject — this or {@link draft_id}, never both and never
+   * neither, by `issue_estimates_one_subject`. It remains the whole of an issue estimate's
+   * tenancy.
+   */
+  github_issue_id: string | null;
   /**
    * Which estimate of this issue this is; 1 for the first.
    *
@@ -688,6 +695,20 @@ export interface IssueEstimatesTable {
    * `now()`. Distinct from `trace.sized_at` — see {@link EstimateTraceDocument.sized_at}.
    */
   created_at: Generated<Date>;
+  /**
+   * The ticket draft this sizes, when the subject is a draft (V034,
+   * [#272](https://github.com/NobuData/ouroboros/issues/272)).
+   *
+   * Decision **N3**: there is one sizer in the product, so drafts are sized by *this* table
+   * through *this* pipeline rather than by an estimation path of their own — a second sizer
+   * would eventually disagree with the first, and mockup 09's `✓ all sized` would mean
+   * something different from mockup 03's. Exactly one of this and {@link github_issue_id} is
+   * set.
+   *
+   * Nothing here writes it yet: AL.4 ([#280](https://github.com/NobuData/ouroboros/issues/280))
+   * is the planning API that dispatches draft auto-sizing through the same orchestrator.
+   */
+  draft_id: string | null;
 }
 
 /**
@@ -2904,6 +2925,7 @@ export const TABLE_COLUMNS = {
     "risk_note",
     "trace",
     "created_at",
+    "draft_id",
   ],
   user_preferences: ["user_id", "font_scale", "created_at", "updated_at"],
   runs: [
