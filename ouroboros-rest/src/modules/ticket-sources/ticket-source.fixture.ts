@@ -45,6 +45,7 @@ import type {
   WebhookCapableProvider,
   WebhookOutcome,
 } from "./ticket-source.provider";
+import { READ_ONLY_WRITE_CAPABILITIES } from "./ticket-source.write";
 
 /** The workspace every unit suite here syncs for. */
 export const FIXTURE_WORKSPACE = "org-sources";
@@ -185,6 +186,7 @@ export const NO_CAPABILITIES: TicketSourceCapabilities = Object.freeze({
   webhooks: false,
   labels: false,
   bidirectionalWrites: false,
+  write: READ_ONLY_WRITE_CAPABILITIES,
 });
 
 /**

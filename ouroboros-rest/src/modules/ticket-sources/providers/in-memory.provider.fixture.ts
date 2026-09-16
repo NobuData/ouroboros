@@ -33,6 +33,14 @@
  * reason: {@link InMemoryWebhookTicketSourceProvider} declares `webhooks: true` and implements the
  * member, and the polling provider has no such member at all.
  *
+ * **The write half is a third class, configured rather than subclassed per mapping.**
+ * {@link InMemoryWriteTicketSourceProvider} implements AL.2's
+ * ([#278](https://github.com/NobuData/ouroboros/issues/278)) `WriteCapableProvider` over the same
+ * tracker, and takes its write declaration as an option — so one class is the fully featured
+ * writer, the writer with no native relations that exercises the documented `linkDependency`
+ * fallback, and the writer whose epics map to `none`. Three subclasses would be three copies of
+ * one set of members differing only in a constant.
+ *
  * **Why it keys on `custom` by default.** V030's five kinds have no `fake`, and `custom` is the kind
  * a provider written outside this repository registers as — which is what this file is the on-ramp
  * for. A suite that needs it to stand in for `jira` passes the kind.
@@ -53,6 +61,7 @@ import type { TicketSourceConfigSchema } from "../ticket-source.config";
 import {
   TicketSourceError,
   classifyHttpStatus,
+  classifyWriteHttpStatus,
   type TicketSourceErrorClass,
 } from "../ticket-source.errors";
 import type {
@@ -64,7 +73,21 @@ import type {
   TicketSyncContext,
   WebhookCapableProvider,
   WebhookOutcome,
+  WriteCapableProvider,
 } from "../ticket-source.provider";
+import {
+  MAX_IDEMPOTENCY_KEY,
+  READ_ONLY_WRITE_CAPABILITIES,
+  hasDependencyMarker,
+  withDependencyMarker,
+  type DependencyLinkResult,
+  type EpicContainerInput,
+  type EpicMirrorRef,
+  type MilestoneRef,
+  type TicketDraftInput,
+  type TicketSourceWriteCapabilities,
+  type TicketWriteRef,
+} from "../ticket-source.write";
 
 /** The project every tracker has unless told otherwise. */
 export const IN_MEMORY_PROJECT = "PROJ";
@@ -110,6 +133,8 @@ const CLOSED_STATUSES: readonly InMemoryStatus[] = ["done", "wont_do"];
 /** The HTTP status the tracker refuses with for each class — what `classifyHttpStatus` reads back. */
 const REFUSAL_STATUS: Readonly<Record<TicketSourceErrorClass, number>> = Object.freeze({
   auth: 401,
+  permission: 403,
+  validation: 422,
   rate_limit: 429,
   not_found: 404,
   upstream: 503,
@@ -155,6 +180,59 @@ export interface InMemoryFiling {
   readonly project?: string;
 }
 
+/** A record to create over the wire — what the write provider sends. */
+export interface InMemoryCreation extends InMemoryFiling {
+  /** The caller's idempotency key, which the tracker stores and {@link InMemoryTracker.search} finds. */
+  readonly idempotencyKey: string;
+  /** The milestone to assign, by id, or null. */
+  readonly milestoneId: string | null;
+}
+
+/** A milestone, as the tracker serves it. */
+export interface InMemoryMilestone {
+  /** Its identity — `M1`. */
+  readonly id: string;
+  /** Its name. */
+  readonly name: string;
+}
+
+/** An epic container, as the tracker serves it. */
+export interface InMemoryContainer {
+  /** Its handle — `EPIC-1`. */
+  readonly ref: string;
+  /** The planning epic it was created for. */
+  readonly epicId: string;
+  /** Its title. */
+  readonly title: string;
+}
+
+/**
+ * Everything the tracker holds that a write could have changed, as a suite reads it.
+ *
+ * Read directly off the tracker rather than over the wire, because it is the *outcome* a write
+ * suite checks — how many tickets exist — and asking the provider would be asking the thing under
+ * test to mark its own work.
+ */
+export interface InMemoryWriteLedger {
+  /** Every record, by id. */
+  readonly records: readonly string[];
+  /** Native relations, as `[blockerId, blockedId]`. */
+  readonly relations: readonly (readonly [string, string])[];
+  /** Relations recorded through the body-marker fallback, as `[blockerId, blockedId]`. */
+  readonly markers: readonly (readonly [string, string])[];
+  /** Every milestone, by id. */
+  readonly milestones: readonly string[];
+  /** Every container, by ref. */
+  readonly containers: readonly string[];
+  /** Memberships, as `[containerRef, recordId]`. */
+  readonly memberships: readonly (readonly [string, string])[];
+  /** Which milestone each record is assigned, as `[recordId, milestoneId]`. */
+  readonly assignments: readonly (readonly [string, string])[];
+}
+
+/** The longest title the tracker accepts — `tickets_title_present`'s bound, so a push it takes a sync can store. */
+export const IN_MEMORY_MAX_SUMMARY = 512;
+
 /** What an edit may change. The status moves through {@link InMemoryTracker.transition} instead. */
 export type InMemoryEdit = Partial<
   Pick<InMemoryRecord, "summary" | "description" | "tags" | "reporter">
@@ -168,10 +246,25 @@ export interface InMemoryPosition {
   readonly id: string;
 }
 
+/** Every operation the tracker serves — two reads, then the writes AL.2's provider makes. */
+export type TrackerOperation =
+  | "probe"
+  | "list"
+  | "fetch"
+  | "search"
+  | "create"
+  | "amend"
+  | "relate"
+  | "milestones"
+  | "create-milestone"
+  | "find-container"
+  | "create-container"
+  | "add-member";
+
 /** One request the tracker served, as its access log records it. Never the token. */
 export interface TrackerRequest {
   /** What was asked. */
-  readonly operation: "probe" | "list";
+  readonly operation: TrackerOperation;
   /** Which project. */
   readonly project: string;
   /** Whether only open records were wanted. */
@@ -275,6 +368,24 @@ export class InMemoryTracker {
 
   /** The refusal every request meets until {@link recover}, or null. */
   private refusal: InMemoryTrackerRefusal | null = null;
+
+  /** Record ids by the idempotency key they were created under. */
+  private readonly keys = new Map<string, string>();
+
+  /** Native relations, as `blockerId→blockedId`. */
+  private readonly relations = new Set<string>();
+
+  /** Milestones, by id. */
+  private readonly milestoneById = new Map<string, InMemoryMilestone>();
+
+  /** Which milestone each record is assigned, by record id. */
+  private readonly assignments = new Map<string, string>();
+
+  /** Epic containers, by ref. */
+  private readonly containers = new Map<string, InMemoryContainer>();
+
+  /** Memberships, as `containerRef→recordId`. */
+  private readonly memberships = new Set<string>();
 
   /**
    * @param options - How the tracker is set up.
@@ -422,6 +533,264 @@ export class InMemoryTracker {
   }
 
   /**
+   * One record, over the wire.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param id - The record.
+   * @returns The record.
+   * @throws {InMemoryTrackerRefusal} When refused; `404` when the project has no such record.
+   */
+  fetch(token: string | null, project: string, id: string): InMemoryRecord {
+    this.log("fetch", project);
+    this.admit(token, project);
+
+    return this.recordIn(project, id);
+  }
+
+  /**
+   * The record created under an idempotency key, if any — the search a writer makes before it
+   * creates.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param idempotencyKey - The key.
+   * @returns The record, or undefined when nothing was created under it.
+   * @throws {InMemoryTrackerRefusal} When refused.
+   */
+  search(
+    token: string | null,
+    project: string,
+    idempotencyKey: string,
+  ): InMemoryRecord | undefined {
+    this.log("search", project);
+    this.admit(token, project);
+
+    const id = this.keys.get(`${project}:${idempotencyKey}`);
+
+    return id === undefined ? undefined : this.record(id);
+  }
+
+  /**
+   * Create a record over the wire. **Checks everything before it stores anything**, so a refusal
+   * leaves nothing behind — what the write suites' rollback case relies on.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param creation - What to create.
+   * @returns The record.
+   * @throws {InMemoryTrackerRefusal} When refused; `422` for a blank or overlong summary or a
+   *   milestone the project does not have.
+   */
+  create(token: string | null, project: string, creation: InMemoryCreation): InMemoryRecord {
+    this.log("create", project);
+    this.admit(token, project);
+
+    const summary = creation.summary.trim();
+
+    if (summary === "" || summary.length > IN_MEMORY_MAX_SUMMARY) {
+      throw new InMemoryTrackerRefusal(422);
+    }
+
+    if (creation.milestoneId !== null && !this.milestoneById.has(creation.milestoneId)) {
+      throw new InMemoryTrackerRefusal(422);
+    }
+
+    const record = this.file({ ...creation, project });
+
+    this.keys.set(`${project}:${creation.idempotencyKey}`, record.id);
+
+    if (creation.milestoneId !== null) {
+      this.assignments.set(record.id, creation.milestoneId);
+    }
+
+    return record;
+  }
+
+  /**
+   * Change a record's description over the wire — how the fallback writer records a relation.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param id - The record.
+   * @param description - The new description.
+   * @returns The record as it now is.
+   * @throws {InMemoryTrackerRefusal} When refused; `404` for a record the project does not have.
+   */
+  amend(token: string | null, project: string, id: string, description: string): InMemoryRecord {
+    this.log("amend", project);
+    this.admit(token, project);
+    this.recordIn(project, id);
+
+    return this.edit(id, { description });
+  }
+
+  /**
+   * Record a native relation. Idempotent.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param blockerId - The blocking record.
+   * @param blockedId - The blocked record.
+   * @throws {InMemoryTrackerRefusal} When refused; `404` for a record the project does not have;
+   *   `422` for a record related to itself.
+   */
+  relate(token: string | null, project: string, blockerId: string, blockedId: string): void {
+    this.log("relate", project);
+    this.admit(token, project);
+    this.recordIn(project, blockerId);
+    this.recordIn(project, blockedId);
+
+    if (blockerId === blockedId) {
+      throw new InMemoryTrackerRefusal(422);
+    }
+
+    this.relations.add(`${blockerId}→${blockedId}`);
+  }
+
+  /**
+   * Every milestone the tracker has.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @returns The milestones, in creation order.
+   * @throws {InMemoryTrackerRefusal} When refused.
+   */
+  milestones(token: string | null, project: string): InMemoryMilestone[] {
+    this.log("milestones", project);
+    this.admit(token, project);
+
+    return [...this.milestoneById.values()];
+  }
+
+  /**
+   * Create a milestone. Not idempotent — like a real tracker, it creates another on every call,
+   * which is why the provider lists first.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param name - Its name.
+   * @returns The milestone.
+   * @throws {InMemoryTrackerRefusal} When refused; `422` for a blank name.
+   */
+  createMilestone(token: string | null, project: string, name: string): InMemoryMilestone {
+    this.log("create-milestone", project);
+    this.admit(token, project);
+
+    if (name.trim() === "") {
+      throw new InMemoryTrackerRefusal(422);
+    }
+
+    const milestone = Object.freeze({
+      id: `M${(this.milestoneById.size + 1).toString()}`,
+      name,
+    });
+
+    this.milestoneById.set(milestone.id, milestone);
+
+    return milestone;
+  }
+
+  /**
+   * The container created for a planning epic, if any.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param epicId - The planning epic.
+   * @returns The container, or undefined.
+   * @throws {InMemoryTrackerRefusal} When refused.
+   */
+  findContainer(
+    token: string | null,
+    project: string,
+    epicId: string,
+  ): InMemoryContainer | undefined {
+    this.log("find-container", project);
+    this.admit(token, project);
+
+    return [...this.containers.values()].find((container) => container.epicId === epicId);
+  }
+
+  /**
+   * Create a container. Not idempotent, for {@link createMilestone}'s reason.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param epicId - The planning epic.
+   * @param title - Its title.
+   * @returns The container.
+   * @throws {InMemoryTrackerRefusal} When refused; `422` for a blank title.
+   */
+  createContainer(
+    token: string | null,
+    project: string,
+    epicId: string,
+    title: string,
+  ): InMemoryContainer {
+    this.log("create-container", project);
+    this.admit(token, project);
+
+    if (title.trim() === "") {
+      throw new InMemoryTrackerRefusal(422);
+    }
+
+    const container = Object.freeze({
+      ref: `EPIC-${(this.containers.size + 1).toString()}`,
+      epicId,
+      title,
+    });
+
+    this.containers.set(container.ref, container);
+
+    return container;
+  }
+
+  /**
+   * Make a record a member of a container. Idempotent.
+   *
+   * @param token - The token presented, or null.
+   * @param project - The project.
+   * @param ref - The container.
+   * @param recordId - The record.
+   * @throws {InMemoryTrackerRefusal} When refused; `404` for a container or record that is not there.
+   */
+  addMember(token: string | null, project: string, ref: string, recordId: string): void {
+    this.log("add-member", project);
+    this.admit(token, project);
+    this.recordIn(project, recordId);
+
+    if (!this.containers.has(ref)) {
+      throw new InMemoryTrackerRefusal(404);
+    }
+
+    this.memberships.add(`${ref}→${recordId}`);
+  }
+
+  /**
+   * Everything a write could have changed — see {@link InMemoryWriteLedger}.
+   *
+   * @param markersOf - Reads the blocker ids a body records through the fallback. Passed in, so
+   *   the tracker — which has never heard of the SPI — does not parse the SPI's marker itself.
+   * @returns The ledger.
+   */
+  ledger(markersOf: (body: string | null) => readonly string[]): InMemoryWriteLedger {
+    const pairs = (set: ReadonlySet<string>): [string, string][] =>
+      [...set].map((entry) => entry.split("→") as [string, string]);
+
+    return {
+      records: [...this.records.keys()],
+      relations: pairs(this.relations),
+      markers: [...this.records.values()].flatMap((record) =>
+        markersOf(record.description).map((blocker) => [blocker, record.id] as const),
+      ),
+      milestones: [...this.milestoneById.keys()],
+      containers: [...this.containers.keys()],
+      memberships: pairs(this.memberships),
+      assignments: [...this.assignments.entries()],
+    };
+  }
+
+  /**
    * A signed delivery announcing a record's current state.
    *
    * @param id - The record.
@@ -467,6 +836,34 @@ export class InMemoryTracker {
     if (!this.projects.has(project)) {
       throw new InMemoryTrackerRefusal(404);
     }
+  }
+
+  /**
+   * Log a write-side request. The read operations log their own richer entries.
+   *
+   * @param operation - What was asked.
+   * @param project - Which project.
+   */
+  private log(operation: TrackerOperation, project: string): void {
+    this.requests.push({ operation, project, openOnly: false, after: null });
+  }
+
+  /**
+   * One record, as a wire call finds it.
+   *
+   * @param project - The project it must belong to.
+   * @param id - The record.
+   * @returns The record.
+   * @throws {InMemoryTrackerRefusal} `404` when there is no such record in the project.
+   */
+  private recordIn(project: string, id: string): InMemoryRecord {
+    const record = this.records.get(id);
+
+    if (record?.project !== project) {
+      throw new InMemoryTrackerRefusal(404);
+    }
+
+    return record;
   }
 
   /**
@@ -619,10 +1016,16 @@ export class InMemoryTicketSourceProvider implements TicketSourceProvider {
    * What this provider can do.
    *
    * @returns Labels yes — the tracker has tags. Webhooks no: that is
-   *   {@link InMemoryWebhookTicketSourceProvider}. Writes are reserved across the SPI.
+   *   {@link InMemoryWebhookTicketSourceProvider}. Writes no: that is
+   *   {@link InMemoryWriteTicketSourceProvider}.
    */
   capabilities(): TicketSourceCapabilities {
-    return { webhooks: false, labels: true, bidirectionalWrites: false };
+    return {
+      webhooks: false,
+      labels: true,
+      bidirectionalWrites: false,
+      write: READ_ONLY_WRITE_CAPABILITIES,
+    };
   }
 
   /**
@@ -699,7 +1102,7 @@ export class InMemoryTicketSourceProvider implements TicketSourceProvider {
     const ticket: CanonicalTicket = {
       externalId: record.id,
       externalKey: record.key,
-      externalUrl: `${IN_MEMORY_SITE}/browse/${encodeURIComponent(record.key)}`,
+      externalUrl: inMemoryUrl(record.key),
       title: record.summary.trim(),
       body: record.description,
       state: isClosedStatus(record.status) ? "closed" : "open",
@@ -838,6 +1241,258 @@ export class InMemoryWebhookTicketSourceProvider
   }
 }
 
+/** How a write provider is set up. */
+export interface InMemoryWriteProviderOptions extends InMemoryProviderOptions {
+  /**
+   * What it declares it can write, beyond `createTicket` — which is always true for this class.
+   * Every writable feature unless given: native relations, milestones, and epics as parent issues.
+   */
+  readonly write?: Partial<Omit<TicketSourceWriteCapabilities, "createTicket">>;
+}
+
+/**
+ * The in-memory provider, writing as well — AL.2's
+ * ([#278](https://github.com/NobuData/ouroboros/issues/278)) `WriteCapableProvider` over the same
+ * tracker.
+ *
+ * Every member searches before it creates and checks its own arguments before it sends anything,
+ * so a retry is a no-op and a refusal leaves nothing half-made. The declaration is an option — see
+ * this file's header — and each member reads it rather than branching on anything else.
+ */
+export class InMemoryWriteTicketSourceProvider
+  extends InMemoryTicketSourceProvider
+  implements WriteCapableProvider
+{
+  /** The write declaration, fixed at construction so `capabilities()` is stable. */
+  private readonly writes: TicketSourceWriteCapabilities & { readonly createTicket: true };
+
+  /**
+   * @param tracker - The tracker to talk to.
+   * @param options - The kind, the page size, and the write declaration.
+   */
+  constructor(
+    private readonly writeTracker: InMemoryTracker,
+    options: InMemoryWriteProviderOptions = {},
+  ) {
+    super(writeTracker, options);
+
+    this.writes = Object.freeze({
+      createTicket: true,
+      nativeDependencies: options.write?.nativeDependencies ?? true,
+      epicMapping: options.write?.epicMapping ?? "parent_issue",
+      milestones: options.write?.milestones ?? true,
+    });
+  }
+
+  /**
+   * What this provider can do.
+   *
+   * @returns The polling provider's flags, with writes declared.
+   */
+  override capabilities(): TicketSourceCapabilities & {
+    readonly bidirectionalWrites: true;
+    readonly write: TicketSourceWriteCapabilities & { readonly createTicket: true };
+  } {
+    return { ...super.capabilities(), bidirectionalWrites: true, write: this.writes };
+  }
+
+  /**
+   * Create a record, or answer the one already created under the draft's key.
+   *
+   * @param context - The source, opened.
+   * @param draft - What to create.
+   * @returns The record's identity.
+   * @throws {TicketSourceError} `validation` for a blank or overlong key, or a milestone on a
+   *   declaration without milestones; the tracker's refusal, classified, otherwise.
+   */
+  createTicket(context: TicketSyncContext, draft: TicketDraftInput): Promise<TicketWriteRef> {
+    return settledWrite(() => {
+      const { project } = readInMemoryConfig(context.config);
+      const key = draft.idempotencyKey;
+
+      if (key.trim() === "" || key.length > MAX_IDEMPOTENCY_KEY) {
+        throw invalid("idempotencyKey must be non-blank and bounded");
+      }
+
+      if (draft.milestone !== null && !this.writes.milestones) {
+        throw invalid("a milestone was given, and this tracker is declared without milestones");
+      }
+
+      const existing = this.writeTracker.search(context.credentials, project, key);
+
+      if (existing !== undefined) {
+        return writeRefOf(existing);
+      }
+
+      return writeRefOf(
+        this.writeTracker.create(context.credentials, project, {
+          summary: draft.title,
+          description: draft.body,
+          tags: draft.labels,
+          idempotencyKey: key,
+          milestoneId: draft.milestone?.externalRef ?? null,
+        }),
+      );
+    });
+  }
+
+  /**
+   * Record that one record blocks another — natively, or through the documented fallback.
+   *
+   * @param context - The source, opened.
+   * @param blocker - The blocking record.
+   * @param blocked - The blocked record.
+   * @returns The mode the declaration says.
+   * @throws {TicketSourceError} `validation` for a record linked to itself; the tracker's refusal
+   *   otherwise.
+   */
+  linkDependency(
+    context: TicketSyncContext,
+    blocker: TicketWriteRef,
+    blocked: TicketWriteRef,
+  ): Promise<DependencyLinkResult> {
+    return settledWrite(() => {
+      const { project } = readInMemoryConfig(context.config);
+
+      if (blocker.externalId === blocked.externalId) {
+        throw invalid("a ticket cannot block itself");
+      }
+
+      if (this.writes.nativeDependencies) {
+        this.writeTracker.relate(
+          context.credentials,
+          project,
+          blocker.externalId,
+          blocked.externalId,
+        );
+
+        return { mode: "native" };
+      }
+
+      // The fallback: the blocker exists, and the marker goes on the blocked record's body once.
+      this.writeTracker.fetch(context.credentials, project, blocker.externalId);
+
+      const current = this.writeTracker.fetch(context.credentials, project, blocked.externalId);
+
+      if (!hasDependencyMarker(current.description, blocker.externalId)) {
+        this.writeTracker.amend(
+          context.credentials,
+          project,
+          blocked.externalId,
+          withDependencyMarker(current.description, blocker.externalId),
+        );
+      }
+
+      return { mode: "fallback" };
+    });
+  }
+
+  /**
+   * Find or create a milestone.
+   *
+   * @param context - The source, opened.
+   * @param name - Its name.
+   * @returns The milestone, or null on a declaration without milestones.
+   * @throws {TicketSourceError} `validation` for a blank name; the tracker's refusal otherwise.
+   */
+  ensureMilestone(context: TicketSyncContext, name: string): Promise<MilestoneRef | null> {
+    return settledWrite(() => {
+      if (!this.writes.milestones) {
+        return null;
+      }
+
+      const { project } = readInMemoryConfig(context.config);
+
+      if (name.trim() === "") {
+        throw invalid("a milestone needs a name");
+      }
+
+      const found =
+        this.writeTracker
+          .milestones(context.credentials, project)
+          .find((milestone) => milestone.name === name) ??
+        this.writeTracker.createMilestone(context.credentials, project, name);
+
+      return { externalRef: found.id, name: found.name };
+    });
+  }
+
+  /**
+   * Find or create an epic's container.
+   *
+   * @param context - The source, opened.
+   * @param epic - The planning epic.
+   * @returns The mirror reference, or null under `epicMapping: 'none'`.
+   * @throws {TicketSourceError} `validation` for a blank title; the tracker's refusal otherwise.
+   */
+  ensureEpicContainer(
+    context: TicketSyncContext,
+    epic: EpicContainerInput,
+  ): Promise<EpicMirrorRef | null> {
+    return settledWrite(() => {
+      const mapping = this.writes.epicMapping;
+
+      if (mapping === "none") {
+        return null;
+      }
+
+      const { project } = readInMemoryConfig(context.config);
+
+      if (epic.title.trim() === "") {
+        throw invalid("an epic needs a title");
+      }
+
+      const container =
+        this.writeTracker.findContainer(context.credentials, project, epic.epicId) ??
+        this.writeTracker.createContainer(context.credentials, project, epic.epicId, epic.title);
+
+      return { mapping, externalRef: container.ref };
+    });
+  }
+
+  /**
+   * Make a record a member of an epic's container.
+   *
+   * @param context - The source, opened.
+   * @param ticket - The record.
+   * @param mirror - The container.
+   * @throws {TicketSourceError} `validation` for a mirror this declaration could not have produced;
+   *   the tracker's refusal otherwise.
+   */
+  attachToEpic(
+    context: TicketSyncContext,
+    ticket: TicketWriteRef,
+    mirror: EpicMirrorRef,
+  ): Promise<void> {
+    return settledWrite(() => {
+      if (mirror.mapping !== this.writes.epicMapping) {
+        throw invalid(
+          `a ${mirror.mapping} mirror, and this tracker maps epics to ${this.writes.epicMapping}`,
+        );
+      }
+
+      const { project } = readInMemoryConfig(context.config);
+
+      this.writeTracker.addMember(
+        context.credentials,
+        project,
+        mirror.externalRef,
+        ticket.externalId,
+      );
+    });
+  }
+}
+
+/**
+ * A record's link.
+ *
+ * @param key - Its display key.
+ * @returns The browse URL.
+ */
+export function inMemoryUrl(key: string): string {
+  return `${IN_MEMORY_SITE}/browse/${encodeURIComponent(key)}`;
+}
+
 /**
  * Whether a status is `closed` in the canonical model.
  *
@@ -940,6 +1595,62 @@ export function asInMemoryFailure(error: unknown): TicketSourceError {
       error instanceof Error ? error.message : String(error)
     }`,
   );
+}
+
+/**
+ * Anything a tracker *write* threw, as the SPI's error.
+ *
+ * {@link asInMemoryFailure} with the write-side reading of a status — `403` is `permission` and
+ * `422` is `validation` here.
+ *
+ * @param error - What was caught.
+ * @returns A `TicketSourceError`.
+ */
+export function asInMemoryWriteFailure(error: unknown): TicketSourceError {
+  if (error instanceof InMemoryTrackerRefusal) {
+    return new TicketSourceError(
+      classifyWriteHttpStatus(error.status),
+      `the in-memory tracker refused a write with ${error.status.toString()}`,
+      error.retryAt,
+      error.status,
+    );
+  }
+
+  return asInMemoryFailure(error);
+}
+
+/**
+ * Run a synchronous write as the promise a write member answers.
+ *
+ * @param run - The write.
+ * @returns Its value, or a rejection carrying a `TicketSourceError`.
+ */
+function settledWrite<T>(run: () => T): Promise<T> {
+  try {
+    return Promise.resolve(run());
+  } catch (error) {
+    return Promise.reject(asInMemoryWriteFailure(error));
+  }
+}
+
+/**
+ * A write refused before it was sent.
+ *
+ * @param detail - What was wrong with the arguments.
+ * @returns The error.
+ */
+function invalid(detail: string): TicketSourceError {
+  return new TicketSourceError("validation", detail);
+}
+
+/**
+ * A record as a write member names it.
+ *
+ * @param record - The record.
+ * @returns Its identity, key and link — the same three `mapTicket` gives the ticket a sync adopts.
+ */
+function writeRefOf(record: InMemoryRecord): TicketWriteRef {
+  return { externalId: record.id, externalKey: record.key, url: inMemoryUrl(record.key) };
 }
 
 /**

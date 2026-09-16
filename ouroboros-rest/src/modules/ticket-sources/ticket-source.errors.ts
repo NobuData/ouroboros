@@ -1,5 +1,5 @@
 /**
- * The four words every ticket-source provider is allowed to fail in, and the sentence each one
+ * The words every ticket-source provider is allowed to fail in, and the sentence each one
  * becomes on a settings row.
  *
  * Q.2 ([#139](https://github.com/NobuData/ouroboros/issues/139)), roadmap decisions **P5** and
@@ -19,12 +19,12 @@
  * and whether the loop should bother again — and without one vocabulary each of them ends up
  * pattern-matching on prose, which works until somebody rewords a message.
  *
- * So the vocabulary is here, it is four values wide, and **no tracker is named anywhere below
- * this header** — not in a phrase, not in a branch, not in a comment beside one.
- * `ticket-source.errors.spec.ts` asserts that literally, over the file's own source with this
- * comment stripped off. The header itself names all five, because naming the five ways the
- * same failure arrives is the argument for having one word for it, and a rule that forbade
- * that would have forbidden the explanation rather than the coupling.
+ * So the vocabulary is here, it is six values wide — four for reads and two more for writes —
+ * and **no tracker is named anywhere below this header** — not in a phrase, not in a branch,
+ * not in a comment beside one. `ticket-source.errors.spec.ts` asserts that literally, over the
+ * file's own source with this comment stripped off. The header itself names all five, because
+ * naming the five ways the same failure arrives is the argument for having one word for it,
+ * and a rule that forbade that would have forbidden the explanation rather than the coupling.
  *
  * ---------------------------------------------------------------------------
  * **The mapping the issue asks for, as a table.**
@@ -70,6 +70,32 @@
  *
  * A fifth class added later is one entry in each of the three total records below, plus a
  * phrase and a spec. Nothing switches on this union outside this file.
+ *
+ * ---------------------------------------------------------------------------
+ * **Two more for the write path, and why a read never needs them.**
+ *
+ * AL.2 ([#278](https://github.com/NobuData/ouroboros/issues/278)) makes the SPI bidirectional,
+ * and writing is where two refusals stop being the same refusal:
+ *
+ * | Class        | `ticket_sources.status` | `status_reason`                   | Retryable |
+ * |--------------|-------------------------|-----------------------------------|:---------:|
+ * | `permission` | `error`                 | `permission denied (403)`         | no        |
+ * | `validation` | `error`                 | `tracker rejected the write (422)`| no        |
+ *
+ * *   **`permission`** — the credential was understood, is valid, and may read but not write.
+ *     A read-only token that syncs perfectly is the ordinary way this arrives, and calling it
+ *     `auth` would send somebody to rotate a token that is not broken.
+ * *   **`validation`** — the tracker understood the request and refused its *content*: a title
+ *     too long, a label it does not allow, a relation it cannot express. Nobody's credential
+ *     and nobody's network is at fault, and retrying the same payload fails the same way.
+ *
+ * `rate_limit` was already here and means the same thing on both paths. A listing call cannot
+ * meaningfully produce either new class — it sends no content, and a token that can list can
+ * read — which is why {@link classifyHttpStatus} still reads a refusal the read-side way and
+ * {@link classifyWriteHttpStatus} is its write-side sibling. The read suites iterate
+ * {@link TICKET_SOURCE_READ_ERROR_CLASSES}; the write suites iterate
+ * {@link TICKET_SOURCE_WRITE_ERROR_CLASSES}; so a polling provider is never asked to record a
+ * refusal its tracker has no way to send.
  */
 
 import type { TicketSourceStatus } from "../db/schema";
@@ -81,21 +107,50 @@ import type { TicketSourceStatus } from "../db/schema";
  * adding a class here — with a status, a phrase, a retryable flag and a spec — rather than
  * reaching for the nearest one.
  */
-export type TicketSourceErrorClass = "auth" | "rate_limit" | "not_found" | "upstream";
+export type TicketSourceErrorClass =
+  "auth" | "permission" | "validation" | "rate_limit" | "not_found" | "upstream";
 
 /**
- * The four as values, in the order the issue lists them.
+ * Every class as a value — Q.2's four in the order that issue lists them, then AL.2's two.
  *
- * Iterated by the suites, and by Q.5's conformance kit
- * ([#142](https://github.com/NobuData/ouroboros/issues/142)), which requires a recorded refusal
- * of each from every provider — its harness's `refuse` is a total record over this list.
+ * Iterated by the suites that must hold for every class, and by {@link TicketSourceError.is},
+ * which has to recognise a write failure as readily as a read one.
  */
 export const TICKET_SOURCE_ERROR_CLASSES = [
   "auth",
   "rate_limit",
   "not_found",
   "upstream",
+  "permission",
+  "validation",
 ] as const satisfies readonly TicketSourceErrorClass[];
+
+/**
+ * The classes a read can fail in — Q.2's original four.
+ *
+ * Q.5's conformance kit ([#142](https://github.com/NobuData/ouroboros/issues/142)) requires a
+ * recorded refusal of each from every provider, so its harness's `refuse` is a total record over
+ * this list. See this file's header for why `permission` and `validation` are not in it.
+ */
+export const TICKET_SOURCE_READ_ERROR_CLASSES = [
+  "auth",
+  "rate_limit",
+  "not_found",
+  "upstream",
+] as const satisfies readonly TicketSourceErrorClass[];
+
+/** One of {@link TICKET_SOURCE_READ_ERROR_CLASSES}. */
+export type TicketSourceReadErrorClass = (typeof TICKET_SOURCE_READ_ERROR_CLASSES)[number];
+
+/**
+ * The classes a write can fail in — every class, since a write also meets a refused credential,
+ * a missing project and an unavailable tracker.
+ *
+ * The write suites require a recorded refusal of each from every write-capable provider, which
+ * is what makes a push failure classifiable rather than stringly-typed (AL.2,
+ * [#278](https://github.com/NobuData/ouroboros/issues/278)).
+ */
+export const TICKET_SOURCE_WRITE_ERROR_CLASSES = TICKET_SOURCE_ERROR_CLASSES;
 
 /**
  * What each class means for `ticket_sources.status`.
@@ -108,6 +163,8 @@ export const TICKET_SOURCE_ERROR_STATUS: Readonly<
   Record<TicketSourceErrorClass, TicketSourceStatus>
 > = Object.freeze({
   auth: "error",
+  permission: "error",
+  validation: "error",
   rate_limit: "error",
   not_found: "error",
   upstream: "error",
@@ -126,6 +183,10 @@ export const TICKET_SOURCE_ERROR_STATUS: Readonly<
 export const TICKET_SOURCE_ERROR_RETRYABLE: Readonly<Record<TicketSourceErrorClass, boolean>> =
   Object.freeze({
     auth: false,
+    // A token that may read and not write stays that way until somebody widens its scope.
+    permission: false,
+    // The same payload is refused the same way; only an edit to it can succeed.
+    validation: false,
     rate_limit: true,
     not_found: false,
     upstream: true,
@@ -145,6 +206,12 @@ export const TICKET_SOURCE_ERROR_REASONS: Readonly<Record<TicketSourceErrorClass
     // The credential was understood and refused. Names the credential rather than the tracker,
     // because that is the thing somebody can go and change.
     auth: "credentials rejected",
+    // The credential is valid and lacks the scope. Says so, rather than `credentials rejected`,
+    // because the fix is widening a token's permissions, not replacing it.
+    permission: "permission denied",
+    // The tracker read the request and refused what it said. Names the write rather than the
+    // field, because the field is the provider's detail and the detail never reaches this column.
+    validation: "tracker rejected the write",
     // Working, and refusing anyway. The window is what makes this sentence worth reading, and
     // {@link statusReasonFor} appends it when a provider supplied one.
     rate_limit: "rate limited",
@@ -163,7 +230,7 @@ export const TICKET_SOURCE_ERROR_REASONS: Readonly<Record<TicketSourceErrorClass
  * than discover it as a `23514` inside a background loop that nobody is watching.
  *
  * There is deliberately no truncation in {@link statusReasonFor}. Every part of every
- * sentence it can compose is fixed by this file — four phrases, a clock time of known width,
+ * sentence it can compose is fixed by this file — six phrases, a clock time of known width,
  * and a three-digit status — so a value that exceeded this could only come from editing one
  * of the phrases, and a run-time guard would turn that mistake into a silent ellipsis instead
  * of a red test. `ticket-source.errors.spec.ts` is the check, over every class and every
@@ -197,7 +264,7 @@ export function formatClock(instant: Date): string {
  *
  * The acceptance criterion, as a function: *"provider errors map to source status with honest
  * UI-facing reasons (`rate limited until 14:20`, not `error`)"*. Composed here rather than by
- * each provider so that the four classes read the same whichever tracker produced them — which
+ * each provider so that the classes read the same whichever tracker produced them — which
  * is the whole of what makes the sentence *provider-neutral* rather than merely short.
  *
  * Three things can appear, in this order and never more than two of them:
@@ -248,7 +315,7 @@ export function statusReasonFor(error: TicketSourceError): string {
  *   `200`; the provider reads those out of the body and constructs the class itself, which is
  *   why this function refuses rather than accommodates.
  */
-export function classifyHttpStatus(status: number): TicketSourceErrorClass {
+export function classifyHttpStatus(status: number): TicketSourceReadErrorClass {
   if (status < 300) {
     throw new RangeError(`classifyHttpStatus expects a refusal, received ${status.toString()}`);
   }
@@ -286,6 +353,51 @@ export function classifyHttpStatus(status: number): TicketSourceErrorClass {
 }
 
 /**
+ * The class an HTTP status belongs to, **for a write**.
+ *
+ * {@link classifyHttpStatus}'s sibling, and the reason it is a sibling rather than a flag: the
+ * two readings differ in exactly the three places this file's header names, and a boolean
+ * parameter would put both tables in one function where the next reader has to hold both at once.
+ *
+ * | Status                  | Read           | Write        |
+ * |-------------------------|----------------|--------------|
+ * | `403`                   | `auth`         | `permission` |
+ * | `400`, `409`, `422`, …  | `not_found`    | `validation` |
+ * | `404`, `410`, `3xx`     | `not_found`    | `not_found`  |
+ *
+ * A provider whose tracker answers `403` for a rate window rather than for a scope overrides
+ * *that status* and calls this for the rest, as with the read-side table.
+ *
+ * @param status - The status the tracker answered a write with. Must be a refusal.
+ * @returns The class.
+ * @throws {RangeError} For anything below `300`, for {@link classifyHttpStatus}'s reason.
+ */
+export function classifyWriteHttpStatus(status: number): TicketSourceErrorClass {
+  if (status < 300) {
+    throw new RangeError(
+      `classifyWriteHttpStatus expects a refusal, received ${status.toString()}`,
+    );
+  }
+
+  // A valid credential without the scope to write. The read table calls this `auth`, because a
+  // listing call refused this way cannot tell the two apart and a person's next step is the same.
+  if (status === 403) {
+    return "permission";
+  }
+
+  // The address is wrong or the thing it named is gone — the same sentence on both paths.
+  if (status < 400 || status === 404 || status === 410) {
+    return "not_found";
+  }
+
+  const shared = classifyHttpStatus(status);
+
+  // What the read table calls `not_found` for want of a better word is, on a write, the tracker
+  // refusing the request's content: `400`, `409`, `422` and their kin.
+  return shared === "not_found" ? "validation" : shared;
+}
+
+/**
  * A provider call that failed, as something a `catch` can bind.
  *
  * **Most failures are this.** `validateConfig` returns its failure as a *value*, because *is
@@ -303,7 +415,7 @@ export function classifyHttpStatus(status: number): TicketSourceErrorClass {
  */
 export class TicketSourceError extends Error {
   /**
-   * @param errorClass - Which of the four this is.
+   * @param errorClass - Which class this is.
    * @param detail - What happened, in words already fit to appear in a log beside the source's
    *   display name. Becomes the error's `message`. **Not** the status reason — that is
    *   {@link statusReasonFor}'s, composed from the class so every provider's rows read the

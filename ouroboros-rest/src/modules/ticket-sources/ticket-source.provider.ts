@@ -40,8 +40,8 @@
  * is what a form is *for* — the screen exists to render it — and an exception would put the
  * outcome at the mercy of somebody's control flow. A sync answers a page of tickets and has no
  * room for a failure in its return type, so it throws
- * {@link import("./ticket-source.errors").TicketSourceError}, which carries the same four-word
- * taxonomy a validation failure would.
+ * {@link import("./ticket-source.errors").TicketSourceError}, which carries the same taxonomy a
+ * validation failure would.
  *
  * ---------------------------------------------------------------------------
  * **The cursor is opaque, and that is an acceptance criterion rather than a style.**
@@ -79,29 +79,48 @@
  * boot, and rendered by `GET /api/v1/sources/catalog` into the fields the settings surface
  * draws. A member and a registry assertion, not a reshape — exactly as promised.
  *
- * **What is deliberately not on this interface.**
+ * ---------------------------------------------------------------------------
+ * **The write path arrived the way this file said it would — as an extension.**
  *
- *   * **No `deleteTicket`, no write path.** {@link TicketSourceCapabilities.bidirectionalWrites}
- *     is declared and no member is behind it, exactly as `providers/provider.adapter.ts`
- *     reserves `invocation`: the flag exists now so the interface a v2 ticket needs is an
- *     extension rather than a reshape, and every provider that ships in the meantime keeps
- *     compiling. The recipe is {@link WebhookCapableProvider} below.
+ * Q.2 declared {@link TicketSourceCapabilities.bidirectionalWrites} with no member behind it, *"so
+ * the interface a v2 ticket needs is an extension rather than a reshape"*, and named
+ * {@link WebhookCapableProvider} as the recipe. AL.2
+ * ([#278](https://github.com/NobuData/ouroboros/issues/278)) is that ticket, and it followed the
+ * recipe: {@link WriteCapableProvider} is a sub-interface, {@link supportsWrites} is its guard,
+ * `bidirectionalWrites` is now the flag that gates it, and {@link TicketSourceCapabilities.write}
+ * carries the detail the push service and the tracker segment need. Every provider that shipped
+ * before it keeps compiling with one added line — `write: READ_ONLY_WRITE_CAPABILITIES`.
+ *
+ * **What is still deliberately not on this interface: `deleteTicket`.** Nothing in the product
+ * removes a ticket from somebody's tracker, and a rollback that did would be the one write whose
+ * mistake cannot be undone by hand. The write suites' *rollback* case asks the opposite of a
+ * delete — that a refused write leaves nothing behind to clean up.
  */
 
 import type { TicketSourceKind, TicketState } from "../db/schema";
 import type { TicketSourceConfigSchema } from "./ticket-source.config";
 import type { TicketSourceErrorClass } from "./ticket-source.errors";
+import {
+  writeCapabilityViolations,
+  type DependencyLinkResult,
+  type EpicContainerInput,
+  type EpicMirrorRef,
+  type MilestoneRef,
+  type TicketDraftInput,
+  type TicketSourceWriteCapabilities,
+  type TicketWriteRef,
+} from "./ticket-source.write";
 
 /**
- * What a provider can do, as three flags.
+ * What a provider can do, as three flags and the write declaration behind the third.
  *
- * A total shape rather than an optional bag: a provider author has to answer all three, and
+ * A total shape rather than an optional bag: a provider author has to answer every one, and
  * `false` is an answer. A partial record would let a capability be *unmentioned*, and every
  * consumer would then have to decide what an absent flag means — which is how a third meaning
  * ("undefined, so probably no") gets invented at four call sites.
  *
- * The three are the three the issue asks for: *"does this provider support webhooks? labels?
- * bidirectional writes?"*
+ * The three flags are the three Q.2 asks for: *"does this provider support webhooks? labels?
+ * bidirectional writes?"* — and {@link write} is AL.2's answer to *which* writes.
  */
 export interface TicketSourceCapabilities {
   /**
@@ -124,13 +143,23 @@ export interface TicketSourceCapabilities {
    */
   readonly labels: boolean;
   /**
-   * **Reserved** — whether this provider can write back to its tracker.
+   * Whether this provider implements {@link WriteCapableProvider}.
    *
-   * `false` on every provider that ships under Q.3–Q.5, and the flag exists now so that the
-   * interface a write path needs is an extension rather than a reshape. See this file's header
-   * for the recipe, which {@link WebhookCapableProvider} already demonstrates.
+   * The summary flag, exactly as {@link webhooks} is for its member, and always equal to
+   * {@link write}'s `createTicket` — `TicketSourceRegistry` refuses a provider at boot where the
+   * two disagree, or where either disagrees with the members. Kept beside the detail rather than
+   * replaced by it because the catalog has carried it since Q.4, and removing a field a client
+   * reads would have made this extension the reshape Q.2 promised it would not be.
    */
   readonly bidirectionalWrites: boolean;
+  /**
+   * What this provider can write — AL.2's declaration
+   * ([#278](https://github.com/NobuData/ouroboros/issues/278)).
+   *
+   * A read-only provider answers `READ_ONLY_WRITE_CAPABILITIES`. See `ticket-source.write.ts` for
+   * the flags and for the rule that every one of them is off when `createTicket` is.
+   */
+  readonly write: TicketSourceWriteCapabilities;
 }
 
 /**
@@ -377,7 +406,7 @@ export interface TicketSourceProvider {
   /**
    * What this provider can do.
    *
-   * @returns All three flags. Must be **stable** — two calls answer equal values — because a
+   * @returns All three flags and the write declaration. Must be **stable** — two calls answer equal values — because a
    *   capability that changed between two renders would show an affordance that then failed,
    *   and because `TicketSourceRegistry` checks the webhook flag once, at boot.
    */
@@ -510,6 +539,169 @@ export interface WebhookCapableProvider extends TicketSourceProvider {
    * @throws {TicketSourceError} `auth` when the signature is absent, malformed or wrong.
    */
   webhookHandler(payload: unknown, signature: string | null): Promise<WebhookOutcome>;
+}
+
+/**
+ * A provider that can create tickets, link them, and mirror epics and milestones into its tracker.
+ *
+ * AL.2's ([#278](https://github.com/NobuData/ouroboros/issues/278)) extension, on
+ * {@link WebhookCapableProvider}'s recipe: a sub-interface, so `registry.get(kind).createTicket(…)`
+ * does not compile without {@link supportsWrites} in front of it, and the push service asks what
+ * a provider can do rather than which provider it is.
+ *
+ * **Every member is idempotent** and **every member throws `TicketSourceError`** on a refusal,
+ * classified through `classifyWriteHttpStatus` — `permission`, `validation` and `rate_limit` being
+ * the three a write meets that a read does not distinguish. See `ticket-source.write.ts` for why
+ * both hold, and for the documented `linkDependency` fallback.
+ *
+ * The context is the sync members' {@link TicketSyncContext}: a stored source, opened for the
+ * length of one call, whose credential the provider must not keep.
+ */
+export interface WriteCapableProvider extends TicketSourceProvider {
+  /**
+   * @returns The flags, with `bidirectionalWrites` and `write.createTicket` narrowed to `true` —
+   *   so a provider claiming this interface while declaring itself read-only fails to compile.
+   */
+  capabilities(): TicketSourceCapabilities & {
+    readonly bidirectionalWrites: true;
+    readonly write: TicketSourceWriteCapabilities & { readonly createTicket: true };
+  };
+
+  /**
+   * Create one ticket — or answer the one an earlier call with the same key created.
+   *
+   * @param context - The source, opened.
+   * @param draft - What to create. Its `idempotencyKey` is the dedupe contract.
+   * @returns The ticket's identity in its tracker.
+   * @throws {TicketSourceError} On a refusal. A refused create **leaves no ticket behind** — the
+   *   write suites' rollback case — so a retry after recovery creates exactly one.
+   */
+  createTicket(context: TicketSyncContext, draft: TicketDraftInput): Promise<TicketWriteRef>;
+
+  /**
+   * Record that one ticket blocks another.
+   *
+   * @param context - The source, opened.
+   * @param blocker - The ticket that must be done first.
+   * @param blocked - The ticket that waits for it.
+   * @returns Which mode recorded it — `native` exactly when `write.nativeDependencies` is true,
+   *   `fallback` (the body marker) otherwise. Linking the same pair twice leaves one relation.
+   * @throws {TicketSourceError} On a refusal; `validation` for a ticket linked to itself.
+   */
+  linkDependency(
+    context: TicketSyncContext,
+    blocker: TicketWriteRef,
+    blocked: TicketWriteRef,
+  ): Promise<DependencyLinkResult>;
+
+  /**
+   * Find the milestone with this name, or create it.
+   *
+   * @param context - The source, opened.
+   * @param name - The milestone's name. Non-blank.
+   * @returns The milestone; the same reference on every call with the same name. `null` when
+   *   `write.milestones` is false — an ordinary configuration, not a failure.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank name.
+   */
+  ensureMilestone(context: TicketSyncContext, name: string): Promise<MilestoneRef | null>;
+
+  /**
+   * Find the container an epic is mirrored into, or create it.
+   *
+   * @param context - The source, opened.
+   * @param epic - The planning epic. Its `epicId` is the idempotency key.
+   * @returns The mirror reference AK.3's `epic_mirrors` persists; the same one on every call for
+   *   the same epic. `null` when `write.epicMapping` is `none`.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank title.
+   */
+  ensureEpicContainer(
+    context: TicketSyncContext,
+    epic: EpicContainerInput,
+  ): Promise<EpicMirrorRef | null>;
+
+  /**
+   * Make a ticket a member of an epic's container.
+   *
+   * @param context - The source, opened.
+   * @param ticket - The ticket.
+   * @param mirror - What `ensureEpicContainer` answered. Attaching twice leaves one membership.
+   * @throws {TicketSourceError} On a refusal; `validation` when the mirror's `mapping` is not this
+   *   provider's `epicMapping` — including any mirror at all under `none`.
+   */
+  attachToEpic(
+    context: TicketSyncContext,
+    ticket: TicketWriteRef,
+    mirror: EpicMirrorRef,
+  ): Promise<void>;
+}
+
+/** The five members {@link WriteCapableProvider} adds, as values — what the registry checks. */
+export const WRITE_MEMBERS = [
+  "createTicket",
+  "linkDependency",
+  "ensureMilestone",
+  "ensureEpicContainer",
+  "attachToEpic",
+] as const satisfies readonly (keyof WriteCapableProvider)[];
+
+/**
+ * Whether a provider can write — and, for the compiler, that its write members are there.
+ *
+ * The check is the **flag**, for {@link supportsWebhooks}' reason: a half-finished member on a
+ * provider declaring itself read-only must not become callable because it happens to exist.
+ *
+ * @param provider - Any provider.
+ * @returns `true` when it declares `write.createTicket`.
+ */
+export function supportsWrites(provider: TicketSourceProvider): provider is WriteCapableProvider {
+  return provider.capabilities().write.createTicket;
+}
+
+/**
+ * Everything wrong with how a provider's write declaration agrees with itself and its members.
+ *
+ * What `TicketSourceRegistry` refuses at boot and the conformance kit reports: the declaration's
+ * own coherence (`writeCapabilityViolations`), the summary flag against the detail, and the flag
+ * against the five members — in both directions, since a member without the flag is unreachable
+ * and a flag without the members is a `TypeError` behind a guard that said it was safe.
+ *
+ * @param provider - Any provider.
+ * @returns The violations.
+ */
+export function writeMemberViolations(provider: TicketSourceProvider): string[] {
+  const capabilities = provider.capabilities() as Partial<TicketSourceCapabilities>;
+  const shape = writeCapabilityViolations(capabilities.write);
+
+  if (shape.length > 0) {
+    return shape;
+  }
+
+  const declared = (capabilities.write as TicketSourceWriteCapabilities).createTicket;
+  const violations: string[] = [];
+
+  if (capabilities.bidirectionalWrites !== declared) {
+    violations.push(
+      `capabilities().bidirectionalWrites is ${String(capabilities.bidirectionalWrites)} but ` +
+        `write.createTicket is ${declared.toString()} — the summary and the detail must agree`,
+    );
+  }
+
+  const members = provider as unknown as Record<string, unknown>;
+  const missing = WRITE_MEMBERS.filter((member) => typeof members[member] !== "function");
+  const present = WRITE_MEMBERS.filter((member) => typeof members[member] === "function");
+
+  if (declared && missing.length > 0) {
+    violations.push(`write.createTicket is true but ${missing.join(", ")} is absent`);
+  }
+
+  if (!declared && present.length > 0) {
+    violations.push(
+      `write.createTicket is false but ${present.join(", ")} is present — an unreachable write ` +
+        "member is a declaration somebody forgot to update",
+    );
+  }
+
+  return violations;
 }
 
 /**

@@ -32,6 +32,7 @@ import { SOURCE_SKIP_MESSAGES, type SourceSyncOutcome } from "./sync.report";
 import type { TicketSourceCapabilities, TicketSourceValidation } from "./ticket-source.provider";
 import { TICKET_SOURCE_ERROR_REASONS, type TicketSourceErrorClass } from "./ticket-source.errors";
 import type { TicketSourceFormField } from "./ticket-source.config";
+import type { PushAffordance } from "./ticket-source.write";
 
 /** One source, as the settings list draws it. */
 export interface TicketSourceResource {
@@ -142,8 +143,10 @@ export interface TicketSourceCatalogEntryResource {
   readonly title: string;
   /** The fields, in the order the form renders them. */
   readonly fields: readonly TicketSourceFormField[];
-  /** What the provider can do — its own three flags, unchanged. */
+  /** What the provider can do — its own flags and write declaration, unchanged. */
   readonly capabilities: TicketSourceCapabilities;
+  /** Whether a push to this kind may be offered, and the tooltip when it may not (AL.2, #278). */
+  readonly push: PushAffordance;
 }
 
 /** Every kind this build can reach, in V030's declaration order. */

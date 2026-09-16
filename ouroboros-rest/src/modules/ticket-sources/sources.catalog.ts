@@ -23,11 +23,18 @@
  * not here either: the registry answers what this build *has*, and which kinds are announced
  * and where they come from is the page's copy (`ouroboros-ui/app/sources/catalog.ts`), which
  * drops an announcement the moment the kind turns up in this answer.
+ *
+ * **Each entry says whether a push may be offered, and why not.** AL.2's
+ * ([#278](https://github.com/NobuData/ouroboros/issues/278)) *"capability flags gate UI
+ * affordances"*: the tracker segment (AM.2, #284) draws a read-only kind's button disabled with the
+ * entry's `push.reason` as its tooltip, rather than a push that fails on click. Composed by
+ * `pushAffordance` from the flags alone, so the sentence is the same for every read-only tracker.
  */
 
 import type { TicketSourceCatalogResource } from "./sources.resources";
 import { toSourceFormFields } from "./ticket-source.config";
 import type { TicketSourceRegistry } from "./ticket-source.registry";
+import { pushAffordance } from "./ticket-source.write";
 
 /**
  * The catalog for one registry.
@@ -45,12 +52,14 @@ export function sourceCatalog(registry: TicketSourceRegistry): TicketSourceCatal
     kinds: registry.kinds().map((kind) => {
       const provider = registry.get(kind);
       const schema = provider.configSchema();
+      const capabilities = provider.capabilities();
 
       return {
         kind,
         title: schema.title,
         fields: toSourceFormFields(schema),
-        capabilities: provider.capabilities(),
+        capabilities,
+        push: pushAffordance(capabilities.write),
       };
     }),
   };

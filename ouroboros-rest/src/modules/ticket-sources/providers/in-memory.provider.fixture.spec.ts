@@ -1,6 +1,7 @@
 import { retainedStrings } from "../conformance.fixture";
 import { TicketSourceError } from "../ticket-source.errors";
-import { supportsWebhooks } from "../ticket-source.provider";
+import { supportsWebhooks, supportsWrites } from "../ticket-source.provider";
+import { READ_ONLY_WRITE_CAPABILITIES } from "../ticket-source.write";
 import {
   IN_MEMORY_PAGE_SIZE,
   IN_MEMORY_PROJECT,
@@ -10,7 +11,9 @@ import {
   InMemoryTracker,
   InMemoryTrackerRefusal,
   InMemoryWebhookTicketSourceProvider,
+  InMemoryWriteTicketSourceProvider,
   asInMemoryFailure,
+  asInMemoryWriteFailure,
   inMemoryCursor,
   readInMemoryCursor,
   signInMemoryDelivery,
@@ -445,6 +448,7 @@ describe("InMemoryWebhookTicketSourceProvider", () => {
       webhooks: true,
       labels: true,
       bidirectionalWrites: false,
+      write: READ_ONLY_WRITE_CAPABILITIES,
     });
     expect(supportsWebhooks(provider)).toBe(true);
     expect(supportsWebhooks(new InMemoryTicketSourceProvider(new InMemoryTracker()))).toBe(false);
@@ -521,5 +525,167 @@ describe("the in-memory cursor", () => {
     "2026-09-01T09:01:00.000Z~10001~extra",
   ])("refuses %p, which this provider could not have written", (cursor) => {
     expect(readInMemoryCursor(cursor)).toBeUndefined();
+  });
+});
+
+describe("InMemoryWriteTicketSourceProvider", () => {
+  /** The source every write runs against. */
+  const CONTEXT = {
+    sourceId: "s-278",
+    organizationId: "o-278",
+    config: { project: IN_MEMORY_PROJECT },
+    credentials: IN_MEMORY_TOKEN,
+  };
+
+  /** A draft with nothing optional set. */
+  const DRAFT = {
+    idempotencyKey: "batch-1:OTA-1",
+    title: "Journal writes before the OTA image is swapped",
+    body: "Resume rather than brick.",
+    labels: ["ota"],
+    milestone: null,
+  };
+
+  it("declares every feature unless told otherwise, and is reachable through supportsWrites", () => {
+    const provider = new InMemoryWriteTicketSourceProvider(new InMemoryTracker());
+
+    expect(provider.capabilities()).toStrictEqual({
+      webhooks: false,
+      labels: true,
+      bidirectionalWrites: true,
+      write: {
+        createTicket: true,
+        nativeDependencies: true,
+        epicMapping: "parent_issue",
+        milestones: true,
+      },
+    });
+    expect(supportsWrites(provider)).toBe(true);
+    expect(supportsWrites(new InMemoryTicketSourceProvider(new InMemoryTracker()))).toBe(false);
+  });
+
+  it("creates a record a sync then maps to the same identity", async () => {
+    const tracker = new InMemoryTracker();
+    const provider = new InMemoryWriteTicketSourceProvider(tracker);
+    const ref = await provider.createTicket(CONTEXT, DRAFT);
+    const page = await provider.fullSync(CONTEXT);
+
+    expect(page.tickets).toHaveLength(1);
+    expect(page.tickets[0]).toMatchObject({
+      externalId: ref.externalId,
+      externalKey: ref.externalKey,
+      externalUrl: ref.url,
+      title: DRAFT.title,
+      labels: ["ota"],
+    });
+  });
+
+  it("searches before it creates, so a retry sends no second create", async () => {
+    const tracker = new InMemoryTracker();
+    const provider = new InMemoryWriteTicketSourceProvider(tracker);
+
+    await provider.createTicket(CONTEXT, DRAFT);
+    await provider.createTicket(CONTEXT, DRAFT);
+
+    expect(tracker.requests.map((request) => request.operation)).toStrictEqual([
+      "search",
+      "create",
+      "search",
+    ]);
+    expect(JSON.stringify(tracker.requests)).not.toContain(IN_MEMORY_TOKEN);
+  });
+
+  it("records a fallback link as one marker line on the blocked record's body", async () => {
+    const tracker = new InMemoryTracker();
+    const provider = new InMemoryWriteTicketSourceProvider(tracker, {
+      write: { nativeDependencies: false },
+    });
+    const blocker = await provider.createTicket(CONTEXT, DRAFT);
+    const blocked = await provider.createTicket(CONTEXT, {
+      ...DRAFT,
+      idempotencyKey: "batch-1:OTA-3",
+    });
+
+    await expect(provider.linkDependency(CONTEXT, blocker, blocked)).resolves.toStrictEqual({
+      mode: "fallback",
+    });
+    await provider.linkDependency(CONTEXT, blocker, blocked);
+
+    expect(tracker.record(blocked.externalId).description).toBe(
+      `Resume rather than brick.\n\n<!-- ouroboros:blocked-by ${blocker.externalId} -->`,
+    );
+    expect(tracker.ledger(() => []).relations).toStrictEqual([]);
+  });
+
+  it("refuses a milestone on a declaration without milestones before sending anything", async () => {
+    const tracker = new InMemoryTracker();
+    const provider = new InMemoryWriteTicketSourceProvider(tracker, {
+      write: { milestones: false },
+    });
+
+    await expect(
+      provider.createTicket(CONTEXT, {
+        ...DRAFT,
+        milestone: { externalRef: "M1", name: "Helios" },
+      }),
+    ).rejects.toMatchObject({ errorClass: "validation" });
+    expect(tracker.requests).toStrictEqual([]);
+  });
+
+  it("refuses a milestone the tracker does not have as validation, creating nothing", async () => {
+    const tracker = new InMemoryTracker();
+    const provider = new InMemoryWriteTicketSourceProvider(tracker);
+
+    await expect(
+      provider.createTicket(CONTEXT, { ...DRAFT, milestone: { externalRef: "M9", name: "Gone" } }),
+    ).rejects.toMatchObject({ errorClass: "validation", httpStatus: 422 });
+    expect(tracker.ledger(() => []).records).toStrictEqual([]);
+  });
+
+  it.each([
+    ["a blank key", { ...DRAFT, idempotencyKey: "  " }],
+    ["an overlong key", { ...DRAFT, idempotencyKey: "k".repeat(129) }],
+  ])("refuses %s as validation", async (_case, draft) => {
+    await expect(
+      new InMemoryWriteTicketSourceProvider(new InMemoryTracker()).createTicket(CONTEXT, draft),
+    ).rejects.toMatchObject({ errorClass: "validation" });
+  });
+
+  it("refuses a mirror of another mapping as validation", async () => {
+    const provider = new InMemoryWriteTicketSourceProvider(new InMemoryTracker(), {
+      write: { epicMapping: "epic" },
+    });
+    const ticket = await provider.createTicket(CONTEXT, DRAFT);
+
+    await expect(
+      provider.attachToEpic(CONTEXT, ticket, { mapping: "parent_issue", externalRef: "EPIC-1" }),
+    ).rejects.toMatchObject({ errorClass: "validation" });
+  });
+
+  it("refuses a sync configuration it cannot read, on the write path too", async () => {
+    await expect(
+      new InMemoryWriteTicketSourceProvider(new InMemoryTracker()).createTicket(
+        { ...CONTEXT, config: {} },
+        DRAFT,
+      ),
+    ).rejects.toMatchObject({ errorClass: "not_found" });
+  });
+});
+
+describe("asInMemoryWriteFailure", () => {
+  it.each([
+    [403, "permission"],
+    [422, "validation"],
+    [429, "rate_limit"],
+    [401, "auth"],
+  ])("reads a %i write refusal as %s", (status, errorClass) => {
+    expect(asInMemoryWriteFailure(new InMemoryTrackerRefusal(status))).toMatchObject({
+      errorClass,
+      httpStatus: status,
+    });
+  });
+
+  it("passes anything else to the read-side translation", () => {
+    expect(asInMemoryWriteFailure(new Error("boom"))).toMatchObject({ errorClass: "upstream" });
   });
 });

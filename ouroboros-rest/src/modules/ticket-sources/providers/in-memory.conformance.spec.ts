@@ -10,6 +10,7 @@ import {
   InMemoryTicketSourceProvider,
   InMemoryTracker,
   InMemoryWebhookTicketSourceProvider,
+  InMemoryWriteTicketSourceProvider,
   signInMemoryDelivery,
 } from "./in-memory.provider.fixture";
 
@@ -22,9 +23,10 @@ import {
  * four-word workflow, a cursor that is not a timestamp — passing it. That the kit also *refuses* a
  * provider that does not conform is `conformance.fixture.spec.ts`'s question.
  *
- * Both classes run, because the kit has a webhook leg that only exists for a provider declaring the
- * capability and a complementary one asserting the member is unreachable without it. Running only
- * the polling provider would leave the first never executed.
+ * All three classes run, because the kit has a webhook leg that only exists for a provider declaring
+ * the capability and a complementary one asserting the member is unreachable without it. Running
+ * only the polling provider would leave the first never executed. The write-capable provider takes
+ * the read suite too (AL.2, #278): a provider that gained writes must still sync exactly as before.
  *
  * The recording is a tracker scripted in filing order, one clock tick per change, so every stamp
  * below is stated exactly. A page size of two makes the cold import two pages long, so `hasMore`
@@ -126,10 +128,11 @@ const BOOTLOADER: CanonicalTicket = {
 /**
  * A harness over a freshly scripted tracker.
  *
- * @param webhooks - Whether to build the webhook-capable provider.
+ * @param variant - Which provider class to build.
  * @returns The harness.
  */
-function harnessFor(webhooks: boolean): TicketSourceConformance {
+function harnessFor(variant: "polling" | "webhook" | "write"): TicketSourceConformance {
+  const webhooks = variant === "webhook";
   const tracker = new InMemoryTracker();
 
   tracker.file({
@@ -154,7 +157,9 @@ function harnessFor(webhooks: boolean): TicketSourceConformance {
 
   const provider = webhooks
     ? new InMemoryWebhookTicketSourceProvider(tracker, IN_MEMORY_WEBHOOK_SECRET, { pageSize: 2 })
-    : new InMemoryTicketSourceProvider(tracker, { pageSize: 2 });
+    : variant === "write"
+      ? new InMemoryWriteTicketSourceProvider(tracker, { pageSize: 2 })
+      : new InMemoryTicketSourceProvider(tracker, { pageSize: 2 });
   const delivery = tracker.deliver(WATCHDOG.externalId, IN_MEMORY_WEBHOOK_SECRET);
 
   return {
@@ -239,6 +244,8 @@ function harnessFor(webhooks: boolean): TicketSourceConformance {
   };
 }
 
-describeTicketSourceConformance("InMemoryTicketSourceProvider", () => harnessFor(false));
+describeTicketSourceConformance("InMemoryTicketSourceProvider", () => harnessFor("polling"));
 
-describeTicketSourceConformance("InMemoryWebhookTicketSourceProvider", () => harnessFor(true));
+describeTicketSourceConformance("InMemoryWebhookTicketSourceProvider", () => harnessFor("webhook"));
+
+describeTicketSourceConformance("InMemoryWriteTicketSourceProvider", () => harnessFor("write"));

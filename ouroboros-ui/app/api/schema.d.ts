@@ -8741,25 +8741,30 @@ export interface components {
         TicketSourceStatus: "active" | "paused" | "error";
         /**
          * TicketSourceErrorClass
-         * @description The four words every provider is allowed to fail in
+         * @description The words every provider is allowed to fail in
          *     ([#139](https://github.com/NobuData/ouroboros/issues/139)): the credential was refused;
          *     the tracker is working and refusing anyway; the project or repository is not there, or
          *     cannot be seen; the tracker answered with its own failure, or did not answer. Each
          *     becomes a sentence on the row — `credentials rejected`, `rate limited until 14:20 UTC`,
          *     `project or repository not found`, `tracker unavailable` — composed by this service, so
-         *     the four read the same whichever tracker produced them.
+         *     they read the same whichever tracker produced them. `permission` (`permission denied` —
+         *     a valid credential without the scope to write) and `validation` (`tracker rejected the
+         *     write` — the tracker refused a write's content) are the write path's two
+         *     ([#278](https://github.com/NobuData/ouroboros/issues/278)); a sync does not produce them.
          * @example rate_limit
          * @enum {string}
          */
-        TicketSourceErrorClass: "auth" | "rate_limit" | "not_found" | "upstream";
+        TicketSourceErrorClass: "auth" | "rate_limit" | "not_found" | "upstream" | "permission" | "validation";
         /**
          * TicketSourceCapabilities
          * @description What a provider can do — its own `capabilities()`, copied onto the catalog entry
-         *     unchanged. Three flags, all present: a total shape, so no client has to decide what an
-         *     absent flag means. `webhooks` says whether the provider accepts deliveries; `labels`
-         *     whether the concept exists at the tracker at all (the difference between an empty
-         *     chip-set because nothing matched and one because there is nothing to match);
-         *     `bidirectionalWrites` is reserved and `false` on every provider this build ships.
+         *     unchanged. Three flags and a write declaration, all present: a total shape, so no client
+         *     has to decide what an absent flag means. `webhooks` says whether the provider accepts
+         *     deliveries; `labels` whether the concept exists at the tracker at all (the difference
+         *     between an empty chip-set because nothing matched and one because there is nothing to
+         *     match); `bidirectionalWrites` whether it can create tickets, always equal to
+         *     `write.createTicket`; `write` which writes
+         *     ([#278](https://github.com/NobuData/ouroboros/issues/278)).
          */
         TicketSourceCapabilities: {
             /** @example false */
@@ -8768,6 +8773,48 @@ export interface components {
             labels: boolean;
             /** @example false */
             bidirectionalWrites: boolean;
+            write: components["schemas"]["TicketSourceWriteCapabilities"];
+        };
+        /**
+         * TicketSourceEpicMapping
+         * @description What a planning epic becomes in this tracker — a parent issue with sub-issue links, a
+         *     native epic, a project — or `none`, where epics are not mirrored at all and a push
+         *     simply attaches nothing ([#278](https://github.com/NobuData/ouroboros/issues/278)).
+         * @example parent_issue
+         * @enum {string}
+         */
+        TicketSourceEpicMapping: "parent_issue" | "epic" | "project" | "none";
+        /**
+         * TicketSourceWriteCapabilities
+         * @description What a provider can write ([#278](https://github.com/NobuData/ouroboros/issues/278)).
+         *     `createTicket` gates the rest: when it is `false`, every other flag is `false` and
+         *     `epicMapping` is `none` — the server refuses to boot a provider that says otherwise.
+         *     `nativeDependencies: false` on a writable provider means dependencies are recorded
+         *     through a documented body-marker fallback rather than not at all; `milestones` says
+         *     whether a milestone can be assigned.
+         */
+        TicketSourceWriteCapabilities: {
+            /** @example false */
+            createTicket: boolean;
+            /** @example false */
+            nativeDependencies: boolean;
+            epicMapping: components["schemas"]["TicketSourceEpicMapping"];
+            /** @example false */
+            milestones: boolean;
+        };
+        /**
+         * TicketSourcePushAffordance
+         * @description Whether a push to this kind may be offered, and why not when it may not
+         *     ([#278](https://github.com/NobuData/ouroboros/issues/278)). Composed from
+         *     `capabilities.write` alone, so a read-only tracker renders its push control disabled
+         *     with `reason` as the tooltip rather than offering a push that fails on click. `reason`
+         *     is null exactly when `enabled` is true.
+         */
+        TicketSourcePushAffordance: {
+            /** @example false */
+            enabled: boolean;
+            /** @example This tracker is read-only in Ouroboros — it can sync tickets but not create them. */
+            reason: string | null;
         };
         /**
          * TicketSourceFormWidget
@@ -8829,7 +8876,8 @@ export interface components {
          * TicketSourceCatalogEntry
          * @description One connectable kind — a tile in the add-source picker, and the form behind it. The
          *     `title` is the form's heading, straight from the provider's schema; `fields` is what
-         *     the form draws, in the schema's own property order.
+         *     the form draws, in the schema's own property order; `push` is whether a push to this
+         *     kind may be offered.
          */
         TicketSourceCatalogEntry: {
             kind: components["schemas"]["TicketSourceKind"];
@@ -8837,6 +8885,7 @@ export interface components {
             title: string;
             fields: components["schemas"]["TicketSourceFormField"][];
             capabilities: components["schemas"]["TicketSourceCapabilities"];
+            push: components["schemas"]["TicketSourcePushAffordance"];
         };
         /**
          * TicketSourceCatalog
@@ -14409,7 +14458,17 @@ export interface operations {
                      *           "capabilities": {
                      *             "webhooks": false,
                      *             "labels": true,
-                     *             "bidirectionalWrites": false
+                     *             "bidirectionalWrites": false,
+                     *             "write": {
+                     *               "createTicket": false,
+                     *               "nativeDependencies": false,
+                     *               "epicMapping": "none",
+                     *               "milestones": false
+                     *             }
+                     *           },
+                     *           "push": {
+                     *             "enabled": false,
+                     *             "reason": "This tracker is read-only in Ouroboros — it can sync tickets but not create them."
                      *           },
                      *           "fields": [
                      *             {

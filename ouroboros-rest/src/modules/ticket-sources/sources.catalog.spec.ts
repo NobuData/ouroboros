@@ -2,10 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { TICKET_SOURCE_KINDS } from "../db/schema";
+import {
+  InMemoryTracker,
+  InMemoryWriteTicketSourceProvider,
+} from "./providers/in-memory.provider.fixture";
 import { sourceCatalog } from "./sources.catalog";
 import { toSourceFormFields } from "./ticket-source.config";
 import { FIXTURE_SCHEMA, NO_CAPABILITIES, scriptedProvider } from "./ticket-source.fixture";
 import { TicketSourceRegistry } from "./ticket-source.registry";
+import { PUSH_DISABLED_REASONS } from "./ticket-source.write";
 
 /**
  * The add-source catalog ([#141](https://github.com/NobuData/ouroboros/issues/141)) — the
@@ -34,8 +39,31 @@ describe("the catalog", () => {
       title: FIXTURE_SCHEMA.title,
       fields: toSourceFormFields(FIXTURE_SCHEMA),
       capabilities: NO_CAPABILITIES,
+      push: { enabled: false, reason: PUSH_DISABLED_REASONS.readOnly },
     });
     expect(catalog.kinds[1]?.capabilities).toStrictEqual({ ...NO_CAPABILITIES, labels: true });
+  });
+
+  it("renders a read-only source push-disabled with a reason, and a writable one enabled", () => {
+    // AL.2's (#278) criterion, verified with fixture providers: the scripted polling provider is
+    // read-only, and the in-memory writer — declared with epics mapping to `none`, which must
+    // still be pushable — is not.
+    const registry = new TicketSourceRegistry([
+      scriptedProvider({ kind: "github" }),
+      new InMemoryWriteTicketSourceProvider(new InMemoryTracker(), {
+        kind: "custom",
+        write: { epicMapping: "none", milestones: false },
+      }),
+    ]);
+
+    const [readOnly, writable] = sourceCatalog(registry).kinds;
+
+    expect(readOnly?.push).toStrictEqual({
+      enabled: false,
+      reason: PUSH_DISABLED_REASONS.readOnly,
+    });
+    expect(writable?.push).toStrictEqual({ enabled: true, reason: null });
+    expect(writable?.capabilities.write.epicMapping).toBe("none");
   });
 
   it("is empty for a build that registers nothing, rather than a failure", () => {

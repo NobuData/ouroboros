@@ -30,11 +30,13 @@ import {
   InMemoryTicketSourceProvider,
   InMemoryTracker,
   InMemoryWebhookTicketSourceProvider,
+  InMemoryWriteTicketSourceProvider,
   signInMemoryDelivery,
 } from "./providers/in-memory.provider.fixture";
 import { TicketSourceError } from "./ticket-source.errors";
 import { githubTicket, jiraTicket, page } from "./ticket-source.fixture";
 import type { TicketSourceProvider, TicketSyncContext } from "./ticket-source.provider";
+import { READ_ONLY_WRITE_CAPABILITIES } from "./ticket-source.write";
 
 /**
  * The kit, tested against providers that are wrong on purpose
@@ -230,7 +232,7 @@ describe("capabilityViolations", () => {
 
   it("catches a flag left out, because false is an answer", () => {
     const provider = broken(tracked().provider, {
-      capabilities: () => ({ webhooks: false, labels: true }),
+      capabilities: () => ({ webhooks: false, labels: true, write: READ_ONLY_WRITE_CAPABILITIES }),
     });
 
     expect(capabilityViolations(provider)).toEqual([
@@ -244,7 +246,12 @@ describe("capabilityViolations", () => {
       capabilities: () => {
         labels = !labels;
 
-        return { webhooks: false, labels, bidirectionalWrites: false };
+        return {
+          webhooks: false,
+          labels,
+          bidirectionalWrites: false,
+          write: READ_ONLY_WRITE_CAPABILITIES,
+        };
       },
     });
 
@@ -265,7 +272,12 @@ describe("capabilityViolations", () => {
 
   it("catches a capability with no webhookHandler behind it", () => {
     const provider = broken(tracked().provider, {
-      capabilities: () => ({ webhooks: true, labels: true, bidirectionalWrites: false }),
+      capabilities: () => ({
+        webhooks: true,
+        labels: true,
+        bidirectionalWrites: false,
+        write: READ_ONLY_WRITE_CAPABILITIES,
+      }),
     });
 
     expect(capabilityViolations(provider)).toEqual([
@@ -273,14 +285,37 @@ describe("capabilityViolations", () => {
     ]);
   });
 
-  it("catches a provider spending AL.2's reservation", () => {
+  it("catches a write flag with no write members behind it", () => {
+    // What AL.2 (#278) turned the old reservation into: the flag is allowed now, and it has to
+    // mean something.
     const provider = broken(tracked().provider, {
-      capabilities: () => ({ webhooks: false, labels: true, bidirectionalWrites: true }),
+      capabilities: () => ({
+        webhooks: false,
+        labels: true,
+        bidirectionalWrites: true,
+        write: { ...READ_ONLY_WRITE_CAPABILITIES, createTicket: true },
+      }),
     });
 
     expect(capabilityViolations(provider)).toEqual([
-      "capabilities().bidirectionalWrites is reserved until a write member exists (AL.2, #278) and must be false",
+      "write.createTicket is true but createTicket, linkDependency, ensureMilestone, ensureEpicContainer, attachToEpic is absent",
     ]);
+  });
+
+  it("catches a write declaration left out, because READ_ONLY_WRITE_CAPABILITIES is the answer", () => {
+    const provider = broken(tracked().provider, {
+      capabilities: () => ({ webhooks: false, labels: true, bidirectionalWrites: false }),
+    });
+
+    expect(capabilityViolations(provider)).toEqual([
+      "capabilities().write must be an object — READ_ONLY_WRITE_CAPABILITIES says no",
+    ]);
+  });
+
+  it("passes the write-capable in-memory provider", () => {
+    expect(
+      capabilityViolations(new InMemoryWriteTicketSourceProvider(new InMemoryTracker())),
+    ).toEqual([]);
   });
 });
 
@@ -479,7 +514,12 @@ describe("syncFailureViolations", () => {
 
 describe("pageViolations", () => {
   /** A provider's flags, with labels. */
-  const LABELLED = { webhooks: false, labels: true, bidirectionalWrites: false };
+  const LABELLED = {
+    webhooks: false,
+    labels: true,
+    bidirectionalWrites: false,
+    write: READ_ONLY_WRITE_CAPABILITIES,
+  };
   const CURSOR =
     "page: nextCursor must be null or non-blank text of at most 255 characters — '' would re-import the backlog every pass";
 

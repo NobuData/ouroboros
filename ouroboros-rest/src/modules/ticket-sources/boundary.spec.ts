@@ -242,6 +242,49 @@ describe("the ticket source boundary", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("fails the build on the push service importing a provider, because it writes through the SPI only", () => {
+    // AL.2's (#278) criterion — *"the push service imports the interface only"* — as a tree. The
+    // write path is where a `switch` over tracker kinds would do the most damage, so the same rule
+    // that holds the sync loop holds whichever module AL.3 (#279) puts the push service in.
+    const result = cruiseFixture({
+      [A_PROVIDER]: A_PROVIDER_SOURCE,
+      "src/modules/planning/push.service.ts":
+        'import { GithubTicketSourceProvider } from "../ticket-sources/providers/github.provider";\n\n' +
+        "export const a = GithubTicketSourceProvider;\n",
+    });
+
+    expect(result.output).toContain("ticket-source-core-imports-the-spi-only");
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  it("fails the build on the push service importing a tracker SDK directly", () => {
+    const result = cruiseFixture({
+      "src/modules/planning/push.service.ts":
+        'import { LinearClient } from "@linear/sdk";\n\nexport const a = LinearClient;\n',
+    });
+
+    expect(result.output).toContain("no-tracker-sdk-outside-ticket-source-providers");
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  it("allows the push service to import the SPI's write interface", () => {
+    // The other half: a boundary that also refused the interface would be one nobody could build
+    // against, and would be switched off the first afternoon somebody tried.
+    const result = cruiseFixture({
+      "src/modules/ticket-sources/ticket-source.write.ts": "export const READ_ONLY = {};\n",
+      "src/modules/ticket-sources/ticket-source.provider.ts":
+        'import { READ_ONLY } from "./ticket-source.write";\n\n' +
+        "export function supportsWrites() {\n  return READ_ONLY;\n}\n",
+      "src/modules/planning/push.service.ts":
+        'import { supportsWrites } from "../ticket-sources/ticket-source.provider";\n' +
+        'import { READ_ONLY } from "../ticket-sources/ticket-source.write";\n\n' +
+        "export const a = [supportsWrites, READ_ONLY];\n",
+    });
+
+    expect(result.output).toContain("no dependency violations found");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("is what `yarn lint` runs, or none of the above is a build failure", () => {
     // The other half of the criterion — *"fails CI"*. Rules that CI does not execute are a
     // file, not a gate.
