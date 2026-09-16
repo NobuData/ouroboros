@@ -9,6 +9,8 @@
  * incrementalSync ─▶ issues?since=cursor&state=all      → { tickets[], nextCursor }
  * mapTicket       ─▶ #485 → { externalId: "485", externalKey: "#485", … }
  * errors          ─▶ rate limit → "rate limited until 14:20 UTC" (honest)
+ * writes (AL.3)   ─▶ createTicket · linkDependency · ensureMilestone · ensureEpicContainer ·
+ *                    attachToEpic — see `github.write.ts`
  * ```
  *
  * ---------------------------------------------------------------------------
@@ -61,17 +63,25 @@ import type { TicketSourceConfigSchema } from "../ticket-source.config";
 import {
   TicketSourceError,
   classifyHttpStatus,
+  classifyWriteHttpStatus,
   type TicketSourceReadErrorClass,
 } from "../ticket-source.errors";
 import type {
   CanonicalTicket,
   TicketPage,
   TicketSourceCapabilities,
-  TicketSourceProvider,
   TicketSourceValidation,
   TicketSyncContext,
+  WriteCapableProvider,
 } from "../ticket-source.provider";
-import { READ_ONLY_WRITE_CAPABILITIES } from "../ticket-source.write";
+import type {
+  DependencyLinkResult,
+  EpicContainerInput,
+  EpicMirrorRef,
+  MilestoneRef,
+  TicketDraftInput,
+  TicketWriteRef,
+} from "../ticket-source.write";
 import { GITHUB_SOURCE_SCHEMA, readGithubConfig, type GithubSourceConfig } from "./github.config";
 import {
   ISSUES_ROUTE,
@@ -80,6 +90,7 @@ import {
   isPullRequest,
   mapGithubIssue,
 } from "./github.mapping";
+import { GITHUB_WRITE_CAPABILITIES, GithubWriter, pushTarget } from "./github.write";
 
 /**
  * The Nest token the provider's rate guard is bound under.
@@ -147,7 +158,7 @@ export interface RepoWalk {
  * credential is not among them.
  */
 @Injectable()
-export class GithubTicketSourceProvider implements TicketSourceProvider {
+export class GithubTicketSourceProvider implements WriteCapableProvider {
   /** V030's `ticket_sources.kind` value this provider answers for. */
   readonly kind = "github" as const;
 
@@ -170,16 +181,19 @@ export class GithubTicketSourceProvider implements TicketSourceProvider {
    * @returns Labels yes — GitHub has them, so an empty chip-set means *nothing matched* rather
    *   than *no such concept*. Webhooks no: a delivery endpoint is Q.4's
    *   ([#141](https://github.com/NobuData/ouroboros/issues/141)) and the registry refuses a flag
-   *   that disagrees with the member, so claiming it here would fail at boot. Writes no — yet:
-   *   the write SPI is AL.2's (#278) and GitHub's implementation of it is AL.3's (#279), so until
-   *   that lands the tracker segment renders GitHub push-disabled rather than a push that fails.
+   *   that disagrees with the member, so claiming it here would fail at boot. Writes yes — AL.3's
+   *   ([#279](https://github.com/NobuData/ouroboros/issues/279)) {@link GITHUB_WRITE_CAPABILITIES}:
+   *   native dependencies, milestones, and epics as parent issues.
    */
-  capabilities(): TicketSourceCapabilities {
+  capabilities(): TicketSourceCapabilities & {
+    readonly bidirectionalWrites: true;
+    readonly write: typeof GITHUB_WRITE_CAPABILITIES;
+  } {
     return {
       webhooks: false,
       labels: true,
-      bidirectionalWrites: false,
-      write: READ_ONLY_WRITE_CAPABILITIES,
+      bidirectionalWrites: true,
+      write: GITHUB_WRITE_CAPABILITIES,
     };
   }
 
@@ -299,6 +313,106 @@ export class GithubTicketSourceProvider implements TicketSourceProvider {
    */
   mapTicket(raw: unknown): CanonicalTicket {
     return mapGithubIssue(raw);
+  }
+
+  /**
+   * Create an issue in the source's first enabled repository — or answer the one an earlier call
+   * with the same idempotency key created.
+   *
+   * @param context - The source, opened.
+   * @param draft - What to create.
+   * @returns The issue's identity, as a later sync will map it.
+   * @throws {TicketSourceError} On a refusal, classified the write-side way.
+   */
+  createTicket(context: TicketSyncContext, draft: TicketDraftInput): Promise<TicketWriteRef> {
+    return this.writing(context, (writer) => writer.createTicket(draft));
+  }
+
+  /**
+   * Record that one issue blocks another — natively, or through the body-marker fallback when this
+   * GitHub has no dependency API.
+   *
+   * @param context - The source, opened.
+   * @param blocker - The issue that must be done first.
+   * @param blocked - The issue that waits for it.
+   * @returns The mode that ran, so the UI can say which.
+   * @throws {TicketSourceError} On a refusal; `validation` for an issue linked to itself.
+   */
+  linkDependency(
+    context: TicketSyncContext,
+    blocker: TicketWriteRef,
+    blocked: TicketWriteRef,
+  ): Promise<DependencyLinkResult> {
+    return this.writing(context, (writer) => writer.linkDependency(blocker, blocked));
+  }
+
+  /**
+   * Find the milestone with this title, or create it.
+   *
+   * @param context - The source, opened.
+   * @param name - Its title.
+   * @returns The milestone. Never null: GitHub has milestones.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank name.
+   */
+  ensureMilestone(context: TicketSyncContext, name: string): Promise<MilestoneRef | null> {
+    return this.writing(context, (writer) => writer.ensureMilestone(name));
+  }
+
+  /**
+   * Find an epic's parent tracking issue, or create it.
+   *
+   * @param context - The source, opened.
+   * @param epic - The planning epic; its id is the key.
+   * @returns The mirror reference. Never null: GitHub maps epics to parent issues.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank title.
+   */
+  ensureEpicContainer(
+    context: TicketSyncContext,
+    epic: EpicContainerInput,
+  ): Promise<EpicMirrorRef | null> {
+    return this.writing(context, (writer) => writer.ensureEpicContainer(epic));
+  }
+
+  /**
+   * Make an issue a sub-issue of an epic's parent.
+   *
+   * @param context - The source, opened.
+   * @param ticket - The issue.
+   * @param mirror - The parent.
+   * @throws {TicketSourceError} On a refusal; `validation` for a mirror that is not a parent issue.
+   */
+  attachToEpic(
+    context: TicketSyncContext,
+    ticket: TicketWriteRef,
+    mirror: EpicMirrorRef,
+  ): Promise<void> {
+    return this.writing(context, (writer) => writer.attachToEpic(ticket, mirror));
+  }
+
+  /**
+   * Run one write against the source's push target, classifying whatever it throws.
+   *
+   * @param context - The source, opened.
+   * @param write - The write, given a writer for this call alone.
+   * @returns What the write answered.
+   * @throws {TicketSourceError} Every failure, through {@link asTicketSourceWriteError}.
+   */
+  private async writing<T>(
+    context: TicketSyncContext,
+    write: (writer: GithubWriter) => Promise<T>,
+  ): Promise<T> {
+    try {
+      const settings = readGithubConfig(context.config);
+      const client = new GithubClient(
+        context.organizationId,
+        this.octokit(tokenOf(context)),
+        this.budget,
+      );
+
+      return await write(new GithubWriter(client, pushTarget(settings)));
+    } catch (error) {
+      throw asTicketSourceWriteError(error);
+    }
   }
 
   /**
@@ -704,6 +818,43 @@ export function asTicketSourceError(error: unknown, now: Date = new Date()): Tic
     default:
       return new TicketSourceError("upstream", detail);
   }
+}
+
+/**
+ * K.3's failure vocabulary, as the SPI's — **for a write**.
+ *
+ * {@link asTicketSourceError}'s sibling, and the reason it exists is the status K.3's client now
+ * carries: a `403` with budget remaining is a token that may read and not write (`permission`,
+ * where a read says `auth`), and a `422` is GitHub refusing the payload (`validation`, where the
+ * five reasons say `upstream_error`). A rate limit and a failure before any answer read exactly as
+ * they do on the read path.
+ *
+ * @param error - Whatever a write threw.
+ * @param now - The clock, for the resume time.
+ * @returns The error the push service will record.
+ */
+export function asTicketSourceWriteError(
+  error: unknown,
+  now: Date = new Date(),
+): TicketSourceError {
+  if (
+    !(error instanceof GithubApiError) ||
+    error.httpStatus === undefined ||
+    error.failure === GITHUB_FAILURES.rateLimited
+  ) {
+    const failure = asTicketSourceError(error, now);
+
+    return error instanceof GithubApiError && error.httpStatus !== undefined
+      ? new TicketSourceError(failure.errorClass, failure.detail, failure.retryAt, error.httpStatus)
+      : failure;
+  }
+
+  return new TicketSourceError(
+    classifyWriteHttpStatus(error.httpStatus),
+    redactTokens(error.detail),
+    null,
+    error.httpStatus,
+  );
 }
 
 /**

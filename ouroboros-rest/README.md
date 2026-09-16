@@ -3101,6 +3101,35 @@ in `.dependency-cruiser.cjs` makes an Octokit, GitHub-fixture or GitHub-provider
 suite, the kit or their fixtures a lint failure, and `ticket-sources/boundary.spec.ts` watches it
 fail.
 
+### Pushing a planning batch
+
+**`PushService` (`src/modules/planning/`) turns a batch's drafts into real tickets** (AL.3,
+[#279](https://github.com/NobuData/ouroboros/issues/279)) through the write SPI alone — it reaches
+GitHub, or any writer, via `TicketSourceRegistry` and `supportsWrites`, never by import.
+
+```
+push(org, batch) / resume(org, batch)
+  ├─ batch + target source, inside the asking workspace — else 404
+  ├─ blockers-first order (push.order.ts) — a cycle is a 422 naming it
+  ├─ ensureMilestone · ensureEpicContainer (epic_mirrors first)
+  └─ each pending|failed draft: createTicket(<batch>:<draft>) → linkDependency → attachToEpic
+       └─ recordPushed: ticket · draft pushed · dependency ends rewritten · epic_tickets — one transaction
+```
+
+A kill between the tracker's answer and that commit is recovered by the provider's idempotency
+probe; a `rate_limit` stops the walk with the rest `pending` and a `retryAt`; any other refusal is a
+structured `ticket_drafts.push_error`. The report's `links: { native, fallback }` tells the UI which
+dependency mode ran. There is no route yet — AL.4 (#280) mounts `push` and `resume`.
+
+- `push.service.spec.ts` — the acceptance criteria over the real GitHub provider, a recorded GitHub
+  (`providers/github.write-recordings.fixture.ts`) and an in-memory store that keeps V034–V036's
+  rules: six drafts → six issues, five native links, one parent epic, one milestone; kill-and-resume
+  without duplicates; the throttle; the fallback; isolation.
+- `push.integration-spec.ts` — the same push against PostgreSQL, including a sync adopting the
+  pushed tickets rather than importing them twice.
+- `providers/github.write-conformance.spec.ts` — the write kit, green for GitHub with and without
+  the dependency API.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`

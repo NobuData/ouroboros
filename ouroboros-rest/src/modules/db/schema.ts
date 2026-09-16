@@ -2641,6 +2641,175 @@ export interface TicketsTable {
 }
 
 /**
+ * `draft_batches.status` — where a planning batch is in its life (V034).
+ *
+ * `pushing` is also the state a batch rests in when a push stopped short — a throttle, a failed
+ * draft — because it is the state a resume starts from (AL.3,
+ * [#279](https://github.com/NobuData/ouroboros/issues/279)).
+ */
+export type DraftBatchStatus = "drafting" | "sized" | "pushing" | "pushed" | "abandoned";
+
+/** The five, in the order the CHECK declares them. */
+export const DRAFT_BATCH_STATUSES = [
+  "drafting",
+  "sized",
+  "pushing",
+  "pushed",
+  "abandoned",
+] as const satisfies readonly DraftBatchStatus[];
+
+/** `ticket_drafts.push_state` — one draft's progress through a push (V034, decision N6). */
+export type DraftPushState = "pending" | "pushed" | "failed";
+
+/** The three, in the order the CHECK declares them. */
+export const DRAFT_PUSH_STATES = [
+  "pending",
+  "pushed",
+  "failed",
+] as const satisfies readonly DraftPushState[];
+
+/**
+ * `ticket_drafts.push_error` — why a draft's push failed, as V034's
+ * `ticket_draft_push_error_valid` holds it: a machine code, a sentence, and an optional object.
+ */
+export interface DraftPushError {
+  /** `^[a-z][a-z0-9_]*$`, at most 64 characters — what a client branches on. */
+  readonly code: string;
+  /** Non-blank, at most 1024 characters — what a person reads. */
+  readonly message: string;
+  /** Anything further, as an object. */
+  readonly detail?: Readonly<Record<string, unknown>>;
+}
+
+/** `epic_mirrors.kind` — what an epic became in one source (V036). */
+export type EpicMirrorKind = "milestone" | "parent_issue" | "jira_epic";
+
+/** The three, in the order the CHECK declares them. */
+export const EPIC_MIRROR_KINDS = [
+  "milestone",
+  "parent_issue",
+  "jira_epic",
+] as const satisfies readonly EpicMirrorKind[];
+
+/**
+ * `ouroboros.draft_batches` — one generation run from mockup 09's generator card (V034, V036).
+ *
+ * Mirrored by AL.3 ([#279](https://github.com/NobuData/ouroboros/issues/279)), whose push service
+ * is the first thing here to read one. Held to its target source's and its epic's workspace by
+ * triggers, which is what makes *a push cannot target another organization's source* true in
+ * the database as well as in the service's `where`.
+ */
+export interface DraftBatchesTable {
+  id: Generated<string>;
+  /** Owning workspace. */
+  organization_id: string;
+  /** What somebody asked for. */
+  source_prompt: string;
+  /** The structured outline, when one was given. */
+  outline: string | null;
+  /** Which planner produced the drafts — `outline-v0`. */
+  planner: string;
+  /** The source a push files into. Same workspace, by trigger. */
+  target_source_id: string;
+  /** The milestone name a push ensures and assigns, or null. */
+  target_milestone: string | null;
+  auto_size: Generated<boolean>;
+  queue_small: Generated<boolean>;
+  status: Generated<DraftBatchStatus>;
+  created_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+  /** The planning epic the batch's drafts belong to (V036), or null. */
+  epic_id: string | null;
+}
+
+/**
+ * `ouroboros.ticket_drafts` — one proposed ticket in a batch (V034).
+ *
+ * `push_state`, `pushed_ticket_id` and `push_error` move together under two database rules the
+ * push service is written against: `ticket_drafts_push_state_coherent` (a `pushed` draft has no
+ * error, a `failed` one has one and no ticket) and `ticket_drafts_push_state_transition` (a
+ * pushed draft names its ticket and never moves again).
+ */
+export interface TicketDraftsTable {
+  id: Generated<string>;
+  batch_id: string;
+  /** The planner's key within the batch — `OTA-3`. Unique per batch. */
+  local_key: string;
+  title: string;
+  body: string | null;
+  /** Whether the draft is in the push. */
+  selected: Generated<boolean>;
+  suggested_workflow: string | null;
+  push_state: Generated<DraftPushState>;
+  /** The canonical ticket a push created, once it has. */
+  pushed_ticket_id: string | null;
+  /** Parsed on the way out; a JSON string on the way in. */
+  push_error: ColumnType<DraftPushError | null, string | null, string | null>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.ticket_dependencies` — `blocker blocks blocked`, over drafts and tickets alike (V035).
+ *
+ * Each end is exactly one of a draft or a ticket; a push rewrites a draft end to the ticket it
+ * became, in the transaction that creates the ticket.
+ */
+export interface TicketDependenciesTable {
+  id: Generated<string>;
+  organization_id: string;
+  blocker_draft_id: string | null;
+  blocker_ticket_id: string | null;
+  blocked_draft_id: string | null;
+  blocked_ticket_id: string | null;
+  /** `planned` or `synced`. */
+  origin: Generated<string>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `ouroboros.planning_epics` — one lane on mockup 09's roadmap (V036). */
+export interface PlanningEpicsTable {
+  id: Generated<string>;
+  organization_id: string;
+  name: string;
+  tint: Generated<string>;
+  start_month: Date | null;
+  end_month: Date | null;
+  status: Generated<string>;
+  sort_order: number;
+  roadmap_name: string | null;
+  roadmap_window: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `ouroboros.epic_tickets` — which tickets an epic counts (V036). */
+export interface EpicTicketsTable {
+  id: Generated<string>;
+  epic_id: string;
+  ticket_id: string;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.epic_mirrors` — where an epic lives in one source (V036).
+ *
+ * `(epic_id, source_id, kind)` is unique, and it is the push's idempotency key for a container: a
+ * second push reads the row rather than asking the tracker again.
+ */
+export interface EpicMirrorsTable {
+  id: Generated<string>;
+  epic_id: string;
+  source_id: string;
+  kind: EpicMirrorKind;
+  external_ref: string;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -2851,6 +3020,12 @@ export interface Database {
   workflow_versions: WorkflowVersionsTable;
   ticket_sources: TicketSourcesTable;
   tickets: TicketsTable;
+  draft_batches: DraftBatchesTable;
+  ticket_drafts: TicketDraftsTable;
+  ticket_dependencies: TicketDependenciesTable;
+  planning_epics: PlanningEpicsTable;
+  epic_tickets: EpicTicketsTable;
+  epic_mirrors: EpicMirrorsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
@@ -3184,6 +3359,63 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  draft_batches: [
+    "id",
+    "organization_id",
+    "source_prompt",
+    "outline",
+    "planner",
+    "target_source_id",
+    "target_milestone",
+    "auto_size",
+    "queue_small",
+    "status",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "epic_id",
+  ],
+  ticket_drafts: [
+    "id",
+    "batch_id",
+    "local_key",
+    "title",
+    "body",
+    "selected",
+    "suggested_workflow",
+    "push_state",
+    "pushed_ticket_id",
+    "push_error",
+    "created_at",
+    "updated_at",
+  ],
+  ticket_dependencies: [
+    "id",
+    "organization_id",
+    "blocker_draft_id",
+    "blocker_ticket_id",
+    "blocked_draft_id",
+    "blocked_ticket_id",
+    "origin",
+    "created_at",
+    "updated_at",
+  ],
+  planning_epics: [
+    "id",
+    "organization_id",
+    "name",
+    "tint",
+    "start_month",
+    "end_month",
+    "status",
+    "sort_order",
+    "roadmap_name",
+    "roadmap_window",
+    "created_at",
+    "updated_at",
+  ],
+  epic_tickets: ["id", "epic_id", "ticket_id", "created_at"],
+  epic_mirrors: ["id", "epic_id", "source_id", "kind", "external_ref", "created_at", "updated_at"],
   ticket_sources_public: [
     "id",
     "organization_id",

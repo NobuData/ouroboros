@@ -499,10 +499,17 @@ export class GithubClient {
         return new GithubApiError(
           GITHUB_FAILURES.unauthorized,
           `${route} was refused: GitHub rejected this workspace's token`,
+          undefined,
+          error.status,
         );
 
       case STATUS.notFound:
-        return new GithubApiError(GITHUB_FAILURES.notFound, `${route} answered 404`);
+        return new GithubApiError(
+          GITHUB_FAILURES.notFound,
+          `${route} answered 404`,
+          undefined,
+          error.status,
+        );
 
       case STATUS.forbidden:
       case STATUS.tooManyRequests:
@@ -512,6 +519,8 @@ export class GithubClient {
         return new GithubApiError(
           GITHUB_FAILURES.upstreamError,
           `${route} answered ${String(error.status)}`,
+          undefined,
+          error.status,
         );
     }
   }
@@ -548,12 +557,15 @@ export class GithubClient {
         GITHUB_FAILURES.rateLimited,
         `${route} answered ${String(error.status)}; standing down for ${String(seconds)}s`,
         seconds,
+        error.status,
       );
     }
 
     return new GithubApiError(
       GITHUB_FAILURES.unauthorized,
       `${route} answered 403 with budget remaining — the token is missing a scope`,
+      undefined,
+      error.status,
     );
   }
 }

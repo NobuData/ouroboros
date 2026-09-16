@@ -137,11 +137,17 @@ export class GithubApiError extends Error {
    *   repository; may never name the token. Not sent to a client.
    * @param retryAfterSeconds - How long until the call is worth repeating, where GitHub
    *   said. Only ever set for {@link GITHUB_FAILURES.rateLimited}.
+   * @param httpStatus - The status GitHub answered with, when it answered at all. Absent for a
+   *   call that failed before an answer and for the rate guard's own refusal. AL.3's writes
+   *   ([#279](https://github.com/NobuData/ouroboros/issues/279)) read it, because a write has to
+   *   tell a `403` scope from a `422` refused payload — two failures the five reasons above fold
+   *   into `unauthorized` and `upstream_error`.
    */
   constructor(
     readonly failure: GithubFailure,
     readonly detail: string,
     readonly retryAfterSeconds?: number,
+    readonly httpStatus?: number,
   ) {
     super(`github: ${failure} — ${detail}`);
     this.name = "GithubApiError";

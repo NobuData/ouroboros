@@ -1,6 +1,7 @@
 import { settle } from "./conformance.fixture";
 import {
   ledgerGrowthViolations,
+  linkModeViolations,
   writeFailureViolations,
   writeRefViolations,
   type WriteLedger,
@@ -163,6 +164,31 @@ describe("ledgerGrowthViolations", () => {
     ).toEqual([
       "step: milestones grew by 2, expected 1 — a retried write must not create a second one",
       "step: containers grew by 1, expected 0 — a retried write must not create a second one",
+    ]);
+  });
+});
+
+describe("linkModeViolations", () => {
+  it("passes the declared mode, and a rejected call that answered nothing", () => {
+    expect(linkModeViolations(true, [{ mode: "native" }, undefined])).toEqual([]);
+    expect(linkModeViolations(false, [{ mode: "fallback" }])).toEqual([]);
+  });
+
+  it("passes a native declaration that fell back, because a probe may find the API absent", () => {
+    // AL.3 (#279): GitHub declares native relations and an older GHES lacks them.
+    expect(linkModeViolations(true, [{ mode: "fallback" }, { mode: "fallback" }])).toEqual([]);
+  });
+
+  it("catches a fallback declaration claiming native, and a mode that is neither", () => {
+    expect(
+      linkModeViolations(false, [
+        { mode: "native" },
+        { mode: "sideways" } as unknown as { mode: "native" },
+      ]),
+    ).toEqual([
+      "linkDependency answered mode native, and the declaration says fallback — the UI tells a " +
+        "person which mode ran",
+      "linkDependency answered mode sideways, which is neither mode",
     ]);
   });
 });

@@ -27,6 +27,7 @@ import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
+import { PlanningModule } from "../planning/planning.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { AppController } from "./app.controller";
@@ -342,6 +343,10 @@ export class AppModule {
         // beside `BacklogSyncModule` rather than replacing it: the two loops coexist for one
         // release, and Q.3 is the ticket that retires the GitHub-specific one.
         TicketSourcesModule,
+        // AL.3 ([#279](https://github.com/NobuData/ouroboros/issues/279)) — the planning push.
+        // After `TicketSourcesModule`, which it imports for the registry and the credential it
+        // opens; it declares no route until AL.4 (#280), so its position carries no routing rule.
+        PlanningModule,
         // M.4 ([#113](https://github.com/NobuData/ouroboros/issues/113)) — the intake screen's
         // API surface, and the first routes over anything the sync wrote. After the two
         // modules it imports; the rest of Epic M's controllers land in it.
