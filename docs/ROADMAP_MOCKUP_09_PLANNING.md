@@ -223,7 +223,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AK.1 | #272 | 🟡 Open | ouroboros-db: [AK.1] Draft batches & ticket drafts schema | Pre-push draft entities with generation provenance & push state | mvp, planning, db | N (after WF-Q.1) | Y | M | ouroboros-db |
+| AK.1 | #272 | 🟢 Done | ouroboros-db: [AK.1] Draft batches & ticket drafts schema | Pre-push draft entities with generation provenance & push state | mvp, planning, db | N (after WF-Q.1) | Y | M | ouroboros-db |
 | AK.2 | #273 | 🟡 Open | ouroboros-db: [AK.2] Ticket dependencies schema | Canonical + draft `blocks` relations (N4), health-metric feeds | mvp, planning, db | N (after AK.1) | Y | S | ouroboros-db |
 | AK.3 | #274 | 🟡 Open | ouroboros-db: [AK.3] Planning epics & tracker mirrors | Lanes: tint, month range, status, mirror refs, ticket links | mvp, planning, db | N (after AK.1) | Y | M | ouroboros-db |
 | AK.4 | #275 | 🟡 Open | ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity | Batch OTA-1…6, five epics, health-shaping tickets | mvp, planning, db | N (after AK.2, AK.3) | Y | S | ouroboros-db |
@@ -231,7 +231,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ### Issue AK.1 — ouroboros-db: [AK.1] Draft batches & ticket drafts schema
 
-> **GitHub issue:** #272 · **Status:** 🟡 Open · **Parent epic:** #268
+> **GitHub issue:** #272 · **Status:** 🟢 Done · **Parent epic:** #268
 
 
 - **Problem Statement:** Drafts exist before any tracker knows them (decision
@@ -274,6 +274,55 @@ erDiagram
         uuid pushed_ticket_id FK
     }
 ```
+
+- **Delivered (2026-09-16):** `V034__draft_batches_ticket_drafts.sql` in `ouroboros-db` —
+  `draft_batches` and `ticket_drafts`, plus the `issue_estimates.draft_id` amendment to
+  INTAKE-K.2 (#100). Six decisions were taken in-issue.
+  - **`planner` is a grammar rather than a closed list.** The house idiom is text with a
+    named CHECK enumerating the values, and it does not survive this issue's own amendment:
+    the Build Analyzer (#514) writes `analyzer-vN`, a family parameterised by a number no
+    CHECK here can enumerate, so a closed set would make every analyzer generation a
+    migration — widened by whoever noticed the insert failing rather than by whoever chose
+    the name. What is enforced is the shape `outline-v0`, `llm-v1` and `analyzer-vN` share,
+    a name and a version, which is what decision **N2** is actually for: telling two
+    planners answering one contract apart.
+  - **`epic_id` is deferred to AK.3 (#274), which is the only migration that can add it.**
+    The issue lists the column and annotates it with AK.3 — the migration that creates the
+    epics it would reference. That table does not exist yet, so the foreign key cannot, and
+    a bare nullable uuid pointing at nothing is the one shape this schema does not use.
+  - **One sizer meant two subjects, not two tables** (decision **N3**). `github_issue_id`
+    becomes nullable and `issue_estimates_one_subject` makes an estimate about an issue or a
+    draft, never both and never neither. Versioning had to be rebuilt for the second
+    subject: `V026`'s key and trigger both go quiet against a null issue — `null = null` is
+    unknown and a unique key treats nulls as distinct — so the draft side gets
+    `issue_estimates_draft_version_key` and a monotonicity trigger of its own. A **second
+    trigger rather than a rewrite** of `V026`'s, which is not wrong here, only silent.
+  - **Regeneration safety is a property of where the estimate hangs.** `draft_id` cascades
+    from the *draft*, so replacing the unselected drafts takes their estimates and nobody
+    else's. Hung off the batch, regeneration would have emptied the table — the acceptance
+    criterion made unrepresentable rather than remembered.
+  - **A push is recorded per draft, and `pushed` is terminal.** Four issues created and two
+    refused is the ordinary outcome, so a batch-level failure would lose which four exist.
+    `push_error` is a closed grammar — `code` (a lower-case slug the card branches on),
+    `message`, optional `detail` — which is the criterion *"a structured reason, not a
+    stringified exception"* as a rule rather than a hope.
+  - **The rule that a push names its ticket lives in a trigger, not the CHECK.** Written as a
+    CHECK it looked right and was wrong: `pushed_ticket_id` is `on delete set null`, so
+    deleting a ticket — or the workspace above it — would have been *refused* rather than
+    clearing the reference, and a planning draft could veto the removal of a workspace. The
+    CHECK now holds what is always true and the trigger requires the ticket of every write
+    that *makes* a draft pushed, permitting only the foreign key's own set-null afterwards —
+    `V029`'s `published_by` exception, same shape. It was a behavioural probe against a real
+    PostgreSQL that caught it, which is what `tests/constraints.sql` exists for.
+
+  All eight acceptance criteria are asserted in `ouroboros-db/tests/constraints.sql` against
+  a migrated database, including the two tenancy guards (`ticket_drafts` deliberately carries
+  no `organization_id` — the batch is the whole of a draft's tenancy, so a trigger holds a
+  pushed ticket to the batch's workspace). `ouroboros-rest`'s hand-maintained schema mirror
+  gained `draft_id` and a nullable `github_issue_id`, and its drift check passes against a
+  database with `V034` applied; the two new tables stay undeclared there until AL.4 (#280)
+  reads them, which is the module's *"a mirrored table with no reader is drift"* rule.
+  `ouroboros-rest` is now 0.35.7.
 
 ### Issue AK.2 — ouroboros-db: [AK.2] Ticket dependencies schema
 

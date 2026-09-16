@@ -8251,12 +8251,16 @@ select pg_temp.must_raise(
   '23001',
   'not in bulk either, and not the version — BI.4 grades a loop against the estimate in force when it was queued, which is a lookup that must not move under it');
 
--- One trigger refusing updates, one holding versions monotonic, both enabled, and nothing
--- refusing a delete — for V022's reason: the foreign key cascades, and a delete-refusing
--- trigger would make removing an issue impossible rather than protecting the history.
+-- One trigger refusing updates and **two** holding versions monotonic — V026's for an issue and
+-- V034's (#272) for a draft, because decision N3 gave this table a second kind of subject and
+-- V026's trigger goes quiet against a null issue. All enabled, and nothing refusing a delete, for
+-- V022's reason: both subject foreign keys cascade, and a delete-refusing trigger would make
+-- removing an issue or a draft impossible rather than protecting the history.
 select pg_temp.must_hold(
   (select array_agg(tgname::text order by tgname) =
-            array['issue_estimates_no_update', 'issue_estimates_version_monotonic']
+            array['issue_estimates_draft_version_monotonic',
+                  'issue_estimates_no_update',
+                  'issue_estimates_version_monotonic']
      from pg_trigger
     where tgrelid = 'ouroboros.issue_estimates'::regclass
       and not tgisinternal
@@ -8265,7 +8269,7 @@ select pg_temp.must_hold(
         where tgrelid = 'ouroboros.issue_estimates'::regclass
           and not tgisinternal
           and tgtype & 8 = 8),
-  'issue_estimates carries the update refusal and the monotonic rule, both enabled, and nothing that refuses a delete');
+  'issue_estimates carries the update refusal and both monotonic rules, all enabled, and nothing that refuses a delete');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from information_schema.columns
@@ -10342,6 +10346,418 @@ delete from ouroboros.organization where "id" = 'org-editors';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.workflows where organization_id = 'org-editors'),
   'and nothing the draft-editor section created is left behind');
+
+-- ===========================================================================
+-- V034 — draft_batches and ticket_drafts, tickets before a tracker knows them (#272)
+-- ===========================================================================
+--
+-- AK.1's promise is mockup 09's review step: generate six tickets, read them, uncheck the one
+-- that is wrong, regenerate, *then* push. Decision **N1** is what makes it keepable — a draft is
+-- a row with a lifecycle rather than a response held open in a browser tab — and the rules below
+-- are what a reader of that row is entitled to assume.
+--
+-- Nothing writes these tables yet: AL.4 (#280) is the planning API, AL.3 (#279) the push. So, as
+-- with every read-model table before them, each rule lives here rather than in a service.
+--
+-- The issue's eight acceptance criteria are this section, in order: a batch and its drafts
+-- round-trip; `local_key` is unique per batch; `planner` provenance is never null; push-state
+-- transitions are constrained; `push_error` is a structured reason rather than a stringified
+-- exception; estimates attach to drafts **through the shared pipeline**; regeneration replaces
+-- the unselected drafts without orphaning the estimates of those that remain; and organization
+-- isolation holds on both tables.
+--
+-- Its own fixtures, and **two workspaces**: both tenancy rules are claims about a row naming one
+-- workspace and another's source or ticket, so there has to be another workspace to name.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-planning',      'Planning Works',     'planning-works',     now()),
+  ('org-planning-next', 'Planning Next Door', 'planning-next-door', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified")
+  values ('user-planner', 'Ada Planner', 'ada@planning-works.dev', true);
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('c0340000-0000-0000-0000-000000000001', 'org-planning',      'github', 'GitHub · planning'),
+  ('c0340000-0000-0000-0000-000000000002', 'org-planning-next', 'github', 'GitHub · next door');
+
+-- One canonical ticket in each workspace: the first is what a draft is pushed as, the second is
+-- what a draft in the other workspace must not be able to name.
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('c0340000-0000-0000-0000-00000000aaa1', 'org-planning',
+     'c0340000-0000-0000-0000-000000000001', '601', '#601',
+     'https://github.com/nobudata/helios-firmware/issues/601', 'OTA bootloader slot', 'open',
+     now(), now()),
+    ('c0340000-0000-0000-0000-00000000aaa2', 'org-planning-next',
+     'c0340000-0000-0000-0000-000000000002', '777', '#777',
+     'https://github.com/nextdoor/thing/issues/777', 'Somebody else''s ticket', 'open',
+     now(), now());
+
+-- --- a batch and its drafts round-trip in full ----------------------------------
+--
+-- Acceptance criterion, and the mockup's own batch: a narrative, an outline, `outline-v0`, the
+-- GitHub source, the *Helios 2.1* milestone and both toggles as the card draws them.
+insert into ouroboros.draft_batches
+    (id, organization_id, source_prompt, outline, planner, target_source_id, target_milestone,
+     created_by)
+  values
+    ('c0340000-0000-0000-0000-0000000000b1', 'org-planning',
+     'Ship over-the-air firmware updates for the Helios controller.',
+     E'- Bootloader A/B slots\n- Delta packaging\n- Rollback path blocks: OTA-1, OTA-2',
+     'outline-v0', 'c0340000-0000-0000-0000-000000000001', 'Helios 2.1', 'user-planner');
+
+select pg_temp.must_hold(
+  (select status = 'drafting' and auto_size and not queue_small
+     and outline is not null and created_by = 'user-planner'
+     from ouroboros.draft_batches where id = 'c0340000-0000-0000-0000-0000000000b1'),
+  'a batch arrives drafting, auto-sizing, not queueing, with its outline and its author');
+
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title, body, suggested_workflow)
+  values
+    ('c0340000-0000-0000-0000-0000000000d1', 'c0340000-0000-0000-0000-0000000000b1', 'OTA-1',
+     'Bootloader A/B slots', 'Two slots and a boot counter.', 'feature-loop'),
+    ('c0340000-0000-0000-0000-0000000000d2', 'c0340000-0000-0000-0000-0000000000b1', 'OTA-2',
+     'Delta packaging', null, 'feature-loop'),
+    ('c0340000-0000-0000-0000-0000000000d3', 'c0340000-0000-0000-0000-0000000000b1', 'OTA-3',
+     'Rollback path', null, 'hil-verify');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.ticket_drafts
+    where batch_id = 'c0340000-0000-0000-0000-0000000000b1' and selected and push_state = 'pending'),
+  'and its drafts arrive selected and pending — the reviewer''s work is to remove, not to add');
+
+-- --- local_key is unique per batch, and means nothing outside it -----------------
+--
+-- Acceptance criterion. `blocks OTA-3` resolves within its batch, so two drafts sharing a key
+-- make that note ambiguous — while two *batches* each holding an `OTA-1` is the ordinary case,
+-- because the key is the planner's numbering rather than an identity.
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_drafts (batch_id, local_key, title)
+      values ('c0340000-0000-0000-0000-0000000000b1', 'OTA-1', 'Bootloader again')$$,
+  'two drafts in one batch cannot share a local key',
+  'ticket_drafts_batch_local_key_key');
+
+insert into ouroboros.draft_batches
+    (id, organization_id, source_prompt, planner, target_source_id)
+  values
+    ('c0340000-0000-0000-0000-0000000000b2', 'org-planning', 'A second plan entirely.',
+     'outline-v0', 'c0340000-0000-0000-0000-000000000001');
+insert into ouroboros.ticket_drafts (batch_id, local_key, title)
+  values ('c0340000-0000-0000-0000-0000000000b2', 'OTA-1', 'Unrelated first draft');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.ticket_drafts where local_key = 'OTA-1'),
+  'but the next batch numbers its own drafts from one again');
+
+-- --- decision N2: provenance is recorded, versioned, and never null --------------
+--
+-- Acceptance criterion. The vocabulary is deliberately *open* and the shape is not: `analyzer-vN`
+-- (#514) is a family no CHECK here can enumerate, so what is enforced is that a planner has a
+-- name and a version — which is what lets a reader tell two planners answering one contract apart.
+select pg_temp.must_hold(
+  (select count(*) = 3 from (values ('outline-v0'), ('llm-v1'), ('analyzer-v12')) as planner(name)
+    where name ~ '^[a-z0-9][a-z0-9-]*-v[0-9]+$'),
+  'outline-v0, AN.1''s llm-v1 and the Build Analyzer''s analyzer-vN all satisfy the shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_batches (organization_id, source_prompt, planner, target_source_id)
+      values ('org-planning', 'x', 'outline', 'c0340000-0000-0000-0000-000000000001')$$,
+  'an unversioned planner is refused — N2 is about telling versions apart',
+  'draft_batches_planner_versioned');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_batches (organization_id, source_prompt, planner, target_source_id)
+      values ('org-planning', 'x', 'Outline-v0', 'c0340000-0000-0000-0000-000000000001')$$,
+  'and it is spelled exactly as the engine spells it',
+  'draft_batches_planner_versioned');
+
+select pg_temp.must_raise(
+  $$insert into ouroboros.draft_batches (organization_id, source_prompt, target_source_id)
+      values ('org-planning', 'x', 'c0340000-0000-0000-0000-000000000001')$$,
+  '23502',
+  'a batch with no planner at all is refused by the column itself');
+
+-- --- the batch lifecycle is closed ----------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.draft_batches set status = 'queued'
+     where id = 'c0340000-0000-0000-0000-0000000000b1'$$,
+  'draft_batches.status rejects a sixth state, which would render under no pill',
+  'draft_batches_status');
+
+select pg_temp.must_reject(
+  $$update ouroboros.draft_batches set target_milestone = '   '
+     where id = 'c0340000-0000-0000-0000-0000000000b1'$$,
+  'a blank milestone is not *no milestone* — null is',
+  'draft_batches_target_milestone_present');
+
+-- --- each push state carries its own evidence -----------------------------------
+--
+-- Acceptance criterion, and the rule that makes a half-succeeded batch readable.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set push_state = 'failed'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'a failed draft says why — a red row with no reason is one nobody can act on',
+  'ticket_drafts_push_state_coherent');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set push_error = '{"code": "rate_limited", "message": "later"}'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'and a pending one carries neither a ticket nor an error',
+  'ticket_drafts_push_state_coherent');
+
+-- That a push *names its ticket* is the same family of rule and is deliberately not a CHECK: see
+-- ticket_draft_push_state_transition(), and the deleted-ticket case at the foot of this section.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set push_state = 'pushed'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'a draft cannot become pushed without naming the ticket it became',
+  'ticket_drafts_push_state_transition');
+
+-- --- push_error is a structured reason, not a stringified exception --------------
+--
+-- Acceptance criterion. Each of these is what `error.toString()` or an unshaped object would put
+-- in the column, and what the card could then do with any of them is print it.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set push_state = 'failed', push_error = '"Error: ETIMEDOUT"'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'a stringified exception is not a reason',
+  'ticket_drafts_push_error_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set push_state = 'failed', push_error = '{"message": "no code"}'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'nor is a sentence with nothing the card can branch on',
+  'ticket_drafts_push_error_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set push_state = 'failed',
+        push_error = '{"code": "Rate Limited", "message": "m"}'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'a code is a slug rather than prose — that is the whole difference',
+  'ticket_drafts_push_error_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set push_state = 'failed',
+        push_error = '{"code": "rate_limited", "message": "m", "retry": true}'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'and a fourth key is refused, V026''s posture: a key nothing renders renders nowhere',
+  'ticket_drafts_push_error_shape');
+
+update ouroboros.ticket_drafts
+   set push_state = 'failed',
+       push_error = '{"code": "rate_limited", "message": "Secondary rate limit hit",
+                      "detail": {"retry_after": 60}}'::jsonb
+ where id = 'c0340000-0000-0000-0000-0000000000d3';
+
+select pg_temp.must_hold(
+  (select push_error->>'code' = 'rate_limited'
+      and push_error->'detail'->>'retry_after' = '60'
+     from ouroboros.ticket_drafts where id = 'c0340000-0000-0000-0000-0000000000d3'),
+  'a structured failure keeps its code, its sentence and whatever the tracker said');
+
+-- --- a failed draft retries, and a pushed one does not -------------------------
+--
+-- Acceptance criterion: transitions are constrained. Every move except leaving `pushed` is
+-- legitimate — `failed → pending` is exactly what a retry is.
+update ouroboros.ticket_drafts set push_state = 'pending', push_error = null
+ where id = 'c0340000-0000-0000-0000-0000000000d3';
+
+select pg_temp.must_hold(
+  (select push_state = 'pending' and push_error is null
+     from ouroboros.ticket_drafts where id = 'c0340000-0000-0000-0000-0000000000d3'),
+  'a failed draft goes back to pending, which is what a retry is');
+
+update ouroboros.ticket_drafts
+   set push_state = 'pushed', pushed_ticket_id = 'c0340000-0000-0000-0000-00000000aaa1'
+ where id = 'c0340000-0000-0000-0000-0000000000d1';
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts
+       set push_state = 'failed', pushed_ticket_id = null,
+           push_error = '{"code": "gave_up", "message": "m"}'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'a draft that became an issue cannot stop having become one — a tracker will not un-create it',
+  'ticket_drafts_push_state_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts
+       set pushed_ticket_id = 'c0340000-0000-0000-0000-00000000aaa2'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'nor be re-pointed at another ticket, which is pushing twice without a state change',
+  'ticket_drafts_push_state_transition');
+
+-- --- organization isolation, on both tables -------------------------------------
+--
+-- Acceptance criterion. Two separate foreign keys do not make each other agree, and either of
+-- these is one workspace's work rendering on another's planning page.
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_batches
+        (organization_id, source_prompt, planner, target_source_id)
+      values ('org-planning', 'x', 'outline-v0', 'c0340000-0000-0000-0000-000000000002')$$,
+  'a batch cannot be aimed at another workspace''s tracker',
+  'draft_batches_target_source_in_organization');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts
+       set push_state = 'pushed', pushed_ticket_id = 'c0340000-0000-0000-0000-00000000aaa2'
+     where id = 'c0340000-0000-0000-0000-0000000000d2'$$,
+  'and a draft cannot claim another workspace''s ticket — the guard the absent organization_id hands to the batch',
+  'ticket_drafts_ticket_in_organization');
+
+-- --- decision N3: one sizer, and drafts go through it ----------------------------
+--
+-- Acceptance criterion, and the reason it is worded *through the shared pipeline*: what is
+-- asserted is that a draft estimate is the row `estimation.outcome.ts` already builds — the same
+-- table, the same column list, the same grammars — with a draft in the subject's place. There is
+-- no planning-shaped estimate to write, which is what stops `✓ all sized` meaning one thing here
+-- and another on mockup 03.
+insert into ouroboros.github_orgs (id, organization_id, login, enabled)
+  values ('c0340000-0000-0000-0000-0000000000e1', 'org-planning', 'planning-works', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch)
+  values ('c0340000-0000-0000-0000-0000000000e2', 'c0340000-0000-0000-0000-0000000000e1',
+          'helios-firmware', true, 'main');
+insert into ouroboros.github_issues
+    (id, organization_id, github_repo_id, number, title, state, gh_created_at, gh_updated_at,
+     gh_url)
+  values ('c0340000-0000-0000-0000-0000000000e3', 'org-planning',
+          'c0340000-0000-0000-0000-0000000000e2', 601, 'A mirrored issue', 'open', now(), now(),
+          'https://github.com/nobudata/helios-firmware/issues/601');
+
+insert into ouroboros.issue_estimates
+    (draft_id, version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+     risk_note, trace)
+  values
+    ('c0340000-0000-0000-0000-0000000000d1', 1, 's', 88, 'feature-loop', 'claude-fable-5',
+     '{"files": ["boot/slots.c"], "est_tokens": 90000, "cycle_min": 8, "cycle_max": 14,
+       "est_minutes": 20}'::jsonb,
+     'low', 'Slot switching is covered by the HIL rig.',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-16T12:00:00Z", "tokens_used": 0,
+       "signals": ["draft:OTA-1"]}'::jsonb),
+    ('c0340000-0000-0000-0000-0000000000d2', 1, 'm', 74, 'feature-loop', 'claude-fable-5',
+     '{"files": [], "est_tokens": 120000, "cycle_min": 20, "cycle_max": 30,
+       "est_minutes": 26}'::jsonb,
+     'medium', 'Delta generation touches the packaging format.',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-16T12:00:00Z", "tokens_used": 0,
+       "signals": ["draft:OTA-2"]}'::jsonb);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.issue_estimates
+    where draft_id in ('c0340000-0000-0000-0000-0000000000d1',
+                       'c0340000-0000-0000-0000-0000000000d2')),
+  'drafts are sized in issue_estimates itself — the one table, by the one pipeline (N3)');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.issue_estimates
+    where draft_id is not null and github_issue_id is not null),
+  'and a draft estimate names no issue: an estimate has one subject');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+        (github_issue_id, draft_id, version, effort, confidence, suggested_workflow, routed_model,
+         breakdown, risk, risk_note, trace)
+      values ('c0340000-0000-0000-0000-0000000000e3', 'c0340000-0000-0000-0000-0000000000d1', 2,
+              's', 50, 'w', 'm',
+              '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+              'low', 'n',
+              '{"estimator": "heuristic-v0", "sized_at": "2026-09-16T12:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'an estimate of both an issue and a draft is two answers wearing one version number',
+  'issue_estimates_one_subject');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+        (version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+         risk_note, trace)
+      values (1, 's', 50, 'w', 'm',
+              '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+              'low', 'n',
+              '{"estimator": "heuristic-v0", "sized_at": "2026-09-16T12:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and one of neither is a row no cascade could ever reach',
+  'issue_estimates_one_subject');
+
+-- Versions ascend within a *draft* too. V026's key and trigger both go quiet against a null
+-- issue — `null = null` is unknown and a unique key treats nulls as distinct — so without these
+-- a draft could be sized 3 then 2 and *latest wins* would return the older answer.
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+        (draft_id, version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+         risk_note, trace)
+      values ('c0340000-0000-0000-0000-0000000000d1', 1, 's', 50, 'w', 'm',
+              '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+              'low', 'n',
+              '{"estimator": "heuristic-v0", "sized_at": "2026-09-16T12:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'one version of a draft''s estimate, once',
+  'issue_estimates_draft_version_monotonic');
+
+insert into ouroboros.issue_estimates
+    (draft_id, version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+     risk_note, trace)
+  values ('c0340000-0000-0000-0000-0000000000d1', 5, 'l', 61, 'feature-loop', 'claude-sonnet-5',
+          '{"files": [], "est_tokens": 200000, "cycle_min": 40, "cycle_max": 60,
+            "est_minutes": 55}'::jsonb,
+          'high', 'The slot table is shared with the bootloader.',
+          '{"estimator": "heuristic-v0", "sized_at": "2026-09-16T13:00:00Z", "tokens_used": 0,
+            "signals": []}'::jsonb);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+        (draft_id, version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+         risk_note, trace)
+      values ('c0340000-0000-0000-0000-0000000000d1', 3, 's', 50, 'w', 'm',
+              '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+              'low', 'n',
+              '{"estimator": "heuristic-v0", "sized_at": "2026-09-16T12:00:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and a version below one the draft already has is refused, as it is for an issue',
+  'issue_estimates_draft_version_monotonic');
+
+select pg_temp.must_hold(
+  (select effort = 'l' from ouroboros.issue_estimates
+    where draft_id = 'c0340000-0000-0000-0000-0000000000d1' order by version desc limit 1),
+  'so latest-wins reads the same way for a draft as for an issue');
+
+-- --- regeneration replaces the unselected without orphaning what remains ---------
+--
+-- Acceptance criterion, and it is a property of *where the estimate hangs*: `draft_id` cascades
+-- from the draft, so replacing one draft takes that draft's estimates and nobody else's. Hung
+-- off the batch instead, this delete would have emptied the table.
+update ouroboros.ticket_drafts set selected = false
+ where id = 'c0340000-0000-0000-0000-0000000000d2';
+delete from ouroboros.ticket_drafts
+ where batch_id = 'c0340000-0000-0000-0000-0000000000b1' and not selected;
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.issue_estimates
+    where draft_id = 'c0340000-0000-0000-0000-0000000000d1'),
+  'the drafts that survive regeneration keep every estimate they had');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.issue_estimates
+    where draft_id = 'c0340000-0000-0000-0000-0000000000d2'),
+  'and the one that was replaced took its own with it, rather than leaving them behind');
+
+-- --- a deleted ticket clears the reference rather than refusing the delete -------
+--
+-- The exception `ticket_drafts_push_state_coherent` deliberately does not hold, and the reason
+-- the ticket rule is in the trigger: `pushed_ticket_id` is `on delete set null`, so a ticket that
+-- goes — with its tracker, its source, or its whole workspace — leaves a draft that still,
+-- truthfully, was pushed. Refused instead, a planning draft could veto the removal of a workspace.
+delete from ouroboros.tickets where id = 'c0340000-0000-0000-0000-00000000aaa1';
+
+select pg_temp.must_hold(
+  (select push_state = 'pushed' and pushed_ticket_id is null
+     from ouroboros.ticket_drafts where id = 'c0340000-0000-0000-0000-0000000000d1'),
+  'the draft stays pushed with its reference cleared, and the delete goes through');
+
+-- --- and the workspace takes all of it with it ----------------------------------
+delete from ouroboros.organization where "id" in ('org-planning', 'org-planning-next');
+delete from ouroboros."user" where "id" = 'user-planner';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.draft_batches)
+   and (select count(*) = 0 from ouroboros.ticket_drafts)
+   and (select count(*) = 0 from ouroboros.issue_estimates),
+  'a deleted workspace takes its batches, their drafts and every estimate of them');
 
 -- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)
