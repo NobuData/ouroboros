@@ -30,7 +30,10 @@ import type { SourcesReadings } from "@/app/sources/data";
  */
 
 /** Every optional keyword, explicitly unset — the shape the service answers. */
-const NOTHING_SET: Omit<TicketSourceFormField, "name" | "label" | "widget" | "required"> = {
+const NOTHING_SET: Omit<
+  TicketSourceFormField,
+  "name" | "label" | "widget" | "required"
+> = {
   help: null,
   placeholder: null,
   defaultValue: null,
@@ -49,17 +52,39 @@ const NOTHING_SET: Omit<TicketSourceFormField, "name" | "label" | "widget" | "re
  * @returns The field as the contract serves it.
  */
 export function formField(
-  over: Pick<TicketSourceFormField, "name" | "label" | "widget"> & Partial<TicketSourceFormField>,
+  over: Pick<TicketSourceFormField, "name" | "label" | "widget"> &
+    Partial<TicketSourceFormField>,
 ): TicketSourceFormField {
   return { required: false, ...NOTHING_SET, ...over };
 }
+
+/** The write declaration and push affordance every read-only provider's entry carries. */
+const READ_ONLY = {
+  write: {
+    createTicket: false,
+    nativeDependencies: false,
+    epicMapping: "none",
+    milestones: false,
+  },
+  push: {
+    enabled: false,
+    reason:
+      "This tracker is read-only in Ouroboros — it can sync tickets but not create them.",
+  },
+} as const;
 
 /** The GitHub provider's form: the account, the repository list, and the token. */
 export function githubEntry(): TicketSourceCatalogEntry {
   return {
     kind: "github",
     title: "Connect a GitHub account",
-    capabilities: { webhooks: false, labels: true, bidirectionalWrites: false },
+    capabilities: {
+      webhooks: false,
+      labels: true,
+      bidirectionalWrites: false,
+      write: READ_ONLY.write,
+    },
+    push: READ_ONLY.push,
     fields: [
       formField({
         name: "login",
@@ -113,7 +138,13 @@ export function fakeEntry(): TicketSourceCatalogEntry {
   return {
     kind: FAKE_KIND,
     title: FAKE_TITLE,
-    capabilities: { webhooks: false, labels: false, bidirectionalWrites: false },
+    capabilities: {
+      webhooks: false,
+      labels: false,
+      bidirectionalWrites: false,
+      write: READ_ONLY.write,
+    },
+    push: READ_ONLY.push,
     fields: [
       formField({
         name: "site",
@@ -151,7 +182,13 @@ export function fakeEntry(): TicketSourceCatalogEntry {
         minItems: 1,
         maxItems: 5,
       }),
-      formField({ name: "apiToken", label: "API token", widget: "secret", required: true, minLength: 8 }),
+      formField({
+        name: "apiToken",
+        label: "API token",
+        widget: "secret",
+        required: true,
+        minLength: 8,
+      }),
     ],
   };
 }
@@ -171,7 +208,9 @@ export function seededCatalog(): TicketSourceCatalogEntry[] {
  * @param kinds The entries. Defaults to the build's.
  * @returns The payload.
  */
-export function catalogPayload(kinds: readonly TicketSourceCatalogEntry[] = seededCatalog()): TicketSourceCatalog {
+export function catalogPayload(
+  kinds: readonly TicketSourceCatalogEntry[] = seededCatalog(),
+): TicketSourceCatalog {
   return { kinds: [...kinds] };
 }
 
@@ -200,7 +239,12 @@ export function source(over: Partial<TicketSource> = {}): TicketSource {
     displayName: "GitHub · acme-robotics",
     config: {
       login: "acme-robotics",
-      repos: ["helios-firmware", "helios-console", "helios-telemetry", "atlas-scheduler"],
+      repos: [
+        "helios-firmware",
+        "helios-console",
+        "helios-telemetry",
+        "atlas-scheduler",
+      ],
     },
     status: "active",
     statusReason: null,
@@ -218,7 +262,10 @@ export function jiraSource(over: Partial<TicketSource> = {}): TicketSource {
     id: SEEDED_JIRA_ID,
     kind: "jira",
     displayName: "Jira · PROJ",
-    config: { base_url: "https://acme-robotics.atlassian.net", project_keys: ["PROJ"] },
+    config: {
+      base_url: "https://acme-robotics.atlassian.net",
+      project_keys: ["PROJ"],
+    },
     status: "paused",
     credentialMask: null,
     syncedAt: null,
@@ -255,7 +302,9 @@ export function seededSources(): TicketSource[] {
  * @param items The sources. Defaults to the seed's.
  * @returns The page.
  */
-export function sourcePage(items: readonly TicketSource[] = seededSources()): TicketSourcePage {
+export function sourcePage(
+  items: readonly TicketSource[] = seededSources(),
+): TicketSourcePage {
   return { items: [...items], total: items.length, limit: 100, offset: 0 };
 }
 
@@ -266,7 +315,9 @@ export function sourcePage(items: readonly TicketSource[] = seededSources()): Ti
  * @param over What differs.
  * @returns The report.
  */
-export function statusReport(over: Partial<TicketSourceStatusReport> = {}): TicketSourceStatusReport {
+export function statusReport(
+  over: Partial<TicketSourceStatusReport> = {},
+): TicketSourceStatusReport {
   return {
     sourceId: SEEDED_GITHUB_ID,
     status: "active",
@@ -296,7 +347,9 @@ export function statusReport(over: Partial<TicketSourceStatusReport> = {}): Tick
  * @param over What differs.
  * @returns The result.
  */
-export function testResult(over: Partial<TicketSourceTest> = {}): TicketSourceTest {
+export function testResult(
+  over: Partial<TicketSourceTest> = {},
+): TicketSourceTest {
   return {
     sourceId: SEEDED_GITHUB_ID,
     checkedAt: READ_AT,

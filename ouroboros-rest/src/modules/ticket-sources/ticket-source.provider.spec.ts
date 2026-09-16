@@ -11,7 +11,14 @@ import {
   scriptedProvider,
   webhookProvider,
 } from "./ticket-source.fixture";
-import { supportsWebhooks, type TicketSourceProvider } from "./ticket-source.provider";
+import {
+  WRITE_MEMBERS,
+  supportsWebhooks,
+  supportsWrites,
+  writeMemberViolations,
+  type TicketSourceProvider,
+} from "./ticket-source.provider";
+import { READ_ONLY_WRITE_CAPABILITIES } from "./ticket-source.write";
 
 /**
  * The SPI is an interface, so most of what it claims is checked by the compiler. What a suite
@@ -57,13 +64,20 @@ describe("the TicketSourceProvider SPI", () => {
     expect((provider as unknown as Record<string, unknown>).webhookHandler).toBeUndefined();
   });
 
-  it("answers all three capability flags, so none can be merely unmentioned", () => {
+  it("answers all three capability flags and the write declaration, so none can be merely unmentioned", () => {
     const capabilities = scriptedProvider().capabilities();
 
     expect(Object.keys(capabilities).sort()).toStrictEqual([
       "bidirectionalWrites",
       "labels",
       "webhooks",
+      "write",
+    ]);
+    expect(Object.keys(capabilities.write).sort()).toStrictEqual([
+      "createTicket",
+      "epicMapping",
+      "milestones",
+      "nativeDependencies",
     ]);
   });
 
@@ -164,6 +178,99 @@ describe("supportsWebhooks", () => {
     };
 
     expect(supportsWebhooks(lying)).toBe(false);
+  });
+});
+
+describe("supportsWrites", () => {
+  /**
+   * A provider declaring writes, with the five members present.
+   *
+   * @returns The provider.
+   */
+  function writer(): TicketSourceProvider {
+    const members = Object.fromEntries(
+      WRITE_MEMBERS.map((member) => [member, () => Promise.resolve(null)]),
+    );
+
+    return {
+      ...scriptedProvider(),
+      capabilities: () => ({
+        ...NO_CAPABILITIES,
+        bidirectionalWrites: true,
+        write: { ...READ_ONLY_WRITE_CAPABILITIES, createTicket: true },
+      }),
+      ...members,
+    };
+  }
+
+  it("is false for a read-only provider, and narrows a writer to one with the members", () => {
+    expect(supportsWrites(scriptedProvider())).toBe(false);
+
+    const provider = writer();
+
+    expect(supportsWrites(provider)).toBe(true);
+
+    if (supportsWrites(provider)) {
+      expect(typeof provider.createTicket).toBe("function");
+    }
+  });
+
+  it("does not let a write member be reached without the guard", () => {
+    const provider = writer();
+
+    // @ts-expect-error — `createTicket` is not on `TicketSourceProvider`: the push service asks
+    // what a provider can do before it can write. If this stops erroring, nothing is gated.
+    expect(provider.createTicket).toBeDefined();
+  });
+
+  it("trusts the flag rather than the presence of the members", () => {
+    const lying: TicketSourceProvider = { ...writer(), capabilities: () => NO_CAPABILITIES };
+
+    expect(supportsWrites(lying)).toBe(false);
+  });
+});
+
+describe("writeMemberViolations", () => {
+  it("passes a read-only provider and a writer whose flags and members agree", () => {
+    expect(writeMemberViolations(scriptedProvider())).toEqual([]);
+  });
+
+  it("catches the summary flag disagreeing with the detail", () => {
+    const provider = {
+      ...scriptedProvider(),
+      capabilities: () => ({ ...NO_CAPABILITIES, bidirectionalWrites: true }),
+    };
+
+    expect(writeMemberViolations(provider)).toEqual([
+      "capabilities().bidirectionalWrites is true but write.createTicket is false — the summary and the detail must agree",
+    ]);
+  });
+
+  it("catches a write member on a provider declaring itself read-only", () => {
+    const provider = {
+      ...scriptedProvider(),
+      ...{ createTicket: () => Promise.resolve(null) },
+    };
+
+    expect(writeMemberViolations(provider)).toEqual([
+      "write.createTicket is false but createTicket is present — an unreachable write member is a declaration somebody forgot to update",
+    ]);
+  });
+
+  it("catches a writable declaration missing some of its members", () => {
+    const provider = {
+      ...scriptedProvider(),
+      capabilities: () => ({
+        ...NO_CAPABILITIES,
+        bidirectionalWrites: true,
+        write: { ...READ_ONLY_WRITE_CAPABILITIES, createTicket: true },
+      }),
+      ...{ createTicket: () => Promise.resolve(null), linkDependency: () => Promise.resolve(null) },
+    };
+
+    expect(writeMemberViolations(provider)).toEqual([
+      "write.createTicket is true but ensureMilestone, ensureEpicContainer, attachToEpic is absent",
+    ]);
   });
 });
 

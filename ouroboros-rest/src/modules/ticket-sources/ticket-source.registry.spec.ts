@@ -8,7 +8,12 @@ import {
   scriptedProvider,
   webhookProvider,
 } from "./ticket-source.fixture";
-import type { TicketSourceProvider } from "./ticket-source.provider";
+import {
+  InMemoryTracker,
+  InMemoryWriteTicketSourceProvider,
+} from "./providers/in-memory.provider.fixture";
+import { supportsWrites, type TicketSourceProvider } from "./ticket-source.provider";
+import { READ_ONLY_WRITE_CAPABILITIES } from "./ticket-source.write";
 import {
   TICKET_SOURCE_PROVIDERS,
   TICKET_SOURCE_REGISTRY_ERRORS,
@@ -193,6 +198,49 @@ describe("TicketSourceRegistry", () => {
     await expect(registryOf([provider])).rejects.toThrow(
       /Provider "github" declares a config schema outside the dialect: .*title must be a non-empty string.*lanes/,
     );
+  });
+
+  it("stops the process at boot when a provider's write declaration is incoherent", async () => {
+    // AL.2 (#278): a read-only provider claiming milestones is a push service assigning one to a
+    // ticket nobody could create.
+    const liar: TicketSourceProvider = {
+      ...scriptedProvider(),
+      capabilities: () => ({
+        ...NO_CAPABILITIES,
+        write: { ...READ_ONLY_WRITE_CAPABILITIES, milestones: true },
+      }),
+    };
+
+    await expect(registryOf([liar])).rejects.toThrow(
+      'Provider "github" declares write capabilities that disagree: ' +
+        "capabilities().write.milestones is true but createTicket is false",
+    );
+  });
+
+  it("stops the process at boot when a provider declares writes and has no write members", async () => {
+    // The half `WriteCapableProvider`'s narrowed return type cannot catch — the same shape as the
+    // webhook case above, one extension over.
+    const liar: TicketSourceProvider = {
+      ...scriptedProvider(),
+      capabilities: () => ({
+        ...NO_CAPABILITIES,
+        bidirectionalWrites: true,
+        write: { ...READ_ONLY_WRITE_CAPABILITIES, createTicket: true },
+      }),
+    };
+
+    await expect(registryOf([liar])).rejects.toThrow(
+      "write.createTicket is true but createTicket, linkDependency, ensureMilestone, " +
+        "ensureEpicContainer, attachToEpic is absent",
+    );
+  });
+
+  it("accepts a write-capable provider whose flags and members agree", async () => {
+    const registry = await registryOf([
+      new InMemoryWriteTicketSourceProvider(new InMemoryTracker(), { kind: "jira" }),
+    ]);
+
+    expect(supportsWrites(registry.get("jira"))).toBe(true);
   });
 
   it("stops the process at boot when a provider has no schema member at all", async () => {

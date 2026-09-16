@@ -28,6 +28,7 @@ import {
   type OctokitScript,
 } from "./github.provider.fixture";
 import { ISSUES_ROUTE } from "./github.mapping";
+import { READ_ONLY_WRITE_CAPABILITIES } from "../ticket-source.write";
 
 /**
  * The first conforming plugin, against a scripted GitHub
@@ -113,6 +114,9 @@ describe("the GitHub ticket source provider", () => {
       webhooks: false,
       labels: true,
       bidirectionalWrites: false,
+      // GitHub's write implementation is AL.3's (#279); until it lands the catalog renders
+      // GitHub push-disabled rather than offering a push that fails (AL.2, #278).
+      write: READ_ONLY_WRITE_CAPABILITIES,
     });
     expect(provider.capabilities()).toStrictEqual(provider.capabilities());
   });

@@ -25,6 +25,10 @@
  *   └─ webhook shape            when capabilities() declares it
  * ```
  *
+ * A provider that writes takes the write suites as well — `conformance.write.fixture.ts`'s
+ * `describeTicketSourceWriteConformance` (AL.2, [#278](https://github.com/NobuData/ouroboros/issues/278)):
+ * create, dedupe, link, milestones, epics, the six-class write taxonomy and rollback.
+ *
  * ---------------------------------------------------------------------------
  * **Why the checks are functions returning lists of sentences.** `providers/conformance.fixture.ts`
  * made the argument for model adapters and it holds unchanged: a rule shaped as
@@ -63,13 +67,15 @@ import {
 } from "./ticket-source.config";
 import {
   MAX_STATUS_REASON,
-  TICKET_SOURCE_ERROR_CLASSES,
+  TICKET_SOURCE_READ_ERROR_CLASSES,
   TicketSourceError,
   statusReasonFor,
   type TicketSourceErrorClass,
+  type TicketSourceReadErrorClass,
 } from "./ticket-source.errors";
 import {
   supportsWebhooks,
+  writeMemberViolations,
   type CanonicalTicket,
   type TicketPage,
   type TicketSourceCapabilities,
@@ -251,7 +257,7 @@ export interface TicketSourceConformance {
    * the same way on both paths, because the settings form and the source's status row are two
    * views of one tracker's answer.
    */
-  readonly refuse: Readonly<Record<TicketSourceErrorClass, () => void>>;
+  readonly refuse: Readonly<Record<TicketSourceReadErrorClass, () => void>>;
   /** The webhook recordings — required exactly when `capabilities().webhooks` is true. */
   readonly webhook: WebhookConformance | null;
 }
@@ -421,12 +427,9 @@ export function capabilityViolations(provider: TicketSourceProvider): string[] {
     violations.push("supportsWebhooks disagrees with capabilities().webhooks");
   }
 
-  if (capabilities.bidirectionalWrites === true) {
-    violations.push(
-      "capabilities().bidirectionalWrites is reserved until a write member exists (AL.2, #278) " +
-        "and must be false",
-    );
-  }
+  // AL.2's (#278) declaration: coherent on its own, and in agreement with the summary flag and the
+  // five write members — the same sentences the registry refuses a provider with at boot.
+  violations.push(...writeMemberViolations(provider));
 
   return violations;
 }
@@ -1210,7 +1213,7 @@ export function describeTicketSourceConformance(
       expect(TICKET_SOURCE_KINDS).toContain(build().provider.kind);
     });
 
-    it("declares three stable capability flags that agree with its members", () => {
+    it("declares three stable capability flags and a write declaration that agree with its members", () => {
       expect(capabilityViolations(build().provider)).toEqual([]);
     });
 
@@ -1259,7 +1262,7 @@ export function describeTicketSourceConformance(
       expect(violations).toEqual([]);
     });
 
-    for (const errorClass of TICKET_SOURCE_ERROR_CLASSES) {
+    for (const errorClass of TICKET_SOURCE_READ_ERROR_CLASSES) {
       it(`classifies its recorded ${errorClass} refusal as ${errorClass} — a result from Test connection, a TicketSourceError from a sync`, async () => {
         const { provider, context, refuse } = build();
 

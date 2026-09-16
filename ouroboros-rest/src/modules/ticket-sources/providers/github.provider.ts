@@ -58,7 +58,11 @@ import { GithubRateLimiter, REMAINING_HEADER } from "../../github/github.rate-li
 import { LEGACY_TOKEN, TOKEN_PREFIXES } from "../../github/github.token";
 import { chunked } from "../../scheduling/cadence";
 import type { TicketSourceConfigSchema } from "../ticket-source.config";
-import { TicketSourceError, classifyHttpStatus } from "../ticket-source.errors";
+import {
+  TicketSourceError,
+  classifyHttpStatus,
+  type TicketSourceReadErrorClass,
+} from "../ticket-source.errors";
 import type {
   CanonicalTicket,
   TicketPage,
@@ -67,6 +71,7 @@ import type {
   TicketSourceValidation,
   TicketSyncContext,
 } from "../ticket-source.provider";
+import { READ_ONLY_WRITE_CAPABILITIES } from "../ticket-source.write";
 import { GITHUB_SOURCE_SCHEMA, readGithubConfig, type GithubSourceConfig } from "./github.config";
 import {
   ISSUES_ROUTE,
@@ -165,11 +170,17 @@ export class GithubTicketSourceProvider implements TicketSourceProvider {
    * @returns Labels yes — GitHub has them, so an empty chip-set means *nothing matched* rather
    *   than *no such concept*. Webhooks no: a delivery endpoint is Q.4's
    *   ([#141](https://github.com/NobuData/ouroboros/issues/141)) and the registry refuses a flag
-   *   that disagrees with the member, so claiming it here would fail at boot. Bidirectional
-   *   writes are reserved across the whole SPI.
+   *   that disagrees with the member, so claiming it here would fail at boot. Writes no — yet:
+   *   the write SPI is AL.2's (#278) and GitHub's implementation of it is AL.3's (#279), so until
+   *   that lands the tracker segment renders GitHub push-disabled rather than a push that fails.
    */
   capabilities(): TicketSourceCapabilities {
-    return { webhooks: false, labels: true, bidirectionalWrites: false };
+    return {
+      webhooks: false,
+      labels: true,
+      bidirectionalWrites: false,
+      write: READ_ONLY_WRITE_CAPABILITIES,
+    };
   }
 
   /**
@@ -535,7 +546,7 @@ async function probeRepo(
   octokit: OctokitLike,
   owner: string,
   repo: string,
-): Promise<{ errorClass: TicketSourceError["errorClass"]; detail: string } | null> {
+): Promise<{ errorClass: TicketSourceReadErrorClass; detail: string } | null> {
   try {
     await octokit.request(REPO_ROUTE, { owner, repo });
 
@@ -551,7 +562,7 @@ async function probeRepo(
 }
 
 /** What a failed probe says about each class, in words a form renders. */
-const VALIDATION_DETAIL: Readonly<Record<TicketSourceError["errorClass"], string>> = Object.freeze({
+const VALIDATION_DETAIL: Readonly<Record<TicketSourceReadErrorClass, string>> = Object.freeze({
   auth: "GitHub rejected this token, or it is missing the repository scope",
   rate_limit: "this token's GitHub rate limit is spent; try again once it resets",
   not_found: "no such repository, or this token cannot see it",
@@ -570,7 +581,7 @@ const VALIDATION_DETAIL: Readonly<Record<TicketSourceError["errorClass"], string
  * @param error - Whatever the request rejected with.
  * @returns The class.
  */
-function classifyRefusal(error: unknown): TicketSourceError["errorClass"] {
+function classifyRefusal(error: unknown): TicketSourceReadErrorClass {
   const status = statusOf(error);
 
   if (status === undefined) {

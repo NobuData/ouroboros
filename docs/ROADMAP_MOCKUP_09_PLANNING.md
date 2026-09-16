@@ -546,7 +546,7 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AL.1 | #277 | 🟢 Done | ouroboros-engine: [AL.1] Plan contract & outline parser v0 | `/v0/plan`: narrative+outline → drafts+deps, versioned, provenance | mvp, planning, engine | N (after #52) | Y | M | ouroboros-engine |
-| AL.2 | #278 | 🟡 Open | ouroboros-rest: [AL.2] Write-capability SPI extension | `createTicket`/`linkDependency`/`ensureEpic` + conformance kit cases | mvp, planning, sources, rest | N (after WF-Q.2) | Y | M | ouroboros-rest |
+| AL.2 | #278 | 🟢 Done | ouroboros-rest: [AL.2] Write-capability SPI extension | `createTicket`/`linkDependency`/`ensureEpic` + conformance kit cases | mvp, planning, sources, rest | N (after WF-Q.2) | Y | M | ouroboros-rest |
 | AL.3 | #279 | 🟡 Open | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
 | AL.4 | #280 | 🟡 Open | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
 | AL.5 | #281 | 🟡 Open | ouroboros-rest: [AL.5] Backlog health & nightly re-estimation | Sized/blocked/stale metrics; scheduled unsized re-runs | mvp, planning, rest, intake | N (after AK.2, INTAKE-L.3) | Y | S | ouroboros-rest |
@@ -629,7 +629,7 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 
 ### Issue AL.2 — ouroboros-rest: [AL.2] Write-capability SPI extension
 
-> **GitHub issue:** #278 · **Status:** 🟡 Open · **Parent epic:** #269
+> **GitHub issue:** #278 · **Status:** 🟢 Done · **Parent epic:** #269
 
 
 - **Problem Statement:** The pluggable-source SPI reads; planning writes. The
@@ -658,6 +658,45 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 capabilities().write = {createTicket ✓, nativeDependencies ✓, epicMapping: parent_issue, milestones ✓}
 core PushService ──SPI only──▶ provider.createTicket / linkDependency / ensureEpicContainer
 ```
+
+- **Delivered (2026-09-16):** `ouroboros-rest` 0.35.8 — `ticket-source.write.ts` and
+  `WriteCapableProvider` on `ticket-source.provider.ts`, following the recipe Q.2 left for it
+  (`WebhookCapableProvider`): a sub-interface reached through `supportsWrites`, so
+  `registry.get(kind).createTicket(…)` does not compile without the guard. Decisions taken
+  in-issue:
+  - **The write flags are a total shape**, not the sketch's optional bag — the read side's
+    argument unchanged: no consumer decides what an unmentioned flag means.
+    `READ_ONLY_WRITE_CAPABILITIES` is the one-line answer for a provider that cannot write, and
+    `createTicket: false` forces every other flag off; the registry refuses an incoherent
+    declaration, or one that disagrees with the five members, at boot.
+  - **`bidirectionalWrites` is kept, not replaced.** Q.2 reserved it *"so the interface is an
+    extension rather than a reshape"*; it now summarises `write.createTicket` and the catalog
+    field clients already read did not move. The API change is additive (OpenAPI 0.35.8).
+  - **Every write member is idempotent** — `createTicket` dedupes by the draft's idempotency
+    key, and the ensure/link/attach members answer what exists — because a crash between a
+    tracker's `201` and AL.3's commit is exactly what bookkeeping alone cannot survive.
+  - **An absent capability answers `null`**: `ensureMilestone` without milestones and
+    `ensureEpicContainer` under `epicMapping: 'none'` are ordinary configurations; only
+    `attachToEpic` handed a mirror the mapping could not produce refuses, as `validation`.
+  - **The `linkDependency` fallback is one body-marker grammar**,
+    `<!-- ouroboros:blocked-by <id> -->`, written and read by shared helpers, and the answer
+    says `{ mode: 'fallback' }` so AM.2 can tell a person which mode ran.
+  - **Error taxonomy:** `permission` and `validation` join Q.2's four; `rate_limit` was already
+    there. Reads keep their four (`TICKET_SOURCE_READ_ERROR_CLASSES`) and
+    `classifyWriteHttpStatus` is the write-side sibling of `classifyHttpStatus` — `403` is
+    `permission`, a content-refusing `4xx` is `validation`.
+  - **UI gating** is a value on the catalog: every entry carries `push: { enabled, reason }`,
+    so a read-only kind renders disabled with a tooltip. GitHub declares read-only until AL.3
+    implements its writes.
+
+  The conformance kit gains `conformance.write.fixture.ts` — create, dedupe, link, milestones,
+  epics, all six error classes, rollback, credential retention — judged against a
+  harness-supplied ledger of what the tracker holds rather than the provider's own answers. The
+  in-memory fake's `InMemoryWriteTicketSourceProvider` passes it under three declarations (every
+  feature; fallback links + no milestones + `epicMapping: 'none'`; native epics). The boundary
+  suite now proves a push service importing a provider or a tracker SDK fails `yarn lint`, and
+  importing the SPI passes. The #126 amendment was posted on 2026-08-09 and is unchanged:
+  INTAKE-O.5's write-backs adopt this surface. `docs/TICKET_SOURCES.md` § 7a documents it.
 
 ### Issue AL.3 — ouroboros-rest: [AL.3] GitHub push service (batch, idempotent)
 

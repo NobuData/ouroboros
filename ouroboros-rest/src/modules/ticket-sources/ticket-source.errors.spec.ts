@@ -9,8 +9,11 @@ import {
   TICKET_SOURCE_ERROR_REASONS,
   TICKET_SOURCE_ERROR_RETRYABLE,
   TICKET_SOURCE_ERROR_STATUS,
+  TICKET_SOURCE_READ_ERROR_CLASSES,
+  TICKET_SOURCE_WRITE_ERROR_CLASSES,
   TicketSourceError,
   classifyHttpStatus,
+  classifyWriteHttpStatus,
   formatClock,
   statusReasonFor,
 } from "./ticket-source.errors";
@@ -94,7 +97,7 @@ describe("the ticket source error taxonomy", () => {
     expect(body).not.toContain("detail");
   });
 
-  it("is four classes wide, and the list matches the type", () => {
+  it("is six classes wide, and the list matches the type", () => {
     // `satisfies` already holds the list to the union at compile time; what this adds is the
     // other direction — a class added to the union and forgotten here would compile, and every
     // total record below would then be missing an entry the compiler *would* catch. So this is
@@ -104,7 +107,37 @@ describe("the ticket source error taxonomy", () => {
       "rate_limit",
       "not_found",
       "upstream",
+      "permission",
+      "validation",
     ]);
+  });
+
+  it("keeps Q.2's four for reads and all six for writes", () => {
+    // AL.2 (#278): a listing call cannot tell a missing scope from a refused credential, nor send
+    // content a tracker could reject, so a read suite never asks a provider to record either.
+    expect([...TICKET_SOURCE_READ_ERROR_CLASSES]).toStrictEqual([
+      "auth",
+      "rate_limit",
+      "not_found",
+      "upstream",
+    ]);
+    expect([...TICKET_SOURCE_WRITE_ERROR_CLASSES]).toStrictEqual([...TICKET_SOURCE_ERROR_CLASSES]);
+  });
+
+  it("classifies permission, validation and rate-limit write failures distinctly", () => {
+    // The acceptance criterion, as three classes with three phrases and one retry answer between
+    // them: only the rate limit is worth waiting out.
+    const classes = ["permission", "validation", "rate_limit"] as const;
+
+    expect(new Set(classes.map((errorClass) => TICKET_SOURCE_ERROR_REASONS[errorClass])).size).toBe(
+      3,
+    );
+    expect(TICKET_SOURCE_ERROR_RETRYABLE.permission).toBe(false);
+    expect(TICKET_SOURCE_ERROR_RETRYABLE.validation).toBe(false);
+    expect(statusReasonFor(errorOf("permission", null, 403))).toBe("permission denied (403)");
+    expect(statusReasonFor(errorOf("validation", null, 422))).toBe(
+      "tracker rejected the write (422)",
+    );
   });
 
   it.each(TICKET_SOURCE_ERROR_CLASSES)("maps %s onto a real source status", (errorClass) => {
@@ -146,6 +179,8 @@ describe("the ticket source error taxonomy", () => {
     // The two `false` entries are the two failures a retry can only waste time on. Asserted by
     // name rather than by iterating, because which two they are is the content of the table.
     expect(TICKET_SOURCE_ERROR_RETRYABLE.auth).toBe(false);
+    expect(TICKET_SOURCE_ERROR_RETRYABLE.permission).toBe(false);
+    expect(TICKET_SOURCE_ERROR_RETRYABLE.validation).toBe(false);
     expect(TICKET_SOURCE_ERROR_RETRYABLE.not_found).toBe(false);
     expect(TICKET_SOURCE_ERROR_RETRYABLE.rate_limit).toBe(true);
     expect(TICKET_SOURCE_ERROR_RETRYABLE.upstream).toBe(true);
@@ -190,7 +225,7 @@ describe("statusReasonFor", () => {
   });
 
   it("stays inside the column's bound across every branch, with the widest inputs there are", () => {
-    // The composer has finitely many outputs — four phrases × three branches — and this
+    // The composer has finitely many outputs — six phrases × three branches — and this
     // enumerates all of them rather than guarding at run time. `ticket-source.errors.ts`
     // argues why a guard would be worse: it would turn an edited phrase into a silent
     // ellipsis instead of a red test, which is this one.
@@ -280,6 +315,49 @@ describe("classifyHttpStatus", () => {
   });
 });
 
+describe("classifyWriteHttpStatus", () => {
+  it.each([
+    [301, "not_found"],
+    [400, "validation"],
+    [401, "auth"],
+    [403, "permission"],
+    [404, "not_found"],
+    [407, "auth"],
+    [408, "upstream"],
+    [409, "validation"],
+    [410, "not_found"],
+    [422, "validation"],
+    [429, "rate_limit"],
+    [500, "upstream"],
+    [503, "upstream"],
+  ])("reads %i as %s", (status, expected) => {
+    expect(classifyWriteHttpStatus(status)).toBe(expected);
+  });
+
+  it("differs from the read table in exactly the places its header names", () => {
+    // 403 and the content-refusing 4xx; everything else reads the same on both paths, so a
+    // provider switching tables for a write changes nothing it did not mean to.
+    const differing = [];
+
+    for (let status = 300; status < 600; status += 1) {
+      if (classifyWriteHttpStatus(status) !== classifyHttpStatus(status)) {
+        differing.push(status);
+      }
+    }
+
+    expect(differing).toContain(403);
+    expect(differing).toContain(422);
+    expect(differing).not.toContain(401);
+    expect(differing).not.toContain(404);
+    expect(differing).not.toContain(429);
+    expect(differing.every((status) => status >= 400 && status < 500)).toBe(true);
+  });
+
+  it("refuses a success, as the read table does", () => {
+    expect(() => classifyWriteHttpStatus(201)).toThrow(RangeError);
+  });
+});
+
 describe("TicketSourceError", () => {
   it("carries the class, the detail and nothing it was constructed from", () => {
     const error = new TicketSourceError("upstream", "503 from the listing call", null, 503);
@@ -300,6 +378,7 @@ describe("TicketSourceError", () => {
     const foreign = { errorClass: "auth", detail: "key rejected" };
 
     expect(TicketSourceError.is(foreign)).toBe(true);
+    expect(TicketSourceError.is({ errorClass: "permission", detail: "scope missing" })).toBe(true);
     expect(TicketSourceError.is(new TicketSourceError("auth", "x"))).toBe(true);
   });
 

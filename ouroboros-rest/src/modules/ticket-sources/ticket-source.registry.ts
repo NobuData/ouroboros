@@ -46,6 +46,11 @@
  * a type cannot catch: {@link WebhookCapableProvider} narrows the flag to `true`, which stops a
  * webhook-capable provider from reporting `false`, and nothing stops a provider with no member
  * from reporting `true`.
+ *
+ * AL.2 ([#278](https://github.com/NobuData/ouroboros/issues/278)) adds the third, for the same
+ * reason one SPI extension over: a write declaration that is incoherent — `milestones` without
+ * `createTicket` — or that disagrees with the five write members is refused here, through
+ * {@link writeMemberViolations}, so the push service's `supportsWrites` can trust the flag.
  */
 
 import { Inject, Injectable } from "@nestjs/common";
@@ -55,6 +60,7 @@ import { InvalidRequestError, NotImplementedError } from "../errors/error.envelo
 import { sourceSchemaViolations } from "./ticket-source.config";
 import {
   supportsWebhooks,
+  writeMemberViolations,
   type TicketSourceProvider,
   type WebhookCapableProvider,
 } from "./ticket-source.provider";
@@ -157,6 +163,18 @@ export class TicketSourceRegistry {
         throw new Error(
           `Provider "${provider.kind}" declares webhooks: ${declaresWebhooks.toString()} ` +
             "but its webhookHandler member says otherwise",
+        );
+      }
+
+      // AL.2's assertion: the push service narrows on the write flag, so a flag that disagrees
+      // with the declaration or the members is a push that fails on click — or a write member
+      // nothing can reach. Every sentence at once, as the schema check below does.
+      const writeViolations = writeMemberViolations(provider);
+
+      if (writeViolations.length > 0) {
+        throw new Error(
+          `Provider "${provider.kind}" declares write capabilities that disagree: ` +
+            writeViolations.join("; "),
         );
       }
 

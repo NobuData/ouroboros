@@ -104,14 +104,16 @@ store a row.
 
 ### `capabilities()`
 
-Three flags, all required. `false` is an answer; a partial record would let a capability be
-*unmentioned*, and every consumer would then have to decide what an absent flag means.
+Three flags and a write declaration, all required. `false` is an answer; a partial record would
+let a capability be *unmentioned*, and every consumer would then have to decide what an absent
+flag means.
 
 | flag | what it says |
 |---|---|
 | `webhooks` | whether you implement `WebhookCapableProvider`. The registry checks this against the member at boot, in both directions. |
 | `labels` | whether the concept of a label exists at your tracker at all — **not** whether a given ticket has any. It is the difference between an empty chip-set because nothing matched and one because there is nothing to match. |
-| `bidirectionalWrites` | reserved. `false` today; a v2 ticket adds the member behind it, as an extension. |
+| `bidirectionalWrites` | whether you implement `WriteCapableProvider`. Always equal to `write.createTicket`; the registry refuses a disagreement at boot. |
+| `write` | which writes — `{ createTicket, nativeDependencies, epicMapping, milestones }`. A read-only provider answers `READ_ONLY_WRITE_CAPABILITIES`. See [§ 7a](#7a-writing-back-optional). |
 
 They must be **stable**: two calls answer equal values. A capability that changed between two
 renders would show an affordance that then failed.
@@ -315,10 +317,12 @@ else's JSON.
 
 ## 4. Failing
 
-Four words, and nothing else:
+Four words for a read, two more for a write, and nothing else:
 
 ```ts
-type TicketSourceErrorClass = "auth" | "rate_limit" | "not_found" | "upstream";
+type TicketSourceErrorClass =
+  | "auth" | "rate_limit" | "not_found" | "upstream"   // a read — and a write
+  | "permission" | "validation";                      // a write only (AL.2, #278)
 ```
 
 | class | what it means | `status` | what the person reads |
@@ -327,6 +331,8 @@ type TicketSourceErrorClass = "auth" | "rate_limit" | "not_found" | "upstream";
 | `rate_limit` | working, and refusing anyway | `error` | `rate limited until 14:20 UTC` |
 | `not_found` | the project, repository or site is not there — or the credential cannot see it | `error` | `project or repository not found` |
 | `upstream` | the tracker answered with its own failure, or did not answer | `error` | `tracker unavailable (503)` |
+| `permission` | *write only* — a valid credential without the scope to write | `error` | `permission denied (403)` |
+| `validation` | *write only* — the tracker refused a write's content | `error` | `tracker rejected the write (422)` |
 
 Throw one:
 
@@ -355,7 +361,10 @@ project key, and the row cannot tell them apart. What can is `validateConfig`, w
 somebody is looking at the form.
 
 `classifyHttpStatus(status)` maps a refusal onto a class, so you do not write that `switch`
-again. Override the one status your tracker reads differently and call it for the rest.
+again. Override the one status your tracker reads differently and call it for the rest. A write
+uses `classifyWriteHttpStatus(status)` instead, which differs in exactly two places: `403` is
+`permission` rather than `auth`, and a content-refusing `4xx` (`400`, `409`, `422`, …) is
+`validation` rather than `not_found`.
 
 ---
 
@@ -454,6 +463,72 @@ both directions. A flag that lies is a member that is either unreachable or miss
 
 ---
 
+## 7a. Writing back (optional)
+
+AL.2 ([#278](https://github.com/NobuData/ouroboros/issues/278)) — *the pluggability requirement
+made bidirectional*. The same recipe as webhooks: the members are on `WriteCapableProvider`, a
+caller reaches them through `supportsWrites`, and the push service (AL.3, #279) asks what a
+provider can do rather than which provider it is. It imports the SPI only; the lint boundary is
+the same one the sync loop is held to.
+
+```ts
+capabilities().write = {
+  createTicket: boolean;          // the gate: every flag below is off when this is
+  nativeDependencies: boolean;    // else the documented fallback below
+  epicMapping: "parent_issue" | "epic" | "project" | "none";
+  milestones: boolean;
+};
+
+createTicket(context, draft)              → { externalId, externalKey, url }
+linkDependency(context, blocker, blocked) → { mode: "native" | "fallback" }
+ensureMilestone(context, name)            → { externalRef, name } | null
+ensureEpicContainer(context, epic)        → { mapping, externalRef } | null
+attachToEpic(context, ticket, mirror)     → void
+```
+
+**Every member is idempotent.** `createTicket` dedupes by `draft.idempotencyKey` — search before
+you create — and `ensureMilestone`, `ensureEpicContainer`, `linkDependency` and `attachToEpic`
+answer what already exists rather than making a second one. The push service is written to be
+killed mid-batch and resumed; a crash between your tracker's `201` and its database commit is
+exactly the case your search is for.
+
+**An absent capability answers `null`, not an exception.** `ensureMilestone` with
+`milestones: false` and `ensureEpicContainer` under `epicMapping: "none"` are ordinary
+configurations. `attachToEpic` handed a mirror your mapping could not have produced refuses as
+`validation`.
+
+**A refused write leaves nothing behind.** Check your arguments before you send anything, and
+never report a failure for a write the tracker kept — the retry after recovery must create
+exactly one.
+
+**Every refusal is a `TicketSourceError`**, classified through `classifyWriteHttpStatus`, so the
+push service can tell *widen the token's scope* (`permission`) from *fix the draft*
+(`validation`) from *wait* (`rate_limit`).
+
+### The `linkDependency` fallback
+
+A tracker with no native `blocks` relation still links. Declare `nativeDependencies: false` and
+record the relation **in the blocked ticket's body**, one line per blocker, below everything a
+person wrote:
+
+```
+<!-- ouroboros:blocked-by <blocker externalId> -->
+```
+
+Use `withDependencyMarker(body, blockerId)` to add it (idempotent — a line already there is not
+added twice), `hasDependencyMarker` to test for it and `dependencyMarkersIn` to read them back, so
+every fallback provider writes and reads the same grammar. Answer `{ mode: "fallback" }`, so the
+UI can say which mode ran rather than silently degrading. The in-memory writer declared with
+`nativeDependencies: false` is the worked example.
+
+### What the UI does with the flags
+
+`GET /api/v1/sources/catalog` carries `push: { enabled, reason }` on every entry, composed by
+`pushAffordance` from `capabilities.write`. A read-only kind renders its push control
+**disabled with `reason` as the tooltip** — never a push that fails on click.
+
+---
+
 ## 8. Writing one
 
 ### Where it goes
@@ -480,7 +555,12 @@ export class YourTrackerProvider implements TicketSourceProvider {
   readonly kind = "custom" as const;
 
   capabilities(): TicketSourceCapabilities {
-    return { webhooks: false, labels: true, bidirectionalWrites: false };
+    return {
+      webhooks: false,
+      labels: true,
+      bidirectionalWrites: false,
+      write: READ_ONLY_WRITE_CAPABILITIES,
+    };
   }
 
   async validateConfig(config: unknown, credentials: string | null): Promise<TicketSourceValidation> {
@@ -568,7 +648,7 @@ describeTicketSourceConformance("YourTrackerProvider", () => {
 
 | leg | what it asserts |
 |---|---|
-| kind and capabilities | a V030 kind; three stable boolean flags; `webhooks` agrees with the member; `bidirectionalWrites` is `false` until a write member exists |
+| kind and capabilities | a V030 kind; three stable boolean flags and a coherent write declaration; `webhooks` agrees with the member; `bidirectionalWrites` and `write.createTicket` agree with each other and with the five write members |
 | config | the schema is in the dialect, stable, and accepted by the registry; the form renders one labelled field per property; your sample settings and credential pass your own form; each rejected configuration is a *failed result* from `validateConfig` and `not_found` from a sync |
 | error taxonomy | one recorded refusal per class — no exemptions — classified the same by **Test connection** and by a sync, with the credential in no `detail` and no status reason |
 | mapping | every recorded payload maps to exactly the ticket you wrote out; all eleven fields present, `null` rather than missing; at least one recording with no body and one with no author; unreadable payloads refused as `upstream` |
@@ -593,6 +673,42 @@ Two harnesses are already written to copy from:
   `ticket-source-core-tests-run-on-the-fake` enforces.
 * [`providers/github.conformance.spec.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.conformance.spec.ts)
   — the kit over recorded GitHub payloads, through a stand-in that honours `state` and `since`.
+
+### The write suites
+
+A provider that declares `write.createTicket` also takes
+`describeTicketSourceWriteConformance` from
+[`conformance.write.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.write.fixture.ts):
+
+```ts
+describeTicketSourceWriteConformance("YourTrackerProvider", () => ({
+  provider, context,
+  drafts: [DRAFT_A, DRAFT_B],             // two drafts, different idempotency keys
+  milestoneName: "Helios 2.1",
+  epic: { epicId, title, description: null },
+  ledger: () => stub.ledger(),            // what the recording holds: tickets, dependencies, …
+  refuse: { auth: …, permission: …, validation: …, rate_limit: …, not_found: …, upstream: … },
+  recover: () => stub.recover(),
+}));
+```
+
+| leg | what it asserts |
+|---|---|
+| declaration | coherent, and agrees with the five members |
+| create | a reference a sync could adopt; the tracker holds exactly one more ticket |
+| dedupe | the same idempotency key twice is one ticket and one reference |
+| link | the declared mode — native or fallback — and one relation however often it is asked; a ticket linked to itself is `validation` |
+| milestones | one milestone however often it is asked, or `null` when not declared |
+| epics | one container and one membership however often asked, or `null` under `none` — and `attachToEpic` there is `validation`, not a crash |
+| error taxonomy | one recorded refusal per class — all six — classified as that class |
+| rollback | a refused write leaves the ledger unchanged; the retry after recovery creates exactly one |
+| credentials | nothing reachable from the provider holds the credential after its writes |
+
+**The ledger is the tracker's count, not the provider's answers.** A provider that created a second
+milestone and returned the first one's id would pass a check on answers alone.
+`providers/in-memory.write-conformance.spec.ts` runs the suites against three declarations of the
+in-memory writer — every feature; fallback links with no milestones and `epicMapping: "none"`; and
+native epics.
 
 **Registering a provider without taking the kit fails the build.** `conformance.fixture.spec.ts`
 reads `ticket-sources.module.ts` and requires `providers/<name>.conformance.spec.ts` for every
@@ -636,8 +752,9 @@ So that you do not reimplement any of it:
 
 | file | what it is |
 |---|---|
-| [`ticket-source.provider.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.provider.ts) | the SPI, `CanonicalTicket`, `TicketPage`, `supportsWebhooks` |
-| [`ticket-source.errors.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.errors.ts) | the four classes, the status mapping, `statusReasonFor`, `classifyHttpStatus` |
+| [`ticket-source.provider.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.provider.ts) | the SPI, `CanonicalTicket`, `TicketPage`, `supportsWebhooks`, `WriteCapableProvider`, `supportsWrites` |
+| [`ticket-source.write.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.write.ts) | the write declaration and the values write members take and answer; `pushAffordance`; the dependency fallback marker |
+| [`ticket-source.errors.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.errors.ts) | the six classes, the status mapping, `statusReasonFor`, `classifyHttpStatus`, `classifyWriteHttpStatus` |
 | [`ticket-source.registry.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.registry.ts) | lookup by kind, and the two misuses refused at boot |
 | [`ticket-sources.service.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-sources.service.ts) | the loop |
 | [`ticket-sources.repository.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-sources.repository.ts) | the loop's statements, including the one that reads a sealed credential |
@@ -653,6 +770,7 @@ So that you do not reimplement any of it:
 | [`providers/github.config.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.config.ts) | its `config` grammar: `{ login, repos[] }` |
 | [`providers/github.mapping.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.mapping.ts) | its `mapTicket`, testable with no network |
 | [`conformance.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.fixture.ts) | the conformance kit (Q.5) — `describeTicketSourceConformance` and the checks it is built from |
+| [`conformance.write.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.write.fixture.ts) | the write suites (AL.2) — `describeTicketSourceWriteConformance` |
 | [`providers/in-memory.provider.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/in-memory.provider.fixture.ts) | the in-memory tracker and provider the kit and the core intake harness run on |
 | [`V030__canonical_tickets.sql`](../ouroboros-db/migrations/V030__canonical_tickets.sql) | `ticket_sources`, `tickets`, `ticket_sources_public` |
 | [`V031__ticket_source_status_reason.sql`](../ouroboros-db/migrations/V031__ticket_source_status_reason.sql) | `status_reason` |

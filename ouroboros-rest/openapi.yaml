@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.7"
+  version: "0.35.8"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -3293,6 +3293,14 @@ paths:
                       webhooks: false
                       labels: true
                       bidirectionalWrites: false
+                      write:
+                        createTicket: false
+                        nativeDependencies: false
+                        epicMapping: none
+                        milestones: false
+                    push:
+                      enabled: false
+                      reason: This tracker is read-only in Ouroboros — it can sync tickets but not create them.
                     fields:
                       - name: login
                         label: GitHub account
@@ -19040,15 +19048,18 @@ components:
     TicketSourceErrorClass:
       type: string
       title: TicketSourceErrorClass
-      enum: [auth, rate_limit, not_found, upstream]
+      enum: [auth, rate_limit, not_found, upstream, permission, validation]
       description: |-
-        The four words every provider is allowed to fail in
+        The words every provider is allowed to fail in
         ([#139](https://github.com/NobuData/ouroboros/issues/139)): the credential was refused;
         the tracker is working and refusing anyway; the project or repository is not there, or
         cannot be seen; the tracker answered with its own failure, or did not answer. Each
         becomes a sentence on the row — `credentials rejected`, `rate limited until 14:20 UTC`,
         `project or repository not found`, `tracker unavailable` — composed by this service, so
-        the four read the same whichever tracker produced them.
+        they read the same whichever tracker produced them. `permission` (`permission denied` —
+        a valid credential without the scope to write) and `validation` (`tracker rejected the
+        write` — the tracker refused a write's content) are the write path's two
+        ([#278](https://github.com/NobuData/ouroboros/issues/278)); a sync does not produce them.
       examples: [rate_limit]
 
     TicketSourceCapabilities:
@@ -19056,13 +19067,15 @@ components:
       title: TicketSourceCapabilities
       description: |-
         What a provider can do — its own `capabilities()`, copied onto the catalog entry
-        unchanged. Three flags, all present: a total shape, so no client has to decide what an
-        absent flag means. `webhooks` says whether the provider accepts deliveries; `labels`
-        whether the concept exists at the tracker at all (the difference between an empty
-        chip-set because nothing matched and one because there is nothing to match);
-        `bidirectionalWrites` is reserved and `false` on every provider this build ships.
+        unchanged. Three flags and a write declaration, all present: a total shape, so no client
+        has to decide what an absent flag means. `webhooks` says whether the provider accepts
+        deliveries; `labels` whether the concept exists at the tracker at all (the difference
+        between an empty chip-set because nothing matched and one because there is nothing to
+        match); `bidirectionalWrites` whether it can create tickets, always equal to
+        `write.createTicket`; `write` which writes
+        ([#278](https://github.com/NobuData/ouroboros/issues/278)).
       additionalProperties: false
-      required: [webhooks, labels, bidirectionalWrites]
+      required: [webhooks, labels, bidirectionalWrites, write]
       properties:
         webhooks:
           type: boolean
@@ -19073,6 +19086,62 @@ components:
         bidirectionalWrites:
           type: boolean
           examples: [false]
+        write:
+          $ref: "#/components/schemas/TicketSourceWriteCapabilities"
+
+    TicketSourceEpicMapping:
+      type: string
+      title: TicketSourceEpicMapping
+      enum: [parent_issue, epic, project, none]
+      description: |-
+        What a planning epic becomes in this tracker — a parent issue with sub-issue links, a
+        native epic, a project — or `none`, where epics are not mirrored at all and a push
+        simply attaches nothing ([#278](https://github.com/NobuData/ouroboros/issues/278)).
+      examples: [parent_issue]
+
+    TicketSourceWriteCapabilities:
+      type: object
+      title: TicketSourceWriteCapabilities
+      description: |-
+        What a provider can write ([#278](https://github.com/NobuData/ouroboros/issues/278)).
+        `createTicket` gates the rest: when it is `false`, every other flag is `false` and
+        `epicMapping` is `none` — the server refuses to boot a provider that says otherwise.
+        `nativeDependencies: false` on a writable provider means dependencies are recorded
+        through a documented body-marker fallback rather than not at all; `milestones` says
+        whether a milestone can be assigned.
+      additionalProperties: false
+      required: [createTicket, nativeDependencies, epicMapping, milestones]
+      properties:
+        createTicket:
+          type: boolean
+          examples: [false]
+        nativeDependencies:
+          type: boolean
+          examples: [false]
+        epicMapping:
+          $ref: "#/components/schemas/TicketSourceEpicMapping"
+        milestones:
+          type: boolean
+          examples: [false]
+
+    TicketSourcePushAffordance:
+      type: object
+      title: TicketSourcePushAffordance
+      description: |-
+        Whether a push to this kind may be offered, and why not when it may not
+        ([#278](https://github.com/NobuData/ouroboros/issues/278)). Composed from
+        `capabilities.write` alone, so a read-only tracker renders its push control disabled
+        with `reason` as the tooltip rather than offering a push that fails on click. `reason`
+        is null exactly when `enabled` is true.
+      additionalProperties: false
+      required: [enabled, reason]
+      properties:
+        enabled:
+          type: boolean
+          examples: [false]
+        reason:
+          type: [string, "null"]
+          examples: [This tracker is read-only in Ouroboros — it can sync tickets but not create them.]
 
     TicketSourceFormWidget:
       type: string
@@ -19168,9 +19237,10 @@ components:
       description: |-
         One connectable kind — a tile in the add-source picker, and the form behind it. The
         `title` is the form's heading, straight from the provider's schema; `fields` is what
-        the form draws, in the schema's own property order.
+        the form draws, in the schema's own property order; `push` is whether a push to this
+        kind may be offered.
       additionalProperties: false
-      required: [kind, title, fields, capabilities]
+      required: [kind, title, fields, capabilities, push]
       properties:
         kind:
           $ref: "#/components/schemas/TicketSourceKind"
@@ -19183,6 +19253,8 @@ components:
             $ref: "#/components/schemas/TicketSourceFormField"
         capabilities:
           $ref: "#/components/schemas/TicketSourceCapabilities"
+        push:
+          $ref: "#/components/schemas/TicketSourcePushAffordance"
 
     TicketSourceCatalog:
       type: object
