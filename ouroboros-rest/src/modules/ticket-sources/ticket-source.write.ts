@@ -223,9 +223,15 @@ export type DependencyLinkMode = "native" | "fallback";
 export interface DependencyLinkResult {
   /**
    * `native` when the tracker holds the relation itself; `fallback` when it is the body marker
-   * this file's header documents. Must agree with `nativeDependencies`, and the kit checks it:
-   * the UI tells a person which mode ran, and a provider that said `native` while writing
-   * markers would make that sentence a lie.
+   * this file's header documents.
+   *
+   * **The truth about what ran**, and the kit checks the half that can be a lie: a provider
+   * declaring `nativeDependencies: false` never answers `native`, and whatever it answers, the
+   * relation is there. A provider declaring `true` may still answer `fallback` — the declaration
+   * says what the tracker *kind* supports, and one self-hosted instance of it may predate the
+   * relation, which only a capability probe can discover (AL.3,
+   * [#279](https://github.com/NobuData/ouroboros/issues/279)). The UI tells a person which mode
+   * ran, and this field is where it reads that.
    */
   readonly mode: DependencyLinkMode;
 }

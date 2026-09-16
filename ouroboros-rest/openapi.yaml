@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.8"
+  version: "0.35.9"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -3292,15 +3292,15 @@ paths:
                     capabilities:
                       webhooks: false
                       labels: true
-                      bidirectionalWrites: false
+                      bidirectionalWrites: true
                       write:
-                        createTicket: false
-                        nativeDependencies: false
-                        epicMapping: none
-                        milestones: false
+                        createTicket: true
+                        nativeDependencies: true
+                        epicMapping: parent_issue
+                        milestones: true
                     push:
-                      enabled: false
-                      reason: This tracker is read-only in Ouroboros — it can sync tickets but not create them.
+                      enabled: true
+                      reason: null
                     fields:
                       - name: login
                         label: GitHub account

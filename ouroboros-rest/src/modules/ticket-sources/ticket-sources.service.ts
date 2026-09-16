@@ -430,8 +430,12 @@ export class TicketSourcesService {
    *   is gone, an envelope sealed under a version this deployment cannot reach. That is the
    *   honest class: from the outside it is indistinguishable from a credential that no longer
    *   works, and it is fixed in the same place.
+   *
+   * Public since AL.3 ([#279](https://github.com/NobuData/ouroboros/issues/279)): the push
+   * service opens a source's credential exactly this way, for the length of one push, rather than
+   * holding a second copy of the vault's AAD rule.
    */
-  private async withCredentials<T>(
+  async withCredentials<T>(
     source: SyncSource,
     run: (context: TicketSyncContext) => Promise<T>,
   ): Promise<T> {

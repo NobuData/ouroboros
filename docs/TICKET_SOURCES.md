@@ -521,6 +521,50 @@ every fallback provider writes and reads the same grammar. Answer `{ mode: "fall
 UI can say which mode ran rather than silently degrading. The in-memory writer declared with
 `nativeDependencies: false` is the worked example.
 
+**A native declaration may still fall back.** `nativeDependencies` says what your tracker *kind*
+supports; one self-hosted instance of it may predate the relation. If a capability probe finds it
+absent, write the marker and answer `{ mode: "fallback" }` — the kit refuses only the opposite lie,
+a fallback declaration answering `native`. GitHub (below) is the worked example.
+
+### GitHub, the first writer (AL.3)
+
+AL.3 ([#279](https://github.com/NobuData/ouroboros/issues/279)) implements every member for
+GitHub (`providers/github.write.ts`) and declares every feature:
+`{ createTicket: true, nativeDependencies: true, epicMapping: "parent_issue", milestones: true }`.
+
+| Member | GitHub |
+|---|---|
+| `createTicket` | `POST /repos/{o}/{r}/issues` in the source's **first enabled repository**. The body is the draft's, verbatim, then `---`, a `<sub>Filed by Ouroboros</sub>` footer, and `<!-- ouroboros:push-key <key> -->`. Before creating, the probe reads the 100 newest issues (search lags a write) and then searches for the marker (the newest page misses an old issue) |
+| `linkDependency` | Reads both issues, then `GET …/issues/{n}/dependencies/blocked_by`: `POST {issue_id}` when the blocker is not listed (**native**). A `404` from that route for an issue just read means an older GHES without the API — the body marker is written instead (**fallback**) |
+| `ensureMilestone` | Lists every milestone (`state=all`) by title, else `POST …/milestones`. The reference is the milestone number |
+| `ensureEpicContainer` | A parent tracking issue carrying `<!-- ouroboros:epic <epicId> -->`, found by the same probe before it is created |
+| `attachToEpic` | `GET …/issues/{parent}/sub_issues`, then `POST {sub_issue_id}` when absent |
+
+Refusals are read the write-side way: K.3's client now carries the HTTP status on
+`GithubApiError.httpStatus`, so a `403` with budget left is `permission` and a `422` is
+`validation`; a spent budget is `rate_limit` with its resume time. REST rather than GraphQL's
+`addBlockedBy` keeps every call on the one rate-guarded client.
+
+### The push service (AL.3)
+
+`src/modules/planning/push.service.ts` is the SPI's first write consumer, and imports no provider.
+`push(org, batch)` and `resume(org, batch)` walk a batch's selected drafts **blockers first**
+(`push.order.ts`; a cycle is a `422` naming it), key each create `<batchId>:<draftId>`, link each
+draft to the blockers that already exist, attach it to the batch epic's container
+(`epic_mirrors` first), and record it in **one transaction** — canonical ticket (adopting a row a
+sync already imported), `push_state = pushed`, every `ticket_dependencies` draft end rewritten to
+the ticket, and the epic's `epic_tickets` row.
+
+- A crash before that commit leaves the draft `pending`; the resume's `createTicket` finds the
+  issue by its key. A resume touches only `pending|failed` drafts.
+- A `rate_limit` stops the walk with the rest still `pending` and `outcome: "throttled"`,
+  `retryAt` — the batch resumes rather than fails.
+- Any other refusal records `push_error = { code: <error class>, message, detail: { step,
+  retryable, httpStatus?, retryAt? } }` and the walk continues; a draft whose blocker was not
+  pushed records `blocker_not_pushed` and is not created.
+- The report's `links: { native, fallback }` is how the UI is told which mode ran.
+- A batch is read inside the asking workspace only, joined to a source of the same workspace.
+
 ### What the UI does with the flags
 
 `GET /api/v1/sources/catalog` carries `push: { enabled, reason }` on every entry, composed by

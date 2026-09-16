@@ -307,7 +307,13 @@ describe("TABLE_COLUMNS", () => {
     // arrived with CG.4's run #482 fixture and waited, unmirrored, for the read that is now
     // `GET /registry/resolutions/latest`. Like `audit_events` it is append-only in the database,
     // so every column carries a `never` in its update position.
-    expect(TABLE_NAMES).toHaveLength(35);
+    //
+    // The thirty-sixth to forty-first are the planning model — V034's `draft_batches` and
+    // `ticket_drafts`, V035's `ticket_dependencies`, V036's `planning_epics`, `epic_tickets` and
+    // `epic_mirrors` — mirrored by AL.3 (#279), whose push service is the first reader and writer of
+    // every one of them: it reads a batch and its drafts, rewrites dependency ends, and records the
+    // tickets, epic memberships and mirrors a push creates.
+    expect(TABLE_NAMES).toHaveLength(41);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

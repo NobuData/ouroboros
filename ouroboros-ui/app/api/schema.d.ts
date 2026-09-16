@@ -14458,17 +14458,17 @@ export interface operations {
                      *           "capabilities": {
                      *             "webhooks": false,
                      *             "labels": true,
-                     *             "bidirectionalWrites": false,
+                     *             "bidirectionalWrites": true,
                      *             "write": {
-                     *               "createTicket": false,
-                     *               "nativeDependencies": false,
-                     *               "epicMapping": "none",
-                     *               "milestones": false
+                     *               "createTicket": true,
+                     *               "nativeDependencies": true,
+                     *               "epicMapping": "parent_issue",
+                     *               "milestones": true
                      *             }
                      *           },
                      *           "push": {
-                     *             "enabled": false,
-                     *             "reason": "This tracker is read-only in Ouroboros — it can sync tickets but not create them."
+                     *             "enabled": true,
+                     *             "reason": null
                      *           },
                      *           "fields": [
                      *             {

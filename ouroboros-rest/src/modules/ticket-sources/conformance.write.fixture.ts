@@ -65,6 +65,7 @@ import {
   type WriteCapableProvider,
 } from "./ticket-source.provider";
 import type {
+  DependencyLinkResult,
   EpicContainerInput,
   EpicMirrorRef,
   TicketDraftInput,
@@ -244,6 +245,43 @@ export function ledgerGrowthViolations(
 }
 
 /**
+ * Everything wrong with the modes `linkDependency` answered, given the declaration.
+ *
+ * One direction only, and deliberately: a provider declaring no native relations must never answer
+ * `native` — the UI would tell a person the tracker holds a relation it does not — and every answer
+ * must be one of the two modes. A provider declaring native relations may answer `fallback` when a
+ * probe finds its tracker instance without them (see `DependencyLinkResult.mode`); the ledger check
+ * beside this one is what proves the fallback really recorded the relation.
+ *
+ * @param nativeDependencies - The provider's `write.nativeDependencies`.
+ * @param answers - What each call answered, or undefined for a call that rejected.
+ * @returns The violations.
+ */
+export function linkModeViolations(
+  nativeDependencies: boolean,
+  answers: readonly (DependencyLinkResult | undefined)[],
+): string[] {
+  const violations: string[] = [];
+
+  for (const answer of answers) {
+    if (answer === undefined) {
+      continue;
+    }
+
+    if (answer.mode !== "native" && answer.mode !== "fallback") {
+      violations.push(`linkDependency answered mode ${String(answer.mode)}, which is neither mode`);
+    } else if (answer.mode === "native" && !nativeDependencies) {
+      violations.push(
+        "linkDependency answered mode native, and the declaration says fallback — the UI tells a " +
+          "person which mode ran",
+      );
+    }
+  }
+
+  return violations;
+}
+
+/**
  * Run a write and report a rejection as a sentence.
  *
  * @param at - What the call is, for the sentence.
@@ -375,21 +413,15 @@ export function describeTicketSourceWriteConformance(
         write.linkDependency(context, ...pair),
       );
       const after = ledger();
-      const declared = write.capabilities().write.nativeDependencies ? "native" : "fallback";
       const violations: string[] = [
         ...first.violations,
         ...second.violations,
         ...ledgerGrowthViolations(before, after, { dependencies: 1 }, "linkDependency twice"),
+        ...linkModeViolations(write.capabilities().write.nativeDependencies, [
+          first.value,
+          second.value,
+        ]),
       ];
-
-      for (const answer of [first.value, second.value]) {
-        if (answer !== undefined && answer.mode !== declared) {
-          violations.push(
-            `linkDependency answered mode ${String(answer.mode)}, and the declaration says ` +
-              `${declared} — the UI tells a person which mode ran`,
-          );
-        }
-      }
 
       if (
         !after.dependencies.some(

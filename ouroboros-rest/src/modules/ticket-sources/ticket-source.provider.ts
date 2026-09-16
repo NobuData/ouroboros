@@ -584,8 +584,10 @@ export interface WriteCapableProvider extends TicketSourceProvider {
    * @param context - The source, opened.
    * @param blocker - The ticket that must be done first.
    * @param blocked - The ticket that waits for it.
-   * @returns Which mode recorded it — `native` exactly when `write.nativeDependencies` is true,
-   *   `fallback` (the body marker) otherwise. Linking the same pair twice leaves one relation.
+   * @returns Which mode recorded it — `fallback` (the body marker) whenever
+   *   `write.nativeDependencies` is false, and `native` when it is true unless a capability probe
+   *   found this tracker instance without the relation. Linking the same pair twice leaves one
+   *   relation.
    * @throws {TicketSourceError} On a refusal; `validation` for a ticket linked to itself.
    */
   linkDependency(

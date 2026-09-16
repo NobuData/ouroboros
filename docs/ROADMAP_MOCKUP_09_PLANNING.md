@@ -547,7 +547,7 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AL.1 | #277 | 🟢 Done | ouroboros-engine: [AL.1] Plan contract & outline parser v0 | `/v0/plan`: narrative+outline → drafts+deps, versioned, provenance | mvp, planning, engine | N (after #52) | Y | M | ouroboros-engine |
 | AL.2 | #278 | 🟢 Done | ouroboros-rest: [AL.2] Write-capability SPI extension | `createTicket`/`linkDependency`/`ensureEpic` + conformance kit cases | mvp, planning, sources, rest | N (after WF-Q.2) | Y | M | ouroboros-rest |
-| AL.3 | #279 | 🟡 Open | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
+| AL.3 | #279 | 🟢 Done | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
 | AL.4 | #280 | 🟡 Open | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
 | AL.5 | #281 | 🟡 Open | ouroboros-rest: [AL.5] Backlog health & nightly re-estimation | Sized/blocked/stale metrics; scheduled unsized re-runs | mvp, planning, rest, intake | N (after AK.2, INTAKE-L.3) | Y | S | ouroboros-rest |
 | AL.6 | #282 | 🟡 Open | ouroboros-rest: [AL.6] Planning integration tests | Contract, push idempotency/resume, dep mapping, health, isolation | mvp, planning, rest, ci | N (after AL.3–AL.5) | Y | M | ouroboros-rest |
@@ -700,7 +700,7 @@ core PushService ──SPI only──▶ provider.createTicket / linkDependency 
 
 ### Issue AL.3 — ouroboros-rest: [AL.3] GitHub push service (batch, idempotent)
 
-> **GitHub issue:** #279 · **Status:** 🟡 Open · **Parent epic:** #269
+> **GitHub issue:** #279 · **Status:** 🟢 Done · **Parent epic:** #269
 
 
 - **Problem Statement:** "Push 6 tickets to GitHub →" must create real
@@ -745,6 +745,51 @@ sequenceDiagram
     P->>P: drafts → pushed · canonical tickets created · dep refs rewritten
     Note over P: crash ⇒ resume touches only pending/failed
 ```
+
+- **Delivered (2026-09-16):** `ouroboros-rest` 0.35.9 — GitHub's five write members
+  (`providers/github.write.ts`) and `PushService` in a new `src/modules/planning/` module, which
+  reaches GitHub through `TicketSourceRegistry` and `supportsWrites` only. Decisions taken
+  in-issue:
+  - **Idempotency is a marker in the body, probed twice before every create.** GitHub has no
+    idempotency header, so each issue carries `<!-- ouroboros:push-key <batch>:<draft> -->` below
+    a discreet `<sub>Filed by Ouroboros</sub>` footer; the draft's body stays verbatim above it
+    (the #514 evidence line survives). The probe reads the 100 newest issues first — search lags
+    a write, which is exactly when a resume after a crash asks — then searches for the marker.
+    Epic parents carry `<!-- ouroboros:epic <id> -->` and are found the same way.
+  - **The fallback is a capability probe, not a declaration.** GitHub declares
+    `nativeDependencies: true`; `linkDependency` reads both issues, then the `blocked_by` route —
+    a `404` there for an issue it just read is an older GHES, so it writes AL.2's body marker and
+    answers `fallback`. The write kit's mode rule became one-directional to allow it: a fallback
+    declaration may never answer `native`. REST is used rather than GraphQL `AddBlockedBy`, which
+    keeps every call on K.3's rate-guarded client.
+  - **The push target is the source's first enabled repository** — mockup 09's tenant chip names
+    one repository, and the list's order is already observable.
+  - **Write refusals are classified the write way.** K.3's `GithubApiError` now carries the HTTP
+    status (additive), so a `403` with budget left is `permission` and a `422` is `validation`.
+  - **One transaction per pushed draft** (`PushRepository.recordPushed`): the canonical ticket
+    (adopting a row a sync already imported), `push_state = pushed`, every `ticket_dependencies`
+    draft end rewritten to the ticket, and the epic's `epic_tickets` row. A kill before it leaves
+    the draft `pending` for the probe to recover; after it, nothing to redo.
+  - **Blockers first** (`push.order.ts`, Kahn's algorithm tie-broken by natural key order); a
+    cycle is a `422` naming it. A draft whose blocker failed records `blocker_not_pushed` and is
+    not created; a dependency on an unselected draft or a ticket in another source is not sent.
+  - **A throttle pauses, a refusal records.** `rate_limit` stops the walk with the rest `pending`
+    (`outcome: throttled`, `retryAt`); any other refusal is `push_error = { code: <class>,
+    message, detail: { step, retryable, httpStatus?, retryAt? } }` built only from fixed phrases.
+  - **The UI is told which mode ran** as the report's `links: { native, fallback }`.
+  - **`resume` refuses a batch no push started**; `push` refuses abandoned, fully pushed,
+    empty or read-only-target batches, and a second push in flight. Routes are AL.4's.
+
+  The six planning tables join the Kysely mirror (41 tables). `github.write-conformance.spec.ts`
+  runs AL.2's write kit green against the real provider over a recorded GitHub, with and without
+  the dependency API. `push.service.spec.ts` proves the criteria over that recording and an
+  in-memory store holding V034–V036's rules — six drafts → six issues, five native links, one
+  parent epic and one milestone; a push killed between GitHub's answer and the commit resumes
+  without a duplicate; a throttled push resumes and creates exactly the rest; the fallback;
+  structured failures; isolation. `push.integration-spec.ts` repeats the push against
+  PostgreSQL, including a WF-Q sync adopting the pushed tickets rather than importing them again.
+  **Not verified:** the live-sandbox half of the first criterion, which needs a sandbox
+  repository and token this change does not have.
 
 ### Issue AL.4 — ouroboros-rest: [AL.4] Planning API — batches, drafts, epics
 

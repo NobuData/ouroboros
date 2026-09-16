@@ -3,7 +3,7 @@ import { Logger } from "@nestjs/common";
 import { GithubRateLimiter } from "../../github/github.rate-limit";
 import { budgetHeaders, httpError } from "../../github/github.fixture";
 import { TicketSourceError, statusReasonFor } from "../ticket-source.errors";
-import type { TicketPage } from "../ticket-source.provider";
+import { supportsWrites, writeMemberViolations, type TicketPage } from "../ticket-source.provider";
 import { MAX_ENABLED_REPOS } from "./github.config";
 import { GITHUB_FAILURES, GithubApiError } from "../../github/github.errors";
 import {
@@ -28,7 +28,6 @@ import {
   type OctokitScript,
 } from "./github.provider.fixture";
 import { ISSUES_ROUTE } from "./github.mapping";
-import { READ_ONLY_WRITE_CAPABILITIES } from "../ticket-source.write";
 
 /**
  * The first conforming plugin, against a scripted GitHub
@@ -104,7 +103,7 @@ describe("the GitHub ticket source provider", () => {
     expect(build().provider.kind).toBe("github");
   });
 
-  it("declares labels, no webhooks, and no writes — stably", () => {
+  it("declares labels, no webhooks, and every write — stably", () => {
     // Stability is a requirement rather than an observation: the registry checks the webhook
     // flag once, at boot, and an affordance that changed between two renders would be one that
     // then failed.
@@ -113,12 +112,18 @@ describe("the GitHub ticket source provider", () => {
     expect(provider.capabilities()).toStrictEqual({
       webhooks: false,
       labels: true,
-      bidirectionalWrites: false,
-      // GitHub's write implementation is AL.3's (#279); until it lands the catalog renders
-      // GitHub push-disabled rather than offering a push that fails (AL.2, #278).
-      write: READ_ONLY_WRITE_CAPABILITIES,
+      // AL.3 (#279): native dependencies, milestones, and epics as parent issues with sub-issues.
+      bidirectionalWrites: true,
+      write: {
+        createTicket: true,
+        nativeDependencies: true,
+        epicMapping: "parent_issue",
+        milestones: true,
+      },
     });
     expect(provider.capabilities()).toStrictEqual(provider.capabilities());
+    expect(supportsWrites(provider)).toBe(true);
+    expect(writeMemberViolations(provider)).toStrictEqual([]);
   });
 
   describe("a cold import", () => {

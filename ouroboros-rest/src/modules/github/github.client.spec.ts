@@ -277,8 +277,30 @@ describe("the GitHub client", () => {
 
       await expect(clientOver(octokit).request("GET /repos/x/y")).rejects.toMatchObject({
         failure: GITHUB_FAILURES.upstreamError,
+        httpStatus: undefined,
       });
     });
+
+    it.each([
+      ["a 401", 401, healthy()],
+      ["a 403 scope refusal", 403, healthy()],
+      ["a spent 403", 403, budgetHeaders({ remaining: 0 })],
+      ["a 404", 404, healthy()],
+      ["a 422 refused payload", 422, healthy()],
+      ["a 429", 429, healthy()],
+      ["a 503", 503, healthy()],
+    ])(
+      "carries the status GitHub answered on %s, for a write to classify",
+      async (_case, status, headers) => {
+        // AL.3 (#279): the five reasons fold a 403 scope and a 422 payload into two words a write
+        // cannot act on, so the status travels beside them.
+        const octokit = fakeOctokit([httpError(status, headers)]);
+
+        await expect(clientOver(octokit).request("POST /repos/x/y/issues")).rejects.toMatchObject({
+          httpStatus: status,
+        });
+      },
+    );
 
     it("passes its own refusal through rather than re-wrapping it as an upstream error", async () => {
       const octokit = fakeOctokit([
