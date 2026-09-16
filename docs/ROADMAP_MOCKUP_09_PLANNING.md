@@ -224,7 +224,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AK.1 | #272 | 🟢 Done | ouroboros-db: [AK.1] Draft batches & ticket drafts schema | Pre-push draft entities with generation provenance & push state | mvp, planning, db | N (after WF-Q.1) | Y | M | ouroboros-db |
-| AK.2 | #273 | 🟡 Open | ouroboros-db: [AK.2] Ticket dependencies schema | Canonical + draft `blocks` relations (N4), health-metric feeds | mvp, planning, db | N (after AK.1) | Y | S | ouroboros-db |
+| AK.2 | #273 | 🟢 Done | ouroboros-db: [AK.2] Ticket dependencies schema | Canonical + draft `blocks` relations (N4), health-metric feeds | mvp, planning, db | N (after AK.1) | Y | S | ouroboros-db |
 | AK.3 | #274 | 🟡 Open | ouroboros-db: [AK.3] Planning epics & tracker mirrors | Lanes: tint, month range, status, mirror refs, ticket links | mvp, planning, db | N (after AK.1) | Y | M | ouroboros-db |
 | AK.4 | #275 | 🟡 Open | ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity | Batch OTA-1…6, five epics, health-shaping tickets | mvp, planning, db | N (after AK.2, AK.3) | Y | S | ouroboros-db |
 | AK.5 | #276 | 🟡 Open | ouroboros-db: [AK.5] Planning constraints in ci/db | Dependency acyclicity probe, push-state vocab, range checks | mvp, planning, db, ci | N (after AK.4, #24) | Y | XS | ouroboros-db, .github |
@@ -326,7 +326,7 @@ erDiagram
 
 ### Issue AK.2 — ouroboros-db: [AK.2] Ticket dependencies schema
 
-> **GitHub issue:** #273 · **Status:** 🟡 Open · **Parent epic:** #268
+> **GitHub issue:** #273 · **Status:** 🟢 Done · **Parent epic:** #268
 
 
 - **Problem Statement:** `blocks OTA-3` on drafts and the Blocked health
@@ -348,6 +348,55 @@ erDiagram
 ticket_dependencies: (blocker: draft|ticket) ─blocks─▶ (blocked: draft|ticket)
 push: OTA-1(draft)→OTA-3(draft) ⇒ #612(ticket)→#614(ticket) · origin: planned
 ```
+
+- **Delivered (2026-09-16):** `V035__ticket_dependencies.sql` in `ouroboros-db` —
+  `ticket_dependencies`, one `blocks` relation spanning drafts and canonical tickets
+  (decision **N4**). Five decisions were taken in-issue.
+  - **`nulls not distinct` is what makes the pair key a key.** Three of the four endpoint
+    columns are null in any row, and PostgreSQL's default is that nulls are *distinct* — so
+    the criterion *"duplicate pairs are rejected regardless of which endpoint kinds are
+    used"* would have been satisfied, on paper, by an index that accepted the same edge
+    without limit. It is `V012`'s `model_prices_match_key` argument reaching a second table.
+    `V029` declined the same construct and that is not a contradiction: there it would have
+    folded **two** rules into one name, and here there is one rule whose name states it.
+  - **`origin` is deliberately outside that key.** A planned edge a tracker reports back is
+    *the same edge*, so WF-Q's sync upserts onto the pair rather than inserting a second row
+    beside it. Two rows for one relation would double it in the Blocked meter, which is the
+    one number this table exists to make true — and the metric still counts both
+    provenances, because a block is a block whoever authored it.
+  - **The self-reference CHECK is a null-guarded inequality per kind, not `is distinct
+    from`.** The tidy spelling reads better and is wrong: `null is distinct from null` is
+    false, so it would have rejected every ticket→ticket and every draft→draft edge — each
+    of which has both columns of the *other* kind null. The behavioural probe against a real
+    PostgreSQL is what separates those two spellings, which is what `tests/constraints.sql`
+    is for.
+  - **There is no acyclicity constraint, and that is the design.** Detecting a cycle means
+    *walking* the graph, so AL.4 (#280) enforces it on every write and this migration's job
+    is to keep a **stored** cycle findable — a cycle is not an error anybody sees, it is a
+    batch that can never be pushed, because AL.3 (#279) pushes in dependency order and a
+    cycle has none. What makes AK.5's (#276) probe a single recursive CTE rather than a
+    four-branch join is a property of these columns: node identity is
+    `coalesce(draft_id, ticket_id)`, two uuid primary keys that cannot collide. The suite
+    walks it on a planted two-node cycle, on a mixed draft-and-ticket cycle, and on the
+    acyclic graph — so the technique AK.5 wires into `ci/db` is proven here against real
+    rows rather than described.
+  - **Endpoints cascade where `ticket_drafts.pushed_ticket_id` sets null**, and the
+    difference is not an inconsistency: a draft whose ticket is deleted was still truthfully
+    pushed, so it survives with a cleared reference, while an edge whose end is gone is a
+    dependency on nothing. That cascade is also what keeps regeneration safe, inheriting
+    `V034`'s placement — replacing the unselected drafts takes their edges in both
+    directions and nobody else's.
+
+  All eight acceptance criteria are asserted in `ouroboros-db/tests/constraints.sql` against
+  a migrated database, including the push rewrite's **atomicity** — asserted through a
+  savepoint that is rolled back, because the criterion is about the crash rather than the
+  happy path, and the rewrite is an `update` of one row rather than a delete and re-insert —
+  and organization isolation across **all four** references, where a ticket reaches a
+  workspace directly and a draft reaches one through its batch, so
+  `ticket_dependencies_endpoints_in_organization` walks both distances. Nothing in
+  `ouroboros-rest` changed: the table stays out of the schema mirror until AL.3 (#279) and
+  AL.5 (#281) read it, which is that module's *"a mirrored table with no reader is drift"*
+  rule.
 
 ### Issue AK.3 — ouroboros-db: [AK.3] Planning epics & tracker mirrors
 
