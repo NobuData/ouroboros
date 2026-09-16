@@ -20,6 +20,7 @@ fails prints a body a reader can compare against the design it came from.
 
 import os
 from collections.abc import Iterator
+from copy import deepcopy
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,8 +35,10 @@ from ouroboros_engine.estimation.contract import (
     IssueContext,
     Trace,
 )
+from ouroboros_engine.planning.contract import PlanningContext, PlanRequest
 from ouroboros_engine.settings import Settings
 from ouroboros_engine.workflows.contract import DryRunTicket, TicketEstimate
+from planning_golden import case_named
 from workflows_golden import read_fixture
 
 #: Every environment variable ouroboros_engine.settings declares an alias for. This is
@@ -315,3 +318,53 @@ def standard_fix() -> dict:
         so a test that edits its copy cannot change what the next one reads.
     """
     return read_fixture("valid/standard-fix.json")
+
+
+# ---------------------------------------------------------------------------
+# Planning — the mockup's own outcome, and the outline that decomposes it
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def plan_body() -> dict:
+    """The mockup's OTA request, as the JSON a caller sends.
+
+    Read from ``schemas/plan/fixtures/expected.json`` rather than written out again here,
+    so the request the suite exercises and the request the published contract records are
+    the same one — and a change to the recording cannot leave a stale copy behind in the
+    fixtures. Copied on the way out, so a test that needs an invalid body can edit this one
+    without changing what the next test reads.
+
+    Returns:
+        The body, ready to hand to :meth:`TestClient.post` as ``json``.
+    """
+    return deepcopy(case_named("ota-outline").request)
+
+
+@pytest.fixture
+def plan_request(plan_body: dict) -> PlanRequest:
+    """The same request as the model the planner is called with.
+
+    Args:
+        plan_body: The request body.
+
+    Returns:
+        A valid :class:`ouroboros_engine.planning.contract.PlanRequest`.
+    """
+    return PlanRequest.model_validate(plan_body)
+
+
+@pytest.fixture
+def planning_context(plan_request: PlanRequest) -> PlanningContext:
+    """The vocabularies the mockup's caller offers.
+
+    The four workflow tags the mockup's draft rows show, ``Helios 2.1``, and the ``OTA``
+    prefix its id column carries.
+
+    Args:
+        plan_request: The request to read the context off.
+
+    Returns:
+        The :class:`ouroboros_engine.planning.contract.PlanningContext`.
+    """
+    return plan_request.context

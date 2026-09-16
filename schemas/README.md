@@ -18,6 +18,10 @@ every consumer reads the same artifact rather than each inventing a parser.
 
 ```
 schemas/
+├── plan/
+│   ├── v0.json                  # the contract — $id: …/plan/v0.json, JSON Schema 2020-12
+│   └── fixtures/
+│       └── expected.json        # one case per parser rule, and the batch it must answer with
 └── workflow-dsl/
     ├── v1.json                  # the contract — $id: …/workflow-dsl/v1.json, JSON Schema 2020-12
     └── fixtures/
@@ -50,6 +54,19 @@ schemas/
 | [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) | the specification a person reads | Worked examples taken from these fixtures |
 | [`docs/WORKFLOW_CODE_DSL.md`](../docs/WORKFLOW_CODE_DSL.md) | the code-view language a person reads | Worked examples taken from `fixtures/code/` |
 | [`ouroboros-db/scripts/workflow-dsl-drift.mjs`](../ouroboros-db/scripts/workflow-dsl-drift.mjs) | `ci/db`'s drift check (P.6) — every seeded workflow definition, as stored, validated against `v1.json` with ajv | `ouroboros-db/tests/workflow-dsl-drift.test.sh` (green over the valid fixtures, red over an invalid one and over a tightened copy of the schema) |
+| [`ouroboros-engine/src/ouroboros_engine/planning/`](../ouroboros-engine/src/ouroboros_engine/planning) | `POST /v0/plan` (AL.1) — the outline parser, which is the contract's first implementation | `tests/test_planning_golden.py` (every recorded case's batch verbatim, every response valid against `plan/v0.json`, and the schema and the pydantic models agreeing field for field) |
+
+`plan/v0.json` is here for a reason the workflow DSL's `$id` neighbour is not: **it is one
+contract with two implementations rather than two readers of one document.** AL.1's outline
+parser answers it today and AN.1 ([#289](https://github.com/NobuData/ouroboros/issues/289))
+answers the same shape with a real planner once the invocation gateway
+([#235](https://github.com/NobuData/ouroboros/issues/235)) exists — so the file is what makes
+*the response shape is identical* a checkable claim rather than an intention. What AN.1
+inherits is the **shape**, not the recorded values: a planner that decomposes a narrative
+properly will answer the `narrative-only` case with several drafts, which is the whole point
+of it, so each case records its own `planner` provenance too.
+`ouroboros-rest` becomes its third reader with AL.4
+([#280](https://github.com/NobuData/ouroboros/issues/280)), which persists what comes back.
 
 **Neither module imports the other, and no third process compares two outputs.** Each reads
 this directory from its own suite and asserts against the same `expected.json`. A rule added to

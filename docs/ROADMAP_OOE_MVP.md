@@ -31,7 +31,8 @@ authority on *when* they are built.
 
 ## Progress
 
-**205 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 is under way.
+**206 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 and P8 are
+under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -41,7 +42,8 @@ and are accounted for in the counts below, not in the tables.
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
 | 🟡 **In progress** | P7 | **42** of 43 |
-| — **Not started** | P8–P17 | 0 of 246 |
+| 🟡 **In progress** | P8 | **1** of 17 |
+| — **Not started** | P9–P17 | 0 of 229 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --state closed --limit 1000 --json number` whenever the plan
@@ -111,7 +113,7 @@ position is not forced by dependencies, one of these decided it.
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
 | **P6** | Issue intake & estimation | ✅ 23/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | 🟡 42/43 | 43 | 137 | Mockups 04, 05 |
-| **P8** | Planning & batch work creation | — 0/17 | 17 | 52 | Mockup 09 |
+| **P8** | Planning & batch work creation | 🟡 1/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | — 0/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | — 0/38 | 38 | 119 | Mockups 11, 12 |
@@ -1393,7 +1395,7 @@ the blockquote above that records what it did and what it did differently.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 209 | **AL.1** | [#277](https://github.com/NobuData/ouroboros/issues/277) | Plan contract & outline parser v0 | ouroboros-engine | M | 6.3 |
+| 209 | **AL.1** | ✅ [#277](https://github.com/NobuData/ouroboros/issues/277) | Plan contract & outline parser v0 | ouroboros-engine | M | 6.3 |
 | 210 | **AK.1** | [#272](https://github.com/NobuData/ouroboros/issues/272) | Draft batches & ticket drafts schema | ouroboros-db | M | Q.1 |
 | 211 | **AK.2** | [#273](https://github.com/NobuData/ouroboros/issues/273) | Ticket dependencies schema | ouroboros-db | S | AK.1 |
 | 212 | **AK.3** | [#274](https://github.com/NobuData/ouroboros/issues/274) | Planning epics & tracker mirrors | ouroboros-db | M | AK.1 |

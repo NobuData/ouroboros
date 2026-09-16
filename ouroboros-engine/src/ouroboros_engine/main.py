@@ -17,13 +17,22 @@ committed file this module loads rather than a document FastAPI derives from the
 
 from fastapi import FastAPI
 
-from ouroboros_engine.api import estimate, health, root, status, tasks, workflows
+from ouroboros_engine.api import (
+    estimate,
+    health,
+    plan,
+    root,
+    status,
+    tasks,
+    workflows,
+)
 from ouroboros_engine.core.errors import register_error_handlers
 from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
 from ouroboros_engine.core.uptime import Uptime
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
 from ouroboros_engine.openapi import document
+from ouroboros_engine.planning.outline_planner import OutlinePlanner
 from ouroboros_engine.settings import Settings, load_settings
 
 #: The paths served without the internal key. Liveness only, and it is the route module
@@ -46,9 +55,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         A configured :class:`fastapi.FastAPI` whose ``state.settings`` holds the
         settings it was built with, so a route or a middleware can reach them without
         re-reading the environment, whose ``state.uptime`` is the stopwatch
-        ``/v0/status`` reports from, and whose ``state.estimator`` is the
+        ``/v0/status`` reports from, whose ``state.estimator`` is the
         :class:`~ouroboros_engine.estimation.heuristic.HeuristicEstimator`
-        ``POST /v0/estimate`` calls.
+        ``POST /v0/estimate`` calls, and whose ``state.planner`` is the
+        :class:`~ouroboros_engine.planning.outline_planner.OutlinePlanner`
+        ``POST /v0/plan`` calls.
 
     Raises:
         ouroboros_engine.settings.SettingsError: If ``settings`` was omitted and the
@@ -105,6 +116,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # See `ouroboros_engine.estimation.heuristic`.
     app.state.estimator = HeuristicEstimator()
 
+    # And which planner answers `POST /v0/plan`, for the same reason and by the same rule.
+    # `OutlinePlanner` is AL.1's deterministic parser: provenance `outline-v0` in every
+    # batch, and one draft plus a note when it was given a narrative and no outline. AN.1
+    # (#289) is the LLM planner that answers the same contract once the invocation gateway
+    # exists, and installing it is this line. See `ouroboros_engine.planning`.
+    app.state.planner = OutlinePlanner()
+
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that
     # is added later, and an unauthenticated request never reaches routing at all.
@@ -126,6 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(estimate.router)
     app.include_router(workflows.router)
+    app.include_router(plan.router)
     return app
 
 

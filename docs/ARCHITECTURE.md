@@ -550,6 +550,7 @@ REST mirrors it in a typed client:
 | `GET /v0/status` | `X-Ouro-Internal-Key` | Version and uptime | **Running** (#51) |
 | `POST /v0/tasks/echo` | `X-Ouro-Internal-Key` | The contract exemplar: `{task_kind, payload}` → `{accepted, echo, engine_version}` | **Running** (#52) |
 | `POST /v0/estimate` | `X-Ouro-Internal-Key` | Size one issue: `{issue, context}` → one version of an `issue_estimates` row | **Running** (#105), answered by the `heuristic-v0` rule engine (#106) |
+| `POST /v0/plan` | `X-Ouro-Internal-Key` | Draft a batch of tickets: `{narrative, outline?, context}` → drafts with dependencies, workflow suggestions and provenance | **Running** (#277), answered by the deterministic `outline-v0` parser; #289 answers the same contract with a real planner |
 
 The version lives in the path (`/v0`), so a breaking change to the internal contract is a
 new prefix served alongside the old one rather than a flag day. What that means in

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ouroboros.build/schemas/plan/v0.json",
+  "title": "Ouroboros plan contract, version 0",
+  "description": "The request and response of POST /v0/plan (#277) -- the versioned generation contract. Roadmap decision N2: the planning page's promise needs an LLM, the LLM needs the invocation gateway (#235), and rather than wait or fake it the contract is specified ONCE and implemented TWICE. AL.1's deterministic outline parser answers it today with planner `outline-v0`; AN.1 (#289) answers the SAME shape with a real planner and `llm-v1 - <model>`, so the API, the UI, the sizing pipeline and the push path are unchanged by its arrival. The root of this document is the response, because that is the half both implementations must agree on letter for letter; the request is published beside it under $defs. Drafts carry no size: decision N3 sends them through the existing estimation pipeline instead, so there is one sizer in the product. See ouroboros-engine/src/ouroboros_engine/planning/ and fixtures/expected.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["drafts", "planner", "notes"],
+  "properties": {
+    "drafts": {
+      "description": "The batch, in the order the page lists it. At least one: a planner that could not decompose the work answers with a single draft carrying the whole of it, never with an empty batch.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/draft" }
+    },
+    "planner": {
+      "description": "What produced this batch -- `outline-v0` for AL.1, `llm-v1 - <model>` for AN.1. Decision K10: required and non-empty, so a batch that cannot say what produced it does not get past the contract boundary. A reader branches on this rather than on which build answered, and the page renders it rather than a hard-coded estimator version.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "notes": {
+      "description": "Sentences for the person who asked, rendered as designed guidance rather than as an error (#284). This is where a planner says what it did NOT do: a narrative it could not split, an annotation naming a key that is not in the batch, a marker matching no workflow. Empty when there is nothing to say.",
+      "type": "array",
+      "maxItems": 32,
+      "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+    }
+  },
+
+  "$defs": {
+    "local_key": {
+      "description": "A batch-local name for one draft: the caller's prefix, a hyphen, and a 1-based position. It means nothing outside the batch it was drafted in -- the tracker's number does not exist until the batch is pushed -- which is why dependencies travel as these rather than as issue numbers. Assigned by position and never by content, so the same input re-keys identically.",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{0,11}-[1-9][0-9]{0,3}$"
+    },
+
+    "draft": {
+      "description": "One drafted ticket -- a row of the mockup's DRAFT list. Deliberately not a ticket: nothing has been created anywhere, and a draft exists before any tracker knows about it (decision N1).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_key",
+        "title",
+        "body",
+        "suggested_workflow",
+        "dependencies"
+      ],
+      "properties": {
+        "local_key": { "$ref": "#/$defs/local_key" },
+        "title": {
+          "description": "One line -- what becomes the issue title when the batch is pushed.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "body": {
+          "description": "What becomes the issue body. Empty is a real answer: an outline bullet with no detail under it has nothing more to say, and an empty body is honest where an invented paragraph would not be. Present as \"\" rather than omitted, because a missing key reads as an older schema.",
+          "type": "string",
+          "maxLength": 65536
+        },
+        "suggested_workflow": {
+          "description": "Which workflow should run it -- the mockup's tag chip. Always one of the workflow_tags the request offered: decision K5 puts the vocabulary in the caller's hands, and the engine holds no list of tags and so cannot invent one.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "dependencies": {
+          "description": "The local keys this draft is BLOCKED BY, in batch order. The mockup's `blocks OTA-3` note on OTA-1 is this list on OTA-3 -- the direction the dependencies table stores and the direction GitHub's own dependencies/blocked_by takes. Every key here is one of the batch's own; an edge pointing outside it is refused by the contract rather than stored.",
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/local_key" }
+        }
+      }
+    },
+
+    "planning_context": {
+      "description": "What the installation has, told to the engine rather than assumed by it -- decision K5, the same shape the estimation contract states it in.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflow_tags", "milestone", "local_key_prefix"],
+      "properties": {
+        "workflow_tags": {
+          "description": "Every workflow tag the installation has. Required and non-empty, because suggested_workflow is required and a request offering no tags has no batch this contract can answer with. THE ORDER MATTERS and it is the caller's: the first tag is what a draft with no marker of its own takes.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+        },
+        "milestone": {
+          "description": "Which milestone the batch is for. Opaque to the engine, which neither resolves it nor checks it exists. `null` for a batch drafted without one -- stated rather than implied by a missing key.",
+          "type": ["string", "null"],
+          "maxLength": 255
+        },
+        "local_key_prefix": {
+          "description": "What the batch's own keys are prefixed with -- `OTA` for the mockup's OTA-1..6. The caller's choice, because a local key is a name inside one batch and the engine has no basis for inventing one.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]{0,11}$"
+        }
+      }
+    },
+
+    "plan_request": {
+      "description": "The body of a POST /v0/plan request. The split between the first two fields is the whole of decision N2: the narrative is the outcome somebody described, the outline is the structure they were willing to commit to. A planner with both can decompose the work; a planner with only the first CANNOT, and the honest answer to that is one draft and a note rather than several plausible-sounding inventions.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["narrative", "outline", "context"],
+      "properties": {
+        "narrative": {
+          "description": "The outcome, in the author's own words -- the page's `Describe the outcome, not the tasks`. Required and non-empty: it is the thing being planned, and an outline without one is a list of tasks nobody stated a reason for.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384
+        },
+        "outline": {
+          "description": "The structure, as a markdown outline. `null` for a request that offers none, which is a supported request rather than a malformed one. A top-level bullet is a ticket, anything indented under it is that ticket's body, `blocks:`/`after:` are dependency edges, a numbered list is a sequence, and a [marker] is a workflow hint.",
+          "type": ["string", "null"],
+          "maxLength": 32768
+        },
+        "context": { "$ref": "#/$defs/planning_context" }
+      }
+    }
+  }
+}

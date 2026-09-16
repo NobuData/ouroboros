@@ -87,6 +87,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `POST /v0/estimate` | yes | Size one issue: `{issue, context}` in, one version of K.2's estimate row out |
 | `POST /v0/workflows/validate` | yes | The engine's findings on a workflow definition — the publish gate's second opinion |
 | `POST /v0/workflows/dry-run` | yes | Walk a definition for one ticket: ordered steps, a verdict per stage, the path to highlight — no model or provider call |
+| `POST /v0/plan` | yes | Draft a batch of tickets: `{narrative, outline?, context}` in, drafts with dependencies and provenance out |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
 ```console
@@ -311,6 +312,67 @@ dry run executes imports the control-plane client, the estimator, a socket, an H
 is also what the Build Analyzer's counterfactual simulation (#523) and the deep dry run's pre-check
 (#562) reuse, which is why it is a function of the typed document and the ticket and nothing else.
 
+## Drafting a batch of tickets
+
+`POST /v0/plan` turns an outcome into drafted tickets with their dependencies
+([#277](https://github.com/NobuData/ouroboros/issues/277)). It is the second operation whose
+implementation is expected to be swapped out from under it, and the reason it exists in this
+form is roadmap decision **N2**: the planning page's promise needs a model, a model needs the
+invocation gateway ([#235](https://github.com/NobuData/ouroboros/issues/235)), and that is v2.
+Rather than block the page or fake the magic, **the contract is specified once and implemented
+twice**. The parser answers it today; the LLM planner
+([#289](https://github.com/NobuData/ouroboros/issues/289)) answers the same shape later, and
+the API, the UI, the sizing pipeline and the push path are unchanged by its arrival.
+
+```console
+$ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
+    -H 'content-type: application/json' \
+    -d '{"narrative":"OTA updates must survive power loss mid-flash.",
+         "outline":"- Partition table for A/B slots  blocks: OTA-3\n- Checksum before commit\n- Rollback on failure\n- Write it up  [docs]",
+         "context":{"workflow_tags":["feature-loop","docs-loop"],
+                    "milestone":"Helios 2.1","local_key_prefix":"OTA"}}' \
+    localhost:8000/v0/plan && echo
+{"drafts":[{"local_key":"OTA-1","title":"Partition table for A/B slots","body":"","suggested_workflow":"feature-loop","dependencies":[]},{"local_key":"OTA-2","title":"Checksum before commit","body":"","suggested_workflow":"feature-loop","dependencies":[]},{"local_key":"OTA-3","title":"Rollback on failure","body":"","suggested_workflow":"feature-loop","dependencies":["OTA-1"]},{"local_key":"OTA-4","title":"Write it up","body":"","suggested_workflow":"docs-loop","dependencies":[]}],"planner":"outline-v0","notes":[]}
+```
+
+**What the parser reads**, and the whole of it:
+
+| You write | It becomes |
+|---|---|
+| a top-level bullet | a ticket |
+| anything indented under it | that ticket's body, nesting preserved |
+| `blocks: KEY` / `after: KEY` | a dependency edge, in either direction |
+| a **numbered** list | a sequence — each item after the one before it |
+| `[marker]` | a workflow-tag hint, matched against the tags you offered |
+
+**Narrative-only input degrades honestly, and that is the point.** With no outline the parser
+cannot decompose anything, so it answers with **one** draft carrying the narrative and a note
+recommending an outline. It does not invent five plausible-sounding tickets — output that
+looks like planning and is actually a guess is the exact failure this staging exists to
+avoid — and the page renders that note as designed guidance rather than as an error
+([#284](https://github.com/NobuData/ouroboros/issues/284)).
+
+**Nothing is inferred that was not written, and nothing is dropped in silence.** An unordered
+list gets no edges it was not given: the order somebody typed their bullets in is not a claim
+that one blocks another. A numbered list is the one place sequencing *is* read, because
+writing `1. 2. 3.` is itself the statement that there is an order — and the batch says so in
+`notes`. Everything the parser saw and could not use says so there too: an annotation naming a
+key that is not in the batch, a marker matching no workflow, a `blocks:` written on an indented
+line, prose before the first bullet, a bullet with no text.
+
+**The caller supplies the vocabulary** (decision **K5**, as with sizing): `suggested_workflow`
+is always one of `context.workflow_tags`, and a draft with no marker of its own takes the
+first tag you offered — not a default this service holds, because it holds no list of tags at
+all. **`planner` is always recorded** (decision **K10**), so a deployment that believes it has
+the LLM planner can find out from a response which one it actually has. And **nothing here is
+sized**: decision **N3** sends drafts through the same estimation pipeline every other ticket
+uses, so `✓ all sized` on the page means what it says.
+
+The contract is published as [`schemas/plan/v0.json`](../schemas/plan/v0.json) with one
+recorded case per rule beside it, because AN.1 implements the *same* contract and `ouroboros-rest`
+([#280](https://github.com/NobuData/ouroboros/issues/280)) persists what comes back —
+`tests/test_planning_golden.py` holds this implementation to both.
+
 ## The API specification
 
 **[`openapi.yaml`](openapi.yaml) is the specification, and the service serves it.** This
@@ -529,6 +591,7 @@ ouroboros-engine/
 │   │   ├── tasks.py    #   POST /v0/tasks/echo — the contract exemplar
 │   │   ├── estimate.py #   POST /v0/estimate — size one issue                   · #105
 │   │   ├── workflows.py#   POST /v0/workflows/validate · /dry-run               · #144
+│   │   ├── plan.py     #   POST /v0/plan — draft a batch of tickets             · #277
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
@@ -553,6 +616,11 @@ ouroboros-engine/
 │   │   ├── contract.py #   R.2's wire shapes — findings, the ticket, the walk   · #144
 │   │   ├── predicates.py#  one evaluator for the trigger, forks and edges      · #144
 │   │   └── simulate.py #   the dry-run walk — deterministic, and spends nothing · #144
+│   ├── planning/       # drafting a batch of tickets from an outcome             · #277
+│   │   ├── contract.py #   the shapes; published as schemas/plan/v0.json
+│   │   ├── planner.py  #   the seam a planner plugs into, and the K5 check
+│   │   ├── outline.py  #   the five rules a markdown outline is read by
+│   │   └── outline_planner.py  # outline-v0: what that reading means
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
@@ -645,6 +713,7 @@ estimation contract [#105](https://github.com/NobuData/ouroboros/issues/105) ·
 heuristic estimator [#106](https://github.com/NobuData/ouroboros/issues/106) ·
 the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
 workflow validation and the dry-run simulator [#144](https://github.com/NobuData/ouroboros/issues/144) ·
+the plan contract and its outline parser [#277](https://github.com/NobuData/ouroboros/issues/277) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 

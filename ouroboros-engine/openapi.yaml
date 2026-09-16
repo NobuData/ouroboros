@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.0
+  version: 0.7.1
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -121,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.7.0
+                version: 0.7.1
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.7.0
+                version: 0.7.1
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -195,7 +195,7 @@ paths:
                   task_kind: echo
                   payload:
                     note: hello from ouroboros-rest
-                engine_version: 0.7.0
+                engine_version: 0.7.1
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -749,6 +749,149 @@ paths:
                     to: checks-green
                   - from: checks-green
                     to: open-pr
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /v0/plan:
+    post:
+      tags: [v0]
+      summary: Draft a batch of tickets from an outcome
+      description: |-
+        Turn an outcome — and, when there is one, the outline somebody was willing to commit
+        to — into a batch of drafted tickets with their dependencies, their suggested
+        workflows, and the provenance of whatever produced them.
+
+        **This contract is implemented twice, on purpose.** Roadmap decision **N2**: the
+        planning page's promise needs a model, a model needs the invocation gateway
+        ([#235](https://github.com/NobuData/ouroboros/issues/235)), and that is v2. Rather
+        than block the page or fake the magic, the operation is specified once and
+        implemented twice. Today it is a deterministic outline parser — `outline-v0`, AL.1
+        ([#277](https://github.com/NobuData/ouroboros/issues/277)). AN.1
+        ([#289](https://github.com/NobuData/ouroboros/issues/289)) answers **this same
+        shape** with a real planner, and nothing upstream changes: not this document, not the
+        page, not the sizing pipeline, not the push path. `schemas/plan/v0.json` is that
+        promise written down where both implementations can be held to it.
+
+        **Narrative-only input degrades honestly, and that is the point.** Without an outline
+        the v0 parser cannot decompose anything, so it answers with **one** draft carrying
+        the narrative and a `notes` entry recommending an outline. It does not invent five
+        plausible-sounding tickets — output that looks like planning and is actually a guess
+        is the exact failure this staging exists to avoid. A caller renders `notes` as
+        guidance beside the draft, not as an error: this is a `200`.
+
+        **What the parser reads.** A top-level markdown bullet is a ticket; anything indented
+        under it is that ticket's body; `blocks: KEY` and `after: KEY` are dependency edges;
+        a bracketed `[marker]` is a workflow-tag hint matched against the tags the caller
+        offered; and a **numbered** list is read as a sequence, each item depending on the one
+        before it. An unordered list gets no edges it was not given — the order somebody typed
+        their bullets in is not a claim that one blocks another — and the one place sequencing
+        *is* inferred says so in `notes`.
+
+        **Nothing is silently dropped.** An annotation naming a key that is not in the batch,
+        a marker matching no workflow, a `blocks:` written on an indented line, prose before
+        the first bullet, a bullet with no text: each is ignored rather than guessed at, and
+        each produces a `notes` entry naming it. A parser that quietly discards half its input
+        is one nobody can debug.
+
+        **`planner` is always recorded** — decision **K10**. A batch that cannot say what
+        produced it does not get past the contract boundary, so a deployment that believes it
+        has the LLM planner can find out from a response which one it actually has.
+
+        **The caller supplies the vocabulary.** `context.workflow_tags` is what the
+        installation has and every `suggested_workflow` is drawn from it — decision **K5**.
+        This service holds no list of workflow tags, so it cannot invent one; a planner that
+        names something outside the offer is a `500` here rather than a draft that reaches a
+        row. The same holds for `context.local_key_prefix`, which is what the batch's own keys
+        carry.
+
+        **Nothing here is sized.** Decision **N3**: drafts go through the same estimation
+        pipeline every other ticket does (`POST /v0/estimate`), so there is one sizer in the
+        product and the page's `✓ all sized` means what it says. A draft carries no effort, no
+        confidence and no cost.
+
+        **Deterministic.** The same request produces the same batch, the same local keys and
+        the same notes in the same order, every time — which is what makes a *regenerate* that
+        changed something meaningful rather than noise.
+      operationId: planWork
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanRequest"
+            example:
+              narrative: >-
+                We need OTA updates to survive power loss mid-flash: staged A/B partitions,
+                checksum verification before swap, automatic rollback, and a recovery beacon
+                over BLE if both slots are bad.
+              outline: |-
+                - Partition table & bootloader slot flag for A/B scheme  blocks: OTA-3
+                  - two slots, with the active one named in the bootloader header
+                  - fall back to the previous slot when the flag is unset
+                - SHA-256 checksum verification before slot swap  blocks: OTA-3
+                  - verify the staged image before the swap, never after it
+                - Rollback state machine on failed boot confirmation  blocks: OTA-5
+                  - restore the previous slot
+                  - emit a telemetry event
+                - BLE recovery beacon when both slots fail checksum  blocks: OTA-5
+                  - advertise a recovery service when neither slot verifies
+                - Power-loss integration tests on HIL rig (kill power mid-flash)  [hil-verify]
+                  - cut power during erase, during write, and during the swap
+                - Operator docs: recovery procedure & beacon pairing  [docs]
+              context:
+                workflow_tags: [feature-loop, hil-verify, docs-loop, standard-fix]
+                milestone: Helios 2.1
+                local_key_prefix: OTA
+      responses:
+        "200":
+          description: |-
+            The batch — mockup 09's own six draft rows, carrying its dependency notes
+            (`blocks OTA-3` read from the other end) and its workflow tags. `notes` is empty
+            because this outline is one the parser could read completely.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+              example:
+                drafts:
+                  - local_key: OTA-1
+                    title: "Partition table & bootloader slot flag for A/B scheme"
+                    body: |-
+                      - two slots, with the active one named in the bootloader header
+                      - fall back to the previous slot when the flag is unset
+                    suggested_workflow: feature-loop
+                    dependencies: []
+                  - local_key: OTA-2
+                    title: "SHA-256 checksum verification before slot swap"
+                    body: "- verify the staged image before the swap, never after it"
+                    suggested_workflow: feature-loop
+                    dependencies: []
+                  - local_key: OTA-3
+                    title: "Rollback state machine on failed boot confirmation"
+                    body: |-
+                      - restore the previous slot
+                      - emit a telemetry event
+                    suggested_workflow: feature-loop
+                    dependencies: [OTA-1, OTA-2]
+                  - local_key: OTA-4
+                    title: "BLE recovery beacon when both slots fail checksum"
+                    body: "- advertise a recovery service when neither slot verifies"
+                    suggested_workflow: feature-loop
+                    dependencies: []
+                  - local_key: OTA-5
+                    title: "Power-loss integration tests on HIL rig (kill power mid-flash)"
+                    body: "- cut power during erase, during write, and during the swap"
+                    suggested_workflow: hil-verify
+                    dependencies: [OTA-3, OTA-4]
+                  - local_key: OTA-6
+                    title: "Operator docs: recovery procedure & beacon pairing"
+                    body: ""
+                    suggested_workflow: docs-loop
+                    dependencies: []
+                planner: outline-v0
+                notes: []
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -1565,6 +1708,194 @@ components:
           description: |-
             Every edge the walk took, in the order it took them — the segments the canvas draws
             in the accent treatment.
+
+    PlanningContext:
+      type: object
+      title: PlanningContext
+      description: |-
+        What the installation has, told to the engine rather than assumed by it — decision
+        **K5**, the same shape `EstimationContext` states it in. A workflow tag is an opaque
+        string this service ascribes no meaning to, and the set of them belongs to the
+        installation, so the caller sends them and a batch naming anything outside them is
+        refused before it leaves the engine.
+      additionalProperties: false
+      required: [workflow_tags, milestone, local_key_prefix]
+      properties:
+        workflow_tags:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+          description: |-
+            Every workflow tag the installation has, as the mockup's draft rows show one.
+            Required and non-empty: `suggested_workflow` is required, so a request offering no
+            tags has no batch this contract can answer with. **The order matters** and it is
+            the caller's — the first tag is what a draft with no marker of its own takes,
+            because a service that ascribes a tag no meaning has no other way to rank them.
+          examples: [[feature-loop, hil-verify, docs-loop, standard-fix]]
+        milestone:
+          type: [string, "null"]
+          maxLength: 255
+          description: |-
+            Which milestone the batch is for — the mockup's *Milestone: Helios 2.1*. Opaque:
+            this service neither resolves it nor checks that it exists. `null` for a batch
+            drafted without one, which the caller states rather than implies by omitting it.
+          examples: [Helios 2.1]
+        local_key_prefix:
+          type: string
+          pattern: "^[A-Z][A-Z0-9]{0,11}$"
+          description: |-
+            What the batch's own keys are prefixed with — `OTA` for the mockup's `OTA-1…6`.
+            The caller's choice, because a local key is a name inside one batch and this
+            service has no basis for inventing one.
+          examples: [OTA]
+
+    PlanRequest:
+      type: object
+      title: PlanRequest
+      description: |-
+        The body of a `POST /v0/plan` request. The split between the first two fields is the
+        whole of decision **N2**: the narrative is the outcome somebody described, and the
+        outline is the structure they were willing to commit to. A planner with both can
+        decompose the work deterministically; a planner with only the first **cannot**, and
+        the honest answer to that is one draft and a note. Closed — a property not listed here
+        is refused rather than dropped.
+      additionalProperties: false
+      required: [narrative, outline, context]
+      properties:
+        narrative:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          description: |-
+            The outcome, in the author's own words — the page's *Describe the outcome, not the
+            tasks*. Required and non-empty: it is the thing being planned, and an outline
+            without one is a list of tasks nobody stated a reason for.
+          examples:
+            - "We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad."
+        outline:
+          type: [string, "null"]
+          maxLength: 32768
+          description: |-
+            The structure, as a markdown outline. `null` for a request that offers none, which
+            is a supported request rather than a malformed one — see the operation's
+            description for what that answers with. A top-level bullet is a ticket, anything
+            indented under it is that ticket's body, `blocks:`/`after:` are dependency edges, a
+            numbered list is a sequence, and a `[marker]` is a workflow hint.
+          examples:
+            - "- Partition table for A/B slots  blocks: OTA-3\n- Checksum verification before commit  [hil-verify]"
+        context:
+          $ref: "#/components/schemas/PlanningContext"
+          description: The vocabulary a batch may use, and the prefix its keys carry.
+
+    Draft:
+      type: object
+      title: Draft
+      description: |-
+        One drafted ticket — a row of the mockup's *DRAFT — 6 TICKETS* list. Deliberately
+        **not** a ticket: nothing has been created anywhere, and a draft exists before any
+        tracker knows about it (decision **N1**). It carries no size, because decision **N3**
+        sends drafts through the same estimation pipeline every other ticket uses.
+      additionalProperties: false
+      required: [local_key, title, body, suggested_workflow, dependencies]
+      properties:
+        local_key:
+          type: string
+          pattern: "^[A-Z][A-Z0-9]{0,11}-[1-9][0-9]{0,3}$"
+          description: |-
+            The batch's own name for this draft. Unique within the batch and the only thing
+            `dependencies` may name. It means nothing outside the batch it was drafted in —
+            the tracker's number does not exist until the batch is pushed — and it is assigned
+            by position rather than by content, so the same input re-keys identically.
+          examples: [OTA-3]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: |-
+            One line — the mockup's `ttl` column, and what becomes the issue title on push.
+          examples: [Rollback state machine on failed boot confirmation]
+        body:
+          type: string
+          maxLength: 65536
+          description: |-
+            What becomes the issue body. **Empty is a real answer**: an outline bullet with no
+            detail under it has nothing more to say, and an empty body is honest where an
+            invented paragraph would not be. Present as `""` rather than omitted, for the
+            reason `breakdown.files` is `[]` rather than absent — a missing key reads as an
+            older schema.
+          examples: ["- restore the previous slot\n- emit a telemetry event"]
+        suggested_workflow:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |-
+            Which workflow should run it — the mockup's `tag` chip. Always one of the
+            `workflow_tags` the request offered.
+          examples: [feature-loop]
+        dependencies:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            pattern: "^[A-Z][A-Z0-9]{0,11}-[1-9][0-9]{0,3}$"
+          description: |-
+            The local keys this draft is **blocked by**, in batch order. The mockup's
+            `blocks OTA-3` note on `OTA-1` is this list on `OTA-3` — the direction the
+            dependency table stores and the direction GitHub's own `dependencies/blocked_by`
+            takes. Every key is one of the batch's own; an edge pointing outside it is refused
+            rather than returned.
+          examples: [[OTA-1, OTA-2]]
+
+    Plan:
+      type: object
+      title: Plan
+      description: |-
+        The body of a `POST /v0/plan` response — one draft batch, and what produced it. The
+        shape AN.1 ([#289](https://github.com/NobuData/ouroboros/issues/289)) answers with
+        too, unchanged, which is what `schemas/plan/v0.json` exists to keep checkable.
+      additionalProperties: false
+      required: [drafts, planner, notes]
+      properties:
+        drafts:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/Draft"
+          description: |-
+            The batch, in the order the page lists it. At least one: a planner that could not
+            decompose the work answers with the whole of it as a single draft, never with an
+            empty batch.
+        planner:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |-
+            What produced this batch — `outline-v0` for the parser, `llm-v1 · <model>` when
+            AN.1 lands. **Decision K10**: required and non-empty, so a batch that cannot say
+            what produced it does not get past the contract boundary. A reader branches on
+            this rather than on which build answered, and the page renders it rather than a
+            hard-coded estimator version.
+          examples: [outline-v0]
+        notes:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            minLength: 1
+            maxLength: 512
+          description: |-
+            Sentences for the person who asked, rendered as designed guidance rather than as
+            an error. This is where a planner says what it did **not** do: a narrative it
+            could not split, an annotation naming a key that is not in the batch, a marker
+            matching no workflow, an edge it inferred from a numbered list. Empty when there
+            is nothing to say.
+          examples:
+            - ["Add a structured outline to split this into multiple tickets, or wait for the full planner."]
 
     Error:
       type: object
