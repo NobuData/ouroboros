@@ -608,6 +608,35 @@ export interface WriteCapableProvider extends TicketSourceProvider {
   ensureMilestone(context: TicketSyncContext, name: string): Promise<MilestoneRef | null>;
 
   /**
+   * The milestones a batch may be filed under — mockup 09's **Milestone ▾** selector.
+   *
+   * AL.4 ([#280](https://github.com/NobuData/ouroboros/issues/280)): a provider passthrough, so the
+   * planning API lists what the tracker holds rather than a list of its own. Read-only, and so
+   * trivially idempotent.
+   *
+   * @param context - The source, opened.
+   * @returns The open milestones, in the tracker's own order. Empty when `write.milestones` is
+   *   false — an ordinary configuration, `ensureMilestone`'s `null` for a list.
+   * @throws {TicketSourceError} When the tracker could not be asked or refused.
+   */
+  listMilestones(context: TicketSyncContext): Promise<MilestoneRef[]>;
+
+  /**
+   * Where a push lands, named — `acme-robotics/helios-firmware`.
+   *
+   * AL.4 ([#280](https://github.com/NobuData/ouroboros/issues/280)). A draft is sized through the
+   * one estimation pipeline (decision N3), whose request names the repository the work is in; a
+   * draft is not in any repository yet, so it is sized as work *for* its push target. Pure: reads
+   * the stored configuration and calls nothing.
+   *
+   * @param config - The source's stored configuration.
+   * @returns `owner/name`-shaped — the estimation contract's `repo` grammar.
+   * @throws {TicketSourceError} When the configuration cannot be read — the class the provider's
+   *   other members answer a malformed configuration with.
+   */
+  pushTargetName(config: unknown): string;
+
+  /**
    * Find the container an epic is mirrored into, or create it.
    *
    * @param context - The source, opened.
@@ -637,11 +666,13 @@ export interface WriteCapableProvider extends TicketSourceProvider {
   ): Promise<void>;
 }
 
-/** The five members {@link WriteCapableProvider} adds, as values — what the registry checks. */
+/** The members {@link WriteCapableProvider} adds, as values — what the registry checks. */
 export const WRITE_MEMBERS = [
   "createTicket",
   "linkDependency",
   "ensureMilestone",
+  "listMilestones",
+  "pushTargetName",
   "ensureEpicContainer",
   "attachToEpic",
 ] as const satisfies readonly (keyof WriteCapableProvider)[];

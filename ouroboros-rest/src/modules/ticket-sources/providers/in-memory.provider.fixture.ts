@@ -1418,6 +1418,37 @@ export class InMemoryWriteTicketSourceProvider
   }
 
   /**
+   * The project's milestones.
+   *
+   * @param context - The source, opened.
+   * @returns Every milestone, or none on a declaration without milestones.
+   * @throws {TicketSourceError} The tracker's refusal.
+   */
+  listMilestones(context: TicketSyncContext): Promise<MilestoneRef[]> {
+    return settledWrite(() => {
+      if (!this.writes.milestones) {
+        return [];
+      }
+
+      const { project } = readInMemoryConfig(context.config);
+
+      return this.writeTracker
+        .milestones(context.credentials, project)
+        .map((milestone) => ({ externalRef: milestone.id, name: milestone.name }));
+    });
+  }
+
+  /**
+   * Where a push lands, named.
+   *
+   * @param config - The source's stored configuration.
+   * @returns `in-memory/<project>`.
+   */
+  pushTargetName(config: unknown): string {
+    return `in-memory/${readInMemoryConfig(config).project}`;
+  }
+
+  /**
    * Find or create an epic's container.
    *
    * @param context - The source, opened.

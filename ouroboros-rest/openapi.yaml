@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.9"
+  version: "0.35.10"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -502,6 +502,21 @@ tags:
       whose role is too low gets a `403` with `code: "forbidden"` — the one place this API
       answers `403`, because by then the caller has already proved the workspace is no secret
       from them.
+  - name: planning
+    description: |-
+      **Mockup 09's planning surface** ([#280](https://github.com/NobuData/ouroboros/issues/280),
+      epic [#269](https://github.com/NobuData/ouroboros/issues/269)) — generate a batch of ticket
+      drafts from an outcome, review and edit them, push the selected ones to a tracker, and keep the
+      roadmap's lanes.
+
+      Drafts are stored rows (decision N1), sized by the one estimation pipeline (N3), and pushed by
+      an idempotent, resumable push (N6). Dependencies are validated on every write, and a cycle is
+      refused **naming the cycle**.
+
+      **The role matrix is a documented policy.** Reading is every member's, `viewer` included.
+      Generating, regenerating, selecting and editing drafts is `owner`, `admin` or `member`.
+      **Pushing and every roadmap mutation are `owner` or `admin`**: drafting is exploration, and
+      pushing writes into a shared tracker.
   - name: workflows
     description: |-
       **Workflow Studio's own surface** (mockup 04, epic
@@ -13018,6 +13033,1347 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/planning/batches:
+    post:
+      tags: [planning]
+      summary: Generate a batch of ticket drafts
+      description: |-
+        Mockup 09's **Draft tickets ⟳** ([#280](https://github.com/NobuData/ouroboros/issues/280)). The
+        prompt and optional outline go to the engine's versioned planner (`POST /v0/plan`, AL.1 — today
+        `outline-v0`), and the batch it answers is **stored**: drafts are rows with a lifecycle
+        (decision N1), not a response held in a browser tab.
+
+        **Dependencies are walked before anything is stored.** A planner drafts a cycle as written; this
+        operation refuses it with `dependency_cycle`, **naming the cycle**, because a batch with a cycle
+        can never be pushed in dependency order.
+
+        **Sizing is the one estimator's** (decision N3). With `autoSize` on (the default), every draft is
+        handed to the same estimation orchestrator every mirrored issue goes through; the answer returns
+        immediately with `status: drafting`, and the batch becomes `sized` once every selected draft has an
+        estimate. Poll `GET /api/v1/planning/batches/{batch}`.
+
+        `notes` is the planner's guidance — narrative-only input answers with one draft and a note
+        recommending an outline. It is not stored, so only this answer and a regeneration carry it.
+
+        `owner`, `admin` or `member`.
+      operationId: generatePlanningBatch
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanningBatchCreate"
+            example:
+              prompt: "We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad."
+              outline: "- Partition table & bootloader slot flag for A/B scheme  blocks: OTA-3\n- SHA-256 checksum verification before slot swap  blocks: OTA-3\n- Rollback state machine on failed boot confirmation"
+              targetSourceId: 5eed001a-0000-4000-8000-000000000001
+              milestone: Helios 2.1
+              autoSize: true
+              queueSmall: false
+      responses:
+        "201":
+          description: |-
+            The stored batch, and the planner's notes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedPlanningBatch"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Drafting is `owner`, `admin` or `member`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_source_not_found` — no ticket source with that id in this workspace. Or
+            `planning_epic_not_found`, or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `planning_target_read_only` — the source's tracker cannot be written to, so nothing
+            planned for it could be pushed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body's shape is wrong. Or `dependency_cycle` — the planner's
+            batch has a cycle; `details.cycle` names it, first key repeated last.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: dependency_cycle
+                message: "This batch's dependencies form a cycle (OTA-3 → OTA-5 → OTA-3), so no ticket of it can go first."
+                details:
+                  batchId: 5eed0280-0000-4000-8000-0000000000b1
+                  cycle: [OTA-3, OTA-5, OTA-3]
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `engine_unavailable` — the planner could not be reached or answered off-contract. Or
+            `planner_unversioned` — it answered without a planner name and version this service can
+            record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/batches/{batch}:
+    get:
+      tags: [planning]
+      summary: One planning batch
+      description: |-
+        The batch, its drafts in local-key order — each with its blocked-by keys, provenance, push state
+        and estimate in force — and the generator card's footer.
+
+        **The footer is honest about money** (decision N10). `summary.loopDays` is the real sum of the
+        selected drafts' `est_minutes`. `summary.spend` is present **only** when some sized draft's routed
+        model has a rate — a `token` price, costed at its input rate as a lower bound, or a `free` one —
+        and is **absent entirely**, never `$0`, when nothing is priced. `partial: true` says some sized
+        drafts were not priced.
+
+        Any member.
+      operationId: readPlanningBatch
+      parameters:
+        - $ref: "#/components/parameters/PlanningBatchId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningBatch"
+              example:
+                id: 5eed0280-0000-4000-8000-0000000000b1
+                status: sized
+                planner: outline-v0
+                prompt: "We need OTA updates to survive power loss mid-flash."
+                outline: "- Partition table & bootloader slot flag for A/B scheme  blocks: OTA-3"
+                targetSourceId: 5eed001a-0000-4000-8000-000000000001
+                milestone: Helios 2.1
+                epicId: null
+                autoSize: true
+                queueSmall: false
+                createdAt: "2026-09-16T15:00:00.000Z"
+                updatedAt: "2026-09-16T15:00:02.000Z"
+                drafts:
+                  - id: 5eed0280-0000-4000-8000-0000000000d1
+                    localKey: OTA-1
+                    title: Partition table & bootloader slot flag for A/B scheme
+                    body: "- two slots, with the active one named in the bootloader header"
+                    selected: true
+                    suggestedWorkflow: feature-loop
+                    provenance: planned
+                    dependencies: []
+                    blockedByTicketIds: []
+                    pushState: pending
+                    pushedTicketId: null
+                    pushError: null
+                    estimate:
+                      effort: s
+                      confidence: 81
+                      estMinutes: 540
+                      estTokens: 120000
+                      routedModel: claude-fable-5
+                      estimator: heuristic-v0
+                      version: 1
+                summary:
+                  draftCount: 1
+                  selectedCount: 1
+                  sizedCount: 1
+                  allSized: true
+                  estimators: [heuristic-v0]
+                  estMinutes: 540
+                  loopDays: 0.4
+                  spend:
+                    cents: 36
+                    display: "$0.36"
+                    partial: false
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_batch_not_found` — no batch with that id in this workspace, whether or not
+            another workspace has one. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `batch` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/batches/{batch}/regenerate:
+    post:
+      tags: [planning]
+      summary: Regenerate a batch's unpushed drafts
+      description: |-
+        Mockup 09's **Regenerate**. The stored prompt and outline are asked of the planner again and the
+        batch's **unpushed** drafts are replaced.
+
+        **Selections are preserved by local key.** A draft somebody unchecked stays unchecked when the new
+        batch has a draft with the same key; a key the planner did not produce before starts checked.
+        **Pushed drafts are never touched** — their issues exist — and a new draft whose key a pushed draft
+        holds is not stored.
+
+        The batch returns to `drafting`, and its new drafts are sized again when `autoSize` is on.
+
+        `owner`, `admin` or `member`.
+      operationId: regeneratePlanningBatch
+      parameters:
+        - $ref: "#/components/parameters/PlanningBatchId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The batch as it now stands, and the planner's notes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedPlanningBatch"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Drafting is `owner`, `admin` or `member`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_batch_not_found` — no batch with that id in this workspace. Or
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `batch_not_editable` — the batch is being pushed, was pushed, or was abandoned. Or
+            `planning_target_read_only`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `batch` is not a uuid. Or `dependency_cycle`, naming the cycle.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: dependency_cycle
+                message: "This batch's dependencies form a cycle (OTA-3 → OTA-5 → OTA-3), so no ticket of it can go first."
+                details:
+                  batchId: 5eed0280-0000-4000-8000-0000000000b1
+                  cycle: [OTA-3, OTA-5, OTA-3]
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `engine_unavailable` or `planner_unversioned` — see generation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/batches/{batch}/drafts/{key}:
+    patch:
+      tags: [planning]
+      summary: Select, edit or re-wire one draft
+      description: |-
+        The checkbox, the title and body, and the draft's **blocked-by** set, by local key. Send what
+        changes; an absent field is left alone, and `body: null` clears the body.
+
+        **An edit says so.** A title or body change marks the draft `provenance: edited`, so a planner is
+        never credited with a person's words.
+
+        **`dependencies` replaces the set** the batch expresses — `[]` clears it. Every key must be one of
+        the batch's own and not the draft itself, and the graph is walked **before** the write: an edge
+        that would close a cycle is refused with `dependency_cycle`, **naming the cycle** — which edge to
+        remove is the thing a person needs to know. A pushed draft's title, body and dependencies cannot
+        change; its selection can.
+
+        `owner`, `admin` or `member`.
+      operationId: patchPlanningDraft
+      parameters:
+        - $ref: "#/components/parameters/PlanningBatchId"
+        - $ref: "#/components/parameters/PlanningDraftKey"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanningDraftPatch"
+            example:
+              selected: false
+              dependencies: [OTA-5]
+      responses:
+        "200":
+          description: |-
+            The batch as it now stands — the footer moves with a selection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningBatch"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Drafting is `owner`, `admin` or `member`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_batch_not_found` or `planning_draft_not_found`. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `batch_not_editable` — the batch is being pushed, was pushed, or was abandoned. Or
+            `draft_already_pushed` — the draft's issue exists; edit it in the tracker.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the parameters or the body's shape are wrong. Or
+            `dependency_unknown_key`, `dependency_self_reference`, or `dependency_cycle` naming the cycle.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: dependency_cycle
+                message: "This batch's dependencies form a cycle (OTA-3 → OTA-5 → OTA-3), so no ticket of it can go first."
+                details:
+                  batchId: 5eed0280-0000-4000-8000-0000000000b1
+                  cycle: [OTA-3, OTA-5, OTA-3]
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/batches/{batch}/push:
+    post:
+      tags: [planning]
+      summary: Push a batch's selected drafts to its tracker
+      description: |-
+        Mockup 09's **Push 6 tickets to GitHub →**, through AL.3's push service
+        ([#279](https://github.com/NobuData/ouroboros/issues/279)): selected drafts become issues in
+        dependency order, blockers first, with native dependencies, the milestone and the epic's parent
+        issue — idempotently, so a partial failure never duplicates an issue.
+
+        **`queue_small` composes INTAKE-M.3** (decision N7). When the batch's toggle is on, pushed drafts
+        estimated `xs` or `s` are queued through the backlog's own queue write, with its sized-only rule:
+        a ticket the backlog sync has not mirrored yet, or has not sized yet, is **reported** in
+        `queueSmall.skipped` rather than queued. `queueSmall` is `null` when the toggle is off.
+
+        **`owner` or `admin`.** Drafting is exploration; pushing writes into a shared tracker, so members
+        may draft and may not push.
+      operationId: pushPlanningBatch
+      parameters:
+        - $ref: "#/components/parameters/PlanningBatchId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            AL.3's report, and the queue-small outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningPushResult"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Pushing is `owner` or `admin` — members may draft, not push.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_batch_not_found`. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `push_in_progress`, `batch_not_pushable`, `push_nothing_selected` or
+            `push_target_read_only`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `batch` is not a uuid. Or `dependency_cycle`, naming the cycle.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: dependency_cycle
+                message: "This batch's dependencies form a cycle (OTA-3 → OTA-5 → OTA-3), so no ticket of it can go first."
+                details:
+                  batchId: 5eed0280-0000-4000-8000-0000000000b1
+                  cycle: [OTA-3, OTA-5, OTA-3]
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/batches/{batch}/push/resume:
+    post:
+      tags: [planning]
+      summary: Resume a push that stopped short
+      description: |-
+        **Resume push** — re-runs only `pending` and `failed` drafts of a batch whose push started, then
+        runs the `queue_small` hook again. `owner` or `admin`.
+      operationId: resumePlanningBatchPush
+      parameters:
+        - $ref: "#/components/parameters/PlanningBatchId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            AL.3's report, and the queue-small outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningPushResult"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Pushing is `owner` or `admin` — members may draft, not push.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_batch_not_found`. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `push_nothing_to_resume`, `push_in_progress`, `batch_not_pushable`,
+            `push_nothing_selected` or `push_target_read_only`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `batch` is not a uuid. Or `dependency_cycle`, naming the cycle.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/batches/{batch}/push-status:
+    get:
+      tags: [planning]
+      summary: Per-draft push states
+      description: |-
+        What the card's progress rendering polls: the batch status, whether this process is pushing it now,
+        and each draft's push state, ticket and structured error. Any member.
+      operationId: readPlanningBatchPushStatus
+      parameters:
+        - $ref: "#/components/parameters/PlanningBatchId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The states.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningPushStatus"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_batch_not_found`. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `batch` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/roadmap:
+    get:
+      tags: [planning]
+      summary: The roadmap — lanes with computed chips
+      description: |-
+        Mockup 09's **Roadmap** card: every lane top first, and the roadmap head (the first lane's
+        `roadmapName` and `roadmapWindow`). Each lane's `12 issues · 8 done` is **computed** from linked
+        tickets' synced states on every read — there is no stored counter to go stale (AK.3). Any member.
+      operationId: readPlanningRoadmap
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The roadmap.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningRoadmap"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/epics:
+    get:
+      tags: [planning]
+      summary: Every roadmap lane
+      description: |-
+        The lanes, top first, with computed chips. Any member.
+      operationId: listPlanningEpics
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The lanes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanningEpic"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [planning]
+      summary: Create a roadmap lane
+      description: |-
+        A lane at the bottom of the roadmap. Months are `YYYY-MM` and **paired** — both, or both `null` for
+        the dashed `unscoped` lane — and run forwards. `tint` defaults to `neutral`, `status` to `active`.
+        `owner` or `admin`.
+      operationId: createPlanningEpic
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanningEpicCreate"
+            example:
+              name: OTA hardening
+              tint: accent
+              startMonth: "2026-07"
+              endMonth: "2026-09"
+              roadmapName: Helios 2.1
+              roadmapWindow: Q3–Q4 2026
+      responses:
+        "201":
+          description: |-
+            The lane.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningEpic"
+              example:
+                id: 5eed0280-0000-4000-8000-00000000ee01
+                name: OTA hardening
+                tint: accent
+                status: active
+                startMonth: "2026-07"
+                endMonth: "2026-09"
+                sortOrder: 1
+                roadmapName: Helios 2.1
+                roadmapWindow: Q3–Q4 2026
+                chips:
+                  issues: 12
+                  done: 8
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Changing the roadmap is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body's shape is wrong. Or `epic_month_range_invalid` — half a
+            range, or one running backwards.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/epics/order:
+    put:
+      tags: [planning]
+      summary: Reorder the roadmap lanes
+      description: |-
+        Every lane of the workspace, exactly once, top first — order is a property of the whole roadmap,
+        so a partial list is refused. `owner` or `admin`.
+      operationId: reorderPlanningEpics
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanningEpicOrder"
+            example:
+              epicIds: [5eed0280-0000-4000-8000-00000000ee02, 5eed0280-0000-4000-8000-00000000ee01]
+      responses:
+        "200":
+          description: |-
+            The lanes in their new order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanningEpic"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Changing the roadmap is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body's shape is wrong. Or `epic_reorder_incomplete`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/epics/{epic}:
+    get:
+      tags: [planning]
+      summary: One roadmap lane
+      description: |-
+        The lane, with its computed chip. Any member.
+      operationId: readPlanningEpic
+      parameters:
+        - $ref: "#/components/parameters/PlanningEpicId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The lane.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningEpic"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `epic` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [planning]
+      summary: Edit a roadmap lane
+      description: |-
+        Send what changes: name, tint, status, month range, roadmap name and window. An absent field is
+        left alone; `null` clears a nullable one. The merged range must still be paired and forwards.
+        `owner` or `admin`.
+      operationId: updatePlanningEpic
+      parameters:
+        - $ref: "#/components/parameters/PlanningEpicId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanningEpicPatch"
+            example:
+              status: proposed
+              startMonth: null
+              endMonth: null
+      responses:
+        "200":
+          description: |-
+            The lane.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningEpic"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Changing the roadmap is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the parameters or the body's shape are wrong. Or
+            `epic_month_range_invalid`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [planning]
+      summary: Delete a roadmap lane
+      description: |-
+        The lane goes, with its ticket links and tracker mirrors. Batches that named it keep their
+        drafts and name no epic. `owner` or `admin`.
+      operationId: deletePlanningEpic
+      parameters:
+        - $ref: "#/components/parameters/PlanningEpicId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "204":
+          description: Gone. No body.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Changing the roadmap is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `epic` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/epics/{epic}/tickets:
+    post:
+      tags: [planning]
+      summary: Link tickets to a roadmap lane
+      description: |-
+        Canonical tickets of this workspace join the lane; a link that exists is kept once. The chip is
+        recomputed. `owner` or `admin`.
+      operationId: linkPlanningEpicTickets
+      parameters:
+        - $ref: "#/components/parameters/PlanningEpicId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanningEpicTickets"
+            example:
+              ticketIds: [5eed0280-0000-4000-8000-0000000071c1]
+      responses:
+        "200":
+          description: |-
+            The lane, chip recomputed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningEpic"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Changing the roadmap is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`.
+            Or `planning_tickets_not_found` — `details.ticketIds` names every id that is not a ticket
+            of this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the parameters or the body's shape are wrong.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [planning]
+      summary: Unlink tickets from a roadmap lane
+      description: |-
+        The tickets leave the lane; a ticket that was not linked is not an error. `owner` or `admin`.
+      operationId: unlinkPlanningEpicTickets
+      parameters:
+        - $ref: "#/components/parameters/PlanningEpicId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanningEpicTickets"
+            example:
+              ticketIds: [5eed0280-0000-4000-8000-0000000071c1]
+      responses:
+        "200":
+          description: |-
+            The lane, chip recomputed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningEpic"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Changing the roadmap is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the parameters or the body's shape are wrong.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/sources/{source}/milestones:
+    get:
+      tags: [planning]
+      summary: A source's milestones
+      description: |-
+        The **Milestone ▾** options, passed through from the source's tracker through the ticket-source
+        SPI's `listMilestones` — open milestones, in the tracker's order. `supported: false` with an empty
+        list is a tracker without milestones, which the selector renders disabled. Any member.
+      operationId: listPlanningSourceMilestones
+      parameters:
+        - $ref: "#/components/parameters/PlanningSourceId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The milestones.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningMilestones"
+              example:
+                sourceId: 5eed001a-0000-4000-8000-000000000001
+                supported: true
+                milestones:
+                  - externalRef: "3"
+                    name: Helios 2.1
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_source_not_found` — no ticket source with that id in this workspace. Or
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `planning_target_read_only` — the source's tracker cannot be written to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `source` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            The tracker could not be asked, or refused — the source's credential, its rate limit or
+            its availability.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   # How a caller is recognised. One scheme, because there is one: the cookie the sign-in
   # flow lands.
@@ -13319,6 +14675,48 @@ components:
         format: uuid
       example: f0000000-0000-4000-8000-000000000002
 
+    PlanningBatchId:
+      name: batch
+      in: path
+      required: true
+      description: |-
+        A planning batch's id. A batch of another workspace answers `404`, never `403`.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed0280-0000-4000-8000-0000000000b1
+    PlanningDraftKey:
+      name: key
+      in: path
+      required: true
+      description: |-
+        A draft's local key within its batch — `OTA-3`. Meaningless outside the batch.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+        pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      example: OTA-3
+    PlanningEpicId:
+      name: epic
+      in: path
+      required: true
+      description: |-
+        A roadmap lane's id. A lane of another workspace answers `404`.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed0280-0000-4000-8000-00000000ee01
+    PlanningSourceId:
+      name: source
+      in: path
+      required: true
+      description: |-
+        A ticket source's id. A source of another workspace answers `404`.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed001a-0000-4000-8000-000000000001
   schemas:
     Error:
       type: object
@@ -21983,3 +23381,673 @@ components:
           items:
             $ref: "#/components/schemas/WorkflowEdgeRef"
           description: Every edge the walk took, in the order it took them — the canvas's accent path.
+
+    PlanningBatchCreate:
+      type: object
+      title: PlanningBatchCreate
+      description: What **Draft tickets ⟳** sends.
+      additionalProperties: false
+      required: [prompt, targetSourceId]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          description: The outcome, trimmed — *Describe the outcome, not the tasks*.
+        outline:
+          description: The markdown outline, or `null` / absent for narrative-only input.
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 32768
+            - type: "null"
+        targetSourceId:
+          type: string
+          format: uuid
+          description: The ticket source the batch will be pushed to. Its tracker must be writable.
+        milestone:
+          description: The **Milestone ▾** value, or `null` / absent for none.
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 255
+            - type: "null"
+        epicId:
+          description: The roadmap lane the drafts belong to, or `null` / absent.
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+        autoSize:
+          type: boolean
+          default: true
+          description: Size every draft through the one estimator as the batch is generated.
+        queueSmall:
+          type: boolean
+          default: false
+          description: After a push, queue the `xs`/`s` tickets through the backlog's queue write.
+        localKeyPrefix:
+          type: string
+          pattern: "^[A-Z][A-Z0-9]{0,11}$"
+          default: OTA
+          description: What the batch's local keys are prefixed with.
+
+    PlanningDraftPatch:
+      type: object
+      title: PlanningDraftPatch
+      description: What changes about one draft. An absent field is left alone.
+      additionalProperties: false
+      properties:
+        selected:
+          type: boolean
+        title:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: A new title — marks the draft `edited`.
+        body:
+          description: A new body, or `null` to clear it — marks the draft `edited`.
+          oneOf:
+            - type: string
+              maxLength: 262144
+            - type: "null"
+        dependencies:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          description: The local keys this draft is **blocked by**, replacing its set. `[]` clears it.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 64
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+
+    PlanningDraftPushError:
+      type: object
+      title: PlanningDraftPushError
+      description: Why a draft's push failed — a code to branch on, a sentence, and structured detail.
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples: [validation, blocker_not_pushed]
+        message:
+          type: string
+        detail:
+          type: object
+          additionalProperties: true
+
+    PlanningDraftEstimate:
+      type: object
+      title: PlanningDraftEstimate
+      description: A draft's estimate in force, from the one estimation pipeline.
+      additionalProperties: false
+      required: [effort, confidence, estMinutes, estTokens, routedModel, estimator, version]
+      properties:
+        effort:
+          type: string
+          enum: [xs, s, m, l, xl]
+        confidence:
+          type: number
+        estMinutes:
+          type: number
+        estTokens:
+          type: number
+        routedModel:
+          type: string
+        estimator:
+          type: string
+          description: What produced the estimate — the card's `estimator` tag renders this.
+        version:
+          type: integer
+
+    PlanningDraft:
+      type: object
+      title: PlanningDraft
+      description: One draft row of the generator card.
+      additionalProperties: false
+      required:
+        [id, localKey, title, body, selected, suggestedWorkflow, provenance, dependencies,
+         blockedByTicketIds, pushState, pushedTicketId, pushError, estimate]
+      properties:
+        id:
+          type: string
+          format: uuid
+        localKey:
+          type: string
+          examples: [OTA-3]
+        title:
+          type: string
+        body:
+          oneOf:
+            - type: string
+            - type: "null"
+        selected:
+          type: boolean
+        suggestedWorkflow:
+          oneOf:
+            - type: string
+            - type: "null"
+        provenance:
+          type: string
+          enum: [planned, edited]
+          description: "`edited` once a person has changed the title or body."
+        dependencies:
+          type: array
+          description: The local keys of the drafts this one is blocked by.
+          items:
+            type: string
+        blockedByTicketIds:
+          type: array
+          description: Canonical tickets outside the batch this one is blocked by.
+          items:
+            type: string
+            format: uuid
+        pushState:
+          type: string
+          enum: [pending, pushed, failed]
+        pushedTicketId:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+        pushError:
+          oneOf:
+            - $ref: "#/components/schemas/PlanningDraftPushError"
+            - type: "null"
+        estimate:
+          oneOf:
+            - $ref: "#/components/schemas/PlanningDraftEstimate"
+            - type: "null"
+
+    PlanningBatchSpend:
+      type: object
+      title: PlanningBatchSpend
+      description: |-
+        The footer's `$ est. spend`. Present only when some rate prices the batch — never `$0` for
+        *unknown*.
+      additionalProperties: false
+      required: [cents, display, partial]
+      properties:
+        cents:
+          type: integer
+          minimum: 0
+        display:
+          type: string
+          examples: ["$14"]
+        partial:
+          type: boolean
+          description: True when some sized draft routes to a model nobody priced — the figure is a floor.
+
+    PlanningBatchSummary:
+      type: object
+      title: PlanningBatchSummary
+      description: The generator card's footer and sizing pill.
+      additionalProperties: false
+      required: [draftCount, selectedCount, sizedCount, allSized, estimators, estMinutes, loopDays]
+      properties:
+        draftCount:
+          type: integer
+        selectedCount:
+          type: integer
+        sizedCount:
+          type: integer
+        allSized:
+          type: boolean
+          description: "`✓ all sized` — every selected draft has an estimate."
+        estimators:
+          type: array
+          items:
+            type: string
+        estMinutes:
+          type: number
+          description: Summed `est_minutes` of the selected, sized drafts.
+        loopDays:
+          type: number
+          description: "`~3.1 days of loop time`."
+        spend:
+          $ref: "#/components/schemas/PlanningBatchSpend"
+
+    PlanningBatch:
+      type: object
+      title: PlanningBatch
+      description: A planning batch, its drafts and its footer.
+      additionalProperties: false
+      required:
+        [id, status, planner, prompt, outline, targetSourceId, milestone, epicId, autoSize,
+         queueSmall, createdAt, updatedAt, drafts, summary]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [drafting, sized, pushing, pushed, abandoned]
+        planner:
+          type: string
+          examples: [outline-v0]
+        prompt:
+          type: string
+        outline:
+          oneOf:
+            - type: string
+            - type: "null"
+        targetSourceId:
+          type: string
+          format: uuid
+        milestone:
+          oneOf:
+            - type: string
+            - type: "null"
+        epicId:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+        autoSize:
+          type: boolean
+        queueSmall:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        drafts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanningDraft"
+        summary:
+          $ref: "#/components/schemas/PlanningBatchSummary"
+
+    GeneratedPlanningBatch:
+      title: GeneratedPlanningBatch
+      description: A batch as a generation answers it — with the planner's guidance notes.
+      allOf:
+        - $ref: "#/components/schemas/PlanningBatch"
+      type: object
+      required: [notes]
+      properties:
+        notes:
+          type: array
+          items:
+            type: string
+      unevaluatedProperties: false
+
+    PlanningTicketRef:
+      type: object
+      title: PlanningTicketRef
+      additionalProperties: false
+      required: [externalId, externalKey, url]
+      properties:
+        externalId:
+          type: string
+        externalKey:
+          type: string
+          examples: ["#612"]
+        url:
+          type: string
+
+    PlanningPushReport:
+      type: object
+      title: PlanningPushReport
+      description: What one push run did, and where the batch stands (AL.3).
+      additionalProperties: false
+      required: [batchId, outcome, batchStatus, pushedThisRun, links, retryAt, milestone, epic, drafts]
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum: [pushed, partial, throttled]
+        batchStatus:
+          type: string
+          enum: [drafting, sized, pushing, pushed, abandoned]
+        pushedThisRun:
+          type: integer
+        links:
+          type: object
+          additionalProperties: false
+          required: [native, fallback]
+          properties:
+            native:
+              type: integer
+            fallback:
+              type: integer
+        retryAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        milestone:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [externalRef, name]
+              properties:
+                externalRef:
+                  type: string
+                name:
+                  type: string
+            - type: "null"
+        epic:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [mapping, externalRef]
+              properties:
+                mapping:
+                  type: string
+                  enum: [parent_issue, epic, project]
+                externalRef:
+                  type: string
+            - type: "null"
+        drafts:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [draftId, localKey, pushState, ticketId, ticket, error]
+            properties:
+              draftId:
+                type: string
+                format: uuid
+              localKey:
+                type: string
+              pushState:
+                type: string
+                enum: [pending, pushed, failed]
+              ticketId:
+                oneOf:
+                  - type: string
+                    format: uuid
+                  - type: "null"
+              ticket:
+                oneOf:
+                  - $ref: "#/components/schemas/PlanningTicketRef"
+                  - type: "null"
+              error:
+                oneOf:
+                  - $ref: "#/components/schemas/PlanningDraftPushError"
+                  - type: "null"
+
+    PlanningQueueSmall:
+      type: object
+      title: PlanningQueueSmall
+      description: What the `queue_small` hook did — composition of INTAKE-M.3 (decision N7).
+      additionalProperties: false
+      required: [queued, skipped]
+      properties:
+        queued:
+          type: array
+          description: The local keys queued.
+          items:
+            type: string
+        skipped:
+          type: array
+          description: The `xs`/`s` drafts that were not queued, and why.
+          items:
+            type: object
+            additionalProperties: false
+            required: [localKey, reason]
+            properties:
+              localKey:
+                type: string
+              reason:
+                type: string
+                enum: [not_yet_mirrored, not_sized, already_queued]
+
+    PlanningPushResult:
+      type: object
+      title: PlanningPushResult
+      additionalProperties: false
+      required: [report, queueSmall]
+      properties:
+        report:
+          $ref: "#/components/schemas/PlanningPushReport"
+        queueSmall:
+          oneOf:
+            - $ref: "#/components/schemas/PlanningQueueSmall"
+            - type: "null"
+
+    PlanningPushStatus:
+      type: object
+      title: PlanningPushStatus
+      additionalProperties: false
+      required: [batchId, status, pushing, drafts]
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [drafting, sized, pushing, pushed, abandoned]
+        pushing:
+          type: boolean
+          description: Whether this process is pushing the batch right now.
+        drafts:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [localKey, selected, pushState, pushedTicketId, pushError]
+            properties:
+              localKey:
+                type: string
+              selected:
+                type: boolean
+              pushState:
+                type: string
+                enum: [pending, pushed, failed]
+              pushedTicketId:
+                oneOf:
+                  - type: string
+                    format: uuid
+                  - type: "null"
+              pushError:
+                oneOf:
+                  - $ref: "#/components/schemas/PlanningDraftPushError"
+                  - type: "null"
+
+    PlanningEpic:
+      type: object
+      title: PlanningEpic
+      description: One roadmap lane, with its computed chip.
+      additionalProperties: false
+      required: [id, name, tint, status, startMonth, endMonth, sortOrder, roadmapName, roadmapWindow, chips]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        tint:
+          type: string
+          enum: [accent, model, warn, ok, neutral]
+        status:
+          type: string
+          enum: [active, proposed, done, unscoped]
+        startMonth:
+          oneOf:
+            - type: string
+              pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            - type: "null"
+        endMonth:
+          oneOf:
+            - type: string
+              pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            - type: "null"
+        sortOrder:
+          type: integer
+          minimum: 1
+        roadmapName:
+          oneOf:
+            - type: string
+            - type: "null"
+        roadmapWindow:
+          oneOf:
+            - type: string
+            - type: "null"
+        chips:
+          type: object
+          description: "`12 issues · 8 done` — computed from linked tickets on every read."
+          additionalProperties: false
+          required: [issues, done]
+          properties:
+            issues:
+              type: integer
+            done:
+              type: integer
+
+    PlanningEpicCreate:
+      type: object
+      title: PlanningEpicCreate
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tint:
+          type: string
+          enum: [accent, model, warn, ok, neutral]
+        status:
+          type: string
+          enum: [active, proposed, done, unscoped]
+        startMonth:
+          oneOf:
+            - type: string
+              pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            - type: "null"
+        endMonth:
+          oneOf:
+            - type: string
+              pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            - type: "null"
+        roadmapName:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 200
+            - type: "null"
+        roadmapWindow:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 64
+            - type: "null"
+
+    PlanningEpicPatch:
+      type: object
+      title: PlanningEpicPatch
+      description: What changes about a lane. An absent field is left alone; `null` clears a nullable one.
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tint:
+          type: string
+          enum: [accent, model, warn, ok, neutral]
+        status:
+          type: string
+          enum: [active, proposed, done, unscoped]
+        startMonth:
+          oneOf:
+            - type: string
+              pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            - type: "null"
+        endMonth:
+          oneOf:
+            - type: string
+              pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            - type: "null"
+        roadmapName:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 200
+            - type: "null"
+        roadmapWindow:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 64
+            - type: "null"
+
+    PlanningEpicOrder:
+      type: object
+      title: PlanningEpicOrder
+      additionalProperties: false
+      required: [epicIds]
+      properties:
+        epicIds:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    PlanningEpicTickets:
+      type: object
+      title: PlanningEpicTickets
+      additionalProperties: false
+      required: [ticketIds]
+      properties:
+        ticketIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    PlanningRoadmap:
+      type: object
+      title: PlanningRoadmap
+      additionalProperties: false
+      required: [name, window, lanes]
+      properties:
+        name:
+          oneOf:
+            - type: string
+            - type: "null"
+        window:
+          oneOf:
+            - type: string
+            - type: "null"
+        lanes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanningEpic"
+
+    PlanningMilestones:
+      type: object
+      title: PlanningMilestones
+      additionalProperties: false
+      required: [sourceId, supported, milestones]
+      properties:
+        sourceId:
+          type: string
+          format: uuid
+        supported:
+          type: boolean
+        milestones:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [externalRef, name]
+            properties:
+              externalRef:
+                type: string
+              name:
+                type: string

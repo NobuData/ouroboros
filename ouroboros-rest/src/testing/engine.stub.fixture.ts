@@ -81,11 +81,16 @@ import { parse } from "yaml";
 import { DEVELOPMENT_ENVIRONMENT } from "../modules/config/configuration.fixture";
 import {
   ENGINE_ESTIMATE_ROUTE,
+  ENGINE_PLAN_ROUTE,
   ENGINE_WORKFLOW_DRY_RUN_ROUTE,
   ENGINE_WORKFLOW_VALIDATE_ROUTE,
   INTERNAL_KEY_HEADER,
 } from "../modules/engine/engine.contract";
-import { ENGINE_ESTIMATE_BODY, ENGINE_STATUS_BODY } from "../modules/engine/engine.fixture";
+import {
+  ENGINE_ESTIMATE_BODY,
+  ENGINE_STATUS_BODY,
+  planGoldenCase,
+} from "../modules/engine/engine.fixture";
 
 /**
  * The secret the stub expects on every internal call.
@@ -121,6 +126,9 @@ const ENGINE_SPECIFICATION_PATH = join(
   "ouroboros-engine",
   "openapi.yaml",
 );
+
+/** Where AL.1's planner answers. */
+export const PLAN_PATH = `/${ENGINE_PLAN_ROUTE}`;
 
 /** What every well-formed validation is answered with: a definition the engine is content with. */
 const GREEN_VALIDATION: EngineAnswer = { status: 200, body: { findings: [] } };
@@ -174,6 +182,8 @@ export interface EngineStub {
   readonly validations: Record<string, unknown>[];
   /** Every dry-run request body it accepted, in order. */
   readonly dryRuns: Record<string, unknown>[];
+  /** Every plan request body it accepted, in order — what AL.4's generation sent (#280). */
+  readonly plans: Record<string, unknown>[];
   /**
    * Everything this stub was asked to do that the contract does not allow, in order.
    *
@@ -187,6 +197,8 @@ export interface EngineStub {
   respondToValidation(responder: EngineResponder): void;
   /** Answer the next dry-run calls with whatever this says. */
   respondToDryRun(responder: EngineResponder): void;
+  /** Answer the next plan calls with whatever this says. Defaults to AL.1's golden OTA batch. */
+  respondToPlan(responder: EngineResponder): void;
   /**
    * Forget the requests and the violations, and go back to the defaults: the mockup's estimate,
    * a green validation and the committed dry-run example.
@@ -317,13 +329,17 @@ interface Contract {
   readonly dryRunRequest: CompiledSchema;
   /** `WorkflowDryRun` — what a dry-run `200` may carry. */
   readonly dryRun: CompiledSchema;
+  /** `PlanRequest` — what AL.4's generation may send. */
+  readonly planRequest: CompiledSchema;
+  /** `Plan` — what a plan `200` may carry. */
+  readonly plan: CompiledSchema;
 }
 
 /** The schemas an answer with a `2xx` status can be held to. */
-type AnswerSchema = "estimate" | "liveness" | "status" | "validation" | "dryRun";
+type AnswerSchema = "estimate" | "liveness" | "status" | "validation" | "dryRun" | "plan";
 
 /** The schemas a request body can be held to. */
-type RequestSchema = "request" | "validateRequest" | "dryRunRequest";
+type RequestSchema = "request" | "validateRequest" | "dryRunRequest" | "planRequest";
 
 /** Parsed once per process; the document does not change under a run. */
 let specification: EngineSpecification | undefined;
@@ -409,6 +425,8 @@ function contract(): Contract {
     validation: bind("WorkflowValidation"),
     dryRunRequest: bind("WorkflowDryRunRequest"),
     dryRun: bind("WorkflowDryRun"),
+    planRequest: bind("PlanRequest"),
+    plan: bind("Plan"),
   };
 
   return compiled;
@@ -476,6 +494,17 @@ export function dryRunAnswer(overrides: Record<string, unknown> = {}): EngineAns
   return { status: 200, body: { ...dryRunExample().answer, ...overrides } };
 }
 
+/**
+ * An answer that is AL.1's golden OTA batch (`schemas/plan/fixtures/expected.json`), with whatever
+ * a test changes.
+ *
+ * @param overrides - Top-level fields to replace.
+ * @returns The answer.
+ */
+export function planAnswer(overrides: Record<string, unknown> = {}): EngineAnswer {
+  return { status: 200, body: { ...planGoldenCase().response, ...overrides } };
+}
+
 /** One request, reduced to what the stub decides with. */
 interface Incoming {
   readonly method: string;
@@ -514,15 +543,18 @@ export async function startEngineStub(
   const requests: Record<string, unknown>[] = [];
   const validations: Record<string, unknown>[] = [];
   const dryRuns: Record<string, unknown>[] = [];
+  const plans: Record<string, unknown>[] = [];
   const violations: string[] = [];
   const defaults = {
     estimate: (): EngineAnswer => fallback,
     validation: (): EngineAnswer => GREEN_VALIDATION,
     dryRun: (): EngineAnswer => dryRunAnswer(),
+    plan: (): EngineAnswer => planAnswer(),
   };
   let responder: EngineResponder = defaults.estimate;
   let validationResponder: EngineResponder = defaults.validation;
   let dryRunResponder: EngineResponder = defaults.dryRun;
+  let planResponder: EngineResponder = defaults.plan;
 
   const server: Server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -541,11 +573,13 @@ export async function startEngineStub(
           requests,
           validations,
           dryRuns,
+          plans,
           violations,
           // Read at call time, so a responder a test installs mid-suite is the one answered with.
           responder: (attempt) => responder(attempt),
           validationResponder: (attempt) => validationResponder(attempt),
           dryRunResponder: (attempt) => dryRunResponder(attempt),
+          planResponder: (attempt) => planResponder(attempt),
         },
       );
 
@@ -563,6 +597,7 @@ export async function startEngineStub(
     requests,
     validations,
     dryRuns,
+    plans,
     violations,
     respond: (next) => {
       responder = next;
@@ -573,14 +608,19 @@ export async function startEngineStub(
     respondToDryRun: (next) => {
       dryRunResponder = next;
     },
+    respondToPlan: (next) => {
+      planResponder = next;
+    },
     reset: () => {
       requests.length = 0;
       validations.length = 0;
       dryRuns.length = 0;
+      plans.length = 0;
       violations.length = 0;
       responder = defaults.estimate;
       validationResponder = defaults.validation;
       dryRunResponder = defaults.dryRun;
+      planResponder = defaults.plan;
     },
     stop: () =>
       new Promise<void>((resolve) => {
@@ -599,6 +639,8 @@ interface Exchange {
   readonly validations: Record<string, unknown>[];
   /** Where an accepted dry-run request is recorded. */
   readonly dryRuns: Record<string, unknown>[];
+  /** Where an accepted plan request is recorded. */
+  readonly plans: Record<string, unknown>[];
   /** Where a breach of the contract is recorded. */
   readonly violations: string[];
   /** What the test scripted for estimates. */
@@ -607,6 +649,8 @@ interface Exchange {
   readonly validationResponder: EngineResponder;
   /** What the test scripted for dry-runs. */
   readonly dryRunResponder: EngineResponder;
+  /** What the test scripted for plans. */
+  readonly planResponder: EngineResponder;
 }
 
 /**
@@ -634,7 +678,8 @@ function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
     (method === "POST" &&
       (path === ESTIMATE_PATH ||
         path === WORKFLOW_VALIDATE_PATH ||
-        path === WORKFLOW_DRY_RUN_PATH)) ||
+        path === WORKFLOW_DRY_RUN_PATH ||
+        path === PLAN_PATH)) ||
     (method === "GET" && path === STATUS_PATH);
 
   if (!published) {
@@ -668,6 +713,15 @@ function answerFor(incoming: Incoming, exchange: Exchange): EngineAnswer {
       answer: "validation",
       record: exchange.validations,
       responder: exchange.validationResponder,
+    });
+  }
+
+  if (path === PLAN_PATH) {
+    return operation(incoming, exchange, {
+      request: "planRequest",
+      answer: "plan",
+      record: exchange.plans,
+      responder: exchange.planResponder,
     });
   }
 

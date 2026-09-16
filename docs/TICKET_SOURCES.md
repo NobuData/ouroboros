@@ -482,6 +482,8 @@ capabilities().write = {
 createTicket(context, draft)              → { externalId, externalKey, url }
 linkDependency(context, blocker, blocked) → { mode: "native" | "fallback" }
 ensureMilestone(context, name)            → { externalRef, name } | null
+listMilestones(context)                   → { externalRef, name }[]
+pushTargetName(config)                    → "owner/name"
 ensureEpicContainer(context, epic)        → { mapping, externalRef } | null
 attachToEpic(context, ticket, mirror)     → void
 ```
@@ -491,6 +493,12 @@ you create — and `ensureMilestone`, `ensureEpicContainer`, `linkDependency` an
 answer what already exists rather than making a second one. The push service is written to be
 killed mid-batch and resumed; a crash between your tracker's `201` and its database commit is
 exactly the case your search is for.
+
+**Two members read rather than write** (AL.4, [#280](https://github.com/NobuData/ouroboros/issues/280)).
+`listMilestones` is the planning page's **Milestone ▾** options, passed through from the tracker —
+open milestones, empty when `milestones: false`. `pushTargetName` is pure: it names where a push
+lands, `owner/name`, from the stored configuration, because a draft is sized through the one
+estimation pipeline (decision N3) and that request names the repository the work is for.
 
 **An absent capability answers `null`, not an exception.** `ensureMilestone` with
 `milestones: false` and `ensureEpicContainer` under `epicMapping: "none"` are ordinary
@@ -539,6 +547,8 @@ GitHub (`providers/github.write.ts`) and declares every feature:
 | `ensureMilestone` | Lists every milestone (`state=all`) by title, else `POST …/milestones`. The reference is the milestone number |
 | `ensureEpicContainer` | A parent tracking issue carrying `<!-- ouroboros:epic <epicId> -->`, found by the same probe before it is created |
 | `attachToEpic` | `GET …/issues/{parent}/sub_issues`, then `POST {sub_issue_id}` when absent |
+| `listMilestones` | `GET …/milestones?state=open`, every page, in GitHub's order. The reference is the milestone number, as `ensureMilestone` answers it |
+| `pushTargetName` | `<login>/<first enabled repository>` — read from the configuration, no request |
 
 Refusals are read the write-side way: K.3's client now carries the HTTP status on
 `GithubApiError.httpStatus`, so a `403` with budget left is `permission` and a `422` is

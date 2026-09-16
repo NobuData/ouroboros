@@ -42,10 +42,11 @@
 /** One unit of work: an issue to size, and the function that sizes it. */
 export interface QueuedEstimation {
   /**
-   * `github_issues.id` — the dedupe key.
+   * The dedupe key — `github_issues.id`, or `draft:<ticket_drafts.id>` for a ticket draft (AL.4,
+   * [#280](https://github.com/NobuData/ouroboros/issues/280); see `draftQueueKey`).
    *
-   * The issue rather than the workspace, because two issues in one workspace are two
-   * independent estimates and only the *same* issue twice is a duplicate.
+   * The subject rather than the workspace, because two issues in one workspace are two
+   * independent estimates and only the *same* subject twice is a duplicate.
    */
   readonly issueId: string;
   /**

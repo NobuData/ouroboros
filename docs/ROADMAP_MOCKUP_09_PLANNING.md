@@ -548,7 +548,7 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 | AL.1 | #277 | 🟢 Done | ouroboros-engine: [AL.1] Plan contract & outline parser v0 | `/v0/plan`: narrative+outline → drafts+deps, versioned, provenance | mvp, planning, engine | N (after #52) | Y | M | ouroboros-engine |
 | AL.2 | #278 | 🟢 Done | ouroboros-rest: [AL.2] Write-capability SPI extension | `createTicket`/`linkDependency`/`ensureEpic` + conformance kit cases | mvp, planning, sources, rest | N (after WF-Q.2) | Y | M | ouroboros-rest |
 | AL.3 | #279 | 🟢 Done | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
-| AL.4 | #280 | 🟡 Open | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
+| AL.4 | #280 | 🟢 Done | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
 | AL.5 | #281 | 🟡 Open | ouroboros-rest: [AL.5] Backlog health & nightly re-estimation | Sized/blocked/stale metrics; scheduled unsized re-runs | mvp, planning, rest, intake | N (after AK.2, INTAKE-L.3) | Y | S | ouroboros-rest |
 | AL.6 | #282 | 🟡 Open | ouroboros-rest: [AL.6] Planning integration tests | Contract, push idempotency/resume, dep mapping, health, isolation | mvp, planning, rest, ci | N (after AL.3–AL.5) | Y | M | ouroboros-rest |
 
@@ -793,7 +793,7 @@ sequenceDiagram
 
 ### Issue AL.4 — ouroboros-rest: [AL.4] Planning API — batches, drafts, epics
 
-> **GitHub issue:** #280 · **Status:** 🟡 Open · **Parent epic:** #269
+> **GitHub issue:** #280 · **Status:** 🟢 Done · **Parent epic:** #269
 
 
 - **Problem Statement:** The UI needs the full surface: generate, regenerate,
@@ -824,6 +824,55 @@ sequenceDiagram
 POST /batches {prompt, outline, target: gh, autoSize: true} ─▶ 6 drafts (sizing…)
 PATCH drafts/OTA-4 {selected: false} · POST push ─▶ 5 issues · queue_small ─▶ M.3(XS/S)
 ```
+
+- **Delivered (2026-09-16):** `ouroboros-rest` 0.35.10 — the planning routes in
+  `src/modules/planning/` (`batches.controller.ts`, `planning.controller.ts`, `batches.service.ts`,
+  `epics.service.ts`, `queue-small.ts`, `planning.repository.ts`), `ouroboros-db`'s
+  `V037__ticket_draft_provenance.sql`, and `ouroboros-ui` 0.75.3 (types re-synced). Decisions taken
+  in-issue:
+  - **Provenance needed a column.** `ticket_drafts` had none, so V037 adds `provenance`
+    (`planned|edited`, closed, default `planned`); a title or body edit sets `edited`. The research
+    provenance fields from the #624 amendment are **deferred to #624**, whose investigation and
+    gap-row tables they would reference.
+  - **One sizer, for drafts too (N3).** `EstimationOrchestrator.enqueueDraft` sizes a draft through
+    the same queue, bound, engine call, retry and floor as an issue, writing
+    `issue_estimates.draft_id`. A draft has no `sizing_status`, so it is sized exactly when it has an
+    estimate, and the batch moves `drafting → sized` when every selected draft does. The engine's
+    request names a repository; a draft has none yet, so it is sized as work for its push target —
+    named by a new pure SPI member, `pushTargetName(config)` — with its local key's position as the
+    issue number. `planning.module.spec.ts` asserts the batch service's sizer *is* the estimation
+    module's instance, and that planning provides no estimator of its own.
+  - **Milestones are a provider passthrough** through a second new SPI member,
+    `listMilestones(context)` (open milestones; empty without the capability), implemented for GitHub
+    and the in-memory fake and added to the write kit.
+  - **Every edge write is walked with AL.3's own push order** — generation, regeneration and a
+    dependency edit — so a planned cycle and an edited one are refused alike, as AL.3's
+    `dependency_cycle` `422` **naming the cycle** (`OTA-3 → OTA-5 → OTA-3`), before anything is stored.
+  - **Regeneration replaces unpushed drafts, preserves selections by `local_key`, and never touches a
+    pushed draft**; a new draft whose key a pushed draft holds is dropped, and a new draft depending on
+    a pushed key is wired to the ticket that draft became. A batch AL.3 left in `pushing` after a push
+    stopped short may be re-planned and edited; only a push actually in flight is refused.
+  - **`queue_small` composes M.3 (N7) by queueing what is ready.** M.3 queues `github_issues` rows
+    that are `sized`, and a just-pushed issue reaches that mirror on the backlog sync's next cycle — so
+    the hook matches each pushed XS/S draft to its mirrored issue by `owner/name` and number, sends the
+    ready ones through `BacklogQueueService.queueSelection`, and reports the rest per draft as
+    `not_yet_mirrored`, `not_sized` or `already_queued`. There is no retry job; a resume asks again.
+    `BacklogModule` now exports that one service.
+  - **Spend is honest (N10).** Loop days are summed `est_minutes`; `$` is costed through
+    `ouroboros.model_price()` — a `token` rate at its **input** rate (a floor: `est_tokens` has no
+    split) or a `free` one — and the `spend` key is **absent** when nothing is priced, with
+    `partial: true` when only some sized drafts are.
+  - **Role matrix:** reads are every member's; generate, regenerate and draft edits are
+    `owner|admin|member`; **push, resume and every epic mutation are `owner|admin`**.
+  - **Epics:** months travel as `YYYY-MM`, paired and forwards (checked before the write); a reorder
+    must name every lane once; chips come from `planning_epic_progress`, now in the Kysely mirror.
+
+  `planning.integration-spec.ts` runs generate → size → select → push → queue-small over HTTP against
+  PostgreSQL with the contract-faithful engine stub (which now serves `/v0/plan`) and a recorded
+  GitHub, plus the cycle `422`, regeneration, epic CRUD with computed chips, and isolation on every
+  route. **Not run in this change:** that suite and `ouroboros-db`'s `constraints.sql` need Docker,
+  which the development machine this was written on could not reach; the unit suite (including every
+  service, repository, DTO, role and OpenAPI check) passes.
 
 ### Issue AL.5 — ouroboros-rest: [AL.5] Backlog health & nightly re-estimation
 

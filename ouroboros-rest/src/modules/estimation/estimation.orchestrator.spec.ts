@@ -6,6 +6,7 @@ import { engineUnavailable } from "../engine/engine.errors";
 import type { Estimate, EstimateRequest } from "../engine/engine.contract";
 import type { EstimationContextService } from "./estimation.context";
 import {
+  deferred,
   drainMicrotasks,
   estimate,
   FIXTURE_CONTEXT,
@@ -17,8 +18,15 @@ import {
   EstimationOrchestrator,
   MAX_ENGINE_ATTEMPTS,
   SWEEP_BATCH,
+  draftNumber,
+  draftQueueKey,
+  type DraftSizingOutcome,
 } from "./estimation.orchestrator";
-import type { EstimableIssueRow, EstimationRepository } from "./estimation.repository";
+import type {
+  EstimableDraftRow,
+  EstimableIssueRow,
+  EstimationRepository,
+} from "./estimation.repository";
 import type { NewIssueEstimate } from "../db/schema";
 import type { EstimatedStatus } from "./estimation.outcome";
 
@@ -36,12 +44,14 @@ import type { EstimatedStatus } from "./estimation.outcome";
 interface RepositoryLog {
   claimed: string[];
   persisted: { issueId: string; status: EstimatedStatus; row: NewIssueEstimate }[];
+  draftsPersisted: { draftId: string; row: NewIssueEstimate }[];
   settled: { issueId: string; status: EstimatedStatus }[];
 }
 
 /** How a stand-in is told to behave. */
 interface Behaviour {
   issue?: EstimableIssueRow | undefined;
+  draft?: EstimableDraftRow | undefined;
   context?: typeof FIXTURE_CONTEXT | undefined;
   /** What the engine does, per attempt (1-based). */
   engine?: (attempt: number) => Promise<Estimate>;
@@ -63,7 +73,7 @@ interface Behaviour {
  * @returns The orchestrator, the repository's record, and the engine requests it made.
  */
 function build(behaviour: Behaviour = {}) {
-  const log: RepositoryLog = { claimed: [], persisted: [], settled: [] };
+  const log: RepositoryLog = { claimed: [], persisted: [], settled: [], draftsPersisted: [] };
   const requests: EstimateRequest[] = [];
   const staleReads: { olderThan: Date; limit: number }[] = [];
 
@@ -84,6 +94,27 @@ function build(behaviour: Behaviour = {}) {
       }
 
       log.persisted.push({ issueId, status, row: make(1) });
+      return Promise.resolve(1);
+    },
+    draft: async (draftId: string) =>
+      Promise.resolve(
+        "draft" in behaviour
+          ? behaviour.draft
+          : {
+              draftId,
+              batchId: "b2800000-0000-0000-0000-0000000000b1",
+              organizationId: FIXTURE_WORKSPACE,
+              localKey: "OTA-3",
+              title: "Rollback state machine on failed boot confirmation",
+              body: "- restore the previous slot",
+            },
+      ),
+    persistDraft: async (draftId: string, make: (version: number) => NewIssueEstimate) => {
+      if (behaviour.persistFails === true) {
+        return Promise.reject(new Error("the column refused it"));
+      }
+
+      log.draftsPersisted.push({ draftId, row: make(1) });
       return Promise.resolve(1);
     },
     settle: async (issueId: string, status: EstimatedStatus) => {
@@ -416,5 +447,145 @@ describe("the recovery sweep", () => {
       requeued: 0,
       inFlight: 0,
     });
+  });
+});
+
+describe("sizing a ticket draft (AL.4, #280 — one sizer, decision N3)", () => {
+  /** The draft every case sizes. */
+  const DRAFT_ID = "d2800000-0000-0000-0000-0000000000d3";
+
+  /** A listener that records how each draft ended. */
+  function recorder() {
+    const outcomes: [string, DraftSizingOutcome][] = [];
+
+    return {
+      outcomes,
+      listener: async (draftId: string, outcome: DraftSizingOutcome) => {
+        outcomes.push([draftId, outcome]);
+        return Promise.resolve();
+      },
+    };
+  }
+
+  it("asks the same engine with the draft's title, body, key position and push target", async () => {
+    const { orchestrator, requests, log } = build();
+    const { outcomes, listener } = recorder();
+
+    expect(
+      orchestrator.enqueueDraft(
+        { draftId: DRAFT_ID, repo: "acme-robotics/helios-firmware" },
+        listener,
+      ),
+    ).toBe(true);
+    await orchestrator.settled();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toEqual({
+      issue: {
+        number: 3,
+        title: "Rollback state machine on failed boot confirmation",
+        body: "- restore the previous slot",
+        labels: [],
+        repo: "acme-robotics/helios-firmware",
+      },
+      context: FIXTURE_CONTEXT,
+    });
+    expect(log.draftsPersisted).toHaveLength(1);
+    expect(log.draftsPersisted[0].row).toMatchObject({ draft_id: DRAFT_ID, github_issue_id: null });
+    // A draft has no sizing status: nothing is claimed, settled, or written against an issue.
+    expect(log.claimed).toEqual([]);
+    expect(log.settled).toEqual([]);
+    expect(log.persisted).toEqual([]);
+    expect(outcomes).toEqual([[DRAFT_ID, "sized"]]);
+  });
+
+  it("stores an estimate under the floor too — a draft is sized once it has one", async () => {
+    const { orchestrator, log } = build({
+      engine: async () => Promise.resolve(estimate({ confidence: 10 })),
+    });
+    const { outcomes, listener } = recorder();
+
+    orchestrator.enqueueDraft({ draftId: DRAFT_ID, repo: "a/b" }, listener);
+    await orchestrator.settled();
+
+    expect(log.draftsPersisted).toHaveLength(1);
+    expect(outcomes).toEqual([[DRAFT_ID, "sized"]]);
+  });
+
+  it("retries once, then stores nothing and reports the failure", async () => {
+    const { orchestrator, requests, log } = build({
+      engine: async () => Promise.reject(engineUnavailable()),
+    });
+    const { outcomes, listener } = recorder();
+
+    orchestrator.enqueueDraft({ draftId: DRAFT_ID, repo: "a/b" }, listener);
+    await orchestrator.settled();
+
+    expect(requests).toHaveLength(MAX_ENGINE_ATTEMPTS);
+    expect(log.draftsPersisted).toEqual([]);
+    expect(outcomes).toEqual([[DRAFT_ID, "failed"]]);
+  });
+
+  it("reports a failed write as failed", async () => {
+    const { orchestrator } = build({ persistFails: true });
+    const { outcomes, listener } = recorder();
+
+    orchestrator.enqueueDraft({ draftId: DRAFT_ID, repo: "a/b" }, listener);
+    await orchestrator.settled();
+
+    expect(outcomes).toEqual([[DRAFT_ID, "failed"]]);
+  });
+
+  it("skips a draft that is gone, and one whose workspace routes nothing", async () => {
+    const gone = build({ draft: undefined });
+    const unrouted = build({ context: undefined });
+    const first = recorder();
+    const second = recorder();
+
+    gone.orchestrator.enqueueDraft({ draftId: DRAFT_ID, repo: "a/b" }, first.listener);
+    unrouted.orchestrator.enqueueDraft({ draftId: DRAFT_ID, repo: "a/b" }, second.listener);
+    await Promise.all([gone.orchestrator.settled(), unrouted.orchestrator.settled()]);
+
+    expect(gone.requests).toEqual([]);
+    expect(unrouted.requests).toEqual([]);
+    expect(first.outcomes).toEqual([[DRAFT_ID, "skipped"]]);
+    expect(second.outcomes).toEqual([[DRAFT_ID, "skipped"]]);
+  });
+
+  it("holds a draft once, apart from an issue with the same id", async () => {
+    const gate = deferred<Estimate>();
+    const { orchestrator } = build({ engine: async () => gate.promise, concurrency: 1 });
+
+    expect(orchestrator.enqueueDraft({ draftId: DRAFT_ID, repo: "a/b" })).toBe(true);
+    expect(orchestrator.enqueueDraft({ draftId: DRAFT_ID, repo: "a/b" })).toBe(false);
+    // Both are uuids; the prefix is what keeps a draft from being mistaken for an issue.
+    expect(orchestrator.estimating(DRAFT_ID)).toBe(false);
+
+    gate.resolve(estimate());
+    await orchestrator.settled();
+  });
+
+  it("survives a listener that throws", async () => {
+    const { orchestrator, log } = build();
+
+    orchestrator.enqueueDraft({ draftId: DRAFT_ID, repo: "a/b" }, async () =>
+      Promise.reject(new Error("the batch is gone")),
+    );
+    await orchestrator.settled();
+
+    expect(log.draftsPersisted).toHaveLength(1);
+  });
+
+  it.each([
+    ["OTA-3", 3],
+    ["OTA-12", 12],
+    ["hand-seeded", 1],
+    ["OTA-0", 1],
+  ])("sizes %s as number %i", (localKey, number) => {
+    expect(draftNumber(localKey)).toBe(number);
+  });
+
+  it("keys the queue with a draft: prefix", () => {
+    expect(draftQueueKey(DRAFT_ID)).toBe(`draft:${DRAFT_ID}`);
   });
 });

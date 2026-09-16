@@ -4091,6 +4091,354 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/planning/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate a batch of ticket drafts
+         * @description Mockup 09's **Draft tickets ⟳** ([#280](https://github.com/NobuData/ouroboros/issues/280)). The
+         *     prompt and optional outline go to the engine's versioned planner (`POST /v0/plan`, AL.1 — today
+         *     `outline-v0`), and the batch it answers is **stored**: drafts are rows with a lifecycle
+         *     (decision N1), not a response held in a browser tab.
+         *
+         *     **Dependencies are walked before anything is stored.** A planner drafts a cycle as written; this
+         *     operation refuses it with `dependency_cycle`, **naming the cycle**, because a batch with a cycle
+         *     can never be pushed in dependency order.
+         *
+         *     **Sizing is the one estimator's** (decision N3). With `autoSize` on (the default), every draft is
+         *     handed to the same estimation orchestrator every mirrored issue goes through; the answer returns
+         *     immediately with `status: drafting`, and the batch becomes `sized` once every selected draft has an
+         *     estimate. Poll `GET /api/v1/planning/batches/{batch}`.
+         *
+         *     `notes` is the planner's guidance — narrative-only input answers with one draft and a note
+         *     recommending an outline. It is not stored, so only this answer and a regeneration carry it.
+         *
+         *     `owner`, `admin` or `member`.
+         */
+        post: operations["generatePlanningBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/batches/{batch}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One planning batch
+         * @description The batch, its drafts in local-key order — each with its blocked-by keys, provenance, push state
+         *     and estimate in force — and the generator card's footer.
+         *
+         *     **The footer is honest about money** (decision N10). `summary.loopDays` is the real sum of the
+         *     selected drafts' `est_minutes`. `summary.spend` is present **only** when some sized draft's routed
+         *     model has a rate — a `token` price, costed at its input rate as a lower bound, or a `free` one —
+         *     and is **absent entirely**, never `$0`, when nothing is priced. `partial: true` says some sized
+         *     drafts were not priced.
+         *
+         *     Any member.
+         */
+        get: operations["readPlanningBatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/batches/{batch}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate a batch's unpushed drafts
+         * @description Mockup 09's **Regenerate**. The stored prompt and outline are asked of the planner again and the
+         *     batch's **unpushed** drafts are replaced.
+         *
+         *     **Selections are preserved by local key.** A draft somebody unchecked stays unchecked when the new
+         *     batch has a draft with the same key; a key the planner did not produce before starts checked.
+         *     **Pushed drafts are never touched** — their issues exist — and a new draft whose key a pushed draft
+         *     holds is not stored.
+         *
+         *     The batch returns to `drafting`, and its new drafts are sized again when `autoSize` is on.
+         *
+         *     `owner`, `admin` or `member`.
+         */
+        post: operations["regeneratePlanningBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/batches/{batch}/drafts/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Select, edit or re-wire one draft
+         * @description The checkbox, the title and body, and the draft's **blocked-by** set, by local key. Send what
+         *     changes; an absent field is left alone, and `body: null` clears the body.
+         *
+         *     **An edit says so.** A title or body change marks the draft `provenance: edited`, so a planner is
+         *     never credited with a person's words.
+         *
+         *     **`dependencies` replaces the set** the batch expresses — `[]` clears it. Every key must be one of
+         *     the batch's own and not the draft itself, and the graph is walked **before** the write: an edge
+         *     that would close a cycle is refused with `dependency_cycle`, **naming the cycle** — which edge to
+         *     remove is the thing a person needs to know. A pushed draft's title, body and dependencies cannot
+         *     change; its selection can.
+         *
+         *     `owner`, `admin` or `member`.
+         */
+        patch: operations["patchPlanningDraft"];
+        trace?: never;
+    };
+    "/api/v1/planning/batches/{batch}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push a batch's selected drafts to its tracker
+         * @description Mockup 09's **Push 6 tickets to GitHub →**, through AL.3's push service
+         *     ([#279](https://github.com/NobuData/ouroboros/issues/279)): selected drafts become issues in
+         *     dependency order, blockers first, with native dependencies, the milestone and the epic's parent
+         *     issue — idempotently, so a partial failure never duplicates an issue.
+         *
+         *     **`queue_small` composes INTAKE-M.3** (decision N7). When the batch's toggle is on, pushed drafts
+         *     estimated `xs` or `s` are queued through the backlog's own queue write, with its sized-only rule:
+         *     a ticket the backlog sync has not mirrored yet, or has not sized yet, is **reported** in
+         *     `queueSmall.skipped` rather than queued. `queueSmall` is `null` when the toggle is off.
+         *
+         *     **`owner` or `admin`.** Drafting is exploration; pushing writes into a shared tracker, so members
+         *     may draft and may not push.
+         */
+        post: operations["pushPlanningBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/batches/{batch}/push/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a push that stopped short
+         * @description **Resume push** — re-runs only `pending` and `failed` drafts of a batch whose push started, then
+         *     runs the `queue_small` hook again. `owner` or `admin`.
+         */
+        post: operations["resumePlanningBatchPush"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/batches/{batch}/push-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-draft push states
+         * @description What the card's progress rendering polls: the batch status, whether this process is pushing it now,
+         *     and each draft's push state, ticket and structured error. Any member.
+         */
+        get: operations["readPlanningBatchPushStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/roadmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The roadmap — lanes with computed chips
+         * @description Mockup 09's **Roadmap** card: every lane top first, and the roadmap head (the first lane's
+         *     `roadmapName` and `roadmapWindow`). Each lane's `12 issues · 8 done` is **computed** from linked
+         *     tickets' synced states on every read — there is no stored counter to go stale (AK.3). Any member.
+         */
+        get: operations["readPlanningRoadmap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/epics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every roadmap lane
+         * @description The lanes, top first, with computed chips. Any member.
+         */
+        get: operations["listPlanningEpics"];
+        put?: never;
+        /**
+         * Create a roadmap lane
+         * @description A lane at the bottom of the roadmap. Months are `YYYY-MM` and **paired** — both, or both `null` for
+         *     the dashed `unscoped` lane — and run forwards. `tint` defaults to `neutral`, `status` to `active`.
+         *     `owner` or `admin`.
+         */
+        post: operations["createPlanningEpic"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/epics/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the roadmap lanes
+         * @description Every lane of the workspace, exactly once, top first — order is a property of the whole roadmap,
+         *     so a partial list is refused. `owner` or `admin`.
+         */
+        put: operations["reorderPlanningEpics"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/epics/{epic}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One roadmap lane
+         * @description The lane, with its computed chip. Any member.
+         */
+        get: operations["readPlanningEpic"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a roadmap lane
+         * @description The lane goes, with its ticket links and tracker mirrors. Batches that named it keep their
+         *     drafts and name no epic. `owner` or `admin`.
+         */
+        delete: operations["deletePlanningEpic"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a roadmap lane
+         * @description Send what changes: name, tint, status, month range, roadmap name and window. An absent field is
+         *     left alone; `null` clears a nullable one. The merged range must still be paired and forwards.
+         *     `owner` or `admin`.
+         */
+        patch: operations["updatePlanningEpic"];
+        trace?: never;
+    };
+    "/api/v1/planning/epics/{epic}/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link tickets to a roadmap lane
+         * @description Canonical tickets of this workspace join the lane; a link that exists is kept once. The chip is
+         *     recomputed. `owner` or `admin`.
+         */
+        post: operations["linkPlanningEpicTickets"];
+        /**
+         * Unlink tickets from a roadmap lane
+         * @description The tickets leave the lane; a ticket that was not linked is not an error. `owner` or `admin`.
+         */
+        delete: operations["unlinkPlanningEpicTickets"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/sources/{source}/milestones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A source's milestones
+         * @description The **Milestone ▾** options, passed through from the source's tracker through the ticket-source
+         *     SPI's `listMilestones` — open milestones, in the tracker's order. `supported: false` with an empty
+         *     list is a tracker without milestones, which the selector renders disabled. Any member.
+         */
+        get: operations["listPlanningSourceMilestones"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -11082,6 +11430,327 @@ export interface components {
             /** @description Every edge the walk took, in the order it took them — the canvas's accent path. */
             highlightPath: components["schemas"]["WorkflowEdgeRef"][];
         };
+        /**
+         * PlanningBatchCreate
+         * @description What **Draft tickets ⟳** sends.
+         */
+        PlanningBatchCreate: {
+            /** @description The outcome, trimmed — *Describe the outcome, not the tasks*. */
+            prompt: string;
+            /** @description The markdown outline, or `null` / absent for narrative-only input. */
+            outline?: string | null;
+            /**
+             * Format: uuid
+             * @description The ticket source the batch will be pushed to. Its tracker must be writable.
+             */
+            targetSourceId: string;
+            /** @description The **Milestone ▾** value, or `null` / absent for none. */
+            milestone?: string | null;
+            /** @description The roadmap lane the drafts belong to, or `null` / absent. */
+            epicId?: string | null;
+            /**
+             * @description Size every draft through the one estimator as the batch is generated.
+             * @default true
+             */
+            autoSize: boolean;
+            /**
+             * @description After a push, queue the `xs`/`s` tickets through the backlog's queue write.
+             * @default false
+             */
+            queueSmall: boolean;
+            /**
+             * @description What the batch's local keys are prefixed with.
+             * @default OTA
+             */
+            localKeyPrefix: string;
+        };
+        /**
+         * PlanningDraftPatch
+         * @description What changes about one draft. An absent field is left alone.
+         */
+        PlanningDraftPatch: {
+            selected?: boolean;
+            /** @description A new title — marks the draft `edited`. */
+            title?: string;
+            /** @description A new body, or `null` to clear it — marks the draft `edited`. */
+            body?: string | null;
+            /** @description The local keys this draft is **blocked by**, replacing its set. `[]` clears it. */
+            dependencies?: string[];
+        };
+        /**
+         * PlanningDraftPushError
+         * @description Why a draft's push failed — a code to branch on, a sentence, and structured detail.
+         */
+        PlanningDraftPushError: {
+            /**
+             * @example validation
+             * @example blocker_not_pushed
+             */
+            code: string;
+            message: string;
+            detail?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PlanningDraftEstimate
+         * @description A draft's estimate in force, from the one estimation pipeline.
+         */
+        PlanningDraftEstimate: {
+            /** @enum {string} */
+            effort: "xs" | "s" | "m" | "l" | "xl";
+            confidence: number;
+            estMinutes: number;
+            estTokens: number;
+            routedModel: string;
+            /** @description What produced the estimate — the card's `estimator` tag renders this. */
+            estimator: string;
+            version: number;
+        };
+        /**
+         * PlanningDraft
+         * @description One draft row of the generator card.
+         */
+        PlanningDraft: {
+            /** Format: uuid */
+            id: string;
+            /** @example OTA-3 */
+            localKey: string;
+            title: string;
+            body: string | null;
+            selected: boolean;
+            suggestedWorkflow: string | null;
+            /**
+             * @description `edited` once a person has changed the title or body.
+             * @enum {string}
+             */
+            provenance: "planned" | "edited";
+            /** @description The local keys of the drafts this one is blocked by. */
+            dependencies: string[];
+            /** @description Canonical tickets outside the batch this one is blocked by. */
+            blockedByTicketIds: string[];
+            /** @enum {string} */
+            pushState: "pending" | "pushed" | "failed";
+            pushedTicketId: string | null;
+            pushError: components["schemas"]["PlanningDraftPushError"] | null;
+            estimate: components["schemas"]["PlanningDraftEstimate"] | null;
+        };
+        /**
+         * PlanningBatchSpend
+         * @description The footer's `$ est. spend`. Present only when some rate prices the batch — never `$0` for
+         *     *unknown*.
+         */
+        PlanningBatchSpend: {
+            cents: number;
+            /** @example $14 */
+            display: string;
+            /** @description True when some sized draft routes to a model nobody priced — the figure is a floor. */
+            partial: boolean;
+        };
+        /**
+         * PlanningBatchSummary
+         * @description The generator card's footer and sizing pill.
+         */
+        PlanningBatchSummary: {
+            draftCount: number;
+            selectedCount: number;
+            sizedCount: number;
+            /** @description `✓ all sized` — every selected draft has an estimate. */
+            allSized: boolean;
+            estimators: string[];
+            /** @description Summed `est_minutes` of the selected, sized drafts. */
+            estMinutes: number;
+            /** @description `~3.1 days of loop time`. */
+            loopDays: number;
+            spend?: components["schemas"]["PlanningBatchSpend"];
+        };
+        /**
+         * PlanningBatch
+         * @description A planning batch, its drafts and its footer.
+         */
+        PlanningBatch: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "drafting" | "sized" | "pushing" | "pushed" | "abandoned";
+            /** @example outline-v0 */
+            planner: string;
+            prompt: string;
+            outline: string | null;
+            /** Format: uuid */
+            targetSourceId: string;
+            milestone: string | null;
+            epicId: string | null;
+            autoSize: boolean;
+            queueSmall: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            drafts: components["schemas"]["PlanningDraft"][];
+            summary: components["schemas"]["PlanningBatchSummary"];
+        };
+        /**
+         * GeneratedPlanningBatch
+         * @description A batch as a generation answers it — with the planner's guidance notes.
+         */
+        GeneratedPlanningBatch: {
+            notes: string[];
+        } & components["schemas"]["PlanningBatch"];
+        /** PlanningTicketRef */
+        PlanningTicketRef: {
+            externalId: string;
+            /** @example #612 */
+            externalKey: string;
+            url: string;
+        };
+        /**
+         * PlanningPushReport
+         * @description What one push run did, and where the batch stands (AL.3).
+         */
+        PlanningPushReport: {
+            /** Format: uuid */
+            batchId: string;
+            /** @enum {string} */
+            outcome: "pushed" | "partial" | "throttled";
+            /** @enum {string} */
+            batchStatus: "drafting" | "sized" | "pushing" | "pushed" | "abandoned";
+            pushedThisRun: number;
+            links: {
+                native: number;
+                fallback: number;
+            };
+            retryAt: string | null;
+            milestone: {
+                externalRef: string;
+                name: string;
+            } | null;
+            epic: {
+                /** @enum {string} */
+                mapping: "parent_issue" | "epic" | "project";
+                externalRef: string;
+            } | null;
+            drafts: {
+                /** Format: uuid */
+                draftId: string;
+                localKey: string;
+                /** @enum {string} */
+                pushState: "pending" | "pushed" | "failed";
+                ticketId: string | null;
+                ticket: components["schemas"]["PlanningTicketRef"] | null;
+                error: components["schemas"]["PlanningDraftPushError"] | null;
+            }[];
+        };
+        /**
+         * PlanningQueueSmall
+         * @description What the `queue_small` hook did — composition of INTAKE-M.3 (decision N7).
+         */
+        PlanningQueueSmall: {
+            /** @description The local keys queued. */
+            queued: string[];
+            /** @description The `xs`/`s` drafts that were not queued, and why. */
+            skipped: {
+                localKey: string;
+                /** @enum {string} */
+                reason: "not_yet_mirrored" | "not_sized" | "already_queued";
+            }[];
+        };
+        /** PlanningPushResult */
+        PlanningPushResult: {
+            report: components["schemas"]["PlanningPushReport"];
+            queueSmall: components["schemas"]["PlanningQueueSmall"] | null;
+        };
+        /** PlanningPushStatus */
+        PlanningPushStatus: {
+            /** Format: uuid */
+            batchId: string;
+            /** @enum {string} */
+            status: "drafting" | "sized" | "pushing" | "pushed" | "abandoned";
+            /** @description Whether this process is pushing the batch right now. */
+            pushing: boolean;
+            drafts: {
+                localKey: string;
+                selected: boolean;
+                /** @enum {string} */
+                pushState: "pending" | "pushed" | "failed";
+                pushedTicketId: string | null;
+                pushError: components["schemas"]["PlanningDraftPushError"] | null;
+            }[];
+        };
+        /**
+         * PlanningEpic
+         * @description One roadmap lane, with its computed chip.
+         */
+        PlanningEpic: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            tint: "accent" | "model" | "warn" | "ok" | "neutral";
+            /** @enum {string} */
+            status: "active" | "proposed" | "done" | "unscoped";
+            startMonth: string | null;
+            endMonth: string | null;
+            sortOrder: number;
+            roadmapName: string | null;
+            roadmapWindow: string | null;
+            /** @description `12 issues · 8 done` — computed from linked tickets on every read. */
+            chips: {
+                issues: number;
+                done: number;
+            };
+        };
+        /** PlanningEpicCreate */
+        PlanningEpicCreate: {
+            name: string;
+            /** @enum {string} */
+            tint?: "accent" | "model" | "warn" | "ok" | "neutral";
+            /** @enum {string} */
+            status?: "active" | "proposed" | "done" | "unscoped";
+            startMonth?: string | null;
+            endMonth?: string | null;
+            roadmapName?: string | null;
+            roadmapWindow?: string | null;
+        };
+        /**
+         * PlanningEpicPatch
+         * @description What changes about a lane. An absent field is left alone; `null` clears a nullable one.
+         */
+        PlanningEpicPatch: {
+            name?: string;
+            /** @enum {string} */
+            tint?: "accent" | "model" | "warn" | "ok" | "neutral";
+            /** @enum {string} */
+            status?: "active" | "proposed" | "done" | "unscoped";
+            startMonth?: string | null;
+            endMonth?: string | null;
+            roadmapName?: string | null;
+            roadmapWindow?: string | null;
+        };
+        /** PlanningEpicOrder */
+        PlanningEpicOrder: {
+            epicIds: string[];
+        };
+        /** PlanningEpicTickets */
+        PlanningEpicTickets: {
+            ticketIds: string[];
+        };
+        /** PlanningRoadmap */
+        PlanningRoadmap: {
+            name: string | null;
+            window: string | null;
+            lanes: components["schemas"]["PlanningEpic"][];
+        };
+        /** PlanningMilestones */
+        PlanningMilestones: {
+            /** Format: uuid */
+            sourceId: string;
+            supported: boolean;
+            milestones: {
+                externalRef: string;
+                name: string;
+            }[];
+        };
     };
     responses: never;
     parameters: {
@@ -11237,6 +11906,26 @@ export interface components {
          * @example f0000000-0000-4000-8000-000000000002
          */
         EscalationRuleId: string;
+        /**
+         * @description A planning batch's id. A batch of another workspace answers `404`, never `403`.
+         * @example 5eed0280-0000-4000-8000-0000000000b1
+         */
+        PlanningBatchId: string;
+        /**
+         * @description A draft's local key within its batch — `OTA-3`. Meaningless outside the batch.
+         * @example OTA-3
+         */
+        PlanningDraftKey: string;
+        /**
+         * @description A roadmap lane's id. A lane of another workspace answers `404`.
+         * @example 5eed0280-0000-4000-8000-00000000ee01
+         */
+        PlanningEpicId: string;
+        /**
+         * @description A ticket source's id. A source of another workspace answers `404`.
+         * @example 5eed001a-0000-4000-8000-000000000001
+         */
+        PlanningSourceId: string;
     };
     requestBodies: never;
     headers: never;
@@ -28254,6 +28943,2423 @@ export interface operations {
             /**
              * @description `engine_unavailable` — `ouroboros-engine` could not validate the definition. Nothing
              *     stands in for its opinion, so the validation is refused rather than answered green.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    generatePlanningBatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "prompt": "We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad.",
+                 *       "outline": "- Partition table & bootloader slot flag for A/B scheme  blocks: OTA-3\n- SHA-256 checksum verification before slot swap  blocks: OTA-3\n- Rollback state machine on failed boot confirmation",
+                 *       "targetSourceId": "5eed001a-0000-4000-8000-000000000001",
+                 *       "milestone": "Helios 2.1",
+                 *       "autoSize": true,
+                 *       "queueSmall": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanningBatchCreate"];
+            };
+        };
+        responses: {
+            /** @description The stored batch, and the planner's notes. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratedPlanningBatch"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Drafting is `owner`, `admin` or `member`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `planning_source_not_found` — no ticket source with that id in this workspace. Or
+             *     `planning_epic_not_found`, or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `planning_target_read_only` — the source's tracker cannot be written to, so nothing
+             *     planned for it could be pushed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body's shape is wrong. Or `dependency_cycle` — the planner's
+             *     batch has a cycle; `details.cycle` names it, first key repeated last.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "dependency_cycle",
+                     *       "message": "This batch's dependencies form a cycle (OTA-3 → OTA-5 → OTA-3), so no ticket of it can go first.",
+                     *       "details": {
+                     *         "batchId": "5eed0280-0000-4000-8000-0000000000b1",
+                     *         "cycle": [
+                     *           "OTA-3",
+                     *           "OTA-5",
+                     *           "OTA-3"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `engine_unavailable` — the planner could not be reached or answered off-contract. Or
+             *     `planner_unversioned` — it answered without a planner name and version this service can
+             *     record.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readPlanningBatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A planning batch's id. A batch of another workspace answers `404`, never `403`.
+                 * @example 5eed0280-0000-4000-8000-0000000000b1
+                 */
+                batch: components["parameters"]["PlanningBatchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The batch. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed0280-0000-4000-8000-0000000000b1",
+                     *       "status": "sized",
+                     *       "planner": "outline-v0",
+                     *       "prompt": "We need OTA updates to survive power loss mid-flash.",
+                     *       "outline": "- Partition table & bootloader slot flag for A/B scheme  blocks: OTA-3",
+                     *       "targetSourceId": "5eed001a-0000-4000-8000-000000000001",
+                     *       "milestone": "Helios 2.1",
+                     *       "epicId": null,
+                     *       "autoSize": true,
+                     *       "queueSmall": false,
+                     *       "createdAt": "2026-09-16T15:00:00.000Z",
+                     *       "updatedAt": "2026-09-16T15:00:02.000Z",
+                     *       "drafts": [
+                     *         {
+                     *           "id": "5eed0280-0000-4000-8000-0000000000d1",
+                     *           "localKey": "OTA-1",
+                     *           "title": "Partition table & bootloader slot flag for A/B scheme",
+                     *           "body": "- two slots, with the active one named in the bootloader header",
+                     *           "selected": true,
+                     *           "suggestedWorkflow": "feature-loop",
+                     *           "provenance": "planned",
+                     *           "dependencies": [],
+                     *           "blockedByTicketIds": [],
+                     *           "pushState": "pending",
+                     *           "pushedTicketId": null,
+                     *           "pushError": null,
+                     *           "estimate": {
+                     *             "effort": "s",
+                     *             "confidence": 81,
+                     *             "estMinutes": 540,
+                     *             "estTokens": 120000,
+                     *             "routedModel": "claude-fable-5",
+                     *             "estimator": "heuristic-v0",
+                     *             "version": 1
+                     *           }
+                     *         }
+                     *       ],
+                     *       "summary": {
+                     *         "draftCount": 1,
+                     *         "selectedCount": 1,
+                     *         "sizedCount": 1,
+                     *         "allSized": true,
+                     *         "estimators": [
+                     *           "heuristic-v0"
+                     *         ],
+                     *         "estMinutes": 540,
+                     *         "loopDays": 0.4,
+                     *         "spend": {
+                     *           "cents": 36,
+                     *           "display": "$0.36",
+                     *           "partial": false
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PlanningBatch"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `planning_batch_not_found` — no batch with that id in this workspace, whether or not
+             *     another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `batch` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    regeneratePlanningBatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A planning batch's id. A batch of another workspace answers `404`, never `403`.
+                 * @example 5eed0280-0000-4000-8000-0000000000b1
+                 */
+                batch: components["parameters"]["PlanningBatchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The batch as it now stands, and the planner's notes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratedPlanningBatch"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Drafting is `owner`, `admin` or `member`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `planning_batch_not_found` — no batch with that id in this workspace. Or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `batch_not_editable` — the batch is being pushed, was pushed, or was abandoned. Or
+             *     `planning_target_read_only`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `batch` is not a uuid. Or `dependency_cycle`, naming the cycle. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "dependency_cycle",
+                     *       "message": "This batch's dependencies form a cycle (OTA-3 → OTA-5 → OTA-3), so no ticket of it can go first.",
+                     *       "details": {
+                     *         "batchId": "5eed0280-0000-4000-8000-0000000000b1",
+                     *         "cycle": [
+                     *           "OTA-3",
+                     *           "OTA-5",
+                     *           "OTA-3"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `engine_unavailable` or `planner_unversioned` — see generation. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchPlanningDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A planning batch's id. A batch of another workspace answers `404`, never `403`.
+                 * @example 5eed0280-0000-4000-8000-0000000000b1
+                 */
+                batch: components["parameters"]["PlanningBatchId"];
+                /**
+                 * @description A draft's local key within its batch — `OTA-3`. Meaningless outside the batch.
+                 * @example OTA-3
+                 */
+                key: components["parameters"]["PlanningDraftKey"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "selected": false,
+                 *       "dependencies": [
+                 *         "OTA-5"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanningDraftPatch"];
+            };
+        };
+        responses: {
+            /** @description The batch as it now stands — the footer moves with a selection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningBatch"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Drafting is `owner`, `admin` or `member`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_batch_not_found` or `planning_draft_not_found`. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `batch_not_editable` — the batch is being pushed, was pushed, or was abandoned. Or
+             *     `draft_already_pushed` — the draft's issue exists; edit it in the tracker.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the parameters or the body's shape are wrong. Or
+             *     `dependency_unknown_key`, `dependency_self_reference`, or `dependency_cycle` naming the cycle.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "dependency_cycle",
+                     *       "message": "This batch's dependencies form a cycle (OTA-3 → OTA-5 → OTA-3), so no ticket of it can go first.",
+                     *       "details": {
+                     *         "batchId": "5eed0280-0000-4000-8000-0000000000b1",
+                     *         "cycle": [
+                     *           "OTA-3",
+                     *           "OTA-5",
+                     *           "OTA-3"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    pushPlanningBatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A planning batch's id. A batch of another workspace answers `404`, never `403`.
+                 * @example 5eed0280-0000-4000-8000-0000000000b1
+                 */
+                batch: components["parameters"]["PlanningBatchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description AL.3's report, and the queue-small outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningPushResult"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Pushing is `owner` or `admin` — members may draft, not push.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_batch_not_found`. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `push_in_progress`, `batch_not_pushable`, `push_nothing_selected` or
+             *     `push_target_read_only`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `batch` is not a uuid. Or `dependency_cycle`, naming the cycle. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "dependency_cycle",
+                     *       "message": "This batch's dependencies form a cycle (OTA-3 → OTA-5 → OTA-3), so no ticket of it can go first.",
+                     *       "details": {
+                     *         "batchId": "5eed0280-0000-4000-8000-0000000000b1",
+                     *         "cycle": [
+                     *           "OTA-3",
+                     *           "OTA-5",
+                     *           "OTA-3"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resumePlanningBatchPush: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A planning batch's id. A batch of another workspace answers `404`, never `403`.
+                 * @example 5eed0280-0000-4000-8000-0000000000b1
+                 */
+                batch: components["parameters"]["PlanningBatchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description AL.3's report, and the queue-small outcome. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningPushResult"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Pushing is `owner` or `admin` — members may draft, not push.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_batch_not_found`. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `push_nothing_to_resume`, `push_in_progress`, `batch_not_pushable`,
+             *     `push_nothing_selected` or `push_target_read_only`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `batch` is not a uuid. Or `dependency_cycle`, naming the cycle. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readPlanningBatchPushStatus: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A planning batch's id. A batch of another workspace answers `404`, never `403`.
+                 * @example 5eed0280-0000-4000-8000-0000000000b1
+                 */
+                batch: components["parameters"]["PlanningBatchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The states. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningPushStatus"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_batch_not_found`. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `batch` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readPlanningRoadmap: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The roadmap. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningRoadmap"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPlanningEpics: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lanes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningEpic"][];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createPlanningEpic: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "OTA hardening",
+                 *       "tint": "accent",
+                 *       "startMonth": "2026-07",
+                 *       "endMonth": "2026-09",
+                 *       "roadmapName": "Helios 2.1",
+                 *       "roadmapWindow": "Q3–Q4 2026"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanningEpicCreate"];
+            };
+        };
+        responses: {
+            /** @description The lane. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed0280-0000-4000-8000-00000000ee01",
+                     *       "name": "OTA hardening",
+                     *       "tint": "accent",
+                     *       "status": "active",
+                     *       "startMonth": "2026-07",
+                     *       "endMonth": "2026-09",
+                     *       "sortOrder": 1,
+                     *       "roadmapName": "Helios 2.1",
+                     *       "roadmapWindow": "Q3–Q4 2026",
+                     *       "chips": {
+                     *         "issues": 12,
+                     *         "done": 8
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PlanningEpic"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Changing the roadmap is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body's shape is wrong. Or `epic_month_range_invalid` — half a
+             *     range, or one running backwards.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    reorderPlanningEpics: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "epicIds": [
+                 *         "5eed0280-0000-4000-8000-00000000ee02",
+                 *         "5eed0280-0000-4000-8000-00000000ee01"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanningEpicOrder"];
+            };
+        };
+        responses: {
+            /** @description The lanes in their new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningEpic"][];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Changing the roadmap is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the body's shape is wrong. Or `epic_reorder_incomplete`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readPlanningEpic: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A roadmap lane's id. A lane of another workspace answers `404`.
+                 * @example 5eed0280-0000-4000-8000-00000000ee01
+                 */
+                epic: components["parameters"]["PlanningEpicId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lane. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningEpic"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `epic` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deletePlanningEpic: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A roadmap lane's id. A lane of another workspace answers `404`.
+                 * @example 5eed0280-0000-4000-8000-00000000ee01
+                 */
+                epic: components["parameters"]["PlanningEpicId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gone. No body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Changing the roadmap is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `epic` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updatePlanningEpic: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A roadmap lane's id. A lane of another workspace answers `404`.
+                 * @example 5eed0280-0000-4000-8000-00000000ee01
+                 */
+                epic: components["parameters"]["PlanningEpicId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "status": "proposed",
+                 *       "startMonth": null,
+                 *       "endMonth": null
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanningEpicPatch"];
+            };
+        };
+        responses: {
+            /** @description The lane. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningEpic"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Changing the roadmap is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the parameters or the body's shape are wrong. Or
+             *     `epic_month_range_invalid`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    linkPlanningEpicTickets: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A roadmap lane's id. A lane of another workspace answers `404`.
+                 * @example 5eed0280-0000-4000-8000-00000000ee01
+                 */
+                epic: components["parameters"]["PlanningEpicId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "ticketIds": [
+                 *         "5eed0280-0000-4000-8000-0000000071c1"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanningEpicTickets"];
+            };
+        };
+        responses: {
+            /** @description The lane, chip recomputed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningEpic"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Changing the roadmap is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`.
+             *     Or `planning_tickets_not_found` — `details.ticketIds` names every id that is not a ticket
+             *     of this workspace.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the parameters or the body's shape are wrong. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    unlinkPlanningEpicTickets: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A roadmap lane's id. A lane of another workspace answers `404`.
+                 * @example 5eed0280-0000-4000-8000-00000000ee01
+                 */
+                epic: components["parameters"]["PlanningEpicId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "ticketIds": [
+                 *         "5eed0280-0000-4000-8000-0000000071c1"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlanningEpicTickets"];
+            };
+        };
+        responses: {
+            /** @description The lane, chip recomputed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningEpic"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Changing the roadmap is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the parameters or the body's shape are wrong. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPlanningSourceMilestones: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                source: components["parameters"]["PlanningSourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The milestones. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "sourceId": "5eed001a-0000-4000-8000-000000000001",
+                     *       "supported": true,
+                     *       "milestones": [
+                     *         {
+                     *           "externalRef": "3",
+                     *           "name": "Helios 2.1"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PlanningMilestones"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `planning_source_not_found` — no ticket source with that id in this workspace. Or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_target_read_only` — the source's tracker cannot be written to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `source` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The tracker could not be asked, or refused — the source's credential, its rate limit or
+             *     its availability.
              */
             502: {
                 headers: {

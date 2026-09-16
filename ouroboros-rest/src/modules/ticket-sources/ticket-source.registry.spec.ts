@@ -231,7 +231,7 @@ describe("TicketSourceRegistry", () => {
 
     await expect(registryOf([liar])).rejects.toThrow(
       "write.createTicket is true but createTicket, linkDependency, ensureMilestone, " +
-        "ensureEpicContainer, attachToEpic is absent",
+        "listMilestones, pushTargetName, ensureEpicContainer, attachToEpic is absent",
     );
   });
 

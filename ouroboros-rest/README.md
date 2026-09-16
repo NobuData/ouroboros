@@ -3119,7 +3119,7 @@ push(org, batch) / resume(org, batch)
 A kill between the tracker's answer and that commit is recovered by the provider's idempotency
 probe; a `rate_limit` stops the walk with the rest `pending` and a `retryAt`; any other refusal is a
 structured `ticket_drafts.push_error`. The report's `links: { native, fallback }` tells the UI which
-dependency mode ran. There is no route yet — AL.4 (#280) mounts `push` and `resume`.
+dependency mode ran. AL.4 (#280) mounts `push` and `resume` — see below.
 
 - `push.service.spec.ts` — the acceptance criteria over the real GitHub provider, a recorded GitHub
   (`providers/github.write-recordings.fixture.ts`) and an in-memory store that keeps V034–V036's
@@ -3129,6 +3129,30 @@ dependency mode ran. There is no route yet — AL.4 (#280) mounts `push` and `re
   pushed tickets rather than importing them twice.
 - `providers/github.write-conformance.spec.ts` — the write kit, green for GitHub with and without
   the dependency API.
+
+### The planning API
+
+**`/api/v1/planning` is mockup 09's generator card and roadmap over HTTP** (AL.4,
+[#280](https://github.com/NobuData/ouroboros/issues/280)). It composes rather than duplicates: the
+planner is the engine's `/v0/plan` (AL.1), sizing is `EstimationOrchestrator.enqueueDraft` — the one
+sizer (N3) — the push is `PushService`, and **Queue XS/S** is M.3's `BacklogQueueService` (N7).
+
+| Route | Who |
+|---|---|
+| `POST /planning/batches` · `POST /:batch/regenerate` · `PATCH /:batch/drafts/:key` | owner, admin, member |
+| `GET /planning/batches/:batch` · `GET /:batch/push-status` · `GET /planning/roadmap` · `GET /planning/epics[/:epic]` · `GET /planning/sources/:source/milestones` | every member |
+| `POST /:batch/push` · `POST /:batch/push/resume` · every epic mutation | **owner, admin** |
+
+- **Every edge write is walked first** (`planning.graph.ts`, AL.3's push order): a cycle is a `422`
+  that names it.
+- **Regeneration** replaces unpushed drafts, keeps selections by `local_key`, and never touches a
+  pushed draft. A title or body edit marks the draft `provenance: edited` (V037).
+- **The footer** (`planning.summary.ts`) sums real `est_minutes`, and carries `spend` only when
+  `ouroboros.model_price()` prices something — never `$0` for *unknown*.
+- `batches.service.spec.ts`, `epics.service.spec.ts` and `queue-small.spec.ts` run over an
+  in-memory store keeping V034–V037's rules (`planning.store.fixture.ts`);
+  `planning.integration-spec.ts` runs generate → size → select → push → queue-small over HTTP against
+  PostgreSQL, the engine stub and a recorded GitHub.
 
 ## BetterAuth
 

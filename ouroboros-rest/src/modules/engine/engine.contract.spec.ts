@@ -10,6 +10,7 @@ import {
   DRY_RUN_STEP_VERDICTS,
   ENGINE_ECHO_ROUTE,
   ENGINE_ESTIMATE_ROUTE,
+  ENGINE_PLAN_ROUTE,
   ENGINE_STATUS_ROUTE,
   ENGINE_WORKFLOW_DRY_RUN_ROUTE,
   ENGINE_WORKFLOW_VALIDATE_ROUTE,
@@ -24,11 +25,13 @@ import {
   engineWorkflowValidationSchema,
   estimateRequestBody,
   estimateSchema,
+  planRequestBody,
+  planSchema,
   workflowDryRunRequestBody,
   workflowValidateRequestBody,
   type EngineDryRunTicket,
 } from "./engine.contract";
-import { ENGINE_ESTIMATE_BODY, ESTIMATE_REQUEST } from "./engine.fixture";
+import { ENGINE_ESTIMATE_BODY, ESTIMATE_REQUEST, planGoldenCase } from "./engine.fixture";
 
 /**
  * The mirror, and whether it still reflects.
@@ -535,6 +538,56 @@ describe("workflowDryRunRequestBody", () => {
   });
 });
 
+describe("planSchema", () => {
+  it("parses the golden OTA batch into this service's names", () => {
+    const parsed = planSchema.parse(planGoldenCase().response);
+
+    expect(parsed.planner).toBe("outline-v0");
+    expect(parsed.notes).toEqual([]);
+    expect(parsed.drafts[0]).toMatchObject({
+      localKey: "OTA-1",
+      title: "Partition table & bootloader slot flag for A/B scheme",
+      suggestedWorkflow: "feature-loop",
+      dependencies: [],
+    });
+    expect(typeof parsed.drafts[0].body).toBe("string");
+  });
+
+  it("refuses a local key outside the contract's shape", () => {
+    const body = planGoldenCase().response;
+
+    body.drafts[0].local_key = "ota-1";
+
+    expect(planSchema.safeParse(body).success).toBe(false);
+  });
+
+  it("refuses a batch that cannot say what produced it", () => {
+    expect(planSchema.safeParse({ ...planGoldenCase().response, planner: "" }).success).toBe(false);
+  });
+});
+
+describe("planRequestBody", () => {
+  it("is exactly the golden case's request once translated", () => {
+    const golden = planGoldenCase().request as {
+      narrative: string;
+      outline: string | null;
+      context: { workflow_tags: string[]; milestone: string | null; local_key_prefix: string };
+    };
+
+    expect(
+      planRequestBody({
+        narrative: golden.narrative,
+        outline: golden.outline,
+        context: {
+          workflowTags: golden.context.workflow_tags,
+          milestone: golden.context.milestone,
+          localKeyPrefix: golden.context.local_key_prefix,
+        },
+      }),
+    ).toEqual(golden);
+  });
+});
+
 describe("the engine's own specification", () => {
   it("serves the status route this client calls", () => {
     expect(engineDocument().paths).toHaveProperty(`/${ENGINE_STATUS_ROUTE}`);
@@ -549,6 +602,10 @@ describe("the engine's own specification", () => {
 
     expect(scheme.name).toBe(INTERNAL_KEY_HEADER);
     expect(scheme.in).toBe("header");
+  });
+
+  it("serves the plan route the planning API calls", () => {
+    expect(engineDocument().paths).toHaveProperty(`/${ENGINE_PLAN_ROUTE}`);
   });
 
   it("serves the estimate route this client calls", () => {
@@ -606,6 +663,10 @@ describe("the engine's own specification", () => {
         "trace",
       ],
     ],
+    ["PlanRequest", ["narrative", "outline", "context"]],
+    ["PlanningContext", ["workflow_tags", "milestone", "local_key_prefix"]],
+    ["Draft", ["local_key", "title", "body", "suggested_workflow", "dependencies"]],
+    ["Plan", ["drafts", "planner", "notes"]],
     ["WorkflowValidateRequest", ["definition"]],
     ["WorkflowValidation", ["findings"]],
     ["WorkflowFinding", ["code", "message", "path"]],

@@ -126,5 +126,9 @@ import { SyncTriggerService } from "./sync-trigger.service";
     BacklogQueueRepository,
     BacklogQueueService,
   ],
+  // M.3's queue write, and nothing else: AL.4's `queue_small` hook
+  // ([#280](https://github.com/NobuData/ouroboros/issues/280), decision N7) composes it rather than
+  // growing a second queue path, so the sized-only rule stays one rule.
+  exports: [BacklogQueueService],
 })
 export class BacklogModule {}

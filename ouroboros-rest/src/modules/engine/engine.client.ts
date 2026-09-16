@@ -42,6 +42,7 @@ import { describeForLog, failureCode } from "../errors/failure";
 import {
   ENGINE_ECHO_ROUTE,
   ENGINE_ESTIMATE_ROUTE,
+  ENGINE_PLAN_ROUTE,
   ENGINE_STATUS_ROUTE,
   ENGINE_WORKFLOW_DRY_RUN_ROUTE,
   ENGINE_WORKFLOW_VALIDATE_ROUTE,
@@ -54,6 +55,8 @@ import {
   engineWorkflowValidationSchema,
   estimateRequestBody,
   estimateSchema,
+  planRequestBody,
+  planSchema,
   workflowDryRunRequestBody,
   workflowValidateRequestBody,
   type EchoResult,
@@ -64,6 +67,8 @@ import {
   type EngineWorkflowValidation,
   type Estimate,
   type EstimateRequest,
+  type Plan,
+  type PlanRequest,
 } from "./engine.contract";
 import { engineUnavailable } from "./engine.errors";
 
@@ -199,6 +204,27 @@ export class EngineClient {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(estimateRequestBody(request)),
+    });
+  }
+
+  /**
+   * Ask the engine to draft a batch of tickets.
+   *
+   * AL.1's `POST /v0/plan` ([#277](https://github.com/NobuData/ouroboros/issues/277)), called by
+   * the planning API when a batch is generated or regenerated
+   * ([#280](https://github.com/NobuData/ouroboros/issues/280)). Deterministic for `outline-v0`:
+   * the same request yields the same keys, which is what lets a regeneration preserve selections
+   * by local key.
+   *
+   * @param request - The narrative, the outline and the vocabularies.
+   * @returns The batch, parsed and in this service's names.
+   * @throws {UpstreamError} `engine_unavailable` for every way this can fail — see {@link call}.
+   */
+  async plan(request: PlanRequest): Promise<Plan> {
+    return this.call(ENGINE_PLAN_ROUTE, planSchema, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(planRequestBody(request)),
     });
   }
 

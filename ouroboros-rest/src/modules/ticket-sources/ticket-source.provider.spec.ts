@@ -269,7 +269,7 @@ describe("writeMemberViolations", () => {
     };
 
     expect(writeMemberViolations(provider)).toEqual([
-      "write.createTicket is true but ensureMilestone, ensureEpicContainer, attachToEpic is absent",
+      "write.createTicket is true but ensureMilestone, listMilestones, pushTargetName, ensureEpicContainer, attachToEpic is absent",
     ]);
   });
 });

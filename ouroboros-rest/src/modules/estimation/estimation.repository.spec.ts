@@ -1,8 +1,9 @@
 import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import { UNIQUE_VIOLATION } from "../tenancy/constraints";
 import { estimate, FIXTURE_ISSUE_ID, FIXTURE_WORKSPACE } from "./estimation.fixture";
-import { estimateRow } from "./estimation.outcome";
+import { draftEstimateRow, estimateRow } from "./estimation.outcome";
 import {
+  DRAFT_VERSION_CONSTRAINT,
   EstimationRepository,
   MAX_VERSION_ATTEMPTS,
   VERSION_CONSTRAINT,
@@ -342,6 +343,89 @@ describe("EstimationRepository", () => {
       expect(database.sql()[0]).not.toContain("inner join");
       expect(database.sql()[0]).toContain('select "id" from "ouroboros"."github_issues"');
     });
+  });
+});
+
+describe("EstimationRepository — ticket drafts (AL.4, #280)", () => {
+  /** A draft's id. */
+  const DRAFT_ID = "d2800000-0000-0000-0000-0000000000d3";
+
+  let database: RecordingDatabase;
+  let repository: EstimationRepository;
+
+  beforeEach(() => {
+    database = recordingDatabase();
+    repository = new EstimationRepository(database.service);
+  });
+
+  it("reads a draft through its batch, which carries the workspace", async () => {
+    database.answers({
+      rows: [
+        {
+          draftId: DRAFT_ID,
+          batchId: "b",
+          organizationId: FIXTURE_WORKSPACE,
+          localKey: "OTA-3",
+          title: "Rollback",
+          body: null,
+        },
+      ],
+    });
+
+    await expect(repository.draft(DRAFT_ID)).resolves.toMatchObject({ localKey: "OTA-3" });
+
+    const [sql] = database.sql();
+    expect(sql).toContain('from "ouroboros"."ticket_drafts"');
+    expect(sql).toContain('inner join "ouroboros"."draft_batches"');
+    expect(database.statements[0]?.parameters).toEqual([DRAFT_ID]);
+  });
+
+  it("answers undefined for a draft regenerated away", async () => {
+    await expect(repository.draft(DRAFT_ID)).resolves.toBeUndefined();
+  });
+
+  it("versions a draft's estimate against the draft, and moves no status", async () => {
+    database.answers({ rows: [{ highest: 2 }] }, {});
+
+    await expect(
+      repository.persistDraft(DRAFT_ID, (version) =>
+        draftEstimateRow(DRAFT_ID, version, estimate(), new Date()),
+      ),
+    ).resolves.toBe(3);
+
+    const sql = database.sql();
+    expect(sql[0]).toBe("begin");
+    expect(sql[1]).toContain('where "draft_id" = $1');
+    expect(sql[2]).toContain('insert into "ouroboros"."issue_estimates"');
+    expect(sql[3]).toBe("commit");
+    expect(sql.join(" ")).not.toContain("sizing_status");
+  });
+
+  it("retries a collision on the draft's own version key", async () => {
+    database.answers({ rows: [{ highest: 1 }] });
+    database.answers({ rows: [{ highest: 2 }] }, {});
+
+    let first = true;
+    const version = await repository.persistDraft(DRAFT_ID, (next) => {
+      if (first) {
+        first = false;
+        throw refusal(UNIQUE_VIOLATION, DRAFT_VERSION_CONSTRAINT);
+      }
+
+      return draftEstimateRow(DRAFT_ID, next, estimate(), new Date());
+    });
+
+    expect(version).toBe(3);
+  });
+
+  it("does not retry anything else", async () => {
+    database.answers({ rows: [{ highest: 1 }] });
+
+    await expect(
+      repository.persistDraft(DRAFT_ID, () => {
+        throw refusal("23514", "issue_estimates_one_subject");
+      }),
+    ).rejects.toThrow("refused");
   });
 });
 

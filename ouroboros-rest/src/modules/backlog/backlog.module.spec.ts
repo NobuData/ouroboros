@@ -83,12 +83,14 @@ describe("the backlog module", () => {
     await module.close();
   });
 
-  it("exports nothing", () => {
+  it("exports M.3's queue write and nothing else", () => {
     // The routes are the surface — the queue and dashboard modules' rule. A module wanting
-    // the freshness stamp calls the endpoint or imports the sync's repository.
+    // the freshness stamp calls the endpoint or imports the sync's repository. The one
+    // exception is AL.4's `queue_small` hook (#280, decision N7), which composes M.3's write
+    // rather than growing a second queue path — so the sized-only rule stays one rule.
     const exports = Reflect.getMetadata("exports", BacklogModule) as unknown[] | undefined;
 
-    expect(exports ?? []).toEqual([]);
+    expect(exports ?? []).toEqual([BacklogQueueService]);
   });
 
   it("runs no loop of its own", () => {

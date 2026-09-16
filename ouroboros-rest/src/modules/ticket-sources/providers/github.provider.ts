@@ -359,6 +359,32 @@ export class GithubTicketSourceProvider implements WriteCapableProvider {
   }
 
   /**
+   * The push target's open milestones.
+   *
+   * @param context - The source, opened.
+   * @returns Every open milestone, in GitHub's order. Never empty for want of the capability:
+   *   GitHub has milestones.
+   * @throws {TicketSourceError} On a refusal.
+   */
+  listMilestones(context: TicketSyncContext): Promise<MilestoneRef[]> {
+    return this.writing(context, (writer) => writer.listMilestones());
+  }
+
+  /**
+   * The repository a push lands in, as `owner/name`.
+   *
+   * @param config - The source's stored configuration.
+   * @returns `login/<first enabled repository>`.
+   * @throws {TicketSourceError} `not_found`, for a configuration `readGithubConfig` refuses — the
+   *   class every other member answers a malformed configuration with.
+   */
+  pushTargetName(config: unknown): string {
+    const target = pushTarget(readGithubConfig(config));
+
+    return `${target.owner}/${target.repo}`;
+  }
+
+  /**
    * Find an epic's parent tracking issue, or create it.
    *
    * @param context - The source, opened.

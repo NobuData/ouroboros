@@ -492,6 +492,41 @@ export function describeTicketSourceWriteConformance(
       expect(violations).toEqual([]);
     });
 
+    it("lists the milestone it ensured — or none when it declares no milestones — and names its push target", async () => {
+      const { provider, context, milestoneName, ledger } = build();
+      const write = writer(provider);
+      const violations: string[] = [];
+      const target = await settle(() => Promise.resolve(write.pushTargetName(context.config)));
+
+      if (!target.resolved || target.value.trim() === "") {
+        violations.push("pushTargetName must name the push target for a valid configuration");
+      }
+
+      if (write.capabilities().write.milestones) {
+        await attempt("ensureMilestone", () => write.ensureMilestone(context, milestoneName));
+      }
+
+      const before = ledger();
+      const listed = await attempt("listMilestones", () => write.listMilestones(context));
+
+      violations.push(
+        ...listed.violations,
+        ...ledgerGrowthViolations(before, ledger(), {}, "listMilestones"),
+      );
+
+      const names = (listed.value ?? []).map((milestone) => milestone.name);
+
+      if (write.capabilities().write.milestones && !names.includes(milestoneName)) {
+        violations.push("listMilestones did not list the milestone ensureMilestone created");
+      }
+
+      if (!write.capabilities().write.milestones && names.length > 0) {
+        violations.push("write.milestones is false, so listMilestones must answer none");
+      }
+
+      expect(violations).toEqual([]);
+    });
+
     it("ensures one epic container and one membership however often it is asked — or answers null under epicMapping none", async () => {
       const { provider, context, drafts, epic, ledger } = build();
       const write = writer(provider);
