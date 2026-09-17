@@ -5,6 +5,7 @@ import {
   DASHBOARD_PATH,
   ISSUES_PATH,
   MODELS_PATH,
+  PLANNING_PATH,
   SETTINGS_PATH,
   WORKFLOWS_PATH,
   workflowPath,
@@ -189,11 +190,11 @@ describe("what the sidebar links to", () => {
   it("links only to routes that exist", () => {
     render(<SidebarNav />);
 
-    // The five screens that are built: the dashboard (#45), Issues (#115), Workflows (#147),
-    // Models (#200) and Settings (#141, whose `/settings` redirects to its one built tab until
-    // #491). Every other entry is a screen nobody has built, and a link to one would be a 404
-    // in the product's primary navigation. The count is asserted too, so a sixth link cannot
-    // appear without somebody deciding it should.
+    // The six screens that are built: the dashboard (#45), Issues (#115), Workflows (#147),
+    // Models (#200), Planning (#283) and Settings (#141, whose `/settings` redirects to its one
+    // built tab until #491). Every other entry is a screen nobody has built, and a link to one
+    // would be a 404 in the product's primary navigation. The count is asserted too, so a
+    // seventh link cannot appear without somebody deciding it should.
     const links = screen.getAllByRole("link");
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
@@ -201,6 +202,7 @@ describe("what the sidebar links to", () => {
       ISSUES_PATH,
       WORKFLOWS_PATH,
       MODELS_PATH,
+      PLANNING_PATH,
       SETTINGS_PATH,
     ]);
   });

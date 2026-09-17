@@ -109,9 +109,10 @@ const ALL_ELEVEN = [
  * catches a route that landed without telling the suite. The MVP gate for that epic is where
  * it was noticed. **Issues** joined it on the commit that built its route (N.1,
  * [#115](https://github.com/NobuData/ouroboros/issues/115)), which is the order it should
- * happen in.
+ * happen in. **Planning** joined it on the commit that built its route too (AM.1,
+ * [#283](https://github.com/NobuData/ouroboros/issues/283)).
  */
-const LIVE_ENTRIES = ["Dashboard", "Issues", "Models"] as const;
+const LIVE_ENTRIES = ["Dashboard", "Issues", "Models", "Planning"] as const;
 
 /** The sidebar landmark — its accessible name is `aria-label="Primary"`. */
 function sidebar(page: Page) {
@@ -190,7 +191,7 @@ test.describe("the sidebar tells the truth about all eleven entries", () => {
 
     for (const row of await soonRows.all()) {
       await expect(row.locator(".shell-nav__soon")).toHaveText("soon");
-      // Singular and plural both occur — "Planning arrives with #283", "Workspace
+      // Singular and plural both occur — "Insights arrives with its own roadmap", "Workspace
       // settings arrive with #491" — and the claim is only that the tooltip names a when.
       await expect(row).toHaveAttribute("title", /arrives? with/);
     }

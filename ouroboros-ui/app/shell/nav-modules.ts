@@ -16,6 +16,7 @@ import {
   DASHBOARD_PATH,
   ISSUES_PATH,
   MODELS_PATH,
+  PLANNING_PATH,
   SETTINGS_PATH,
   WORKFLOWS_PATH,
 } from "@/app/paths";
@@ -38,16 +39,16 @@ import { registerNavEntry } from "./nav-registry";
  * icon set is **lucide** (ISC, tree-shakable), which § 1.2 proposes and this issue records as
  * the decision.
  *
- * Every destination except the dashboard, Issues, Workflows and Models is a screen that does
- * not exist yet: the placeholder routes are #49 and each real screen arrives with its own
+ * Every destination except the dashboard, Issues, Workflows, Models, Planning and Settings is a
+ * screen that does not exist yet: the placeholder routes are #49 and each real screen arrives with its own
  * roadmap issue. Rather than link to a 404, those entries are `"soon"` and render as labelled,
  * non-interactive rows — the design system's honesty rule (§ 3.5): a surface that is not
  * ready is *labelled*, never dead. Each note names the issue that turns the row into a link,
  * so the tooltip is a usable answer to "when?" rather than the word *soon* on its own.
  *
- * **Models was the first of the nine to be answered, Issues the second, and Workflows the
- * third.** #200 built `/models`, #115 built `/issues` and #147 built `/workflows`, so each
- * note has become a route — which is exactly the transition each remaining note promises,
+ * **Models was the first of the nine to be answered, Issues the second, Workflows the third
+ * and Planning the fourth.** #200 built `/models`, #115 built `/issues`, #147 built `/workflows`
+ * and #283 built `/planning`, so each note has become a route — which is exactly the transition each remaining note promises,
  * and the reason the notes name issues rather than saying *soon* and stopping.
  */
 
@@ -128,15 +129,16 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     status: "soon",
     soonNote: "The knowledge base arrives with its own roadmap (mockup 14).",
   },
+  // Live since #283: the planning frame is built (`app/(app)/planning/page.tsx`), so the row that
+  // named the issue it was waiting for is a link — the amendment the planning roadmap recorded on
+  // #49, acted on.
   {
     id: "planning",
     label: "Planning",
-    route: "/planning",
+    route: PLANNING_PATH,
     icon: CalendarRange,
     group: "primary",
     sort: 70,
-    status: "soon",
-    soonNote: "Planning arrives with #283.",
   },
   {
     id: "research",
