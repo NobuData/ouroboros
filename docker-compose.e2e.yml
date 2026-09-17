@@ -134,6 +134,56 @@
 # reaches the pill, the panel and the trace without a reload — which is a claim about the
 # *running* pipeline, and the sweep would only ever have added a second claimant to it.
 #
+#
+# ---------------------------------------------------------------------------
+# The fifth service and the fifth line, and the leg they exist for (issue #288, AM.6).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_GITHUB_API_BASE_URL: http://tracker-stub:8080` — where GitHub is, for this stack.
+#
+# **What it is for.** The planning leg's subject is a *push*: mockup 09's generator turns an
+# outline into drafts and the drafts into issues in a tracker, and the only assertions worth
+# making about that are reading those issues back out of the tracker — with their native
+# dependencies and their epic parent — and then watching ordinary sync carry them home into the
+# canonical backlog and INTAKE-M.3's queue. There is no honest way to assert any of it against a
+# tracker nobody may write to, and no acceptable way to assert it against github.com: a suite
+# that runs nightly and files six issues a night in somebody's repository is not a gate.
+#
+# So `tracker-stub` — `tests/e2e/fixtures/tracker-stub/server.mjs`, which holds issues,
+# milestones, `blocked_by` relations and sub-issue links and answers GitHub's documented shapes.
+# It is a tracker, not a mock, for the reason `provider-stub` is a provider and not one: nothing
+# in it is told what the suite expects, and `ouroboros-rest` reaches it through the same
+# provider, the same client and the same rate-limit guard it reaches github.com with. The one
+# thing the deployment needs is to know where to send the request, and that is the setting — a
+# parameter `github.octokit.ts` has carried for GitHub Enterprise Server since K.3 and that
+# nothing could reach until this ticket gave it a variable.
+#
+# **Why no cadence line goes with it, unlike the three above.** Pointing the address at a
+# reachable tracker does make both sync loops start really polling, and the instinct from the
+# health sweep is to slow them to a day. It would be wrong here twice. It would be *visible*:
+# `pollIntervalSeconds` is what mockup 09's *Tracker sync* card prints as `every 5m`, so a day
+# would put `every 24h` on the page under test and in its screenshot baselines. And it is
+# unnecessary: an unasked sync of this tracker is **convergent**, not destructive — the walk is
+# an upsert with no reconciliation (`ticket-sources.repository.ts` § *A closed ticket this mirror
+# has never seen is not stored*), the repositories are empty until the leg pushes, and after it
+# pushes an extra cycle can only arrive at the state the leg was about to ask for. The health
+# sweep's problem was the opposite: it *overwrote* a seeded row with a probe's finding.
+#
+# The leg still calls `POST /api/v1/sources/{id}/sync` and `POST /api/v1/backlog/sync` itself —
+# the two routes M.4 gives a person for *sync now* — because "after this sync" is a sentence a
+# test has to be able to say, not because the loops are in its way.
+#
+# **What this therefore does not test, and where that is tested.** That the loops run on their
+# own is `ouroboros-rest`'s coverage of each scheduler, against clocks they control. What this
+# suite holds instead is the half no unit test can see: that a push in a browser really reaches a
+# tracker, and that what the tracker then holds is what ordinary sync brings back.
+#
+# `tracker-stub` publishes a host port, which `provider-stub` does not, and that is the leg's
+# second requirement rather than an inconsistency: the acceptance criterion is that the pushed
+# issues, their dependencies and their epic parent are *verified through the tracker API rather
+# than the UI*, so the suite has to be able to ask the tracker. It is published on 127.0.0.1
+# only, as every other port in the base file is.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -143,6 +193,7 @@ services:
       OURO_LISTEN_HOST: "0.0.0.0"
       OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: "86400"
       OURO_ESTIMATION_STALE_SECONDS: "86400"
+      OURO_GITHUB_API_BASE_URL: "http://tracker-stub:8080"
 
   provider-stub:
     build:
@@ -156,6 +207,27 @@ services:
       retries: 10
       start_period: 5s
       start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+  tracker-stub:
+    build:
+      context: ./tests/e2e/fixtures/tracker-stub
+    healthcheck:
+      # busybox's wget, which the alpine base already has — `provider-stub`'s argument for not
+      # adding curl to an image whose whole point is that it installs nothing.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+      start_interval: 1s
+    ports:
+      # Published, unlike `provider-stub`, because the planning leg verifies what was pushed
+      # through the tracker's own API. Loopback only, as every port in the base file is.
+      - "127.0.0.1:4100:8080"
     networks:
       - ouroboros
     profiles:

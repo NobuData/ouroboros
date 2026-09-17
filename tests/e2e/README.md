@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and nine amended in since:
+deployment. Five legs from the issue, and ten amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -32,6 +32,7 @@ deployment. Five legs from the issue, and nine amended in since:
 | 12 | [`specs/studio.spec.ts`](specs/studio.spec.ts) | Mockup 04's canvas as a browser draws it: the five node treatments printing the chips the seeded document's configs become, the octagonal flow nodes and the mini pill, the ouroboros edge dashed and glowing in each palette's own accent-deep, and the `.sel` ring — with the canvas diffed in both palettes; S.6's dry run of `#485`, painting the mockup's active path in the accent in both palettes and clearing on the first edit; and S.8's authoring loop — the rail and *Implement*'s inspector at parity, a chip that moves only on **Apply** and survives a reload, a sabotaged draft refused at **Publish** by *its* finding on *Code the change*, repaired in the inspector and published as the next version, a member served no **Publish** and the service's `403`, and the shell at 125% |
 | 13 | [`specs/code-editor.spec.ts`](specs/code-editor.spec.ts) | Mockup 05's editor as a browser draws it: the seeded file in CodeMirror with every syntax colour, the current line and the glow caret on each palette's own token and none of CodeMirror's defaults; a member served the read-only variant; a long line scrolling the editor and not the pane; keystrokes that cost a fraction of a frame — with the editor diffed in both palettes; and V.8's cross-editor round-trip — the file at parity with U.1's golden listing, a token budget typed in code that *Implement*'s inspector shows and a stage nudged on the canvas that the file's layout block moves, in one test; an unknown alias typed in code refused at **Publish** by its finding, marked back on *Implement*'s lines, repaired and published as the next version in both editors; a member served no **Publish** and the service's `403`; the workbench diffed in both palettes; and the shell at 125% |
 | 14 | [`specs/registry.spec.ts`](specs/registry.spec.ts) | Mockup 21's promises composed: an alias created, tuned and **rebound in the inspector, with the routing matrix on another page redrawing its resolution line**; a delete refused by the service's `409` to a page drawn before the route existed; an import landing a row; an orphan's **Fix in Providers →**; a switch-off that drops a hop in the next simulation; a raw model id refused at **Publish**; and a member served every control inert — with the page diffed in both palettes |
+| 15 | [`specs/planning.spec.ts`](specs/planning.spec.ts) | Mockup 09's four cards and its gantt against the planning seed, in both palettes — and the longest chain in the product, in one traversal: an outline planned by the engine into sized drafts, one deselected, pushed to a **sandbox tracker** with one creation refused mid-batch, the issues *and their native dependencies and epic parent* read back **through the tracker's own API**, ordinary sync adopting each of them as exactly one canonical ticket, a **Resume push** that leaves the tracker holding the intended issues and not one more, and the small ones landing on the **dashboard's** queue card; plus a bar moved and an epic round-tripped, the *Blocked* meter shifting because the push wired real dependencies, and a member who may draft and may not push |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -194,6 +195,43 @@ simulation on the routing page that drops it; a draft pinning a raw model id ref
 before it, and puts every write back in teardown: its own aliases by their `e2e-` prefix, the
 `docs` route, `local-free`'s switch and `standard-fix`'s draft (`support/registry.ts`).
 
+Leg 15 is [#288](https://github.com/NobuData/ouroboros/issues/288)'s — AM.6, mockup 09's MVP gate
+— and it is **the longest chain in the product**. Every other leg here crosses two or three
+boundaries; this one crosses six: the browser, `ouroboros-rest`, `ouroboros-engine` twice (the
+planner and the estimator), a **tracker**, the canonical sync that reads it back, the intake mirror
+that reads it back again, and INTAKE-M.3's queue — which lands on the *dashboard*, a different page
+owned by a different roadmap.
+
+Its three sharpest assertions are all about things that are only true of a running deployment.
+**Sync-back**: an issue the push service filed is not a special object, so ordinary WF-Q sync has to
+walk the tracker and keep it as *the* canonical ticket — one, never a second beside the row the
+push already wrote. **Queue-small**: decision N7 says the toggle reuses M.3 rather than adding a
+queue path, and the only way to check that is to follow a pushed small ticket onto the dashboard's
+queue card. **Resume**: one creation is refused mid-batch, the resume re-runs what failed, and the
+tracker must then hold the intended issues and **not one more** — a claim about what was *not*
+written. Around them: seeded parity for all four cards and the gantt in both palettes, a bar moved
+and an epic round-tripped through its editor, the *Blocked* meter shifting because the push wired
+real dependencies, a member who may draft and may not push, and the shell's own promises.
+
+It is also the first leg with a **tracker** in the stack. `docker-compose.e2e.yml` grew a fifth
+service for it — [`fixtures/tracker-stub`](fixtures/tracker-stub/server.mjs), a small Node server
+holding issues, milestones, `blocked_by` relations and sub-issue links and answering GitHub's
+documented shapes — because a push is only real if something created the issues, and neither of the
+alternatives works: a tracker nobody may write to cannot be pushed to, and a suite that runs nightly
+must not file six issues a night in somebody's repository. `ouroboros-rest` reaches it through the
+same provider, the same client and the same rate-limit guard it reaches github.com with; the one
+thing the deployment needs is to know where to send the request, which is
+`OURO_GITHUB_API_BASE_URL` — a `baseUrl` `github.octokit.ts` has carried for GitHub Enterprise
+Server since K.3 and that nothing could reach until this ticket gave it a setting. It is the only
+fixture in this directory that **publishes a host port**, because the acceptance criterion is that
+the pushed issues are verified *through the tracker API rather than the UI*.
+
+**It is green from a cold volume**, and that is leg 11's position for leg 11's reason: the batch it
+generates, the issues it files, the tickets those become and the one queue row have no undo on the
+API. What can be put back is put back — the tracker is reset, the workspace's GitHub token is
+removed, the lane it moved is moved back and the epic it edited is restored —
+and `support/planning.ts` carries the table of what is not and why.
+
 ## Stack
 
 [Playwright](https://playwright.dev) on Node 24, Chromium only, over the stack
@@ -281,6 +319,7 @@ works as-is. Override only when the stack is somewhere else.
 |---|---|---|
 | `OURO_E2E_UI_URL` | `http://localhost:3000` | Where `ouroboros-ui` answers |
 | `OURO_E2E_REST_URL` | `http://localhost:4000` | Where `ouroboros-rest` answers |
+| `OURO_E2E_TRACKER_URL` | `http://localhost:4100` | Where the suite's own sandbox tracker answers (leg 15) |
 
 There is no address for `ouroboros-engine`, and there cannot be: it publishes no host port
 (`docs/ARCHITECTURE.md` § 10). Leg 4 reaches it the only way anything outside the compose
@@ -332,7 +371,7 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9, 10, 11 and 12's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10, 11, 12 and 15's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
@@ -342,6 +381,7 @@ tests/e2e/
 │   ├── issues.ts               # what mockup 03 renders against the intake seed, and what each flow leaves behind (leg 11)
 │   ├── studio.ts               # what mockup 04's canvas draws for the seeded standard-fix, stage by stage (leg 12)
 │   ├── registry.ts             # what mockup 21 renders, and putting back every alias, route, switch and draft leg 14 writes
+│   ├── planning.ts             # what mockup 09 renders, the sandbox tracker as a client, and what leg 15 can put back
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
@@ -355,7 +395,8 @@ tests/e2e/
 │   ├── rest.ts                 # a write on a context's behalf, and a restore that never throws
 │   └── api.ts                  # scripted requests and their failure messages
 ├── fixtures/
-│   └── provider-stub/          # the provider leg 10 connects to, and really stops
+│   ├── provider-stub/          # the provider leg 10 connects to, and really stops
+│   └── tracker-stub/           # the sandbox tracker leg 15 pushes to, and reads back
 └── scripts/
     ├── run.sh                  # stack up (with the e2e compose override) → suite → down
     ├── verify-failure-modes.sh # #56 acceptance criterion 2
@@ -477,10 +518,17 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10, 11, 12, 13 and 14's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+Legs 6, 9, 10, 11, 12, 13, 14 and 15's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
 --update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
-`specs/issues.spec.ts`, `specs/studio.spec.ts`, `specs/code-editor.spec.ts` or
-`specs/registry.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
+`specs/issues.spec.ts`, `specs/studio.spec.ts`, `specs/code-editor.spec.ts`,
+`specs/registry.spec.ts` or `specs/planning.spec.ts` — at step 2. The precondition is the same,
+and it is the same seed.
+
+**Leg 15's pair has one more precondition, and it is the same volume rule its whole file lives
+under.** The parity group asserts the seeded OTA batch *before* it has been pushed, so the pair
+must be recorded on a volume the chain has not yet run against — which is to say, immediately
+after step 1 above. Recording it on a stack that has already run the suite photographs a batch
+somebody has pushed.
 
 **Leg 11 makes the fresh volume a precondition of a green run, not only of a recording.**
 Two of its writes have no undo on the API — the queue row it creates (`GET /api/v1/queue`
@@ -532,6 +580,12 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
    a number to raise quietly. Leg 6's own stated allowance is **two minutes**, which fits
    inside the ten with room to spare, so the total did not move.
 
+   Leg 15's stated allowance is **three minutes** — the largest of any leg, because it is the
+   only one that waits on the engine twice and on two sync cycles. `SUITE_BUDGET_MS` did not
+   move for it either, and that is the rule rather than an observation: if the total overruns
+   once this leg is in, the leg is what has to become cheaper. Its chain is a single `slow()`
+   test, which raises that test's own timeout and leaves the suite's number alone.
+
    Leg 8 is the exception that proves the rule and is allowed to be one for a stated
    reason: its runtime *is* an acceptance criterion of a different issue, so it has a
    config, a budget and a CI step of its own rather than three minutes of #56's ten (§ *The
@@ -575,3 +629,8 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#154](https://github.com/NobuData/ouroboros/issues/154) — S.8, the studio leg's extension: editing, publish, the dry-run highlight, the member view
 - [#597](https://github.com/NobuData/ouroboros/issues/597) — leg 14, the model registry, and the mockup 21 roadmap's MVP gate
 - [#582](https://github.com/NobuData/ouroboros/issues/582) — the registry seed leg 14 asserts against
+- [#288](https://github.com/NobuData/ouroboros/issues/288) — leg 15, planning, and the mockup 09 roadmap's MVP gate
+- [#275](https://github.com/NobuData/ouroboros/issues/275) — the planning seed leg 15 asserts against
+- [#279](https://github.com/NobuData/ouroboros/issues/279) — the push service leg 15 drives into the sandbox tracker
+- [#280](https://github.com/NobuData/ouroboros/issues/280) — the planning API the chain is pressed through
+- [#112](https://github.com/NobuData/ouroboros/issues/112) — the queue write leg 15's small tickets land in, again

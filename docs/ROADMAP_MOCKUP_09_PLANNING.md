@@ -1053,7 +1053,7 @@ dark-only).
 | AM.3 | #285 | 🟢 Done | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
 | AM.4 | #286 | 🟢 Done | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
 | AM.5 | #287 | 🟢 Done | ouroboros-ui: [AM.5] Planning states & guards | Empty org, no-writable-source, member limits, load/error | mvp, planning, ui, design | N (after AM.2–AM.4) | Y | S | ouroboros-ui |
-| AM.6 | #288 | 🟡 Open | ouroboros-ui: [AM.6] Planning e2e leg | Generate→size→select→push→queue chain; gantt edits; themes | mvp, planning, ui, ci | N (after AM.1–AM.5) | Y | M | ouroboros-ui, .github |
+| AM.6 | #288 | 🟢 Done | ouroboros-ui: [AM.6] Planning e2e leg | Generate→size→select→push→queue chain; gantt edits; themes | mvp, planning, ui, ci | N (after AM.1–AM.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue AM.1 — ouroboros-ui: [AM.1] Planning route, head & page frame
 
@@ -1368,7 +1368,7 @@ Zephyr 4.2 (proposed)                    [╌ unscoped ╌]
 
 ### Issue AM.6 — ouroboros-ui: [AM.6] Planning e2e leg
 
-> **GitHub issue:** #288 · **Status:** 🟡 Open · **Parent epic:** #270
+> **GitHub issue:** #288 · **Status:** 🟢 Done · **Parent epic:** #270
 
 
 - **Problem Statement:** The generate→size→push→queue chain crosses UI,
@@ -1387,6 +1387,68 @@ Zephyr 4.2 (proposed)                    [╌ unscoped ╌]
 - **Parallelism/Dependencies:** Needs AM.1–AM.5, AK.4; amends #56.
 - **Technical Stack:** Playwright.
 - **Epic:** AM
+- **Implementation note (closed).** `tests/e2e/specs/planning.spec.ts` — leg 15 of the #56 suite,
+  with `tests/e2e/support/planning.ts` beside it. `ouroboros-rest` 0.36.0 for one setting;
+  `tests/e2e` 0.14.0. The five groups are seeded parity for the four cards and the gantt in both
+  palettes, the shell's fixed chrome and 125% render, a member who may draft and may not push, a
+  bar moved and an epic round-tripped through its editor, and **the chain** — one traversal of
+  outline → planner → sized drafts → deselect one → push with a creation refused mid-batch →
+  verify through the tracker API → both syncs → resume → the dashboard's queue card.
+  Decisions taken in-issue:
+  - **The sandbox tracker is a compose service, and reaching it needed a setting that did not
+    exist.** `github.octokit.ts` has carried a `baseUrl` for GitHub Enterprise Server since K.3
+    (#101) and nothing could ever supply one: `GithubModule` bound `OCTOKIT_FACTORY` to
+    `createOctokit({ token })`. So AM.6 added **`OURO_GITHUB_API_BASE_URL`** — optional, validated
+    as an address at boot, `undefined` in every deployment that talks to github.com — and
+    `docker-compose.e2e.yml` points it at `tracker-stub`. That is a change in `ouroboros-rest`,
+    which this issue's *Affected systems* did not name; it is the whole of the change there, it
+    keeps a promise the code had already made to GHES, and there is no other way for the product
+    to reach a tracker it may write to. `tests/e2e/fixtures/tracker-stub/server.mjs` is the
+    tracker: it holds issues, milestones, `blocked_by` relations and sub-issue links, applies
+    GitHub's own rules about them, and is told nothing about what the suite expects.
+  - **The main chain and the resume leg are one test, because N7 makes them one.** Queue-small
+    composes INTAKE-M.3 unchanged, M.3 queues only a **mirrored, sized** issue, and an issue
+    created a moment ago is neither — the hook reports `not_yet_mirrored` per draft. The only push
+    that can follow a sync is a resume, so a leg that pushed cleanly and then asserted a queue row
+    would be asserting something the product does not do. The chain therefore refuses one creation
+    mid-batch, syncs, and resumes: the resume both finishes the batch and queues what the sync made
+    ready. The ticket's *push-resume* leg and its *queue-small* step are the same traversal.
+  - **The chain generates its own batch rather than pushing the seeded one.** The seed's OTA batch
+    is what the parity group asserts and it carries **Queue XS/S** *off*, as the mockup's toggles
+    do — and there is no route that turns a stored batch's toggle on, correctly: it is a property
+    of the press that made it. So the chain presses the card, which is also the ticket's own
+    *outline → generate → sized drafts*. Its outline gives one bullet a long indented paragraph,
+    because `outline-v0` makes a flat bullet a body-less draft and `heuristic-v0` sizes a body-less
+    draft `xs` — six flat bullets would make *queue the small ones* indistinguishable from *queue
+    all of them*.
+  - **The *health shift* is the push's own doing.** The ticket asks for a dependency to be added
+    and the *Blocked* meter to move. There is no API that writes a canonical ticket dependency, and
+    there should not be: the push is what writes them, rewriting the batch's draft edges in the
+    transaction that records each ticket. So the leg reads the meter before the push and after it.
+  - **The bar is moved with its stepper rather than with a pointer.** Both front doors meet at one
+    `commit`; the pixel-to-month arithmetic is unit-tested in `ouroboros-ui` against a known column
+    width, and what only this leg can see is that the committed months reach the service and
+    survive a reload.
+  - **No cadence override.** The three sweeps before this one were slowed to a day in the e2e
+    override because they *overwrite* seeded rows. A sync of this tracker is convergent — an upsert
+    with no reconciliation, over repositories that are empty until the leg pushes — and
+    `pollIntervalSeconds` is what the *Tracker sync* card prints as `every 5m`, so slowing it would
+    put `every 24h` on the page under test and in its baselines. The leg drives both syncs itself
+    so that it can say *after this sync*, not because the loops are in its way.
+  - **Three failure-mode pairs**, one per layer the ticket names: `db` (the cards are aggregates,
+    not artwork), `engine` (*Draft tickets* really asks the planner), and **`tracker-stub`** — the
+    first pair in `verify-failure-modes.sh` that is a claim about *the leg* rather than about the
+    deployment: if the chain's tracker calls were ever replaced with a stub, that pair would
+    quietly go green.
+  - **Green from a cold volume**, which is leg 11's position for leg 11's reason: the generated
+    batch, the issues it filed, the tickets those became and the one queue row have no undo on the
+    API. What can be put back is — the tracker, the workspace's GitHub token, the lane's months and
+    the epic's status.
+  - **Screenshot baselines are not in this change.** They are Linux's, recorded against a cold
+    stack (`tests/e2e/README.md` § *Refreshing them*), and this change was made where no Docker
+    daemon was reachable. `specs/planning.spec.ts` carries the two `toHaveScreenshot` calls and
+    Playwright refuses a comparison it has no baseline for, so the first CI run records nothing
+    silently — it says so. `specs/code-editor.spec.ts` shipped the same way.
 
 ```
 e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ · queue-small ✓ · gantt ✓

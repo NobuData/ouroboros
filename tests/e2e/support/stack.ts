@@ -1,14 +1,15 @@
 /**
  * Where the stack answers, and how long this suite is allowed to take.
  *
- * Two addresses and nothing else, because two addresses is the whole of what a browser
- * and a script can reach. `ouroboros-engine` is deliberately absent: it publishes no port
+ * Three addresses, and two of them are the whole of what a browser and a script can reach of
+ * the *product*; the third is a fixture the suite brought (see {@link TRACKER_URL}).
+ * `ouroboros-engine` is deliberately absent: it publishes no port
  * (`docker-compose.yml`, and `docs/ARCHITECTURE.md` § 10's first invariant), so a constant
  * for it here would be a constant for an address that does not exist. The engine is
  * reached the only way anything outside the compose network can reach it — through
  * `ouroboros-rest` — which is what `specs/engine.spec.ts` asserts.
  *
- * Both are overridable, because the suite is run against two things that are the same
+ * Each is overridable, because the suite is run against two things that are the same
  * stack at different addresses: `docker compose --profile full up` on a laptop, and the
  * same compose file inside a GitHub Actions runner. Neither default is a guess — they are
  * the ports `docker-compose.yml` publishes and the README documents.
@@ -34,6 +35,24 @@ export const UI_URL = address("OURO_E2E_UI_URL", "http://localhost:3000");
 
 /** `ouroboros-rest` — the communications layer, published on 4000. */
 export const REST_URL = address("OURO_E2E_REST_URL", "http://localhost:4000");
+
+/**
+ * The sandbox tracker — the suite's own fixture, published on 4100
+ * ([#288](https://github.com/NobuData/ouroboros/issues/288)).
+ *
+ * The one address here that is not a service of the product, and the one the planning leg
+ * verifies a push against. It is *not* a way around the rule this directory is built on: the
+ * product still reaches it only as GitHub, over its own provider and its own client, from
+ * inside the compose network at `http://tracker-stub:8080`. What is published here is the same
+ * tracker seen from outside — which is how *the issues really exist, with their dependencies
+ * and their epic parent* becomes a question put to the tracker rather than a claim read back
+ * off the page that filed them.
+ *
+ * `provider-stub` publishes nothing, deliberately, and the difference is the acceptance
+ * criterion: AM.6 asks for the pushed issues to be verified **through the tracker API rather
+ * than the UI**, and nothing in AE.7 had to ask a provider anything.
+ */
+export const TRACKER_URL = address("OURO_E2E_TRACKER_URL", "http://localhost:4100");
 
 /**
  * The suite's whole wall-clock budget, in milliseconds.

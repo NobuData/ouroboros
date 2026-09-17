@@ -48,6 +48,12 @@
 #   db        registry.spec.ts    the registry's chips, health, prices and used-by counts are
 #                                 derived from the seeded rows rather than drawn from the
 #                                 mockup (#597)
+#   db        planning.spec.ts    mockup 09's four cards and its gantt are computed over the
+#                                 planning tables rather than drawn from the mockup (#288)
+#   engine    planning.spec.ts    Draft tickets really asks the planner: with the engine
+#                                 stopped the card says so and no batch is made (#288)
+#   tracker-  planning.spec.ts    the push really reaches a tracker, and the chain really
+#   stub                          reads one back — it stubs neither (#288)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -168,6 +174,28 @@
 # stopping it. So this pair proves the *first* three tests red rather than the whole file, and
 # the marker below is the sentence the connect helper fails with. `compose start` afterwards is
 # then a no-op, which is the correct outcome and not a sign the pair did nothing.
+#
+# ## The planning pairs, and what the third one is for (#288)
+#
+# The leg crosses six boundaries, and the ticket asks for it to be spot-verified by breaking
+# *the planner, the push service and the sync path in turn*. Three of those are one service
+# each, and the three pairs above are them.
+#
+# The `engine` pair is the issues pair's shape: with the engine stopped the parity group, the
+# shell group, the member group and the roadmap group are all still green — none of them asks
+# the engine anything — and the chain goes red at its first step, *Draft tickets*, with the
+# sentence the engine client writes for every way the engine can fail. It is read off the card's
+# own failure line rather than from a timed-out locator, which is what `generatorFailure` in the
+# spec exists for.
+#
+# The `tracker-stub` pair is this table's newest kind and the one worth explaining. It is
+# `docker-compose.e2e.yml`'s fifth service, it is a *fixture* rather than part of the product,
+# and stopping it does not break the stack — so what its pair proves is a claim about **the leg**
+# rather than about the deployment: that the chain really pushes to a tracker and really reads
+# one back, instead of asserting against something it arranged in memory. If somebody ever
+# replaced those calls with a stub, every other pair here would stay red-when-stopped and this
+# one would quietly go green, which is exactly the regression it is registered to catch. The
+# marker is the sentence `support/planning.ts` raises when the tracker is not answering.
 #
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
@@ -433,6 +461,22 @@ expect_red engine code-editor.spec.ts "engine could not check this definition"
 # guard's 409, the publish gate — were spot-verified by hand at the ticket, for the reason the
 # routing block in the header gives, and are recorded in the header beside that one.
 expect_red db registry.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# The planning leg (#288), against the three layers the chain crosses. `db` first, for the
+# reason every parity pair above uses it: every figure on mockup 09 — `42 open`, `38/42`, the
+# lane chips — is an aggregate, so a page that still drew them with the database stopped would
+# be a page drawing the mockup. The leg breaks at its first step, because a session is a row.
+expect_red db planning.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# …and against the planner. With the engine stopped the parity, shell, member and roadmap
+# groups stay green — none of them asks the engine anything — and the chain goes red where it
+# presses **Draft tickets**, with the one sentence the engine client writes for every way the
+# engine can fail.
+expect_red engine planning.spec.ts "engine is not available"
+
+# …and against the tracker. See the header: this pair is a claim about the leg rather than
+# about the deployment — that the chain really pushes to a tracker and really reads one back.
+expect_red tracker-stub planning.spec.ts "sandbox tracker is not answering"
 
 printf '\n'
 if check_summary; then

@@ -242,6 +242,7 @@ service never starts half-configured.
 | `BETTER_AUTH_URL`           | The origin BetterAuth builds its own URLs from           |        yes         | an origin, as above — BetterAuth appends its own `/api/auth`                |
 | `OURO_GITHUB_CLIENT_ID`     | GitHub OAuth application, client id                      |        yes         | non-empty                                                                   |
 | `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application, client secret                  |        yes         | non-empty                                                                   |
+| `OURO_GITHUB_API_BASE_URL`  | Where GitHub's REST API is — a GitHub Enterprise Server installation, or the e2e suite's sandbox tracker ([#288](https://github.com/NobuData/ouroboros/issues/288)). Moves the address and nothing else | no — `https://api.github.com` | an absolute `http://` or `https://` URL, such as `https://ghe.example.com/api/v3`            |
 | `OURO_VAULT_MASTER_KEY`     | The credential vault's key-encryption key — see [The vault](#the-vault) |        yes         | **exactly** 32 bytes, base64 (`openssl rand -base64 32`)                    |
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 | `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
@@ -1924,6 +1925,17 @@ by `.dependency-cruiser.cjs` and spot-verified in `github/boundary.spec.ts` by a
 violation. That is the amendment posted on #101 on 2026-08-09, and it is the seam Q.3
 ([#140](https://github.com/NobuData/ouroboros/issues/140)) moves when the GitHub client becomes
 the first `TicketSourceProvider`.
+
+**Where GitHub is, is a setting.** `createOctokit` has taken a `baseUrl` since K.3 — *"a GitHub
+Enterprise Server installation is the reason this is a parameter rather than a constant"* — and
+until AM.6 ([#288](https://github.com/NobuData/ouroboros/issues/288)) nothing could supply one:
+`GithubModule` bound `OCTOKIT_FACTORY` to `createOctokit({ token })`. It is now a `useFactory`
+over **`OURO_GITHUB_API_BASE_URL`**, which is validated as an absolute URL at boot and defaults to
+`https://api.github.com` — so the public API is still what every deployment gets and nothing that
+did not ask for this changed. It moves the *address* only: the credential is
+still the workspace's or the source's own, the rate-limit guard is the same one, and every failure
+is classified by the same code. Its two callers are a GHES installation and the e2e suite's
+sandbox tracker (`tests/e2e/README.md`, leg 15).
 
 **Pagination holds one page.** `GithubClient.pages()` is a generator over Octokit's
 `Link`-header walk: a repository with ten thousand issues costs one page of memory, a caller
