@@ -226,7 +226,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | AK.1 | #272 | 🟢 Done | ouroboros-db: [AK.1] Draft batches & ticket drafts schema | Pre-push draft entities with generation provenance & push state | mvp, planning, db | N (after WF-Q.1) | Y | M | ouroboros-db |
 | AK.2 | #273 | 🟢 Done | ouroboros-db: [AK.2] Ticket dependencies schema | Canonical + draft `blocks` relations (N4), health-metric feeds | mvp, planning, db | N (after AK.1) | Y | S | ouroboros-db |
 | AK.3 | #274 | 🟢 Done | ouroboros-db: [AK.3] Planning epics & tracker mirrors | Lanes: tint, month range, status, mirror refs, ticket links | mvp, planning, db | N (after AK.1) | Y | M | ouroboros-db |
-| AK.4 | #275 | 🟡 Open | ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity | Batch OTA-1…6, five epics, health-shaping tickets | mvp, planning, db | N (after AK.2, AK.3) | Y | S | ouroboros-db |
+| AK.4 | #275 | 🟢 Done | ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity | Batch OTA-1…6, five epics, health-shaping tickets | mvp, planning, db | N (after AK.2, AK.3) | Y | S | ouroboros-db |
 | AK.5 | #276 | 🟡 Open | ouroboros-db: [AK.5] Planning constraints in ci/db | Dependency acyclicity probe, push-state vocab, range checks | mvp, planning, db, ci | N (after AK.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue AK.1 — ouroboros-db: [AK.1] Draft batches & ticket drafts schema
@@ -492,7 +492,7 @@ planning_epics{tint, Jul→Sep, active, "Helios 2.1"} ──< epic_tickets >─�
 
 ### Issue AK.4 — ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity
 
-> **GitHub issue:** #275 · **Status:** 🟡 Open · **Parent epic:** #268
+> **GitHub issue:** #275 · **Status:** 🟢 Done · **Parent epic:** #268
 
 
 - **Problem Statement:** Design review and e2e need the mockup's exact
@@ -517,6 +517,38 @@ planning_epics{tint, Jul→Sep, active, "Helios 2.1"} ──< epic_tickets >─�
 seeds: OTA batch (6 sized drafts + deps) · 5 epics (tints, ranges, chip math)
        backlog: 42 open ⇒ 38 sized · 4 blocked · 6 stale · sources: GH✓ JI✓ LN∅
 ```
+
+- **Delivered (2026-09-17):** `ouroboros-db`'s
+  [`R__dev_seed_ticket_planning.sql`](../ouroboros-db/migrations/R__dev_seed_ticket_planning.sql),
+  with `R__dev_seed_sources.sql`, `tests/seed.sql`, `tests/seed.test.sh` and the module README
+  amended. Decisions taken in-issue:
+  - **Named for its sort order.** Flyway applies repeatables by description and every ticket hangs
+    off the GitHub source, so the file is `dev_seed_ticket_planning` — after `dev_seed_sources` —
+    and `seed.test.sh` asserts the order; `dev_seed_planning` would join to nothing on a fresh
+    database.
+  - **Sized is `tickets.sizing_status`.** `issue_estimates` has two subjects, a mirrored issue or a
+    draft (N3), and no reference to a canonical ticket, so the pipeline's per-ticket result is the
+    status column: 38 `sized`, 4 `unsized` (the nightly job's backlog). Drafts carry real estimate
+    rows.
+  - **INTAKE coordination is by disjoint numbers.** The canonical tickets are `#540`–`#591` in
+    `tickets`; no number the intake mirror (`#483`–`#491`) or the dashboard's runs and queue use,
+    so mockup 03 still computes 9/7 and mockup 09 computes 42/38. `seed.sql` asserts the disjointness.
+  - **Every metric carries a trap row**: a ticket blocked twice, a blocker that is closed, two
+    `synced` edges, eight closed tickets untouched for months, an open ticket updated 28 days ago,
+    and ten open tickets in no lane — each nearly-right reading is asserted alongside the right one.
+  - **Months are offsets from `date_trunc('month', now())`** (−1…+1, 0…+2, +1…+3, +2…+4), so the
+    current month is always the gantt's second column; `roadmap_window` is composed from the same
+    offsets. Zephyr has null months and status `proposed`.
+  - **`$14` needs no price row.** Each draft's `routed_model` is a `model_id` one of the routing
+    seed's aliases binds, priced by the bundled catalog: 1000¢ (`claude-fable-5`) + 400¢
+    (`claude-sonnet-5`) + 0 (`qwen3-coder:32b`, free) = 1400¢; `est_minutes` sum to 4320 = 3.0 days.
+    The outline parses through `outline-v0` into exactly the six drafts, with no notes.
+  - **Jira is connected.** The sources seed's Jira row gains a sealed development credential and
+    `active` status — the sync loop skips a kind with no registered provider rather than erroring —
+    plus a convergence `update` that moves only a row still in its earlier paused, un-credentialed
+    shape. Linear stays absent, which is what renders **connect ↗**.
+  - **Not seeded:** `epic_mirrors` (nothing pushed), price overrides, source sync stamps. Personal
+    and `acme-labs` workspaces hold no planning rows.
 
 ### Issue AK.5 — ouroboros-db: [AK.5] Planning constraints in ci/db
 

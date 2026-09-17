@@ -44,8 +44,9 @@
 -- five provider cards by #221, with the credential trail behind that page's **Audit
 -- log** button by #225, with mockup 21's registry over the routing rows — eight
 -- aliases with their params, a price override and run #482's resolution snapshot — by
--- #582, and with mockup 03's backlog — nine mirrored issues and the estimates behind
--- their chips — by #103.
+-- #582, with mockup 03's backlog — nine mirrored issues and the estimates behind
+-- their chips — by #103, and with mockup 09's planning page — the canonical backlog, the
+-- roadmap lanes and the OTA draft batch — by #275.
 
 \set ON_ERROR_STOP on
 
@@ -2198,17 +2199,16 @@ select pg_temp.must_hold(
 -- other seed's assertions are scoped: a developer who configured a source of their own must
 -- not fail this suite.
 --
--- The counts are exact, so this is the sources seed's idempotency test too. It deliberately
--- asserts what the seed does **not** write as well — no `tickets` row — because that
--- restraint is the seed's main decision and a later edit that helpfully filled the canonical
--- table would otherwise pass unnoticed.
+-- The counts are exact, so this is the sources seed's idempotency test too. The canonical
+-- tickets the GitHub source holds are R__dev_seed_ticket_planning.sql's (#275), and are
+-- asserted in that seed's block below.
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
 -- Two sources, two kinds, one workspace.
 --
--- The pair is the point: source-neutrality is only visible where two kinds coexist, and the
--- `status` vocabulary only has a second value in use because one of them is paused.
+-- The pair is the point: source-neutrality is only visible where two kinds coexist. Both are
+-- connected since #275, because mockup 09's *Tracker Sync* card draws both with an ok dot.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
   (select count(*) = 2
@@ -2225,10 +2225,10 @@ select pg_temp.must_hold(
   'one GitHub and one Jira — a development stack in which a second tracker is not hypothetical');
 
 select pg_temp.must_hold(
-  (select array_agg(src.status order by src.kind) = array['active', 'paused']
+  (select array_agg(src.status order by src.kind) = array['active', 'active']
      from ouroboros.ticket_sources src
     where src.id::text like '5eed001a-0000-4000-8000-%'),
-  'the GitHub source is active and the Jira one paused, so both halves of the dot are seeded');
+  'both sources are active — mockup 09 draws GitHub and Jira as connected');
 
 -- ---------------------------------------------------------------------------
 -- The GitHub source: the four repositories R__dev_seed.sql enables, in config.
@@ -2273,13 +2273,25 @@ select pg_temp.must_hold(
   'the Jira source is a site and a project key — no repository, no login, no issue numbers');
 
 select pg_temp.must_hold(
-  (select src.credentials_encrypted is null
+  (select src.credentials_encrypted
+            = 'ouro.v1.1.c2VlZC1ub25jZS01.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1jcmVkZW50aWFsLWppcmE'
      from ouroboros.ticket_sources src
     where src.id = '5eed001a-0000-4000-8000-000000000002'),
-  'and it carries no credential, which is why it is paused rather than active');
+  'and it carries its own sealed development credential, which is what lets it be active');
+
+-- There is no third kind. The *Tracker Sync* card's `Linear · not connected` row and its
+-- **connect ↗** are rendered from this absence, so a seeded `linear` source would silently
+-- take the CTA away.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.ticket_sources src
+     join ouroboros.organization org on org."id" = src.organization_id
+    where org."slug" = 'acme-robotics'
+      and src.kind = 'linear'),
+  'acme-robotics has no Linear source, so its tracker card offers to connect one');
 
 -- ---------------------------------------------------------------------------
--- Neither source has been polled, and no ticket has been ingested.
+-- Neither source has been polled.
 --
 -- The same restraint R__dev_seed_intake.sql showed when it left
 -- `github_repos.issues_synced_at` null: a stamp here would claim a poll that never happened.
@@ -2290,13 +2302,6 @@ select pg_temp.must_hold(
     where src.id::text like '5eed001a-0000-4000-8000-%'
       and src.sync_cursor is null and src.synced_at is null),
   'no sync has run against either source, and neither claims one has');
-
--- And the decision the seed's header argues at length: `tickets` is left empty, because
--- R__dev_seed_intake.sql already seeds the same nine issues into `github_issues` and the
--- copy nothing renders is the copy that drifts. Q.3 (#140) is the cut-over that fills this.
-select pg_temp.must_hold(
-  (select count(*) = 0 from ouroboros.tickets),
-  'and the canonical tickets table is empty — the seed writes sources, not a second backlog');
 
 -- ---------------------------------------------------------------------------
 -- The id convention, for the sources seed's own rows.
@@ -2771,6 +2776,324 @@ select pg_temp.must_hold(
   (select count(*) = 19 from ouroboros.workflow_versions
     where id::text like '5eed001c-0000-4000-8000-%'),
   'and its nineteen prefixed versions and no twentieth');
+
+-- ===========================================================================
+-- R__dev_seed_ticket_planning.sql — mockup 09, card for card.
+--
+-- The ninth seed's rows (#275): fifty-two canonical tickets (`5eed001d…`), ten dependency
+-- edges (`5eed001e…`), five planning epics (`5eed001f…`) and their forty-two ticket links
+-- (`5eed0020…`), one draft batch (`5eed0021…`), its six drafts (`5eed0022…`) and their six
+-- estimates (`5eed0023…`) — all in `acme-robotics`.
+--
+-- Every figure the page prints is asserted **as the aggregate that computes it**, never
+-- read back out of a column, because the acceptance criterion is that nothing is stored. Where
+-- the seed carries a row built to catch a nearly-right query, the nearly-right reading is
+-- asserted too, so a later edit that quietly removed the trap fails here rather than in the
+-- service it was set for. Exact counts, so this is the seed's idempotency test as well.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- Exactly the rows the seed names, once each.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select (select count(*) from ouroboros.tickets
+            where id::text like '5eed001d-0000-4000-8000-%') = 52
+      and (select count(*) from ouroboros.ticket_dependencies
+            where id::text like '5eed001e-0000-4000-8000-%') = 10
+      and (select count(*) from ouroboros.planning_epics
+            where id::text like '5eed001f-0000-4000-8000-%') = 5
+      and (select count(*) from ouroboros.epic_tickets
+            where id::text like '5eed0020-0000-4000-8000-%') = 42
+      and (select count(*) from ouroboros.draft_batches
+            where id::text like '5eed0021-0000-4000-8000-%') = 1
+      and (select count(*) from ouroboros.ticket_drafts
+            where id::text like '5eed0022-0000-4000-8000-%') = 6
+      and (select count(*) from ouroboros.issue_estimates
+            where id::text like '5eed0023-0000-4000-8000-%') = 6),
+  'the planning seed wrote 52 tickets, 10 edges, 5 epics, 42 links, 1 batch, 6 drafts and 6 estimates — once');
+
+select pg_temp.must_hold(
+  (select count(*) = 52
+     from ouroboros.tickets t
+     join ouroboros.ticket_sources src on src.id = t.source_id
+     join ouroboros.organization org on org."id" = t.organization_id
+    where t.id::text like '5eed001d-0000-4000-8000-%'
+      and org."slug" = 'acme-robotics'
+      and src.kind = 'github'
+      and src.display_name = 'GitHub · acme-robotics'),
+  'every seeded ticket is acme-robotics'' and was ingested from its GitHub source');
+
+-- Shaped as Q.3's GitHub mapping writes a row, so a real sync of the same issue upserts it.
+select pg_temp.must_hold(
+  (select bool_and(t.external_key = '#' || t.external_id
+                   and t.external_url = 'https://github.com/acme-robotics/'
+                                        || (t.meta->'github'->>'repo') || '/issues/'
+                                        || t.external_id
+                   and t.meta->'github'->>'owner' = 'acme-robotics'
+                   and src.config->'repos' ? (t.meta->'github'->>'repo')
+                   and t.source_updated_at >= t.source_created_at)
+     from ouroboros.tickets t
+     join ouroboros.ticket_sources src on src.id = t.source_id
+    where t.id::text like '5eed001d-0000-4000-8000-%'),
+  'each ticket carries GitHub''s identity, link and repository in the shape the provider maps them');
+
+-- ---------------------------------------------------------------------------
+-- Tracker Sync and Backlog Health — `42 open`, `38/42`, `4`, `6`.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 42
+     from ouroboros.tickets t
+     join ouroboros.ticket_sources src on src.id = t.source_id
+     join ouroboros.organization org on org."id" = t.organization_id
+    where org."slug" = 'acme-robotics'
+      and src.kind = 'github'
+      and t.state = 'open'),
+  'the GitHub source holds 42 open tickets — the sync row''s count and the health card''s tag');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where t.sizing_status = 'sized') = 38 and count(*) = 42
+     from ouroboros.tickets t
+     join ouroboros.organization org on org."id" = t.organization_id
+    where org."slug" = 'acme-robotics'
+      and t.state = 'open'),
+  'Sized computes to 38 of 42 open tickets');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where t.sizing_status = 'sized') = 48 and count(*) = 52
+     from ouroboros.tickets t
+     join ouroboros.organization org on org."id" = t.organization_id
+    where org."slug" = 'acme-robotics'),
+  'and 48 of 52 when the closed tickets are not excluded, so forgetting the state is visible');
+
+select pg_temp.must_hold(
+  (select count(distinct blocked.id) = 4
+     from ouroboros.ticket_dependencies dep
+     join ouroboros.tickets blocked on blocked.id = dep.blocked_ticket_id
+     join ouroboros.tickets blocker on blocker.id = dep.blocker_ticket_id
+     join ouroboros.organization org on org."id" = dep.organization_id
+    where org."slug" = 'acme-robotics'
+      and blocked.state = 'open'
+      and blocker.state = 'open'),
+  'Blocked computes to 4 — open tickets with an open blocker, over both origins');
+
+select pg_temp.must_hold(
+  (select count(*) = 6
+          and count(distinct dep.blocked_ticket_id) filter (where dep.origin = 'planned') = 3
+          and count(*) filter (where dep.origin = 'synced') = 2
+          and count(*) filter (where blocker.state = 'closed') = 1
+     from ouroboros.ticket_dependencies dep
+     join ouroboros.tickets blocker on blocker.id = dep.blocker_ticket_id
+     join ouroboros.organization org on org."id" = dep.organization_id
+    where org."slug" = 'acme-robotics'
+      and dep.blocked_ticket_id is not null),
+  'and the edges carry the traps: six edges, two synced, one resolved by a closed blocker, one ticket blocked twice');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where t.state = 'open') = 6 and count(*) = 14
+     from ouroboros.tickets t
+     join ouroboros.organization org on org."id" = t.organization_id
+    where org."slug" = 'acme-robotics'
+      and t.source_updated_at < now() - interval '30 days'),
+  'Stale > 30d computes to 6 open tickets, and to 14 if the closed ones are not excluded');
+
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.tickets t
+     join ouroboros.organization org on org."id" = t.organization_id
+    where org."slug" = 'acme-robotics'
+      and t.state = 'open'
+      and t.source_updated_at between now() - interval '30 days' and now() - interval '25 days'),
+  'and one open ticket sits just inside the threshold, the near miss on the other side of it');
+
+-- ---------------------------------------------------------------------------
+-- The roadmap — five lanes, their chips, and a TODAY that lands in the second column.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(p.name || '|' || p.tint || '|' || p.status || '|'
+                    || p.ticket_count || '|' || p.done_count order by p.sort_order)
+          = array['OTA hardening|accent|active|12|8',
+                  'BLE provisioning v2|model|active|9|2',
+                  'Motor control refactor|warn|active|14|0',
+                  'Fleet telemetry dashboard|ok|active|7|0',
+                  'Zephyr 4.2 migration|neutral|proposed|0|0']
+     from ouroboros.planning_epic_progress p
+     join ouroboros.organization org on org."id" = p.organization_id
+    where org."slug" = 'acme-robotics'),
+  'the five lanes compute the mockup''s chips — 12·8, 9·2, 14·0, 7·0 and the unscoped Zephyr lane');
+
+select pg_temp.must_hold(
+  (select bool_and(case e.sort_order
+                     when 5 then e.start_month is null and e.end_month is null
+                     else e.start_month = (date_trunc('month', now())
+                                           + make_interval(months => e.sort_order - 2))::date
+                      and e.end_month   = (date_trunc('month', now())
+                                           + make_interval(months => e.sort_order))::date
+                   end)
+          and min(e.start_month) = (date_trunc('month', now()) - interval '1 month')::date
+          and bool_and(e.roadmap_name = 'Helios 2.1')
+     from ouroboros.planning_epics e
+     join ouroboros.organization org on org."id" = e.organization_id
+    where org."slug" = 'acme-robotics'),
+  'lane months are offsets from the current month, which is always the gantt''s second column — so TODAY never rots');
+
+select pg_temp.must_hold(
+  (select bool_and(e.roadmap_window
+                   = 'Q' || extract(quarter from min_start)
+                     || case when extract(year from min_start) = extract(year from max_end)
+                             then '' else ' ' || extract(year from min_start) end
+                     || '–Q' || extract(quarter from max_end) || ' ' || extract(year from max_end))
+     from ouroboros.planning_epics e
+     join ouroboros.organization org on org."id" = e.organization_id
+     cross join (select min(start_month) as min_start, max(end_month) as max_end
+                   from ouroboros.planning_epics x
+                   join ouroboros.organization o on o."id" = x.organization_id
+                  where o."slug" = 'acme-robotics') span
+    where org."slug" = 'acme-robotics'),
+  'and the roadmap''s window tag names the quarters the lanes actually span');
+
+select pg_temp.must_hold(
+  (select count(*) = 10
+     from ouroboros.tickets t
+     join ouroboros.organization org on org."id" = t.organization_id
+    where org."slug" = 'acme-robotics'
+      and t.id::text like '5eed001d-0000-4000-8000-%'
+      and not exists (select 1 from ouroboros.epic_tickets et where et.ticket_id = t.id)),
+  'ten open tickets belong to no lane, so a chip counted over the source instead of the links is wrong');
+
+-- ---------------------------------------------------------------------------
+-- Generate Tickets — the OTA batch, `✓ all sized`, `~3 days`, `$14`.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select b.planner = 'outline-v0'
+          and b.status = 'sized'
+          and b.target_milestone = 'Helios 2.1'
+          and b.auto_size and not b.queue_small
+          and src.kind = 'github'
+          and epic.name = 'OTA hardening'
+          and b.source_prompt like 'We need OTA updates to survive power loss mid-flash:%'
+     from ouroboros.draft_batches b
+     join ouroboros.organization org on org."id" = b.organization_id
+     join ouroboros.ticket_sources src on src.id = b.target_source_id
+     join ouroboros.planning_epics epic on epic.id = b.epic_id
+    where org."slug" = 'acme-robotics'),
+  'the batch is outline-v0''s, sized, bound for GitHub and Helios 2.1, in the OTA hardening lane');
+
+select pg_temp.must_hold(
+  (select array_agg(d.local_key || '|' || upper(e.effort) || '|' || d.suggested_workflow || '|'
+                    || coalesce(notes.blocks, '') order by d.local_key)
+          = array['OTA-1|L|feature-loop|blocks OTA-3',
+                  'OTA-2|M|feature-loop|blocks OTA-3',
+                  'OTA-3|L|feature-loop|blocks OTA-5',
+                  'OTA-4|M|feature-loop|blocks OTA-5',
+                  'OTA-5|M|hil-verify|',
+                  'OTA-6|XS|docs-loop|']
+     from ouroboros.ticket_drafts d
+     join ouroboros.draft_batches b on b.id = d.batch_id
+     join ouroboros.organization org on org."id" = b.organization_id
+     join lateral (select ie.effort from ouroboros.issue_estimates ie
+                    where ie.draft_id = d.id order by ie.version desc limit 1) e on true
+     left join lateral (select 'blocks ' || string_agg(blocked.local_key, ', '
+                                                       order by blocked.local_key) as blocks
+                          from ouroboros.ticket_dependencies dep
+                          join ouroboros.ticket_drafts blocked on blocked.id = dep.blocked_draft_id
+                         where dep.blocker_draft_id = d.id) notes on true
+    where org."slug" = 'acme-robotics'),
+  'the six drafts render the mockup''s keys, effort chips, workflow tags and dependency notes');
+
+select pg_temp.must_hold(
+  (select bool_and(d.selected and d.push_state = 'pending' and d.provenance = 'planned'
+                   and exists (select 1 from ouroboros.issue_estimates ie
+                                where ie.draft_id = d.id
+                                  and ie.github_issue_id is null
+                                  and ie.trace->>'estimator' = 'heuristic-v0'
+                                  and ie.trace->'signals' = '[]'::jsonb))
+          and count(*) = 6
+     from ouroboros.ticket_drafts d
+     join ouroboros.draft_batches b on b.id = d.batch_id
+     join ouroboros.organization org on org."id" = b.organization_id
+    where org."slug" = 'acme-robotics'),
+  'every draft is selected, pending and sized through issue_estimates.draft_id — so the pill reads all sized');
+
+select pg_temp.must_hold(
+  (select sum((e.breakdown->>'est_minutes')::numeric) / (24 * 60) = 3
+     from ouroboros.ticket_drafts d
+     join ouroboros.draft_batches b on b.id = d.batch_id
+     join ouroboros.organization org on org."id" = b.organization_id
+     join lateral (select ie.breakdown from ouroboros.issue_estimates ie
+                    where ie.draft_id = d.id order by ie.version desc limit 1) e on true
+    where org."slug" = 'acme-robotics'
+      and d.selected),
+  'the drafts'' est_minutes sum to three loop-days');
+
+-- The `$` the way AL.4's repository prices it: the routed model's connection kind through the
+-- workspace's aliases, then `model_price()` — a token rate at its input rate, free as zero.
+select pg_temp.must_hold(
+  (select count(*) = 6
+          and count(p.billing_mode) = 6
+          and round(sum(case p.billing_mode
+                          when 'token' then (e.breakdown->>'est_tokens')::numeric
+                                            * p.input_cents_per_1m / 1000000
+                          when 'free'  then 0
+                        end)) = 1400
+     from ouroboros.ticket_drafts d
+     join ouroboros.draft_batches b on b.id = d.batch_id
+     join ouroboros.organization org on org."id" = b.organization_id
+     join lateral (select ie.breakdown, ie.routed_model from ouroboros.issue_estimates ie
+                    where ie.draft_id = d.id order by ie.version desc limit 1) e on true
+     left join lateral (select c.kind
+                          from ouroboros.model_aliases a
+                          join ouroboros.provider_connections c
+                            on c.id = a.provider_connection_id
+                           and c.organization_id = a.organization_id
+                         where a.organization_id = b.organization_id
+                           and a.model_id = e.routed_model
+                         order by a.alias
+                         limit 1) k on true
+     left join lateral ouroboros.model_price(b.organization_id, k.kind, e.routed_model) p on true
+    where org."slug" = 'acme-robotics'
+      and d.selected
+      and (p.billing_mode is null or p.billing_mode in ('token', 'free'))),
+  'every draft is priced by a seeded rate, and the priced subtotal is 1400 cents — the footer''s $14');
+
+-- ---------------------------------------------------------------------------
+-- No collision with the intake mirror or the dashboard's queue and runs.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select not exists (select 1
+                        from ouroboros.tickets t
+                       where t.id::text like '5eed001d-0000-4000-8000-%'
+                         and (t.external_id::integer in (select number from ouroboros.github_issues)
+                              or t.external_id::integer in (select issue_number from ouroboros.runs)
+                              or t.external_id::integer in (select issue_number
+                                                              from ouroboros.queue_items))))
+      and (select count(*) = 9 from ouroboros.github_issues
+            where id::text like '5eed0018-0000-4000-8000-%'),
+  'no canonical ticket reuses an issue number the intake or dashboard seeds use, and the intake mirror still holds its nine');
+
+-- ---------------------------------------------------------------------------
+-- The personal workspace is empty, and so is acme-labs.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select not exists (select 1 from ouroboros.tickets t
+                        join ouroboros.organization o on o."id" = t.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))
+      and not exists (select 1 from ouroboros.ticket_sources s
+                        join ouroboros.organization o on o."id" = s.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))
+      and not exists (select 1 from ouroboros.planning_epics e
+                        join ouroboros.organization o on o."id" = e.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))
+      and not exists (select 1 from ouroboros.draft_batches b
+                        join ouroboros.organization o on o."id" = b.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))
+      and not exists (select 1 from ouroboros.ticket_dependencies d
+                        join ouroboros.organization o on o."id" = d.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))),
+  'the personal workspace has no source, ticket, lane, batch or edge — AM.5''s guidance path, with no $ to show');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.epic_mirrors),
+  'and nothing has been pushed, so no epic has a tracker mirror');
 
 \o
 \echo 'seed.sql: all assertions passed'

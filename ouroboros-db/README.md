@@ -702,7 +702,7 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **eight migrations**, because they answer eight questions and change on different
+It is **nine migrations**, because they answer nine questions and change on different
 days:
 
 | File | Holds | Issue |
@@ -713,15 +713,18 @@ days:
 | [`R__dev_seed_providers.sql`](migrations/R__dev_seed_providers.sql) | *What it is allowed to call* — mockup 07's five provider cards, their discovered models, and the spend behind their meters | [#221](https://github.com/NobuData/ouroboros/issues/221) |
 | [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from — and, since [#582](https://github.com/NobuData/ouroboros/issues/582), *what the registry says about the same names*: mockup 21's eighth (unbound) alias, the params behind every chip, the one price override, and run #482's resolution snapshot | [#192](https://github.com/NobuData/ouroboros/issues/192), [#582](https://github.com/NobuData/ouroboros/issues/582) |
 | [`R__dev_seed_audit.sql`](migrations/R__dev_seed_audit.sql) | *Who touched the keys* — the credential trail mockup 07's **Audit log** sheet opens, including a failed rotation and a lease grant with no actor | [#225](https://github.com/NobuData/ouroboros/issues/225) |
-| [`R__dev_seed_sources.sql`](migrations/R__dev_seed_sources.sql) | *Where the work comes from* — the two trackers `acme-robotics` ingests from: an active `github` source over its four enabled repositories, and a paused `jira` source with no repository in it at all. Sources only; `tickets` is left empty, because the intake seed already holds mockup 03's backlog and the copy nothing renders is the copy that drifts | [#138](https://github.com/NobuData/ouroboros/issues/138) |
+| [`R__dev_seed_sources.sql`](migrations/R__dev_seed_sources.sql) | *Where the work comes from* — the two trackers `acme-robotics` ingests from: a `github` source over its four enabled repositories, and a `jira` source with no repository in it at all, both connected (sealed development credentials, `active`) since [#275](https://github.com/NobuData/ouroboros/issues/275) | [#138](https://github.com/NobuData/ouroboros/issues/138), [#275](https://github.com/NobuData/ouroboros/issues/275) |
+| [`R__dev_seed_ticket_planning.sql`](migrations/R__dev_seed_ticket_planning.sql) | *The work and the plan over it* — mockup 09's planning page: a canonical backlog of fifty-two GitHub tickets whose aggregates are the *Tracker Sync* and *Backlog Health* cards, the five gantt lanes with months relative to `now()`, and the six-draft OTA batch sized through `issue_estimates.draft_id` | [#275](https://github.com/NobuData/ouroboros/issues/275) |
 | [`R__dev_seed_workflows.sql`](migrations/R__dev_seed_workflows.sql) | *What it does with it* — mockup 04's studio: the rail's five workflows, `standard-fix`'s twelve-node canvas at v14 with the fourteen versions that number implies, the draft the page head's *Last edited 2h ago* is read from, and the paused `hotfix-p0` behind the rail's err-dot | [#136](https://github.com/NobuData/ouroboros/issues/136) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
 > their *descriptions*, and every row the later seeds write finds its parent by natural key —
 > so `dev_seed_audit`, `dev_seed_dashboard`, `dev_seed_intake`, `dev_seed_providers`,
-> `dev_seed_routing`, `dev_seed_sources` and `dev_seed_workflows` all have to sort after
-> `dev_seed`, and `dev_seed_routing` after `dev_seed_providers` besides,
-> since every alias binds to a connection by kind and name. They do. `tests/seed.test.sh`
+> `dev_seed_routing`, `dev_seed_sources`, `dev_seed_ticket_planning` and `dev_seed_workflows`
+> all have to sort after `dev_seed`, `dev_seed_routing` after `dev_seed_providers` besides,
+> since every alias binds to a connection by kind and name, and `dev_seed_ticket_planning`
+> after `dev_seed_sources`, since every ticket hangs off the GitHub source — which is why it
+> is not called `dev_seed_planning`. They do. `tests/seed.test.sh`
 > asserts the whole order, because the failure mode is silent: applied in the wrong order,
 > every join finds nothing, every insert inserts nothing, and a second `migrate` does not put
 > it right (Flyway re-applies a repeatable migration only when its checksum changes).
@@ -891,6 +894,36 @@ it is drawn from six tables plus the connections above:
 of* the providers seed's remainder rather than on top of it — so mockup 02's *Token spend ·
 today* card and mockup 07's month meters both read exactly what they read without it.
 
+#### The work and the plan over it
+
+Mockup 09's planning page, all of it in `acme-robotics`. **Every figure on the page is an
+aggregate over these rows** and the migration contains none of them —
+[`tests/seed.test.sh`](tests/seed.test.sh) refuses the literals and
+[`tests/seed.sql`](tests/seed.sql) asserts each as the query that computes it.
+
+| Table | Rows | What mockup 09 renders from them |
+|---|---|---|
+| `tickets` | 52 | `#540`–`#591` in the GitHub source, 42 open: *two-way sync · 42 issues*, the health card's `42 open`, **Sized** `38/42` (`sizing_status`; four newest are `unsized`) and **Stale > 30d** `6` (`source_updated_at`) |
+| `ticket_dependencies` | 10 | **Blocked** `4` — six ticket edges, two of them `synced` — and the drafts' four *blocks OTA-3 / OTA-5* notes |
+| `planning_epics` | 5 | The gantt's lanes, tints and order; months are offsets from the current month, so the current month is always the second column and TODAY never rots. *Zephyr 4.2 migration* has null months and status `proposed` |
+| `epic_tickets` | 42 | The chips `12 · 8`, `9 · 2`, `14 · 0`, `7 · 0`, through `planning_epic_progress` |
+| `draft_batches` | 1 | The *Generate Tickets* card: the OTA prompt, an `outline-v0` outline, GitHub, *Helios 2.1*, `sized` |
+| `ticket_drafts` | 6 | `OTA-1`…`OTA-6` — titles and workflow tags, all selected and pending |
+| `issue_estimates` | 6 | The effort chips and `✓ all sized`; their `est_minutes` sum to three loop-days, and their `est_tokens` priced at the bundled catalog's rates for the routing seed's aliases come to `$14` (decision N10) |
+
+> **Each metric has a row that catches a nearly-right query.** A ticket blocked twice counts
+> once; a ticket blocked only by a closed one does not count; ten closed tickets are `sized`
+> and eight of them untouched for months, so a count that forgets `state = 'open'` reads 48/52
+> and 14; one open ticket was updated 28 days ago; and ten open tickets belong to no lane.
+>
+> **No ticket number collides with another seed.** The intake mirror is `#483`–`#491` and the
+> dashboard's runs and queue name `#300`–`#345` and `#465`–`#496`, so mockup 03 still computes
+> *9 open · 7 sized* over `github_issues` while mockup 09 computes 42/38 over `tickets`.
+>
+> **Deliberately absent:** no `epic_mirrors` (nothing has been pushed), no `linear` source
+> (its absence is the *Tracker Sync* card's **connect ↗**), no price rows (the `$` exists
+> because the bundled rates already do), and no source sync stamps.
+
 #### What it does with the work
 
 Mockup 04's studio, all of it in `acme-robotics`. Two tables, and one of them holds documents
@@ -940,6 +973,9 @@ document in the seed and compares that one against the fixture, and
 personal workspace is the *empty-state fixture* the zero-state cards
 ([#86](https://github.com/NobuData/ouroboros/issues/86)) are rendered against, so switching
 the active organization to it is how a developer sees the empty dashboard. **Neither gets a
+ticket, a roadmap lane or a draft batch** — mockup 09's guidance path
+([#287](https://github.com/NobuData/ouroboros/issues/287)), whose generator footer has no `$`
+to print. **Neither gets a
 provider connection either**, which is the same fixture for mockup 07's *connect your first
 provider* guidance ([#233](https://github.com/NobuData/ouroboros/issues/233)). Neither gets a
 `workspace_settings` row either, which keeps "answered no" and "never asked" distinguishable
@@ -964,7 +1000,10 @@ aliases, `5eed0010…` task kinds, `5eed0011…` routes, `5eed0012…` hops, `5e
 told apart by the first two hex digits of a row's id. The workflows seed takes the two after
 the sources seed's — `5eed001b…` a workflow and `5eed001c…` one of its versions — and builds
 each id from the rail's ordinal and the version number, with `…0000000000` for the draft,
-which is a version a row does not have.
+which is a version a row does not have. The planning seed takes the seven after those —
+`5eed001d…` tickets, `5eed001e…` dependencies, `5eed001f…` epics, `5eed0020…` epic links,
+`5eed0021…` the batch, `5eed0022…` drafts and `5eed0023…` their estimates — suffixed by issue
+number, sort order or draft ordinal.
 
 **Neither can run against anything but a development database.** Each statement in either
 seed ends `and ${ouro_dev_seed}`, a Flyway placeholder that is `false` in
@@ -1644,6 +1683,7 @@ ouroboros-db/
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
 │   ├── R__dev_seed_routing.sql       # mockup 06 as rows, and mockup 21's registry over them, dev only — #192, #582 (sorts after the above)
 │   ├── R__dev_seed_sources.sql       # the two trackers acme-robotics ingests from, dev only — #138 (sorts after the above)
+│   ├── R__dev_seed_ticket_planning.sql # mockup 09 — backlog, roadmap lanes, OTA batch, dev only — #275 (sorts after sources)
 │   ├── R__dev_seed_workflows.sql     # mockup 04's studio — five workflows, standard-fix at v14, dev only — #136 (sorts after the above)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
