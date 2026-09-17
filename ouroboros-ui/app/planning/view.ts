@@ -98,6 +98,21 @@ export const ROADMAP_EMPTY_TITLE = "No roadmap yet";
 /** …and the line under it: how to start one. */
 export const ROADMAP_EMPTY_NOTE = "New roadmap names one and creates its first epic.";
 
+/**
+ * What it says when a roadmap has been named and has no lanes on it yet (AM.5,
+ * [#287](https://github.com/NobuData/ouroboros/issues/287)).
+ *
+ * A different sentence from {@link ROADMAP_EMPTY_TITLE}, because it is a different fact and the
+ * card's own head is already printing the roadmap's name above it — *No roadmap yet* under
+ * *Roadmap — Helios 2.1* read as a contradiction.
+ */
+export const ROADMAP_NO_EPICS_TITLE = "No epics on this roadmap yet";
+
+/** …and the line under it. */
+export const ROADMAP_NO_EPICS_NOTE =
+  "An epic is a lane on the gantt — a named piece of work with a month range. Adding the first " +
+  "one draws the roadmap.";
+
 /** What the roadmap card is headed with when the read failed, before the service's reason. */
 export const ROADMAP_UNREAD = "The roadmap could not be read.";
 

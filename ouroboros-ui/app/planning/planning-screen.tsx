@@ -2,8 +2,16 @@ import { Button, Card, CardHead, EmptyState, Eyebrow, Tag } from "@/app/ui";
 
 import { BacklogHealthCard } from "./backlog-health-card";
 import { SHARE_LABEL, SHARE_SOON_NOTE } from "./gantt";
+import { PlanningBanner } from "./planning-banner";
+import {
+  CARD_UNREAD_NOTE,
+  planningFailureReason,
+  planningFailures,
+  planningHeadline,
+  planningReadCount,
+} from "./states";
 import { GeneratorCard } from "./generator-card";
-import { SOURCES_UNREAD, trackerOptions } from "./generator";
+import { trackerOptions } from "./generator";
 import { NewRoadmap } from "./new-roadmap";
 import { RoadmapGantt } from "./roadmap-gantt";
 import { TrackerSyncCard } from "./tracker-sync-card";
@@ -16,6 +24,8 @@ import {
   type PlanningReadings,
   ROADMAP_EMPTY_NOTE,
   ROADMAP_EMPTY_TITLE,
+  ROADMAP_NO_EPICS_NOTE,
+  ROADMAP_NO_EPICS_TITLE,
   ROADMAP_REGION_ID,
   ROADMAP_UNREAD,
   SOON_MARK,
@@ -75,6 +85,9 @@ export function PlanningScreen({
   const { roadmap } = readings;
   const trackers = trackerOptions(readings.sources.ok ? readings.sources.value.items : [], readings.catalog);
 
+  // Said once, above the grid — see `planning-banner.tsx` for why the cards no longer say it.
+  const failures = planningFailures(readings);
+
   return (
     <main className="planning">
       <div className="planning__head">
@@ -93,14 +106,22 @@ export function PlanningScreen({
         </div>
       </div>
 
+      {failures.length > 0 && (
+        <PlanningBanner
+          headline={planningHeadline(failures, planningReadCount(readings))}
+          reason={planningFailureReason(failures)}
+        />
+      )}
+
       <div className="planning__grid">
         <div className="planning__generator">
           <GeneratorCard
             batch={readings.batch}
+            catalog={readings.catalog}
             mayAdminister={mayAdminister}
             mayContribute={mayContribute}
+            sources={readings.sources}
             trackers={trackers}
-            trackersUnread={readings.sources.ok ? null : `${SOURCES_UNREAD} ${readings.sources.reason}`}
           />
         </div>
         <div className="planning__side">
@@ -148,11 +169,27 @@ function RoadmapBody({
   const { roadmap } = readings;
 
   if (!roadmap.ok) {
-    return <EmptyState note={roadmap.reason} title={ROADMAP_UNREAD} />;
+    return <EmptyState note={CARD_UNREAD_NOTE} title={ROADMAP_UNREAD} />;
   }
 
   if (roadmap.value.lanes.length === 0) {
-    return <EmptyState note={ROADMAP_EMPTY_NOTE} title={ROADMAP_EMPTY_TITLE} />;
+    // A roadmap that exists but has no lanes is a different sentence from no roadmap at all: the
+    // card's own head is already saying its name above this.
+    const named = roadmap.value.name !== null;
+
+    return (
+      <EmptyState
+        note={named ? ROADMAP_NO_EPICS_NOTE : ROADMAP_EMPTY_NOTE}
+        title={named ? ROADMAP_NO_EPICS_TITLE : ROADMAP_EMPTY_TITLE}
+      >
+        <NewRoadmap
+          mayAdminister={mayAdminister}
+          roadmap={roadmap.value}
+          size="sm"
+          tone="default"
+        />
+      </EmptyState>
+    );
   }
 
   return <RoadmapGantt mayAdminister={mayAdminister} readMonth={readMonth} roadmap={roadmap.value} />;

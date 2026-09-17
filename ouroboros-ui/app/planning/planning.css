@@ -1090,3 +1090,136 @@
 .planning-health__info {
   color: var(--ink-faint);
 }
+
+/* ---------- the page's states (#287) ---------- */
+
+/*
+ * The DASH-I.7 banner, between the head and the grid — where the eye lands after the heading and
+ * before any card, so a reader meets the reason before the gaps it explains.
+ */
+.planning-banner {
+  margin-bottom: var(--sp-8);
+}
+
+/* The connect-a-tracker guidance, inside the generator card above its draft seat. */
+.planning-gen__guidance {
+  margin-bottom: var(--sp-6);
+}
+
+/*
+ * Why a draft is still sizing. Quieter than `.planning-gen__notice`, which is a warning: this is
+ * an explanation of something working normally, not a problem.
+ */
+.planning-gen__sweep {
+  margin: 0 0 var(--sp-5);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the loading skeleton (#287) ---------- */
+
+/*
+ * Bars where the data will be. Every one is a token-coloured block on `--raised`, and none carries
+ * text: the grid is `aria-hidden` and the page says `aria-busy` once.
+ */
+.planning-skeleton__bar {
+  /* Block, so it fills its seat without a percentage — the sheet is rem-and-token only. */
+  display: block;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* A heading's seat, in `ch` so it scales with the type it stands in for. */
+.planning-skeleton__bar--title {
+  width: 18ch;
+  height: var(--sp-7);
+}
+
+.planning-skeleton__bar--short {
+  width: 26ch;
+}
+
+/* A card head's seat, matching `.ou-card__head`'s spacing so nothing shifts when the real one lands. */
+.planning-skeleton__head {
+  margin-bottom: var(--sp-7);
+}
+
+.planning-skeleton__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.planning-skeleton__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+/* The prompt textarea's reserved height — the real field is three lines and its label. */
+.planning-skeleton__prompt {
+  display: block;
+  height: 6rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* The tracker segment's seat. */
+.planning-skeleton__seg {
+  display: block;
+  flex: 1;
+  height: var(--sp-9);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* A button-shaped bar — the head's two actions, and the card's own controls. */
+.planning-skeleton__button {
+  display: block;
+  width: 7rem;
+  height: var(--sp-9);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* The tracker rows' monogram square, at `.planning-mgram`'s size. */
+.planning-skeleton__monogram {
+  display: block;
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The sync list, without the real one's bullet reset needing to be repeated. */
+.planning-skeleton__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A health meter's track, at `.ou-meter`'s height. */
+.planning-skeleton__meter {
+  display: block;
+  height: var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+/* One gantt lane: its label over the bar the epic will draw. */
+.planning-skeleton__lane {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-7);
+}
+
+.planning-skeleton__lane-bar {
+  display: block;
+  flex: 1;
+  height: var(--sp-10);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}

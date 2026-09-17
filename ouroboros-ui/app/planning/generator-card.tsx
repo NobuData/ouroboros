@@ -5,8 +5,9 @@ import { useEffect, useRef, useState } from "react";
 
 import type { PlanningBatch, PlanningDraftPatch } from "@/app/api/planning";
 import type { Reading } from "@/app/api/reading";
+import type { TicketSourceCatalog, TicketSourcePage } from "@/app/api/sources";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
-import { PLANNING_PATH } from "@/app/paths";
+import { PLANNING_PATH, SOURCES_PATH } from "@/app/paths";
 import { Button, Card, CardHead, Chip, EmptyState, Tag, TextAreaField, Toggle } from "@/app/ui";
 
 import { type BatchPollOptions, batchUrl, createBatchPoll } from "./batch-poll";
@@ -62,6 +63,15 @@ import {
   sizingProgress,
 } from "./generator";
 import { generateBatch, patchDraft, pushBatch, regenerateBatch } from "./generator-actions";
+import {
+  CONNECT_TRACKER_LABEL,
+  CONNECT_TRACKER_MEMBER_NOTE,
+  CONNECT_TRACKER_NOTE,
+  CONNECT_TRACKER_TITLE,
+  SWEEP_LABEL,
+  SWEEP_NOTE,
+  trackerState,
+} from "./states";
 import { MilestoneField } from "./milestone-field";
 import { TrackerSegment } from "./tracker-segment";
 
@@ -102,8 +112,10 @@ export interface GeneratorCardProps {
   readonly batch: Reading<PlanningBatch> | null;
   /** The tracker segment (`generator.ts`'s `trackerOptions`). */
   readonly trackers: readonly TrackerOption[];
-  /** Why the workspace's trackers could not be read, when they could not. */
-  readonly trackersUnread: string | null;
+  /** The workspace's sources, for the guidance state (AM.5, #287). */
+  readonly sources: Reading<TicketSourcePage>;
+  /** The catalog, which says which kinds can be written to (AL.2). */
+  readonly catalog: Reading<TicketSourceCatalog>;
   /** Whether the reader may push — `owner` or `admin`. */
   readonly mayAdminister: boolean;
   /** Whether the reader may draft and edit — `owner`, `admin` or `member`. */
@@ -146,7 +158,8 @@ function openingForm(batch: PlanningBatch | null, trackers: readonly TrackerOpti
 export function GeneratorCard({
   batch: read,
   trackers,
-  trackersUnread,
+  sources,
+  catalog,
   mayAdminister,
   mayContribute,
   pollOptions,
@@ -412,10 +425,25 @@ export function GeneratorCard({
         </aside>
       )}
 
-      {trackersUnread !== null && (
-        <p className="planning-gen__notice" role="status">
-          {trackersUnread}
-        </p>
+      {trackerState(sources, catalog) === "none-writable" && (
+        <EmptyState
+          className="planning-gen__guidance"
+          note={CONNECT_TRACKER_NOTE}
+          title={CONNECT_TRACKER_TITLE}
+          variant="flush"
+        >
+          {/*
+            A control for a reader who can act, a sentence naming who can for one who cannot —
+            `app/issues/states.ts`'s rule, and this card is a new workspace's first screen.
+          */}
+          {mayAdminister ? (
+            <Button href={SOURCES_PATH} size="sm">
+              {CONNECT_TRACKER_LABEL}
+            </Button>
+          ) : (
+            <p className="planning-gen__notice">{CONNECT_TRACKER_MEMBER_NOTE}</p>
+          )}
+        </EmptyState>
       )}
 
       <div className="planning-gen__controls">
@@ -604,6 +632,16 @@ function DraftSection({
           <Chip dot="ring">{sizingProgress(drafts)}</Chip>
         )}
       </div>
+
+      {/*
+        Why a row can sit at `sizing…` for longer than a moment (AM.5, #287). Without it the card
+        reads as hung, which is the one reading of it that is wrong — see `states.ts`'s SWEEP_NOTE.
+      */}
+      {!sized && batch.autoSize && (
+        <p aria-label={SWEEP_LABEL} className="planning-gen__sweep" role="status">
+          {SWEEP_NOTE}
+        </p>
+      )}
 
       <ul aria-label={draftHeading(drafts.length)} className="planning-gen__rows">
         {drafts.map((draft) => {
