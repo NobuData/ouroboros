@@ -11,6 +11,7 @@ import {
   DEFAULT_REESTIMATION_HOUR_UTC,
   DEFAULT_REESTIMATION_JITTER_MINUTES,
   DEFAULT_DASHBOARD_POLL_SECONDS,
+  DEFAULT_GITHUB_API_BASE_URL,
   DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
   DEFAULT_PORT,
@@ -81,6 +82,9 @@ describe("the development defaults", () => {
       betterAuthUrl: "http://localhost:4000",
       githubClientId: "dev-github-client-id",
       githubClientSecret: "dev-github-client-secret",
+      // The template writes the public API out explicitly (#288) and writes exactly this
+      // address, so this fixture — which omits it — and a real checkout agree.
+      githubApiBaseUrl: DEFAULT_GITHUB_API_BASE_URL,
       vaultMasterKey: "b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=",
       corsOrigins: ["http://localhost:3000"],
       dashboardPollSeconds: DEFAULT_DASHBOARD_POLL_SECONDS,
@@ -159,9 +163,29 @@ describe("the shape of a configuration", () => {
   // the ones `.env.example` has documented since #33 — with a deployment then setting one
   // pair and signing in through the other.
   it("declares one GitHub application, under the keys the template already documents", () => {
-    const github = Object.values(VARIABLES).filter((name) => name.includes("GITHUB"));
+    // `CLIENT` rather than `GITHUB`: #288 added `OURO_GITHUB_API_BASE_URL`, which is an
+    // address rather than an application credential, and this test is about the credentials.
+    // The filter narrowed instead of the expectation growing, so a second *application* key
+    // still fails here.
+    const github = Object.values(VARIABLES).filter((name) => name.includes("GITHUB_CLIENT"));
 
     expect(github).toEqual(["OURO_GITHUB_CLIENT_ID", "OURO_GITHUB_CLIENT_SECRET"]);
+  });
+
+  // #288's variable, and the two claims that make it safe: it is optional, so nothing that
+  // did not ask for it changes, and it is an address, so a value that is not one stops the
+  // process at boot rather than at the first call to a tracker.
+  it("takes a GitHub API address, and refuses one that is not an address", () => {
+    expect(loadConfiguration(testEnvironment()).githubApiBaseUrl).toBe(DEFAULT_GITHUB_API_BASE_URL);
+
+    expect(
+      loadConfiguration(testEnvironment({ OURO_GITHUB_API_BASE_URL: "http://tracker-stub:8080" }))
+        .githubApiBaseUrl,
+    ).toBe("http://tracker-stub:8080");
+
+    expect(() =>
+      loadConfiguration(testEnvironment({ OURO_GITHUB_API_BASE_URL: "tracker-stub" })),
+    ).toThrow(VARIABLES.githubApiBaseUrl);
   });
 });
 

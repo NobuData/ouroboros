@@ -171,6 +171,16 @@ export const MIN_PROVIDER_HEALTH_KEY_CHECK_SECONDS = 60;
 export const MAX_PROVIDER_HEALTH_SECONDS = 86400;
 
 /**
+ * Where GitHub's REST API is when `OURO_GITHUB_API_BASE_URL` is not set — the public API.
+ *
+ * The same address Octokit itself defaults to, written down rather than left implicit for the
+ * reason the cadences above are written out in `.env.example`: a value the template states and a
+ * value the code assumes are the same value here, so a checkout and this module's fixture cannot
+ * produce different configurations.
+ */
+export const DEFAULT_GITHUB_API_BASE_URL = "https://api.github.com";
+
+/**
  * Seconds between backlog sync cycles when `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` is not set —
  * five minutes.
  *
@@ -455,6 +465,28 @@ export interface Configuration {
   /** GitHub OAuth application, client secret. From `OURO_GITHUB_CLIENT_SECRET`. */
   readonly githubClientSecret: string;
   /**
+   * Where GitHub's REST API is. From `OURO_GITHUB_API_BASE_URL`,
+   * {@link DEFAULT_GITHUB_API_BASE_URL} when unset — which is the normal case and the one
+   * every deployment talking to github.com is in.
+   *
+   * `github.octokit.ts` has always taken a `baseUrl` — *"a GitHub Enterprise Server
+   * installation is the reason this is a parameter rather than a constant"* — and nothing
+   * has ever supplied one, so the parameter has been a promise rather than a setting. This
+   * is the setting, and it keeps that promise for GHES.
+   *
+   * It exists for a second caller, the way {@link listenHostOverride} does: the e2e compose
+   * override (repo-root `docker-compose.e2e.yml`,
+   * [#288](https://github.com/NobuData/ouroboros/issues/288)) points it at the suite's
+   * sandbox tracker, because a planning push has to reach a tracker that will really create
+   * issues and a suite may not create them on github.com.
+   *
+   * **It moves the address and nothing else.** Every credential, every rate-limit rule and
+   * every classification stays what it was; the token is still the workspace's, and a
+   * deployment that does not set this still talks to `api.github.com` through exactly the
+   * code path it did before.
+   */
+  readonly githubApiBaseUrl: string;
+  /**
    * The vault's key-encryption key, base64. From `OURO_VAULT_MASTER_KEY`.
    *
    * The KEK of the envelope-encryption service — roadmap decision **P2**,
@@ -655,6 +687,7 @@ export const VARIABLES = {
   betterAuthUrl: "BETTER_AUTH_URL",
   githubClientId: "OURO_GITHUB_CLIENT_ID",
   githubClientSecret: "OURO_GITHUB_CLIENT_SECRET",
+  githubApiBaseUrl: "OURO_GITHUB_API_BASE_URL",
   vaultMasterKey: "OURO_VAULT_MASTER_KEY",
   corsOrigins: "OURO_CORS_ORIGINS",
   dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
@@ -988,6 +1021,17 @@ const environmentSchema = z.object({
   OURO_GITHUB_CLIENT_ID: z.string({ error: "is required" }),
   OURO_GITHUB_CLIENT_SECRET: z.string({ error: "is required" }),
 
+  // Optional, and validated as an address rather than accepted as a string: an unparseable
+  // value here would otherwise become a client that fails every call with a URL error
+  // nobody configured, which is the class of failure this module exists to move to boot.
+  OURO_GITHUB_API_BASE_URL: z
+    .string()
+    .refine(
+      (value) => isAbsoluteUrl(value, ["http:", "https:"]),
+      "expected an absolute http:// or https:// URL, such as https://ghe.example.com/api/v3",
+    )
+    .default(DEFAULT_GITHUB_API_BASE_URL),
+
   // The vault's KEK (#222). Not validated by `secret` above, and the difference is the
   // whole of this ticket's "boot fails cleanly on a bad master key" criterion: the others
   // are shared strings whose only requirement is that both sides carry the same one, while
@@ -1248,6 +1292,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     betterAuthUrl: values.BETTER_AUTH_URL,
     githubClientId: values.OURO_GITHUB_CLIENT_ID,
     githubClientSecret: values.OURO_GITHUB_CLIENT_SECRET,
+    githubApiBaseUrl: values.OURO_GITHUB_API_BASE_URL,
     vaultMasterKey: values.OURO_VAULT_MASTER_KEY,
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
     dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,

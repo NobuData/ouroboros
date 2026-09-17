@@ -145,6 +145,18 @@ export class AppConfigService {
   }
 
   /**
+   * Where GitHub's REST API is — `OURO_GITHUB_API_BASE_URL`.
+   *
+   * Always a value: the schema defaults it to the public API, so the one caller —
+   * `GithubModule`'s `OCTOKIT_FACTORY` — has an address to hand the library rather than a
+   * branch to write. A GitHub Enterprise Server installation, and the e2e suite's sandbox
+   * tracker, are the two things that set it.
+   */
+  get githubApiBaseUrl(): string {
+    return this.config.getOrThrow<string>("githubApiBaseUrl");
+  }
+
+  /**
    * Seconds between provider health sweeps — `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`.
    *
    * The nominal interval. `src/modules/provider-health/` jitters every delay by ±25% around
@@ -290,6 +302,7 @@ export class AppConfigService {
       betterAuthUrl: this.betterAuthUrl,
       githubClientId: this.githubClientId,
       githubClientSecret: this.githubClientSecret,
+      githubApiBaseUrl: this.githubApiBaseUrl,
       vaultMasterKey: this.vaultMasterKey,
       corsOrigins: this.corsOrigins,
       dashboardPollSeconds: this.dashboardPollSeconds,

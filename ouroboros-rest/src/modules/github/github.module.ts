@@ -39,6 +39,7 @@
 import { Module } from "@nestjs/common";
 
 import { AuditModule } from "../audit/audit.module";
+import { AppConfigService } from "../config/config.service";
 import { DbModule } from "../db/db.module";
 import { VaultModule } from "../vault/vault.module";
 import { GithubClientFactory, OCTOKIT_FACTORY, type OctokitFactory } from "./github.client.factory";
@@ -61,11 +62,18 @@ import { GithubRateLimiter } from "./github.rate-limit";
     GithubClientFactory,
     {
       provide: OCTOKIT_FACTORY,
-      // `useValue` rather than `useFactory`: there is nothing to inject, and the deadline,
-      // the user agent and the base URL are `github.octokit.ts`'s decisions rather than this
-      // module's. A GitHub Enterprise Server deployment changes that file's default, not
-      // this line.
-      useValue: ((token: string) => createOctokit({ token })) satisfies OctokitFactory,
+      // `useFactory` since AM.6 ([#288](https://github.com/NobuData/ouroboros/issues/288)),
+      // and the one thing it injects is where GitHub is. The deadline and the user agent stay
+      // `github.octokit.ts`'s decisions; the *address* became a setting when it turned out
+      // that the parameter that file has always carried for GitHub Enterprise Server had no
+      // way for a deployment to reach it. `undefined` — every deployment that does not set
+      // `OURO_GITHUB_API_BASE_URL` — is the public API, exactly as before.
+      useFactory: (config: AppConfigService): OctokitFactory => {
+        const baseUrl = config.githubApiBaseUrl;
+
+        return (token: string) => createOctokit({ token, baseUrl });
+      },
+      inject: [AppConfigService],
     },
   ],
   // `OCTOKIT_FACTORY` is exported since Q.3 ([#140](https://github.com/NobuData/ouroboros/issues/140)):
