@@ -44,13 +44,14 @@
 -- `workflow_versions`, the studio's entities and the version history a run can pin
 -- (V029, #132).
 --
--- The last two sections belong to no migration. Y.5 (#193) names the routing invariants
+-- The last three sections belong to no migration. Y.5 (#193) names the routing invariants
 -- Z.1's resolution is written against and asks the catalogue for each of them **by name** — a
 -- backstop for the one failure mode a behavioural probe cannot report about itself, which is
 -- that it depends on a fixture and can therefore go quietly vacuous. See its own header.
--- CG.5 (#583) is the registry's list, and it is kept in lib/registry-invariants.sql because
--- it runs twice: included here, and on its own against the seeded database this file cannot
--- be pointed at. See its header too.
+-- AK.5 (#276) is planning's list — the stored dependency graph's acyclicity among it, which no
+-- constraint can state — and CG.5 (#583) is the registry's. Both are kept in lib/ because
+-- each runs twice: included here, and on its own against the seeded database this file cannot
+-- be pointed at. See their headers too.
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -10495,6 +10496,17 @@ select pg_temp.must_reject(
 -- --- each push state carries its own evidence -----------------------------------
 --
 -- Acceptance criterion, and the rule that makes a half-succeeded batch readable.
+--
+-- First the vocabulary those states are drawn from (#276). A fourth word is refused by name
+-- before the coherence rule below is reached — PostgreSQL evaluates a table's checks in name
+-- order — so this probe watches `ticket_drafts_push_state` itself rather than the `else false`
+-- that would otherwise hide its loss.
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set push_state = 'queued'
+     where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
+  'push_state is pending, pushed or failed — a fourth state is a draft resume neither skips nor retries',
+  'ticket_drafts_push_state');
+
 select pg_temp.must_reject(
   $$update ouroboros.ticket_drafts set push_state = 'failed'
      where id = 'c0340000-0000-0000-0000-0000000000d1'$$,
@@ -11095,29 +11107,11 @@ reset enable_seqscan;
 -- graph stays walkable. A cycle is not an error anybody sees — it is a batch that can never be
 -- pushed, because AL.3 (#279) pushes in dependency order and a cycle has no order.
 --
--- Node identity is `coalesce(draft_id, ticket_id)`, which is what makes this one CTE rather than
--- a four-branch join: both are uuid primary keys from two different tables, so one expression
--- names a node whichever kind it is. The walk is depth-bounded, because an unbounded recursion
--- over a graph that *does* contain a cycle never terminates — the bound is what turns
--- non-termination into a finding.
-create function pg_temp.dependency_graph_has_cycle(org text) returns boolean
-language sql as $$
-  with recursive edges as (
-    select coalesce(blocker_draft_id, blocker_ticket_id) as blocker,
-           coalesce(blocked_draft_id, blocked_ticket_id) as blocked
-      from ouroboros.ticket_dependencies
-     where organization_id = org
-  ),
-  walk (start_node, node, depth, closed) as (
-    select blocker, blocked, 1, blocker = blocked from edges
-    union all
-    select w.start_node, e.blocked, w.depth + 1, e.blocked = w.start_node
-      from walk w
-      join edges e on e.blocker = w.node
-     where not w.closed and w.depth < 64
-  )
-  select exists (select 1 from walk where closed);
-$$;
+-- The walk itself is tests/lib/dependency-cycles.sql, because it is the same walk AK.5's section at
+-- the foot of this file asks of every stored row, and the same one ci/db asks of the seeded
+-- database: what is proven here is that *that* probe sees a planted cycle, not that some copy of
+-- it does. Its header covers node identity and the depth bound.
+\ir lib/dependency-cycles.sql
 
 -- The two-node cycle inserted above is already in this workspace's graph, so the probe has to see
 -- it. Removing it has to make the probe go quiet — a probe that reports a cycle either way is
@@ -11897,6 +11891,23 @@ select pg_temp.must_hold(
       and contype = 'c'),
   'provider_connections_kind and _status: both provider vocabularies are still closed');
 
+
+-- ===========================================================================
+-- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
+-- ===========================================================================
+--
+-- Mockup 09's dependency-ordered push, per-draft push states and month-ranged gantt lanes each
+-- rest on a guarantee application code keeps and the database can observe. The V034–V036
+-- sections above attempt every write those rules must refuse; this is the same list asked by
+-- name, and asked of the rows — including the acyclicity of the stored graph, which no
+-- constraint states. Every message opens with the invariant it protects.
+--
+-- Kept in lib/planning-invariants.sql for CG.5's reason: it runs twice. Here, against every row
+-- the sections above left standing; and through tests/planning-invariants.sql against the
+-- seeded database, where tests/verify-planning-invariants.sh plants a bad row under each
+-- invariant and requires red. It writes nothing and needs no fixture, so it can sit anywhere
+-- after the helpers — here, beside the other named list.
+\ir lib/planning-invariants.sql
 
 -- ===========================================================================
 -- CG.5 — the registry invariants every service above the schema trusts (#583)

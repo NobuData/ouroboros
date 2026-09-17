@@ -192,6 +192,29 @@
 #   the editor is visual or code                 drop workflow_versions_edited_in_known
 #   only a draft records its editor              drop workflow_versions_edited_in_draft_only
 #
+# #276 (AK.5) adds planning's half. AL.3 (#279) pushes in dependency order and resumes from each
+# draft's push state, and the gantt draws lanes from their month ranges; none of those services
+# re-checks the rules below. One mutation per rule AK.5's scope names that a drop can express:
+#
+#   AK.5 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   exactly-one-kind dependency references       drop ticket_dependencies_blocker_one_kind
+#                                                drop ticket_dependencies_blocked_one_kind
+#   push-state vocabulary                        drop ticket_drafts_push_state
+#     (pushed cannot revert to pending)          drop trigger ticket_drafts_push_state_transition
+#   epic range ordering, both-or-neither         drop planning_epics_months_ordered
+#                                                drop planning_epics_months_paired
+#   tint and status vocabularies                 drop planning_epics_tint
+#                                                drop planning_epics_status
+#   unique batch-local keys                      drop ticket_drafts_batch_local_key_key
+#
+# Its first bullet, stored-cycle detection, is not here, because there is no rule to drop:
+# acyclicity is AL.4's (#280) to enforce and a stored cycle is *data*. Planting one — and planting
+# a bad row under each rule above — is tests/verify-planning-invariants.sh, against the seeded
+# database. The push-state vocabulary's probe goes red as *rejected by the coherence check rather
+# than the vocabulary*, because `ticket_drafts_push_state_coherent`'s `else false` still refuses
+# a fourth state; the marker requires the vocabulary's name, which is the point.
+#
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
 #   ouroboros-db/tests/verify-constraint-probes.sh --runner docker
@@ -348,7 +371,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -868,6 +891,58 @@ expect_red 'a draft editor accepts anything' \
 expect_red 'a published version may record an editor' \
   'a published version records no editor, since publishing froze it in a row of its own .*workflow_versions_edited_in_draft_only did not fire' \
   'alter table ouroboros.workflow_versions drop constraint workflow_versions_edited_in_draft_only;'
+
+# ---------------------------------------------------------------------------
+# Planning's rules (#276: exactly-one-kind endpoints, the push-state vocabulary and the trigger
+# that makes pushed terminal, the month range's order and pairing, the lane vocabularies, and
+# the batch-local key).
+#
+# Each fails quietly if lost. An endpoint that is both kinds or neither names the wrong node in
+# the walk AL.3 orders its push by; a fourth push state is a draft resume neither skips nor
+# retries; a pushed draft that can return to pending is pushed twice (decision N6); a reversed or
+# half-null range is a lane the gantt draws with negative width or not at all; a second OTA-3 makes
+# `blocks OTA-3` point at either.
+#
+# Markers carry the constraint or trigger name for the reason every marker above does.
+# ---------------------------------------------------------------------------
+expect_red 'a dependency blocker may be both a draft and a ticket' \
+  'a blocker that is both a draft and a ticket is refused .*ticket_dependencies_blocker_one_kind did not fire' \
+  'alter table ouroboros.ticket_dependencies drop constraint ticket_dependencies_blocker_one_kind;'
+
+expect_red 'a blocked dependency end may be both a draft and a ticket' \
+  'the blocked end carries the same rule .*ticket_dependencies_blocked_one_kind did not fire' \
+  'alter table ouroboros.ticket_dependencies drop constraint ticket_dependencies_blocked_one_kind;'
+
+# Red as "rejected by ticket_drafts_push_state_coherent rather than ticket_drafts_push_state" — the
+# coherence check's `else false` still refuses the word, and the probe names the rule that did not.
+expect_red 'a draft may hold a fourth push state' \
+  'push_state is pending, pushed or failed .*rather than ticket_drafts_push_state\)' \
+  'alter table ouroboros.ticket_drafts drop constraint ticket_drafts_push_state;'
+
+# A trigger, so dropped with `drop trigger`.
+expect_red 'a draft may be pushed without its ticket, or leave pushed' \
+  'a draft cannot become pushed without naming the ticket it became .*ticket_drafts_push_state_transition did not fire' \
+  'drop trigger ticket_drafts_push_state_transition on ouroboros.ticket_drafts;'
+
+expect_red 'a lane may end before it starts' \
+  'a lane cannot end before it starts .*planning_epics_months_ordered did not fire' \
+  'alter table ouroboros.planning_epics drop constraint planning_epics_months_ordered;'
+
+expect_red 'a lane may carry half a month range' \
+  'a lane cannot carry a start with no end .*planning_epics_months_paired did not fire' \
+  'alter table ouroboros.planning_epics drop constraint planning_epics_months_paired;'
+
+expect_red 'a lane may use any tint' \
+  'a tint outside the mockup.s five is refused .*planning_epics_tint did not fire' \
+  'alter table ouroboros.planning_epics drop constraint planning_epics_tint;'
+
+expect_red 'a lane may have any status' \
+  'and so is a fifth lane status .*planning_epics_status did not fire' \
+  'alter table ouroboros.planning_epics drop constraint planning_epics_status;'
+
+expect_red 'a batch may hold the same local key twice' \
+  'two drafts in one batch cannot share a local key .*ticket_drafts_batch_local_key_key did not fire' \
+  'alter table ouroboros.ticket_drafts drop constraint ticket_drafts_batch_local_key_key;'
 
 printf '\n'
 if check_summary; then

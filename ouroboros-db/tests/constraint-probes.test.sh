@@ -5,8 +5,9 @@
 # The script itself needs a migrated PostgreSQL, so what it does to a schema is asserted
 # where a database exists: the `ci/db` step that runs it. Its scope is #69's dashboard
 # read-model, #221's provider tables, #193's routing invariants, #583's registry rules,
-# #104's intake schema, #137's workflow studio, #143's queue pin and #167's draft editor, and
-# every rule any of the eight names is checked below against the migrations that create it. What is asserted here is everything it decides *before* it connects — the
+# #104's intake schema, #137's workflow studio, #143's queue pin, #167's draft editor and #276's
+# planning rules, and every rule any of the nine names is checked below against the migrations
+# that create it. What is asserted here is everything it decides *before* it connects — the
 # arguments it accepts,
 # the ones it refuses, and its refusal to reach for a database with no password in the
 # environment — so the module's suite keeps covering it without a daemon or a network.
@@ -118,7 +119,15 @@ for probe_constraint in \
   queue_items_workflow_pin_reason_valid \
   queue_items_workflow_version_reasoned \
   workflow_versions_edited_in_known \
-  workflow_versions_edited_in_draft_only
+  workflow_versions_edited_in_draft_only \
+  ticket_dependencies_blocker_one_kind \
+  ticket_dependencies_blocked_one_kind \
+  ticket_drafts_push_state \
+  planning_epics_months_ordered \
+  planning_epics_months_paired \
+  planning_epics_tint \
+  planning_epics_status \
+  ticket_drafts_batch_local_key_key
 do
   check_contains "$PROBES" "drop constraint $probe_constraint" \
     "the suite mutates $probe_constraint"
@@ -349,6 +358,14 @@ do
   check_contains "$CONSTRAINTS" "$workflow_invariant" \
     "constraints.sql names $workflow_invariant among the workflow invariants"
 done
+
+# Planning's trigger (#276). Like the workflow studio's two, it is not a constraint, so the loop
+# above cannot find it by the statement that has to drop it.
+check_contains "$PROBES" 'drop trigger ticket_drafts_push_state_transition on ouroboros\.ticket_drafts' \
+  'ticket_drafts_push_state_transition is dropped with drop trigger, which is what it lives on'
+check_contains "$MODULE_DIR/migrations/V034__draft_batches_ticket_drafts.sql" \
+  'create trigger ticket_drafts_push_state_transition\b' \
+  'and V034 is where that trigger is created'
 
 # Both ways in. Included, it is CG.5's section of constraints.sql and every runner that file
 # already has reaches it; through its own suite it is what `ci/db` points at the seeded

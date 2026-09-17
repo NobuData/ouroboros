@@ -1171,7 +1171,16 @@ PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/seed.sql
 PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/registry-invariants.sql
+PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
+  -v ON_ERROR_STOP=1 -f ouroboros-db/tests/planning-invariants.sql
 ```
+
+[`tests/planning-invariants.sql`](tests/planning-invariants.sql) is the same arrangement for
+AK.5's ([#276](https://github.com/NobuData/ouroboros/issues/276)) planning invariants, kept in
+[`tests/lib/planning-invariants.sql`](tests/lib/planning-invariants.sql). It writes nothing: it
+reads the rows the database holds and the catalogue, so it is green against AK.4's
+([#275](https://github.com/NobuData/ouroboros/issues/275)) seed and against any database whose
+planning rows are sound.
 
 `constraints.sql` creates its own fixtures inside a transaction and rolls back, so it
 leaves no rows behind — including the seed's, which it clears and restores so its counts
@@ -1213,7 +1222,20 @@ two places. Mostly behavioural rather than catalogue reads, unlike #193's: it ca
 be, because its fixtures are two workspaces it creates and deletes itself, and a probe whose
 fixture is its own cannot go vacuous when somebody else's moves.
 
-Both are **one session inside one transaction**, which is what
+[#276](https://github.com/NobuData/ouroboros/issues/276) is planning's list, and it is the one
+that asks about **rows** as well as rules. Three of mockup 09's guarantees are kept by
+application code, and each has a failure mode that lands in the database without raising
+anything: a dependency cycle that got past AL.4's check is a batch AL.3 can *never* push, a
+draft that leaves `pushed` is pushed twice, and a reversed or half-null month range is a gantt
+lane drawn with negative width or not at all. So the fragment asserts, over every workspace,
+that the stored dependency graph has no cycle — a recursive CTE,
+[`tests/lib/dependency-cycles.sql`](tests/lib/dependency-cycles.sql), shared with the V035
+section that proves it sees a planted one — that every endpoint is exactly one kind, that push
+states, tints and lane statuses are in vocabulary, that month ranges run forwards and come in
+pairs, and that no batch repeats a local key; and then asks the catalogue for each rule by name.
+Every failure opens with the invariant's name, so a red build says which guarantee went.
+
+Both of the first two are **one session inside one transaction**, which is what
 [Proving the guard is a guard](#proving-the-guard-is-a-guard) exists for: a rule about what
 two concurrent writers may do to each other cannot be asserted by one of them.
 
@@ -1229,8 +1251,9 @@ right probe goes red for the right reason.
 the dashboard read-model ([#69](https://github.com/NobuData/ouroboros/issues/69)), the
 provider cards ([#221](https://github.com/NobuData/ouroboros/issues/221)), the routing
 invariants ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry rules
-([#583](https://github.com/NobuData/ouroboros/issues/583)) and the intake schema
-([#104](https://github.com/NobuData/ouroboros/issues/104)). It drops one rule at
+([#583](https://github.com/NobuData/ouroboros/issues/583)), the intake schema
+([#104](https://github.com/NobuData/ouroboros/issues/104)) and planning
+([#276](https://github.com/NobuData/ouroboros/issues/276)). It drops one rule at
 a time — the `runs.status` and `queue_items.effort` vocabularies, the terminal-run rule, the
 queue's position and issue keys, the `workspace_settings` primary key; the monthly cap's
 floor, the discovered catalog's uniqueness, the `enabled` switch's `not null` and the health
@@ -1244,7 +1267,9 @@ estimate-version trigger and the unique key beneath it, and decision **K10**'s m
 trace provenance; and of the workflow studio
 ([#137](https://github.com/NobuData/ouroboros/issues/137)), the trigger that keeps a published
 version immutable, the `workflows.status` vocabulary, the numbering trigger and the version key
-beneath it, and the one-draft index —
+beneath it, and the one-draft index; and of planning, both dependency-endpoint one-kind checks,
+the push-state vocabulary and the trigger that keeps `pushed` terminal, the month range's order
+and pairing, the tint and lane-status vocabularies, and the batch-local key —
 and rewrites the expressions a rule lives in where no drop can falsify it: the two
 `token_usage_daily` computes its sums from, and the two tests inside `route_chain_intact()`
 that hold a chain dense from 1 and its floor inside it. For each, it requires the suite to
@@ -1288,6 +1313,26 @@ a plan is chosen from catalogue statistics rather than from the schema, so a dat
 suite has already been run against and left dead rows in can plan differently once
 autovacuum has recorded those tables as empty. A copy of a freshly migrated template always
 has the statistics a freshly migrated database has.
+
+### Proving the planning invariants read the rows
+
+A stored dependency cycle is data, not a rule, so `verify-constraint-probes.sh` has nothing to
+drop for it — and it could not plant one either, because `constraints.sql` clears every
+workspace before its first assertion. [`tests/verify-planning-invariants.sh`](tests/verify-planning-invariants.sh)
+is the other half of [#276](https://github.com/NobuData/ouroboros/issues/276), and it runs
+against the **seeded** database: it requires `planning-invariants.sql` to be green there, then
+plants a bad row and requires red naming the invariant — a cycle among the seeded tickets and
+another among the seeded drafts, and, each under the rule it drops first, a two-kind and a
+no-kind endpoint, a `queued` push state, a reversed and a half-null month range, a foreign tint
+and status, and a second `OTA-3` in the seeded batch.
+
+```bash
+PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-planning-invariants.sh
+```
+
+It refuses a database without the planning seed rather than going red for the wrong reason.
+Every plant runs in a transaction that is never committed, so the seed is left as it was found —
+`ci/db` re-runs `seed.sql` afterwards to say so. The whole run is well under a second.
 
 ### Proving the guard is a guard
 
@@ -1423,12 +1468,14 @@ misnamed migration is worth reporting before a database is waited on.
 | `scripts/migrate` | Every migration applies, in order, to a database that has never seen them | yes |
 | `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
-| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)), intake ([#104](https://github.com/NobuData/ouroboros/issues/104)) and the workflow studio ([#137](https://github.com/NobuData/ouroboros/issues/137)) included | yes (copies of its own) |
+| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)), intake ([#104](https://github.com/NobuData/ouroboros/issues/104)), the workflow studio ([#137](https://github.com/NobuData/ouroboros/issues/137)) and planning ([#276](https://github.com/NobuData/ouroboros/issues/276)) included | yes (copies of its own) |
 | `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
 | `tests/seed.sql` | The demo tenant is there, exactly once, with the ids the documentation publishes | yes (that one) |
+| `tests/planning-invariants.sql` | The planning invariants AL.3 and AL.4 rely on, against the *seeded* database — no stored dependency cycle among them ([#276](https://github.com/NobuData/ouroboros/issues/276)) | no |
+| `tests/verify-planning-invariants.sh` | That those go red on a planted cycle, reversed or half-null month range, duplicate local key, bad push state, tint, status or endpoint, naming the invariant ([#276](https://github.com/NobuData/ouroboros/issues/276)) | yes (rolled back) |
 | `tests/registry-invariants.sql` | The registry rules again, against the *seeded* database — and `tests/seed.sql` a second time to say it survived them ([#583](https://github.com/NobuData/ouroboros/issues/583)) | yes (that one) |
 
 The drift check is the one step that needs a Node toolchain, which is why the job installs
@@ -1689,7 +1736,9 @@ ouroboros-db/
 └── tests/
     ├── lib/
     │   ├── fixture.sh                # the synthetic module and stub runners the shell suites share
-    │   └── assert.sql                # the assertion helpers the live-database suites share
+    │   ├── assert.sql                # the assertion helpers the live-database suites share
+    │   ├── planning-invariants.sql   # the planning invariants, named — included twice — #276
+    │   └── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
     ├── rehearsal/
     │   ├── pre.sql                   # a populated V005 database, rebuilt for every run — #708
     │   └── post.sql                  # what V006 must have done to those rows — #708
@@ -1699,7 +1748,10 @@ ouroboros-db/
     ├── betterauth-schema.test.sh     # the drift check's contract, without a database — #710
     ├── price-catalog.test.sh         # the price transform, its provenance and --check — #580
     ├── constraint-probes.test.sh     # the probe verifier's usage and refusals — #69
-    ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69, #221, #193, #583, #104
+    ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69, #221, #193, #583, #104, #276
+    ├── planning-invariants.test.sh   # the planting verifier's usage, and that its pieces agree — #276
+    ├── planning-invariants.sql       # the planning invariants against the seeded database — #276
+    ├── verify-planning-invariants.sh # that they go red on planted rows, naming the invariant — #276
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
 ```

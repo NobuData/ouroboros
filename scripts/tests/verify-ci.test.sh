@@ -397,6 +397,12 @@ jobs:
             psql -v ON_ERROR_STOP=1 -f /tests/lib/seeded-definitions.sql > seeded.json
           ouroboros-db/scripts/workflow-dsl-drift.mjs seeded.json
 
+      - name: Assert the planning invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host "$POSTGRES_IMAGE" \
+            psql -v ON_ERROR_STOP=1 -f /tests/planning-invariants.sql
+          ouroboros-db/tests/verify-planning-invariants.sh --runner docker
+
   publish:
     name: publish/db
     runs-on: ubuntu-latest
@@ -916,6 +922,16 @@ check_break 'a pass that never reads the seeded workflow definitions is reported
 check_break 'a pass that never validates the seeded workflow definitions is reported' \
   'validates every seeded workflow definition against the DSL schema' \
   'sed -i "/workflow-dsl-drift.mjs/d" "$root/.github/workflows/db.yml"'
+
+# The planning invariants (#276), each half dropped on its own: a suite nobody runs asserts
+# nothing, and one never shown a planted cycle cannot be told apart from one asserting nothing.
+check_break 'a pass that never asserts the planning invariants is reported' \
+  'asserts the planning invariants against the seeded database' \
+  'sed -i "s|/tests/planning-invariants.sql|/tests/nothing.sql|" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never plants bad planning rows is reported' \
+  'plants bad planning rows' \
+  'sed -i "/verify-planning-invariants.sh/d" "$root/.github/workflows/db.yml"'
 
 check_break 'a drift check with no workspace installed under it is reported' \
   'installs the workspace' \
