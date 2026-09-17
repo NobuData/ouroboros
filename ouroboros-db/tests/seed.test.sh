@@ -4,8 +4,8 @@
 # migrations/R__dev_seed_audit.sql, migrations/R__dev_seed_dashboard.sql,
 # migrations/R__dev_seed_intake.sql, migrations/R__dev_seed_providers.sql,
 # migrations/R__dev_seed_routing.sql, migrations/R__dev_seed_sources.sql,
-# migrations/R__dev_seed_workflows.sql, and the configuration that decides whether they do
-# anything.
+# migrations/R__dev_seed_ticket_planning.sql, migrations/R__dev_seed_workflows.sql, and the
+# configuration that decides whether they do anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
 # so the properties worth testing are the ones that keep those two apart: that a
@@ -13,15 +13,16 @@
 # deliberate `--config` resolve it to `true`, and that every statement in either file is
 # behind that guard and can be applied twice.
 #
-# There are eight files because they answer different questions — R__dev_seed.sql (#23) is
+# There are nine files because they answer different questions — R__dev_seed.sql (#23) is
 # *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
 # R__dev_seed_intake.sql (#103) is *what it has an opinion about next*,
 # R__dev_seed_providers.sql (#221) is *what it is allowed to call*,
 # R__dev_seed_routing.sql (#192) is *how it decides which one to call*,
 # R__dev_seed_audit.sql (#225) is *who touched the keys*, R__dev_seed_sources.sql (#138) is
-# *where the work comes from*, and R__dev_seed_workflows.sql (#136) is *what it does with
-# it* — and the structural rules below are asserted over all of them, in a loop, so that a
-# ninth seed inherits them by being added to the one list at the top.
+# *where the work comes from*, R__dev_seed_ticket_planning.sql (#275) is *the work and the
+# plan over it*, and R__dev_seed_workflows.sql (#136) is *what it does with it* — and the
+# structural rules below are asserted over all of them, in a loop, so that a tenth seed
+# inherits them by being added to the one list at the top.
 #
 # All of it is a file read plus the stubbed runners tests/lib/fixture.sh provides, so
 # this needs no database, no Docker and no network — the same contract as
@@ -65,6 +66,7 @@ PROVIDERS_SEED="$MODULE_DIR/migrations/R__dev_seed_providers.sql"
 ROUTING_SEED="$MODULE_DIR/migrations/R__dev_seed_routing.sql"
 AUDIT_SEED="$MODULE_DIR/migrations/R__dev_seed_audit.sql"
 SOURCES_SEED="$MODULE_DIR/migrations/R__dev_seed_sources.sql"
+PLANNING_SEED="$MODULE_DIR/migrations/R__dev_seed_ticket_planning.sql"
 WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
@@ -99,6 +101,7 @@ PROVIDERS_BODY="$work/seed-body-providers.sql"
 ROUTING_BODY="$work/seed-body-routing.sql"
 AUDIT_BODY="$work/seed-body-audit.sql"
 SOURCES_BODY="$work/seed-body-sources.sql"
+PLANNING_BODY="$work/seed-body-ticket-planning.sql"
 WORKFLOWS_BODY="$work/seed-body-workflows.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
@@ -107,6 +110,7 @@ seed_body "$PROVIDERS_SEED" "$PROVIDERS_BODY"
 seed_body "$ROUTING_SEED" "$ROUTING_BODY"
 seed_body "$AUDIT_SEED" "$AUDIT_BODY"
 seed_body "$SOURCES_SEED" "$SOURCES_BODY"
+seed_body "$PLANNING_SEED" "$PLANNING_BODY"
 seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
@@ -131,12 +135,14 @@ check_exists "$PROVIDERS_SEED" 'migrations/R__dev_seed_providers.sql exists'
 check_exists "$ROUTING_SEED" 'migrations/R__dev_seed_routing.sql exists'
 check_exists "$AUDIT_SEED" 'migrations/R__dev_seed_audit.sql exists'
 check_exists "$SOURCES_SEED" 'migrations/R__dev_seed_sources.sql exists'
+check_exists "$PLANNING_SEED" 'migrations/R__dev_seed_ticket_planning.sql exists'
 check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
-                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED" "$WORKFLOWS_SEED"; do
+                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED" "$PLANNING_SEED" \
+                 "$WORKFLOWS_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -166,6 +172,8 @@ audit_description=$(basename -- "$AUDIT_SEED" .sql)
 audit_description=${audit_description#R__}
 sources_description=$(basename -- "$SOURCES_SEED" .sql)
 sources_description=${sources_description#R__}
+planning_description=$(basename -- "$PLANNING_SEED" .sql)
+planning_description=${planning_description#R__}
 workflows_description=$(basename -- "$WORKFLOWS_SEED" .sql)
 workflows_description=${workflows_description#R__}
 
@@ -185,14 +193,17 @@ workflows_description=${workflows_description#R__}
 #
 # The sources seed (#138) sorts after those, and only needs to: it hangs off the first seed
 # for its workspace and off nothing else, because V030's two tables are the first of their
-# domain. The workflows seed (#136) sorts last and hangs off the first seed twice — the
+# domain. The planning seed (#275) **must** sort after it, and is named `ticket_planning`
+# rather than `planning` for exactly that: every ticket and the batch hang off the GitHub
+# source, and `dev_seed_planning` would sort before `dev_seed_sources` and join to nothing on a
+# database migrated from empty. The workflows seed (#136) sorts last and hangs off the first seed twice — the
 # workspace by slug and the publishers by email — and off nothing else; its own three
 # statements depend on *each other* in file order, which is the ordering a single file gets
 # for free and its header explains.
-check_equals "$(printf '%s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" "$workflows_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" "$workflows_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" "$planning_description" "$workflows_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" "$planning_description" "$workflows_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the eight seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the nine seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -211,7 +222,8 @@ check_equals "$(printf '%s %s %s %s %s %s %s %s' "$base_description" "$audit_des
 # inserts alone. What makes such an update idempotent is asserted where it lives, in that
 # seed's own section below.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
-                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED" "$WORKFLOWS_SEED"; do
+                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED" "$PLANNING_SEED" \
+                 "$WORKFLOWS_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -220,6 +232,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$INTAKE_SEED" \
   [ "$seed_file" = "$PROVIDERS_SEED" ] && body=$PROVIDERS_BODY
   [ "$seed_file" = "$ROUTING_SEED" ] && body=$ROUTING_BODY
   [ "$seed_file" = "$SOURCES_SEED" ] && body=$SOURCES_BODY
+  [ "$seed_file" = "$PLANNING_SEED" ] && body=$PLANNING_BODY
   [ "$seed_file" = "$WORKFLOWS_SEED" ] && body=$WORKFLOWS_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
@@ -635,16 +648,97 @@ for stamp in 'synced_at' 'sync_cursor'; do
     "the sources seed writes no $stamp, because no sync has run against either source"
 done
 
-# The credential is an envelope and nothing else: one `ouro.v1.…` value for the GitHub
-# source, none for the Jira one, and not a single string shaped like a tracker token. V030's
-# CHECK refuses a plaintext outright; this is the half that keeps one out of the file.
+# The credential is an envelope and nothing else: one `ouro.v1.…` value per source — the
+# Jira one written twice, in the insert and in the update that connects a source seeded
+# before #275 — and not a single string shaped like a tracker token. V030's CHECK refuses a
+# plaintext outright; this is the half that keeps one out of the file.
 sources_envelopes=$(grep -Eoc "'ouro\.v1\.[0-9]+\." "$SOURCES_BODY" || true)
-check_equals 1 "$(printf '%s' "$sources_envelopes" | tr -d ' ')" \
-  'the sources seed seals one credential and leaves the un-credentialed source without one'
+check_equals 3 "$(printf '%s' "$sources_envelopes" | tr -d ' ')" \
+  'the sources seed seals both credentials, the Jira one repeated by the update that connects it'
+check_equals 2 "$(grep -Eo "'ouro\.v1\.[^']+'" "$SOURCES_BODY" | sort -u | wc -l | tr -d ' ')" \
+  'and they are two distinct envelopes, one per source'
+
+# **The update only moves the row the earlier seed left.** Matching on the id alone would
+# overwrite a Jira credential somebody pasted in by hand; matching on the paused,
+# un-credentialed shape is what makes it a convergence step rather than an overwrite, and what
+# makes a second application match nothing.
+check_equals 1 "$(count_lines '^update ouroboros\.ticket_sources$' "$SOURCES_BODY")" \
+  'the sources seed has exactly one update, on ticket_sources'
+check_contains "$SOURCES_BODY" "^   and status = 'paused'\$" \
+  'and it matches only a source still paused'
+check_contains "$SOURCES_BODY" '^   and credentials_encrypted is null$' \
+  'with no credential — the earlier seeded shape, and nothing a person configured'
 for shape in 'ghp_' 'github_pat' 'glpat-' 'ATATT'; do
   check_absent "$SOURCES_BODY" "$shape" \
     "the sources seed carries nothing shaped like a $shape… credential"
 done
+
+# ---------------------------------------------------------------------------
+# R__dev_seed_ticket_planning.sql — mockup 09's planning page
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_ticket_planning.sql — the planning page\n'
+
+# Seven prefixes, one per table, each computed from a value the row already names.
+for prefix in '5eed001d' '5eed001e' '5eed001f' '5eed0020' '5eed0021' '5eed0022' '5eed0023'; do
+  check_contains "$PLANNING_BODY" "'$prefix-0000-4000-8000-" \
+    "the planning seed builds its ids from the $prefix… prefix"
+done
+
+# The seven tables the page reads, and no eighth. Three absences are the point: no
+# `ticket_sources` (the sources seed owns them, and Linear's absence is a rendered state), no
+# `epic_mirrors` (nothing has been pushed), and no `model_prices` (the `$` is priced by rates
+# that already exist, not by rows written to make it appear).
+planning_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$PLANNING_BODY" |
+  sed 's/^insert into ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'draft_batches epic_tickets issue_estimates planning_epics ticket_dependencies ticket_drafts tickets ' \
+  "$planning_tables" \
+  'the planning seed writes the backlog, its edges, the lanes, and the sized batch — and nothing else'
+check_absent "$PLANNING_BODY" "'linear'" \
+  'the planning seed names no Linear source, whose absence is what renders connect ↗'
+
+# Parents from other seeds by natural key only — the workspace by slug, the source by kind
+# and name.
+for foreign_prefix in '5eed0001-0000-4000-8000' '5eed001a-0000-4000-8000' \
+                      '5eed0018-0000-4000-8000' '5eed0019-0000-4000-8000'; do
+  check_absent "$PLANNING_BODY" "$foreign_prefix" \
+    "the planning seed names no $foreign_prefix… id from another seed — it joins by natural key"
+done
+
+# **Every number is computed, so the file may not contain one the page prints.** Each of these
+# is an aggregate over the rows — a literal would be a figure the product remembered.
+for rendered in '42 open' '38/42' '42 issues' 'Blocked' 'Stale' '12 issues' '8 done' \
+                '3 days' '\$14' '1400' '4320' 'Q3–Q4'; do
+  check_absent "$PLANNING_BODY" "$rendered" \
+    "the planning seed stores no rendered figure — $rendered is computed"
+done
+
+# **The gantt cannot rot.** No literal date anywhere, and the months are offsets from the
+# current one — which is what keeps TODAY in the second column however long after this was
+# written the stack comes up.
+check_absent "$PLANNING_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the planning seed carries no literal date — every instant and month is relative to now()'
+check_contains "$PLANNING_BODY" "date_trunc\('month', now\(\)\) \+ make_interval\(months => seed\.start_offset\)" \
+  'and each lane starts at an offset from the current month'
+
+# The lanes' sort-order key is deferrable, and PostgreSQL refuses a targetless `on conflict`
+# on such a table — so this insert names its arbiter, as the dashboard seed's queue rows do.
+check_contains "$PLANNING_BODY" '^on conflict \(id\) do nothing;$' \
+  'the epics insert names its arbiter, because the sort-order key is deferrable'
+
+# Decision K10 and N3, as in the intake seed: the drafts are sized through the one estimates
+# table, by `heuristic-v0`, with no tokens spent and no signal claimed.
+check_contains "$PLANNING_BODY" "'estimator',   'heuristic-v0'" \
+  'every draft estimate names heuristic-v0 as its estimator (decision K10)'
+check_contains "$PLANNING_BODY" "'signals',     '\[\]'::jsonb" \
+  'and claims no signal'
+check_contains "$PLANNING_BODY" '\(id, draft_id, version,' \
+  'and sizes the drafts through issue_estimates.draft_id (decision N3), not a table of its own'
+
+# The BEFORE trigger V034 put on draft estimates raises before `on conflict` can skip a row, so
+# the insert carries the trigger's own rule as a `not exists`.
+check_equals 1 "$(count_lines 'prior\.version >= seed\.version' "$PLANNING_BODY")" \
+  'the draft estimates guard the monotonicity trigger, which fires before on conflict can skip a row'
 
 # ---------------------------------------------------------------------------
 # R__dev_seed_workflows.sql — mockup 04's studio
@@ -728,6 +822,7 @@ check_contains "$README" 'R__dev_seed_providers\.sql' 'README.md documents the p
 check_contains "$README" 'R__dev_seed_routing\.sql' 'README.md documents the routing seed'
 check_contains "$README" 'R__dev_seed_audit\.sql' 'README.md documents the audit seed'
 check_contains "$README" 'R__dev_seed_sources\.sql' 'README.md documents the sources seed'
+check_contains "$README" 'R__dev_seed_ticket_planning\.sql' 'README.md documents the planning seed'
 check_contains "$README" 'R__dev_seed_workflows\.sql' 'README.md documents the workflows seed'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
