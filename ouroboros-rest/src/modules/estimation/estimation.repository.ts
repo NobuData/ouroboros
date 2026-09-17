@@ -64,6 +64,12 @@ import type { EstimatedStatus } from "./estimation.outcome";
 export const VERSION_CONSTRAINT = "issue_estimates_issue_version_key";
 
 /**
+ * The constraint two writers racing the same **draft** collide on (V034) — {@link VERSION_CONSTRAINT}
+ * for the other kind of subject.
+ */
+export const DRAFT_VERSION_CONSTRAINT = "issue_estimates_draft_version_key";
+
+/**
  * How many times a version collision is recomputed before giving up.
  *
  * Each attempt reads the highest version and writes the next one, so an attempt only fails if
@@ -93,6 +99,22 @@ export interface EstimableIssueRow {
   readonly repo: string;
   /** Where the issue is in the pipeline right now. */
   readonly sizingStatus: SizingStatus;
+}
+
+/** One ticket draft, with everything a sizing request is built from (AL.4, #280). */
+export interface EstimableDraftRow {
+  /** `ticket_drafts.id` — what the estimate is versioned against. */
+  readonly draftId: string;
+  /** The batch it belongs to. */
+  readonly batchId: string;
+  /** The batch's workspace — the routing resolution's scope. */
+  readonly organizationId: string;
+  /** `OTA-3` — its number is what the engine is told in place of an issue number. */
+  readonly localKey: string;
+  /** The draft's title, as it reads now — edits included. */
+  readonly title: string;
+  /** The draft's body, or null. */
+  readonly body: string | null;
 }
 
 @Injectable()
@@ -370,6 +392,69 @@ export class EstimationRepository {
   }
 
   /**
+   * Read one ticket draft and everything a sizing request needs.
+   *
+   * Unscoped for {@link issue}'s reason: the orchestrator re-reads the row when the work starts,
+   * and the draft's own batch carries its workspace.
+   *
+   * @param draftId - `ticket_drafts.id`.
+   * @returns The draft, or `undefined` when it is gone — regenerated away while it waited, which
+   *   is ordinary.
+   */
+  async draft(draftId: string): Promise<EstimableDraftRow | undefined> {
+    return this.database.db
+      .selectFrom("ticket_drafts as d")
+      .innerJoin("draft_batches as b", "b.id", "d.batch_id")
+      .select([
+        "d.id as draftId",
+        "d.batch_id as batchId",
+        "b.organization_id as organizationId",
+        "d.local_key as localKey",
+        "d.title as title",
+        "d.body as body",
+      ])
+      .where("d.id", "=", draftId)
+      .executeTakeFirst();
+  }
+
+  /**
+   * Store one estimate of a draft.
+   *
+   * A draft has no `sizing_status` — it is sized exactly when it has an estimate — so this is the
+   * versioned insert alone, with {@link persist}'s collision retry on the draft's own key.
+   *
+   * @param draftId - `ticket_drafts.id`.
+   * @param build - Turns a version number into the row to insert.
+   * @returns The version that was written.
+   * @throws Whatever the database refused, once the retries are spent.
+   */
+  async persistDraft(
+    draftId: string,
+    build: (version: number) => NewIssueEstimate,
+  ): Promise<number> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.database.transaction(async (trx) => {
+          const row = await trx
+            .selectFrom("issue_estimates")
+            .select(({ fn }) => fn.max<number>("version").as("highest"))
+            .where("draft_id", "=", draftId)
+            .executeTakeFirst();
+          const version = (row?.highest ?? 0) + 1;
+
+          await trx.insertInto("issue_estimates").values(build(version)).execute();
+
+          return version;
+        });
+      } catch (error) {
+        if (attempt >= MAX_VERSION_ATTEMPTS || !isVersionCollision(error)) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  /**
    * The version this issue's next estimate should be.
    *
    * @param trx - The write's transaction. Read inside it, because a number read outside would
@@ -397,7 +482,8 @@ export class EstimationRepository {
  * Did another writer take this version first?
  *
  * @param error - Whatever the transaction rejected with.
- * @returns `true` only for a unique violation on {@link VERSION_CONSTRAINT}. Narrow on
+ * @returns `true` only for a unique violation on {@link VERSION_CONSTRAINT} or
+ *   {@link DRAFT_VERSION_CONSTRAINT}. Narrow on
  *   purpose: a check violation is an estimator producing something V026 forbids and would
  *   fail identically on every retry, and a foreign-key violation is an issue that was deleted
  *   mid-flight. Retrying either would turn a clear failure into a slow one.
@@ -406,6 +492,6 @@ export function isVersionCollision(error: unknown): boolean {
   return (
     isDatabaseFailure(error) &&
     error.code === UNIQUE_VIOLATION &&
-    error.constraint === VERSION_CONSTRAINT
+    (error.constraint === VERSION_CONSTRAINT || error.constraint === DRAFT_VERSION_CONSTRAINT)
   );
 }

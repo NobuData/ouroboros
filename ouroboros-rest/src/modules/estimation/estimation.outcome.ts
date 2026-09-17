@@ -95,8 +95,50 @@ export function estimateRow(
   estimate: Estimate,
   sizedAt: Date,
 ): NewIssueEstimate {
+  return { github_issue_id: githubIssueId, ...estimateColumns(version, estimate, sizedAt) };
+}
+
+/**
+ * One engine answer about a **ticket draft**, as the row `issue_estimates` stores.
+ *
+ * AL.4 ([#280](https://github.com/NobuData/ouroboros/issues/280)), decision **N3**: a draft is
+ * sized by this pipeline and this table, never by a sizer of its own. V034's
+ * `issue_estimates_one_subject` is why the row names the draft and not an issue — exactly one of
+ * the two, always. Every other column is {@link estimateRow}'s, from the same translation.
+ *
+ * @param draftId - `ticket_drafts.id` — the draft this sizes.
+ * @param version - Which estimate of this draft this is, `max(version) + 1` per draft.
+ * @param estimate - What the engine answered.
+ * @param sizedAt - When the estimate was produced.
+ * @returns The row, ready to insert.
+ */
+export function draftEstimateRow(
+  draftId: string,
+  version: number,
+  estimate: Estimate,
+  sizedAt: Date,
+): NewIssueEstimate {
   return {
-    github_issue_id: githubIssueId,
+    github_issue_id: null,
+    draft_id: draftId,
+    ...estimateColumns(version, estimate, sizedAt),
+  };
+}
+
+/**
+ * The columns an estimate writes whatever its subject is.
+ *
+ * @param version - The estimate's version for its subject.
+ * @param estimate - What the engine answered.
+ * @param sizedAt - When the estimate was produced.
+ * @returns Every column but the subject's.
+ */
+function estimateColumns(
+  version: number,
+  estimate: Estimate,
+  sizedAt: Date,
+): Omit<NewIssueEstimate, "github_issue_id" | "draft_id"> {
+  return {
     version,
     effort: estimate.effort,
     confidence: estimate.confidence,

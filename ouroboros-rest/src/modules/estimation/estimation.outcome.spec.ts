@@ -6,7 +6,7 @@ import {
 } from "../engine/engine.contract";
 import { ISSUE_ESTIMATE_EFFORTS, ISSUE_ESTIMATE_RISKS } from "../db/schema";
 import { estimate, FIXTURE_ISSUE_ID } from "./estimation.fixture";
-import { estimateRow, statusFor } from "./estimation.outcome";
+import { draftEstimateRow, estimateRow, statusFor } from "./estimation.outcome";
 
 /**
  * The floor and the translation — the two decisions between an engine answer and a stored row
@@ -168,5 +168,31 @@ describe("one engine answer as one row", () => {
     expect(row.effort).toBe(answer.effort);
     expect(row.risk).toBe(answer.risk);
     expect(row.version).toBe(9);
+  });
+});
+
+describe("one engine answer about a draft as one row (AL.4, #280)", () => {
+  it("names the draft and no issue — exactly one subject, by V034", () => {
+    const row = draftEstimateRow("draft-1", 2, estimate(), SIZED_AT);
+
+    expect(row.github_issue_id).toBeNull();
+    expect(row.draft_id).toBe("draft-1");
+    expect(row.version).toBe(2);
+  });
+
+  it("writes every other column exactly as an issue's estimate would", () => {
+    const {
+      github_issue_id: _issue,
+      draft_id: _draft,
+      ...draft
+    } = draftEstimateRow("draft-1", 1, estimate(), SIZED_AT);
+    const { github_issue_id: _other, ...issue } = estimateRow(
+      FIXTURE_ISSUE_ID,
+      1,
+      estimate(),
+      SIZED_AT,
+    );
+
+    expect(draft).toEqual(issue);
   });
 });

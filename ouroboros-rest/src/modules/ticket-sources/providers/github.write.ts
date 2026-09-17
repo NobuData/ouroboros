@@ -438,6 +438,28 @@ export class GithubWriter {
   }
 
   /**
+   * The repository's open milestones.
+   *
+   * @returns Each open milestone, its number as the reference, in GitHub's order.
+   */
+  async listMilestones(): Promise<MilestoneRef[]> {
+    const found: MilestoneRef[] = [];
+
+    for await (const page of this.client.pages<unknown>(MILESTONES_ROUTE, {
+      ...this.address(),
+      state: "open",
+    })) {
+      for (const raw of page.items) {
+        const milestone = parse(writtenMilestone, raw, MILESTONES_ROUTE);
+
+        found.push({ externalRef: String(milestone.number), name: milestone.title });
+      }
+    }
+
+    return found;
+  }
+
+  /**
    * Find an epic's parent tracking issue, or create it.
    *
    * @param epic - The planning epic. Its id is the key; its title is only used on creation.

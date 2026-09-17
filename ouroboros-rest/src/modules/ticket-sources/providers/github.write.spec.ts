@@ -16,6 +16,7 @@ import {
 import {
   ADD_BLOCKED_BY_ROUTE,
   CREATE_ISSUE_ROUTE,
+  MILESTONES_ROUTE,
   PROVENANCE_FOOTER,
   SEARCH_ISSUES_ROUTE,
   UPDATE_ISSUE_ROUTE,
@@ -310,6 +311,30 @@ describe("GithubTicketSourceProvider writes", () => {
       await expect(
         provider.attachToEpic(context, ticket, { mapping: "parent_issue", externalRef: "2" }),
       ).rejects.toMatchObject({ errorClass: "validation" });
+    });
+
+    it("lists the push target's open milestones, numbered as ensureMilestone answers them", async () => {
+      const { github, provider, context } = build();
+
+      await expect(provider.listMilestones(context)).resolves.toStrictEqual([]);
+
+      const ensured = await provider.ensureMilestone(context, "Helios 2.1");
+
+      await expect(provider.listMilestones(context)).resolves.toStrictEqual([ensured]);
+      expect(github.calls.some((call) => call.route === MILESTONES_ROUTE)).toBe(true);
+    });
+
+    it("names the push target as owner/name — the first enabled repository", () => {
+      const { provider, context } = build();
+
+      expect(provider.pushTargetName(context.config)).toMatch(/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/);
+      expect(() => provider.pushTargetName({ login: "" })).toThrow(TicketSourceError);
+
+      try {
+        provider.pushTargetName({ login: "" });
+      } catch (error) {
+        expect((error as TicketSourceError).errorClass).toBe("not_found");
+      }
     });
 
     it("finds a milestone by title before creating one", async () => {

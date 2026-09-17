@@ -2681,6 +2681,38 @@ export interface DraftPushError {
   readonly detail?: Readonly<Record<string, unknown>>;
 }
 
+/** `ticket_drafts.provenance` — whether a person has edited a draft since it was planned (V037). */
+export type DraftProvenance = "planned" | "edited";
+
+/** The two, in the order the CHECK declares them. */
+export const DRAFT_PROVENANCES = [
+  "planned",
+  "edited",
+] as const satisfies readonly DraftProvenance[];
+
+/** `planning_epics.tint` — the lane's colour token (V036). */
+export type EpicTint = "accent" | "model" | "warn" | "ok" | "neutral";
+
+/** The five, in the order the CHECK declares them. */
+export const EPIC_TINTS = [
+  "accent",
+  "model",
+  "warn",
+  "ok",
+  "neutral",
+] as const satisfies readonly EpicTint[];
+
+/** `planning_epics.status` — how the lane is drawn (V036). */
+export type EpicStatus = "active" | "proposed" | "done" | "unscoped";
+
+/** The four, in the order the CHECK declares them. */
+export const EPIC_STATUSES = [
+  "active",
+  "proposed",
+  "done",
+  "unscoped",
+] as const satisfies readonly EpicStatus[];
+
 /** `epic_mirrors.kind` — what an epic became in one source (V036). */
 export type EpicMirrorKind = "milestone" | "parent_issue" | "jira_epic";
 
@@ -2748,6 +2780,11 @@ export interface TicketDraftsTable {
   push_error: ColumnType<DraftPushError | null, string | null, string | null>;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * Whose words the draft holds (V037, [#280](https://github.com/NobuData/ouroboros/issues/280)):
+   * `planned` as the planner answered, `edited` once a person has changed its title or body.
+   */
+  provenance: Generated<DraftProvenance>;
 }
 
 /**
@@ -2774,15 +2811,38 @@ export interface PlanningEpicsTable {
   id: Generated<string>;
   organization_id: string;
   name: string;
-  tint: Generated<string>;
+  tint: Generated<EpicTint>;
   start_month: Date | null;
   end_month: Date | null;
-  status: Generated<string>;
+  status: Generated<EpicStatus>;
   sort_order: number;
   roadmap_name: string | null;
   roadmap_window: string | null;
   created_at: Stamped;
   updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.planning_epic_progress` — every epic with its `12 issues · 8 done` chip computed
+ * from linked ticket states (V036).
+ *
+ * A **view**, mirrored by AL.4 ([#280](https://github.com/NobuData/ouroboros/issues/280)) for the
+ * roadmap payload: the one definition of *done* the card and the API share. The counts are
+ * `bigint`s and therefore arrive as strings.
+ */
+export interface PlanningEpicProgressView {
+  epic_id: string;
+  organization_id: string;
+  name: string;
+  tint: EpicTint;
+  start_month: Date | null;
+  end_month: Date | null;
+  status: EpicStatus;
+  sort_order: number;
+  roadmap_name: string | null;
+  roadmap_window: string | null;
+  ticket_count: string;
+  done_count: string;
 }
 
 /** `ouroboros.epic_tickets` — which tickets an epic counts (V036). */
@@ -2893,6 +2953,7 @@ export const READ_ONLY_VIEWS = [
   "token_usage_daily",
   "workspace_settings_effective",
   "ticket_sources_public",
+  "planning_epic_progress",
 ] as const;
 
 /**
@@ -3028,6 +3089,7 @@ export interface Database {
   epic_mirrors: EpicMirrorsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
+  planning_epic_progress: PlanningEpicProgressView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
   alias_references: AliasReferencesView;
 }
@@ -3388,6 +3450,7 @@ export const TABLE_COLUMNS = {
     "push_error",
     "created_at",
     "updated_at",
+    "provenance",
   ],
   ticket_dependencies: [
     "id",
@@ -3416,6 +3479,20 @@ export const TABLE_COLUMNS = {
   ],
   epic_tickets: ["id", "epic_id", "ticket_id", "created_at"],
   epic_mirrors: ["id", "epic_id", "source_id", "kind", "external_ref", "created_at", "updated_at"],
+  planning_epic_progress: [
+    "epic_id",
+    "organization_id",
+    "name",
+    "tint",
+    "start_month",
+    "end_month",
+    "status",
+    "sort_order",
+    "roadmap_name",
+    "roadmap_window",
+    "ticket_count",
+    "done_count",
+  ],
   ticket_sources_public: [
     "id",
     "organization_id",

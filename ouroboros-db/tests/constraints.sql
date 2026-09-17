@@ -11719,6 +11719,55 @@ select pg_temp.must_hold(
   'a deleted workspace takes its roadmap, its ticket links and its tracker mirrors');
 
 -- ===========================================================================
+-- V037 — ticket_drafts.provenance, planned or edited (#280)
+-- ===========================================================================
+--
+-- AL.4's PATCH marks a draft a person has rewritten as `edited`, so the planner is never credited
+-- with text it did not produce. Three facts: a new draft is `planned` without being told, an edit
+-- can say so, and nothing else is a provenance.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt")
+  values ('org-provenance', 'Provenance Works', 'provenance-works', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name)
+  values ('c0370000-0000-0000-0000-000000000001', 'org-provenance', 'github', 'GitHub · provenance');
+
+insert into ouroboros.draft_batches (id, organization_id, source_prompt, planner, target_source_id)
+  values ('c0370000-0000-0000-0000-0000000000b1', 'org-provenance',
+          'Ship over-the-air firmware updates.', 'outline-v0',
+          'c0370000-0000-0000-0000-000000000001');
+
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title)
+  values ('c0370000-0000-0000-0000-0000000000d1', 'c0370000-0000-0000-0000-0000000000b1',
+          'OTA-1', 'Bootloader A/B slots');
+
+select pg_temp.must_hold(
+  (select provenance = 'planned' from ouroboros.ticket_drafts
+    where id = 'c0370000-0000-0000-0000-0000000000d1'),
+  'ticket_drafts.provenance: a draft nobody has edited is planned by default');
+
+update ouroboros.ticket_drafts
+   set title = 'Bootloader A/B slots with rollback', provenance = 'edited'
+ where id = 'c0370000-0000-0000-0000-0000000000d1';
+
+select pg_temp.must_hold(
+  (select provenance = 'edited' from ouroboros.ticket_drafts
+    where id = 'c0370000-0000-0000-0000-0000000000d1'),
+  'ticket_drafts.provenance: an edit is recorded as edited');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set provenance = 'human'
+     where id = 'c0370000-0000-0000-0000-0000000000d1'$$,
+  'ticket_drafts.provenance is planned or edited, nothing else', 'ticket_drafts_provenance');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts set provenance = null
+     where id = 'c0370000-0000-0000-0000-0000000000d1'$$,
+  'ticket_drafts.provenance is never null');
+
+delete from ouroboros.organization where "id" = 'org-provenance';
+
+-- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)
 -- ===========================================================================
 --

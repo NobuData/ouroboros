@@ -347,6 +347,126 @@ export function estimateRequestBody(request: EstimateRequest): Record<string, un
 }
 
 /**
+ * `POST` — draft a batch of tickets from an outcome and an optional outline. AL.1
+ * ([#277](https://github.com/NobuData/ouroboros/issues/277)), called by the planning API, AL.4
+ * ([#280](https://github.com/NobuData/ouroboros/issues/280)).
+ *
+ * Mirrored from `ouroboros-engine/openapi.yaml`'s `PlanRequest` and `Plan`, and published as
+ * `schemas/plan/v0.json`. Decision **N2**: the contract is implemented twice — `outline-v0`
+ * today, AN.1's LLM planner later — so nothing here branches on which one answered.
+ */
+export const ENGINE_PLAN_ROUTE = `${ENGINE_API_VERSION}/plan`;
+
+/** A local key's shape — the caller's prefix, a hyphen, a 1-based position: `OTA-3`. */
+export const PLAN_LOCAL_KEY_PATTERN = /^[A-Z][A-Z0-9]{0,11}-[1-9][0-9]{0,3}$/;
+
+/** A local key prefix's shape — `OTA`. */
+export const PLAN_LOCAL_KEY_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,11}$/;
+
+/** The longest narrative the plan contract accepts. */
+export const PLAN_MAX_NARRATIVE_LENGTH = 16_384;
+
+/** The longest outline the plan contract accepts. */
+export const PLAN_MAX_OUTLINE_LENGTH = 32_768;
+
+/** The most workflow tags one plan request may offer. */
+export const PLAN_MAX_WORKFLOW_TAGS = 64;
+
+/** What the installation has, told to the planner rather than assumed by it (K5). */
+export interface PlanningContext {
+  /** Every workflow tag on offer, **in order** — a draft with no marker takes the first. */
+  workflowTags: string[];
+  /** The batch's milestone, or null. Opaque to the engine. */
+  milestone: string | null;
+  /** What the batch's local keys are prefixed with — `OTA`. */
+  localKeyPrefix: string;
+}
+
+/** A request to draft one batch. */
+export interface PlanRequest {
+  /** The outcome, in the author's words. */
+  narrative: string;
+  /** The markdown outline, or null for narrative-only input. */
+  outline: string | null;
+  /** The vocabularies the batch may use. */
+  context: PlanningContext;
+}
+
+/** One drafted ticket, as the planner answers it. */
+export interface PlanDraft {
+  /** `OTA-3`. */
+  localKey: string;
+  /** One line. */
+  title: string;
+  /** The body — `""` is a real answer. */
+  body: string;
+  /** One of the offered workflow tags. */
+  suggestedWorkflow: string;
+  /** The local keys this draft is **blocked by**, in batch order. */
+  dependencies: string[];
+}
+
+/** One batch, as the planner answers it. */
+export interface Plan {
+  /** At least one draft. */
+  drafts: PlanDraft[];
+  /** What produced the batch — `outline-v0`. Never empty (K10). */
+  planner: string;
+  /** Guidance sentences for the person who asked. */
+  notes: string[];
+}
+
+/** One draft, as it arrives. */
+const planDraftSchema = z
+  .object({
+    local_key: z.string().regex(PLAN_LOCAL_KEY_PATTERN),
+    title: z.string().min(1),
+    body: z.string(),
+    suggested_workflow: z.string().min(1),
+    dependencies: z.array(z.string().regex(PLAN_LOCAL_KEY_PATTERN)),
+  })
+  .transform((body): PlanDraft => ({
+    localKey: body.local_key,
+    title: body.title,
+    body: body.body,
+    suggestedWorkflow: body.suggested_workflow,
+    dependencies: body.dependencies,
+  }));
+
+/**
+ * `POST /v0/plan`, as it arrives.
+ *
+ * The contract's consistency rules — unique keys, edges only inside the batch — are the engine's
+ * (`Plan` refuses them), and are not re-checked here: the planning service holds the graph rules
+ * it needs (acyclicity) itself, over what it stores.
+ */
+export const planSchema = z
+  .object({
+    drafts: z.array(planDraftSchema).min(1),
+    planner: z.string().min(1),
+    notes: z.array(z.string()),
+  })
+  .transform((body): Plan => ({ drafts: body.drafts, planner: body.planner, notes: body.notes }));
+
+/**
+ * A plan request, as the engine's request body.
+ *
+ * @param request - The narrative, the outline and the vocabularies.
+ * @returns The body to serialise, in the engine's `snake_case`.
+ */
+export function planRequestBody(request: PlanRequest): Record<string, unknown> {
+  return {
+    narrative: request.narrative,
+    outline: request.outline,
+    context: {
+      workflow_tags: request.context.workflowTags,
+      milestone: request.context.milestone,
+      local_key_prefix: request.context.localKeyPrefix,
+    },
+  };
+}
+
+/**
  * `POST` — the engine's opinion on a workflow definition. R.2
  * ([#144](https://github.com/NobuData/ouroboros/issues/144)), and the second half of P.3's
  * publish gate ([#134](https://github.com/NobuData/ouroboros/issues/134)).

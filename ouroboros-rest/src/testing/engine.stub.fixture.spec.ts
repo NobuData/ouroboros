@@ -1,6 +1,12 @@
-import { ENGINE_ESTIMATE_BODY, ESTIMATE_REQUEST } from "../modules/engine/engine.fixture";
+import {
+  ENGINE_ESTIMATE_BODY,
+  ESTIMATE_REQUEST,
+  PLAN_REQUEST,
+  planGoldenCase,
+} from "../modules/engine/engine.fixture";
 import {
   estimateRequestBody,
+  planRequestBody,
   workflowValidateRequestBody,
 } from "../modules/engine/engine.contract";
 import { INTERNAL_KEY_HEADER } from "../modules/engine/engine.contract";
@@ -8,6 +14,7 @@ import {
   ENGINE_STUB_SECRET,
   ESTIMATE_PATH,
   LIVENESS_PATH,
+  PLAN_PATH,
   STATUS_PATH,
   WORKFLOW_DRY_RUN_PATH,
   WORKFLOW_VALIDATE_PATH,
@@ -17,6 +24,7 @@ import {
   engineFailure,
   estimateAnswer,
   offContractAnswer,
+  planAnswer,
   startEngineStub,
   validationFindings,
   type EngineStub,
@@ -509,6 +517,67 @@ describe("the contract-faithful engine stub", () => {
       (first.answer.findings as unknown[]).push("mutated");
 
       expect(dryRunExample().answer.findings).toEqual([]);
+    });
+  });
+
+  describe("the plan route — AL.4 (#280)", () => {
+    /** @returns AL.1's golden request, in the engine's names. */
+    function planRequest(): Record<string, unknown> {
+      return planGoldenCase().request;
+    }
+
+    it("is published, answers the golden OTA batch, and records what was sent", async () => {
+      expect(await post(PLAN_PATH, planRequest())).toEqual({
+        status: 200,
+        body: planGoldenCase().response,
+      });
+      expect(engine.plans).toEqual([planRequest()]);
+      expect(engine.requests).toEqual([]);
+      expect(engine.violations).toEqual([]);
+    });
+
+    it("refuses a request in this service's names rather than the engine's", async () => {
+      const refused = await post(PLAN_PATH, {
+        narrative: "OTA",
+        outline: null,
+        context: { workflowTags: ["feature-loop"], milestone: null, localKeyPrefix: "OTA" },
+      });
+
+      expect(refused.status).toBe(422);
+      expect(engine.plans).toEqual([]);
+      expect(engine.violations[0]).toContain("PlanRequest schema");
+    });
+
+    it("still requires the shared secret", async () => {
+      expect((await post(PLAN_PATH, planRequest(), null)).status).toBe(401);
+    });
+
+    it("serves a scripted batch, and refuses to serve one without a planner", async () => {
+      engine.respondToPlan(() => planAnswer({ notes: ["Add a structured outline."] }));
+
+      expect((await post(PLAN_PATH, planRequest())).body).toMatchObject({
+        notes: ["Add a structured outline."],
+      });
+
+      engine.respondToPlan(() => planAnswer({ planner: "" }));
+
+      expect((await post(PLAN_PATH, planRequest())).status).toBe(500);
+      expect(engine.violations[0]).toContain("Plan schema");
+    });
+
+    it("forgets its plans and its scripted batch on reset", async () => {
+      engine.respondToPlan(() => engineFailure());
+      await post(PLAN_PATH, planRequest());
+
+      engine.reset();
+
+      expect(engine.plans).toEqual([]);
+      expect((await post(PLAN_PATH, planRequest())).status).toBe(200);
+    });
+
+    it("holds this service's request translation to the engine's schema", () => {
+      expect(contractViolation("planRequest", planRequestBody(PLAN_REQUEST))).toBeUndefined();
+      expect(contractViolation("plan", planGoldenCase().response)).toBeUndefined();
     });
   });
 

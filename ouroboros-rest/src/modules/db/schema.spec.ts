@@ -313,7 +313,10 @@ describe("TABLE_COLUMNS", () => {
     // `epic_mirrors` — mirrored by AL.3 (#279), whose push service is the first reader and writer of
     // every one of them: it reads a batch and its drafts, rewrites dependency ends, and records the
     // tickets, epic memberships and mirrors a push creates.
-    expect(TABLE_NAMES).toHaveLength(41);
+    //
+    // The forty-second is V036's `planning_epic_progress` view, mirrored by AL.4 (#280) for the
+    // roadmap payload — the one definition of an epic's `issues · done` chip.
+    expect(TABLE_NAMES).toHaveLength(42);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -495,7 +498,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(3);
+    expect(READ_ONLY_VIEWS).toHaveLength(4);
   });
 
   it("mirrors, for each view, the table a write to it belongs in", () => {
@@ -505,6 +508,7 @@ describe("TABLE_COLUMNS", () => {
     expect(TABLE_NAMES).toContain("token_usage");
     expect(TABLE_NAMES).toContain("workspace_settings");
     expect(TABLE_NAMES).toContain("ticket_sources");
+    expect(TABLE_NAMES).toContain("planning_epics");
   });
 
   it("keeps the sealed credential off the view a read path selects", () => {

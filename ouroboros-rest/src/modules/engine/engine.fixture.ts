@@ -15,6 +15,9 @@
  * Not shipped — `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 /**
  * What `fetch` rejects with when a request does not produce an answer.
  *
@@ -228,3 +231,63 @@ export function engineError(status: number, code = "unauthenticated"): Response 
     headers: { "content-type": "application/json" },
   });
 }
+
+/**
+ * AL.1's golden case `ota-outline` — mockup 09's outcome with an outline, and the six drafts
+ * `outline-v0` answers it with — read from `schemas/plan/fixtures/expected.json`, where the
+ * engine's own golden suite asserts it verbatim.
+ *
+ * Read rather than copied, so a change to the recorded contract reaches this service's suites
+ * the same day it reaches the engine's.
+ *
+ * @returns The case's request and response bodies, on the wire (`snake_case`).
+ */
+export function planGoldenCase(): { request: Record<string, unknown>; response: PlanWireBody } {
+  const path = join(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "..",
+    "schemas",
+    "plan",
+    "fixtures",
+    "expected.json",
+  );
+  const recorded = JSON.parse(readFileSync(path, "utf8")) as {
+    cases: { name: string; request: Record<string, unknown>; response: PlanWireBody }[];
+  };
+  const found = recorded.cases.find((entry) => entry.name === "ota-outline");
+
+  if (found === undefined) {
+    throw new Error("schemas/plan/fixtures/expected.json has no ota-outline case");
+  }
+
+  return { request: found.request, response: found.response };
+}
+
+/** A `POST /v0/plan` response body, on the wire. */
+export interface PlanWireBody {
+  drafts: {
+    local_key: string;
+    title: string;
+    body: string;
+    suggested_workflow: string;
+    dependencies: string[];
+  }[];
+  planner: string;
+  notes: string[];
+}
+
+/** A plan request, in this service's names — the golden case's. */
+export const PLAN_REQUEST = {
+  narrative:
+    "We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum " +
+    "verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad.",
+  outline: "- Partition table & bootloader slot flag for A/B scheme  blocks: OTA-3",
+  context: {
+    workflowTags: ["feature-loop", "hil-verify", "docs-loop", "standard-fix"],
+    milestone: "Helios 2.1",
+    localKeyPrefix: "OTA",
+  },
+};

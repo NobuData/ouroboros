@@ -64,12 +64,16 @@ import { Injectable, Logger } from "@nestjs/common";
 import { AppConfigService } from "../config/config.service";
 import type { EstimableIssue, EstimationIntake } from "../backlog-sync/estimation.intake";
 import { EngineClient } from "../engine/engine.client";
-import type { Estimate, EstimationContext } from "../engine/engine.contract";
+import type { Estimate, EstimateRequest, EstimationContext } from "../engine/engine.contract";
 import { describeForLog } from "../errors/failure";
 import { EstimationContextService } from "./estimation.context";
-import { estimateRow, statusFor } from "./estimation.outcome";
+import { draftEstimateRow, estimateRow, statusFor } from "./estimation.outcome";
 import { EstimationQueue } from "./estimation.queue";
-import { EstimationRepository, type EstimableIssueRow } from "./estimation.repository";
+import {
+  EstimationRepository,
+  type EstimableDraftRow,
+  type EstimableIssueRow,
+} from "./estimation.repository";
 
 /**
  * How many times one issue's engine call is attempted before it is given up on.
@@ -90,6 +94,66 @@ export const MAX_ENGINE_ATTEMPTS = 2;
  * keeps the pipe full without the read being a scan.
  */
 export const SWEEP_BATCH = 50;
+
+/**
+ * A ticket draft to size — AL.4 ([#280](https://github.com/NobuData/ouroboros/issues/280)),
+ * decision **N3**: drafts enter *this* orchestrator, so there is one sizer in the product.
+ */
+export interface DraftSizingRequest {
+  /** `ticket_drafts.id`. */
+  readonly draftId: string;
+  /**
+   * The repository the draft will be pushed to, `owner/name` — the estimation contract's `repo`,
+   * which a draft has no other way to name. The caller resolves it through the ticket-source SPI
+   * (`pushTargetName`), which this module deliberately does not reach.
+   */
+  readonly repo: string;
+}
+
+/** How one draft's sizing ended. */
+export type DraftSizingOutcome =
+  /** An estimate was stored — below the floor or not, a draft is sized once it has one. */
+  | "sized"
+  /** Every engine attempt failed, or the write did; nothing was stored. */
+  | "failed"
+  /** The draft is gone, or its workspace routes nothing; nothing was attempted. */
+  | "skipped";
+
+/**
+ * Told once a queued draft's sizing has ended, however it ended — so the planning module can move
+ * its batch `drafting → sized` without this module knowing what a batch is.
+ */
+export type DraftSizingListener = (draftId: string, outcome: DraftSizingOutcome) => Promise<void>;
+
+/**
+ * The queue's dedupe key for a draft.
+ *
+ * Prefixed, so a draft can never be mistaken for an issue: both are uuids, and the queue holds
+ * both kinds of work in one bound.
+ *
+ * @param draftId - `ticket_drafts.id`.
+ * @returns `draft:<id>`.
+ */
+export function draftQueueKey(draftId: string): string {
+  return `draft:${draftId}`;
+}
+
+/**
+ * The issue number a draft is sized as — its local key's position.
+ *
+ * The estimation contract requires a positive number and a draft has no tracker number yet; the
+ * plan contract guarantees every local key ends in a 1-based position (`OTA-3`), which is the one
+ * number a draft does have. Read for provenance only — no estimator branches on it.
+ *
+ * @param localKey - `OTA-3`.
+ * @returns `3`, or `1` for a key without a trailing number (a hand-seeded row).
+ */
+export function draftNumber(localKey: string): number {
+  const match = /-(\d+)$/.exec(localKey);
+  const number = match === null ? 0 : Number(match[1]);
+
+  return number >= 1 ? number : 1;
+}
 
 /** What one sweep found and did — what the scheduler logs, when there was anything to say. */
 export interface SweepReport {
@@ -171,6 +235,43 @@ export class EstimationOrchestrator implements EstimationIntake {
    */
   enqueue(issueId: string): boolean {
     return this.queue.admit({ issueId, run: async () => this.run(issueId) });
+  }
+
+  /**
+   * Queue one ticket draft for sizing, unless this process is already sizing it.
+   *
+   * AL.4's entry point ([#280](https://github.com/NobuData/ouroboros/issues/280)): a generated or
+   * regenerated batch with auto-size on hands each draft here, so drafts are sized by the same
+   * queue, bound, engine call, retry and floor as every issue (decision **N3**).
+   *
+   * **No sweep covers a draft**, because a draft has no `estimating` status to be stranded in: it is
+   * sized exactly when an estimate exists. A draft whose sizing failed stays unsized, and asking
+   * again — a regeneration — is how it is retried.
+   *
+   * @param request - The draft, and the repository it will be pushed to.
+   * @param listener - Told how it ended, once. Its own failure is logged and dropped.
+   * @returns `true` when it was queued, `false` when it is already waiting or running.
+   */
+  enqueueDraft(request: DraftSizingRequest, listener?: DraftSizingListener): boolean {
+    return this.queue.admit({
+      issueId: draftQueueKey(request.draftId),
+      run: async () => {
+        const outcome = await this.runDraft(request);
+
+        if (listener === undefined) {
+          return;
+        }
+
+        try {
+          await listener(request.draftId, outcome);
+        } catch (error) {
+          this.logger.error(
+            `The listener for draft ${request.draftId} failed after sizing ended ${outcome}`,
+            describeForLog(error),
+          );
+        }
+      },
+    });
   }
 
   /**
@@ -266,6 +367,78 @@ export class EstimationOrchestrator implements EstimationIntake {
   }
 
   /**
+   * Size one draft, end to end. Never rejects — see {@link run}.
+   *
+   * @param request - The draft and its push target.
+   * @returns How it ended.
+   */
+  private async runDraft(request: DraftSizingRequest): Promise<DraftSizingOutcome> {
+    let draft: EstimableDraftRow | undefined;
+
+    try {
+      draft = await this.issues.draft(request.draftId);
+    } catch (error) {
+      this.logger.error(`Reading draft ${request.draftId} failed`, describeForLog(error));
+
+      return "failed";
+    }
+
+    if (draft === undefined) {
+      this.logger.log(`Draft ${request.draftId} is gone; nothing to estimate.`);
+
+      return "skipped";
+    }
+
+    const context = await this.context.forWorkspace(draft.organizationId);
+
+    if (context === undefined) {
+      return "skipped";
+    }
+
+    const estimate = await this.attempt(`draft ${draft.localKey} (batch ${draft.batchId})`, {
+      issue: {
+        number: draftNumber(draft.localKey),
+        title: draft.title,
+        body: draft.body,
+        labels: [],
+        repo: request.repo,
+      },
+      context,
+    });
+
+    if (estimate === undefined) {
+      this.logger.warn(
+        `Draft ${draft.localKey} (batch ${draft.batchId}) was not sized: the engine could not ` +
+          "be reached or could not answer. No estimate was stored.",
+      );
+
+      return "failed";
+    }
+
+    try {
+      const sizedAt = new Date();
+      const version = await this.issues.persistDraft(draft.draftId, (next) =>
+        draftEstimateRow(draft.draftId, next, estimate, sizedAt),
+      );
+
+      this.logger.log(
+        `Draft ${draft.localKey} (batch ${draft.batchId}) is sized — ` +
+          `${estimate.effort.toUpperCase()}, ${String(estimate.confidence)}% confidence ` +
+          `(v${String(version)}, by ${estimate.trace.estimator}).`,
+      );
+
+      return "sized";
+    } catch (error) {
+      this.logger.error(
+        `Storing the estimate for draft ${draft.localKey} (batch ${draft.batchId}) failed`,
+        describeForLog(error),
+      );
+
+      return "failed";
+    }
+  }
+
+  /**
    * Ask the engine to size one issue, with one retry.
    *
    * @param issue - The issue, as the read returned it.
@@ -279,21 +452,32 @@ export class EstimationOrchestrator implements EstimationIntake {
     issue: EstimableIssueRow,
     context: EstimationContext,
   ): Promise<Estimate | undefined> {
+    return this.attempt(`${issue.repo}#${String(issue.number)}`, {
+      issue: {
+        number: issue.number,
+        title: issue.title,
+        body: issue.body,
+        labels: issue.labels,
+        repo: issue.repo,
+      },
+      context,
+    });
+  }
+
+  /**
+   * One engine call, with one retry — the policy issues and drafts share.
+   *
+   * @param subject - How the log names what was being sized.
+   * @param request - The sizing request.
+   * @returns The estimate, or `undefined` when every attempt failed.
+   */
+  private async attempt(subject: string, request: EstimateRequest): Promise<Estimate | undefined> {
     for (let attempt = 1; attempt <= MAX_ENGINE_ATTEMPTS; attempt += 1) {
       try {
-        return await this.engine.estimate({
-          issue: {
-            number: issue.number,
-            title: issue.title,
-            body: issue.body,
-            labels: issue.labels,
-            repo: issue.repo,
-          },
-          context,
-        });
+        return await this.engine.estimate(request);
       } catch (error) {
         this.logger.error(
-          `Estimating ${issue.repo}#${String(issue.number)} failed ` +
+          `Estimating ${subject} failed ` +
             `(attempt ${String(attempt)} of ${String(MAX_ENGINE_ATTEMPTS)})`,
           describeForLog(error),
         );

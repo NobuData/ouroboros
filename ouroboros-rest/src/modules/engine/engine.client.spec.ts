@@ -14,6 +14,7 @@ import {
   ENGINE_ESTIMATE_BODY,
   ENGINE_STATUS_BODY,
   ESTIMATE_REQUEST,
+  PLAN_REQUEST,
   alwaysAnswering,
   alwaysFailing,
   connectFailure,
@@ -21,6 +22,7 @@ import {
   failingThenAnswering,
   fakeFetch,
   jsonResponse,
+  planGoldenCase,
   timedOut,
   type FakeFetch,
 } from "./engine.fixture";
@@ -286,6 +288,75 @@ describe("sizing an issue", () => {
     const engine = alwaysAnswering(() => jsonResponse({ ...ENGINE_ESTIMATE_BODY, effort: "xxl" }));
 
     await expect(clientWith(engine).estimate(ESTIMATE_REQUEST)).rejects.toMatchObject({
+      code: ENGINE_ERRORS.unavailable,
+    });
+  });
+});
+
+describe("drafting a batch", () => {
+  /** What the engine answers the golden OTA request with. */
+  function planned(): Response {
+    return jsonResponse(planGoldenCase().response);
+  }
+
+  it("posts the request to the engine's plan route", async () => {
+    const engine = alwaysAnswering(planned);
+
+    await clientWith(engine).plan(PLAN_REQUEST);
+
+    expect(engine.calls[0].url).toBe(`${ENGINE_URL}/v0/plan`);
+    expect(engine.calls[0].method).toBe("POST");
+    expect(headerOf(engine, "X-Ouro-Internal-Key")).toBe(SHARED_SECRET);
+  });
+
+  it("sends the narrative, the outline and the context in the engine's `snake_case`", async () => {
+    const engine = alwaysAnswering(planned);
+
+    await clientWith(engine).plan({ ...PLAN_REQUEST, outline: null });
+
+    expect(JSON.parse(engine.calls[0].body ?? "")).toEqual({
+      narrative: PLAN_REQUEST.narrative,
+      outline: null,
+      context: {
+        workflow_tags: ["feature-loop", "hil-verify", "docs-loop", "standard-fix"],
+        milestone: "Helios 2.1",
+        local_key_prefix: "OTA",
+      },
+    });
+  });
+
+  it("reads the six golden drafts back in this service's names", async () => {
+    const engine = alwaysAnswering(planned);
+    const plan = await clientWith(engine).plan(PLAN_REQUEST);
+
+    expect(plan.planner).toBe("outline-v0");
+    expect(plan.drafts.map((draft) => draft.localKey)).toEqual([
+      "OTA-1",
+      "OTA-2",
+      "OTA-3",
+      "OTA-4",
+      "OTA-5",
+      "OTA-6",
+    ]);
+    expect(plan.drafts[2]).toMatchObject({ dependencies: ["OTA-1", "OTA-2"] });
+  });
+
+  it("answers 502 for a batch with no planner — decision K10", async () => {
+    const engine = alwaysAnswering(() =>
+      jsonResponse({ ...planGoldenCase().response, planner: "" }),
+    );
+
+    await expect(clientWith(engine).plan(PLAN_REQUEST)).rejects.toMatchObject({
+      code: ENGINE_ERRORS.unavailable,
+    });
+  });
+
+  it("answers 502 for an empty batch", async () => {
+    const engine = alwaysAnswering(() =>
+      jsonResponse({ ...planGoldenCase().response, drafts: [] }),
+    );
+
+    await expect(clientWith(engine).plan(PLAN_REQUEST)).rejects.toMatchObject({
       code: ENGINE_ERRORS.unavailable,
     });
   });

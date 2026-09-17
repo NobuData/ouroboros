@@ -298,7 +298,7 @@ describe("capabilityViolations", () => {
     });
 
     expect(capabilityViolations(provider)).toEqual([
-      "write.createTicket is true but createTicket, linkDependency, ensureMilestone, ensureEpicContainer, attachToEpic is absent",
+      "write.createTicket is true but createTicket, linkDependency, ensureMilestone, listMilestones, pushTargetName, ensureEpicContainer, attachToEpic is absent",
     ]);
   });
 
