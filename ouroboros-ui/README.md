@@ -35,7 +35,8 @@
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
-> the five that are built — the dashboard, Issues, Workflows, Models and Settings — is
+> the six that are built — the dashboard, Issues, Workflows, Models, Planning
+> ([#283](https://github.com/NobuData/ouroboros/issues/283)) and Settings — is
 > labelled *soon* rather than linked.
 
 ## Purpose
@@ -245,6 +246,7 @@ ouroboros-ui/
 │   │   ├── audit.ts         #   audit.events() — the credential trail, org-scoped
 │   │   ├── sources.ts       #   sources.* — /api/v1/sources, the catalog, test, sync, status
 │   │   ├── workflows.ts     #   workflows.list() / read() / create() / saveDraft() / publish() / dryRun()
+│   │   ├── planning.ts      #   planning.roadmap() / createEpic() — mockup 09's roadmap head and New roadmap
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
@@ -279,6 +281,13 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
+│   ├── planning/            # mockup 09's frame: head, honest actions, the 7 / 5 + 12 grid · #283
+│   │   ├── view.ts          #   the verbatim head copy, the regions and the issues they wait for
+│   │   ├── data.ts          #   readPlanning() — the roadmap, degraded rather than thrown
+│   │   ├── create.ts        #   New roadmap's judgements: the form, the body, what a refusal says
+│   │   ├── create-actions.ts #  the Server Action — one lane create, no workspace to forge
+│   │   ├── new-roadmap.tsx  #   the head's primary action and its dialog
+│   │   └── planning-screen.tsx # the page head and the three regions
 │   ├── providers/           # mockup 07's Audit log action and the sheet behind it · #225
 │   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
 │   │   ├── view.ts          #   the seven tabs, one live; the eyebrow
@@ -2608,6 +2617,45 @@ under thirty seconds ago; *Pause* and *Resume* are the one `PATCH` of `status`. 
 every row and every control, each inert with its reason in the tooltip; `owner` and `admin`
 may press them. The intake screen's *no token* guidance (#120's amendment) links here.
 
+## Planning
+
+`/planning` ([#283](https://github.com/NobuData/ouroboros/issues/283)) is
+[`docs/mockups/09-planning.html`](../docs/mockups/09-planning.html)'s **frame**: the page head,
+its two actions, and the grid the three regions sit in. The sidebar's **Planning** entry is live
+and leads here; the mockup's topbar is superseded by the shell.
+
+```
+PLANNING
+Describe the work. Ouroboros writes the tickets.                 [Import from Jira SOON] [New roadmap]
+Draft epics and tickets straight into GitHub Issues, Jira, or Linear — sized by the
+estimator, wired with dependencies, and queued for the loop the moment you approve them.
+┌ GENERATE TICKETS ─────────────────────┐ ┌ TRACKER SYNC ──────────────────┐
+│ The ticket generator arrives with #284│ │ …arrives with #285             │
+│                                       │ ├ BACKLOG HEALTH ────────────────┤
+└───────────────────────────────────────┘ └────────────────────────────────┘
+┌ ROADMAP — HELIOS 2.1  [Q3–Q4 2026] ───────────────────────────────────────┐
+│ 5 epics planned. The roadmap gantt arrives with #286.                      │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+**The head is verbatim, and its actions are honest.** *Import from Jira* is AN.3
+([#291](https://github.com/NobuData/ouroboros/issues/291)) and does not exist, so it is an inert
+ghost button marked *soon* whose tooltip names the issue — it opens nothing. *New roadmap* is live
+for `owner` and `admin` and inert with the reason for everyone else.
+
+**A new roadmap is its first epic, named.** AK.3 stores a roadmap's name and window on its epics
+and the roadmap head is the top named lane's, so
+[`new-roadmap.tsx`](app/planning/new-roadmap.tsx) asks for the roadmap name, an optional window,
+the first epic's name and an optional month pair, and makes one `POST /api/v1/planning/epics`
+([`create.ts`](app/planning/create.ts) holds every judgement; an epic with no months is sent as
+`unscoped`). When a roadmap already exists the dialog opens on its name and window. On success the
+page refreshes and the roadmap card is headed with the name. AM.4
+([#286](https://github.com/NobuData/ouroboros/issues/286)) grows this into the gantt's editor.
+
+**The grid is the mockup's 7 / 5 + 12**, collapsing to one column below `68.75rem`. Each region a
+later issue fills says which issue rather than mocking its content; the roadmap card alone reads
+real data, and a failed read degrades that card rather than the page.
+
 ## Workflow Studio
 
 `/workflows` ([#147](https://github.com/NobuData/ouroboros/issues/147)) is
@@ -4052,6 +4100,7 @@ the add-provider flow [#231](https://github.com/NobuData/ouroboros/issues/231) �
 caps, the strip and the states [#232](https://github.com/NobuData/ouroboros/issues/232) ·
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 ticket sources [#141](https://github.com/NobuData/ouroboros/issues/141) ·
+planning [#283](https://github.com/NobuData/ouroboros/issues/283) ·
 workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
 the React Flow canvas [#148](https://github.com/NobuData/ouroboros/issues/148) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).

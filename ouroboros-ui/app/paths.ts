@@ -118,6 +118,16 @@ export const SOURCES_PATH = `${SETTINGS_PATH}/sources`;
 export const REGISTRY_PATH = `${MODELS_PATH}/registry`;
 
 /**
+ * Planning ([#283](https://github.com/NobuData/ouroboros/issues/283)) — mockup 09.
+ *
+ * Written down here for the reason every route in this file is: the sidebar's registry entry
+ * (`app/shell/nav-modules.ts`) names it as the **Planning** destination and `isActiveRoute` in
+ * `app/shell/nav.ts` matches the URL against it, so the entry and the route cannot come to
+ * disagree. This retires the `/planning` placeholder #49 held for it.
+ */
+export const PLANNING_PATH = "/planning";
+
+/**
  * The workflow studio ([#147](https://github.com/NobuData/ouroboros/issues/147)) — mockup 04.
  *
  * Written down here for the reason every other route in this file is: three modules have to

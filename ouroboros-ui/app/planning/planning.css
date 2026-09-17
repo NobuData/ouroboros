@@ -1,0 +1,152 @@
+/*
+ * Planning — `/planning` (#283), from `docs/mockups/09-planning.html`.
+ *
+ * The page head (eyebrow, heading, subline, the two actions), the twelve-column frame the three
+ * regions sit in — the generator `c-7` beside the side column `c-5`, the roadmap `c-12` below —
+ * and the New roadmap dialog's form.
+ *
+ * Every length is a token or `rem`, so the font-size preference scales the page with the rest of
+ * the product (design system § 3.2), and every hue is a token, so both palettes are the token
+ * sheet's. The page adds no fixed or sticky chrome: the shell's content pane is the scroll
+ * container.
+ */
+
+.planning {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.planning__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+/* The floor keeps the heading from wrapping a word a line beside the actions; they drop instead. */
+.planning__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.planning__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+/* The mockup's measure: one long sentence, kept to two lines on a laptop. */
+.planning__sub {
+  max-width: 64ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.planning__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/*
+ * The *soon* mark inside an unbuilt action — the sidebar's own chip (`.shell-nav__soon`), so a
+ * reader who has learnt one has learnt the other.
+ */
+.planning__soon {
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* ---------- the grid ---------- */
+
+.planning__grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+/* The mockup's `c-7`. */
+.planning__generator {
+  display: flex;
+  flex-direction: column;
+  grid-column: span 7;
+}
+
+/* The mockup's `c-5 col`: two cards stacked, at the grid's gap. */
+.planning__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  grid-column: span 5;
+}
+
+/* The mockup's `c-12`. */
+.planning__roadmap {
+  grid-column: span 12;
+}
+
+/* A region card takes the height its column gives it, so the 7 and the 5 end level. */
+.planning__region {
+  flex: 1;
+}
+
+/* The mockup's step: below it, the generator and the side column stack full width. */
+@media (max-width: 68.75rem) {
+  .planning__generator,
+  .planning__side {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 40rem) {
+  .planning {
+    padding-inline: var(--sp-6);
+  }
+}
+
+/* ---------- the New roadmap dialog ---------- */
+
+.planning-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/* The month pair, side by side where there is room for both. */
+.planning-create__months {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--sp-8);
+}
+
+/* The refusal, in the error hue, above the actions it explains. */
+.planning-create__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A line the dialog says about itself: the write in flight. */
+.planning-create__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The action row — the primary control leading, the way out beside it. */
+.planning-create__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}

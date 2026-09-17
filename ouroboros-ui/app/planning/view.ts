@@ -1,0 +1,147 @@
+/**
+ * Every decision the planning frame makes, and every sentence it says
+ * (AM.1, [#283](https://github.com/NobuData/ouroboros/issues/283)).
+ *
+ * Mockup 09's frame is a head, two actions and three regions. What those draw is mostly copy
+ * and a handful of judgements — why **Import from Jira** cannot act, why **New roadmap** cannot
+ * act for a member, what the roadmap region is headed with — and each lives here so its
+ * acceptance criterion is a unit test on a small value rather than an assertion about markup.
+ *
+ * **Framework-free and pure**, the way `app/workflows/view.ts` is: nothing here imports React,
+ * `next/*` or the server-only client. The read is `app/planning/data.ts`'s and the drawing is
+ * `app/planning/planning-screen.tsx`'s.
+ *
+ * ### The subline is verbatim, and that is a claim the controls keep true
+ *
+ * It names all three trackers. The page does not hedge it: the tracker segment
+ * (AM.2, [#284](https://github.com/NobuData/ouroboros/issues/284)) renders Jira and Linear by
+ * their real connection state, so the copy stays true because the controls beneath it are
+ * honest rather than because the copy apologises.
+ */
+
+import type { Reading } from "@/app/api/reading";
+import type { PlanningRoadmap } from "@/app/api/planning";
+
+/* ------------------------------------------------------------------ the head */
+
+/** The eyebrow over the heading, verbatim from the mockup. */
+export const PLANNING_EYEBROW = "Planning";
+
+/** The page heading, verbatim from the mockup. */
+export const PLANNING_TITLE = "Describe the work. Ouroboros writes the tickets.";
+
+/** The subline under the heading, verbatim from the mockup — see the module note. */
+export const PLANNING_SUBLINE =
+  "Draft epics and tickets straight into GitHub Issues, Jira, or Linear — sized by the " +
+  "estimator, wired with dependencies, and queued for the loop the moment you approve them.";
+
+/** The ghost action's label. */
+export const IMPORT_JIRA_LABEL = "Import from Jira";
+
+/** The mark an unbuilt control carries in its text, as the sidebar's *soon* rows do. */
+export const SOON_MARK = "soon";
+
+/**
+ * Why **Import from Jira** cannot act — AN.3 ([#291](https://github.com/NobuData/ouroboros/issues/291)),
+ * gated behind Jira write support (AN.2, #290). A live button would open a dialog that cannot
+ * import anything, so the control is inert and names the issue that builds it.
+ */
+export const IMPORT_JIRA_SOON_NOTE = "Importing from Jira arrives with #291.";
+
+/** The primary action's label. */
+export const NEW_ROADMAP_LABEL = "New roadmap";
+
+/**
+ * Why **New roadmap** is inert for a reader who is not an `owner` or an `admin` — every lane
+ * write is theirs (AL.4). The service enforces it; this is only what the control says.
+ */
+export const NEW_ROADMAP_ROLE_REASON = "Planning a roadmap is for workspace owners and admins.";
+
+/**
+ * The reason **New roadmap** is inert for this reader, if it is.
+ *
+ * @param mayAdminister Whether the reader is an `owner` or an `admin`.
+ * @returns The sentence, or `undefined` when the control may act.
+ */
+export function newRoadmapReason(mayAdminister: boolean): string | undefined {
+  return mayAdminister ? undefined : NEW_ROADMAP_ROLE_REASON;
+}
+
+/* ------------------------------------------------------------------ the regions */
+
+/** One of the frame's regions that a later issue fills. */
+export interface PlanningRegion {
+  /** The element id its heading takes — the region's `aria-labelledby` target. */
+  readonly id: string;
+  /** The card's title, as the mockup names it (the card head upper-cases it). */
+  readonly title: string;
+  /** The one line naming the issue that fills it — honest about what is not built yet. */
+  readonly note: string;
+}
+
+/** The generator card, `c-7` — AM.2. */
+export const GENERATOR_REGION: PlanningRegion = {
+  id: "planning-generator-title",
+  title: "Generate tickets",
+  note: "The ticket generator arrives with #284.",
+};
+
+/** The side column's two cards, `c-5`, top first — both AM.3. */
+export const SIDE_REGIONS: readonly PlanningRegion[] = [
+  {
+    id: "planning-sync-title",
+    title: "Tracker sync",
+    note: "Tracker sync status arrives with #285.",
+  },
+  {
+    id: "planning-health-title",
+    title: "Backlog health",
+    note: "Backlog health arrives with #285.",
+  },
+];
+
+/** The roadmap card's heading id. */
+export const ROADMAP_REGION_ID = "planning-roadmap-title";
+
+/** The roadmap card's title before any roadmap is named. */
+export const ROADMAP_TITLE = "Roadmap";
+
+/**
+ * The roadmap card's title — the mockup's `ROADMAP — HELIOS 2.1`.
+ *
+ * @param roadmap The roadmap read, or a failure.
+ * @returns `Roadmap — <name>` when the read named one, otherwise `Roadmap`.
+ */
+export function roadmapTitle(roadmap: Reading<PlanningRoadmap>): string {
+  if (!roadmap.ok || roadmap.value.name === null) return ROADMAP_TITLE;
+
+  return `${ROADMAP_TITLE} — ${roadmap.value.name}`;
+}
+
+/** What the roadmap card says when this workspace has planned nothing. */
+export const ROADMAP_EMPTY_TITLE = "No roadmap yet";
+
+/** …and the line under it: how to start one. */
+export const ROADMAP_EMPTY_NOTE = "New roadmap names one and creates its first epic.";
+
+/** What the roadmap card says where the gantt will be. */
+export const ROADMAP_GANTT_NOTE = "The roadmap gantt arrives with #286.";
+
+/**
+ * The line counting what the roadmap holds, while the gantt is not built.
+ *
+ * @param lanes How many lanes the roadmap has. At least one — zero is the empty state.
+ * @returns `1 epic planned.` or `N epics planned.`
+ */
+export function laneCount(lanes: number): string {
+  return lanes === 1 ? "1 epic planned." : `${lanes} epics planned.`;
+}
+
+/** What the roadmap card is headed with when the read failed, before the service's reason. */
+export const ROADMAP_UNREAD = "The roadmap could not be read.";
+
+/** Everything the planning frame reads. */
+export interface PlanningReadings {
+  /** The roadmap — its head and lanes — or why it could not be read. */
+  readonly roadmap: Reading<PlanningRoadmap>;
+}

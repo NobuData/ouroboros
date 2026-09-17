@@ -6,6 +6,7 @@ import {
   ISSUES_PATH,
   LOGIN_PATH,
   MODELS_PATH,
+  PLANNING_PATH,
   PROVIDERS_PATH,
   REGISTRY_PATH,
   RETURN_TO_PARAM,
@@ -43,6 +44,12 @@ describe("the paths themselves", () => {
     // under that section rather than beside it.
     expect(ISSUES_PATH).toBe("/issues");
     expect(ISSUES_PATH.startsWith(`${MODELS_PATH}/`)).toBe(false);
+  });
+
+  it("give planning a segment of its own, outside every other section (#283)", () => {
+    // The sidebar's **Planning** entry goes here, and lights on everything beneath it.
+    expect(PLANNING_PATH).toBe("/planning");
+    expect(PLANNING_PATH.startsWith(`${MODELS_PATH}/`)).toBe(false);
   });
 
   it("put the providers page under the Models section", () => {

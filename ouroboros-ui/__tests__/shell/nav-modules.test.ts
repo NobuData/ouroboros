@@ -17,6 +17,7 @@ import {
   DASHBOARD_PATH,
   ISSUES_PATH,
   MODELS_PATH,
+  PLANNING_PATH,
   SETTINGS_PATH,
   WORKFLOWS_PATH,
 } from "@/app/paths";
@@ -118,21 +119,29 @@ describe("the seeded entries", () => {
     }
   });
 
-  it("has exactly five built destinations today: the dashboard, Issues, Workflows, Models and Settings", () => {
+  it("has exactly six built destinations today: the dashboard, Issues, Workflows, Models, Planning and Settings", () => {
     // A live entry is a promise that a page is behind it, so this list may only grow on the
     // commit that builds one — a live entry without a page would ship a 404 in the product's
     // primary navigation. Models joined it with #200 (`app/(app)/models/(routing)/page.tsx`),
     // Issues with #115 (`app/(app)/issues/page.tsx`), Workflows with #147
     // (`app/(app)/workflows/page.tsx`) and Settings with #141 — whose
     // `app/(app)/settings/page.tsx` redirects to the section's one built tab, Ticket sources,
-    // until #491 builds the hub; the other six wait for #49 or for their own roadmap issue.
+    // until #491 builds the hub — and Planning with #283 (`app/(app)/planning/page.tsx`); the other
+    // five wait for #49 or for their own roadmap issue.
     // Asserted against the constants rather than the strings, so an entry and every redirect
     // to it stay the same fact (#45 moved the dashboard off `/`).
     expect(
       SEEDED_NAV_ENTRIES.filter((entry) => navStatus(entry) === "live").map(
         (entry) => entry.route,
       ),
-    ).toEqual([DASHBOARD_PATH, ISSUES_PATH, WORKFLOWS_PATH, MODELS_PATH, SETTINGS_PATH]);
+    ).toEqual([
+      DASHBOARD_PATH,
+      ISSUES_PATH,
+      WORKFLOWS_PATH,
+      MODELS_PATH,
+      PLANNING_PATH,
+      SETTINGS_PATH,
+    ]);
   });
 
   it("explains every unbuilt entry by naming what it waits for", () => {

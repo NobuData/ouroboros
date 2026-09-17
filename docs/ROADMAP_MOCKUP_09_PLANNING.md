@@ -969,7 +969,7 @@ dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AM.1 | #283 | 🟡 Open | ouroboros-ui: [AM.1] Planning route, head & page frame | `/planning` frame, honest head actions, layout | mvp, planning, ui, design | N (after #41, AL.4, BA-D.5) | Y | S | ouroboros-ui |
+| AM.1 | #283 | 🟢 Done | ouroboros-ui: [AM.1] Planning route, head & page frame | `/planning` frame, honest head actions, layout | mvp, planning, ui, design | N (after #41, AL.4, BA-D.5) | Y | S | ouroboros-ui |
 | AM.2 | #284 | 🟡 Open | ouroboros-ui: [AM.2] Generator card & draft flow | Prompt/outline, tracker segment, toggles, draft rows, push flow | mvp, planning, ui, design | N (after AM.1, AL.4, AL.3) | Y | L | ouroboros-ui |
 | AM.3 | #285 | 🟡 Open | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
 | AM.4 | #286 | 🟡 Open | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
@@ -978,7 +978,7 @@ dark-only).
 
 ### Issue AM.1 — ouroboros-ui: [AM.1] Planning route, head & page frame
 
-> **GitHub issue:** #283 · **Status:** 🟡 Open · **Parent epic:** #270
+> **GitHub issue:** #283 · **Status:** 🟢 Done · **Parent epic:** #270
 
 
 - **Problem Statement:** The frame: headline copy, honest head actions
@@ -997,6 +997,30 @@ dark-only).
 ```
 [Planning] Describe the work. Ouroboros writes the tickets.  [Import from Jira·soon][New roadmap]
 ```
+
+- **Delivered (2026-09-17):** `ouroboros-ui` 0.76.0 — `app/(app)/planning/page.tsx` and
+  `app/planning/` (`planning-screen.tsx`, `view.ts`, `data.ts`, `new-roadmap.tsx`, `create.ts`,
+  `create-actions.ts`, `planning.css`), `app/api/planning.ts` (roadmap read + lane create), and the
+  sidebar's **Planning** entry turned from *soon* into a link. Decisions taken in-issue:
+  - **The #49 placeholder needed no deletion** — it was never built; the route replaces the *soon*
+    row directly, and `PLANNING_PATH` joins `app/paths.ts`.
+  - **Import from Jira** is an inert ghost button carrying a *soon* mark and the tooltip
+    *"Importing from Jira arrives with #291."* — it opens nothing.
+  - **New roadmap opens a create dialog rather than AM.4's editor**, because AM.4 depends on this
+    issue and does not exist yet. The dialog asks for the roadmap name, an optional window, the first
+    epic's name and an optional month pair, and makes one `POST /api/v1/planning/epics`; an epic with
+    no months is sent as `unscoped`. AM.4 grows the same flow into its editor. It is live for
+    `owner|admin` and inert with the reason otherwise (the service enforces it).
+  - **One roadmap head per workspace.** The roadmap read's head is the top named lane's, so when a
+    roadmap exists the dialog opens on its name and window and says the new epic joins it — a
+    different name would sit on a bottom lane and never head the roadmap.
+  - **Regions name their issues rather than mocking content**: the generator (`c-7`, #284), tracker
+    sync and backlog health (`c-5`, #285), and the roadmap (`c-12`, #286). The roadmap card is headed
+    from the real read (`Roadmap — Helios 2.1`, window tag, epic count), so a roadmap just created
+    shows on refresh; a failed read degrades that card alone.
+  - **Session/role context (BA-D.5) is still unfiled**, so the role decision uses the existing gate
+    (`requireWorkspace` + `mayAdminister`).
+  - The e2e `shell-nav` roster gains **Planning**; the full planning leg is AM.6 (#288).
 
 ### Issue AM.2 — ouroboros-ui: [AM.2] Generator card & draft flow
 
