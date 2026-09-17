@@ -11,6 +11,8 @@ import { EstimationOrchestrator } from "../estimation/estimation.orchestrator";
 import { BatchesService } from "./batches.service";
 import { PlanningModule } from "./planning.module";
 import { QueueSmallHook } from "./queue-small";
+import { ReestimationJob } from "./reestimation.job";
+import { ReestimationScheduler } from "./reestimation.scheduler";
 import { PushRepository } from "./push.repository";
 import { PushService } from "./push.service";
 
@@ -71,10 +73,51 @@ describe("the planning module", () => {
       "BatchesService",
       "EpicsService",
       "QueueSmallHook",
+      "BacklogHealthRepository",
+      "BacklogHealthService",
+      "ReestimationRepository",
+      "ReestimationJob",
+      "ReestimationScheduler",
     ]);
-    expect(provided.some((name) => /estimat|sizer|queue(service|repository)/i.test(name))).toBe(
-      false,
-    );
+    // AL.5's re-estimation job *schedules* sizing and sizes nothing — so the rule is about
+    // estimators, orchestrators and sizers, and the job's own three classes are named above.
+    expect(
+      provided.some((name) =>
+        /^(?!Reestimation)(.*estimat|.*sizer|.*queue(service|repository))/i.test(name),
+      ),
+    ).toBe(false);
+
+    await module.close();
+  });
+
+  it("runs the nightly re-estimation through INTAKE-L.3's orchestrator — the one sizer", async () => {
+    // AL.5 (#281), verified structurally rather than by behaviour: the job's only way to size a
+    // ticket is the orchestrator instance `EstimationModule` exports, and it holds no engine client,
+    // estimation repository or queue of its own that a second path could be built from.
+    const module = await Test.createTestingModule({
+      imports: [ConfigurationModule.forRoot(testConfiguration()), PlanningModule],
+    })
+      .overrideProvider(DatabaseService)
+      .useValue({})
+      .overrideProvider(AuditService)
+      .useValue({ record: jest.fn() })
+      .compile();
+
+    const job: object = module.get(ReestimationJob);
+    const scheduler: object = module.get(ReestimationScheduler);
+
+    expect(Reflect.get(job, "orchestrator")).toBe(module.get(EstimationOrchestrator));
+    expect(Reflect.get(scheduler, "job")).toBe(job);
+
+    const dependencies = (
+      Reflect.getMetadata("design:paramtypes", ReestimationJob) as { name: string }[]
+    ).map((dependency) => dependency.name);
+
+    expect(dependencies).toEqual([
+      "ReestimationRepository",
+      "EstimationOrchestrator",
+      "AppConfigService",
+    ]);
 
     await module.close();
   });

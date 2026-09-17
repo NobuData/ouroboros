@@ -54,6 +54,7 @@ import { UNIQUE_VIOLATION, isDatabaseFailure } from "../tenancy/constraints";
 import { DatabaseService } from "../db/db.service";
 import type { Database, NewIssueEstimate, SizingStatus } from "../db/schema";
 import type { EstimatedStatus } from "./estimation.outcome";
+import type { EstimableTicketRow } from "./estimation.ticket";
 
 /**
  * The constraint two writers racing the same issue collide on.
@@ -68,6 +69,13 @@ export const VERSION_CONSTRAINT = "issue_estimates_issue_version_key";
  * for the other kind of subject.
  */
 export const DRAFT_VERSION_CONSTRAINT = "issue_estimates_draft_version_key";
+
+/**
+ * The constraint two writers racing the same **canonical ticket** collide on (V038,
+ * [#281](https://github.com/NobuData/ouroboros/issues/281)) — {@link VERSION_CONSTRAINT} for the
+ * third kind of subject.
+ */
+export const TICKET_VERSION_CONSTRAINT = "issue_estimates_ticket_version_key";
 
 /**
  * How many times a version collision is recomputed before giving up.
@@ -455,6 +463,144 @@ export class EstimationRepository {
   }
 
   /**
+   * Read one canonical ticket and everything a sizing request needs (AL.5,
+   * [#281](https://github.com/NobuData/ouroboros/issues/281)).
+   *
+   * Unscoped for {@link issue}'s reason: the orchestrator re-reads the row when the work starts,
+   * and the ticket carries its own workspace. The source is joined for its kind and name, which
+   * `estimation.ticket.ts` names a repository from for a tracker that has none — and joined on the
+   * workspace too, so a row whose source belonged elsewhere could not be read as this one's.
+   *
+   * @param ticketId - `tickets.id`.
+   * @returns The ticket, or `undefined` when it is gone — its source removed while it waited,
+   *   which is ordinary.
+   */
+  async ticket(ticketId: string): Promise<EstimableTicketRow | undefined> {
+    return this.database.db
+      .selectFrom("tickets as t")
+      .innerJoin("ticket_sources_public as s", (join) =>
+        join.onRef("s.id", "=", "t.source_id").onRef("s.organization_id", "=", "t.organization_id"),
+      )
+      .select([
+        "t.id as ticketId",
+        "t.organization_id as organizationId",
+        "t.external_key as externalKey",
+        "t.title as title",
+        "t.body as body",
+        "t.labels as labels",
+        "t.meta as meta",
+        "s.kind as sourceKind",
+        "s.display_name as sourceName",
+      ])
+      .where("t.id", "=", ticketId)
+      .executeTakeFirst();
+  }
+
+  /**
+   * Move a ticket into `estimating` — {@link claim}, for a canonical ticket.
+   *
+   * Unconditional for {@link claim}'s reason: the recovery sweep re-claims rows that are already
+   * `estimating`. It moves `updated_at` through V030's touch trigger, which is what
+   * {@link staleTickets} measures the claim's age by.
+   *
+   * @param ticketId - `tickets.id`.
+   * @returns `true` when a row was claimed, `false` when the ticket no longer exists.
+   */
+  async claimTicket(ticketId: string): Promise<boolean> {
+    const result = await this.database.db
+      .updateTable("tickets")
+      .set({ sizing_status: "estimating" })
+      .where("id", "=", ticketId)
+      .executeTakeFirst();
+
+    return result.numUpdatedRows > 0n;
+  }
+
+  /**
+   * Store one estimate of a ticket and move the ticket with it, in one transaction — {@link persist}
+   * for the third kind of subject, with the collision retry on the ticket's own key.
+   *
+   * @param ticketId - `tickets.id`.
+   * @param status - What the ticket becomes, decided by `estimation.outcome.ts`.
+   * @param build - Turns a version number into the row to insert.
+   * @returns The version that was written.
+   * @throws Whatever the database refused, once the retries are spent.
+   */
+  async persistTicket(
+    ticketId: string,
+    status: EstimatedStatus,
+    build: (version: number) => NewIssueEstimate,
+  ): Promise<number> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.database.transaction(async (trx) => {
+          const row = await trx
+            .selectFrom("issue_estimates")
+            .select(({ fn }) => fn.max<number>("version").as("highest"))
+            .where("ticket_id", "=", ticketId)
+            .executeTakeFirst();
+          const version = (row?.highest ?? 0) + 1;
+
+          await trx.insertInto("issue_estimates").values(build(version)).execute();
+
+          await trx
+            .updateTable("tickets")
+            .set({ sizing_status: status })
+            .where("id", "=", ticketId)
+            .execute();
+
+          return version;
+        });
+      } catch (error) {
+        if (attempt >= MAX_VERSION_ATTEMPTS || !isVersionCollision(error)) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  /**
+   * Move a ticket to a terminal status without writing an estimate — {@link settle}, for a ticket.
+   *
+   * @param ticketId - `tickets.id`.
+   * @param status - Where to leave it; `needs_human` in practice.
+   * @returns `true` when a row was moved, `false` when the ticket no longer exists.
+   */
+  async settleTicket(ticketId: string, status: EstimatedStatus): Promise<boolean> {
+    const result = await this.database.db
+      .updateTable("tickets")
+      .set({ sizing_status: status })
+      .where("id", "=", ticketId)
+      .executeTakeFirst();
+
+    return result.numUpdatedRows > 0n;
+  }
+
+  /**
+   * The ids of every canonical ticket that has been `estimating` for too long, across every
+   * workspace — {@link staleIssues}, for a ticket.
+   *
+   * Without it the nightly job would strand what it started: it selects only `unsized` tickets, so
+   * a ticket whose process died mid-estimate would stay `estimating` and never be selected again.
+   *
+   * @param olderThan - The instant a claim has to predate to count as stale.
+   * @param limit - Most rows to return.
+   * @returns The ids, oldest claim first.
+   */
+  async staleTickets(olderThan: Date, limit: number): Promise<string[]> {
+    const rows = await this.database.db
+      .selectFrom("tickets")
+      .select("id")
+      .where("sizing_status", "=", "estimating")
+      .where("updated_at", "<", olderThan)
+      .orderBy("updated_at", "asc")
+      .limit(limit)
+      .execute();
+
+    return rows.map((row) => row.id);
+  }
+
+  /**
    * The version this issue's next estimate should be.
    *
    * @param trx - The write's transaction. Read inside it, because a number read outside would
@@ -482,8 +628,8 @@ export class EstimationRepository {
  * Did another writer take this version first?
  *
  * @param error - Whatever the transaction rejected with.
- * @returns `true` only for a unique violation on {@link VERSION_CONSTRAINT} or
- *   {@link DRAFT_VERSION_CONSTRAINT}. Narrow on
+ * @returns `true` only for a unique violation on {@link VERSION_CONSTRAINT},
+ *   {@link DRAFT_VERSION_CONSTRAINT} or {@link TICKET_VERSION_CONSTRAINT}. Narrow on
  *   purpose: a check violation is an estimator producing something V026 forbids and would
  *   fail identically on every retry, and a foreign-key violation is an issue that was deleted
  *   mid-flight. Retrying either would turn a clear failure into a slow one.
@@ -492,6 +638,8 @@ export function isVersionCollision(error: unknown): boolean {
   return (
     isDatabaseFailure(error) &&
     error.code === UNIQUE_VIOLATION &&
-    (error.constraint === VERSION_CONSTRAINT || error.constraint === DRAFT_VERSION_CONSTRAINT)
+    (error.constraint === VERSION_CONSTRAINT ||
+      error.constraint === DRAFT_VERSION_CONSTRAINT ||
+      error.constraint === TICKET_VERSION_CONSTRAINT)
   );
 }

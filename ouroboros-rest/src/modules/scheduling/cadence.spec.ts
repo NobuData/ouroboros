@@ -1,4 +1,4 @@
-import { JITTER_SPREAD, chunked, jittered } from "./cadence";
+import { JITTER_SPREAD, chunked, jittered, nextNightlySlot, nightlyDelay } from "./cadence";
 
 /**
  * The anti-thundering-herd rule, and the chunking that keeps a background loop from opening
@@ -75,5 +75,64 @@ describe("chunking", () => {
 
   it("refuses to produce empty runs forever when asked for a width of zero", () => {
     expect(chunked([1, 2, 3], 0)).toEqual([[1], [2], [3]]);
+  });
+});
+
+describe("the nightly slot (AL.5, #281)", () => {
+  it("is today's hour when the hour is still ahead", () => {
+    const slot = nextNightlySlot(new Date("2026-09-17T01:59:59.000Z"), 2);
+
+    expect(slot).toEqual({ night: "2026-09-17", at: new Date("2026-09-17T02:00:00.000Z") });
+  });
+
+  it("is tomorrow's once the hour has arrived or passed, so a finished run never re-books itself", () => {
+    expect(nextNightlySlot(new Date("2026-09-17T02:00:00.000Z"), 2).night).toBe("2026-09-18");
+    expect(nextNightlySlot(new Date("2026-09-17T02:14:00.000Z"), 2).night).toBe("2026-09-18");
+    expect(nextNightlySlot(new Date("2026-09-17T23:59:00.000Z"), 2).at).toEqual(
+      new Date("2026-09-18T02:00:00.000Z"),
+    );
+  });
+
+  it("crosses a month and a year", () => {
+    expect(nextNightlySlot(new Date("2026-12-31T12:00:00.000Z"), 0).night).toBe("2027-01-01");
+    expect(nextNightlySlot(new Date("2026-02-28T23:00:00.000Z"), 23).night).toBe("2026-03-01");
+  });
+
+  it("is always in the future, for every hour", () => {
+    const now = new Date("2026-09-17T13:37:00.000Z");
+
+    for (let hour = 0; hour <= 23; hour += 1) {
+      const { at } = nextNightlySlot(now, hour);
+
+      expect(at.getTime()).toBeGreaterThan(now.getTime());
+      expect(at.getTime() - now.getTime()).toBeLessThanOrEqual(24 * 60 * MINUTE);
+      expect(at.getUTCHours()).toBe(hour);
+    }
+  });
+});
+
+describe("the nightly delay (AL.5, #281)", () => {
+  const now = new Date("2026-09-17T01:00:00.000Z");
+  const slot = nextNightlySlot(now, 2);
+
+  it("lands on the hour at the bottom of the window", () => {
+    expect(nightlyDelay(now, slot, 30, () => 0)).toBe(60 * MINUTE);
+  });
+
+  it("lands inside the window after the hour, never before it and never past it", () => {
+    for (const sample of [0.1, 0.5, 0.9, 0.999999]) {
+      const delay = nightlyDelay(now, slot, 30, () => sample);
+
+      expect(delay).toBeGreaterThan(60 * MINUTE);
+      expect(delay).toBeLessThan(90 * MINUTE);
+    }
+  });
+
+  it("is jittered: two sources give two delays", () => {
+    expect(nightlyDelay(now, slot, 30, () => 0.2)).not.toBe(nightlyDelay(now, slot, 30, () => 0.7));
+  });
+
+  it("never goes below one millisecond for a slot already reached", () => {
+    expect(nightlyDelay(new Date("2026-09-17T03:00:00.000Z"), slot, 30, () => 0)).toBe(1);
   });
 });

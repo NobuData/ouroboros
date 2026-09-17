@@ -255,6 +255,10 @@ service never starts half-configured.
 | `OURO_ESTIMATION_CONFIDENCE_FLOOR` | Below what confidence an estimate sends its issue to `needs_human` — this service's policy, defaulted to the engine's own published floor |      no — 70      | a whole number, 0–100 |
 | `OURO_ESTIMATION_STALE_SECONDS` | How long an issue may sit in `estimating` before the recovery sweep re-queues it — a restart mid-flight is the case it exists for |     no — 600      | a whole number of seconds, 60–86400 |
 | `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS` | Seconds between recovery sweeps — jittered ±25%, and one indexed query against this deployment's own database |     no — 120      | a whole number of seconds, 10–86400 |
+| `OURO_BACKLOG_STALE_DAYS` | Days without a tracker update after which an open ticket counts as stale on the [Backlog Health card](#backlog-health-and-nightly-re-estimation) ([#281](https://github.com/NobuData/ouroboros/issues/281)) |      no — 30      | a whole number of days, 1–3650 |
+| `OURO_REESTIMATION_HOUR_UTC` | The UTC hour the [nightly re-estimation job](#backlog-health-and-nightly-re-estimation) is scheduled at |      no — 2       | a whole number, 0–23 |
+| `OURO_REESTIMATION_JITTER_MINUTES` | The window after that hour a night's run is jittered across, so installations do not all run on the hour |      no — 30      | a whole number of minutes, 1–180 |
+| `OURO_REESTIMATION_BATCH` | The most unsized tickets one night's run queues, across every workspace — the job's bound |     no — 100      | a whole number, 1–1000 |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -3140,7 +3144,7 @@ sizer (N3) — the push is `PushService`, and **Queue XS/S** is M.3's `BacklogQu
 | Route | Who |
 |---|---|
 | `POST /planning/batches` · `POST /:batch/regenerate` · `PATCH /:batch/drafts/:key` | owner, admin, member |
-| `GET /planning/batches/:batch` · `GET /:batch/push-status` · `GET /planning/roadmap` · `GET /planning/epics[/:epic]` · `GET /planning/sources/:source/milestones` | every member |
+| `GET /planning/batches/:batch` · `GET /:batch/push-status` · `GET /planning/roadmap` · `GET /planning/health` · `GET /planning/epics[/:epic]` · `GET /planning/sources/:source/milestones` | every member |
 | `POST /:batch/push` · `POST /:batch/push/resume` · every epic mutation | **owner, admin** |
 
 - **Every edge write is walked first** (`planning.graph.ts`, AL.3's push order): a cycle is a `422`
@@ -3153,6 +3157,41 @@ sizer (N3) — the push is `PushService`, and **Queue XS/S** is M.3's `BacklogQu
   in-memory store keeping V034–V037's rules (`planning.store.fixture.ts`);
   `planning.integration-spec.ts` runs generate → size → select → push → queue-small over HTTP against
   PostgreSQL, the engine stub and a recorded GitHub.
+
+### Backlog health and nightly re-estimation
+
+**`GET /api/v1/planning/health` is mockup 09's Backlog Health card, computed** (AL.5,
+[#281](https://github.com/NobuData/ouroboros/issues/281), decision N9). One statement
+(`health.repository.ts`) counts the workspace's **open canonical tickets** on every read, so a
+synced state change moves the card on the next request:
+
+| Meter | Counts | Drill-through `filter` |
+|---|---|---|
+| **Sized** `38/42` | `sizing_status = 'sized'`, out of every open ticket | `{ state: open, sizing: unsized }` |
+| **Blocked** `4` | an unresolved blocker — an open ticket, or a draft in a batch not abandoned — over `planned` **and** `synced` edges, each ticket once | `{ state: open, blocked: true }` |
+| **Stale** `6` | `source_updated_at` older than `OURO_BACKLOG_STALE_DAYS` (30) | `{ state: open, staleDays: 30 }` |
+
+An empty workspace answers zeros. `reestimation` carries the job's schedule and its latest run, with
+**this workspace's** `found · queued · inFlight` — the footnote's tooltip.
+
+**The footnote is a real job.** `ReestimationScheduler` books `OURO_REESTIMATION_HOUR_UTC` (02:00),
+jittered across `OURO_REESTIMATION_JITTER_MINUTES` after it, on every replica:
+
+```
+tick(night)
+  ├─ startRun(night)   insert … on conflict (night) do nothing — a second replica stands down (V039)
+  ├─ unsizedTickets(OURO_REESTIMATION_BATCH)   open + unsized, ranked per workspace, bounded
+  ├─ EstimationOrchestrator.enqueueTicket(each) — INTAKE-L.3's one sizer (#107)
+  └─ finishRun(succeeded | failed, per-workspace counts)  → book tomorrow
+```
+
+The orchestrator sizes a canonical ticket exactly as it sizes an issue — claim, engine with one
+retry, floor, versioned write — storing the estimate under `issue_estimates.ticket_id` (V038), and
+its recovery sweep re-queues tickets stranded in `estimating`. `planning.module.spec.ts` asserts the
+job holds the exported orchestrator and no estimator of its own; `reestimation.job.spec.ts` that a
+5,000-ticket backlog dispatches exactly the bound; `planning.integration-spec.ts` reproduces
+`38/42 · 4 · 6`, recomputes after a synced close, sizes a seeded backlog through the engine stub
+within its bound, and holds every count to the asking workspace.
 
 ## BetterAuth
 

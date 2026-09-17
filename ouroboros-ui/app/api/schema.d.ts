@@ -4314,6 +4314,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/planning/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Backlog Health card — sized, blocked and stale meters, and the nightly job
+         * @description Mockup 09's **Backlog Health** card ([#281](https://github.com/NobuData/ouroboros/issues/281),
+         *     decision N9). Three meters over this workspace's **open canonical tickets**, each counted on
+         *     every read — no stored counter to go stale after a sync:
+         *
+         *     - **Sized** `38/42` — tickets whose sizing status is `sized`, out of every open ticket.
+         *     - **Blocked** `4` — tickets with at least one unresolved blocker: an open ticket, or a draft
+         *       in a batch that has not been abandoned. Dependencies of **both** `planned` and `synced`
+         *       origin count, and a ticket blocked twice counts once.
+         *     - **Stale** `6` — tickets the tracker has not updated for more than `thresholdDays`
+         *       (`OURO_BACKLOG_STALE_DAYS`, 30 by default).
+         *
+         *     Each meter carries the `filter` its drill-through links into. `reestimation` makes the
+         *     footnote *"Estimator re-runs nightly on unsized issues"* checkable: the schedule, and the
+         *     latest run with **this workspace's** counts from it (`null` before the job has ever run). An
+         *     empty workspace answers zeros, never absent values. Any member.
+         */
+        get: operations["readPlanningBacklogHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/planning/epics": {
         parameters: {
             query?: never;
@@ -11740,6 +11774,63 @@ export interface components {
             name: string | null;
             window: string | null;
             lanes: components["schemas"]["PlanningEpic"][];
+        };
+        /**
+         * PlanningIntakeFilter
+         * @description The filtered intake view a Backlog Health meter links to — only the keys that meter needs.
+         */
+        PlanningIntakeFilter: {
+            /** @enum {string} */
+            state: "open";
+            /** @enum {string} */
+            sizing?: "unsized";
+            /** @enum {boolean} */
+            blocked?: true;
+            staleDays?: number;
+        };
+        /** PlanningHealthMeter */
+        PlanningHealthMeter: {
+            count: number;
+            filter: components["schemas"]["PlanningIntakeFilter"];
+        };
+        /**
+         * PlanningReestimationRun
+         * @description The latest nightly re-estimation run. `found`, `queued` and `inFlight` are **this
+         *     workspace's** — zeros when the run found nothing here.
+         */
+        PlanningReestimationRun: {
+            /** Format: date-time */
+            startedAt: string;
+            finishedAt: string | null;
+            /** @enum {string} */
+            status: "running" | "succeeded" | "failed";
+            found: number;
+            queued: number;
+            inFlight: number;
+        };
+        /** PlanningBacklogHealth */
+        PlanningBacklogHealth: {
+            /** @description The card's tag — `42 open`. */
+            open: number;
+            sized: {
+                count: number;
+                total: number;
+                filter: components["schemas"]["PlanningIntakeFilter"];
+            };
+            blocked: components["schemas"]["PlanningHealthMeter"];
+            stale: {
+                count: number;
+                thresholdDays: number;
+                filter: components["schemas"]["PlanningIntakeFilter"];
+            };
+            reestimation: {
+                schedule: {
+                    hourUtc: number;
+                    jitterMinutes: number;
+                    batchLimit: number;
+                };
+                lastRun: components["schemas"]["PlanningReestimationRun"] | null;
+            };
         };
         /** PlanningMilestones */
         PlanningMilestones: {
@@ -30113,6 +30204,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanningRoadmap"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readPlanningBacklogHealth: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningBacklogHealth"];
                 };
             };
             /**

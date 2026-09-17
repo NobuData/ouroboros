@@ -709,6 +709,15 @@ export interface IssueEstimatesTable {
    * is the planning API that dispatches draft auto-sizing through the same orchestrator.
    */
   draft_id: string | null;
+  /**
+   * The canonical ticket this sizes, when the subject is a ticket (V038,
+   * [#281](https://github.com/NobuData/ouroboros/issues/281)).
+   *
+   * The third subject, by {@link draft_id}'s pattern: AL.5's nightly re-estimation sizes open,
+   * unsized `tickets` rows through the one orchestrator, and this is where the answer is stored.
+   * Exactly one of this, {@link draft_id} and {@link github_issue_id} is set.
+   */
+  ticket_id: string | null;
 }
 
 /**
@@ -2806,6 +2815,44 @@ export interface TicketDependenciesTable {
   updated_at: Stamped;
 }
 
+/** `reestimation_runs.status` — where one night of the re-estimation job is (V039). */
+export type ReestimationRunStatus = "running" | "succeeded" | "failed";
+
+/**
+ * `ouroboros.reestimation_runs` — one night of AL.5's nightly re-estimation job (V039,
+ * [#281](https://github.com/NobuData/ouroboros/issues/281)).
+ *
+ * Deployment-wide: *when it ran* is any workspace's to read. `night` is unique, which is what lets
+ * every replica schedule the job while only the first to start a night runs it.
+ */
+export interface ReestimationRunsTable {
+  id: Generated<string>;
+  /** The UTC date of the scheduled slot this run belongs to. */
+  night: ColumnType<Date, string, string>;
+  started_at: Generated<Date>;
+  finished_at: Date | null;
+  status: Generated<ReestimationRunStatus>;
+  /** The most tickets the run was allowed to queue, across every workspace. */
+  batch_limit: number;
+}
+
+/**
+ * `ouroboros.reestimation_run_counts` — what one run did in one workspace (V039).
+ *
+ * Tenant data, which is why it is not a column of {@link ReestimationRunsTable}. `queued +
+ * in_flight = found`, by constraint.
+ */
+export interface ReestimationRunCountsTable {
+  run_id: string;
+  organization_id: string;
+  /** Open, unsized tickets of this workspace the run selected. */
+  found: number;
+  /** How many were handed to the orchestrator. */
+  queued: number;
+  /** How many the orchestrator was already sizing. */
+  in_flight: number;
+}
+
 /** `ouroboros.planning_epics` — one lane on mockup 09's roadmap (V036). */
 export interface PlanningEpicsTable {
   id: Generated<string>;
@@ -3087,6 +3134,8 @@ export interface Database {
   planning_epics: PlanningEpicsTable;
   epic_tickets: EpicTicketsTable;
   epic_mirrors: EpicMirrorsTable;
+  reestimation_runs: ReestimationRunsTable;
+  reestimation_run_counts: ReestimationRunCountsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -3163,6 +3212,7 @@ export const TABLE_COLUMNS = {
     "trace",
     "created_at",
     "draft_id",
+    "ticket_id",
   ],
   user_preferences: ["user_id", "font_scale", "created_at", "updated_at"],
   runs: [
@@ -3479,6 +3529,8 @@ export const TABLE_COLUMNS = {
   ],
   epic_tickets: ["id", "epic_id", "ticket_id", "created_at"],
   epic_mirrors: ["id", "epic_id", "source_id", "kind", "external_ref", "created_at", "updated_at"],
+  reestimation_runs: ["id", "night", "started_at", "finished_at", "status", "batch_limit"],
+  reestimation_run_counts: ["run_id", "organization_id", "found", "queued", "in_flight"],
   planning_epic_progress: [
     "epic_id",
     "organization_id",

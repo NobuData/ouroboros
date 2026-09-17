@@ -6,6 +6,10 @@ import {
   DEFAULT_ESTIMATION_CONFIDENCE_FLOOR,
   DEFAULT_ESTIMATION_STALE_SECONDS,
   DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+  DEFAULT_BACKLOG_STALE_DAYS,
+  DEFAULT_REESTIMATION_BATCH,
+  DEFAULT_REESTIMATION_HOUR_UTC,
+  DEFAULT_REESTIMATION_JITTER_MINUTES,
   DEFAULT_DASHBOARD_POLL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
@@ -97,6 +101,11 @@ describe("the development defaults", () => {
       estimationConfidenceFloor: DEFAULT_ESTIMATION_CONFIDENCE_FLOOR,
       estimationStaleSeconds: DEFAULT_ESTIMATION_STALE_SECONDS,
       estimationSweepIntervalSeconds: DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+      // AL.5's (#281) four, written out in the template at their defaults for the same reason.
+      backlogStaleDays: DEFAULT_BACKLOG_STALE_DAYS,
+      reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,
+      reestimationJitterMinutes: DEFAULT_REESTIMATION_JITTER_MINUTES,
+      reestimationBatch: DEFAULT_REESTIMATION_BATCH,
       // Commented out in the template (#145): a checkout suggests no skills until an operator
       // lists some, or until the skills registry (#410) replaces the variable.
       workflowSkillSuggestions: [],
@@ -815,5 +824,33 @@ describe("OURO_WORKFLOW_SKILL_SUGGESTIONS", () => {
     );
 
     expect(Object.isFrozen(workflowSkillSuggestions)).toBe(true);
+  });
+});
+
+describe("the backlog-health and nightly re-estimation variables (AL.5, #281)", () => {
+  it.each([
+    ["OURO_BACKLOG_STALE_DAYS", "backlogStaleDays", ["1", "14", "30", "3650"]],
+    ["OURO_REESTIMATION_HOUR_UTC", "reestimationHourUtc", ["0", "2", "23"]],
+    ["OURO_REESTIMATION_JITTER_MINUTES", "reestimationJitterMinutes", ["1", "30", "180"]],
+    ["OURO_REESTIMATION_BATCH", "reestimationBatch", ["1", "100", "1000"]],
+  ] as const)("reads %s inside its range", (variable, field, values) => {
+    for (const value of values) {
+      expect(loadConfiguration(testEnvironment({ [variable]: value }))[field]).toBe(Number(value));
+    }
+  });
+
+  it.each([
+    ["OURO_BACKLOG_STALE_DAYS", "0", "expected between 1 and 3650 days"],
+    ["OURO_BACKLOG_STALE_DAYS", "3651", "expected between 1 and 3650 days"],
+    ["OURO_REESTIMATION_HOUR_UTC", "24", "expected between 0 and 23"],
+    // A zero window would put every installation back on the boundary the jitter exists to avoid.
+    ["OURO_REESTIMATION_JITTER_MINUTES", "0", "expected between 1 and 180 minutes"],
+    ["OURO_REESTIMATION_JITTER_MINUTES", "181", "expected between 1 and 180 minutes"],
+    // A zero batch is a job that never sizes anything; an unbounded one is the 2am flood.
+    ["OURO_REESTIMATION_BATCH", "0", "expected between 1 and 1000"],
+    ["OURO_REESTIMATION_BATCH", "1001", "expected between 1 and 1000"],
+    ["OURO_REESTIMATION_BATCH", "1e2", "expected between 1 and 1000"],
+  ])("rejects %s=%s", (variable, value, message) => {
+    expect(failureFor(testEnvironment({ [variable]: value }))).toContain(`${variable}: ${message}`);
   });
 });

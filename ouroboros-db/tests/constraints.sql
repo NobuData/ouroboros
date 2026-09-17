@@ -8252,15 +8252,16 @@ select pg_temp.must_raise(
   '23001',
   'not in bulk either, and not the version — BI.4 grades a loop against the estimate in force when it was queued, which is a lookup that must not move under it');
 
--- One trigger refusing updates and **two** holding versions monotonic — V026's for an issue and
--- V034's (#272) for a draft, because decision N3 gave this table a second kind of subject and
--- V026's trigger goes quiet against a null issue. All enabled, and nothing refusing a delete, for
+-- One trigger refusing updates and **three** holding versions monotonic — V026's for an issue,
+-- V034's (#272) for a draft and V038's (#281) for a canonical ticket, because each kind of subject
+-- makes the others' triggers go quiet against a null. All enabled, and nothing refusing a delete, for
 -- V022's reason: both subject foreign keys cascade, and a delete-refusing trigger would make
 -- removing an issue or a draft impossible rather than protecting the history.
 select pg_temp.must_hold(
   (select array_agg(tgname::text order by tgname) =
             array['issue_estimates_draft_version_monotonic',
                   'issue_estimates_no_update',
+                  'issue_estimates_ticket_version_monotonic',
                   'issue_estimates_version_monotonic']
      from pg_trigger
     where tgrelid = 'ouroboros.issue_estimates'::regclass
@@ -8270,7 +8271,7 @@ select pg_temp.must_hold(
         where tgrelid = 'ouroboros.issue_estimates'::regclass
           and not tgisinternal
           and tgtype & 8 = 8),
-  'issue_estimates carries the update refusal and both monotonic rules, all enabled, and nothing that refuses a delete');
+  'issue_estimates carries the update refusal and all three monotonic rules, all enabled, and nothing that refuses a delete');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from information_schema.columns
@@ -11760,6 +11761,231 @@ select pg_temp.must_reject(
   'ticket_drafts.provenance is never null');
 
 delete from ouroboros.organization where "id" = 'org-provenance';
+
+-- ===========================================================================
+-- V038 — issue_estimates.ticket_id, the canonical ticket as a third subject (#281)
+-- ===========================================================================
+--
+-- AL.5's nightly job sizes open, unsized canonical tickets through INTAKE-L.3's orchestrator, and
+-- the orchestrator's answer needs somewhere to go. Four facts: a ticket estimate is stored in the
+-- one table, one subject is still exactly one, versions ascend per ticket, and a deleted ticket
+-- takes its estimates with it.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt")
+  values ('org-ticket-estimates', 'Ticket Estimates', 'ticket-estimates', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name)
+  values ('c0380000-0000-0000-0000-000000000001', 'org-ticket-estimates', 'github',
+          'GitHub · ticket estimates');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('c0380000-0000-0000-0000-0000000000a1', 'org-ticket-estimates',
+     'c0380000-0000-0000-0000-000000000001', '588', '#588',
+     'https://github.com/acme/helios-telemetry/issues/588', 'Compress telemetry frames', 'open',
+     now(), now());
+
+insert into ouroboros.draft_batches (id, organization_id, source_prompt, planner, target_source_id)
+  values ('c0380000-0000-0000-0000-0000000000b1', 'org-ticket-estimates', 'A prompt.',
+          'outline-v0', 'c0380000-0000-0000-0000-000000000001');
+
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title)
+  values ('c0380000-0000-0000-0000-0000000000d1', 'c0380000-0000-0000-0000-0000000000b1',
+          'OTA-1', 'A draft');
+
+insert into ouroboros.issue_estimates
+    (ticket_id, version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+     risk_note, trace)
+  values ('c0380000-0000-0000-0000-0000000000a1', 1, 's', 81, 'feature-loop', 'claude-fable-5',
+          '{"files": [], "est_tokens": 90000, "cycle_min": 8, "cycle_max": 14,
+            "est_minutes": 20}'::jsonb,
+          'low', 'Framing is isolated behind one encoder.',
+          '{"estimator": "heuristic-v0", "sized_at": "2026-09-17T02:14:00Z", "tokens_used": 0,
+            "signals": ["ticket:#588"]}'::jsonb);
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.issue_estimates
+    where ticket_id = 'c0380000-0000-0000-0000-0000000000a1'
+      and github_issue_id is null and draft_id is null),
+  'issue_estimates.ticket_id: a canonical ticket is sized in the one table, naming no issue and no draft');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+        (ticket_id, draft_id, version, effort, confidence, suggested_workflow, routed_model,
+         breakdown, risk, risk_note, trace)
+      values ('c0380000-0000-0000-0000-0000000000a1', 'c0380000-0000-0000-0000-0000000000d1', 2,
+              's', 50, 'w', 'm',
+              '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+              'low', 'n',
+              '{"estimator": "heuristic-v0", "sized_at": "2026-09-17T02:14:00Z", "tokens_used": 0, "signals": []}')$$,
+  'an estimate of both a ticket and a draft is two answers wearing one version number',
+  'issue_estimates_one_subject');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+        (version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+         risk_note, trace)
+      values (1, 's', 50, 'w', 'm',
+              '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+              'low', 'n',
+              '{"estimator": "heuristic-v0", "sized_at": "2026-09-17T02:14:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and an estimate of none of the three subjects is still refused',
+  'issue_estimates_one_subject');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+        (ticket_id, version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+         risk_note, trace)
+      values ('c0380000-0000-0000-0000-0000000000a1', 1, 's', 50, 'w', 'm',
+              '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+              'low', 'n',
+              '{"estimator": "heuristic-v0", "sized_at": "2026-09-17T02:14:00Z", "tokens_used": 0, "signals": []}')$$,
+  'one version of a ticket''s estimate, once',
+  'issue_estimates_ticket_version_monotonic');
+
+insert into ouroboros.issue_estimates
+    (ticket_id, version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+     risk_note, trace)
+  values ('c0380000-0000-0000-0000-0000000000a1', 4, 'm', 72, 'feature-loop', 'claude-sonnet-5',
+          '{"files": [], "est_tokens": 120000, "cycle_min": 20, "cycle_max": 30,
+            "est_minutes": 26}'::jsonb,
+          'medium', 'The codec touches the upload path.',
+          '{"estimator": "heuristic-v0", "sized_at": "2026-09-18T02:09:00Z", "tokens_used": 0,
+            "signals": []}'::jsonb);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.issue_estimates
+        (ticket_id, version, effort, confidence, suggested_workflow, routed_model, breakdown, risk,
+         risk_note, trace)
+      values ('c0380000-0000-0000-0000-0000000000a1', 3, 's', 50, 'w', 'm',
+              '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+              'low', 'n',
+              '{"estimator": "heuristic-v0", "sized_at": "2026-09-17T02:14:00Z", "tokens_used": 0, "signals": []}')$$,
+  'and a version below one the ticket already has is refused, as it is for an issue and a draft',
+  'issue_estimates_ticket_version_monotonic');
+
+select pg_temp.must_hold(
+  (select effort = 'm' from ouroboros.issue_estimates
+    where ticket_id = 'c0380000-0000-0000-0000-0000000000a1' order by version desc limit 1),
+  'so latest-wins reads the same way for a ticket');
+
+select pg_temp.must_hold(
+  exists (select 1 from pg_constraint
+           where conrelid = 'ouroboros.issue_estimates'::regclass
+             and conname = 'issue_estimates_ticket_version_key' and contype = 'u'),
+  'issue_estimates_ticket_version_key is the unique key that makes concurrent writers retry');
+
+delete from ouroboros.tickets where id = 'c0380000-0000-0000-0000-0000000000a1';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.issue_estimates
+    where ticket_id = 'c0380000-0000-0000-0000-0000000000a1'),
+  'a deleted ticket takes its estimates with it');
+
+delete from ouroboros.organization where "id" = 'org-ticket-estimates';
+
+-- ===========================================================================
+-- V039 — reestimation_runs and reestimation_run_counts, the nightly job's record (#281)
+-- ===========================================================================
+--
+-- The Backlog Health footnote's last-run tooltip reads these rows. What a reader is entitled to
+-- assume: one run per night across the fleet, a finish time exactly when a run has settled, and
+-- per-workspace counts that add up and leave with their workspace.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-nightly',      'Nightly Works',     'nightly-works',     now()),
+  ('org-nightly-next', 'Nightly Next Door', 'nightly-next-door', now());
+
+-- A database this file is pointed at may have run the job already; the counts below mean what
+-- they say only over this section's own rows, and the rollback puts the real ones back.
+delete from ouroboros.reestimation_runs;
+
+insert into ouroboros.reestimation_runs (id, night, batch_limit)
+  values ('c0390000-0000-0000-0000-000000000001', date '2026-09-17', 100);
+
+select pg_temp.must_hold(
+  (select status = 'running' and finished_at is null and started_at is not null
+     from ouroboros.reestimation_runs where id = 'c0390000-0000-0000-0000-000000000001'),
+  'reestimation_runs: a run starts running, stamped, with no finish time');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.reestimation_runs (night, batch_limit) values (date '2026-09-17', 100)$$,
+  'a second replica starting the same night collides and stands down',
+  'reestimation_runs_night_key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.reestimation_runs set status = 'succeeded'
+     where id = 'c0390000-0000-0000-0000-000000000001'$$,
+  'a settled run has a finish time', 'reestimation_runs_finished_when_settled');
+
+select pg_temp.must_reject(
+  $$update ouroboros.reestimation_runs set finished_at = now()
+     where id = 'c0390000-0000-0000-0000-000000000001'$$,
+  'and a running run has none', 'reestimation_runs_finished_when_settled');
+
+select pg_temp.must_reject(
+  $$update ouroboros.reestimation_runs set status = 'skipped', finished_at = now()
+     where id = 'c0390000-0000-0000-0000-000000000001'$$,
+  'a run is running, succeeded or failed', 'reestimation_runs_status');
+
+select pg_temp.must_reject(
+  $$update ouroboros.reestimation_runs set status = 'failed', finished_at = started_at - interval '1 second'
+     where id = 'c0390000-0000-0000-0000-000000000001'$$,
+  'a run cannot finish before it started', 'reestimation_runs_finished_after_started');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.reestimation_runs (night, batch_limit) values (date '2026-09-18', 0)$$,
+  'a run is bounded by at least one ticket', 'reestimation_runs_batch_limit_positive');
+
+update ouroboros.reestimation_runs set status = 'succeeded', finished_at = now()
+ where id = 'c0390000-0000-0000-0000-000000000001';
+
+insert into ouroboros.reestimation_run_counts (run_id, organization_id, found, queued, in_flight)
+  values
+    ('c0390000-0000-0000-0000-000000000001', 'org-nightly',      4, 3, 1),
+    ('c0390000-0000-0000-0000-000000000001', 'org-nightly-next', 2, 2, 0);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.reestimation_run_counts (run_id, organization_id, found, queued, in_flight)
+      values ('c0390000-0000-0000-0000-000000000001', 'org-nightly', 1, 1, 0)$$,
+  'reestimation_run_counts: one row per run per workspace', 'reestimation_run_counts_pkey');
+
+select pg_temp.must_reject(
+  $$update ouroboros.reestimation_run_counts set queued = 4
+     where organization_id = 'org-nightly'$$,
+  'every selected ticket was queued or already in flight', 'reestimation_run_counts_add_up');
+
+select pg_temp.must_reject(
+  $$update ouroboros.reestimation_run_counts set found = -1, queued = -1, in_flight = 0
+     where organization_id = 'org-nightly'$$,
+  'counts are never negative', 'reestimation_run_counts_non_negative');
+
+-- The tooltip's read is the latest run, and it is one index step at production size.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.reestimation_runs order by started_at desc limit 1$$,
+  'reestimation_runs_started_at_idx');
+
+set local enable_seqscan = on;
+
+delete from ouroboros.organization where "id" = 'org-nightly';
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.reestimation_run_counts
+    where run_id = 'c0390000-0000-0000-0000-000000000001')
+  and (select count(*) = 1 from ouroboros.reestimation_runs),
+  'a deleted workspace takes its counts and leaves the run, and the other workspace''s counts, alone');
+
+delete from ouroboros.reestimation_runs where id = 'c0390000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.reestimation_run_counts),
+  'and a deleted run takes every workspace''s counts with it');
+
+delete from ouroboros.organization where "id" = 'org-nightly-next';
 
 -- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)

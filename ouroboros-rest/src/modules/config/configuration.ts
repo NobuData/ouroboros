@@ -321,6 +321,67 @@ export const MIN_ESTIMATION_SWEEP_INTERVAL_SECONDS = 10;
 export const MAX_ESTIMATION_SWEEP_INTERVAL_SECONDS = 86400;
 
 /**
+ * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
+ * when `OURO_BACKLOG_STALE_DAYS` is not set — thirty, mockup 09's `Stale > 30d`.
+ *
+ * AL.5 ([#281](https://github.com/NobuData/ouroboros/issues/281)) asks for the threshold to be
+ * configurable rather than hard-coded, because *stale* is a team's rhythm rather than a constant:
+ * a fortnight is old for a team shipping weekly, and a quarter is ordinary for a hardware backlog.
+ */
+export const DEFAULT_BACKLOG_STALE_DAYS = 30;
+
+/** Shortest staleness threshold — one day; anything shorter is a filter on *today*. */
+export const MIN_BACKLOG_STALE_DAYS = 1;
+
+/** Longest staleness threshold — ten years, which is a threshold nothing ever crosses. */
+export const MAX_BACKLOG_STALE_DAYS = 3650;
+
+/**
+ * The UTC hour the nightly re-estimation job is scheduled at, when `OURO_REESTIMATION_HOUR_UTC`
+ * is not set — two in the morning, the card's `02:14 ✓`.
+ *
+ * Off-peak by default (decision **N9**): the job dispatches a bounded batch of engine calls, and
+ * the hours nobody is pressing *Re-estimate* are the hours that batch competes with least.
+ */
+export const DEFAULT_REESTIMATION_HOUR_UTC = 2;
+
+/** The last hour of the day. */
+export const MAX_REESTIMATION_HOUR_UTC = 23;
+
+/**
+ * How many minutes after the scheduled hour a night's run may land, when
+ * `OURO_REESTIMATION_JITTER_MINUTES` is not set — half an hour.
+ *
+ * The job's jitter. Not ±25% of its interval, as every other loop's is: a quarter of a day would
+ * move an *off-peak* job into the working day. A window after the hour keeps the run off the
+ * boundary — so a fleet of installations does not all ask their engines at 02:00:00 — and keeps it
+ * in the night.
+ */
+export const DEFAULT_REESTIMATION_JITTER_MINUTES = 30;
+
+/** Smallest jitter window — one minute, so the schedule is always jittered. */
+export const MIN_REESTIMATION_JITTER_MINUTES = 1;
+
+/** Largest jitter window — three hours. */
+export const MAX_REESTIMATION_JITTER_MINUTES = 180;
+
+/**
+ * The most unsized tickets one night's run queues, across every workspace, when
+ * `OURO_REESTIMATION_BATCH` is not set — one hundred.
+ *
+ * The bound AL.5 asks for: *"an organization with a large unsized backlog would otherwise dispatch
+ * thousands of estimations at 2am"*. What the bound leaves behind is picked up the next night, and
+ * the batch is shared out across workspaces rather than spent on whichever is largest.
+ */
+export const DEFAULT_REESTIMATION_BATCH = 100;
+
+/** Smallest batch — one ticket. */
+export const MIN_REESTIMATION_BATCH = 1;
+
+/** Largest batch — a thousand tickets a night. */
+export const MAX_REESTIMATION_BATCH = 1000;
+
+/**
  * The service's validated configuration.
  *
  * Every field is derived from exactly one environment variable — {@link VARIABLES} is the
@@ -517,6 +578,26 @@ export interface Configuration {
    */
   readonly estimationSweepIntervalSeconds: number;
   /**
+   * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
+   * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
+   */
+  readonly backlogStaleDays: number;
+  /**
+   * The UTC hour the nightly re-estimation job is scheduled at. From `OURO_REESTIMATION_HOUR_UTC`,
+   * {@link DEFAULT_REESTIMATION_HOUR_UTC} when unset.
+   */
+  readonly reestimationHourUtc: number;
+  /**
+   * The window after that hour a night's run is jittered across, in minutes. From
+   * `OURO_REESTIMATION_JITTER_MINUTES`, {@link DEFAULT_REESTIMATION_JITTER_MINUTES} when unset.
+   */
+  readonly reestimationJitterMinutes: number;
+  /**
+   * The most unsized tickets one night's run queues, across every workspace. From
+   * `OURO_REESTIMATION_BATCH`, {@link DEFAULT_REESTIMATION_BATCH} when unset.
+   */
+  readonly reestimationBatch: number;
+  /**
    * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
    *
    * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
@@ -585,6 +666,10 @@ export const VARIABLES = {
   estimationConfidenceFloor: "OURO_ESTIMATION_CONFIDENCE_FLOOR",
   estimationStaleSeconds: "OURO_ESTIMATION_STALE_SECONDS",
   estimationSweepIntervalSeconds: "OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS",
+  backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
+  reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
+  reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
+  reestimationBatch: "OURO_REESTIMATION_BATCH",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
   workflowSkillSuggestions: "OURO_WORKFLOW_SKILL_SUGGESTIONS",
 } as const satisfies Record<keyof Configuration, string>;
@@ -1019,6 +1104,34 @@ const environmentSchema = z.object({
     MAX_ESTIMATION_SWEEP_INTERVAL_SECONDS,
   ),
 
+  // AL.5's (#281) four: the Backlog Health card's stale threshold, and the nightly job's hour,
+  // jitter window and batch bound.
+  OURO_BACKLOG_STALE_DAYS: boundedWhole(
+    MIN_BACKLOG_STALE_DAYS,
+    DEFAULT_BACKLOG_STALE_DAYS,
+    MAX_BACKLOG_STALE_DAYS,
+    "days",
+  ),
+
+  OURO_REESTIMATION_HOUR_UTC: boundedWhole(
+    0,
+    DEFAULT_REESTIMATION_HOUR_UTC,
+    MAX_REESTIMATION_HOUR_UTC,
+  ),
+
+  OURO_REESTIMATION_JITTER_MINUTES: boundedWhole(
+    MIN_REESTIMATION_JITTER_MINUTES,
+    DEFAULT_REESTIMATION_JITTER_MINUTES,
+    MAX_REESTIMATION_JITTER_MINUTES,
+    "minutes",
+  ),
+
+  OURO_REESTIMATION_BATCH: boundedWhole(
+    MIN_REESTIMATION_BATCH,
+    DEFAULT_REESTIMATION_BATCH,
+    MAX_REESTIMATION_BATCH,
+  ),
+
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
   // pairs, comma-separated. Optional, and its default is *no local providers*: an
   // installation that runs none is the normal one, and a default address would be this
@@ -1146,6 +1259,10 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     estimationConfidenceFloor: values.OURO_ESTIMATION_CONFIDENCE_FLOOR,
     estimationStaleSeconds: values.OURO_ESTIMATION_STALE_SECONDS,
     estimationSweepIntervalSeconds: values.OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+    backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
+    reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
+    reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,
+    reestimationBatch: values.OURO_REESTIMATION_BATCH,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
     workflowSkillSuggestions: Object.freeze(values.OURO_WORKFLOW_SKILL_SUGGESTIONS),
   });

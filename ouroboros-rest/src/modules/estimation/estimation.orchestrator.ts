@@ -67,13 +67,14 @@ import { EngineClient } from "../engine/engine.client";
 import type { Estimate, EstimateRequest, EstimationContext } from "../engine/engine.contract";
 import { describeForLog } from "../errors/failure";
 import { EstimationContextService } from "./estimation.context";
-import { draftEstimateRow, estimateRow, statusFor } from "./estimation.outcome";
+import { draftEstimateRow, estimateRow, statusFor, ticketEstimateRow } from "./estimation.outcome";
 import { EstimationQueue } from "./estimation.queue";
 import {
   EstimationRepository,
   type EstimableDraftRow,
   type EstimableIssueRow,
 } from "./estimation.repository";
+import { ticketIssueContext, type EstimableTicketRow } from "./estimation.ticket";
 
 /**
  * How many times one issue's engine call is attempted before it is given up on.
@@ -139,6 +140,19 @@ export function draftQueueKey(draftId: string): string {
 }
 
 /**
+ * The queue's dedupe key for a canonical ticket (AL.5, [#281](https://github.com/NobuData/ouroboros/issues/281)).
+ *
+ * Prefixed for {@link draftQueueKey}'s reason: a ticket, a draft and a mirrored issue are all
+ * uuids, and the queue holds all three kinds of work in one bound.
+ *
+ * @param ticketId - `tickets.id`.
+ * @returns `ticket:<id>`.
+ */
+export function ticketQueueKey(ticketId: string): string {
+  return `ticket:${ticketId}`;
+}
+
+/**
  * The issue number a draft is sized as — its local key's position.
  *
  * The estimation contract requires a positive number and a draft has no tracker number yet; the
@@ -157,7 +171,7 @@ export function draftNumber(localKey: string): number {
 
 /** What one sweep found and did — what the scheduler logs, when there was anything to say. */
 export interface SweepReport {
-  /** Rows that had been `estimating` longer than the threshold. */
+  /** Rows — mirrored issues and canonical tickets — that had been `estimating` longer than the threshold. */
   readonly stale: number;
   /** How many of them were queued. */
   readonly requeued: number;
@@ -275,6 +289,25 @@ export class EstimationOrchestrator implements EstimationIntake {
   }
 
   /**
+   * Queue one canonical ticket for sizing, unless this process is already sizing it.
+   *
+   * AL.5's entry point ([#281](https://github.com/NobuData/ouroboros/issues/281)), decision **N9**:
+   * the nightly re-estimation job hands each open, unsized ticket here, so the canonical backlog is
+   * sized by the same queue, bound, engine call, retry and floor as every issue and draft — there is
+   * no second sizer for it to disagree with. The ticket moves `unsized → estimating → sized |
+   * needs_human` exactly as an issue does, and its estimate is stored under V038's `ticket_id`.
+   *
+   * @param ticketId - `tickets.id`.
+   * @returns `true` when it was queued, `false` when it is already waiting or running.
+   */
+  enqueueTicket(ticketId: string): boolean {
+    return this.queue.admit({
+      issueId: ticketQueueKey(ticketId),
+      run: async () => this.runTicket(ticketId),
+    });
+  }
+
+  /**
    * Is this process already estimating that issue?
    *
    * @param issueId - `github_issues.id`.
@@ -309,6 +342,10 @@ export class EstimationOrchestrator implements EstimationIntake {
   async sweep(): Promise<SweepReport> {
     const olderThan = new Date(Date.now() - this.config.estimationStaleSeconds * 1000);
     const stale = await this.issues.staleIssues(olderThan, SWEEP_BATCH);
+    // Canonical tickets strand the same way since AL.5 (#281) sizes them, and the nightly job
+    // selects only `unsized` ones — so without this read a ticket whose process died mid-estimate
+    // would never be looked at again. Its own batch, so neither kind can starve the other.
+    const staleTickets = await this.issues.staleTickets(olderThan, SWEEP_BATCH);
 
     let requeued = 0;
 
@@ -318,7 +355,15 @@ export class EstimationOrchestrator implements EstimationIntake {
       }
     }
 
-    return { stale: stale.length, requeued, inFlight: stale.length - requeued };
+    for (const ticketId of staleTickets) {
+      if (this.enqueueTicket(ticketId)) {
+        requeued += 1;
+      }
+    }
+
+    const found = stale.length + staleTickets.length;
+
+    return { stale: found, requeued, inFlight: found - requeued };
   }
 
   /**
@@ -364,6 +409,93 @@ export class EstimationOrchestrator implements EstimationIntake {
     }
 
     await this.store(issue, estimate);
+  }
+
+  /**
+   * Size one canonical ticket, end to end, and leave it in a terminal status whatever happens —
+   * {@link run} for the third kind of subject. Never rejects.
+   *
+   * @param ticketId - `tickets.id`.
+   * @returns When the ticket has reached `sized` or `needs_human`, or when there was nothing to do
+   *   because the row is gone or its workspace cannot be routed.
+   */
+  private async runTicket(ticketId: string): Promise<void> {
+    let ticket: EstimableTicketRow | undefined;
+    let claimed = false;
+
+    try {
+      ticket = await this.issues.ticket(ticketId);
+
+      if (ticket === undefined) {
+        this.logger.log(`Ticket ${ticketId} is gone; nothing to estimate.`);
+        return;
+      }
+
+      const context = await this.context.forWorkspace(ticket.organizationId);
+
+      // No routing, no model an estimate could name — the row stays `unsized`, and the next night
+      // asks again. See {@link run}.
+      if (context === undefined || !(await this.issues.claimTicket(ticketId))) {
+        return;
+      }
+
+      claimed = true;
+
+      const subject = `ticket ${ticket.externalKey} (${ticketId})`;
+      const estimate = await this.attempt(subject, { issue: ticketIssueContext(ticket), context });
+
+      if (estimate === undefined) {
+        await this.giveUpTicket(ticket, "the engine could not be reached or could not answer");
+        return;
+      }
+
+      const status = statusFor(estimate, this.config.estimationConfidenceFloor);
+      const sizedAt = new Date();
+      const version = await this.issues.persistTicket(ticketId, status, (next) =>
+        ticketEstimateRow(ticketId, next, estimate, sizedAt),
+      );
+
+      this.logger.log(
+        `${subject} is ${status} — ${estimate.effort.toUpperCase()}, ` +
+          `${String(estimate.confidence)}% confidence ` +
+          `(v${String(version)}, by ${estimate.trace.estimator}).`,
+      );
+    } catch (error) {
+      // The read, the claim or the write failed. Before the claim nothing moved and the next night
+      // selects the ticket again, so it is left alone; after it, the ticket is given up on — and if
+      // even that write fails, the row says `estimating` and the recovery sweep's `staleTickets`
+      // re-queues it. A failure here strands nothing.
+      this.logger.error(`Estimating ticket ${ticketId} failed`, describeForLog(error));
+
+      if (claimed && ticket !== undefined) {
+        await this.giveUpTicket(ticket, "the estimate could not be stored");
+      }
+    }
+  }
+
+  /**
+   * Leave a ticket to a person, and say why — {@link giveUp} for a canonical ticket.
+   *
+   * @param ticket - The ticket.
+   * @param reason - What went wrong.
+   * @returns When the status is written. A failure to write even this is logged and dropped: the
+   *   row is left `estimating`, which the recovery sweep re-queues.
+   */
+  private async giveUpTicket(ticket: EstimableTicketRow, reason: string): Promise<void> {
+    this.logger.warn(
+      `Ticket ${ticket.externalKey} (${ticket.ticketId}) needs a human: ${reason}. ` +
+        "No estimate was stored.",
+    );
+
+    try {
+      await this.issues.settleTicket(ticket.ticketId, "needs_human");
+    } catch (error) {
+      this.logger.error(
+        `Could not move ticket ${ticket.externalKey} to needs_human; the recovery sweep will ` +
+          "re-queue it.",
+        describeForLog(error),
+      );
+    }
   }
 
   /**
