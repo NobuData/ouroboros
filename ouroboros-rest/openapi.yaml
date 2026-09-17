@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.11"
+  version: "0.35.12"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -13204,6 +13204,7 @@ paths:
                     blockedByTicketIds: []
                     pushState: pending
                     pushedTicketId: null
+                    pushedTicket: null
                     pushError: null
                     estimate:
                       effort: s
@@ -23572,7 +23573,7 @@ components:
       additionalProperties: false
       required:
         [id, localKey, title, body, selected, suggestedWorkflow, provenance, dependencies,
-         blockedByTicketIds, pushState, pushedTicketId, pushError, estimate]
+         blockedByTicketIds, pushState, pushedTicketId, pushedTicket, pushError, estimate]
       properties:
         id:
           type: string
@@ -23614,6 +23615,13 @@ components:
           oneOf:
             - type: string
               format: uuid
+            - type: "null"
+        pushedTicket:
+          description: |-
+            The tracker's own identity for the pushed ticket — `#612` and its link — so a reload can
+            still render `pushed ✓ #612`. Null until the draft is pushed.
+          oneOf:
+            - $ref: "#/components/schemas/PlanningTicketRef"
             - type: "null"
         pushError:
           oneOf:
@@ -23896,7 +23904,7 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [localKey, selected, pushState, pushedTicketId, pushError]
+            required: [localKey, selected, pushState, pushedTicketId, pushedTicket, pushError]
             properties:
               localKey:
                 type: string
@@ -23909,6 +23917,11 @@ components:
                 oneOf:
                   - type: string
                     format: uuid
+                  - type: "null"
+              pushedTicket:
+                description: "`#612` and its link, once pushed — `pushed ✓ #612` as a link."
+                oneOf:
+                  - $ref: "#/components/schemas/PlanningTicketRef"
                   - type: "null"
               pushError:
                 oneOf:

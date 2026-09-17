@@ -3153,6 +3153,10 @@ sizer (N3) — the push is `PushService`, and **Queue XS/S** is M.3's `BacklogQu
   pushed draft. A title or body edit marks the draft `provenance: edited` (V037).
 - **The footer** (`planning.summary.ts`) sums real `est_minutes`, and carries `spend` only when
   `ouroboros.model_price()` prices something — never `$0` for *unknown*.
+- **A pushed draft names its ticket.** The batch read and `push-status` carry `pushedTicket` —
+  `{ externalId, externalKey, url }`, read through `tickets` — beside `pushedTicketId`, so the card's
+  `pushed ✓ #612` link survives a reload rather than living only in a push's answer (AM.2,
+  [#284](https://github.com/NobuData/ouroboros/issues/284); additive, 0.35.12).
 - `batches.service.spec.ts`, `epics.service.spec.ts` and `queue-small.spec.ts` run over an
   in-memory store keeping V034–V037's rules (`planning.store.fixture.ts`);
   `planning.integration-spec.ts` runs generate → size → select → push → queue-small over HTTP against

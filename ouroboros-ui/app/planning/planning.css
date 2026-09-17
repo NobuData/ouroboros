@@ -1,9 +1,10 @@
 /*
- * Planning — `/planning` (#283), from `docs/mockups/09-planning.html`.
+ * Planning — `/planning` (#283, #284), from `docs/mockups/09-planning.html`.
  *
  * The page head (eyebrow, heading, subline, the two actions), the twelve-column frame the three
  * regions sit in — the generator `c-7` beside the side column `c-5`, the roadmap `c-12` below —
- * and the New roadmap dialog's form.
+ * the New roadmap dialog's form, and the generator card (#284): its controls row, the tracker
+ * segment with its tinted monograms, the draft rows and the footer.
  *
  * Every length is a token or `rem`, so the font-size preference scales the page with the rest of
  * the product (design system § 3.2), and every hue is a token, so both palettes are the token
@@ -148,5 +149,351 @@
 .planning-create__actions {
   display: flex;
   flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- the generator card (#284) ---------- */
+
+/* The card fills its column, so the 7 and the 5 end level. */
+.planning-gen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* A line the card says about what it could not read. */
+.planning-gen__notice {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The outline disclosure — a quiet text button, the caret carrying its state beside aria-expanded. */
+.planning-gen__disclosure {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-mut);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.planning-gen__disclosure:hover {
+  color: var(--ink-dim);
+}
+
+.planning-gen__caret {
+  color: var(--ink-faint);
+}
+
+/*
+ * The outline field, indented under its disclosure. No `display` here, deliberately: the element's
+ * `hidden` attribute is what collapses it, and any display would override that.
+ */
+.planning-gen__outline {
+  padding-left: var(--sp-7);
+}
+
+/* The planner's guidance — a designed hint in the model hue, pointing at the outline field. */
+.planning-gen__guidance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-md);
+  background: var(--model-tint);
+}
+
+.planning-gen__notes {
+  flex: 1;
+  min-width: 16rem;
+  margin: 0;
+  padding: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  list-style: none;
+}
+
+/* The mockup's controls row: segment, milestone, two switches, and the primary action at the end. */
+.planning-gen__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+.planning-gen__milestone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 12rem;
+}
+
+.planning-gen__switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.planning-gen__switch-label {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/* `margin-left: auto` — the mockup's spacer before **Draft tickets ⟳**. */
+.planning-gen__draft {
+  margin-left: auto;
+}
+
+/* The N7 explanation the queue switch is described by. */
+.planning-gen__note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.planning-gen__divider {
+  margin: var(--sp-2) 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+.planning-gen__drafts {
+  display: flex;
+  flex-direction: column;
+}
+
+.planning-gen__drafts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-2);
+}
+
+/* The mockup's `card-title` treatment for `DRAFT — 6 TICKETS`. */
+.planning-gen__drafts-title {
+  margin: 0;
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.planning-gen__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The footer: the figures leading, the two actions at the trailing edge. */
+.planning-gen__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-6);
+}
+
+.planning-gen__total {
+  flex: 1;
+  min-width: 14rem;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.planning-gen__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.planning-gen__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.planning-gen__outcome {
+  margin: 0;
+  padding: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  list-style: none;
+}
+
+/* ---------- the tracker segment ---------- */
+
+.planning-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.planning-seg__option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-6);
+  border: none;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-mut);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.planning-seg__option:last-child {
+  border-right: none;
+}
+
+.planning-seg__option:hover {
+  color: var(--ink-dim);
+}
+
+/* A tracker that cannot be written to reads as unavailable, and keeps its tooltip. */
+.planning-seg__option[aria-disabled="true"] {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.planning-seg__option--selected {
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  color: var(--accent);
+}
+
+/* The two-letter monograms, in the token hues only. */
+.planning-mgram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-disp);
+  font-size: var(--t-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tr-wide);
+}
+
+.planning-mgram--gh {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.planning-mgram--ji {
+  border-color: var(--model-line);
+  background: var(--model-tint);
+  color: var(--model);
+}
+
+.planning-mgram--ln {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+/* ---------- the draft rows ---------- */
+
+.planning-draft {
+  border-bottom: 1px solid var(--line);
+}
+
+.planning-draft:last-child {
+  border-bottom: none;
+}
+
+.planning-draft__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  min-width: 0;
+  padding: var(--sp-5) var(--sp-1);
+}
+
+.planning-draft__check {
+  flex: none;
+  width: 0.9375rem;
+  height: 0.9375rem;
+  accent-color: var(--accent-deep);
+  cursor: pointer;
+}
+
+.planning-draft__key {
+  flex: none;
+  width: 3.25rem;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.planning-draft__title {
+  flex: 1;
+  min-width: 10rem;
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.planning-draft__dep,
+.planning-draft__sizing,
+.planning-draft__pushing {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.planning-draft__pushed {
+  color: var(--ok);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.planning-draft__failed {
+  color: var(--err);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The inline editor opens under its row, indented past the checkbox. */
+.planning-draft__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding: 0 var(--sp-1) var(--sp-6) 1.5rem;
+}
+
+.planning-draft__editor-actions {
+  display: flex;
   gap: var(--sp-4);
 }

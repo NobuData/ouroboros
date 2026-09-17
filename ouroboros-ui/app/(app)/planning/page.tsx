@@ -1,6 +1,7 @@
 import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister } from "@/app/api/membership";
+import { mayAdminister, mayContribute } from "@/app/api/membership";
 import { readPlanning } from "@/app/planning/data";
+import { BATCH_PARAM, parseBatchParam } from "@/app/planning/generator";
 import { PlanningScreen } from "@/app/planning/planning-screen";
 
 /**
@@ -16,16 +17,30 @@ import { PlanningScreen } from "@/app/planning/planning-screen";
  * sidebar's **Planning** entry stops being a *soon* row on the same commit
  * (`app/shell/nav-modules.ts`).
  *
- * The role is decided here, once: **New roadmap** acts for an `owner` or an `admin` and is inert
- * with its reason for anyone else. The gate that enforces it is the service's.
+ * The roles are decided here, once: **New roadmap** and the generator's push act for an `owner` or
+ * an `admin`; drafting acts for a `member` too; a `viewer` reads. The gates that enforce them are
+ * the service's.
  *
+ * `?batch=<id>` opens the generator card on a stored batch (AM.2,
+ * [#284](https://github.com/NobuData/ouroboros/issues/284)) — the address a generation leaves
+ * behind, and the deep link other surfaces edit drafts through.
+ *
+ * @param props.searchParams The address's query.
  * @returns The planning page, for the workspace this request is operating in.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: Readonly<{ searchParams: Promise<Record<string, string | string[] | undefined>> }>) {
   const access = await requireWorkspace();
-  const readings = await readPlanning(access);
+  const params = await searchParams;
+  const readings = await readPlanning(access, parseBatchParam(params[BATCH_PARAM]));
+  const { roles } = access.membership;
 
   return (
-    <PlanningScreen mayAdminister={mayAdminister(access.membership.roles)} readings={readings} />
+    <PlanningScreen
+      mayAdminister={mayAdminister(roles)}
+      mayContribute={mayContribute(roles)}
+      readings={readings}
+    />
   );
 }

@@ -34,6 +34,7 @@ import {
   type EpicTint,
 } from "../db/schema";
 import type { Effort } from "../engine/engine.contract";
+import type { TicketWriteRef } from "../ticket-sources/ticket-source.write";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
 
 /** A batch, as the planning API reads it. */
@@ -65,6 +66,8 @@ export interface DraftRow {
   readonly provenance: DraftProvenance;
   readonly pushState: DraftPushState;
   readonly pushedTicketId: string | null;
+  /** The tracker's own identity for the pushed ticket — `#612` and its link — or null. */
+  readonly pushedTicket: TicketWriteRef | null;
   readonly pushError: DraftPushError | null;
   /** The latest estimate, or null while unsized. */
   readonly estimate: {
@@ -316,6 +319,9 @@ export class PlanningRepository {
       push_state: DraftPushState;
       pushed_ticket_id: string | null;
       push_error: DraftPushError | null;
+      ticket_external_id: string | null;
+      ticket_external_key: string | null;
+      ticket_external_url: string | null;
       version: number | null;
       effort: Effort | null;
       confidence: number | null;
@@ -328,12 +334,16 @@ export class PlanningRepository {
     }>`
       select d.id, d.local_key, d.title, d.body, d.selected, d.suggested_workflow, d.provenance,
              d.push_state, d.pushed_ticket_id, d.push_error,
+             t.external_id as ticket_external_id, t.external_key as ticket_external_key,
+             t.external_url as ticket_external_url,
              e.version, e.effort, e.confidence, e.routed_model,
              (e.breakdown->>'est_minutes')::float8 as est_minutes,
              (e.breakdown->>'est_tokens')::float8 as est_tokens,
              e.trace->>'estimator' as estimator,
              p.billing_mode, p.input_cents_per_1m::text as input_cents_per_1m
         from ${sql.id(SCHEMA_NAME, "ticket_drafts")} d
+        left join ${sql.id(SCHEMA_NAME, "tickets")} t
+          on t.id = d.pushed_ticket_id and t.organization_id = ${organizationId}
         left join lateral (
                select ie.*
                  from ${sql.id(SCHEMA_NAME, "issue_estimates")} ie
@@ -368,6 +378,17 @@ export class PlanningRepository {
         provenance: row.provenance,
         pushState: row.push_state,
         pushedTicketId: row.pushed_ticket_id,
+        // Null only because the join is a left one — a pushed draft's ticket always has all three.
+        pushedTicket:
+          row.ticket_external_id === null ||
+          row.ticket_external_key === null ||
+          row.ticket_external_url === null
+            ? null
+            : {
+                externalId: row.ticket_external_id,
+                externalKey: row.ticket_external_key,
+                url: row.ticket_external_url,
+              },
         pushError: row.push_error,
         estimate:
           row.version === null

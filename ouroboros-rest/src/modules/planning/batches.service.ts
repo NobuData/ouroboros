@@ -382,6 +382,7 @@ export class BatchesService {
         selected: draft.selected,
         pushState: draft.pushState,
         pushedTicketId: draft.pushedTicketId,
+        pushedTicket: draft.pushedTicket,
         pushError: draft.pushError,
       })),
     };
@@ -785,6 +786,7 @@ function draftResource(
     blockedByTicketIds,
     pushState: draft.pushState,
     pushedTicketId: draft.pushedTicketId,
+    pushedTicket: draft.pushedTicket,
     pushError: draft.pushError,
     estimate:
       draft.estimate === null
