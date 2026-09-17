@@ -18,6 +18,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from "@nestjs/common";
 
 import type { Organization } from "../db/schema";
@@ -32,12 +33,15 @@ import {
   EpicTicketsBody,
   PlanningSourceParams,
   ReorderEpicsBody,
+  TicketSearchQuery,
   UpdateEpicBody,
 } from "./planning.dto";
 import type {
   BacklogHealthResource,
+  EpicLinksResource,
   EpicResource,
   MilestonesResource,
+  PlanningTicketSearchResource,
   RoadmapResource,
 } from "./planning.resources";
 
@@ -164,6 +168,21 @@ export class PlanningController {
   }
 
   /**
+   * A lane's linked tickets and tracker mirrors — the epic editor's lists. Any member.
+   *
+   * @param tenant - The workspace.
+   * @param params - The epic.
+   * @returns The tickets and mirrors.
+   */
+  @Get("epics/:epic/tickets")
+  links(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: EpicParams,
+  ): Promise<EpicLinksResource> {
+    return this.epics.links(tenant.id, params.epic);
+  }
+
+  /**
    * Link tickets to a lane.
    *
    * @param tenant - The workspace.
@@ -198,6 +217,21 @@ export class PlanningController {
     @Body() body: EpicTicketsBody,
   ): Promise<EpicResource> {
     return this.epics.unlink(tenant.id, params.epic, body.ticketIds);
+  }
+
+  /**
+   * Canonical tickets matching a search — the epic editor's link picker. Any member.
+   *
+   * @param tenant - The workspace.
+   * @param query - The search.
+   * @returns The matches.
+   */
+  @Get("tickets")
+  tickets(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: TicketSearchQuery,
+  ): Promise<PlanningTicketSearchResource> {
+    return this.epics.searchTickets(tenant.id, query.q);
   }
 
   /**

@@ -30,8 +30,10 @@ import {
   type DraftProvenance,
   type DraftPushError,
   type DraftPushState,
+  type EpicMirrorKind,
   type EpicStatus,
   type EpicTint,
+  type TicketState,
 } from "../db/schema";
 import type { Effort } from "../engine/engine.contract";
 import type { TicketWriteRef } from "../ticket-sources/ticket-source.write";
@@ -159,6 +161,32 @@ export interface EpicRow {
   readonly roadmapWindow: string | null;
   readonly ticketCount: number;
   readonly doneCount: number;
+}
+
+/** A canonical ticket, as the epic editor lists it (AM.4, #286). */
+export interface PlanningTicketRow {
+  readonly id: string;
+  readonly sourceId: string;
+  readonly externalKey: string;
+  readonly title: string;
+  readonly state: TicketState;
+  readonly url: string;
+}
+
+/** What an epic became in one source (AL.3's `epic_mirrors`), with the source's display name. */
+export interface EpicMirrorRow {
+  readonly sourceId: string;
+  readonly sourceName: string;
+  readonly kind: EpicMirrorKind;
+  readonly externalRef: string;
+}
+
+/** A ticket search, as the statement uses it — `backlog/listing.search.ts`'s escaped pattern. */
+export interface TicketSearch {
+  /** The `ilike` pattern for the title and the key, or `undefined` for no filter. */
+  readonly pattern: string | undefined;
+  /** The most rows to answer. */
+  readonly limit: number;
 }
 
 /** An epic's stored fields — months as `YYYY-MM` or null. */
@@ -988,6 +1016,89 @@ export class PlanningRepository {
   }
 
   /**
+   * The tickets linked to a lane — open first, then by key.
+   *
+   * @param organizationId - The workspace. Held in the `where` on the ticket as well as the lane,
+   *   so a link can never surface another workspace's ticket.
+   * @param epicId - The epic.
+   * @returns The linked tickets.
+   */
+  async epicTickets(organizationId: string, epicId: string): Promise<PlanningTicketRow[]> {
+    const rows = await this.ticketSelect()
+      .innerJoin("epic_tickets as et", "et.ticket_id", "t.id")
+      .where("et.epic_id", "=", epicId)
+      .where("t.organization_id", "=", organizationId)
+      .orderBy(sql`t.state = 'closed'`)
+      .orderBy("t.external_key")
+      .orderBy("t.id")
+      .execute();
+
+    return rows.map(toTicketRow);
+  }
+
+  /**
+   * What a lane became in each tracker it was pushed to.
+   *
+   * @param organizationId - The workspace.
+   * @param epicId - The epic.
+   * @returns The mirrors, by source name then kind.
+   */
+  async epicMirrors(organizationId: string, epicId: string): Promise<EpicMirrorRow[]> {
+    const rows = await this.database.db
+      .selectFrom("epic_mirrors as m")
+      .innerJoin("ticket_sources as s", "s.id", "m.source_id")
+      .select(["m.source_id", "s.display_name", "m.kind", "m.external_ref"])
+      .where("m.epic_id", "=", epicId)
+      .where("s.organization_id", "=", organizationId)
+      .orderBy("s.display_name")
+      .orderBy("m.kind")
+      .execute();
+
+    return rows.map((row) => ({
+      sourceId: row.source_id,
+      sourceName: row.display_name,
+      kind: row.kind,
+      externalRef: row.external_ref,
+    }));
+  }
+
+  /**
+   * The workspace's canonical tickets matching a search — the epic editor's link picker.
+   *
+   * @param organizationId - The workspace.
+   * @param search - The escaped pattern, matched against the title and the key, and the limit.
+   * @returns The matches, most recently updated in their tracker first.
+   */
+  async searchTickets(organizationId: string, search: TicketSearch): Promise<PlanningTicketRow[]> {
+    let query = this.ticketSelect()
+      .where("t.organization_id", "=", organizationId)
+      .orderBy("t.source_updated_at", "desc")
+      .orderBy("t.id")
+      .limit(search.limit);
+
+    if (search.pattern !== undefined) {
+      const pattern = search.pattern;
+
+      query = query.where((eb) =>
+        eb.or([eb("t.title", "ilike", pattern), eb("t.external_key", "ilike", pattern)]),
+      );
+    }
+
+    return (await query.execute()).map(toTicketRow);
+  }
+
+  /**
+   * The ticket read the editor's two lists share.
+   *
+   * @returns The select, without a `where`.
+   */
+  private ticketSelect() {
+    return this.database.db
+      .selectFrom("tickets as t")
+      .select(["t.id", "t.source_id", "t.external_key", "t.title", "t.state", "t.external_url"]);
+  }
+
+  /**
    * The lane read, months as text.
    *
    * @returns The select, without a `where`.
@@ -1009,6 +1120,30 @@ export class PlanningRepository {
         "done_count",
       ]);
   }
+}
+
+/**
+ * A ticket row as this file answers it.
+ *
+ * @param row - What the select returned.
+ * @returns The ticket.
+ */
+function toTicketRow(row: {
+  id: string;
+  source_id: string;
+  external_key: string;
+  title: string;
+  state: TicketState;
+  external_url: string;
+}): PlanningTicketRow {
+  return {
+    id: row.id,
+    sourceId: row.source_id,
+    externalKey: row.external_key,
+    title: row.title,
+    state: row.state,
+    url: row.external_url,
+  };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { DomainError } from "../errors/error.envelope";
-import { EpicsService, checkedFields } from "./epics.service";
+import { EpicsService, TICKET_SEARCH_LIMIT, checkedFields } from "./epics.service";
 import { PLANNING_ERRORS } from "./planning.errors";
-import { OTHER_ORG, PlanningStore, STORE_ORG } from "./planning.store.fixture";
+import { OTHER_ORG, PlanningStore, STORE_ORG, STORE_SOURCE } from "./planning.store.fixture";
 
 /**
  * The Roadmap card's lanes (AL.4, #280). The criterion: *epic CRUD round-trips ranges, tint, status
@@ -183,6 +183,108 @@ describe("EpicsService", () => {
     });
   });
 
+  it("lists a lane's linked tickets open first, with its mirrors", async () => {
+    const { service, store } = build();
+    const lane = await service.create(STORE_ORG, { name: "OTA hardening" });
+
+    store.tickets.set("t1", { organizationId: STORE_ORG, state: "closed", externalKey: "#540" });
+    store.tickets.set("t2", { organizationId: STORE_ORG, state: "open", externalKey: "#551" });
+    store.tickets.set("t3", { organizationId: STORE_ORG, state: "open", externalKey: "#548" });
+    await service.link(STORE_ORG, lane.id, ["t1", "t2", "t3"]);
+    store.mirrors.set(lane.id, [
+      {
+        organizationId: STORE_ORG,
+        sourceId: STORE_SOURCE.sourceId,
+        sourceName: STORE_SOURCE.displayName,
+        kind: "parent_issue",
+        externalRef: "#612",
+      },
+    ]);
+
+    const links = await service.links(STORE_ORG, lane.id);
+
+    expect(links.epicId).toBe(lane.id);
+    expect(links.tickets.map((ticket) => [ticket.externalKey, ticket.state])).toEqual([
+      ["#548", "open"],
+      ["#551", "open"],
+      ["#540", "closed"],
+    ]);
+    expect(links.mirrors).toEqual([
+      {
+        sourceId: STORE_SOURCE.sourceId,
+        sourceName: STORE_SOURCE.displayName,
+        kind: "parent_issue",
+        externalRef: "#612",
+      },
+    ]);
+
+    // The list and the chip read the same links, so a synced state change moves both.
+    store.tickets.set("t2", { organizationId: STORE_ORG, state: "closed", externalKey: "#551" });
+
+    const moved = await service.links(STORE_ORG, lane.id);
+
+    expect(moved.tickets.filter((ticket) => ticket.state === "closed")).toHaveLength(2);
+    await expect(service.read(STORE_ORG, lane.id)).resolves.toMatchObject({
+      chips: { issues: 3, done: 2 },
+    });
+  });
+
+  it("answers a lane with nothing linked and nothing mirrored as two empty lists", async () => {
+    const { service } = build();
+    const lane = await service.create(STORE_ORG, { name: "Zephyr 4.2 migration" });
+
+    await expect(service.links(STORE_ORG, lane.id)).resolves.toEqual({
+      epicId: lane.id,
+      tickets: [],
+      mirrors: [],
+    });
+  });
+
+  it("searches the workspace's tickets by title or key, escaped and bounded", async () => {
+    const { service, store } = build();
+
+    store.tickets.set("ota", {
+      organizationId: STORE_ORG,
+      state: "open",
+      externalKey: "#548",
+      title: "OTA: checksum before swap",
+      sourceUpdatedAt: 2,
+    });
+    store.tickets.set("ble", {
+      organizationId: STORE_ORG,
+      state: "open",
+      externalKey: "#552",
+      title: "BLE provisioning 100% retries",
+      sourceUpdatedAt: 1,
+    });
+    store.tickets.set("theirs", {
+      organizationId: OTHER_ORG,
+      state: "open",
+      externalKey: "#548",
+      title: "OTA elsewhere",
+    });
+
+    const byTitle = await service.searchTickets(STORE_ORG, "  ota ");
+    const byKey = await service.searchTickets(STORE_ORG, "#552");
+    const literal = await service.searchTickets(STORE_ORG, "100%");
+    const everything = await service.searchTickets(STORE_ORG, undefined);
+
+    expect(byTitle.items.map((ticket) => ticket.id)).toEqual(["ota"]);
+    expect(byKey.items.map((ticket) => ticket.id)).toEqual(["ble"]);
+    expect(literal.items.map((ticket) => ticket.id)).toEqual(["ble"]);
+    expect(everything.items.map((ticket) => ticket.id)).toEqual(["ota", "ble"]);
+  });
+
+  it("bounds a search to a picker's page", async () => {
+    const { service, store } = build();
+
+    for (let index = 0; index < TICKET_SEARCH_LIMIT + 5; index += 1) {
+      store.tickets.set(`t${String(index)}`, { organizationId: STORE_ORG, state: "open" });
+    }
+
+    expect((await service.searchTickets(STORE_ORG, "")).items).toHaveLength(TICKET_SEARCH_LIMIT);
+  });
+
   it("names the roadmap from its first lane with a head", async () => {
     const { service } = build();
 
@@ -214,6 +316,7 @@ describe("EpicsService", () => {
       async () => service.remove(OTHER_ORG, lane.id),
       async () => service.link(OTHER_ORG, lane.id, ["t1"]),
       async () => service.unlink(OTHER_ORG, lane.id, ["t1"]),
+      async () => service.links(OTHER_ORG, lane.id),
     ]) {
       await expect(refusal(run)).resolves.toMatchObject({
         status: 404,

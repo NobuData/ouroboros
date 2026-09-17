@@ -118,19 +118,6 @@ export const ROADMAP_EMPTY_TITLE = "No roadmap yet";
 /** …and the line under it: how to start one. */
 export const ROADMAP_EMPTY_NOTE = "New roadmap names one and creates its first epic.";
 
-/** What the roadmap card says where the gantt will be. */
-export const ROADMAP_GANTT_NOTE = "The roadmap gantt arrives with #286.";
-
-/**
- * The line counting what the roadmap holds, while the gantt is not built.
- *
- * @param lanes How many lanes the roadmap has. At least one — zero is the empty state.
- * @returns `1 epic planned.` or `N epics planned.`
- */
-export function laneCount(lanes: number): string {
-  return lanes === 1 ? "1 epic planned." : `${lanes} epics planned.`;
-}
-
 /** What the roadmap card is headed with when the read failed, before the service's reason. */
 export const ROADMAP_UNREAD = "The roadmap could not be read.";
 

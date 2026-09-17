@@ -1,8 +1,10 @@
 import { Button, Card, CardHead, EmptyState, Eyebrow, Tag } from "@/app/ui";
 
+import { SHARE_LABEL, SHARE_SOON_NOTE } from "./gantt";
 import { GeneratorCard } from "./generator-card";
 import { SOURCES_UNREAD, trackerOptions } from "./generator";
 import { NewRoadmap } from "./new-roadmap";
+import { RoadmapGantt } from "./roadmap-gantt";
 import {
   IMPORT_JIRA_LABEL,
   IMPORT_JIRA_SOON_NOTE,
@@ -13,12 +15,10 @@ import {
   type PlanningRegion,
   ROADMAP_EMPTY_NOTE,
   ROADMAP_EMPTY_TITLE,
-  ROADMAP_GANTT_NOTE,
   ROADMAP_REGION_ID,
   ROADMAP_UNREAD,
   SIDE_REGIONS,
   SOON_MARK,
-  laneCount,
   roadmapTitle,
 } from "./view";
 
@@ -45,21 +45,31 @@ import "./planning.css";
  * The generator card (`c-7`, AM.2 [#284](https://github.com/NobuData/ouroboros/issues/284) —
  * `app/planning/generator-card.tsx`) beside a column of the tracker sync and backlog health cards
  * (`c-5`, AM.3 [#285](https://github.com/NobuData/ouroboros/issues/285)), and the roadmap card full
- * width below (`c-12`, AM.4 [#286](https://github.com/NobuData/ouroboros/issues/286)). Each region
- * that a later issue fills says which issue, rather than drawing a mock of what it will hold. The
- * roadmap card is headed from the real roadmap read, so a roadmap just created shows here.
+ * width below (`c-12`, AM.4 [#286](https://github.com/NobuData/ouroboros/issues/286) —
+ * `app/planning/roadmap-gantt.tsx`). Each region that a later issue fills says which issue, rather
+ * than drawing a mock of what it will hold. The roadmap card is headed from the real roadmap read, so a
+ * roadmap just created shows here; its **Share ↗** is AN.4
+ * ([#292](https://github.com/NobuData/ouroboros/issues/292)), inert and marked *soon*.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles the
  *   roadmap's writes and the generator's push are for.
  * @param props.mayContribute Whether this reader may draft tickets — `owner`, `admin` or `member`.
+ * @param props.readMonth The month the page was read in (`gantt.ts`'s `currentMonth`), which a roadmap
+ *   with no months at all draws its columns from.
  * @returns The screen.
  */
 export function PlanningScreen({
   readings,
   mayAdminister,
   mayContribute,
-}: Readonly<{ readings: PlanningReadings; mayAdminister: boolean; mayContribute: boolean }>) {
+  readMonth,
+}: Readonly<{
+  readings: PlanningReadings;
+  mayAdminister: boolean;
+  mayContribute: boolean;
+  readMonth: number;
+}>) {
   const { roadmap } = readings;
   const trackers = trackerOptions(readings.sources.ok ? readings.sources.value.items : [], readings.catalog);
 
@@ -106,8 +116,14 @@ export function PlanningScreen({
               }
               title={roadmapTitle(roadmap)}
               titleId={ROADMAP_REGION_ID}
+              trailing={
+                <Button reason={SHARE_SOON_NOTE} size="sm" tone="ghost">
+                  {SHARE_LABEL}{" "}
+                  <span className="planning__soon">{SOON_MARK}</span>
+                </Button>
+              }
             />
-            <RoadmapBody readings={readings} />
+            <RoadmapBody mayAdminister={mayAdminister} readMonth={readMonth} readings={readings} />
           </Card>
         </div>
       </div>
@@ -131,13 +147,18 @@ function RegionCard({ region }: Readonly<{ region: PlanningRegion }>) {
 }
 
 /**
- * The roadmap card's body until the gantt arrives: why it could not be read, the empty state, or
- * how many epics the roadmap holds beside the note naming the gantt's issue.
+ * The roadmap card's body: why it could not be read, the empty state, or the gantt.
  *
  * @param props.readings What the frame read.
+ * @param props.mayAdminister Whether this reader may change the roadmap.
+ * @param props.readMonth The month the page was read in.
  * @returns The body.
  */
-function RoadmapBody({ readings }: Readonly<{ readings: PlanningReadings }>) {
+function RoadmapBody({
+  readings,
+  mayAdminister,
+  readMonth,
+}: Readonly<{ readings: PlanningReadings; mayAdminister: boolean; readMonth: number }>) {
   const { roadmap } = readings;
 
   if (!roadmap.ok) {
@@ -148,5 +169,5 @@ function RoadmapBody({ readings }: Readonly<{ readings: PlanningReadings }>) {
     return <EmptyState note={ROADMAP_EMPTY_NOTE} title={ROADMAP_EMPTY_TITLE} />;
   }
 
-  return <EmptyState note={ROADMAP_GANTT_NOTE} title={laneCount(roadmap.value.lanes.length)} />;
+  return <RoadmapGantt mayAdminister={mayAdminister} readMonth={readMonth} roadmap={roadmap.value} />;
 }

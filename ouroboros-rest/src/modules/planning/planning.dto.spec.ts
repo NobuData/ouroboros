@@ -8,9 +8,11 @@ import {
   DraftParams,
   EpicTicketsBody,
   MAX_DRAFT_DEPENDENCIES,
+  MAX_TICKET_SEARCH_LENGTH,
   MAX_DRAFT_TITLE_LENGTH,
   PatchDraftBody,
   ReorderEpicsBody,
+  TicketSearchQuery,
   UpdateEpicBody,
 } from "./planning.dto";
 
@@ -152,5 +154,16 @@ describe("epic bodies", () => {
     expect(offenders(ReorderEpicsBody, { epicIds: [] })).toEqual(["epicIds"]);
     expect(offenders(EpicTicketsBody, { ticketIds: [UUID, UUID] })).toEqual(["ticketIds"]);
     expect(offenders(EpicTicketsBody, { ticketIds: ["612"] })).toEqual(["ticketIds"]);
+  });
+});
+
+describe("TicketSearchQuery", () => {
+  it("takes an optional term, bounded", () => {
+    expect(offenders(TicketSearchQuery, {})).toEqual([]);
+    expect(offenders(TicketSearchQuery, { q: "#548" })).toEqual([]);
+    expect(offenders(TicketSearchQuery, { q: "x".repeat(MAX_TICKET_SEARCH_LENGTH + 1) })).toEqual([
+      "q",
+    ]);
+    expect(offenders(TicketSearchQuery, { q: "ota", limit: "5" })).toEqual(["limit"]);
   });
 });

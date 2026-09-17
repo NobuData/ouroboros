@@ -30,9 +30,11 @@ import { VaultService } from "../vault/vault.service";
 import { PLANNING_ERRORS } from "./planning.errors";
 import type {
   BatchResource,
+  EpicLinksResource,
   EpicResource,
   GeneratedBatchResource,
   MilestonesResource,
+  PlanningTicketSearchResource,
   PushResultResource,
   PushStatusResource,
   RoadmapResource,
@@ -511,6 +513,61 @@ describe("the planning API, against a migrated database", () => {
 
     expect(unlinked.chips).toEqual({ issues: 2, done: 2 });
 
+    // The epic editor's lists (AM.4, #286): what the chip counts, readable by any member.
+    await api.sql.query(`update ${SCHEMA_NAME}.tickets set state = 'open' where id = $1`, [
+      tickets[1],
+    ]);
+
+    await api.sql.query(
+      `insert into ${SCHEMA_NAME}.epic_mirrors (epic_id, source_id, kind, external_ref)
+       values ($1, $2, 'parent_issue', '#612')`,
+      [ota.id, seeded.sourceId],
+    );
+
+    const links = bodyOf<EpicLinksResource>(
+      await call(seeded, seeded.member, "get", `${EPICS}/${ota.id}/tickets`).expect(200),
+    );
+
+    expect(links.epicId).toBe(ota.id);
+    expect(links.mirrors).toEqual([
+      {
+        sourceId: seeded.sourceId,
+        sourceName: expect.any(String) as unknown,
+        kind: "parent_issue",
+        externalRef: "#612",
+      },
+    ]);
+    expect(links.tickets.map((ticket) => [ticket.id, ticket.state])).toEqual([
+      [tickets[1], "open"],
+      [tickets[2], "closed"],
+    ]);
+    expect(links.tickets[0]).toMatchObject({
+      sourceId: seeded.sourceId,
+      externalKey: "#901",
+      title: "Linked ticket",
+      url: "https://github.com/acme-robotics/helios-firmware/issues/901",
+    });
+
+    const roadmapAfterSync = bodyOf<RoadmapResource>(
+      await call(seeded, seeded.member, "get", ROADMAP).expect(200),
+    );
+
+    expect(roadmapAfterSync.lanes.find((lane) => lane.id === ota.id)?.chips).toEqual({
+      issues: 2,
+      done: 1,
+    });
+
+    const found = bodyOf<PlanningTicketSearchResource>(
+      await call(seeded, seeded.member, "get", "/api/v1/planning/tickets")
+        .query({ q: "#902" })
+        .expect(200),
+    );
+
+    expect(found.items.map((ticket) => ticket.id)).toEqual([tickets[2]]);
+    await call(seeded, seeded.member, "get", "/api/v1/planning/tickets")
+      .query({ q: "x".repeat(201) })
+      .expect(422);
+
     await call(seeded, seeded.owner, "delete", `${EPICS}/${zephyr.id}`).expect(204);
     await call(seeded, seeded.member, "get", `${EPICS}/${zephyr.id}`).expect(404);
   });
@@ -538,6 +595,7 @@ describe("the planning API, against a migrated database", () => {
       await as("patch", `${EPICS}/${epic.id}`).send({ name: "Stolen" }),
       await as("delete", `${EPICS}/${epic.id}`),
       await as("post", `${EPICS}/${epic.id}/tickets`).send({ ticketIds: [epic.id] }),
+      await as("get", `${EPICS}/${epic.id}/tickets`),
       await as("get", `/api/v1/planning/sources/${seeded.sourceId}/milestones`),
       await as("post", BATCHES).send({ prompt: "Steal", targetSourceId: seeded.sourceId }),
     ];
@@ -545,11 +603,17 @@ describe("the planning API, against a migrated database", () => {
     expect(refusals.map((response) => response.status)).toEqual(
       Array<number>(refusals.length).fill(404),
     );
-    expect(bodyOf<ErrorEnvelope>(refusals[10]).code).toBe(PLANNING_ERRORS.sourceNotFound);
+    expect(bodyOf<ErrorEnvelope>(refusals[11]).code).toBe(PLANNING_ERRORS.sourceNotFound);
 
     const lanes = bodyOf<EpicResource[]>(await as("get", EPICS).expect(200));
 
     expect(lanes).toEqual([]);
+
+    const theirTickets = bodyOf<PlanningTicketSearchResource>(
+      await as("get", "/api/v1/planning/tickets").expect(200),
+    );
+
+    expect(theirTickets.items).toEqual([]);
     expect(github.issues).toHaveLength(filedBefore);
   });
 

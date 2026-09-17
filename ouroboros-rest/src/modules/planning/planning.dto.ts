@@ -58,6 +58,9 @@ export const MAX_ROADMAP_WINDOW_LENGTH = 64;
 /** The most epics one reorder may name. A workspace's roadmap is lanes, not a backlog. */
 export const MAX_REORDERED_EPICS = 500;
 
+/** The longest ticket search the link picker sends. */
+export const MAX_TICKET_SEARCH_LENGTH = 200;
+
 /** The most tickets one link or unlink may name. */
 export const MAX_LINKED_TICKETS = 100;
 
@@ -253,4 +256,13 @@ export class EpicTicketsBody {
   @ArrayMinSize(1)
   @IsArray()
   ticketIds!: string[];
+}
+
+/** `GET /planning/tickets` — the epic editor's link picker (AM.4, #286). */
+export class TicketSearchQuery {
+  /** Matched against the title and the key, case-insensitively. Absent or blank matches every ticket. */
+  @IsOptional()
+  @MaxLength(MAX_TICKET_SEARCH_LENGTH)
+  @IsString()
+  q?: string;
 }

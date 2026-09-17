@@ -17,13 +17,16 @@ import type {
   DraftPatch,
   DraftRow,
   EpicFieldsRow,
+  EpicMirrorRow,
   EpicRow,
   MirroredIssueRow,
   NewBatch,
   NewDraft,
   PlanningRepository,
+  PlanningTicketRow,
   PushedDraftRow,
   StoredDrafts,
+  TicketSearch,
 } from "./planning.repository";
 
 /** The workspace every fixture row belongs to. */
@@ -58,6 +61,16 @@ interface StoredDraft {
   externalId: string | null;
 }
 
+/** One stored canonical ticket. The display fields are optional so a chip suite need not name them. */
+interface StoredTicket {
+  organizationId: string;
+  state: "open" | "closed";
+  sourceId?: string;
+  externalKey?: string;
+  title?: string;
+  sourceUpdatedAt?: number;
+}
+
 /** One stored edge. */
 interface StoredEdge {
   organizationId: string;
@@ -76,7 +89,9 @@ export class PlanningStore {
   readonly estimates = new Map<string, { effort: Effort; estMinutes: number }>();
   readonly epicRows = new Map<string, EpicRow & { organizationId: string }>();
   readonly epicLinks = new Map<string, Set<string>>();
-  readonly tickets = new Map<string, { organizationId: string; state: "open" | "closed" }>();
+  readonly tickets = new Map<string, StoredTicket>();
+  /** Mirrors by epic id, as AL.3 would have recorded them — each carrying its workspace. */
+  readonly mirrors = new Map<string, (EpicMirrorRow & { organizationId: string })[]>();
   mirrored: MirroredIssueRow[] = [];
   private sequence = 0;
 
@@ -434,6 +449,79 @@ export class PlanningStore {
     ticketIds.forEach((id) => this.epicLinks.get(epicId)?.delete(id));
 
     return Promise.resolve();
+  }
+
+  /** @inheritdoc */
+  epicTickets(organizationId: string, epicId: string): Promise<PlanningTicketRow[]> {
+    const rows = [...(this.epicLinks.get(epicId) ?? [])]
+      .filter((id) => this.tickets.get(id)?.organizationId === organizationId)
+      .map((id) => this.ticketRow(id))
+      .sort(
+        (a, b) =>
+          Number(a.state === "closed") - Number(b.state === "closed") ||
+          a.externalKey.localeCompare(b.externalKey) ||
+          a.id.localeCompare(b.id),
+      );
+
+    return Promise.resolve(rows);
+  }
+
+  /** @inheritdoc */
+  epicMirrors(organizationId: string, epicId: string): Promise<EpicMirrorRow[]> {
+    return Promise.resolve(
+      (this.mirrors.get(epicId) ?? [])
+        .filter((mirror) => mirror.organizationId === organizationId)
+        .map(({ organizationId: _organization, ...mirror }) => mirror)
+        .sort((a, b) => a.sourceName.localeCompare(b.sourceName) || a.kind.localeCompare(b.kind)),
+    );
+  }
+
+  /**
+   * The repository's `searchTickets`, with `ilike` read as a case-insensitive substring match of the
+   * unescaped term — the fixture's suites type no wildcards.
+   *
+   * @param organizationId - The workspace.
+   * @param search - The pattern and the limit.
+   * @returns The matches, most recently updated first.
+   */
+  searchTickets(organizationId: string, search: TicketSearch): Promise<PlanningTicketRow[]> {
+    const needle = search.pattern
+      ?.slice(1, -1)
+      .replace(/\\([\\%_])/g, "$1")
+      .toLowerCase();
+    const rows = [...this.tickets.entries()]
+      .filter(([, ticket]) => ticket.organizationId === organizationId)
+      .sort(([, a], [, b]) => (b.sourceUpdatedAt ?? 0) - (a.sourceUpdatedAt ?? 0))
+      .map(([id]) => this.ticketRow(id))
+      .filter(
+        (row) =>
+          needle === undefined ||
+          row.title.toLowerCase().includes(needle) ||
+          row.externalKey.toLowerCase().includes(needle),
+      )
+      .slice(0, search.limit);
+
+    return Promise.resolve(rows);
+  }
+
+  /**
+   * One stored ticket as the repository answers it, with its display fields defaulted.
+   *
+   * @param id - The ticket.
+   * @returns The row.
+   */
+  private ticketRow(id: string): PlanningTicketRow {
+    const ticket = this.tickets.get(id) as StoredTicket;
+    const externalKey = ticket.externalKey ?? `#${id}`;
+
+    return {
+      id,
+      sourceId: ticket.sourceId ?? STORE_SOURCE.sourceId,
+      externalKey,
+      title: ticket.title ?? `Ticket ${id}`,
+      state: ticket.state,
+      url: `https://github.com/acme-robotics/helios-firmware/issues/${externalKey.replace("#", "")}`,
+    };
   }
 
   /**

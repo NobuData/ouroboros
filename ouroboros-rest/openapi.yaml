@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.12"
+  version: "0.35.13"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -14211,6 +14211,78 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /api/v1/planning/epics/{epic}/tickets:
+    get:
+      tags: [planning]
+      summary: A roadmap lane's linked tickets and tracker mirrors
+      description: |-
+        The epic editor's two lists ([#286](https://github.com/NobuData/ouroboros/issues/286)): every
+        ticket linked to the lane — the ones its `12 issues · 8 done` chip is computed from, with each
+        one's synced state — open first, then by key; and every mirror AL.3 recorded when a push
+        filed the lane in a tracker, by source then kind. Any member.
+      operationId: readPlanningEpicTickets
+      parameters:
+        - $ref: "#/components/parameters/PlanningEpicId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The lane's tickets and mirrors. Both lists may be empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningEpicLinks"
+              example:
+                epicId: 5eed0280-0000-4000-8000-00000000ee01
+                tickets:
+                  - id: 5eed0280-0000-4000-8000-0000000071c1
+                    sourceId: 5eed001a-0000-4000-8000-000000000001
+                    externalKey: "#548"
+                    title: Verify checksum before the A/B swap
+                    state: open
+                    url: https://github.com/acme-robotics/helios-firmware/issues/548
+                mirrors:
+                  - sourceId: 5eed001a-0000-4000-8000-000000000001
+                    sourceName: GitHub · acme-robotics
+                    kind: parent_issue
+                    externalRef: "#612"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `epic` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [planning]
       summary: Link tickets to a roadmap lane
@@ -14344,6 +14416,74 @@ paths:
         "422":
           description: |-
             `validation_failed` — the parameters or the body's shape are wrong.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/planning/tickets:
+    get:
+      tags: [planning]
+      summary: Search the canonical tickets a lane can link
+      description: |-
+        The epic editor's link picker ([#286](https://github.com/NobuData/ouroboros/issues/286)): this
+        workspace's canonical tickets whose title or key contains `q`, case-insensitively, most recently
+        updated in their tracker first, at most 20. `%` and `_` match themselves. A blank or absent `q`
+        answers the most recently updated tickets. Any member.
+      operationId: searchPlanningTickets
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: |-
+            Matched against each ticket's title and key — `ota`, `#548`.
+          schema:
+            type: string
+            maxLength: 200
+          example: checksum
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The matches.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningTicketSearch"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `q` is longer than 200 characters.
           content:
             application/json:
               schema:
@@ -24085,6 +24225,81 @@ components:
           items:
             type: string
             format: uuid
+
+    PlanningTicket:
+      type: object
+      title: PlanningTicket
+      description: One canonical ticket, as the roadmap's epic editor lists it.
+      additionalProperties: false
+      required: [id, sourceId, externalKey, title, state, url]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceId:
+          type: string
+          format: uuid
+        externalKey:
+          type: string
+          examples: ["#548"]
+        title:
+          type: string
+        state:
+          type: string
+          enum: [open, closed]
+          description: As last synced — a lane's `done` counts the closed ones.
+        url:
+          type: string
+
+    PlanningEpicMirror:
+      type: object
+      title: PlanningEpicMirror
+      description: What a lane became in one tracker when a push filed it (AL.3).
+      additionalProperties: false
+      required: [sourceId, sourceName, kind, externalRef]
+      properties:
+        sourceId:
+          type: string
+          format: uuid
+        sourceName:
+          type: string
+          examples: ["GitHub · acme-robotics"]
+        kind:
+          type: string
+          enum: [milestone, parent_issue, jira_epic]
+        externalRef:
+          type: string
+          examples: ["#612"]
+
+    PlanningEpicLinks:
+      type: object
+      title: PlanningEpicLinks
+      additionalProperties: false
+      required: [epicId, tickets, mirrors]
+      properties:
+        epicId:
+          type: string
+          format: uuid
+        tickets:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanningTicket"
+        mirrors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanningEpicMirror"
+
+    PlanningTicketSearch:
+      type: object
+      title: PlanningTicketSearch
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/PlanningTicket"
 
     PlanningRoadmap:
       type: object

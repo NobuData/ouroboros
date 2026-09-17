@@ -4433,7 +4433,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * A roadmap lane's linked tickets and tracker mirrors
+         * @description The epic editor's two lists ([#286](https://github.com/NobuData/ouroboros/issues/286)): every
+         *     ticket linked to the lane — the ones its `12 issues · 8 done` chip is computed from, with each
+         *     one's synced state — open first, then by key; and every mirror AL.3 recorded when a push
+         *     filed the lane in a tracker, by source then kind. Any member.
+         */
+        get: operations["readPlanningEpicTickets"];
         put?: never;
         /**
          * Link tickets to a roadmap lane
@@ -4446,6 +4453,29 @@ export interface paths {
          * @description The tickets leave the lane; a ticket that was not linked is not an error. `owner` or `admin`.
          */
         delete: operations["unlinkPlanningEpicTickets"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planning/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the canonical tickets a lane can link
+         * @description The epic editor's link picker ([#286](https://github.com/NobuData/ouroboros/issues/286)): this
+         *     workspace's canonical tickets whose title or key contains `q`, case-insensitively, most recently
+         *     updated in their tracker first, at most 20. `%` and `_` match themselves. A blank or absent `q`
+         *     answers the most recently updated tickets. Any member.
+         */
+        get: operations["searchPlanningTickets"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -11775,6 +11805,50 @@ export interface components {
         /** PlanningEpicTickets */
         PlanningEpicTickets: {
             ticketIds: string[];
+        };
+        /**
+         * PlanningTicket
+         * @description One canonical ticket, as the roadmap's epic editor lists it.
+         */
+        PlanningTicket: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sourceId: string;
+            /** @example #548 */
+            externalKey: string;
+            title: string;
+            /**
+             * @description As last synced — a lane's `done` counts the closed ones.
+             * @enum {string}
+             */
+            state: "open" | "closed";
+            url: string;
+        };
+        /**
+         * PlanningEpicMirror
+         * @description What a lane became in one tracker when a push filed it (AL.3).
+         */
+        PlanningEpicMirror: {
+            /** Format: uuid */
+            sourceId: string;
+            /** @example GitHub · acme-robotics */
+            sourceName: string;
+            /** @enum {string} */
+            kind: "milestone" | "parent_issue" | "jira_epic";
+            /** @example #612 */
+            externalRef: string;
+        };
+        /** PlanningEpicLinks */
+        PlanningEpicLinks: {
+            /** Format: uuid */
+            epicId: string;
+            tickets: components["schemas"]["PlanningTicket"][];
+            mirrors: components["schemas"]["PlanningEpicMirror"][];
+        };
+        /** PlanningTicketSearch */
+        PlanningTicketSearch: {
+            items: components["schemas"]["PlanningTicket"][];
         };
         /** PlanningRoadmap */
         PlanningRoadmap: {
@@ -31137,6 +31211,145 @@ export interface operations {
             };
         };
     };
+    readPlanningEpicTickets: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A roadmap lane's id. A lane of another workspace answers `404`.
+                 * @example 5eed0280-0000-4000-8000-00000000ee01
+                 */
+                epic: components["parameters"]["PlanningEpicId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lane's tickets and mirrors. Both lists may be empty. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "epicId": "5eed0280-0000-4000-8000-00000000ee01",
+                     *       "tickets": [
+                     *         {
+                     *           "id": "5eed0280-0000-4000-8000-0000000071c1",
+                     *           "sourceId": "5eed001a-0000-4000-8000-000000000001",
+                     *           "externalKey": "#548",
+                     *           "title": "Verify checksum before the A/B swap",
+                     *           "state": "open",
+                     *           "url": "https://github.com/acme-robotics/helios-firmware/issues/548"
+                     *         }
+                     *       ],
+                     *       "mirrors": [
+                     *         {
+                     *           "sourceId": "5eed001a-0000-4000-8000-000000000001",
+                     *           "sourceName": "GitHub · acme-robotics",
+                     *           "kind": "parent_issue",
+                     *           "externalRef": "#612"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PlanningEpicLinks"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_epic_not_found` — no lane with that id in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `epic` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     linkPlanningEpicTickets: {
         parameters: {
             query?: never;
@@ -31397,6 +31610,122 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — the parameters or the body's shape are wrong. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    searchPlanningTickets: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Matched against each ticket's title and key — `ota`, `#548`.
+                 * @example checksum
+                 */
+                q?: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The matches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningTicketSearch"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `q` is longer than 200 characters. */
             422: {
                 headers: {
                     [name: string]: unknown;

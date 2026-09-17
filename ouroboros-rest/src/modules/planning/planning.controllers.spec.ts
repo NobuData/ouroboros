@@ -66,6 +66,8 @@ describe("the planning routes", () => {
     [planning.remove, "DELETE epics/:epic", ADMINISTRATORS],
     [planning.link, "POST epics/:epic/tickets", ADMINISTRATORS],
     [planning.unlink, "DELETE epics/:epic/tickets", ADMINISTRATORS],
+    [planning.links, "GET epics/:epic/tickets", undefined],
+    [planning.tickets, "GET tickets", undefined],
     [planning.milestones, "GET sources/:source/milestones", undefined],
   ])("%#: %p is %s for %p", (handler, route, roles) => {
     expect(routeOf(handler)).toBe(route);
@@ -120,6 +122,8 @@ describe("the planning handlers", () => {
       remove: jest.fn(async () => Promise.resolve(undefined)),
       link: jest.fn(async () => Promise.resolve("link")),
       unlink: jest.fn(async () => Promise.resolve("unlink")),
+      links: jest.fn(async () => Promise.resolve("links")),
+      searchTickets: jest.fn(async () => Promise.resolve("tickets")),
     };
     const healthService = { health: jest.fn(async () => Promise.resolve("health")) };
     const batches = new BatchesController(batchesService as unknown as BatchesService);
@@ -158,6 +162,10 @@ describe("the planning handlers", () => {
     await planning.link(tenant, epic, { ticketIds: ["t"] });
     await planning.unlink(tenant, epic, { ticketIds: ["t"] });
     expect(epicsService.unlink).toHaveBeenCalledWith("org-planning", "e", ["t"]);
+    await expect(planning.links(tenant, epic)).resolves.toBe("links");
+    expect(epicsService.links).toHaveBeenCalledWith("org-planning", "e");
+    await expect(planning.tickets(tenant, { q: "ota" })).resolves.toBe("tickets");
+    expect(epicsService.searchTickets).toHaveBeenCalledWith("org-planning", "ota");
     await planning.milestones(tenant, { source: "s" });
     expect(batchesService.milestones).toHaveBeenCalledWith("org-planning", "s");
 

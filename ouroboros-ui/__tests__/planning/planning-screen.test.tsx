@@ -11,15 +11,16 @@ import {
   PLANNING_TITLE,
   ROADMAP_EMPTY_NOTE,
   ROADMAP_EMPTY_TITLE,
-  ROADMAP_GANTT_NOTE,
   ROADMAP_UNREAD,
   SIDE_REGIONS,
   SOON_MARK,
 } from "@/app/planning/view";
 import { GENERATOR_TITLE, SOURCES_UNREAD } from "@/app/planning/generator";
 
-import { renderInBothPalettes } from "../helpers/palettes";
-import { EMPTY_ROADMAP, planningReadings } from "../helpers/planning";
+import { SHARE_LABEL, SHARE_SOON_NOTE } from "@/app/planning/gantt";
+
+import { maskIds, renderInBothPalettes } from "../helpers/palettes";
+import { EMPTY_ROADMAP, SEEDED_READ_MONTH, planningReadings } from "../helpers/planning";
 
 /**
  * The planning frame as it is drawn (#283): the head copy verbatim, **Import from Jira** an honest
@@ -35,6 +36,13 @@ vi.mock("@/app/planning/generator-actions", () => ({
   readMilestones: vi.fn(() => new Promise(() => {})),
   regenerateBatch: vi.fn(),
 }));
+vi.mock("@/app/planning/gantt-actions", () => ({
+  addEpic: vi.fn(),
+  readEpicLinks: vi.fn(() => new Promise(() => {})),
+  searchTickets: vi.fn(() => new Promise(() => {})),
+  setTicketLinked: vi.fn(),
+  updateEpic: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
@@ -43,7 +51,7 @@ const { PlanningScreen } = await import("@/app/planning/planning-screen");
 
 describe("the head", () => {
   it("is mockup 09's eyebrow, heading and subline, verbatim", () => {
-    render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     expect(screen.getByText(PLANNING_EYEBROW)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(PLANNING_TITLE);
@@ -51,7 +59,7 @@ describe("the head", () => {
   });
 
   it("draws Import from Jira as an inert ghost marked soon, naming #291, that opens nothing", () => {
-    render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     const importJira = screen.getByRole("button", { name: `${IMPORT_JIRA_LABEL} ${SOON_MARK}` });
 
@@ -65,12 +73,12 @@ describe("the head", () => {
   });
 
   it("draws New roadmap live for an owner or an admin, and inert with the reason for anyone else", () => {
-    const { unmount } = render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    const { unmount } = render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     expect(screen.getByRole("button", { name: NEW_ROADMAP_LABEL })).not.toHaveAttribute("aria-disabled");
     unmount();
 
-    render(<PlanningScreen mayAdminister={false} mayContribute={false} readings={planningReadings()} />);
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister={false} mayContribute={false} readings={planningReadings()} />);
 
     expect(screen.getByRole("button", { name: NEW_ROADMAP_LABEL })).toHaveAttribute(
       "title",
@@ -79,7 +87,7 @@ describe("the head", () => {
   });
 
   it("puts Import from Jira before New roadmap, as the mockup does", () => {
-    render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     const labels = screen.getAllByRole("button").map((button) => button.textContent);
 
@@ -89,14 +97,14 @@ describe("the head", () => {
 
 describe("the frame", () => {
   it("is mounted as the page's main landmark, with no chrome of its own", () => {
-    const { container } = render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    const { container } = render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     expect(container.firstElementChild?.tagName).toBe("MAIN");
     expect(container.firstElementChild).toHaveClass("planning");
   });
 
   it("seats the generator in the 7, the two side cards in the 5 and the roadmap in the 12", () => {
-    const { container } = render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    const { container } = render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     const generator = container.querySelector(".planning__generator")!;
     const side = container.querySelector(".planning__side")!;
@@ -113,21 +121,27 @@ describe("the frame", () => {
   });
 
   it("names the issue each unbuilt region waits for", () => {
-    render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     for (const region of SIDE_REGIONS) expect(screen.getByText(region.note)).toBeInTheDocument();
   });
 
   it("renders identically in both palettes", () => {
-    const [light, dark] = renderInBothPalettes(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    // The TODAY marker reads the clock; held still, so the two renders draw it at the same place.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 7, 8, 12));
 
-    expect(light).toBe(dark);
+    const [light, dark] = renderInBothPalettes(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
+
+    vi.useRealTimers();
+    expect(maskIds(light!)).toBe(maskIds(dark!));
+    expect(light).toContain("planning-gantt__today");
   });
 });
 
 describe("the generator region (#284)", () => {
   it("builds the tracker segment from the workspace's sources and the catalog", () => {
-    render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     const trackers = screen.getByRole("group", { name: "Target tracker" });
 
@@ -140,6 +154,7 @@ describe("the generator region (#284)", () => {
   it("says the trackers could not be read, and leaves the rest of the page standing", () => {
     render(
       <PlanningScreen
+        readMonth={SEEDED_READ_MONTH}
         mayAdminister
         mayContribute
         readings={planningReadings(undefined, { sources: { ok: false, reason: "The service failed." } })}
@@ -152,18 +167,30 @@ describe("the generator region (#284)", () => {
 });
 
 describe("the roadmap region", () => {
-  it("is headed by the roadmap's name and window, and counts its epics until the gantt arrives", () => {
-    render(<PlanningScreen mayAdminister mayContribute readings={planningReadings()} />);
+  it("is headed by the roadmap's name and window, and draws its gantt", () => {
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
     const region = screen.getByRole("region", { name: "Roadmap — Helios 2.1" });
 
     expect(within(region).getByText("Q3–Q4 2026")).toBeInTheDocument();
-    expect(within(region).getByText("5 epics planned.")).toBeInTheDocument();
-    expect(within(region).getByText(ROADMAP_GANTT_NOTE)).toBeInTheDocument();
+    expect(within(region).getByRole("group", { name: "Roadmap timeline" })).toBeInTheDocument();
+    expect(within(region).getByText("Jul 2026")).toBeInTheDocument();
+  });
+
+  it("draws Share ↗ as an inert ghost marked soon, naming #292, that goes nowhere", () => {
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
+
+    const region = screen.getByRole("region", { name: "Roadmap — Helios 2.1" });
+    const share = within(region).getByRole("button", { name: `${SHARE_LABEL} soon` });
+
+    expect(share).toHaveAttribute("aria-disabled", "true");
+    expect(share).toHaveAttribute("title", SHARE_SOON_NOTE);
+    expect(share).not.toHaveAttribute("href");
+    expect(within(region).queryByRole("link", { name: /share/i })).toBeNull();
   });
 
   it("says how to start one when the workspace has planned nothing", () => {
-    render(<PlanningScreen mayAdminister mayContribute readings={planningReadings({ ok: true, value: EMPTY_ROADMAP })} />);
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings({ ok: true, value: EMPTY_ROADMAP })} />);
 
     const region = screen.getByRole("region", { name: "Roadmap" });
 
@@ -172,7 +199,7 @@ describe("the roadmap region", () => {
   });
 
   it("says the roadmap could not be read, with the service's reason, and leaves the rest standing", () => {
-    render(<PlanningScreen mayAdminister mayContribute readings={planningReadings({ ok: false, reason: "The service failed." })} />);
+    render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings({ ok: false, reason: "The service failed." })} />);
 
     const region = screen.getByRole("region", { name: "Roadmap" });
 
