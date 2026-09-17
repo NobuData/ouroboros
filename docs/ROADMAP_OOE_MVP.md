@@ -1408,7 +1408,7 @@ the blockquote above that records what it did and what it did differently.
 | 219 | **AL.5** | ✅ [#281](https://github.com/NobuData/ouroboros/issues/281) | Backlog health & nightly re-estimation | ouroboros-rest | S | L.3, AK.2 |
 | 220 | **AM.2** | ✅ [#284](https://github.com/NobuData/ouroboros/issues/284) | Generator card & draft flow | ouroboros-ui | L | AL.3, AL.4, AM.1 |
 | 221 | **AM.4** | ✅ [#286](https://github.com/NobuData/ouroboros/issues/286) | Roadmap gantt component | ouroboros-ui | L | AL.4, AM.1 |
-| 222 | **AL.6** | [#282](https://github.com/NobuData/ouroboros/issues/282) | Planning integration tests | ouroboros-rest | M | AL.3, AL.5 |
+| 222 | **AL.6** | ✅ [#282](https://github.com/NobuData/ouroboros/issues/282) | Planning integration tests | ouroboros-rest | M | AL.3, AL.5 |
 | 223 | **AM.3** | [#285](https://github.com/NobuData/ouroboros/issues/285) | Tracker-sync & backlog-health cards | ouroboros-ui | M | AL.5, AM.1 |
 | 224 | **AM.5** | [#287](https://github.com/NobuData/ouroboros/issues/287) | Planning states & guards | ouroboros-ui | S | AM.2, AM.4 |
 | 225 | **AM.6** | [#288](https://github.com/NobuData/ouroboros/issues/288) | Planning e2e leg | ouroboros-ui, .github | M | AM.1, AM.5 |

@@ -605,7 +605,7 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 | AL.3 | #279 | 🟢 Done | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
 | AL.4 | #280 | 🟢 Done | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
 | AL.5 | #281 | 🟢 Done | ouroboros-rest: [AL.5] Backlog health & nightly re-estimation | Sized/blocked/stale metrics; scheduled unsized re-runs | mvp, planning, rest, intake | N (after AK.2, INTAKE-L.3) | Y | S | ouroboros-rest |
-| AL.6 | #282 | 🟡 Open | ouroboros-rest: [AL.6] Planning integration tests | Contract, push idempotency/resume, dep mapping, health, isolation | mvp, planning, rest, ci | N (after AL.3–AL.5) | Y | M | ouroboros-rest |
+| AL.6 | #282 | 🟢 Done | ouroboros-rest: [AL.6] Planning integration tests | Contract, push idempotency/resume, dep mapping, health, isolation | mvp, planning, rest, ci | N (after AL.3–AL.5) | Y | M | ouroboros-rest |
 
 ### Issue AL.1 — ouroboros-engine: [AL.1] Plan contract & outline parser v0
 
@@ -987,7 +987,7 @@ nightly 02:00±jitter ─▶ unsized open tickets ─▶ L.3 orchestrator (bound
 
 ### Issue AL.6 — ouroboros-rest: [AL.6] Planning integration tests
 
-> **GitHub issue:** #282 · **Status:** 🟡 Open · **Parent epic:** #269
+> **GitHub issue:** #282 · **Status:** 🟢 Done · **Parent epic:** #269
 
 
 - **Problem Statement:** Push idempotency, dependency ordering, and the
@@ -1007,6 +1007,34 @@ nightly 02:00±jitter ─▶ unsized open tickets ─▶ L.3 orchestrator (bound
 ```
 suites: plan ✓ · lifecycle ✓ · push resume ✓ · dep order+fallback ✓ · queue-small ✓ · health ✓
 ```
+
+- **Delivered (2026-09-17):** `ouroboros-rest` 0.35.14 — test-only; no application code changed.
+  Two harness suites beside AL.3–AL.5's, and one shared fixture:
+  - **`push.guarantees.integration-spec.ts`** drives the push over HTTP with the recorded write
+    GitHub behind the real provider, delegated through one Octokit so a case can swap in a GitHub
+    without the dependency API or refuse exactly one call: the `/v0/plan` contract round-trip
+    (persisted drafts and `planned` edges equal the golden batch); **dependency order** over a plan
+    whose key order contradicts its dependencies (`OTA-3 → OTA-1 → OTA-4 → OTA-6`, `OTA-3 → OTA-2 →
+    OTA-5`), asserting creation order and that every `blocked_by` link follows its blocker; the
+    **fallback** mode reported as `links: { native: 0, fallback: 5 }`; a **partial failure** (one
+    refused create → its dependents `blocker_not_pushed`) whose resume creates exactly `OTA-1`,
+    `OTA-4`, `OTA-6`; the **duplicate probe** — an issue GitHub holds but the push recorded failed
+    (sub-issue link refused) is found on resume, through the recent listing and through search;
+    **epic mirror** wiring across three pushes, the third after the stored mirror is deleted; the
+    **queue-small** hook going through `BacklogQueueService.queueSelection` once with only the sized
+    mirrors (`not_sized` reported); and **Blocked** over the push's rewritten planned edges plus a
+    `synced` edge.
+  - **`planning.access.integration-spec.ts`** keys both tables by a route inventory read off the
+    controllers' Nest metadata (`planning.routes.fixture.ts`), and first asserts each table has a
+    row for every route: the **role matrix** calls all 11 mutating routes as owner, admin, member and
+    viewer against a policy written in the case (not read from `@Roles`), and **isolation** calls all
+    20 routes from another workspace and with our slug as a non-member, snapshotting our rows.
+  - **Spot-verified red:** removing `createTicket`'s marker probe (4 cases red), walking drafts in
+    key order instead of `pushOrder` (6), counting only `planned` edges (1), dropping queue-small's
+    sized check (1), widening push to members (1), dropping the organization filter from the epic
+    read (4). Added runtime ≈ 11s (the planning integration specs: 82 tests, 21s).
+  - **Not run here:** the suites under Testcontainers — Docker was not reachable, so they ran
+    against a local PostgreSQL 16 migrated with `V001`–`V039` through `OURO_DATABASE_URL`.
 
 ---
 
