@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**217 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 and P8 are
+**218 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 and P8 are
 under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
@@ -42,7 +42,7 @@ and are accounted for in the counts below, not in the tables.
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
 | 🟡 **In progress** | P7 | **42** of 43 |
-| 🟡 **In progress** | P8 | **12** of 17 |
+| 🟡 **In progress** | P8 | **13** of 17 |
 | — **Not started** | P9–P17 | 0 of 229 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -113,7 +113,7 @@ position is not forced by dependencies, one of these decided it.
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
 | **P6** | Issue intake & estimation | ✅ 23/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | 🟡 42/43 | 43 | 137 | Mockups 04, 05 |
-| **P8** | Planning & batch work creation | 🟡 12/17 | 17 | 52 | Mockup 09 |
+| **P8** | Planning & batch work creation | 🟡 13/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | — 0/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | — 0/38 | 38 | 119 | Mockups 11, 12 |
@@ -1383,7 +1383,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **17 issues** · 52 complexity points · order **#209–#225** · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_09_PLANNING.md` (Epics AK–AM)
-> **Status:** 🟡 **In progress** — 12 of 17 issues closed
+> **Status:** 🟡 **In progress** — 13 of 17 issues closed
 
 **Goal.** Make drafts real entities, generate batches with the planner v0 (ids, titles, `blocks` dependencies, workflow-tag suggestions), size them through the P6 estimator, push them to GitHub with real dependencies and epics, and render the gantt roadmap.
 
@@ -1407,7 +1407,7 @@ the blockquote above that records what it did and what it did differently.
 | 218 | **AK.5** | ✅ [#276](https://github.com/NobuData/ouroboros/issues/276) | Planning constraints in ci/db | ouroboros-db, .github | XS | 3.6, AK.4 |
 | 219 | **AL.5** | ✅ [#281](https://github.com/NobuData/ouroboros/issues/281) | Backlog health & nightly re-estimation | ouroboros-rest | S | L.3, AK.2 |
 | 220 | **AM.2** | ✅ [#284](https://github.com/NobuData/ouroboros/issues/284) | Generator card & draft flow | ouroboros-ui | L | AL.3, AL.4, AM.1 |
-| 221 | **AM.4** | [#286](https://github.com/NobuData/ouroboros/issues/286) | Roadmap gantt component | ouroboros-ui | L | AL.4, AM.1 |
+| 221 | **AM.4** | ✅ [#286](https://github.com/NobuData/ouroboros/issues/286) | Roadmap gantt component | ouroboros-ui | L | AL.4, AM.1 |
 | 222 | **AL.6** | [#282](https://github.com/NobuData/ouroboros/issues/282) | Planning integration tests | ouroboros-rest | M | AL.3, AL.5 |
 | 223 | **AM.3** | [#285](https://github.com/NobuData/ouroboros/issues/285) | Tracker-sync & backlog-health cards | ouroboros-ui | M | AL.5, AM.1 |
 | 224 | **AM.5** | [#287](https://github.com/NobuData/ouroboros/issues/287) | Planning states & guards | ouroboros-ui | S | AM.2, AM.4 |

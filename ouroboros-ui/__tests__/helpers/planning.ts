@@ -3,8 +3,10 @@ import type {
   PlanningBatch,
   PlanningDraft,
   PlanningEpic,
+  PlanningEpicLinks,
   PlanningPushResult,
   PlanningRoadmap,
+  PlanningTicket,
 } from "@/app/api/planning";
 import type { PlanningReadings } from "@/app/planning/view";
 
@@ -40,25 +42,83 @@ export function planningEpic(over: Partial<PlanningEpic> = {}): PlanningEpic {
 }
 
 /**
- * The seeded roadmap: *Helios 2.1*, *Q3–Q4 2026*, five lanes.
+ * The seeded roadmap, as mockup 09 draws it: *Helios 2.1*, *Q3–Q4 2026*, five lanes — the seed's
+ * relative months pinned to a read in August 2026 ({@link SEEDED_READ_MONTH}), so the columns are the
+ * mockup's Jul–Dec and TODAY falls in the second one.
  *
  * @returns The roadmap.
  */
 export function seededRoadmap(): PlanningRoadmap {
-  const names = [
-    "OTA hardening",
-    "BLE provisioning v2",
-    "Motor control refactor",
-    "Fleet telemetry dashboard",
-    "Zephyr 4.2 migration",
+  const lanes: readonly [string, PlanningEpic["tint"], string | null, string | null, number, number, PlanningEpic["status"]][] = [
+    ["OTA hardening", "accent", "2026-07", "2026-09", 12, 8, "active"],
+    ["BLE provisioning v2", "model", "2026-08", "2026-10", 9, 2, "active"],
+    ["Motor control refactor", "warn", "2026-09", "2026-11", 14, 0, "active"],
+    ["Fleet telemetry dashboard", "ok", "2026-10", "2026-12", 7, 0, "active"],
+    ["Zephyr 4.2 migration", "neutral", null, null, 0, 0, "proposed"],
   ];
 
   return {
     name: "Helios 2.1",
     window: "Q3–Q4 2026",
-    lanes: names.map((name, index) =>
-      planningEpic({ id: `5eed0280-0000-4000-8000-00000000ee0${index + 1}`, name, sortOrder: index + 1 }),
+    lanes: lanes.map(([name, tint, startMonth, endMonth, issues, done, status], index) =>
+      planningEpic({
+        id: `5eed0280-0000-4000-8000-00000000ee0${String(index + 1)}`,
+        name,
+        tint,
+        startMonth,
+        endMonth,
+        status,
+        sortOrder: index + 1,
+        chips: { issues, done },
+      }),
     ),
+  };
+}
+
+/** August 2026, as `gantt.ts` indexes a month — the month the seed's roadmap is read in. */
+export const SEEDED_READ_MONTH = 2026 * 12 + 7;
+
+/**
+ * One canonical ticket, seed-shaped.
+ *
+ * @param over Fields to replace.
+ * @returns The ticket.
+ */
+export function planningTicket(over: Partial<PlanningTicket> = {}): PlanningTicket {
+  return {
+    id: "5eed0280-0000-4000-8000-0000000071c1",
+    sourceId: SEEDED_GITHUB_ID,
+    externalKey: "#548",
+    title: "Verify checksum before the A/B swap",
+    state: "open",
+    url: "https://github.com/acme-robotics/helios-firmware/issues/548",
+    ...over,
+  };
+}
+
+/**
+ * The OTA lane's lists: two tickets, one done, and its GitHub parent issue.
+ *
+ * @param over Fields to replace.
+ * @returns The links.
+ */
+export function epicLinks(over: Partial<PlanningEpicLinks> = {}): PlanningEpicLinks {
+  return {
+    epicId: "5eed0280-0000-4000-8000-00000000ee01",
+    tickets: [
+      planningTicket(),
+      planningTicket({
+        id: "5eed0280-0000-4000-8000-0000000071c2",
+        externalKey: "#540",
+        title: "Stage A/B partitions",
+        state: "closed",
+        url: "https://github.com/acme-robotics/helios-firmware/issues/540",
+      }),
+    ],
+    mirrors: [
+      { sourceId: SEEDED_GITHUB_ID, sourceName: "GitHub · acme-robotics", kind: "parent_issue", externalRef: "#612" },
+    ],
+    ...over,
   };
 }
 

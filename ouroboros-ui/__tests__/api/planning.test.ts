@@ -6,9 +6,11 @@ import { clientAnswering } from "../helpers/api";
 import {
   EMPTY_ROADMAP,
   SEEDED_BATCH_ID,
+  epicLinks,
   generatedBatch,
   planningBatch,
   planningEpic,
+  planningTicket,
   pushResult,
   seededRoadmap,
 } from "../helpers/planning";
@@ -169,5 +171,61 @@ describe("the generator's operations (#284)", () => {
 
     expect(failure).toBeInstanceOf(ApiError);
     expect((failure as ApiError).code).toBe("push_target_read_only");
+  });
+});
+
+describe("the gantt's operations (#286)", () => {
+  const EPIC = "5eed0280-0000-4000-8000-00000000ee01";
+  const TICKET = "5eed0280-0000-4000-8000-0000000071c1";
+
+  it("patches a lane with only what changed, and answers the stored lane", async () => {
+    const { client, requests } = clientAnswering(planningEpic({ endMonth: "2026-10" }));
+
+    const epic = await planning.updateEpic(EPIC, { startMonth: "2026-08", endMonth: "2026-10" }, client);
+
+    expect(requests[0]?.method).toBe("PATCH");
+    expect(requests[0]?.url).toBe(`${BASE}/epics/${EPIC}`);
+    expect(await requests[0]!.json()).toEqual({ startMonth: "2026-08", endMonth: "2026-10" });
+    expect(epic.endMonth).toBe("2026-10");
+  });
+
+  it("rejects a refused patch with the service's code", async () => {
+    const { client } = clientAnswering({ code: "forbidden", message: "Admins only.", details: {} }, 403);
+
+    const failure: unknown = await planning.updateEpic(EPIC, { name: "x" }, client).catch((error: unknown) => error);
+
+    expect((failure as ApiError).code).toBe("forbidden");
+  });
+
+  it("reads a lane's links and mirrors", async () => {
+    const { client, requests } = clientAnswering(epicLinks());
+
+    await expect(planning.epicLinks(EPIC, client)).resolves.toEqual(epicLinks());
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe(`${BASE}/epics/${EPIC}/tickets`);
+  });
+
+  it("links and unlinks tickets with the contract's body", async () => {
+    const linked = clientAnswering(planningEpic({ chips: { issues: 13, done: 8 } }));
+    const unlinked = clientAnswering(planningEpic({ chips: { issues: 11, done: 8 } }));
+
+    await expect(planning.linkTickets(EPIC, [TICKET], linked.client)).resolves.toMatchObject({
+      chips: { issues: 13, done: 8 },
+    });
+    await planning.unlinkTickets(EPIC, [TICKET], unlinked.client);
+
+    expect(linked.requests[0]?.method).toBe("POST");
+    expect(linked.requests[0]?.url).toBe(`${BASE}/epics/${EPIC}/tickets`);
+    expect(await linked.requests[0]!.json()).toEqual({ ticketIds: [TICKET] });
+    expect(unlinked.requests[0]?.method).toBe("DELETE");
+    expect(await unlinked.requests[0]!.json()).toEqual({ ticketIds: [TICKET] });
+  });
+
+  it("searches tickets with the term in the query", async () => {
+    const { client, requests } = clientAnswering({ items: [planningTicket()] });
+
+    await expect(planning.searchTickets("#548", client)).resolves.toEqual({ items: [planningTicket()] });
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe(`${BASE}/tickets?q=%23548`);
   });
 });

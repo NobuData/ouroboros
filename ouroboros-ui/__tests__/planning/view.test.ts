@@ -6,10 +6,8 @@ import {
   PLANNING_EYEBROW,
   PLANNING_SUBLINE,
   PLANNING_TITLE,
-  ROADMAP_GANTT_NOTE,
   ROADMAP_TITLE,
   SIDE_REGIONS,
-  laneCount,
   newRoadmapReason,
   roadmapTitle,
 } from "@/app/planning/view";
@@ -45,7 +43,6 @@ describe("the regions", () => {
   it("name the issues that fill them", () => {
     expect(SIDE_REGIONS.map((region) => region.title)).toEqual(["Tracker sync", "Backlog health"]);
     for (const region of SIDE_REGIONS) expect(region.note).toMatch(/#285/);
-    expect(ROADMAP_GANTT_NOTE).toMatch(/#286/);
   });
 
   it("give every region a distinct heading id", () => {
@@ -63,12 +60,5 @@ describe("roadmapTitle", () => {
   it("is plain `Roadmap` when nothing is named, or nothing could be read", () => {
     expect(roadmapTitle({ ok: true, value: EMPTY_ROADMAP })).toBe(ROADMAP_TITLE);
     expect(roadmapTitle({ ok: false, reason: "down" })).toBe(ROADMAP_TITLE);
-  });
-});
-
-describe("laneCount", () => {
-  it("is singular for one epic and plural otherwise", () => {
-    expect(laneCount(1)).toBe("1 epic planned.");
-    expect(laneCount(5)).toBe("5 epics planned.");
   });
 });

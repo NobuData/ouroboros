@@ -31,6 +31,13 @@ vi.mock("@/app/planning/generator-actions", () => ({
   readMilestones: vi.fn(() => new Promise(() => {})),
   regenerateBatch: vi.fn(),
 }));
+vi.mock("@/app/planning/gantt-actions", () => ({
+  addEpic: vi.fn(),
+  readEpicLinks: vi.fn(() => new Promise(() => {})),
+  searchTickets: vi.fn(() => new Promise(() => {})),
+  setTicketLinked: vi.fn(),
+  updateEpic: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));

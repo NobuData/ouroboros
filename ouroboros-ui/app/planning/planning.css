@@ -3,8 +3,9 @@
  *
  * The page head (eyebrow, heading, subline, the two actions), the twelve-column frame the three
  * regions sit in — the generator `c-7` beside the side column `c-5`, the roadmap `c-12` below —
- * the New roadmap dialog's form, and the generator card (#284): its controls row, the tracker
- * segment with its tinted monograms, the draft rows and the footer.
+ * the New roadmap dialog's form, the generator card (#284): its controls row, the tracker
+ * segment with its tinted monograms, the draft rows and the footer — and the roadmap gantt (#286):
+ * its month grid, tinted lanes, TODAY marker and steppers, and the epic editor sheet's lists.
  *
  * Every length is a token or `rem`, so the font-size preference scales the page with the rest of
  * the product (design system § 3.2), and every hue is a token, so both palettes are the token
@@ -496,4 +497,451 @@
 .planning-draft__editor-actions {
   display: flex;
   gap: var(--sp-4);
+}
+
+/* ---------- the roadmap gantt (#286) ---------- */
+
+/*
+ * The card body: the scrolling gantt, then its notes and the Add epic action. Every grid position a
+ * lane takes arrives as a custom property from `roadmap-gantt.tsx` — the datum — and every property it
+ * sets is here.
+ */
+.planning-gantt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/*
+ * The gantt scrolls inside this wrapper and nowhere else, so the shell's content pane never scrolls
+ * sideways (design system § 1.3). The bottom padding keeps a scrollbar off the last bar.
+ */
+.planning-gantt__scroll {
+  overflow-x: auto;
+  padding-bottom: var(--sp-2);
+}
+
+/*
+ * The mockup's grid: a label column, then one column per month with a floor width, so a long window
+ * grows wider than its card rather than squeezing its months. Rows are explicit — the head, then one
+ * per lane — so a rule and the TODAY marker can span `1 / -1`.
+ */
+.planning-gantt__grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 12.5rem repeat(var(--planning-gantt-months), minmax(6.5rem, 1fr));
+  grid-template-rows: 1.875rem repeat(var(--planning-gantt-lanes), 3.25rem);
+  align-items: center;
+  width: max-content;
+  min-width: 53.75rem;
+}
+
+/* Each lane is its label, its bar and its steppers, placed on the grid rather than grouped in a box. */
+.planning-gantt__lane {
+  display: contents;
+}
+
+.planning-gantt__month {
+  grid-row: 1;
+  grid-column: var(--planning-gantt-start);
+  align-self: end;
+  padding: 0 0 var(--sp-4) var(--sp-5);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* A month's left rule, down every row. */
+.planning-gantt__rule {
+  grid-row: 1 / -1;
+  grid-column: var(--planning-gantt-start);
+  align-self: stretch;
+  border-left: 1px solid var(--line);
+  pointer-events: none;
+}
+
+.planning-gantt__label {
+  grid-row: var(--planning-gantt-row);
+  grid-column: 1;
+  overflow: hidden;
+  padding-right: var(--sp-8);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mockup's faint `proposed`. */
+.planning-gantt__affix {
+  margin-left: var(--sp-3);
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  font-weight: 400;
+}
+
+/*
+ * A bar. A real button — focusable, Enter opens its editor — drawn as the mockup's `.gbar`. It follows
+ * the pointer by `--planning-gantt-residual` between snapped months while dragged; that is zero under
+ * reduced motion, and zero at rest.
+ */
+.planning-gantt__bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  grid-row: var(--planning-gantt-row);
+  grid-column: var(--planning-gantt-start) / var(--planning-gantt-end);
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 0;
+  height: 2.25rem;
+  margin: 0 var(--sp-4) 0 var(--sp-2);
+  overflow: hidden;
+  padding: 0 var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: translateX(var(--planning-gantt-residual));
+  touch-action: pan-y;
+}
+
+.planning-gantt__bar--editable {
+  cursor: grab;
+}
+
+.planning-gantt__bar--dragging {
+  z-index: 3;
+  border-style: solid;
+  cursor: grabbing;
+}
+
+/* A change the service has not answered yet: drawn where it was asked for, marked as unconfirmed. */
+.planning-gantt__bar--saving {
+  border-style: dotted;
+}
+
+/* The five tints — the mockup's `t-accent … t-neutral`, from the token hues. */
+.planning-gantt__bar--accent {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+}
+
+.planning-gantt__bar--model {
+  border-color: var(--model-line);
+  background: var(--model-tint);
+}
+
+.planning-gantt__bar--warn {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+}
+
+.planning-gantt__bar--ok {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+}
+
+/* Neutral is dashed: the lane nobody has committed to. */
+.planning-gantt__bar--neutral {
+  border: 1px dashed var(--line-strong);
+  background: var(--raised);
+}
+
+.planning-gantt__bar--neutral .planning-gantt__name {
+  color: var(--ink-mut);
+}
+
+/* An unscoped lane is a placeholder, always dashed, whatever its tint. */
+.planning-gantt__bar--unscoped {
+  border-style: dashed;
+}
+
+/* The progress fill: the computed done-fraction, in the bar's own hue. */
+.planning-gantt__fill {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: var(--planning-gantt-fill);
+  border-right: 1px solid var(--line-strong);
+  background: var(--raised);
+  pointer-events: none;
+}
+
+.planning-gantt__bar--accent .planning-gantt__fill {
+  border-right-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+
+.planning-gantt__bar--model .planning-gantt__fill {
+  border-right-color: var(--model-line);
+  background: var(--model-tint);
+}
+
+.planning-gantt__bar--warn .planning-gantt__fill {
+  border-right-color: var(--warn-line);
+  background: var(--warn-tint);
+}
+
+.planning-gantt__bar--ok .planning-gantt__fill {
+  border-right-color: var(--ok-line);
+  background: var(--ok-tint);
+}
+
+/* The resize handles: a strip at each end, shown as a hairline while the bar is hovered. */
+.planning-gantt__edge {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: var(--sp-3);
+  cursor: ew-resize;
+}
+
+.planning-gantt__edge--start {
+  left: 0;
+  border-left: 1px solid transparent;
+}
+
+.planning-gantt__edge--end {
+  right: 0;
+  border-right: 1px solid transparent;
+}
+
+.planning-gantt__bar:hover .planning-gantt__edge--start {
+  border-left-color: var(--line-control);
+}
+
+.planning-gantt__bar:hover .planning-gantt__edge--end {
+  border-right-color: var(--line-control);
+}
+
+.planning-gantt__name {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.planning-gantt__chip {
+  position: relative;
+  z-index: 1;
+  margin-left: auto;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--scrim);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * The TODAY marker: a grid item down the current month's column, with the line and its label drawn at
+ * the exact fraction through it (`--planning-gantt-today-offset`).
+ */
+.planning-gantt__today {
+  position: relative;
+  z-index: 2;
+  grid-row: 1 / -1;
+  grid-column: var(--planning-gantt-today-column);
+  align-self: stretch;
+  pointer-events: none;
+}
+
+.planning-gantt__today::before {
+  position: absolute;
+  top: var(--sp-2);
+  bottom: 0;
+  left: var(--planning-gantt-today-offset);
+  width: var(--sp-1);
+  border-radius: var(--r-xs);
+  background: var(--accent);
+  box-shadow: 0 0 var(--sp-5) 1px var(--accent-glow);
+  content: "";
+}
+
+/* A zero-width box at the line, so the label centres on it without a percentage translate. */
+.planning-gantt__today-label {
+  position: absolute;
+  top: calc(-1 * var(--sp-2));
+  left: var(--planning-gantt-today-offset);
+  display: flex;
+  justify-content: center;
+  width: 0;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  white-space: nowrap;
+}
+
+/*
+ * The month steppers — the keyboard's drag. Over the lane's label, and shown while the lane holds
+ * focus or the pointer; otherwise transparent and not pressable, though still in the tab order, which
+ * is how a keyboard reader arrives at them and shows them.
+ */
+.planning-gantt__steppers {
+  z-index: 3;
+  display: flex;
+  grid-row: var(--planning-gantt-row);
+  grid-column: 1;
+  justify-self: end;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.planning-gantt__lane:focus-within .planning-gantt__steppers,
+.planning-gantt__lane:hover .planning-gantt__steppers {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.planning-gantt__step-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.planning-gantt__step-label {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.planning-gantt__steppers .planning-gantt__step {
+  min-width: 0;
+  padding: 0 var(--sp-3);
+}
+
+/* The notes under the gantt: the footnote, today outside the window, the keyboard hint. */
+.planning-gantt__note,
+.planning-gantt__hint {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.planning-gantt__hint {
+  color: var(--ink-faint);
+}
+
+.planning-gantt__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.planning-gantt__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-8);
+}
+
+.planning-gantt__foot .planning-gantt__hint {
+  flex: 1;
+}
+
+/* Motion is only ever a courtesy: a bar settling into its month, and the steppers fading in. */
+@media (prefers-reduced-motion: no-preference) {
+  .planning-gantt__bar {
+    transition: border-color 150ms ease;
+  }
+
+  .planning-gantt__steppers {
+    transition: opacity 150ms ease;
+  }
+}
+
+/* ---------- the epic editor sheet (#286) ---------- */
+
+.planning-epic__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.planning-epic__heading {
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.planning-epic__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.planning-epic__tickets,
+.planning-epic__mirrors {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planning-epic__ticket {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 0;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.planning-epic__key {
+  flex: none;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.planning-epic__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-epic__state {
+  flex: none;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.planning-epic__state--done {
+  color: var(--ok);
+}
+
+.planning-epic__mirror {
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
 }

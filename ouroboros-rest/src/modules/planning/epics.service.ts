@@ -20,6 +20,7 @@
 
 import { Injectable } from "@nestjs/common";
 
+import { escapeLike } from "../backlog/listing.search";
 import type { CreateEpicBody, UpdateEpicBody } from "./planning.dto";
 import {
   epicNotFound,
@@ -28,7 +29,15 @@ import {
   ticketsNotFound,
 } from "./planning.errors";
 import { PlanningRepository, type EpicFieldsRow, type EpicRow } from "./planning.repository";
-import type { EpicResource, RoadmapResource } from "./planning.resources";
+import type {
+  EpicLinksResource,
+  EpicResource,
+  PlanningTicketSearchResource,
+  RoadmapResource,
+} from "./planning.resources";
+
+/** The most tickets one search answers — a picker's page, not a backlog listing. */
+export const TICKET_SEARCH_LIMIT = 20;
 
 @Injectable()
 export class EpicsService {
@@ -213,6 +222,47 @@ export class EpicsService {
     await this.repository.unlinkTickets(epicId, ticketIds);
 
     return this.read(organizationId, epicId);
+  }
+
+  /**
+   * A lane's linked tickets and tracker mirrors — the epic editor's two lists (AM.4,
+   * [#286](https://github.com/NobuData/ouroboros/issues/286)).
+   *
+   * @param organizationId - The workspace.
+   * @param epicId - The epic.
+   * @returns The tickets the chip is computed from, and what the lane became in each tracker.
+   * @throws {NotFoundError} `planning_epic_not_found`.
+   */
+  async links(organizationId: string, epicId: string): Promise<EpicLinksResource> {
+    await this.epicIn(organizationId, epicId);
+
+    const [tickets, mirrors] = await Promise.all([
+      this.repository.epicTickets(organizationId, epicId),
+      this.repository.epicMirrors(organizationId, epicId),
+    ]);
+
+    return { epicId, tickets, mirrors };
+  }
+
+  /**
+   * The workspace's canonical tickets whose title or key contains a term — the link picker.
+   *
+   * @param organizationId - The workspace.
+   * @param term - What was typed. Blank, or absent, answers the most recently updated tickets.
+   *   `%` and `_` match themselves.
+   * @returns At most {@link TICKET_SEARCH_LIMIT} tickets, most recently updated first.
+   */
+  async searchTickets(
+    organizationId: string,
+    term: string | undefined,
+  ): Promise<PlanningTicketSearchResource> {
+    const trimmed = term?.trim() ?? "";
+    const items = await this.repository.searchTickets(organizationId, {
+      pattern: trimmed === "" ? undefined : `%${escapeLike(trimmed)}%`,
+      limit: TICKET_SEARCH_LIMIT,
+    });
+
+    return { items };
   }
 
   /**

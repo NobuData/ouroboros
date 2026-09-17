@@ -2625,7 +2625,8 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 [`docs/mockups/09-planning.html`](../docs/mockups/09-planning.html)'s **frame**: the page head,
 its two actions, and the grid the three regions sit in — with the
 [generator card](#the-generator-card) ([#284](https://github.com/NobuData/ouroboros/issues/284))
-in its `c-7`. The sidebar's **Planning** entry is live and leads here; the mockup's topbar is
+in its `c-7` and the [roadmap gantt](#the-roadmap-gantt) ([#286](https://github.com/NobuData/ouroboros/issues/286))
+in its `c-12`. The sidebar's **Planning** entry is live and leads here; the mockup's topbar is
 superseded by the shell.
 
 ```
@@ -2637,8 +2638,9 @@ estimator, wired with dependencies, and queued for the loop the moment you appro
 │ prompt · outline · trackers · drafts  │ │ …arrives with #285             │
 │                                       │ ├ BACKLOG HEALTH ────────────────┤
 └───────────────────────────────────────┘ └────────────────────────────────┘
-┌ ROADMAP — HELIOS 2.1  [Q3–Q4 2026] ───────────────────────────────────────┐
-│ 5 epics planned. The roadmap gantt arrives with #286.                      │
+┌ ROADMAP — HELIOS 2.1  [Q3–Q4 2026] ─────────────────────── [Share ↗ SOON] ┐
+│              JUL 2026  AUG  ║ SEP   OCT   NOV   DEC                        │
+│ OTA hardening [▓▓▓▓▓▓░░ 12 issues · 8 done]                                │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -2653,8 +2655,8 @@ and the roadmap head is the top named lane's, so
 the first epic's name and an optional month pair, and makes one `POST /api/v1/planning/epics`
 ([`create.ts`](app/planning/create.ts) holds every judgement; an epic with no months is sent as
 `unscoped`). When a roadmap already exists the dialog opens on its name and window. On success the
-page refreshes and the roadmap card is headed with the name. AM.4
-([#286](https://github.com/NobuData/ouroboros/issues/286)) grows this into the gantt's editor.
+page refreshes and the roadmap card is headed with the name. Every lane after the first is the
+gantt's **Add epic** ([#286](https://github.com/NobuData/ouroboros/issues/286)).
 
 **The grid is the mockup's 7 / 5 + 12**, collapsing to one column below `68.75rem`. Each region a
 later issue fills says which issue rather than mocking its content; the generator and roadmap cards
@@ -2703,6 +2705,48 @@ estimator, the contract's 15 s after — and a push in flight asks every 2 s so 
 `owner|admin`; a viewer reads. **Milestones** are the chosen tracker's own; *New milestone…* is a
 name, created by the push. **Keyboard:** the segment's buttons and each row's checkbox are tab stops;
 **Edit** moves focus into its title, **Escape** returns it to **Edit**.
+
+### The roadmap gantt
+
+[`roadmap-gantt.tsx`](app/planning/roadmap-gantt.tsx) is the mockup's `c-12`
+([#286](https://github.com/NobuData/ouroboros/issues/286)): a CSS grid, not a gantt library
+(option 3-A) — a label column, one column per month, a rule down each, a lane per epic. Every
+judgement is a pure function in [`gantt.ts`](app/planning/gantt.ts); every write is a Server Action in
+[`gantt-actions.ts`](app/planning/gantt-actions.ts).
+
+```
+              JUL 2026   AUG  ║   SEP      OCT      NOV      DEC
+OTA hardening [▓▓▓▓▓▓░░ OTA hardening · 12 issues · 8 done]            ← drag: move · edges: resize
+BLE prov v2              [▓░ BLE provisioning v2 · 9 issues · 2 done]      snapped to months
+Zephyr 4.2 proposed                               ┊╌╌ unscoped ╌╌╌╌╌┊     → PATCH /planning/epics/{id}
+                         ║ TODAY — the reader's clock, the exact fraction through the month
+Bars are epics; Ouroboros keeps them in sync with the trackers.            [Add epic]
+```
+
+| Rule | Where it is kept |
+|---|---|
+| Columns are the window label (`Q3–Q4 2026` → Jul–Dec) widened to every scheduled lane; nothing parseable and no months is six months from the read | `windowFromLabel`, `ganttWindow` |
+| TODAY is the exact fraction of the reader's month — Aug 8 00:00 is `7/31` through August — drawn only in the browser, and a today outside the window says which side | `todayPosition`, [`today-marker.tsx`](app/planning/today-marker.tsx) |
+| Fill is the computed done-fraction; the chip is `N issues · M done`, or `unscoped` for a lane with no months, drawn dashed across the window's last two columns | `progressPercent`, `chipText`, `barPlacement` |
+| A drag's pixels become whole months; a move keeps its length and stops at the window, an edge never makes a bar shorter than a month | `monthsFromPixels`, `editSpan` |
+| A change draws at once and rolls back to the last lane the service confirmed if refused, saying why | `beginEdit`, `settleEdit`, `moveFailure` |
+
+**It scrolls inside `.planning-gantt__scroll`**, never the content pane. **Keyboard:** a focused bar
+moves with ← →, its end with **Shift**, its start with **Alt**, and **Enter** opens it; each lane's
+steppers (start / move / end, earlier / later) show while it holds focus. Under
+`prefers-reduced-motion: reduce` a dragged bar jumps month to month rather than following the pointer.
+**Share ↗** is AN.4 ([#292](https://github.com/NobuData/ouroboros/issues/292)) — inert, marked *soon*.
+The footnote drops the mockup's *"and re-plans when reality drifts"* until AN.5
+([#293](https://github.com/NobuData/ouroboros/issues/293)) makes it true.
+
+**The epic editor** ([`epic-editor.tsx`](app/planning/epic-editor.tsx),
+[`epic-draft.ts`](app/planning/epic-draft.ts)) opens on a click: name, tint, status and months saved as
+one `PATCH` of only what changed; the linked tickets with their synced states
+(`GET /planning/epics/{id}/tickets`), unlinked at once, and a picker searching
+`GET /planning/tickets?q=` that links at once — each answering the lane with its chip recomputed, which
+the bar draws immediately; and where the lane is mirrored in a tracker. **Add epic** opens it empty and
+files the lane under the roadmap's own head. **Roles:** every edit is `owner|admin`; anyone else reads
+the gantt and the sheet with the controls inert or absent.
 
 ## Workflow Studio
 

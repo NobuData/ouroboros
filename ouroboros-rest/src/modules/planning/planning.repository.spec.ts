@@ -411,4 +411,78 @@ describe("PlanningRepository", () => {
     expect(sql[0]).toContain("on conflict");
     expect(sql[1]).toContain('delete from "ouroboros"."epic_tickets"');
   });
+
+  it("reads an epic's tickets inside the workspace, open first, and maps them", async () => {
+    database.answers({
+      rows: [
+        {
+          id: "t1",
+          source_id: "s",
+          external_key: "#548",
+          title: "Checksum before swap",
+          state: "open",
+          external_url: "https://github.com/acme-robotics/helios-firmware/issues/548",
+        },
+      ],
+    });
+
+    await expect(repository.epicTickets(ORG, "e")).resolves.toEqual([
+      {
+        id: "t1",
+        sourceId: "s",
+        externalKey: "#548",
+        title: "Checksum before swap",
+        state: "open",
+        url: "https://github.com/acme-robotics/helios-firmware/issues/548",
+      },
+    ]);
+
+    const [sql] = database.sql();
+
+    expect(sql).toContain('inner join "ouroboros"."epic_tickets" as "et"');
+    expect(sql).toContain('"t"."organization_id" = $');
+    expect(sql).toContain("order by t.state = 'closed'");
+    expect(database.statements[0]?.parameters).toEqual(["e", ORG]);
+  });
+
+  it("reads an epic's mirrors through sources of the workspace, and maps them", async () => {
+    database.answers({
+      rows: [
+        {
+          source_id: "s",
+          display_name: "GitHub · acme-robotics",
+          kind: "parent_issue",
+          external_ref: "#612",
+        },
+      ],
+    });
+
+    await expect(repository.epicMirrors(ORG, "e")).resolves.toEqual([
+      {
+        sourceId: "s",
+        sourceName: "GitHub · acme-robotics",
+        kind: "parent_issue",
+        externalRef: "#612",
+      },
+    ]);
+
+    const [sql] = database.sql();
+
+    expect(sql).toContain('from "ouroboros"."epic_mirrors" as "m"');
+    expect(sql).toContain('"s"."organization_id" = $2');
+    expect(sql).not.toContain("credentials");
+  });
+
+  it("searches tickets by title or key inside the workspace, bounded", async () => {
+    await repository.searchTickets(ORG, { pattern: "%ota%", limit: 20 });
+    await repository.searchTickets(ORG, { pattern: undefined, limit: 20 });
+
+    const [filtered, unfiltered] = database.sql();
+
+    expect(filtered).toContain('"t"."title" ilike $2 or "t"."external_key" ilike $3');
+    expect(filtered).toContain('order by "t"."source_updated_at" desc');
+    expect(database.statements[0]?.parameters).toEqual([ORG, "%ota%", "%ota%", 20]);
+    expect(unfiltered).not.toContain("ilike");
+    expect(database.statements[1]?.parameters).toEqual([ORG, 20]);
+  });
 });

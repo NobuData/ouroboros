@@ -5,9 +5,11 @@
  * ([#280](https://github.com/NobuData/ouroboros/issues/280)): the roadmap read, which the page's
  * roadmap region heads itself with, and the lane create, which **New roadmap** is. AM.2
  * ([#284](https://github.com/NobuData/ouroboros/issues/284)) adds the generator card's seven: generate,
- * read, regenerate, the per-draft patch, push, resume, and a source's milestones. The rest of the
- * epic CRUD is AM.4's ([#286](https://github.com/NobuData/ouroboros/issues/286)), so it is not here
- * yet.
+ * read, regenerate, the per-draft patch, push, resume, and a source's milestones. AM.4's gantt
+ * ([#286](https://github.com/NobuData/ouroboros/issues/286)) adds the lane patch — a drag, a
+ * stepper, the epic editor's save — and the editor's ticket management: the lane's links and
+ * mirrors, the link picker's search, link and unlink. Reorder and delete are not drawn anywhere yet,
+ * so they are not here.
  *
  * ### A roadmap is not an entity
  *
@@ -40,6 +42,21 @@ export type PlanningEpic = components["schemas"]["PlanningEpic"];
  * the dashed unscoped lane — and run forwards (`epic_month_range_invalid` otherwise).
  */
 export type PlanningEpicCreate = components["schemas"]["PlanningEpicCreate"];
+
+/** What a lane edit sends — only what changes; `null` clears a nullable field. */
+export type PlanningEpicPatch = components["schemas"]["PlanningEpicPatch"];
+
+/** A lane's linked tickets and tracker mirrors — the epic editor's two lists. */
+export type PlanningEpicLinks = components["schemas"]["PlanningEpicLinks"];
+
+/** One canonical ticket, linked to a lane or a candidate to link. */
+export type PlanningTicket = components["schemas"]["PlanningTicket"];
+
+/** What a lane became in one tracker when a push filed it. */
+export type PlanningEpicMirror = components["schemas"]["PlanningEpicMirror"];
+
+/** The link picker's matches. */
+export type PlanningTicketSearch = components["schemas"]["PlanningTicketSearch"];
 
 /** A stored batch of drafts, its footer, and every draft's push state and estimate. */
 export type PlanningBatch = components["schemas"]["PlanningBatch"];
@@ -89,6 +106,97 @@ export const planning = {
    */
   async createEpic(body: PlanningEpicCreate, client: ApiClient = api()): Promise<PlanningEpic> {
     return unwrap(await client.POST("/api/v1/planning/epics", { body }));
+  },
+
+  /**
+   * Edit one lane — a drag, a month stepper, or the epic editor's save.
+   *
+   * @param id The lane's id.
+   * @param body What changes. The merged month range must still be paired and forwards.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The stored lane, its chip recomputed.
+   * @throws {ApiError} `403 forbidden` below `admin`, `404 planning_epic_not_found`,
+   *   `422 epic_month_range_invalid` or `validation_failed`.
+   */
+  async updateEpic(
+    id: string,
+    body: PlanningEpicPatch,
+    client: ApiClient = api(),
+  ): Promise<PlanningEpic> {
+    return unwrap(
+      await client.PATCH("/api/v1/planning/epics/{epic}", { params: { path: { epic: id } }, body }),
+    );
+  },
+
+  /**
+   * A lane's linked tickets and tracker mirrors. Any member.
+   *
+   * @param id The lane's id.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The tickets, open first, and the mirrors.
+   * @throws {ApiError} `404 planning_epic_not_found`.
+   */
+  async epicLinks(id: string, client: ApiClient = api()): Promise<PlanningEpicLinks> {
+    return unwrap(
+      await client.GET("/api/v1/planning/epics/{epic}/tickets", { params: { path: { epic: id } } }),
+    );
+  },
+
+  /**
+   * Link canonical tickets to a lane; a link that exists is kept once.
+   *
+   * @param id The lane's id.
+   * @param ticketIds The tickets.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The lane, chip recomputed.
+   * @throws {ApiError} `403 forbidden` below `admin`, `404 planning_epic_not_found` or
+   *   `planning_tickets_not_found`.
+   */
+  async linkTickets(
+    id: string,
+    ticketIds: string[],
+    client: ApiClient = api(),
+  ): Promise<PlanningEpic> {
+    return unwrap(
+      await client.POST("/api/v1/planning/epics/{epic}/tickets", {
+        params: { path: { epic: id } },
+        body: { ticketIds },
+      }),
+    );
+  },
+
+  /**
+   * Unlink tickets from a lane; a ticket that was not linked is not an error.
+   *
+   * @param id The lane's id.
+   * @param ticketIds The tickets.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The lane, chip recomputed.
+   * @throws {ApiError} `403 forbidden` below `admin`, `404 planning_epic_not_found`.
+   */
+  async unlinkTickets(
+    id: string,
+    ticketIds: string[],
+    client: ApiClient = api(),
+  ): Promise<PlanningEpic> {
+    return unwrap(
+      await client.DELETE("/api/v1/planning/epics/{epic}/tickets", {
+        params: { path: { epic: id } },
+        body: { ticketIds },
+      }),
+    );
+  },
+
+  /**
+   * The workspace's canonical tickets whose title or key contains a term — the link picker.
+   *
+   * @param q What was typed; blank answers the most recently updated tickets.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns At most twenty matches.
+   * @throws {ApiError} `422 validation_failed` for a term over 200 characters.
+   */
+  async searchTickets(q: string, client: ApiClient = api()): Promise<PlanningTicketSearch> {
+    return unwrap(await client.GET("/api/v1/planning/tickets", { params: { query: { q } } }));
   },
 
   /**

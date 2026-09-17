@@ -1,6 +1,7 @@
 import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
 import { readPlanning } from "@/app/planning/data";
+import { currentMonth } from "@/app/planning/gantt";
 import { BATCH_PARAM, parseBatchParam } from "@/app/planning/generator";
 import { PlanningScreen } from "@/app/planning/planning-screen";
 
@@ -21,6 +22,10 @@ import { PlanningScreen } from "@/app/planning/planning-screen";
  * an `admin`; drafting acts for a `member` too; a `viewer` reads. The gates that enforce them are
  * the service's.
  *
+ * The month the page is read in is read here, once, on the server, and handed down: the roadmap gantt
+ * (AM.4, [#286](https://github.com/NobuData/ouroboros/issues/286)) draws a roadmap with no months from
+ * it, and the server and the browser must draw the same columns.
+ *
  * `?batch=<id>` opens the generator card on a stored batch (AM.2,
  * [#284](https://github.com/NobuData/ouroboros/issues/284)) — the address a generation leaves
  * behind, and the deep link other surfaces edit drafts through.
@@ -40,6 +45,7 @@ export default async function Page({
     <PlanningScreen
       mayAdminister={mayAdminister(roles)}
       mayContribute={mayContribute(roles)}
+      readMonth={currentMonth()}
       readings={readings}
     />
   );

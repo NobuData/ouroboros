@@ -91,8 +91,12 @@ describe("the shell", () => {
     expect(CODE).not.toMatch(/position:\s*(fixed|sticky)/);
   });
 
-  it("scrolls nothing of its own, so the content pane is the one scroll container", () => {
-    expect(CODE).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/);
+  it("scrolls nothing of its own but the gantt's wrapper, and that only sideways (#286)", () => {
+    const scrolling = [...CODE.matchAll(/([^{}]+)\{[^}]*overflow(-[xy])?:\s*(auto|scroll)/g)];
+
+    expect(scrolling.map((match) => match[1]!.trim())).toEqual([".planning-gantt__scroll"]);
+    expect(rule("\\.planning-gantt__scroll")).toMatch(/overflow-x:\s*auto/);
+    expect(rule("\\.planning-gantt__scroll")).not.toMatch(/overflow(-y)?:/);
   });
 });
 

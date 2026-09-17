@@ -1023,7 +1023,7 @@ dark-only).
 | AM.1 | #283 | 🟢 Done | ouroboros-ui: [AM.1] Planning route, head & page frame | `/planning` frame, honest head actions, layout | mvp, planning, ui, design | N (after #41, AL.4, BA-D.5) | Y | S | ouroboros-ui |
 | AM.2 | #284 | 🟢 Done | ouroboros-ui: [AM.2] Generator card & draft flow | Prompt/outline, tracker segment, toggles, draft rows, push flow | mvp, planning, ui, design | N (after AM.1, AL.4, AL.3) | Y | L | ouroboros-ui |
 | AM.3 | #285 | 🟡 Open | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
-| AM.4 | #286 | 🟡 Open | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
+| AM.4 | #286 | 🟢 Done | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
 | AM.5 | #287 | 🟡 Open | ouroboros-ui: [AM.5] Planning states & guards | Empty org, no-writable-source, member limits, load/error | mvp, planning, ui, design | N (after AM.2–AM.4) | Y | S | ouroboros-ui |
 | AM.6 | #288 | 🟡 Open | ouroboros-ui: [AM.6] Planning e2e leg | Generate→size→select→push→queue chain; gantt edits; themes | mvp, planning, ui, ci | N (after AM.1–AM.5) | Y | M | ouroboros-ui, .github |
 
@@ -1173,7 +1173,7 @@ Sized ▓▓▓▓▓▓▓▓▓░ 38/42 · Blocked ▓ 4 · Stale >30d ▓ 6 
 
 ### Issue AM.4 — ouroboros-ui: [AM.4] Roadmap gantt component
 
-> **GitHub issue:** #286 · **Status:** 🟡 Open · **Parent epic:** #270
+> **GitHub issue:** #286 · **Status:** 🟢 Done · **Parent epic:** #270
 
 
 - **Problem Statement:** The roadmap card is a bespoke CSS-grid gantt
@@ -1207,6 +1207,32 @@ BLE prov v2            [ BLE provisioning v2 · 9 · 2 ]
 Zephyr 4.2 (proposed)                    [╌ unscoped ╌]
                  ║TODAY (Aug 8)     drag/resize ⇒ month-snap PATCH
 ```
+
+- **Delivered (2026-09-17):** `ouroboros-ui` 0.78.0 — `app/planning/roadmap-gantt.tsx` (the grid, drag,
+  edge-resize, keyboard and steppers, optimistic PATCH with rollback), `today-marker.tsx`, `gantt.ts`
+  (every judgement and sentence), `epic-editor.tsx` + `epic-draft.ts` (the sheet), `gantt-actions.ts`
+  (patch, add, links, search, link/unlink), and five operations in `app/api/planning.ts`.
+  `ouroboros-rest` 0.35.13 adds two reads (additive). Decisions taken in-issue:
+  - **The editor's ticket management needed reads AL.4 did not have.** A lane's payload carries only its
+    chip, so `GET /api/v1/planning/epics/{epic}/tickets` answers the linked tickets (key, title, synced
+    state, url) and AL.3's `epic_mirrors`, and `GET /api/v1/planning/tickets?q=` searches canonical
+    tickets by title or key for the link picker. Both any member; link and unlink stay `owner|admin`.
+  - **The window is the label, widened to the lanes.** `roadmapWindow` is parsed where it reads as
+    quarters, halves or months (`Q3–Q4 2026` → Jul–Dec) and then widened to cover every scheduled lane;
+    with neither, six months from the month the page was read (on the server, so both renders agree).
+  - **TODAY is client-only and from the clock** — the exact fraction of the reader's month, in their
+    calendar, re-read as `app/shell/clock.ts` ticks; nothing is drawn on the server, and a today outside
+    the window says which side it is on.
+  - **An unscoped lane is a placeholder** across the window's last two months, dashed, where the mockup
+    draws Zephyr; it cannot be dragged and its steppers say to give it months in the editor.
+  - **Keyboard path:** a focused bar moves with ← →, its end with Shift, its start with Alt; per-lane
+    steppers (start / move / end, earlier / later) show while the lane holds focus. Under
+    `prefers-reduced-motion: reduce` a dragged bar only jumps month to month.
+  - **Rollback** goes to the last lane the service confirmed — a stacked second step that is refused
+    returns to the first step if that one was stored.
+  - **New roadmap stays AM.1's dialog**; every further lane is **Add epic** under the gantt, filed under
+    the roadmap's own head. Reorder and delete are not drawn.
+  - The compose-backed round trip is AM.6 (#288).
 
 ### Issue AM.5 — ouroboros-ui: [AM.5] Planning states & guards
 

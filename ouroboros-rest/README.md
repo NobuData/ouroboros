@@ -3144,7 +3144,7 @@ sizer (N3) — the push is `PushService`, and **Queue XS/S** is M.3's `BacklogQu
 | Route | Who |
 |---|---|
 | `POST /planning/batches` · `POST /:batch/regenerate` · `PATCH /:batch/drafts/:key` | owner, admin, member |
-| `GET /planning/batches/:batch` · `GET /:batch/push-status` · `GET /planning/roadmap` · `GET /planning/health` · `GET /planning/epics[/:epic]` · `GET /planning/sources/:source/milestones` | every member |
+| `GET /planning/batches/:batch` · `GET /:batch/push-status` · `GET /planning/roadmap` · `GET /planning/health` · `GET /planning/epics[/:epic]` · `GET /planning/epics/:epic/tickets` · `GET /planning/tickets` · `GET /planning/sources/:source/milestones` | every member |
 | `POST /:batch/push` · `POST /:batch/push/resume` · every epic mutation | **owner, admin** |
 
 - **Every edge write is walked first** (`planning.graph.ts`, AL.3's push order): a cycle is a `422`
@@ -3157,6 +3157,13 @@ sizer (N3) — the push is `PushService`, and **Queue XS/S** is M.3's `BacklogQu
   `{ externalId, externalKey, url }`, read through `tickets` — beside `pushedTicketId`, so the card's
   `pushed ✓ #612` link survives a reload rather than living only in a push's answer (AM.2,
   [#284](https://github.com/NobuData/ouroboros/issues/284); additive, 0.35.12).
+- **The epic editor reads what a lane counts** (AM.4,
+  [#286](https://github.com/NobuData/ouroboros/issues/286); additive, 0.35.13).
+  `GET /planning/epics/:epic/tickets` answers the lane's linked tickets — key, title, synced state,
+  url; open first — and AL.3's `epic_mirrors` with each source's name, so the list and the chip are
+  read from the same links. `GET /planning/tickets?q=` is the link picker: the workspace's canonical
+  tickets whose title or key contains `q` (escaped, so `%` and `_` match themselves), most recently
+  updated first, at most 20. Linking and unlinking stay `owner|admin`.
 - `batches.service.spec.ts`, `epics.service.spec.ts` and `queue-small.spec.ts` run over an
   in-memory store keeping V034–V037's rules (`planning.store.fixture.ts`);
   `planning.integration-spec.ts` runs generate → size → select → push → queue-small over HTTP against

@@ -11,6 +11,7 @@ import type {
   DraftProvenance,
   DraftPushError,
   DraftPushState,
+  EpicMirrorKind,
   EpicStatus,
   EpicTint,
   ReestimationRunStatus,
@@ -184,6 +185,52 @@ export interface EpicResource {
   readonly roadmapWindow: string | null;
   /** `12 issues · 8 done` — **computed** from linked ticket states on every read (AK.3). */
   readonly chips: { readonly issues: number; readonly done: number };
+}
+
+/**
+ * One canonical ticket, as the roadmap's epic editor lists it (AM.4,
+ * [#286](https://github.com/NobuData/ouroboros/issues/286)) — a linked ticket, or a candidate to link.
+ */
+export interface PlanningTicketResource {
+  /** The canonical ticket's id — what a link or an unlink names. */
+  readonly id: string;
+  /** The ticket source it was synced from. */
+  readonly sourceId: string;
+  /** The tracker's display key — `#548`, `PROJ-142`. */
+  readonly externalKey: string;
+  /** The title, as the tracker last had it. */
+  readonly title: string;
+  /** `open` or `closed`, as last synced — what the lane's `done` counts. */
+  readonly state: "open" | "closed";
+  /** The ticket in its own tracker. */
+  readonly url: string;
+}
+
+/** One record of what an epic became in a tracker (AL.3's `epic_mirrors`). */
+export interface EpicMirrorResource {
+  /** The ticket source the mirror lives in. */
+  readonly sourceId: string;
+  /** That source's display name — `GitHub · acme-robotics`. */
+  readonly sourceName: string;
+  /** `milestone`, `parent_issue` or `jira_epic`. */
+  readonly kind: EpicMirrorKind;
+  /** The tracker's handle for it — a milestone number, a parent issue's key. */
+  readonly externalRef: string;
+}
+
+/** `GET /planning/epics/:epic/tickets` — the lane's linked tickets and its tracker mirrors. */
+export interface EpicLinksResource {
+  readonly epicId: string;
+  /** Every linked ticket, open first, then by key. */
+  readonly tickets: readonly PlanningTicketResource[];
+  /** Every mirror, by source name then kind. Empty until a push has created one. */
+  readonly mirrors: readonly EpicMirrorResource[];
+}
+
+/** `GET /planning/tickets` — canonical tickets matching a search, for the editor's link picker. */
+export interface PlanningTicketSearchResource {
+  /** The matches, most recently updated in their tracker first, at most the search's limit. */
+  readonly items: readonly PlanningTicketResource[];
 }
 
 /** `GET /planning/roadmap`. */
