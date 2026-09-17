@@ -12,9 +12,10 @@ import {
   ROADMAP_EMPTY_NOTE,
   ROADMAP_EMPTY_TITLE,
   ROADMAP_UNREAD,
-  SIDE_REGIONS,
   SOON_MARK,
 } from "@/app/planning/view";
+import { HEALTH_TITLE, HEALTH_TITLE_ID } from "@/app/planning/health";
+import { SYNC_TITLE, SYNC_TITLE_ID } from "@/app/planning/sync";
 import { GENERATOR_TITLE, SOURCES_UNREAD } from "@/app/planning/generator";
 
 import { SHARE_LABEL, SHARE_SOON_NOTE } from "@/app/planning/gantt";
@@ -113,17 +114,20 @@ describe("the frame", () => {
     expect(within(generator as HTMLElement).getByRole("region", { name: GENERATOR_TITLE })).toBeInTheDocument();
     expect(
       within(side as HTMLElement).getAllByRole("region").map((region) => region.getAttribute("aria-labelledby")),
-    ).toEqual(SIDE_REGIONS.map((region) => region.id));
+    ).toEqual([SYNC_TITLE_ID, HEALTH_TITLE_ID]);
     expect(within(roadmap as HTMLElement).getByRole("region", { name: "Roadmap — Helios 2.1" })).toBeInTheDocument();
 
     // Grid order is document order: 7, then 5, then 12.
     expect([...container.querySelector(".planning__grid")!.children]).toEqual([generator, side, roadmap]);
   });
 
-  it("names the issue each unbuilt region waits for", () => {
+  it("fills the side column with the two built cards (#285)", () => {
     render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings()} />);
 
-    for (const region of SIDE_REGIONS) expect(screen.getByText(region.note)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: SYNC_TITLE })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: HEALTH_TITLE })).toBeInTheDocument();
+    // The placeholders they replaced said so in words; nothing on the page may still.
+    expect(screen.queryByText(/arrives with #285/)).not.toBeInTheDocument();
   });
 
   it("renders identically in both palettes", () => {

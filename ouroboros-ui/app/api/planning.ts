@@ -58,6 +58,15 @@ export type PlanningEpicMirror = components["schemas"]["PlanningEpicMirror"];
 /** The link picker's matches. */
 export type PlanningTicketSearch = components["schemas"]["PlanningTicketSearch"];
 
+/** The Backlog Health card's three meters, their drill-through filters, and the nightly job. */
+export type PlanningBacklogHealth = components["schemas"]["PlanningBacklogHealth"];
+
+/** One health meter: a count, and the filtered intake view it counts. */
+export type PlanningHealthMeter = components["schemas"]["PlanningHealthMeter"];
+
+/** The latest nightly re-estimation run, with this workspace's own counts. */
+export type PlanningReestimationRun = components["schemas"]["PlanningReestimationRun"];
+
 /** A stored batch of drafts, its footer, and every draft's push state and estimate. */
 export type PlanningBatch = components["schemas"]["PlanningBatch"];
 
@@ -92,6 +101,25 @@ export const planning = {
    */
   async roadmap(client: ApiClient = api()): Promise<PlanningRoadmap> {
     return unwrap(await client.GET("/api/v1/planning/roadmap", {}));
+  },
+
+  /**
+   * The Backlog Health card's figures — AL.5
+   * ([#281](https://github.com/NobuData/ouroboros/issues/281)), drawn by AM.3
+   * ([#285](https://github.com/NobuData/ouroboros/issues/285)).
+   *
+   * Every count is recomputed on the read, so a sync that closes a ticket moves the meters on
+   * the next page load rather than when something remembers to write a column.
+   *
+   * @param client The client to call through. Defaults to the server-side one; tests pass one
+   *   over a stub `fetch`.
+   * @returns The three meters with their drill-through filters, the stale threshold, and the
+   *   nightly job's schedule and last run. A workspace with no tickets answers zeros — the
+   *   designed empty state, not a failure.
+   * @throws {ApiError} What the service answered. A `401` redirects to login before this rejects.
+   */
+  async health(client: ApiClient = api()): Promise<PlanningBacklogHealth> {
+    return unwrap(await client.GET("/api/v1/planning/health", {}));
   },
 
   /**

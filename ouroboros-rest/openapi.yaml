@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.14"
+  version: "0.35.15"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -3083,6 +3083,7 @@ paths:
                     syncedAt: "2026-09-12T10:00:00.000Z"
                     createdAt: "2026-09-01T09:00:00.000Z"
                     updatedAt: "2026-09-12T10:00:00.000Z"
+                    openTicketCount: 42
                   - id: 5eed001a-0000-4000-8000-000000000002
                     kind: jira
                     displayName: Jira · PROJ
@@ -3095,9 +3096,11 @@ paths:
                     syncedAt: null
                     createdAt: "2026-09-01T09:00:00.000Z"
                     updatedAt: "2026-09-01T09:00:00.000Z"
+                    openTicketCount: 0
                 total: 2
                 limit: 25
                 offset: 0
+                pollIntervalSeconds: 300
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -3195,6 +3198,8 @@ paths:
                 syncedAt: null
                 createdAt: "2026-09-12T10:00:00.000Z"
                 updatedAt: "2026-09-12T10:00:00.000Z"
+                # Nothing has been synced through it yet, so it has brought in no work.
+                openTicketCount: 0
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -3419,6 +3424,7 @@ paths:
                 syncedAt: "2026-09-12T10:00:00.000Z"
                 createdAt: "2026-09-01T09:00:00.000Z"
                 updatedAt: "2026-09-12T10:00:00.000Z"
+                openTicketCount: 42
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -3522,6 +3528,8 @@ paths:
                 syncedAt: "2026-09-12T10:00:00.000Z"
                 createdAt: "2026-09-01T09:00:00.000Z"
                 updatedAt: "2026-09-12T10:05:00.000Z"
+                # A pause stops the polling; the work already brought in is still there.
+                openTicketCount: 42
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -3641,6 +3649,7 @@ paths:
                 syncedAt: "2026-09-12T10:00:00.000Z"
                 createdAt: "2026-09-01T09:00:00.000Z"
                 updatedAt: "2026-09-12T10:06:00.000Z"
+                openTicketCount: 42
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -20928,6 +20937,7 @@ components:
         - syncedAt
         - createdAt
         - updatedAt
+        - openTicketCount
       properties:
         id:
           type: string
@@ -20966,13 +20976,30 @@ components:
         updatedAt:
           type: string
           format: date-time
+        openTicketCount:
+          type: integer
+          minimum: 0
+          description: |-
+            How much open work this source has brought in — the count of **canonical
+            `tickets`** belonging to it whose `state` is `open`
+            ([#285](https://github.com/NobuData/ouroboros/issues/285)).
+
+            **Not the `github_issues` mirror.** The two backlogs are different tables on
+            purpose (`ouroboros-db/migrations/R__dev_seed_ticket_planning.sql`'s header
+            argues it), and mockup 09's *Tracker Sync* row — `two-way sync · 42 issues` — is
+            this figure, while mockup 03's head counts the mirror. A client that showed one
+            where the other was meant would be off by the whole difference between them.
+
+            Counted on every read rather than stored, so a sync that closes a ticket is
+            reflected by the next listing and no column can fall out of step.
+          examples: [42]
 
     TicketSourcePage:
       type: object
       title: TicketSourcePage
       description: One page of a workspace's ticket sources, ordered by display name.
       additionalProperties: false
-      required: [items, total, limit, offset]
+      required: [items, total, limit, offset, pollIntervalSeconds]
       properties:
         items:
           type: array
@@ -20991,6 +21018,24 @@ components:
           type: integer
           minimum: 0
           examples: [0]
+        pollIntervalSeconds:
+          type: integer
+          minimum: 60
+          maximum: 86400
+          description: |-
+            How often this deployment polls an `active` source — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`,
+            the one knob both the ticket-source and backlog-sync schedulers share
+            ([#285](https://github.com/NobuData/ouroboros/issues/285)).
+
+            **A cadence, not a promise of an instant.** Each scheduler jitters its own sleep by
+            ±25% so a fleet of replicas does not stampede a tracker in lockstep, and a source
+            that is `paused` or `error` is not polled at all. So this is what a client renders
+            as *every 5m* over a list of sources — it is not a countdown, and it says nothing
+            about when any one source is next due.
+
+            On the page rather than on each source because one setting drives every source in
+            the deployment; a per-source cadence would be four copies of one number.
+          examples: [300]
 
     TicketSourceCreate:
       type: object

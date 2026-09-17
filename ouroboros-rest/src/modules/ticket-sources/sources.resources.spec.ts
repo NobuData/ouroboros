@@ -60,7 +60,7 @@ function outcome(overrides: Partial<SourceSyncOutcome> = {}): SourceSyncOutcome 
 
 describe("a source", () => {
   it("is the row, camel-cased, with the instants as ISO strings", () => {
-    expect(sourceResource(row({ synced_at: NOW }), false)).toStrictEqual({
+    expect(sourceResource(row({ synced_at: NOW }), false, 42)).toStrictEqual({
       id: "5eed001a-0000-4000-8000-000000000001",
       kind: "github",
       displayName: "GitHub · acme-robotics",
@@ -71,36 +71,44 @@ describe("a source", () => {
       syncedAt: "2026-09-12T10:00:00.000Z",
       createdAt: "2026-09-01T09:00:00.000Z",
       updatedAt: "2026-09-01T09:00:00.000Z",
+      openTicketCount: 42,
     });
   });
 
   it("masks a stored credential as four bullets and nothing else on a read", () => {
-    expect(sourceResource(row(), true).credentialMask).toBe(MASK_ONLY);
-    expect(sourceResource(row(), true).credentialMask).toBe("••••");
+    expect(sourceResource(row(), true, 0).credentialMask).toBe(MASK_ONLY);
+    expect(sourceResource(row(), true, 0).credentialMask).toBe("••••");
   });
 
   it("echoes a suffix only where a write hands one in, and never when nothing is stored", () => {
-    expect(sourceResource(row(), true, maskOf("github_pat_example1234")).credentialMask).toBe(
+    expect(sourceResource(row(), true, 0, maskOf("github_pat_example1234")).credentialMask).toBe(
       "••••1234",
     );
     expect(
-      sourceResource(row(), false, maskOf("github_pat_example1234")).credentialMask,
+      sourceResource(row(), false, 0, maskOf("github_pat_example1234")).credentialMask,
     ).toBeNull();
   });
 
   it("answers an empty object for a config that is not one, rather than crashing a list", () => {
-    expect(sourceResource(row({ config: "github" }), false).config).toStrictEqual({});
-    expect(sourceResource(row({ config: ["a"] }), false).config).toStrictEqual({});
+    expect(sourceResource(row({ config: "github" }), false, 0).config).toStrictEqual({});
+    expect(sourceResource(row({ config: ["a"] }), false, 0).config).toStrictEqual({});
   });
 
   it("carries the honest reason beside an error", () => {
     const resource = sourceResource(
       row({ status: "error", status_reason: "rate limited until 14:20 UTC" }),
       true,
+      6,
     );
 
     expect(resource.status).toBe("error");
     expect(resource.statusReason).toBe("rate limited until 14:20 UTC");
+  });
+
+  // The count is the caller's, because it lives in another table — see the mapper's note.
+  it("publishes the open-ticket count it was handed, zero included (#285)", () => {
+    expect(sourceResource(row(), false, 0).openTicketCount).toBe(0);
+    expect(sourceResource(row(), false, 42).openTicketCount).toBe(42);
   });
 });
 

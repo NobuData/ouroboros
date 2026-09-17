@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 
 import type { TicketSourcePublic } from "../db/schema";
+import type { AppConfigService } from "../config/config.service";
 import { MINIMUM_SYNC_INTERVAL_SECONDS } from "../backlog/debounce";
 import {
   ConflictError,
@@ -35,9 +36,23 @@ import type { TicketSourcesService } from "./ticket-sources.service";
 
 const WORKSPACE = "org-sources";
 const SOURCE_ID = "5eed001a-0000-4000-8000-000000000001";
+/** A second source, so a page can hold one with open tickets beside one with none (#285). */
+const OTHER_SOURCE_ID = "5eed001a-0000-4000-8000-000000000002";
 const NOW = new Date("2026-09-12T10:00:00.000Z");
 const SECRET = "sk-fixtureQ4onlyNEVERlogTHISvalue0001";
 const ENVELOPE = "ouro.v1.1.c2VlZC1ub25jZS00.ZGV2LXNlZWQtbm90LWEtY3JlZGVudGlhbA";
+
+/**
+ * The one setting this service reads — the cadence its listing publishes (#285).
+ *
+ * Deliberately not the 300-second default: a listing that echoed the default would pass
+ * whether it read the configuration or hard-coded it.
+ */
+const POLL_INTERVAL_SECONDS = 90;
+
+const CONFIG = {
+  backlogSyncIntervalSeconds: POLL_INTERVAL_SECONDS,
+} as unknown as AppConfigService;
 
 const GOOD_CONFIG = {
   site: "https://tracker.example.test",
@@ -81,7 +96,11 @@ interface FakeSources extends SourcesRepository {
  */
 function fakeSources(
   rows: readonly TicketSourcePublic[] = [],
-  options: { insertFails?: unknown; present?: readonly string[] } = {},
+  options: {
+    insertFails?: unknown;
+    present?: readonly string[];
+    openTickets?: Readonly<Record<string, number>>;
+  } = {},
 ): FakeSources {
   const stored = new Map(rows.map((candidate) => [candidate.id, candidate]));
   const inserts: NewSourceRow[] = [];
@@ -110,6 +129,18 @@ function fakeSources(
     },
     credentialPresence: (_organizationId: string, ids: readonly string[]) =>
       Promise.resolve(new Map(ids.map((id) => [id, present.has(id)]))),
+    // The real statement produces no row for a source with no open tickets, so the fake omits
+    // those ids too — the `?? 0` in the service is what a case exercises by leaving one out.
+    openTicketCounts: (_organizationId: string, ids: readonly string[]) => {
+      const counts = options.openTickets ?? {};
+      const found = ids.flatMap((id): [string, number][] => {
+        const count = counts[id];
+
+        return count === undefined ? [] : [[id, count]];
+      });
+
+      return Promise.resolve(new Map(found));
+    },
     insert: (newRow: NewSourceRow) => {
       if (options.insertFails !== undefined) {
         // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
@@ -223,6 +254,7 @@ function build(
   options: {
     rows?: readonly TicketSourcePublic[];
     present?: readonly string[];
+    openTickets?: Readonly<Record<string, number>>;
     insertFails?: unknown;
     sealed?: string | null;
     opened?: string | Error;
@@ -232,6 +264,7 @@ function build(
   const sources = fakeSources(options.rows, {
     insertFails: options.insertFails,
     present: options.present,
+    openTickets: options.openTickets,
   });
   const loop = fakeLoop();
   const vault = fakeVault(options.opened);
@@ -242,6 +275,7 @@ function build(
     loop,
     new TicketSourceRegistry([provider]),
     vault,
+    CONFIG,
   );
 
   return { service, sources, loop, vault, provider };
@@ -295,6 +329,34 @@ describe("reading", () => {
     const { service } = build({ rows: [row({ organization_id: "org-other" })] });
 
     await expect(service.read(WORKSPACE, SOURCE_ID)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("publishes the deployment's poll cadence on the page, read from configuration (#285)", async () => {
+    const { service } = build({ rows: [row()] });
+
+    const page = await service.list(WORKSPACE, {});
+
+    expect(page.pollIntervalSeconds).toBe(POLL_INTERVAL_SECONDS);
+  });
+
+  it("carries each source's open-ticket count, and zero for one the count omitted (#285)", async () => {
+    const { service } = build({
+      rows: [row(), row({ id: OTHER_SOURCE_ID, display_name: "GitHub · quiet" })],
+      openTickets: { [SOURCE_ID]: 42 },
+    });
+
+    const page = await service.list(WORKSPACE, {});
+    const counts = new Map(page.items.map((item) => [item.id, item.openTicketCount]));
+
+    expect(counts.get(SOURCE_ID)).toBe(42);
+    // No row came back for this one, which is a source with nothing open — not an unknown.
+    expect(counts.get(OTHER_SOURCE_ID)).toBe(0);
+  });
+
+  it("counts one source's open tickets on a single read too (#285)", async () => {
+    const { service } = build({ rows: [row()], openTickets: { [SOURCE_ID]: 6 } });
+
+    expect((await service.read(WORKSPACE, SOURCE_ID)).openTicketCount).toBe(6);
   });
 });
 

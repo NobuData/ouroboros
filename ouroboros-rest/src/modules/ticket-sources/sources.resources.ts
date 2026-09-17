@@ -27,6 +27,7 @@
  */
 
 import type { TicketSourceKind, TicketSourcePublic, TicketSourceStatus } from "../db/schema";
+import type { Page } from "../tenancy/pagination";
 import { MASK_ONLY, maskCredential } from "../provider-connections/masking";
 import { SOURCE_SKIP_MESSAGES, type SourceSyncOutcome } from "./sync.report";
 import type { TicketSourceCapabilities, TicketSourceValidation } from "./ticket-source.provider";
@@ -61,6 +62,29 @@ export interface TicketSourceResource {
   readonly createdAt: string;
   /** When any of its columns last changed. */
   readonly updatedAt: string;
+  /**
+   * How many **canonical `tickets`** of this source are `open`
+   * ([#285](https://github.com/NobuData/ouroboros/issues/285)) — mockup 09's
+   * `two-way sync · 42 issues`.
+   *
+   * Not the `github_issues` mirror, which mockup 03 counts: the two are different tables on
+   * purpose, and the contract's own note on this field says so at greater length.
+   */
+  readonly openTicketCount: number;
+}
+
+/**
+ * One page of sources, and the cadence this deployment polls them at
+ * ([#285](https://github.com/NobuData/ouroboros/issues/285)).
+ *
+ * The cadence is one setting for the whole deployment, so it sits on the page rather than on
+ * each row — the shape `BacklogListing` already takes when it carries a `meta` beside its
+ * items. A client renders it as *every 5m* over the list; the contract's own note on the field
+ * says why it is a cadence and not a countdown.
+ */
+export interface TicketSourcePageResource extends Page<TicketSourceResource> {
+  /** `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, in seconds. */
+  readonly pollIntervalSeconds: number;
 }
 
 /** What one completed sync did, for the status report. */
@@ -161,6 +185,8 @@ export interface TicketSourceCatalogResource {
  * @param row - The row, through the view.
  * @param hasCredential - Whether the sealed column is set — asked of the table separately,
  *   because the view cannot say.
+ * @param openTicketCount - How many of its canonical tickets are open, counted separately for
+ *   the same reason: it lives in another table, so the view cannot say it either.
  * @param mask - The mask to publish while a credential is stored. {@link MASK_ONLY} on every
  *   read; a suffixed one on the answer to a credential write. Ignored when none is stored.
  * @returns The resource, JSON-safe.
@@ -168,6 +194,7 @@ export interface TicketSourceCatalogResource {
 export function sourceResource(
   row: TicketSourcePublic,
   hasCredential: boolean,
+  openTicketCount: number,
   mask: string = MASK_ONLY,
 ): TicketSourceResource {
   return {
@@ -181,6 +208,7 @@ export function sourceResource(
     syncedAt: instant(row.synced_at),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    openTicketCount,
   };
 }
 

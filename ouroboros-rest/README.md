@@ -2955,6 +2955,21 @@ provider threw is *failed*: `status` and `status_reason` are written and `synced
 A source that synced has its rows, its cursor, its stamp and its status written in one
 transaction, which is also what clears a previous failure.
 
+**The listing carries two figures nothing else can compute** (AM.3,
+[#285](https://github.com/NobuData/ouroboros/issues/285); both additive, 0.35.15):
+
+- `TicketSource.openTicketCount` — how many **canonical `tickets`** of that source are `open`,
+  counted per read in one grouped aggregate (`SourcesRepository.openTicketCounts`) rather than
+  stored. A column would have to be written by every path that closes a ticket, and the first one
+  that forgot would leave the planning page asserting a figure nothing could reproduce. `V030`'s
+  `tickets_organization_source_state_idx` is `(organization_id, source_id, state)`, which is this
+  grouping's exact prefix. **Not** the `github_issues` mirror mockup 03 counts — the two backlogs
+  are different tables on purpose.
+- `TicketSourcePage.pollIntervalSeconds` — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, so a client can
+  render the sync cadence instead of hard-coding one. It sits on the page envelope because one
+  knob drives every source, and it is a **cadence, not a countdown**: each scheduler jitters its
+  own sleep by ±25%, and a `paused` or `error` source is not polled at all.
+
 ### The GitHub provider
 
 **`github` is the first registered kind** ([#140](https://github.com/NobuData/ouroboros/issues/140)),

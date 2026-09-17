@@ -1,10 +1,12 @@
 import { Button, Card, CardHead, EmptyState, Eyebrow, Tag } from "@/app/ui";
 
+import { BacklogHealthCard } from "./backlog-health-card";
 import { SHARE_LABEL, SHARE_SOON_NOTE } from "./gantt";
 import { GeneratorCard } from "./generator-card";
 import { SOURCES_UNREAD, trackerOptions } from "./generator";
 import { NewRoadmap } from "./new-roadmap";
 import { RoadmapGantt } from "./roadmap-gantt";
+import { TrackerSyncCard } from "./tracker-sync-card";
 import {
   IMPORT_JIRA_LABEL,
   IMPORT_JIRA_SOON_NOTE,
@@ -12,12 +14,10 @@ import {
   PLANNING_SUBLINE,
   PLANNING_TITLE,
   type PlanningReadings,
-  type PlanningRegion,
   ROADMAP_EMPTY_NOTE,
   ROADMAP_EMPTY_TITLE,
   ROADMAP_REGION_ID,
   ROADMAP_UNREAD,
-  SIDE_REGIONS,
   SOON_MARK,
   roadmapTitle,
 } from "./view";
@@ -44,11 +44,13 @@ import "./planning.css";
  *
  * The generator card (`c-7`, AM.2 [#284](https://github.com/NobuData/ouroboros/issues/284) —
  * `app/planning/generator-card.tsx`) beside a column of the tracker sync and backlog health cards
- * (`c-5`, AM.3 [#285](https://github.com/NobuData/ouroboros/issues/285)), and the roadmap card full
- * width below (`c-12`, AM.4 [#286](https://github.com/NobuData/ouroboros/issues/286) —
- * `app/planning/roadmap-gantt.tsx`). Each region that a later issue fills says which issue, rather
- * than drawing a mock of what it will hold. The roadmap card is headed from the real roadmap read, so a
- * roadmap just created shows here; its **Share ↗** is AN.4
+ * (`c-5`, AM.3 [#285](https://github.com/NobuData/ouroboros/issues/285) —
+ * `app/planning/tracker-sync-card.tsx` and `app/planning/backlog-health-card.tsx`), and the roadmap
+ * card full width below (`c-12`, AM.4 [#286](https://github.com/NobuData/ouroboros/issues/286) —
+ * `app/planning/roadmap-gantt.tsx`). Every region now draws real data, and **a failed read degrades
+ * that card alone** rather than the page — which is why each card is handed the whole `readings`
+ * object and decides for itself what it could not say. The roadmap card is headed from the real
+ * roadmap read, so a roadmap just created shows here; its **Share ↗** is AN.4
  * ([#292](https://github.com/NobuData/ouroboros/issues/292)), inert and marked *soon*.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
@@ -102,9 +104,8 @@ export function PlanningScreen({
           />
         </div>
         <div className="planning__side">
-          {SIDE_REGIONS.map((region) => (
-            <RegionCard key={region.id} region={region} />
-          ))}
+          <TrackerSyncCard readings={readings} />
+          <BacklogHealthCard readings={readings} />
         </div>
         <div className="planning__roadmap">
           <Card aria-labelledby={ROADMAP_REGION_ID} as="section">
@@ -128,21 +129,6 @@ export function PlanningScreen({
         </div>
       </div>
     </main>
-  );
-}
-
-/**
- * One region a later issue fills: its card, its title, and the line naming that issue.
- *
- * @param props.region The region.
- * @returns The card.
- */
-function RegionCard({ region }: Readonly<{ region: PlanningRegion }>) {
-  return (
-    <Card aria-labelledby={region.id} as="section" className="planning__region">
-      <CardHead title={region.title} titleId={region.id} />
-      <EmptyState note={region.note} />
-    </Card>
   );
 }
 

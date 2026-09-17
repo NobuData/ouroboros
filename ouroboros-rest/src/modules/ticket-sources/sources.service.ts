@@ -46,7 +46,8 @@ import { MINIMUM_SYNC_INTERVAL_SECONDS, retryAfterSeconds } from "../backlog/deb
 import { describeForLog } from "../errors/failure";
 import { fieldViolations } from "../provider-connections/config.validation";
 import { UNIQUE_VIOLATION, isDatabaseFailure } from "../tenancy/constraints";
-import { type Page, windowOf } from "../tenancy/pagination";
+import { windowOf } from "../tenancy/pagination";
+import { AppConfigService } from "../config/config.service";
 import { VaultService } from "../vault/vault.service";
 import { sourceCatalog } from "./sources.catalog";
 import type {
@@ -71,6 +72,7 @@ import {
   statusResource,
   testResource,
   type TicketSourceCatalogResource,
+  type TicketSourcePageResource,
   type TicketSourceResource,
   type TicketSourceStatusResource,
   type TicketSourceTestResource,
@@ -101,6 +103,8 @@ export class SourcesService {
    *   report reads its process half from.
    * @param registry - Where a provider comes from, and the only thing here that knows a kind.
    * @param vault - What seals a credential and, for a test, opens one.
+   * @param config - The deployment's settings. Only the sync cadence is read here, and only so
+   *   the listing can publish it (#285).
    */
   constructor(
     private readonly sources: SourcesRepository,
@@ -108,6 +112,7 @@ export class SourcesService {
     private readonly sync: TicketSourcesService,
     private readonly registry: TicketSourceRegistry,
     private readonly vault: VaultService,
+    private readonly config: AppConfigService,
   ) {}
 
   /**
@@ -126,16 +131,23 @@ export class SourcesService {
    * @param query - The window.
    * @returns The page, by display name.
    */
-  async list(organizationId: string, query: ListSourcesQuery): Promise<Page<TicketSourceResource>> {
+  async list(organizationId: string, query: ListSourcesQuery): Promise<TicketSourcePageResource> {
     const page = await this.sources.list(organizationId, windowOf(query));
-    const presence = await this.sources.credentialPresence(
-      organizationId,
-      page.items.map((row) => row.id),
-    );
+    const ids = page.items.map((row) => row.id);
+
+    // Two aggregates over one page, asked together: neither depends on the other, and a
+    // workspace's sources are few enough that the page is one round trip's worth either way.
+    const [presence, openTickets] = await Promise.all([
+      this.sources.credentialPresence(organizationId, ids),
+      this.sources.openTicketCounts(organizationId, ids),
+    ]);
 
     return {
       ...page,
-      items: page.items.map((row) => sourceResource(row, presence.get(row.id) ?? false)),
+      items: page.items.map((row) =>
+        sourceResource(row, presence.get(row.id) ?? false, openTickets.get(row.id) ?? 0),
+      ),
+      pollIntervalSeconds: this.config.backlogSyncIntervalSeconds,
     };
   }
 
@@ -150,8 +162,28 @@ export class SourcesService {
    */
   async read(organizationId: string, sourceId: string): Promise<TicketSourceResource> {
     const row = await this.require(organizationId, sourceId);
+    const [hasCredential, openTickets] = await Promise.all([
+      this.hasCredential(organizationId, sourceId),
+      this.openTicketCount(organizationId, sourceId),
+    ]);
 
-    return sourceResource(row, await this.hasCredential(organizationId, sourceId));
+    return sourceResource(row, hasCredential, openTickets);
+  }
+
+  /**
+   * How many of one source's canonical tickets are open.
+   *
+   * The batch read asked for a single id — one method rather than two spellings of one count,
+   * so a per-source read and a page can never disagree.
+   *
+   * @param organizationId - The workspace.
+   * @param sourceId - The source.
+   * @returns The count. Zero for a source that has brought in nothing.
+   */
+  private async openTicketCount(organizationId: string, sourceId: string): Promise<number> {
+    const counts = await this.sources.openTicketCounts(organizationId, [sourceId]);
+
+    return counts.get(sourceId) ?? 0;
   }
 
   /**
@@ -196,6 +228,9 @@ export class SourcesService {
     return sourceResource(
       row,
       submission.secret !== null,
+      // A source minted one statement ago: nothing can reference it yet, so the count is zero
+      // by construction rather than by a query nobody needs.
+      0,
       submission.secret === null ? undefined : maskOf(submission.secret),
     );
   }
@@ -296,7 +331,12 @@ export class SourcesService {
 
     const stored = await this.require(organizationId, sourceId);
 
-    return sourceResource(stored, true, maskOf(body.secret));
+    return sourceResource(
+      stored,
+      true,
+      await this.openTicketCount(organizationId, sourceId),
+      maskOf(body.secret),
+    );
   }
 
   /**

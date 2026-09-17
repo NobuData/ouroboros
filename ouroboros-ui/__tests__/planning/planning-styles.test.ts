@@ -122,3 +122,38 @@ describe("the generator card (#284)", () => {
     for (const [, value] of generator.matchAll(/font-size:\s*([^;]+);/g)) expect(value).toMatch(/^var\(--t-/);
   });
 });
+
+describe("the side column's two cards (#285)", () => {
+  it("separates the sync rows with a hairline and drops it on the last, as the mockup does", () => {
+    expect(rule("\\.planning-sync__row")).toMatch(/border-bottom:\s*1px solid var\(--line\)/);
+    expect(rule("\\.planning-sync__row:last-child")).toMatch(/border-bottom:\s*none/);
+  });
+
+  it("lets the row's middle column take the slack, so the dot stays at the trailing edge", () => {
+    expect(rule("\\.planning-sync__text")).toMatch(/flex:\s*1/);
+    expect(rule("\\.planning-sync__text")).toMatch(/min-width:\s*0/);
+  });
+
+  it("sets the sub-line in the mono face, as a composed statement rather than prose", () => {
+    expect(rule("\\.planning-sync__sub")).toMatch(/font-family:\s*var\(--f-mono\)/);
+  });
+
+  it("tints each health figure with its meter's own status token", () => {
+    expect(rule("\\.planning-health__value--ok")).toMatch(/color:\s*var\(--ok\)/);
+    expect(rule("\\.planning-health__value--warn")).toMatch(/color:\s*var\(--warn\)/);
+    expect(rule("\\.planning-health__value--err")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  /*
+   * The 125%-and-up fix, and the same one the dashboard's pulse card needed (#650): this card is
+   * five of twelve grid columns while its type is `rem`, so the caption row has to wrap rather
+   * than overflow when the two stop scaling together.
+   */
+  it("wraps the health caption row rather than overflowing it at a large font scale", () => {
+    expect(rule("\\.planning-health__row")).toMatch(/flex-wrap:\s*wrap/);
+  });
+
+  it("pushes the last-run line to the card's foot", () => {
+    expect(rule("\\.planning-health__run")).toMatch(/margin:\s*auto 0 0/);
+  });
+});

@@ -284,12 +284,16 @@ ouroboros-ui/
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
 │   ├── planning/            # mockup 09's frame: head, honest actions, the 7 / 5 + 12 grid · #283
-│   │   ├── view.ts          #   the verbatim head copy, the regions and the issues they wait for
-│   │   ├── data.ts          #   readPlanning() — the roadmap, degraded rather than thrown
+│   │   ├── view.ts          #   the verbatim head copy and what each region is headed with
+│   │   ├── data.ts          #   readPlanning() — every region's read, degraded rather than thrown
 │   │   ├── create.ts        #   New roadmap's judgements: the form, the body, what a refusal says
 │   │   ├── create-actions.ts #  the Server Action — one lane create, no workspace to forge
 │   │   ├── new-roadmap.tsx  #   the head's primary action and its dialog
-│   │   └── planning-screen.tsx # the page head and the three regions
+│   │   ├── sync.ts          #   the sync card's claims: direction per capability, the cadence · #285
+│   │   ├── tracker-sync-card.tsx # the rows, the dots, connect ↗ into #141
+│   │   ├── health.ts        #   the health card's meters, hues and nightly footnote · #285
+│   │   ├── backlog-health-card.tsx # the three meters and the last-run detail
+│   │   └── planning-screen.tsx # the page head and the four cards
 │   ├── providers/           # mockup 07's Audit log action and the sheet behind it · #225
 │   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
 │   │   ├── view.ts          #   the seven tabs, one live; the eyebrow
@@ -2634,9 +2638,11 @@ PLANNING
 Describe the work. Ouroboros writes the tickets.                 [Import from Jira SOON] [New roadmap]
 Draft epics and tickets straight into GitHub Issues, Jira, or Linear — sized by the
 estimator, wired with dependencies, and queued for the loop the moment you approve them.
-┌ GENERATE TICKETS ─── [estimator v0] ──┐ ┌ TRACKER SYNC ──────────────────┐
-│ prompt · outline · trackers · drafts  │ │ …arrives with #285             │
-│                                       │ ├ BACKLOG HEALTH ────────────────┤
+┌ GENERATE TICKETS ─── [estimator v0] ──┐ ┌ TRACKER SYNC ───── [every 5m] ─┐
+│ prompt · outline · trackers · drafts  │ │ [GH] GitHub · acme-robotics  ● │
+│                                       │ │      two-way sync · 42 issues  │
+│                                       │ ├ BACKLOG HEALTH ─── [42 open] ──┤
+│                                       │ │ Sized ▓▓▓▓▓▓▓▓▓░ 38/42      ok │
 └───────────────────────────────────────┘ └────────────────────────────────┘
 ┌ ROADMAP — HELIOS 2.1  [Q3–Q4 2026] ─────────────────────── [Share ↗ SOON] ┐
 │              JUL 2026  AUG  ║ SEP   OCT   NOV   DEC                        │
@@ -2658,9 +2664,8 @@ the first epic's name and an optional month pair, and makes one `POST /api/v1/pl
 page refreshes and the roadmap card is headed with the name. Every lane after the first is the
 gantt's **Add epic** ([#286](https://github.com/NobuData/ouroboros/issues/286)).
 
-**The grid is the mockup's 7 / 5 + 12**, collapsing to one column below `68.75rem`. Each region a
-later issue fills says which issue rather than mocking its content; the generator and roadmap cards
-read real data, and a failed read degrades that card rather than the page.
+**The grid is the mockup's 7 / 5 + 12**, collapsing to one column below `68.75rem`. Every card reads
+real data, and a failed read degrades that card rather than the page.
 
 ### The generator card
 
@@ -2705,6 +2710,56 @@ estimator, the contract's 15 s after — and a push in flight asks every 2 s so 
 `owner|admin`; a viewer reads. **Milestones** are the chosen tracker's own; *New milestone…* is a
 name, created by the push. **Keyboard:** the segment's buttons and each row's checkbox are tab stops;
 **Edit** moves focus into its title, **Escape** returns it to **Edit**.
+
+### The tracker-sync and backlog-health cards
+
+The side column's `c-5` ([#285](https://github.com/NobuData/ouroboros/issues/285)). Every judgement
+is a pure function — [`sync.ts`](app/planning/sync.ts) and [`health.ts`](app/planning/health.ts) —
+and the two components only draw them.
+
+```
+┌ TRACKER SYNC ──────────────────────────────── [every 5m] ┐  ← real poll configuration,
+│ [GH] GitHub · acme-robotics                           ●  │    not a constant
+│      two-way sync · 42 issues   ← only because GitHub    │
+│ [JI] Jira · PROJ                  can actually write  ◌  │
+│      not syncing · 0 issues     ← no Jira provider here  │
+│ [LN] Linear                                ◌ [connect ↗] │ → /settings/sources
+└──────────────────────────────────────────────────────────┘
+┌ BACKLOG HEALTH ───────────────────────────────  [42 open] ┐
+│ Sized        ▓▓▓▓▓▓▓▓▓░  38/42                         ok │
+│ Blocked      ▓                4                      warn │
+│ Stale > 30d  ▓                6                       err │ ← threshold from config
+│ Estimator re-runs nightly…      ⓘ last run 9h 46m ago ✓  │ ← a checkable claim
+└───────────────────────────────────────────────────────────┘
+```
+
+| Rule | Where it is kept |
+|---|---|
+| `two-way sync` is asserted **only** where `capabilities.write.createTicket` is live; a read-only source says `read sync · N issues` | `syncRows`, `directionOf` |
+| A kind the catalog does not list has **no provider in this build**, so the row says `not syncing` and goes idle rather than claiming a sync nothing performs | `directionOf`, `dotOf` |
+| The cadence tag is `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, spelled in the largest unit that divides it — `every 5m` at the default, **not** the mockup's `every 60s` | `cadenceTag`, `cadenceOf` |
+| The count is the **canonical** `tickets` backlog, never the `github_issues` mirror mockup 03 counts | `openTicketCount` on the contract |
+| A row is named what the workspace named the source, so the card and the settings list agree | `nameOf` |
+| Sized fills out of its own total; blocked and stale out of the open backlog — the mockup's own widths | `healthMeters`, `barFill` |
+| The stale label carries the real `thresholdDays`, so a fortnight deployment reads `Stale > 14d` | `staleLabel` |
+| The footnote's tooltip is the job's **real** last run — instant, outcome, and this workspace's own counts | `lastRunNote`, `lastRunPhrase` |
+
+**Two contract fields were added for this card** (`ouroboros-rest` 0.35.15, both additive):
+`TicketSource.openTicketCount` and `TicketSourcePage.pollIntervalSeconds`. Neither existed, and the
+card's two figures are not inventable from anything else the page reads.
+
+**The meters are figures, not links, and the card says why.** The ticket asks each to drill through
+to a filtered intake view, and AL.5 already emits the filter descriptors for it — but these counts
+are over the canonical `tickets` and `/issues` lists the `github_issues` mirror, which is a
+different set of rows *by design* (`R__dev_seed_ticket_planning.sql`'s header argues it, and the
+seed gives the two backlogs non-overlapping numbers). A link would land a reader on tickets that are
+not the ones counted, so AM.3a ([#968](https://github.com/NobuData/ouroboros/issues/968)) builds the
+view first.
+
+**A deliberate divergence from the mockup.** The mockup draws Jira as `epics mirror milestones` with
+a healthy dot. This build registers no Jira provider — Q.2's loop *skips* a kind it cannot resolve —
+so the row says so instead. The generator card beside it already disables Jira for the same reason,
+and the ticket's own argument (*"a capability claim, not a label"*) is what settles it.
 
 ### The roadmap gantt
 
