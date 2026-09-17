@@ -1,5 +1,6 @@
 import type {
   GeneratedPlanningBatch,
+  PlanningBacklogHealth,
   PlanningBatch,
   PlanningDraft,
   PlanningEpic,
@@ -147,12 +148,64 @@ export function writableCatalog(): TicketSourceCatalog {
   ]);
 }
 
+/* ------------------------------------------------------------ backlog health (#281, #285) */
+
+/** The instant the seeded page is read in, so every *ago* in a suite is arithmetic. */
+export const SEEDED_READ_AT = "2026-09-17T12:00:00.000Z";
+
+/**
+ * The seed's backlog health, as mockup 09's card draws it — `42 open`, `38/42 · 4 · 6`.
+ *
+ * The figures are `R__dev_seed_ticket_planning.sql`'s, which builds rows so that each falls out
+ * of the obvious aggregate: thirty-eight of forty-two open tickets sized, four blocked through a
+ * mix of planned and synced edges, six untouched for over a month.
+ *
+ * @param over What differs.
+ * @returns The payload.
+ */
+export function seededHealth(
+  over: Partial<PlanningBacklogHealth> = {},
+): PlanningBacklogHealth {
+  return {
+    open: 42,
+    sized: { count: 38, total: 42, filter: { state: "open", sizing: "unsized" } },
+    blocked: { count: 4, filter: { state: "open", blocked: true } },
+    stale: { count: 6, thresholdDays: 30, filter: { state: "open", staleDays: 30 } },
+    reestimation: {
+      schedule: { hourUtc: 2, jitterMinutes: 30, batchLimit: 100 },
+      lastRun: {
+        startedAt: "2026-09-17T02:14:00.000Z",
+        finishedAt: "2026-09-17T02:16:00.000Z",
+        status: "succeeded",
+        found: 4,
+        queued: 4,
+        inFlight: 0,
+      },
+    },
+    ...over,
+  };
+}
+
+/** A workspace that has planned and ingested nothing — AM.5's guidance path, and #285's zeros. */
+export function emptyHealth(): PlanningBacklogHealth {
+  return {
+    open: 0,
+    sized: { count: 0, total: 0, filter: { state: "open", sizing: "unsized" } },
+    blocked: { count: 0, filter: { state: "open", blocked: true } },
+    stale: { count: 0, thresholdDays: 30, filter: { state: "open", staleDays: 30 } },
+    reestimation: {
+      schedule: { hourUtc: 2, jitterMinutes: 30, batchLimit: 100 },
+      lastRun: null,
+    },
+  };
+}
+
 /**
  * What the page's reader answers with.
  *
  * @param roadmap The roadmap read. Defaults to the seed's.
  * @param over The other readings that differ. Defaults: the seed's two sources, a catalog whose
- *   GitHub writes ({@link writableCatalog}), and no batch.
+ *   GitHub writes ({@link writableCatalog}), the seed's health, and no batch.
  * @returns The readings.
  */
 export function planningReadings(
@@ -163,7 +216,9 @@ export function planningReadings(
     roadmap,
     sources: { ok: true, value: sourcePage() },
     catalog: { ok: true, value: writableCatalog() },
+    health: { ok: true, value: seededHealth() },
     batch: null,
+    now: SEEDED_READ_AT,
     ...over,
   };
 }

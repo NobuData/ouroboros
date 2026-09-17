@@ -224,11 +224,21 @@ export interface TrackerOption {
   readonly reason?: string;
 }
 
-/** The three kinds the mockup always draws, in its order — present even when nobody connected them. */
-const MOCKUP_KINDS: readonly TicketSourceKind[] = ["github", "jira", "linear"];
+/**
+ * The three kinds the mockup always draws, in its order — present even when nobody connected them.
+ *
+ * Exported for AM.3's tracker-sync rows (`sync.ts`), which draw the same three in the same order:
+ * two lists would be two things a reader has to reconcile between two cards of one page.
+ */
+export const MOCKUP_KINDS: readonly TicketSourceKind[] = ["github", "jira", "linear"];
 
-/** How each kind is named, monogrammed, tinted and called in the push button. */
-const KIND_FACE: Record<TicketSourceKind, { label: string; monogram: string; tint: TrackerTint; pushName: string }> = {
+/**
+ * How each kind is named, monogrammed, tinted and called in the push button.
+ *
+ * Exported for the reason {@link MOCKUP_KINDS} is: the tracker-sync card monograms and tints the
+ * same kinds, and a second table would let the two cards disagree about what Jira looks like.
+ */
+export const KIND_FACE: Record<TicketSourceKind, { label: string; monogram: string; tint: TrackerTint; pushName: string }> = {
   github: { label: "GitHub Issues", monogram: "GH", tint: "gh", pushName: "GitHub" },
   jira: { label: "Jira", monogram: "JI", tint: "ji", pushName: "Jira" },
   linear: { label: "Linear", monogram: "LN", tint: "ln", pushName: "Linear" },

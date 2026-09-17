@@ -9381,6 +9381,22 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /**
+             * @description How much open work this source has brought in — the count of **canonical
+             *     `tickets`** belonging to it whose `state` is `open`
+             *     ([#285](https://github.com/NobuData/ouroboros/issues/285)).
+             *
+             *     **Not the `github_issues` mirror.** The two backlogs are different tables on
+             *     purpose (`ouroboros-db/migrations/R__dev_seed_ticket_planning.sql`'s header
+             *     argues it), and mockup 09's *Tracker Sync* row — `two-way sync · 42 issues` — is
+             *     this figure, while mockup 03's head counts the mirror. A client that showed one
+             *     where the other was meant would be off by the whole difference between them.
+             *
+             *     Counted on every read rather than stored, so a sync that closes a ticket is
+             *     reflected by the next listing and no column can fall out of step.
+             * @example 42
+             */
+            openTicketCount: number;
         };
         /**
          * TicketSourcePage
@@ -9394,6 +9410,22 @@ export interface components {
             limit: number;
             /** @example 0 */
             offset: number;
+            /**
+             * @description How often this deployment polls an `active` source — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`,
+             *     the one knob both the ticket-source and backlog-sync schedulers share
+             *     ([#285](https://github.com/NobuData/ouroboros/issues/285)).
+             *
+             *     **A cadence, not a promise of an instant.** Each scheduler jitters its own sleep by
+             *     ±25% so a fleet of replicas does not stampede a tracker in lockstep, and a source
+             *     that is `paused` or `error` is not polled at all. So this is what a client renders
+             *     as *every 5m* over a list of sources — it is not a countdown, and it says nothing
+             *     about when any one source is next due.
+             *
+             *     On the page rather than on each source because one setting drives every source in
+             *     the deployment; a per-source cadence would be four copies of one number.
+             * @example 300
+             */
+            pollIntervalSeconds: number;
         };
         /**
          * TicketSourceCreate
@@ -14975,7 +15007,8 @@ export interface operations {
                      *           "credentialMask": "••••",
                      *           "syncedAt": "2026-09-12T10:00:00.000Z",
                      *           "createdAt": "2026-09-01T09:00:00.000Z",
-                     *           "updatedAt": "2026-09-12T10:00:00.000Z"
+                     *           "updatedAt": "2026-09-12T10:00:00.000Z",
+                     *           "openTicketCount": 42
                      *         },
                      *         {
                      *           "id": "5eed001a-0000-4000-8000-000000000002",
@@ -14992,12 +15025,14 @@ export interface operations {
                      *           "credentialMask": null,
                      *           "syncedAt": null,
                      *           "createdAt": "2026-09-01T09:00:00.000Z",
-                     *           "updatedAt": "2026-09-01T09:00:00.000Z"
+                     *           "updatedAt": "2026-09-01T09:00:00.000Z",
+                     *           "openTicketCount": 0
                      *         }
                      *       ],
                      *       "total": 2,
                      *       "limit": 25,
-                     *       "offset": 0
+                     *       "offset": 0,
+                     *       "pollIntervalSeconds": 300
                      *     }
                      */
                     "application/json": components["schemas"]["TicketSourcePage"];
@@ -15152,7 +15187,8 @@ export interface operations {
                      *       "credentialMask": "••••oken",
                      *       "syncedAt": null,
                      *       "createdAt": "2026-09-12T10:00:00.000Z",
-                     *       "updatedAt": "2026-09-12T10:00:00.000Z"
+                     *       "updatedAt": "2026-09-12T10:00:00.000Z",
+                     *       "openTicketCount": 0
                      *     }
                      */
                     "application/json": components["schemas"]["TicketSource"];
@@ -15513,7 +15549,8 @@ export interface operations {
                      *       "credentialMask": "••••",
                      *       "syncedAt": "2026-09-12T10:00:00.000Z",
                      *       "createdAt": "2026-09-01T09:00:00.000Z",
-                     *       "updatedAt": "2026-09-12T10:00:00.000Z"
+                     *       "updatedAt": "2026-09-12T10:00:00.000Z",
+                     *       "openTicketCount": 42
                      *     }
                      */
                     "application/json": components["schemas"]["TicketSource"];
@@ -15660,7 +15697,8 @@ export interface operations {
                      *       "credentialMask": "••••",
                      *       "syncedAt": "2026-09-12T10:00:00.000Z",
                      *       "createdAt": "2026-09-01T09:00:00.000Z",
-                     *       "updatedAt": "2026-09-12T10:05:00.000Z"
+                     *       "updatedAt": "2026-09-12T10:05:00.000Z",
+                     *       "openTicketCount": 42
                      *     }
                      */
                     "application/json": components["schemas"]["TicketSource"];
@@ -15849,7 +15887,8 @@ export interface operations {
                      *       "credentialMask": "••••oken",
                      *       "syncedAt": "2026-09-12T10:00:00.000Z",
                      *       "createdAt": "2026-09-01T09:00:00.000Z",
-                     *       "updatedAt": "2026-09-12T10:06:00.000Z"
+                     *       "updatedAt": "2026-09-12T10:06:00.000Z",
+                     *       "openTicketCount": 42
                      *     }
                      */
                     "application/json": components["schemas"]["TicketSource"];

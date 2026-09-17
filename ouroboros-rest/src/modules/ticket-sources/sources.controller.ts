@@ -40,7 +40,6 @@ import {
 } from "@nestjs/common";
 
 import type { Organization } from "../db/schema";
-import type { Page } from "../tenancy/pagination";
 import { ADMINISTRATORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
 import {
@@ -52,6 +51,7 @@ import {
 } from "./sources.dto";
 import type {
   TicketSourceCatalogResource,
+  TicketSourcePageResource,
   TicketSourceResource,
   TicketSourceStatusResource,
   TicketSourceTestResource,
@@ -73,7 +73,7 @@ export class SourcesController {
   list(
     @CurrentTenant() tenant: Organization,
     @Query() query: ListSourcesQuery,
-  ): Promise<Page<TicketSourceResource>> {
+  ): Promise<TicketSourcePageResource> {
     return this.sources.list(tenant.id, query);
   }
 

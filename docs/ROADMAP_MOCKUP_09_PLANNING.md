@@ -1050,7 +1050,7 @@ dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AM.1 | #283 | 🟢 Done | ouroboros-ui: [AM.1] Planning route, head & page frame | `/planning` frame, honest head actions, layout | mvp, planning, ui, design | N (after #41, AL.4, BA-D.5) | Y | S | ouroboros-ui |
 | AM.2 | #284 | 🟢 Done | ouroboros-ui: [AM.2] Generator card & draft flow | Prompt/outline, tracker segment, toggles, draft rows, push flow | mvp, planning, ui, design | N (after AM.1, AL.4, AL.3) | Y | L | ouroboros-ui |
-| AM.3 | #285 | 🟡 Open | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
+| AM.3 | #285 | 🟢 Done | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
 | AM.4 | #286 | 🟢 Done | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
 | AM.5 | #287 | 🟡 Open | ouroboros-ui: [AM.5] Planning states & guards | Empty org, no-writable-source, member limits, load/error | mvp, planning, ui, design | N (after AM.2–AM.4) | Y | S | ouroboros-ui |
 | AM.6 | #288 | 🟡 Open | ouroboros-ui: [AM.6] Planning e2e leg | Generate→size→select→push→queue chain; gantt edits; themes | mvp, planning, ui, ci | N (after AM.1–AM.5) | Y | M | ouroboros-ui, .github |
@@ -1172,7 +1172,7 @@ est. ~3 days · $14   [Regenerate] [Push 6 tickets to GitHub →] ─▶ ✓#612
 
 ### Issue AM.3 — ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards
 
-> **GitHub issue:** #285 · **Status:** 🟡 Open · **Parent epic:** #270
+> **GitHub issue:** #285 · **Status:** 🟢 Done · **Parent epic:** #270
 
 
 - **Problem Statement:** The side column's two cards: source connection
@@ -1198,6 +1198,50 @@ est. ~3 days · $14   [Regenerate] [Push 6 tickets to GitHub →] ─▶ ✓#612
 [LN] Linear · acme-labs — not connected ◌ [connect ↗]
 Sized ▓▓▓▓▓▓▓▓▓░ 38/42 · Blocked ▓ 4 · Stale >30d ▓ 6 · "re-runs nightly (02:14 ✓)"
 ```
+
+- **Delivered (2026-09-17):** the side column's two cards — `app/planning/sync.ts` and
+  `tracker-sync-card.tsx`, `app/planning/health.ts` and `backlog-health-card.tsx` — with
+  `ouroboros-rest` 0.35.15 adding the two figures neither card could otherwise state (additive).
+  `SIDE_REGIONS` and the placeholder `RegionCard` retired with them. Decisions taken in-issue:
+  - **Two contract fields were missing, and the ticket's criteria could not be met without them.**
+    `TicketSource.openTicketCount` (open **canonical** tickets per source, one grouped aggregate per
+    read over `V030`'s `tickets_organization_source_state_idx`, never stored) and
+    `TicketSourcePage.pollIntervalSeconds` (`OURO_BACKLOG_SYNC_INTERVAL_SECONDS`, on the envelope
+    because one knob drives every source). Nothing exposed either one.
+  - **The cadence tag is `every 5m`, not the mockup's `every 60s`.** 60 is the *minimum* the
+    configuration accepts; 300 is its default. The criterion is that the tag reflects real poll
+    configuration, so `cadenceTag` formats whatever the listing published and spells it in the
+    largest unit that divides evenly. Its tooltip says the cycle is jittered, so the tag does not
+    read as a promise about the next poll.
+  - **The direction phrase has four states, not two.** `two-way sync` where
+    `capabilities.write.createTicket` is live, `read sync` where it is declared false — and two the
+    mockup does not draw: `not syncing` for a kind the catalog does not list at all (no provider in
+    this build, so Q.2's loop skips it), and a bare `sync` with the reason where the catalog itself
+    could not be read. *Read-only* and *unknown* are different facts.
+  - **So the seeded Jira row diverges from the mockup, deliberately.** The mockup draws it as
+    `epics mirror milestones` with a healthy dot; this build registers no Jira provider, so the row
+    says `not syncing` and goes idle. The generator card beside it already disables Jira for exactly
+    this reason, and the ticket's own framing — *a capability claim, not a label* — is what settles
+    it. Drawing the mockup here would have been the card's one outright lie.
+  - **A row is named by the source's own display name**, not by the kind's label as
+    `trackerOptions` does: the mockup's `Jira · ACME workspace` is config context, a display name
+    already carries it by convention, and this keeps the card and the settings list (#141) calling
+    one source one thing.
+  - **Meter denominators come from the mockup's own widths.** Sized fills out of its own total;
+    blocked and stale out of the open backlog (4 of 42 at 10%, 6 of 42 at 14%). The stale label
+    carries the real `thresholdDays`, so a deployment counting staleness at a fortnight reads
+    `Stale > 14d`.
+  - **The drill-through is deferred to AM.3a (#968), and the card says why.** AL.5 emits the filter
+    descriptors, but these counts are over the canonical `tickets` while `/issues` (#115) lists the
+    `github_issues` mirror — different rows *by design*, which is why the seed gives the two
+    backlogs non-overlapping numbers. A link would land a reader on tickets that are not the ones
+    counted, which is worse than no link, so the meters are figures with a note naming the issue.
+  - **The nightly footnote's tooltip is the job's real last run** — instant, outcome, and this
+    workspace's own `found`/`queued`/`inFlight` — and names the schedule instead before the first
+    night, rather than implying a run that never happened.
+  - Tests: `sync.ts` (22), `health.ts` (21), the two cards (14 + 15, both palettes, the empty
+    organisation, the degraded read, and the read-only fixture the criterion asks for by name), the
+    stylesheet contract, and REST resource/repository/service specs.
 
 ### Issue AM.4 — ouroboros-ui: [AM.4] Roadmap gantt component
 

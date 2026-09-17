@@ -99,6 +99,48 @@ describe("SourcesRepository", () => {
     });
   });
 
+  describe("the open-ticket counts (#285)", () => {
+    it("counts open tickets per source in one grouped statement", async () => {
+      database.answers({ rows: [{ source_id: SOURCE_ID, open_count: "42" }] });
+
+      const counts = await repository.openTicketCounts(WORKSPACE, [SOURCE_ID]);
+
+      expect(counts.get(SOURCE_ID)).toBe(42);
+
+      const [statement] = database.statements;
+
+      expect(statement?.sql).toContain('from "ouroboros"."tickets"');
+      expect(statement?.sql).toContain("count(*)");
+      expect(statement?.sql).toContain('group by "source_id"');
+      // The leading columns of `tickets_organization_source_state_idx` (V030), in its order.
+      expect(statement?.sql).toContain('"organization_id" = $1');
+      expect(statement?.sql).toContain('"state" = $3');
+      expect(statement?.parameters).toStrictEqual([WORKSPACE, SOURCE_ID, "open"]);
+    });
+
+    it("counts only open tickets, so a closed backlog does not inflate a row", async () => {
+      database.answers({ rows: [] });
+
+      await repository.openTicketCounts(WORKSPACE, [SOURCE_ID]);
+
+      expect(database.statements[0]?.parameters).toContain("open");
+    });
+
+    it("omits a source the group produced no row for, which a caller reads as zero", async () => {
+      database.answers({ rows: [] });
+
+      const counts = await repository.openTicketCounts(WORKSPACE, [SOURCE_ID]);
+
+      expect(counts.has(SOURCE_ID)).toBe(false);
+      expect(counts.get(SOURCE_ID) ?? 0).toBe(0);
+    });
+
+    it("issues no statement for no sources", async () => {
+      expect(await repository.openTicketCounts(WORKSPACE, [])).toStrictEqual(new Map());
+      expect(database.statements).toStrictEqual([]);
+    });
+  });
+
   describe("the writes", () => {
     it("inserts with the caller's id and the config as JSON", async () => {
       await repository.insert({

@@ -252,6 +252,9 @@ export function source(over: Partial<TicketSource> = {}): TicketSource {
     syncedAt: SEEDED_SYNCED_AT,
     createdAt: "2026-09-01T09:00:00.000Z",
     updatedAt: SEEDED_SYNCED_AT,
+    // The seed's whole canonical backlog hangs off this source — `two-way sync · 42 issues`
+    // on mockup 09's first sync row (#285).
+    openTicketCount: SEEDED_OPEN_TICKETS,
     ...over,
   };
 }
@@ -270,6 +273,8 @@ export function jiraSource(over: Partial<TicketSource> = {}): TicketSource {
     credentialMask: null,
     syncedAt: null,
     updatedAt: "2026-09-01T09:00:00.000Z",
+    // No sync has ever run against it, so it has brought in nothing.
+    openTicketCount: 0,
     ...over,
   });
 }
@@ -297,15 +302,33 @@ export function seededSources(): TicketSource[] {
 }
 
 /**
+ * How many open canonical tickets the seed's GitHub source has — mockup 09's `42 issues` (#285).
+ */
+export const SEEDED_OPEN_TICKETS = 42;
+
+/**
+ * The poll cadence a default deployment publishes — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`'s own
+ * default, which is five minutes and **not** the mockup's `every 60s` (#285).
+ */
+export const SEEDED_POLL_INTERVAL_SECONDS = 300;
+
+/**
  * One page of sources.
  *
  * @param items The sources. Defaults to the seed's.
+ * @param over What differs about the envelope — the cadence, above all.
  * @returns The page.
  */
 export function sourcePage(
   items: readonly TicketSource[] = seededSources(),
 ): TicketSourcePage {
-  return { items: [...items], total: items.length, limit: 100, offset: 0 };
+  return {
+    items: [...items],
+    total: items.length,
+    limit: 100,
+    offset: 0,
+    pollIntervalSeconds: SEEDED_POLL_INTERVAL_SECONDS,
+  };
 }
 
 /**

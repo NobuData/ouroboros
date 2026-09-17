@@ -945,3 +945,148 @@
   font-family: var(--f-mono);
   font-size: var(--t-xs);
 }
+
+/* ---------- the tracker sync card (#285) ---------- */
+
+/*
+ * The mockup's `.sync-row` list: a monogram, the name over its sub-line, the status dot, and
+ * **connect ↗** on the one row that offers it.
+ *
+ * A `ul` rather than a stack of divs, so the three trackers are announced as a list of three.
+ */
+.planning-sync {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planning-sync__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.planning-sync__row:last-child {
+  border-bottom: none;
+}
+
+/* The middle column takes the slack, so the dot and the link stay against the trailing edge. */
+.planning-sync__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.planning-sync__name {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mockup sets the sub-line in mono: it is a composed statement of fact, not prose. */
+.planning-sync__sub {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* A tracker nobody connected recedes — it reports no state, so it asserts none. */
+.planning-sync__sub--absent {
+  color: var(--ink-faint);
+}
+
+/* ---------- the backlog health card (#285) ---------- */
+
+.planning-health {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.planning-health__meters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* One captioned meter: the caption row, then the bar under it. */
+.planning-health__meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/*
+ * The caption row: the label on the reading edge, its figure on the trailing one.
+ *
+ * It wraps, for the reason the dashboard's pulse card's does (#650): this card is five of the
+ * grid's twelve columns while the type inside it is `rem`, so at a large font scale the longest
+ * label (`Stale > 30d` beside `6`) needs the second line rather than an overflow.
+ */
+.planning-health__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.planning-health__label {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/* The figure takes its meter's hue, so the caption and the bar read as one statement. */
+.planning-health__value {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.planning-health__value--ok {
+  color: var(--ok);
+}
+
+.planning-health__value--warn {
+  color: var(--warn);
+}
+
+.planning-health__value--err {
+  color: var(--err);
+}
+
+.planning-health__note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* Why a meter is a figure rather than a link — the same recessive treatment as a *soon* note. */
+.planning-health__soon {
+  display: block;
+  margin-top: var(--sp-2);
+}
+
+/* The last-run line sits at the card's foot, under the footnote it makes checkable. */
+.planning-health__run {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin: auto 0 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.planning-health__info {
+  color: var(--ink-faint);
+}

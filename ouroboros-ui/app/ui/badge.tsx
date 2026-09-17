@@ -39,13 +39,22 @@ const TONE_CLASS: Record<BadgeTone, string> = {
  *
  * @param props.children The value. A tag is never empty.
  * @param props.className Classes from the page.
+ * @param props.title A tooltip, where the tag is a compression of something longer — the
+ *   planning page's `every 5m` standing for a jittered cadence. {@link Chip} carries one for
+ *   the same reason, and a tag that needed a sentence beside it would otherwise have to grow a
+ *   wrapper at every call site.
  * @returns The tag.
  */
 export function Tag({
   children,
   className,
-}: Readonly<{ children: ReactNode; className?: string }>) {
-  return <span className={cx("ou-tag", className)}>{children}</span>;
+  title,
+}: Readonly<{ children: ReactNode; className?: string; title?: string }>) {
+  return (
+    <span className={cx("ou-tag", className)} title={title}>
+      {children}
+    </span>
+  );
 }
 
 /**

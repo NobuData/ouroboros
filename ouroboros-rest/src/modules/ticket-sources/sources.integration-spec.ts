@@ -1,5 +1,6 @@
 import { ApiHarness, type Person, type Workspace } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
+import { AppConfigService } from "../config/config.service";
 import { SCHEMA_NAME } from "../db/schema";
 import { ConflictError, type ErrorEnvelope } from "../errors/error.envelope";
 import { httpError } from "../github/github.fixture";
@@ -164,6 +165,7 @@ describe("the source-management API, against a migrated database", () => {
       loop,
       registry,
       api.nest.get(VaultService),
+      api.nest.get(AppConfigService),
     );
 
     return { service, loop };
@@ -588,6 +590,27 @@ describe("the source-management API, against a migrated database", () => {
       });
       expect(status.syncedAt).not.toBeNull();
       expect(status.retryAfterSeconds).toBeGreaterThan(0);
+
+      // And the listing now counts those two open tickets against this source, and publishes
+      // the deployment's own poll cadence beside them (#285).
+      const page = await service.list(workspace.id, {});
+
+      expect(page.items.find((item) => item.id === source.id)?.openTicketCount).toBe(2);
+      expect(page.pollIntervalSeconds).toBe(
+        api.nest.get(AppConfigService).backlogSyncIntervalSeconds,
+      );
+      // A single read agrees with the page — one count, not two spellings of it.
+      expect((await service.read(workspace.id, source.id)).openTicketCount).toBe(2);
+    });
+
+    it("counts a source that has synced nothing as zero, not as unknown (#285)", async () => {
+      const { owner, workspace } = await owned();
+      const source = await added(owner, workspace);
+      const { service } = serviceOver({ issues: { [SOURCE_REPO]: [[]] } });
+
+      const page = await service.list(workspace.id, {});
+
+      expect(page.items.find((item) => item.id === source.id)?.openTicketCount).toBe(0);
     });
 
     it("is debounced: a second sync inside the interval is refused with the wait", async () => {

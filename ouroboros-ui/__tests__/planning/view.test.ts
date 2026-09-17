@@ -6,12 +6,14 @@ import {
   PLANNING_EYEBROW,
   PLANNING_SUBLINE,
   PLANNING_TITLE,
+  ROADMAP_REGION_ID,
   ROADMAP_TITLE,
-  SIDE_REGIONS,
   newRoadmapReason,
   roadmapTitle,
 } from "@/app/planning/view";
 import { GENERATOR_TITLE_ID } from "@/app/planning/generator";
+import { HEALTH_TITLE_ID } from "@/app/planning/health";
+import { SYNC_TITLE_ID } from "@/app/planning/sync";
 
 import { EMPTY_ROADMAP, seededRoadmap } from "../helpers/planning";
 
@@ -40,13 +42,10 @@ describe("the head", () => {
 });
 
 describe("the regions", () => {
-  it("name the issues that fill them", () => {
-    expect(SIDE_REGIONS.map((region) => region.title)).toEqual(["Tracker sync", "Backlog health"]);
-    for (const region of SIDE_REGIONS) expect(region.note).toMatch(/#285/);
-  });
-
+  // AM.3 (#285) built the side column, so the placeholder `SIDE_REGIONS` retired with it. What
+  // is left to hold is that the four cards still take four distinct heading ids.
   it("give every region a distinct heading id", () => {
-    const ids = [GENERATOR_TITLE_ID, ...SIDE_REGIONS.map((region) => region.id)];
+    const ids = [GENERATOR_TITLE_ID, SYNC_TITLE_ID, HEALTH_TITLE_ID, ROADMAP_REGION_ID];
 
     expect(new Set(ids).size).toBe(ids.length);
   });

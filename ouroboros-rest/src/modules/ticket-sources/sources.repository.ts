@@ -154,6 +154,44 @@ export class SourcesRepository {
   }
 
   /**
+   * How much open work each of these sources has brought in
+   * ([#285](https://github.com/NobuData/ouroboros/issues/285)).
+   *
+   * **Counted, never stored.** A column would have to be written by every path that closes a
+   * ticket — a sync, a push, a webhook — and the first one that forgot would leave the *Tracker
+   * Sync* card asserting a figure nothing could reproduce. `V030`'s
+   * `tickets_organization_source_state_idx` is `(organization_id, source_id, state)`, which is
+   * exactly this grouping's prefix, so the count is an index scan rather than a table one.
+   *
+   * One statement for the whole page rather than one per row: a workspace with four sources is
+   * one aggregate, not four round trips.
+   *
+   * @param organizationId - The workspace.
+   * @param sourceIds - Which sources.
+   * @returns Source id to its number of `open` tickets. **Absent for a source with none** —
+   *   `group by` produces no row for an empty group — which every caller reads as zero.
+   */
+  async openTicketCounts(
+    organizationId: string,
+    sourceIds: readonly string[],
+  ): Promise<ReadonlyMap<string, number>> {
+    if (sourceIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.database.db
+      .selectFrom("tickets")
+      .select(({ fn }) => ["source_id", fn.countAll<string>().as("open_count")])
+      .where("organization_id", "=", organizationId)
+      .where("source_id", "in", [...sourceIds])
+      .where("state", "=", "open")
+      .groupBy("source_id")
+      .execute();
+
+    return new Map(rows.map((row) => [row.source_id, Number(row.open_count)]));
+  }
+
+  /**
    * Store a new source.
    *
    * @param row - What to store. The id is the caller's — see {@link NewSourceRow}.

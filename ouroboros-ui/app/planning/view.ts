@@ -20,7 +20,11 @@
  */
 
 import type { Reading } from "@/app/api/reading";
-import type { PlanningBatch, PlanningRoadmap } from "@/app/api/planning";
+import type {
+  PlanningBacklogHealth,
+  PlanningBatch,
+  PlanningRoadmap,
+} from "@/app/api/planning";
 import type { TicketSourceCatalog, TicketSourcePage } from "@/app/api/sources";
 
 /* ------------------------------------------------------------------ the head */
@@ -70,30 +74,6 @@ export function newRoadmapReason(mayAdminister: boolean): string | undefined {
 
 /* ------------------------------------------------------------------ the regions */
 
-/** One of the frame's regions that a later issue fills. */
-export interface PlanningRegion {
-  /** The element id its heading takes — the region's `aria-labelledby` target. */
-  readonly id: string;
-  /** The card's title, as the mockup names it (the card head upper-cases it). */
-  readonly title: string;
-  /** The one line naming the issue that fills it — honest about what is not built yet. */
-  readonly note: string;
-}
-
-/** The side column's two cards, `c-5`, top first — both AM.3. */
-export const SIDE_REGIONS: readonly PlanningRegion[] = [
-  {
-    id: "planning-sync-title",
-    title: "Tracker sync",
-    note: "Tracker sync status arrives with #285.",
-  },
-  {
-    id: "planning-health-title",
-    title: "Backlog health",
-    note: "Backlog health arrives with #285.",
-  },
-];
-
 /** The roadmap card's heading id. */
 export const ROADMAP_REGION_ID = "planning-roadmap-title";
 
@@ -125,10 +105,17 @@ export const ROADMAP_UNREAD = "The roadmap could not be read.";
 export interface PlanningReadings {
   /** The roadmap — its head and lanes — or why it could not be read. */
   readonly roadmap: Reading<PlanningRoadmap>;
-  /** The workspace's ticket sources — the generator's tracker segment (AM.2). */
+  /**
+   * The workspace's ticket sources — the generator's tracker segment (AM.2) and the tracker-sync
+   * rows (AM.3), which also read the page's `pollIntervalSeconds` for the cadence tag.
+   */
   readonly sources: Reading<TicketSourcePage>;
   /** The source catalog, which carries each kind's write capability (AL.2). */
   readonly catalog: Reading<TicketSourceCatalog>;
+  /** The backlog health figures the health card's meters are (AL.5, drawn by AM.3). */
+  readonly health: Reading<PlanningBacklogHealth>;
   /** The batch a `?batch=` address names, or `null` when it names none (AM.2). */
   readonly batch: Reading<PlanningBatch> | null;
+  /** The instant the page was read, ISO 8601 — see `data.ts`'s note on why it is taken once. */
+  readonly now: string;
 }
