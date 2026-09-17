@@ -261,6 +261,12 @@ jobs:
       # and the one-draft index. A run pins the version it executed, so these are the rules
       # that keep *"what did that run do"* answerable.
       #
+      # #276 adds **planning**'s nine: both dependency endpoint one-kind checks, the push-state
+      # vocabulary and the trigger that keeps `pushed` terminal, the month range's order and
+      # pairing, the tint and status vocabularies, and the batch-local key. The acyclicity half
+      # of that ticket is data rather than a rule, so it is planted, not dropped — see the
+      # seeded-database step below.
+      #
       # The routing rows are #193's whole acceptance criterion — *"dropping any single
       # routing invariant turns it red"* — the registry rows are #583's, in its own
       # words: *"removing any one of the registry constraints turns it red"*, and the intake
@@ -395,6 +401,30 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tests/lib/seeded-definitions.sql \
               > "$RUNNER_TEMP/seeded-definitions.json"
           ouroboros-db/scripts/workflow-dsl-drift.mjs "$RUNNER_TEMP/seeded-definitions.json"
+
+      # AK.5 (#276): the planning invariants AL.3's dependency-ordered push and AL.4's
+      # service-side acyclicity rely on, asked of the seeded rows. constraints.sql already runs
+      # them as its AK.5 section, over its own fixtures; this is the second way in, for the
+      # database that file cannot be pointed at — and the one holding AK.4's (#275) mockup-09
+      # graph, batch and lanes, which is what "green against the seeds" means.
+      #
+      # Then the half a green run cannot say about itself. A stored cycle is data, not a dropped
+      # rule, so verify-constraint-probes.sh above has nothing to mutate for it:
+      # verify-planning-invariants.sh plants one — and a reversed month range, a half-null pair,
+      # a duplicate local key, an out-of-vocabulary push state, a two-kind endpoint and a foreign
+      # tint and status, each under the rule it dropped first — and requires red naming the
+      # invariant each time. Every plant is rolled back, and the registry step below re-runs
+      # seed.sql against this database, which says so rather than assuming it. The pair takes
+      # well under a second.
+      - name: Assert the planning invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/planning-invariants.sql
+          OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-planning-invariants.sh --runner docker
 
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is

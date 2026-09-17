@@ -464,6 +464,14 @@ check_contains "$DB_WORKFLOW" 'tests/lib/seeded-definitions\.sql' \
 check_contains "$DB_WORKFLOW" 'workflow-dsl-drift\.mjs' \
   'db.yml validates every seeded workflow definition against the DSL schema'
 
+# The planning invariants (#276), both halves. The suite is what says the seeded rows hold every
+# invariant; the verifier is what says the suite would notice if they did not — a planted cycle
+# is data, so no mutation of the schema can stand in for it.
+check_contains "$DB_WORKFLOW" 'tests/planning-invariants\.sql' \
+  'db.yml asserts the planning invariants against the seeded database'
+check_contains "$DB_WORKFLOW" 'tests/verify-planning-invariants\.sh' \
+  'db.yml plants bad planning rows and requires the invariants to go red'
+
 # It reads the library out of the installed dependency, so the job has to install and
 # build. Without the build the check cannot load the configuration that decides the
 # schema, and would fail for a reason that has nothing to do with drift.

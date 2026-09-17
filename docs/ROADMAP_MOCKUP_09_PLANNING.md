@@ -227,7 +227,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | AK.2 | #273 | 🟢 Done | ouroboros-db: [AK.2] Ticket dependencies schema | Canonical + draft `blocks` relations (N4), health-metric feeds | mvp, planning, db | N (after AK.1) | Y | S | ouroboros-db |
 | AK.3 | #274 | 🟢 Done | ouroboros-db: [AK.3] Planning epics & tracker mirrors | Lanes: tint, month range, status, mirror refs, ticket links | mvp, planning, db | N (after AK.1) | Y | M | ouroboros-db |
 | AK.4 | #275 | 🟢 Done | ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity | Batch OTA-1…6, five epics, health-shaping tickets | mvp, planning, db | N (after AK.2, AK.3) | Y | S | ouroboros-db |
-| AK.5 | #276 | 🟡 Open | ouroboros-db: [AK.5] Planning constraints in ci/db | Dependency acyclicity probe, push-state vocab, range checks | mvp, planning, db, ci | N (after AK.4, #24) | Y | XS | ouroboros-db, .github |
+| AK.5 | #276 | 🟢 Done | ouroboros-db: [AK.5] Planning constraints in ci/db | Dependency acyclicity probe, push-state vocab, range checks | mvp, planning, db, ci | N (after AK.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue AK.1 — ouroboros-db: [AK.1] Draft batches & ticket drafts schema
 
@@ -552,7 +552,7 @@ seeds: OTA batch (6 sized drafts + deps) · 5 epics (tints, ranges, chip math)
 
 ### Issue AK.5 — ouroboros-db: [AK.5] Planning constraints in ci/db
 
-> **GitHub issue:** #276 · **Status:** 🟡 Open · **Parent epic:** #268
+> **GitHub issue:** #276 · **Status:** 🟢 Done · **Parent epic:** #268
 
 
 - **Problem Statement:** Dependency acyclicity, push-state transitions, and
@@ -570,6 +570,29 @@ seeds: OTA batch (6 sized drafts + deps) · 5 epics (tints, ranges, chip math)
 ```
 ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges ✓) ─▶ ✓/✗
 ```
+
+- **Delivered (2026-09-17):** `ouroboros-db`'s
+  [`tests/lib/planning-invariants.sql`](../ouroboros-db/tests/lib/planning-invariants.sql) — the
+  invariants, named — included as `constraints.sql`'s AK.5 section and run on its own against the
+  seeded database by [`tests/planning-invariants.sql`](../ouroboros-db/tests/planning-invariants.sql);
+  [`tests/verify-planning-invariants.sh`](../ouroboros-db/tests/verify-planning-invariants.sh) and
+  nine planning mutations in `tests/verify-constraint-probes.sh`; a `ci/db` step. Decisions taken
+  in-issue:
+  - **Rows as well as rules.** Every rule already had a behavioural probe from AK.1–AK.3, so AK.5
+    asserts the *stored rows* satisfy each invariant — no cycle, one-kind endpoints, push states,
+    tints and statuses in vocabulary, ranges ordered and paired, local keys unique — then asks the
+    catalogue for each rule by name (the push-state trigger for being enabled). Every message opens
+    with the invariant's name.
+  - **One walk.** The recursive CTE moved to `tests/lib/dependency-cycles.sql`, so the V035 section's
+    planted-cycle proof is a proof about the walk CI runs rather than a copy of it.
+  - **Planted, not dropped.** A stored cycle is data, and `constraints.sql` clears every workspace
+    before it asserts, so the red-on-planted-row criteria are verified against the seeded database:
+    ten plants (a ticket cycle, a draft cycle, and — each under the rule it drops first — two bad
+    endpoints, a `queued` push state, a reversed and a half-null range, a bad tint and status, a
+    second `OTA-3`), each required red naming its invariant. Under a second.
+  - **Schema side too.** Nine drops in `verify-constraint-probes.sh`. The push-state vocabulary gained
+    its own probe in V034's section, since `ticket_drafts_push_state_coherent`'s `else false` would
+    otherwise have hidden its loss.
 
 ---
 
