@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  GENERATOR_REGION,
   IMPORT_JIRA_SOON_NOTE,
   NEW_ROADMAP_ROLE_REASON,
   PLANNING_EYEBROW,
@@ -14,6 +13,7 @@ import {
   newRoadmapReason,
   roadmapTitle,
 } from "@/app/planning/view";
+import { GENERATOR_TITLE_ID } from "@/app/planning/generator";
 
 import { EMPTY_ROADMAP, seededRoadmap } from "../helpers/planning";
 
@@ -43,14 +43,13 @@ describe("the head", () => {
 
 describe("the regions", () => {
   it("name the issues that fill them", () => {
-    expect(GENERATOR_REGION.note).toMatch(/#284/);
     expect(SIDE_REGIONS.map((region) => region.title)).toEqual(["Tracker sync", "Backlog health"]);
     for (const region of SIDE_REGIONS) expect(region.note).toMatch(/#285/);
     expect(ROADMAP_GANTT_NOTE).toMatch(/#286/);
   });
 
   it("give every region a distinct heading id", () => {
-    const ids = [GENERATOR_REGION, ...SIDE_REGIONS].map((region) => region.id);
+    const ids = [GENERATOR_TITLE_ID, ...SIDE_REGIONS.map((region) => region.id)];
 
     expect(new Set(ids).size).toBe(ids.length);
   });

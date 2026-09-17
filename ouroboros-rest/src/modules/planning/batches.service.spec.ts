@@ -609,6 +609,11 @@ describe("pushing a batch", () => {
       selected: true,
       pushState: "pushed",
       pushedTicketId: "ticket-613",
+      pushedTicket: {
+        externalId: "613",
+        externalKey: "#613",
+        url: "https://github.com/acme-robotics/helios-firmware/issues/613",
+      },
       pushError: null,
     });
   });

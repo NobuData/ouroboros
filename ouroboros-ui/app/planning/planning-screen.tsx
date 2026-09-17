@@ -1,8 +1,9 @@
 import { Button, Card, CardHead, EmptyState, Eyebrow, Tag } from "@/app/ui";
 
+import { GeneratorCard } from "./generator-card";
+import { SOURCES_UNREAD, trackerOptions } from "./generator";
 import { NewRoadmap } from "./new-roadmap";
 import {
-  GENERATOR_REGION,
   IMPORT_JIRA_LABEL,
   IMPORT_JIRA_SOON_NOTE,
   PLANNING_EYEBROW,
@@ -41,23 +42,26 @@ import "./planning.css";
  *
  * ### The grid: the mockup's 7 / 5, then 12
  *
- * The generator card (`c-7`, AM.2 [#284](https://github.com/NobuData/ouroboros/issues/284)) beside
- * a column of the tracker sync and backlog health cards (`c-5`, AM.3
- * [#285](https://github.com/NobuData/ouroboros/issues/285)), and the roadmap card full width below
- * (`c-12`, AM.4 [#286](https://github.com/NobuData/ouroboros/issues/286)). Each region that a
- * later issue fills says which issue, rather than drawing a mock of what it will hold. The roadmap
- * card is headed from the real roadmap read, so a roadmap just created shows here.
+ * The generator card (`c-7`, AM.2 [#284](https://github.com/NobuData/ouroboros/issues/284) —
+ * `app/planning/generator-card.tsx`) beside a column of the tracker sync and backlog health cards
+ * (`c-5`, AM.3 [#285](https://github.com/NobuData/ouroboros/issues/285)), and the roadmap card full
+ * width below (`c-12`, AM.4 [#286](https://github.com/NobuData/ouroboros/issues/286)). Each region
+ * that a later issue fills says which issue, rather than drawing a mock of what it will hold. The
+ * roadmap card is headed from the real roadmap read, so a roadmap just created shows here.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles the
- *   roadmap's writes are for.
+ *   roadmap's writes and the generator's push are for.
+ * @param props.mayContribute Whether this reader may draft tickets — `owner`, `admin` or `member`.
  * @returns The screen.
  */
 export function PlanningScreen({
   readings,
   mayAdminister,
-}: Readonly<{ readings: PlanningReadings; mayAdminister: boolean }>) {
+  mayContribute,
+}: Readonly<{ readings: PlanningReadings; mayAdminister: boolean; mayContribute: boolean }>) {
   const { roadmap } = readings;
+  const trackers = trackerOptions(readings.sources.ok ? readings.sources.value.items : [], readings.catalog);
 
   return (
     <main className="planning">
@@ -79,7 +83,13 @@ export function PlanningScreen({
 
       <div className="planning__grid">
         <div className="planning__generator">
-          <RegionCard region={GENERATOR_REGION} />
+          <GeneratorCard
+            batch={readings.batch}
+            mayAdminister={mayAdminister}
+            mayContribute={mayContribute}
+            trackers={trackers}
+            trackersUnread={readings.sources.ok ? null : `${SOURCES_UNREAD} ${readings.sources.reason}`}
+          />
         </div>
         <div className="planning__side">
           {SIDE_REGIONS.map((region) => (

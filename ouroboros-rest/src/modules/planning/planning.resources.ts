@@ -16,6 +16,7 @@ import type {
   ReestimationRunStatus,
 } from "../db/schema";
 import type { Effort } from "../engine/engine.contract";
+import type { TicketWriteRef } from "../ticket-sources/ticket-source.write";
 import type { PushReport } from "./push.service";
 
 /** One draft's estimate in force — the row's effort chip and the footer's inputs. */
@@ -58,6 +59,8 @@ export interface DraftResource {
   readonly pushState: DraftPushState;
   /** The canonical ticket, once pushed. */
   readonly pushedTicketId: string | null;
+  /** The tracker's `#612` and its link, once pushed — what `pushed ✓ #612` renders. */
+  readonly pushedTicket: TicketWriteRef | null;
   /** Why the push failed, when it did. */
   readonly pushError: DraftPushError | null;
   /** The estimate in force, or null while unsized. */
@@ -126,6 +129,8 @@ export interface PushStatusDraftResource {
   readonly selected: boolean;
   readonly pushState: DraftPushState;
   readonly pushedTicketId: string | null;
+  /** The tracker's `#612` and its link, once pushed. */
+  readonly pushedTicket: TicketWriteRef | null;
   readonly pushError: DraftPushError | null;
 }
 

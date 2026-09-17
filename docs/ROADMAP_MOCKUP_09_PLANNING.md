@@ -1021,7 +1021,7 @@ dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AM.1 | #283 | 🟢 Done | ouroboros-ui: [AM.1] Planning route, head & page frame | `/planning` frame, honest head actions, layout | mvp, planning, ui, design | N (after #41, AL.4, BA-D.5) | Y | S | ouroboros-ui |
-| AM.2 | #284 | 🟡 Open | ouroboros-ui: [AM.2] Generator card & draft flow | Prompt/outline, tracker segment, toggles, draft rows, push flow | mvp, planning, ui, design | N (after AM.1, AL.4, AL.3) | Y | L | ouroboros-ui |
+| AM.2 | #284 | 🟢 Done | ouroboros-ui: [AM.2] Generator card & draft flow | Prompt/outline, tracker segment, toggles, draft rows, push flow | mvp, planning, ui, design | N (after AM.1, AL.4, AL.3) | Y | L | ouroboros-ui |
 | AM.3 | #285 | 🟡 Open | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
 | AM.4 | #286 | 🟡 Open | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
 | AM.5 | #287 | 🟡 Open | ouroboros-ui: [AM.5] Planning states & guards | Empty org, no-writable-source, member limits, load/error | mvp, planning, ui, design | N (after AM.2–AM.4) | Y | S | ouroboros-ui |
@@ -1075,7 +1075,7 @@ dark-only).
 
 ### Issue AM.2 — ouroboros-ui: [AM.2] Generator card & draft flow
 
-> **GitHub issue:** #284 · **Status:** 🟡 Open · **Parent epic:** #270
+> **GitHub issue:** #284 · **Status:** 🟢 Done · **Parent epic:** #270
 
 
 - **Problem Statement:** The page's centerpiece: prompt + outline entry,
@@ -1111,6 +1111,36 @@ dark-only).
 ☑ OTA-1 Partition table… blocks OTA-3 [L][feature-loop]
 est. ~3 days · $14   [Regenerate] [Push 6 tickets to GitHub →] ─▶ ✓#612 ✓#613 ✗retry…
 ```
+
+- **Delivered (2026-09-17):** `ouroboros-ui` 0.77.0 — `app/planning/generator-card.tsx` (with
+  `tracker-segment.tsx`, `milestone-field.tsx`, `draft-row.tsx`), `generator.ts` (every judgement and
+  sentence), `generator-actions.ts` (generate, regenerate, patch, push/resume, milestones),
+  `batch-poll.ts` + `app/api/planning-batch.ts` + `GET /api/planning/batches/{id}` (the sizing poll),
+  and the seven operations in `app/api/planning.ts`. `ouroboros-rest` 0.35.12 adds `pushedTicket`
+  (additive). Decisions taken in-issue:
+  - **The address carries the batch** — generating replaces it with `/planning?batch=<id>`, so a reload
+    or #519's **Edit drafts** deep link opens the same batch; the seeded batch is
+    `/planning?batch=5eed0021-0000-4000-8000-000000000001`. AL.4 has no batch listing, so a bare
+    `/planning` opens an empty card. The planner's `notes` are not stored, so only the generation's
+    own answer shows the guidance hint.
+  - **`pushed ✓ #612` needed the ticket's ref on the reads.** AL.4's batch read carried only
+    `pushedTicketId`; `PlanningDraft` and `push-status` now carry `pushedTicket`
+    (`externalKey`, `url`) from `tickets`, so the link is true after a reload, not only in the push's
+    answer.
+  - **Sizing progress is a poll**, over this origin's route handler, at 3 s while a draft waits on the
+    estimator and the contract's 15 s after. `✓ all sized` is stricter than `summary.allSized`: every
+    draft, not only every selected one; until then a `sized N of M` chip stands in its place.
+  - **The tracker segment always draws the mockup's three kinds**; a kind nobody connected is one
+    disabled button saying so, a connected kind the catalog cannot write to is disabled with the
+    catalog's `push.reason`, and every connected source is a button of its own.
+  - **Creating a milestone is naming it** — AL.3's push ensures a milestone by name, so
+    *New milestone…* is a text field and nothing reaches the tracker until the push.
+  - **Segmented and Checkbox are page compositions**, not new `app/ui` primitives: the segment is a
+    `role="group"` of `aria-pressed` buttons and the checkbox is the platform's, both styled from
+    tokens in `planning.css`.
+  - **Roles**: drafting, selecting and editing are `owner|admin|member`; push and resume are
+    `owner|admin`; a viewer reads — each inert control carries its reason.
+  - The compose-backed generate → push run and the partial-failure e2e are AM.6 (#288).
 
 ### Issue AM.3 — ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards
 

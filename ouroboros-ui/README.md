@@ -36,7 +36,9 @@
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
 > the six that are built — the dashboard, Issues, Workflows, Models, Planning
-> ([#283](https://github.com/NobuData/ouroboros/issues/283)) and Settings — is
+> ([#283](https://github.com/NobuData/ouroboros/issues/283), with its
+> [generator card](#the-generator-card) from [#284](https://github.com/NobuData/ouroboros/issues/284))
+> and Settings — is
 > labelled *soon* rather than linked.
 
 ## Purpose
@@ -2621,16 +2623,18 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 
 `/planning` ([#283](https://github.com/NobuData/ouroboros/issues/283)) is
 [`docs/mockups/09-planning.html`](../docs/mockups/09-planning.html)'s **frame**: the page head,
-its two actions, and the grid the three regions sit in. The sidebar's **Planning** entry is live
-and leads here; the mockup's topbar is superseded by the shell.
+its two actions, and the grid the three regions sit in — with the
+[generator card](#the-generator-card) ([#284](https://github.com/NobuData/ouroboros/issues/284))
+in its `c-7`. The sidebar's **Planning** entry is live and leads here; the mockup's topbar is
+superseded by the shell.
 
 ```
 PLANNING
 Describe the work. Ouroboros writes the tickets.                 [Import from Jira SOON] [New roadmap]
 Draft epics and tickets straight into GitHub Issues, Jira, or Linear — sized by the
 estimator, wired with dependencies, and queued for the loop the moment you approve them.
-┌ GENERATE TICKETS ─────────────────────┐ ┌ TRACKER SYNC ──────────────────┐
-│ The ticket generator arrives with #284│ │ …arrives with #285             │
+┌ GENERATE TICKETS ─── [estimator v0] ──┐ ┌ TRACKER SYNC ──────────────────┐
+│ prompt · outline · trackers · drafts  │ │ …arrives with #285             │
 │                                       │ ├ BACKLOG HEALTH ────────────────┤
 └───────────────────────────────────────┘ └────────────────────────────────┘
 ┌ ROADMAP — HELIOS 2.1  [Q3–Q4 2026] ───────────────────────────────────────┐
@@ -2653,8 +2657,52 @@ page refreshes and the roadmap card is headed with the name. AM.4
 ([#286](https://github.com/NobuData/ouroboros/issues/286)) grows this into the gantt's editor.
 
 **The grid is the mockup's 7 / 5 + 12**, collapsing to one column below `68.75rem`. Each region a
-later issue fills says which issue rather than mocking its content; the roadmap card alone reads
-real data, and a failed read degrades that card rather than the page.
+later issue fills says which issue rather than mocking its content; the generator and roadmap cards
+read real data, and a failed read degrades that card rather than the page.
+
+### The generator card
+
+[`generator-card.tsx`](app/planning/generator-card.tsx) is the mockup's `c-7`
+([#284](https://github.com/NobuData/ouroboros/issues/284)). Every judgement it draws is a pure
+function in [`generator.ts`](app/planning/generator.ts); every write is a Server Action in
+[`generator-actions.ts`](app/planning/generator-actions.ts).
+
+```
+prompt ─ ▸ structured outline ─ (GH●|JI|LN) [Milestone ▾] [auto-size][queue XS/S] [Draft tickets ⟳]
+  │                                                                   │
+  │               POST /planning/batches ◀────────────────────────────┘  → /planning?batch=<id>
+  ▼
+DRAFT — 6 TICKETS  [✓ all sized]     ◀── GET /api/planning/batches/{id}  every 3 s while sizing
+☑ OTA-1  Partition table…  blocks OTA-3  [L] [feature-loop] [Edit]   ── PATCH …/drafts/{key}
+est. total ~3 days of loop time · $14 est. spend   [Regenerate] [Push 6 tickets to GitHub →]
+                                                                      └─ push / push/resume
+```
+
+| Rule | Where it is kept |
+|---|---|
+| `✓ all sized` only when **every** draft has an estimate; `sizing…` per row, `sized N of M` until then | `allSized`, `rowSizing` |
+| A tracker nobody connected, or one the catalog cannot write to, is **disabled with its reason** — never a push that fails on click | `trackerOptions`, `pushReason` |
+| The push button's count is the **live** selection — a click moves it before the service answers, and a refusal puts it back | `selectedCount`, the card's pending map |
+| The footer's `$` exists only when `summary.spend` does (N10); a partial price is a floor, `$14+` | `footerText` |
+| Each draft says what its push did — `pushed ✓ #612` (a link), `failed — reason` — and **Resume push** appears exactly while something selected did not land | `rowPush`, `pushMode` |
+| Narrative-only input's `notes` render as a hint whose action opens and focuses the outline | the card's guidance aside |
+
+**The address carries the batch.** Generating replaces it with `/planning?batch=<id>`, so a reload,
+a shared link, or another surface's deep link (#519's **Edit drafts**) opens the same batch —
+the seeded one is `/planning?batch=5eed0021-0000-4000-8000-000000000001`. The planner's `notes` are
+not stored by the service, so only a generation's own answer shows them.
+
+**The batch drawn is the newest heard.** A batch arrives from the server read, from an action's
+answer and from the poll ([`batch-poll.ts`](app/planning/batch-poll.ts), answered by
+[`app/api/planning/batches/[id]/route.ts`](app/api/planning/batches/[id]/route.ts)); each is
+stamped and the newest wins, and every action asks the poll again so an answer already in the air is
+dropped. The route handler sets the cadence from the batch — 3 s while a draft waits on the
+estimator, the contract's 15 s after — and a push in flight asks every 2 s so rows land as they do.
+
+**Roles.** Drafting, selecting and editing are `owner|admin|member`; push and resume are
+`owner|admin`; a viewer reads. **Milestones** are the chosen tracker's own; *New milestone…* is a
+name, created by the push. **Keyboard:** the segment's buttons and each row's checkbox are tab stops;
+**Edit** moves focus into its title, **Escape** returns it to **Edit**.
 
 ## Workflow Studio
 

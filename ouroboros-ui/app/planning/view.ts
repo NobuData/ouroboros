@@ -20,7 +20,8 @@
  */
 
 import type { Reading } from "@/app/api/reading";
-import type { PlanningRoadmap } from "@/app/api/planning";
+import type { PlanningBatch, PlanningRoadmap } from "@/app/api/planning";
+import type { TicketSourceCatalog, TicketSourcePage } from "@/app/api/sources";
 
 /* ------------------------------------------------------------------ the head */
 
@@ -79,13 +80,6 @@ export interface PlanningRegion {
   readonly note: string;
 }
 
-/** The generator card, `c-7` — AM.2. */
-export const GENERATOR_REGION: PlanningRegion = {
-  id: "planning-generator-title",
-  title: "Generate tickets",
-  note: "The ticket generator arrives with #284.",
-};
-
 /** The side column's two cards, `c-5`, top first — both AM.3. */
 export const SIDE_REGIONS: readonly PlanningRegion[] = [
   {
@@ -140,8 +134,14 @@ export function laneCount(lanes: number): string {
 /** What the roadmap card is headed with when the read failed, before the service's reason. */
 export const ROADMAP_UNREAD = "The roadmap could not be read.";
 
-/** Everything the planning frame reads. */
+/** Everything the planning page reads. */
 export interface PlanningReadings {
   /** The roadmap — its head and lanes — or why it could not be read. */
   readonly roadmap: Reading<PlanningRoadmap>;
+  /** The workspace's ticket sources — the generator's tracker segment (AM.2). */
+  readonly sources: Reading<TicketSourcePage>;
+  /** The source catalog, which carries each kind's write capability (AL.2). */
+  readonly catalog: Reading<TicketSourceCatalog>;
+  /** The batch a `?batch=` address names, or `null` when it names none (AM.2). */
+  readonly batch: Reading<PlanningBatch> | null;
 }

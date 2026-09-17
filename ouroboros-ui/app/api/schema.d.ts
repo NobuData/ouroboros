@@ -11566,6 +11566,11 @@ export interface components {
             /** @enum {string} */
             pushState: "pending" | "pushed" | "failed";
             pushedTicketId: string | null;
+            /**
+             * @description The tracker's own identity for the pushed ticket — `#612` and its link — so a reload can
+             *     still render `pushed ✓ #612`. Null until the draft is pushed.
+             */
+            pushedTicket: components["schemas"]["PlanningTicketRef"] | null;
             pushError: components["schemas"]["PlanningDraftPushError"] | null;
             estimate: components["schemas"]["PlanningDraftEstimate"] | null;
         };
@@ -11708,6 +11713,8 @@ export interface components {
                 /** @enum {string} */
                 pushState: "pending" | "pushed" | "failed";
                 pushedTicketId: string | null;
+                /** @description `#612` and its link, once pushed — `pushed ✓ #612` as a link. */
+                pushedTicket: components["schemas"]["PlanningTicketRef"] | null;
                 pushError: components["schemas"]["PlanningDraftPushError"] | null;
             }[];
         };
@@ -29310,6 +29317,7 @@ export interface operations {
                      *           "blockedByTicketIds": [],
                      *           "pushState": "pending",
                      *           "pushedTicketId": null,
+                     *           "pushedTicket": null,
                      *           "pushError": null,
                      *           "estimate": {
                      *             "effort": "s",

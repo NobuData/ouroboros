@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The properties of `app/planning/planning.css` that are agreements with something outside it
- * (#283). The generic rules — no colour literal outside the token sheet, no px type — are
+ * (#283, #284). The generic rules — no colour literal outside the token sheet, no px type — are
  * `__tests__/styles.test.ts`'s and stylelint's; what is here is that the sheet and the components
  * name the same classes, that every length scales and every hue is a token (which is what *both
  * themes* and *the 125% font scale* can be verified as, since jsdom applies no stylesheet), the
@@ -36,10 +36,14 @@ function rule(selector: string): string {
 /** Every page class the sheet declares. */
 const DECLARED = new Set([...CODE.matchAll(/\.(planning[a-z0-9_-]*)/g)].map((match) => match[1]!));
 
-/** Every page class a component renders. */
+/**
+ * Every page class a component renders — in a `className="…"`, or in a string literal made only of
+ * page classes, which is how a `cx(…)` modifier or a lookup table of classes names one (#284). Ids
+ * live in the `.ts` modules, so a quoted `planning…` in a component is a class.
+ */
 const RENDERED = new Set(
-  [...COMPONENT.matchAll(/className="([^"]+)"/g)]
-    .flatMap((match) => match[1]!.split(/\s+/))
+  [...COMPONENT.matchAll(/"((?:planning[a-z0-9_-]*\s*)+)"/g)]
+    .flatMap((match) => match[1]!.trim().split(/\s+/))
     .filter((name) => name.startsWith("planning")),
 );
 
@@ -89,5 +93,28 @@ describe("the shell", () => {
 
   it("scrolls nothing of its own, so the content pane is the one scroll container", () => {
     expect(CODE).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/);
+  });
+});
+
+describe("the generator card (#284)", () => {
+  it("tints the three monograms with the mockup's token hues — accent, model, ok", () => {
+    expect(rule("\\.planning-mgram--gh")).toMatch(/color:\s*var\(--accent\)/);
+    expect(rule("\\.planning-mgram--ji")).toMatch(/color:\s*var\(--model\)/);
+    expect(rule("\\.planning-mgram--ln")).toMatch(/color:\s*var\(--ok\)/);
+  });
+
+  it("marks the selected tracker in the accent and the unwritable ones as unavailable", () => {
+    expect(rule("\\.planning-seg__option--selected")).toMatch(/color:\s*var\(--accent\)/);
+    expect(rule('\\.planning-seg__option\\[aria-disabled="true"\\]')).toMatch(/cursor:\s*not-allowed/);
+  });
+
+  it("never gives the outline region a display, so its `hidden` attribute keeps working", () => {
+    expect(rule("\\.planning-gen__outline")).not.toMatch(/display/);
+  });
+
+  it("sets every type size in the generator through a token", () => {
+    const generator = CODE.slice(CODE.indexOf(".planning-gen {"));
+
+    for (const [, value] of generator.matchAll(/font-size:\s*([^;]+);/g)) expect(value).toMatch(/^var\(--t-/);
   });
 });

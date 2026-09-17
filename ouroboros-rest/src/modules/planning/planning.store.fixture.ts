@@ -134,6 +134,14 @@ export class PlanningStore {
             provenance: draft.provenance,
             pushState: draft.pushState,
             pushedTicketId: draft.pushedTicketId,
+            pushedTicket:
+              draft.externalId === null
+                ? null
+                : {
+                    externalId: draft.externalId,
+                    externalKey: `#${draft.externalId}`,
+                    url: `https://github.com/acme-robotics/helios-firmware/issues/${draft.externalId}`,
+                  },
             pushError: null,
             estimate:
               estimate === undefined
