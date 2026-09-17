@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.10"
+  version: "0.35.11"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -13737,6 +13737,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/planning/health:
+    get:
+      tags: [planning]
+      summary: The Backlog Health card — sized, blocked and stale meters, and the nightly job
+      description: |-
+        Mockup 09's **Backlog Health** card ([#281](https://github.com/NobuData/ouroboros/issues/281),
+        decision N9). Three meters over this workspace's **open canonical tickets**, each counted on
+        every read — no stored counter to go stale after a sync:
+
+        - **Sized** `38/42` — tickets whose sizing status is `sized`, out of every open ticket.
+        - **Blocked** `4` — tickets with at least one unresolved blocker: an open ticket, or a draft
+          in a batch that has not been abandoned. Dependencies of **both** `planned` and `synced`
+          origin count, and a ticket blocked twice counts once.
+        - **Stale** `6` — tickets the tracker has not updated for more than `thresholdDays`
+          (`OURO_BACKLOG_STALE_DAYS`, 30 by default).
+
+        Each meter carries the `filter` its drill-through links into. `reestimation` makes the
+        footnote *"Estimator re-runs nightly on unsized issues"* checkable: the schedule, and the
+        latest run with **this workspace's** counts from it (`null` before the job has ever run). An
+        empty workspace answers zeros, never absent values. Any member.
+      operationId: readPlanningBacklogHealth
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningBacklogHealth"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/planning/epics:
     get:
       tags: [planning]
@@ -24028,6 +24091,132 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PlanningEpic"
+
+    PlanningIntakeFilter:
+      type: object
+      title: PlanningIntakeFilter
+      description: |-
+        The filtered intake view a Backlog Health meter links to — only the keys that meter needs.
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [open]
+        sizing:
+          type: string
+          enum: [unsized]
+        blocked:
+          type: boolean
+          enum: [true]
+        staleDays:
+          type: integer
+          minimum: 1
+
+    PlanningHealthMeter:
+      type: object
+      title: PlanningHealthMeter
+      additionalProperties: false
+      required: [count, filter]
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        filter:
+          $ref: "#/components/schemas/PlanningIntakeFilter"
+
+    PlanningReestimationRun:
+      type: object
+      title: PlanningReestimationRun
+      description: |-
+        The latest nightly re-estimation run. `found`, `queued` and `inFlight` are **this
+        workspace's** — zeros when the run found nothing here.
+      additionalProperties: false
+      required: [startedAt, finishedAt, status, found, queued, inFlight]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        status:
+          type: string
+          enum: [running, succeeded, failed]
+        found:
+          type: integer
+          minimum: 0
+        queued:
+          type: integer
+          minimum: 0
+        inFlight:
+          type: integer
+          minimum: 0
+
+    PlanningBacklogHealth:
+      type: object
+      title: PlanningBacklogHealth
+      additionalProperties: false
+      required: [open, sized, blocked, stale, reestimation]
+      properties:
+        open:
+          type: integer
+          minimum: 0
+          description: The card's tag — `42 open`.
+        sized:
+          type: object
+          additionalProperties: false
+          required: [count, total, filter]
+          properties:
+            count:
+              type: integer
+              minimum: 0
+            total:
+              type: integer
+              minimum: 0
+            filter:
+              $ref: "#/components/schemas/PlanningIntakeFilter"
+        blocked:
+          $ref: "#/components/schemas/PlanningHealthMeter"
+        stale:
+          type: object
+          additionalProperties: false
+          required: [count, thresholdDays, filter]
+          properties:
+            count:
+              type: integer
+              minimum: 0
+            thresholdDays:
+              type: integer
+              minimum: 1
+            filter:
+              $ref: "#/components/schemas/PlanningIntakeFilter"
+        reestimation:
+          type: object
+          additionalProperties: false
+          required: [schedule, lastRun]
+          properties:
+            schedule:
+              type: object
+              additionalProperties: false
+              required: [hourUtc, jitterMinutes, batchLimit]
+              properties:
+                hourUtc:
+                  type: integer
+                  minimum: 0
+                  maximum: 23
+                jitterMinutes:
+                  type: integer
+                  minimum: 1
+                batchLimit:
+                  type: integer
+                  minimum: 1
+            lastRun:
+              oneOf:
+                - $ref: "#/components/schemas/PlanningReestimationRun"
+                - type: "null"
 
     PlanningMilestones:
       type: object

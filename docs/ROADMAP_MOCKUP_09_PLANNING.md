@@ -604,7 +604,7 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 | AL.2 | #278 | 🟢 Done | ouroboros-rest: [AL.2] Write-capability SPI extension | `createTicket`/`linkDependency`/`ensureEpic` + conformance kit cases | mvp, planning, sources, rest | N (after WF-Q.2) | Y | M | ouroboros-rest |
 | AL.3 | #279 | 🟢 Done | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
 | AL.4 | #280 | 🟢 Done | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
-| AL.5 | #281 | 🟡 Open | ouroboros-rest: [AL.5] Backlog health & nightly re-estimation | Sized/blocked/stale metrics; scheduled unsized re-runs | mvp, planning, rest, intake | N (after AK.2, INTAKE-L.3) | Y | S | ouroboros-rest |
+| AL.5 | #281 | 🟢 Done | ouroboros-rest: [AL.5] Backlog health & nightly re-estimation | Sized/blocked/stale metrics; scheduled unsized re-runs | mvp, planning, rest, intake | N (after AK.2, INTAKE-L.3) | Y | S | ouroboros-rest |
 | AL.6 | #282 | 🟡 Open | ouroboros-rest: [AL.6] Planning integration tests | Contract, push idempotency/resume, dep mapping, health, isolation | mvp, planning, rest, ci | N (after AL.3–AL.5) | Y | M | ouroboros-rest |
 
 ### Issue AL.1 — ouroboros-engine: [AL.1] Plan contract & outline parser v0
@@ -931,7 +931,7 @@ PATCH drafts/OTA-4 {selected: false} · POST push ─▶ 5 issues · queue_small
 
 ### Issue AL.5 — ouroboros-rest: [AL.5] Backlog health & nightly re-estimation
 
-> **GitHub issue:** #281 · **Status:** 🟡 Open · **Parent epic:** #269
+> **GitHub issue:** #281 · **Status:** 🟢 Done · **Parent epic:** #269
 
 
 - **Problem Statement:** The health card's three meters and its footnote
@@ -956,6 +956,34 @@ PATCH drafts/OTA-4 {selected: false} · POST push ─▶ 5 issues · queue_small
 health: sized 38/42 · blocked 4 (dep-derived) · stale 6 (>30d)
 nightly 02:00±jitter ─▶ unsized open tickets ─▶ L.3 orchestrator (bounded batch)
 ```
+
+- **Delivered (2026-09-17):** `GET /api/v1/planning/health` (`BacklogHealthService` over one
+  filtered-aggregate statement) and the nightly job (`ReestimationScheduler` → `ReestimationJob` →
+  `EstimationOrchestrator.enqueueTicket`), with `ouroboros-db`'s
+  [`V038`](../ouroboros-db/migrations/V038__ticket_estimates.sql) and
+  [`V039`](../ouroboros-db/migrations/V039__reestimation_runs.sql). Decisions taken in-issue:
+  - **Canonical tickets became a third estimate subject.** The L.3 orchestrator was still bound to
+    `github_issues` (Q.3's cut-over had not re-pointed it), so it could not size a canonical ticket
+    and `issue_estimates` had nowhere to store the answer. `V038` adds `issue_estimates.ticket_id` by
+    `V034`'s draft pattern (one-of-three subject, per-subject version key and monotonic trigger), and
+    the orchestrator gains `enqueueTicket` — same queue, retry, floor and versioned write — plus a
+    ticket read in its recovery sweep. `TICKET_INTAKE` is still the logging placeholder: the
+    sync-time handoff remains Q.3's cut-over.
+  - **Sized is `sizing_status = 'sized'`** — the shared pipeline's per-ticket record, as the seed's
+    header argues.
+  - **Blocked** counts an open ticket blocker **or** a draft blocker in a batch that is not
+    `abandoned` (planned, unpushed work is unresolved; a push rewrites the edge to its ticket), over
+    both origins, each ticket once.
+  - **The run record is stored** (`reestimation_runs`, unique by night, so only the first replica
+    runs a night) and **per-workspace counts are separate** (`reestimation_run_counts`), since a
+    count of another workspace's backlog is a tenancy leak. The tooltip reads the latest run with
+    this workspace's counts; `null` before the first run.
+  - **Jitter is a window after the hour** (`OURO_REESTIMATION_JITTER_MINUTES`, 30), not ±25% —
+    a quarter of a day would move an off-peak job into the working day. The batch
+    (`OURO_REESTIMATION_BATCH`, 100) is shared out rank-first across workspaces. The stale threshold
+    is `OURO_BACKLOG_STALE_DAYS` (30).
+  - **Drill-through filters** are descriptors in the intake filter vocabulary (`state`, `sizing`,
+    `blocked`, `staleDays`) for AM.3 to build links from; today's intake listing honours `state`.
 
 ### Issue AL.6 — ouroboros-rest: [AL.6] Planning integration tests
 

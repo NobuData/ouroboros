@@ -126,6 +126,29 @@ export function draftEstimateRow(
 }
 
 /**
+ * One engine answer as the `issue_estimates` row for a canonical ticket (AL.5,
+ * [#281](https://github.com/NobuData/ouroboros/issues/281)) — the third kind of subject V038 added.
+ *
+ * @param ticketId - `tickets.id`.
+ * @param version - The version the repository computed inside its transaction.
+ * @param estimate - What the engine answered.
+ * @param sizedAt - The writer's clock — see this file's header.
+ * @returns The row, with the ticket as its only subject.
+ */
+export function ticketEstimateRow(
+  ticketId: string,
+  version: number,
+  estimate: Estimate,
+  sizedAt: Date,
+): NewIssueEstimate {
+  return {
+    github_issue_id: null,
+    ticket_id: ticketId,
+    ...estimateColumns(version, estimate, sizedAt),
+  };
+}
+
+/**
  * The columns an estimate writes whatever its subject is.
  *
  * @param version - The estimate's version for its subject.
@@ -137,7 +160,7 @@ function estimateColumns(
   version: number,
   estimate: Estimate,
   sizedAt: Date,
-): Omit<NewIssueEstimate, "github_issue_id" | "draft_id"> {
+): Omit<NewIssueEstimate, "github_issue_id" | "draft_id" | "ticket_id"> {
   return {
     version,
     effort: estimate.effort,

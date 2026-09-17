@@ -1,5 +1,6 @@
 /**
- * `/api/v1/planning` — the Roadmap card's lanes, and the milestone passthrough.
+ * `/api/v1/planning` — the Roadmap card's lanes, the Backlog Health card, and the milestone
+ * passthrough.
  *
  * AL.4 ([#280](https://github.com/NobuData/ouroboros/issues/280)). Reads are open to every member;
  * **every epic mutation is administrators only** — a lane is shared planning intent, and changing it
@@ -24,6 +25,7 @@ import { ADMINISTRATORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
 import { BatchesService } from "./batches.service";
 import { EpicsService } from "./epics.service";
+import { BacklogHealthService } from "./health.service";
 import {
   CreateEpicBody,
   EpicParams,
@@ -32,18 +34,37 @@ import {
   ReorderEpicsBody,
   UpdateEpicBody,
 } from "./planning.dto";
-import type { EpicResource, MilestonesResource, RoadmapResource } from "./planning.resources";
+import type {
+  BacklogHealthResource,
+  EpicResource,
+  MilestonesResource,
+  RoadmapResource,
+} from "./planning.resources";
 
 @Controller("planning")
 export class PlanningController {
   /**
    * @param epics - The lanes.
    * @param batches - The generator card's service, for the milestone passthrough.
+   * @param health - The Backlog Health card (AL.5, #281).
    */
   constructor(
     private readonly epics: EpicsService,
     private readonly batches: BatchesService,
+    private readonly health: BacklogHealthService,
   ) {}
+
+  /**
+   * The Backlog Health card — sized, blocked and stale meters with drill-through filters, and the
+   * nightly re-estimation job's schedule and last run. Any member.
+   *
+   * @param tenant - The workspace.
+   * @returns The card.
+   */
+  @Get("health")
+  backlogHealth(@CurrentTenant() tenant: Organization): Promise<BacklogHealthResource> {
+    return this.health.health(tenant.id);
+  }
 
   /**
    * The roadmap payload — lanes with computed chips.

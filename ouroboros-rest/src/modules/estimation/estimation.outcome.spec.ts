@@ -6,7 +6,7 @@ import {
 } from "../engine/engine.contract";
 import { ISSUE_ESTIMATE_EFFORTS, ISSUE_ESTIMATE_RISKS } from "../db/schema";
 import { estimate, FIXTURE_ISSUE_ID } from "./estimation.fixture";
-import { draftEstimateRow, estimateRow, statusFor } from "./estimation.outcome";
+import { draftEstimateRow, estimateRow, statusFor, ticketEstimateRow } from "./estimation.outcome";
 
 /**
  * The floor and the translation — the two decisions between an engine answer and a stored row
@@ -194,5 +194,32 @@ describe("one engine answer about a draft as one row (AL.4, #280)", () => {
     );
 
     expect(draft).toEqual(issue);
+  });
+});
+
+describe("one engine answer about a canonical ticket as one row (AL.5, #281)", () => {
+  it("names the ticket and no issue or draft — exactly one subject, by V038", () => {
+    const row = ticketEstimateRow("ticket-1", 3, estimate(), SIZED_AT);
+
+    expect(row.github_issue_id).toBeNull();
+    expect(row.draft_id).toBeUndefined();
+    expect(row.ticket_id).toBe("ticket-1");
+    expect(row.version).toBe(3);
+  });
+
+  it("writes every other column exactly as an issue's estimate would", () => {
+    const {
+      github_issue_id: _issue,
+      ticket_id: _ticket,
+      ...ticket
+    } = ticketEstimateRow("ticket-1", 1, estimate(), SIZED_AT);
+    const { github_issue_id: _other, ...issue } = estimateRow(
+      FIXTURE_ISSUE_ID,
+      1,
+      estimate(),
+      SIZED_AT,
+    );
+
+    expect(ticket).toEqual(issue);
   });
 });

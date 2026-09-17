@@ -75,3 +75,64 @@ export function chunked<T>(items: readonly T[], size: number): T[][] {
 
   return runs;
 }
+
+/** One day, in milliseconds. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * One scheduled night of a once-a-day job — AL.5's nightly re-estimation
+ * ([#281](https://github.com/NobuData/ouroboros/issues/281)).
+ */
+export interface NightlySlot {
+  /**
+   * The UTC date the slot belongs to, `YYYY-MM-DD` — what a run records, and what stops two
+   * replicas both running the same night.
+   */
+  readonly night: string;
+  /** The slot's nominal instant: that date at the scheduled hour, UTC, before any jitter. */
+  readonly at: Date;
+}
+
+/**
+ * The next slot of a job that runs once a day at a fixed UTC hour.
+ *
+ * *Next* is strictly after `now`: a process that starts, or finishes a run, at 02:14 with a 02:00
+ * schedule books tomorrow rather than a slot already past. A process that was not running across a
+ * slot does not run it late — the next night picks up what that one would have, which for a job
+ * whose whole purpose is a bounded nightly batch is the same work a day later rather than a lost one.
+ *
+ * @param now - The current instant.
+ * @param hourUtc - The scheduled hour, 0–23.
+ * @returns The slot.
+ */
+export function nextNightlySlot(now: Date, hourUtc: number): NightlySlot {
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hourUtc);
+  const at = new Date(today > now.getTime() ? today : today + DAY_MS);
+
+  return { night: at.toISOString().slice(0, 10), at };
+}
+
+/**
+ * How long to wait for a nightly slot, jittered across a window after it.
+ *
+ * The daily counterpart to {@link jittered}, and a *window after* rather than ±25% for the reason
+ * `OURO_REESTIMATION_JITTER_MINUTES` gives: a quarter of a day either side would move an off-peak
+ * job into the working day. Every delay lands off the hour, so a fleet of installations does not
+ * reach for its engines in the same second.
+ *
+ * @param now - The current instant.
+ * @param slot - The slot to wait for.
+ * @param jitterMinutes - The window's width.
+ * @param random - A source of `[0, 1)`; injected so a test can assert the window's endpoints.
+ * @returns Milliseconds, never below 1 — see {@link jittered}.
+ */
+export function nightlyDelay(
+  now: Date,
+  slot: NightlySlot,
+  jitterMinutes: number,
+  random: () => number = Math.random,
+): number {
+  const offset = Math.floor(random() * jitterMinutes * 60 * 1000);
+
+  return Math.max(1, slot.at.getTime() + offset - now.getTime());
+}

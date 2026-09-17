@@ -1,11 +1,12 @@
 import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import { UNIQUE_VIOLATION } from "../tenancy/constraints";
 import { estimate, FIXTURE_ISSUE_ID, FIXTURE_WORKSPACE } from "./estimation.fixture";
-import { draftEstimateRow, estimateRow } from "./estimation.outcome";
+import { draftEstimateRow, estimateRow, ticketEstimateRow } from "./estimation.outcome";
 import {
   DRAFT_VERSION_CONSTRAINT,
   EstimationRepository,
   MAX_VERSION_ATTEMPTS,
+  TICKET_VERSION_CONSTRAINT,
   VERSION_CONSTRAINT,
   isVersionCollision,
 } from "./estimation.repository";
@@ -429,9 +430,123 @@ describe("EstimationRepository — ticket drafts (AL.4, #280)", () => {
   });
 });
 
+describe("EstimationRepository — canonical tickets (AL.5, #281)", () => {
+  /** A ticket's id. */
+  const TICKET_ID = "5eed001d-0000-4000-8000-000000000588";
+
+  let database: RecordingDatabase;
+  let repository: EstimationRepository;
+
+  beforeEach(() => {
+    database = recordingDatabase();
+    repository = new EstimationRepository(database.service);
+  });
+
+  it("reads a ticket with its source's kind and name, joined inside the ticket's workspace", async () => {
+    database.answers({ rows: [{ ticketId: TICKET_ID, externalKey: "#588" }] });
+
+    await expect(repository.ticket(TICKET_ID)).resolves.toMatchObject({ externalKey: "#588" });
+
+    const [sql] = database.sql();
+    expect(sql).toContain('from "ouroboros"."tickets" as "t"');
+    // The credential-free view: an estimation read has no business near a sealed token.
+    expect(sql).toContain('inner join "ouroboros"."ticket_sources_public" as "s"');
+    expect(sql).toContain('"s"."organization_id" = "t"."organization_id"');
+    expect(sql).not.toContain("credentials");
+    expect(database.statements[0]?.parameters).toEqual([TICKET_ID]);
+  });
+
+  it("answers undefined for a ticket that is gone", async () => {
+    await expect(repository.ticket(TICKET_ID)).resolves.toBeUndefined();
+  });
+
+  it("claims a ticket unconditionally, and answers false when it is gone", async () => {
+    database.answers({ numAffectedRows: 1n });
+
+    await expect(repository.claimTicket(TICKET_ID)).resolves.toBe(true);
+    await expect(repository.claimTicket(TICKET_ID)).resolves.toBe(false);
+
+    const [sql] = database.sql();
+    expect(sql).toBe('update "ouroboros"."tickets" set "sizing_status" = $1 where "id" = $2');
+    expect(database.statements[0]?.parameters).toEqual(["estimating", TICKET_ID]);
+  });
+
+  it("versions the estimate against the ticket and moves its status, in one transaction", async () => {
+    database.answers({ rows: [{ highest: 1 }] }, {}, {});
+
+    await expect(
+      repository.persistTicket(TICKET_ID, "sized", (version) =>
+        ticketEstimateRow(TICKET_ID, version, estimate(), new Date()),
+      ),
+    ).resolves.toBe(2);
+
+    const sql = database.sql();
+    expect(sql[0]).toBe("begin");
+    expect(sql[1]).toContain('where "ticket_id" = $1');
+    expect(sql[2]).toContain('insert into "ouroboros"."issue_estimates"');
+    expect(sql[3]).toContain('update "ouroboros"."tickets" set "sizing_status" = $1');
+    expect(sql[4]).toBe("commit");
+    expect(database.statements[3]?.parameters).toEqual(["sized", TICKET_ID]);
+  });
+
+  it("retries a collision on the ticket's own version key", async () => {
+    database.answers({ rows: [{ highest: 1 }] });
+    database.answers({ rows: [{ highest: 2 }] }, {}, {});
+
+    let first = true;
+    const version = await repository.persistTicket(TICKET_ID, "sized", (next) => {
+      if (first) {
+        first = false;
+        throw refusal(UNIQUE_VIOLATION, TICKET_VERSION_CONSTRAINT);
+      }
+
+      return ticketEstimateRow(TICKET_ID, next, estimate(), new Date());
+    });
+
+    expect(version).toBe(3);
+  });
+
+  it("does not retry anything else", async () => {
+    database.answers({ rows: [{ highest: 1 }] });
+
+    await expect(
+      repository.persistTicket(TICKET_ID, "sized", () => {
+        throw refusal("23514", "issue_estimates_one_subject");
+      }),
+    ).rejects.toThrow("refused");
+  });
+
+  it("settles a ticket without writing an estimate", async () => {
+    database.answers({ numAffectedRows: 1n });
+
+    await expect(repository.settleTicket(TICKET_ID, "needs_human")).resolves.toBe(true);
+
+    const sql = database.sql();
+    expect(sql).toHaveLength(1);
+    expect(sql[0]).toContain('update "ouroboros"."tickets"');
+    expect(database.statements[0]?.parameters).toEqual(["needs_human", TICKET_ID]);
+  });
+
+  it("reads stranded tickets: estimating, claimed before the cutoff, oldest first, bounded", async () => {
+    const cutoff = new Date("2026-09-17T02:00:00.000Z");
+    database.answers({ rows: [{ id: "a" }, { id: "b" }] });
+
+    await expect(repository.staleTickets(cutoff, 50)).resolves.toEqual(["a", "b"]);
+
+    const [sql] = database.sql();
+    expect(sql).toBe(
+      'select "id" from "ouroboros"."tickets" where "sizing_status" = $1 and "updated_at" < $2 ' +
+        'order by "updated_at" asc limit $3',
+    );
+    expect(database.statements[0]?.parameters).toEqual(["estimating", cutoff, 50]);
+  });
+});
+
 describe("isVersionCollision", () => {
-  it("is true only for a unique violation on the version key", () => {
+  it("is true only for a unique violation on a version key", () => {
     expect(isVersionCollision(refusal(UNIQUE_VIOLATION, VERSION_CONSTRAINT))).toBe(true);
+    expect(isVersionCollision(refusal(UNIQUE_VIOLATION, DRAFT_VERSION_CONSTRAINT))).toBe(true);
+    expect(isVersionCollision(refusal(UNIQUE_VIOLATION, TICKET_VERSION_CONSTRAINT))).toBe(true);
   });
 
   it.each([

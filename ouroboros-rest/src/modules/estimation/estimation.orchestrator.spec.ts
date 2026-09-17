@@ -20,8 +20,10 @@ import {
   SWEEP_BATCH,
   draftNumber,
   draftQueueKey,
+  ticketQueueKey,
   type DraftSizingOutcome,
 } from "./estimation.orchestrator";
+import type { EstimableTicketRow } from "./estimation.ticket";
 import type {
   EstimableDraftRow,
   EstimableIssueRow,
@@ -46,6 +48,9 @@ interface RepositoryLog {
   persisted: { issueId: string; status: EstimatedStatus; row: NewIssueEstimate }[];
   draftsPersisted: { draftId: string; row: NewIssueEstimate }[];
   settled: { issueId: string; status: EstimatedStatus }[];
+  ticketsClaimed: string[];
+  ticketsPersisted: { ticketId: string; status: EstimatedStatus; row: NewIssueEstimate }[];
+  ticketsSettled: { ticketId: string; status: EstimatedStatus }[];
 }
 
 /** How a stand-in is told to behave. */
@@ -57,6 +62,11 @@ interface Behaviour {
   engine?: (attempt: number) => Promise<Estimate>;
   /** Issue ids the sweep's read answers with. */
   stale?: string[];
+  ticket?: EstimableTicketRow | undefined;
+  /** Ticket ids the sweep's ticket read answers with. */
+  staleTickets?: string[];
+  /** Make the ticket read fail. */
+  ticketReadFails?: boolean;
   /** Make the versioned write fail. */
   persistFails?: boolean;
   /** Make the terminal-status write fail. */
@@ -73,7 +83,15 @@ interface Behaviour {
  * @returns The orchestrator, the repository's record, and the engine requests it made.
  */
 function build(behaviour: Behaviour = {}) {
-  const log: RepositoryLog = { claimed: [], persisted: [], settled: [], draftsPersisted: [] };
+  const log: RepositoryLog = {
+    claimed: [],
+    persisted: [],
+    settled: [],
+    draftsPersisted: [],
+    ticketsClaimed: [],
+    ticketsPersisted: [],
+    ticketsSettled: [],
+  };
   const requests: EstimateRequest[] = [];
   const staleReads: { olderThan: Date; limit: number }[] = [];
 
@@ -129,6 +147,41 @@ function build(behaviour: Behaviour = {}) {
       staleReads.push({ olderThan, limit });
       return Promise.resolve(behaviour.stale ?? []);
     },
+    ticket: async (ticketId: string) => {
+      if (behaviour.ticketReadFails === true) {
+        return Promise.reject(new Error("the connection dropped"));
+      }
+
+      return Promise.resolve("ticket" in behaviour ? behaviour.ticket : ticketRow({ ticketId }));
+    },
+    claimTicket: async (ticketId: string) => {
+      log.ticketsClaimed.push(ticketId);
+      return Promise.resolve(true);
+    },
+    persistTicket: async (
+      ticketId: string,
+      status: EstimatedStatus,
+      make: (version: number) => NewIssueEstimate,
+    ) => {
+      if (behaviour.persistFails === true) {
+        return Promise.reject(new Error("the column refused it"));
+      }
+
+      log.ticketsPersisted.push({ ticketId, status, row: make(1) });
+      return Promise.resolve(1);
+    },
+    settleTicket: async (ticketId: string, status: EstimatedStatus) => {
+      if (behaviour.settleFails === true) {
+        return Promise.reject(new Error("the pool is exhausted"));
+      }
+
+      log.ticketsSettled.push({ ticketId, status });
+      return Promise.resolve(true);
+    },
+    staleTickets: async (olderThan: Date, limit: number) => {
+      staleReads.push({ olderThan, limit });
+      return Promise.resolve(behaviour.staleTickets ?? []);
+    },
   } as unknown as EstimationRepository;
 
   const engine = {
@@ -154,6 +207,30 @@ function build(behaviour: Behaviour = {}) {
     log,
     requests,
     staleReads,
+  };
+}
+
+/** The canonical ticket the ticket cases size — seeded `#588`. */
+const TICKET_ID = "5eed001d-0000-4000-8000-000000000588";
+
+/**
+ * A canonical ticket, as `EstimationRepository.ticket` reads it.
+ *
+ * @param overrides - Fields to change.
+ * @returns The row.
+ */
+function ticketRow(overrides: Partial<EstimableTicketRow> = {}): EstimableTicketRow {
+  return {
+    ticketId: TICKET_ID,
+    organizationId: FIXTURE_WORKSPACE,
+    externalKey: "#588",
+    title: "Compress telemetry frames with heatshrink",
+    body: null,
+    labels: ["telemetry", "enhancement"],
+    meta: { github: { owner: "acme-robotics", repo: "helios-telemetry" } },
+    sourceKind: "github",
+    sourceName: "GitHub · acme-robotics",
+    ...overrides,
   };
 }
 
@@ -441,6 +518,21 @@ describe("the recovery sweep", () => {
     await orchestrator.settled();
   });
 
+  it("re-queues stranded canonical tickets too, in their own bounded read (AL.5, #281)", async () => {
+    const { orchestrator, log, staleReads } = build({
+      stale: ["stranded"],
+      staleTickets: [TICKET_ID],
+    });
+
+    const report = await orchestrator.sweep();
+    await orchestrator.settled();
+
+    expect(staleReads.map((read) => read.limit)).toEqual([SWEEP_BATCH, SWEEP_BATCH]);
+    expect(report).toEqual({ stale: 2, requeued: 2, inFlight: 0 });
+    expect(log.persisted).toHaveLength(1);
+    expect(log.ticketsPersisted.map((write) => write.ticketId)).toEqual([TICKET_ID]);
+  });
+
   it("reports nothing on a healthy service", async () => {
     await expect(build().orchestrator.sweep()).resolves.toEqual({
       stale: 0,
@@ -587,5 +679,126 @@ describe("sizing a ticket draft (AL.4, #280 — one sizer, decision N3)", () => 
 
   it("keys the queue with a draft: prefix", () => {
     expect(draftQueueKey(DRAFT_ID)).toBe(`draft:${DRAFT_ID}`);
+  });
+});
+
+describe("sizing a canonical ticket (AL.5, #281 — one sizer, decision N9)", () => {
+  it("claims, asks the same engine with the ticket as the contract's issue, and stores it under ticket_id", async () => {
+    const { orchestrator, log, requests } = build();
+
+    expect(orchestrator.enqueueTicket(TICKET_ID)).toBe(true);
+    await orchestrator.settled();
+
+    expect(log.ticketsClaimed).toEqual([TICKET_ID]);
+    expect(requests).toEqual([
+      {
+        issue: {
+          number: 588,
+          title: "Compress telemetry frames with heatshrink",
+          body: null,
+          labels: ["telemetry", "enhancement"],
+          repo: "acme-robotics/helios-telemetry",
+        },
+        context: FIXTURE_CONTEXT,
+      },
+    ]);
+    expect(log.ticketsPersisted).toHaveLength(1);
+    expect(log.ticketsPersisted[0]?.status).toBe("sized");
+    expect(log.ticketsPersisted[0]?.row).toMatchObject({
+      github_issue_id: null,
+      ticket_id: TICKET_ID,
+      version: 1,
+    });
+    // Nothing went to the issue or draft paths.
+    expect(log.claimed).toEqual([]);
+    expect(log.persisted).toEqual([]);
+    expect(log.draftsPersisted).toEqual([]);
+  });
+
+  it("applies the same confidence floor as an issue", async () => {
+    const { orchestrator, log } = build({ confidenceFloor: 95 });
+
+    orchestrator.enqueueTicket(TICKET_ID);
+    await orchestrator.settled();
+
+    expect(log.ticketsPersisted[0]?.status).toBe("needs_human");
+  });
+
+  it("retries the engine once, then leaves the ticket to a person with no estimate", async () => {
+    const { orchestrator, log, requests } = build({
+      engine: async () => Promise.reject(engineUnavailable()),
+    });
+
+    orchestrator.enqueueTicket(TICKET_ID);
+    await orchestrator.settled();
+
+    expect(requests).toHaveLength(MAX_ENGINE_ATTEMPTS);
+    expect(log.ticketsPersisted).toEqual([]);
+    expect(log.ticketsSettled).toEqual([{ ticketId: TICKET_ID, status: "needs_human" }]);
+  });
+
+  it("leaves a ticket whose write failed to a person rather than in `estimating`", async () => {
+    const { orchestrator, log } = build({ persistFails: true });
+
+    orchestrator.enqueueTicket(TICKET_ID);
+    await orchestrator.settled();
+
+    expect(log.ticketsSettled).toEqual([{ ticketId: TICKET_ID, status: "needs_human" }]);
+  });
+
+  it("does not reject when even the terminal write fails — the sweep is the backstop", async () => {
+    const { orchestrator, log } = build({ persistFails: true, settleFails: true });
+
+    orchestrator.enqueueTicket(TICKET_ID);
+    await expect(orchestrator.settled()).resolves.toBeUndefined();
+
+    expect(log.ticketsSettled).toEqual([]);
+  });
+
+  it("touches nothing when the read fails before a claim — the next night asks again", async () => {
+    const { orchestrator, log, requests } = build({ ticketReadFails: true });
+
+    orchestrator.enqueueTicket(TICKET_ID);
+    await orchestrator.settled();
+
+    expect(log.ticketsClaimed).toEqual([]);
+    expect(log.ticketsSettled).toEqual([]);
+    expect(requests).toEqual([]);
+  });
+
+  it("skips a ticket that is gone, and one whose workspace routes nothing, without claiming it", async () => {
+    for (const behaviour of [{ ticket: undefined }, { context: undefined }]) {
+      const { orchestrator, log, requests } = build(behaviour);
+
+      orchestrator.enqueueTicket(TICKET_ID);
+      await orchestrator.settled();
+
+      expect(log.ticketsClaimed).toEqual([]);
+      expect(log.ticketsSettled).toEqual([]);
+      expect(requests).toEqual([]);
+    }
+  });
+
+  it("holds a ticket once, apart from an issue and a draft with the same id", async () => {
+    let release: (value: Estimate) => void = () => undefined;
+    const { orchestrator } = build({
+      engine: async () =>
+        new Promise<Estimate>((resolve) => {
+          release = resolve;
+        }),
+    });
+
+    expect(orchestrator.enqueueTicket(TICKET_ID)).toBe(true);
+    expect(orchestrator.enqueueTicket(TICKET_ID)).toBe(false);
+    expect(orchestrator.estimating(ticketQueueKey(TICKET_ID))).toBe(true);
+    expect(orchestrator.estimating(TICKET_ID)).toBe(false);
+
+    await drainMicrotasks();
+    release(estimate());
+    await orchestrator.settled();
+  });
+
+  it("keys the queue with a ticket: prefix", () => {
+    expect(ticketQueueKey(TICKET_ID)).toBe(`ticket:${TICKET_ID}`);
   });
 });

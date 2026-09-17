@@ -316,7 +316,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The forty-second is V036's `planning_epic_progress` view, mirrored by AL.4 (#280) for the
     // roadmap payload — the one definition of an epic's `issues · done` chip.
-    expect(TABLE_NAMES).toHaveLength(42);
+    //
+    // The forty-third and forty-fourth are V039's `reestimation_runs` and
+    // `reestimation_run_counts`, mirrored by AL.5 (#281), whose nightly job is their one writer
+    // and whose backlog-health payload is their one reader.
+    expect(TABLE_NAMES).toHaveLength(44);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

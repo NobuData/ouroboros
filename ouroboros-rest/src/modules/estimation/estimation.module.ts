@@ -6,6 +6,7 @@
  * estimation.queue.ts          the bound, and the dedupe — no database, no engine, no clock
  * estimation.outcome.ts        the confidence floor, and one engine answer as one row
  * estimation.context.ts        the tags and the models an answer may use (Z.4, decision M6)
+ * estimation.ticket.ts         a canonical ticket as the contract's `issue` (AL.5, #281)
  * estimation.repository.ts     the claim, the versioned write, the stale read
  * estimation.orchestrator.ts   the state machine, and the only place a failure is decided
  * estimation.sweeper.ts        what makes the recovery sweep periodic

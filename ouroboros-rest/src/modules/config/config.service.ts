@@ -222,6 +222,34 @@ export class AppConfigService {
   }
 
   /**
+   * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
+   *
+   * The Backlog Health card's third meter (AL.5, #281); configurable rather than mockup 09's fixed
+   * thirty.
+   */
+  get backlogStaleDays(): number {
+    return this.config.getOrThrow<number>("backlogStaleDays");
+  }
+
+  /** The UTC hour the nightly re-estimation job is scheduled at — `OURO_REESTIMATION_HOUR_UTC`. */
+  get reestimationHourUtc(): number {
+    return this.config.getOrThrow<number>("reestimationHourUtc");
+  }
+
+  /**
+   * The window after the scheduled hour a night's run is jittered across, in minutes —
+   * `OURO_REESTIMATION_JITTER_MINUTES`.
+   */
+  get reestimationJitterMinutes(): number {
+    return this.config.getOrThrow<number>("reestimationJitterMinutes");
+  }
+
+  /** The most unsized tickets one night's run queues — `OURO_REESTIMATION_BATCH`. */
+  get reestimationBatch(): number {
+    return this.config.getOrThrow<number>("reestimationBatch");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -273,6 +301,10 @@ export class AppConfigService {
       estimationConfidenceFloor: this.estimationConfidenceFloor,
       estimationStaleSeconds: this.estimationStaleSeconds,
       estimationSweepIntervalSeconds: this.estimationSweepIntervalSeconds,
+      backlogStaleDays: this.backlogStaleDays,
+      reestimationHourUtc: this.reestimationHourUtc,
+      reestimationJitterMinutes: this.reestimationJitterMinutes,
+      reestimationBatch: this.reestimationBatch,
       localProviderUrls: this.localProviderUrls,
       workflowSkillSuggestions: this.workflowSkillSuggestions,
     };

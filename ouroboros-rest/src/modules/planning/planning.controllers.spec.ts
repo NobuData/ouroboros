@@ -6,6 +6,7 @@ import { ADMINISTRATORS, CONTRIBUTORS, REQUIRED_ROLES } from "../tenancy/roles.g
 import { BatchesController } from "./batches.controller";
 import type { BatchesService } from "./batches.service";
 import type { EpicsService } from "./epics.service";
+import type { BacklogHealthService } from "./health.service";
 import { PlanningController } from "./planning.controller";
 
 /**
@@ -56,6 +57,7 @@ describe("the planning routes", () => {
     [batches.resume, "POST :batch/push/resume", ADMINISTRATORS],
     [batches.pushStatus, "GET :batch/push-status", undefined],
     [planning.roadmap, "GET roadmap", undefined],
+    [planning.backlogHealth, "GET health", undefined],
     [planning.list, "GET epics", undefined],
     [planning.create, "POST epics", ADMINISTRATORS],
     [planning.reorder, "PUT epics/order", ADMINISTRATORS],
@@ -119,10 +121,12 @@ describe("the planning handlers", () => {
       link: jest.fn(async () => Promise.resolve("link")),
       unlink: jest.fn(async () => Promise.resolve("unlink")),
     };
+    const healthService = { health: jest.fn(async () => Promise.resolve("health")) };
     const batches = new BatchesController(batchesService as unknown as BatchesService);
     const planning = new PlanningController(
       epicsService as unknown as EpicsService,
       batchesService as unknown as BatchesService,
+      healthService as unknown as BacklogHealthService,
     );
     const batch = { batch: "b" };
     const epic = { epic: "e" };
@@ -142,6 +146,8 @@ describe("the planning handlers", () => {
     await batches.resume(tenant, batch);
     await batches.pushStatus(tenant, batch);
     await planning.roadmap(tenant);
+    await expect(planning.backlogHealth(tenant)).resolves.toBe("health");
+    expect(healthService.health).toHaveBeenCalledWith("org-planning");
     await planning.list(tenant);
     await planning.create(tenant, { name: "Lane" });
     await planning.reorder(tenant, { epicIds: ["e"] });
@@ -155,7 +161,11 @@ describe("the planning handlers", () => {
     await planning.milestones(tenant, { source: "s" });
     expect(batchesService.milestones).toHaveBeenCalledWith("org-planning", "s");
 
-    for (const mock of [...Object.values(batchesService), ...Object.values(epicsService)]) {
+    for (const mock of [
+      ...Object.values(batchesService),
+      ...Object.values(epicsService),
+      ...Object.values(healthService),
+    ]) {
       expect(mock).toHaveBeenCalledTimes(1);
     }
   });

@@ -16,9 +16,15 @@
  *     This module provides no estimator of its own, and `planning.module.spec.ts` asserts it.
  *   * `BacklogModule` — INTAKE-M.3's `BacklogQueueService`, the queue write the `queue_small` hook
  *     composes (decision N7).
+ *
+ * AL.5 ([#281](https://github.com/NobuData/ouroboros/issues/281)) adds the Backlog Health card
+ * (`GET /planning/health`) and the nightly re-estimation job (decision **N9**). The job sizes through
+ * the same `EstimationOrchestrator` — `enqueueTicket` — and provides no estimator either;
+ * `ScheduleModule.forRoot()` is imported for its `SchedulerRegistry`, as `EstimationModule` does.
  */
 
 import { Module } from "@nestjs/common";
+import { ScheduleModule } from "@nestjs/schedule";
 
 import { BacklogModule } from "../backlog/backlog.module";
 import { DbModule } from "../db/db.module";
@@ -29,11 +35,16 @@ import { WorkflowsModule } from "../workflows/workflows.module";
 import { BatchesController } from "./batches.controller";
 import { BatchesService } from "./batches.service";
 import { EpicsService } from "./epics.service";
+import { BacklogHealthRepository } from "./health.repository";
+import { BacklogHealthService } from "./health.service";
 import { PlanningController } from "./planning.controller";
 import { PlanningRepository } from "./planning.repository";
 import { PushRepository } from "./push.repository";
 import { PushService } from "./push.service";
 import { QueueSmallHook } from "./queue-small";
+import { ReestimationJob } from "./reestimation.job";
+import { ReestimationRepository } from "./reestimation.repository";
+import { ReestimationScheduler } from "./reestimation.scheduler";
 
 @Module({
   imports: [
@@ -43,6 +54,7 @@ import { QueueSmallHook } from "./queue-small";
     EstimationModule,
     BacklogModule,
     WorkflowsModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [BatchesController, PlanningController],
   providers: [
@@ -52,6 +64,11 @@ import { QueueSmallHook } from "./queue-small";
     BatchesService,
     EpicsService,
     QueueSmallHook,
+    BacklogHealthRepository,
+    BacklogHealthService,
+    ReestimationRepository,
+    ReestimationJob,
+    ReestimationScheduler,
   ],
   exports: [PushService],
 })

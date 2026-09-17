@@ -13,6 +13,7 @@ import type {
   DraftPushState,
   EpicStatus,
   EpicTint,
+  ReestimationRunStatus,
 } from "../db/schema";
 import type { Effort } from "../engine/engine.contract";
 import type { PushReport } from "./push.service";
@@ -187,6 +188,72 @@ export interface RoadmapResource {
   /** Its window tag, or null. */
   readonly window: string | null;
   readonly lanes: readonly EpicResource[];
+}
+
+/**
+ * Where a Backlog Health meter links to — the filtered intake view behind it (AL.5,
+ * [#281](https://github.com/NobuData/ouroboros/issues/281)).
+ *
+ * A description of the tickets a meter counts, in the intake page's filter vocabulary, so AM.3
+ * ([#285](https://github.com/NobuData/ouroboros/issues/285)) can build the link without knowing how
+ * the count was computed. Only the keys a meter needs are present.
+ */
+export interface IntakeFilterResource {
+  /** Every meter counts open tickets. */
+  readonly state: "open";
+  /** `unsized` — the Sized meter links to what is left to size. */
+  readonly sizing?: "unsized";
+  /** `true` — the Blocked meter's tickets. */
+  readonly blocked?: true;
+  /** The Stale meter's threshold — tickets with no tracker update for more days than this. */
+  readonly staleDays?: number;
+}
+
+/** One Backlog Health meter: its count, and where it links. */
+export interface HealthMeterResource {
+  /** How many open tickets the meter counts. `0` for an empty workspace, never absent. */
+  readonly count: number;
+  /** The drill-through into a filtered intake view. */
+  readonly filter: IntakeFilterResource;
+}
+
+/** What one nightly re-estimation run did — the card footnote's tooltip. */
+export interface ReestimationRunResource {
+  /** When the run started, ISO 8601. */
+  readonly startedAt: string;
+  /** When it finished, or null while it is running. */
+  readonly finishedAt: string | null;
+  /** `running`, `succeeded` or `failed`. */
+  readonly status: ReestimationRunStatus;
+  /** Open, unsized tickets of **this** workspace the run selected. */
+  readonly found: number;
+  /** How many of them it queued for estimation. */
+  readonly queued: number;
+  /** How many the pipeline was already sizing. */
+  readonly inFlight: number;
+}
+
+/** `GET /planning/health` — mockup 09's Backlog Health card. */
+export interface BacklogHealthResource {
+  /** The card's tag — `42 open`. */
+  readonly open: number;
+  /** `Sized 38/42` — open tickets sized by the shared pipeline, out of {@link open}. */
+  readonly sized: HealthMeterResource & { readonly total: number };
+  /** `Blocked 4` — open tickets with an unresolved blocker, planned or synced. */
+  readonly blocked: HealthMeterResource;
+  /** `Stale > 30d 6` — open tickets the tracker has not updated within the threshold. */
+  readonly stale: HealthMeterResource & { readonly thresholdDays: number };
+  /** The footnote — *"Estimator re-runs nightly on unsized issues"* — made checkable. */
+  readonly reestimation: {
+    /** When the job is scheduled: the UTC hour, the jitter window after it, and its batch bound. */
+    readonly schedule: {
+      readonly hourUtc: number;
+      readonly jitterMinutes: number;
+      readonly batchLimit: number;
+    };
+    /** The latest run, or null before the job has ever run. */
+    readonly lastRun: ReestimationRunResource | null;
+  };
 }
 
 /** One milestone a batch may be filed under. */
