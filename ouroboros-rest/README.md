@@ -3204,6 +3204,16 @@ job holds the exported orchestrator and no estimator of its own; `reestimation.j
 `38/42 · 4 · 6`, recomputes after a synced close, sizes a seeded backlog through the engine stub
 within its bound, and holds every count to the asking workspace.
 
+**The planning guarantees are pinned across the service boundary**
+([#282](https://github.com/NobuData/ouroboros/issues/282)).
+`push.guarantees.integration-spec.ts` pushes over HTTP against a recorded GitHub that can refuse one
+call or lack the dependency API: blockers are created first, the fallback mode is reported, a partial
+failure's resume creates exactly the missing issues, an issue GitHub already holds is found rather
+than filed twice, an epic keeps one parent issue, queue-small goes through INTAKE-M.3 with only sized
+issues, and Blocked counts `synced` edges. `planning.access.integration-spec.ts` reads every planning
+route off the controllers (`planning.routes.fixture.ts`) and fails when one has no case — the role
+matrix on every mutating route, isolation on every route.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
