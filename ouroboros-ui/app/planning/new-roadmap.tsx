@@ -5,7 +5,7 @@ import { useId, useState, useTransition } from "react";
 
 import type { PlanningRoadmap } from "@/app/api/planning";
 import { ShellOverlay } from "@/app/shell/overlay";
-import { Button, TextField } from "@/app/ui";
+import { Button, TextField, type ButtonSize, type ButtonTone } from "@/app/ui";
 
 import {
   CREATE_CANCEL,
@@ -66,6 +66,17 @@ export interface NewRoadmapProps {
    * window are what the form opens on — see `openingDraft`.
    */
   readonly roadmap: PlanningRoadmap | null;
+  /**
+   * The trigger's size. Defaults to the head action's `md`; the roadmap card's empty state passes
+   * `sm`, where the control sits under a note rather than beside a page heading (AM.5, #287).
+   */
+  readonly size?: ButtonSize;
+  /**
+   * The trigger's treatment. Defaults to `primary`, which is what the page head's action is. The
+   * empty state passes `default`: a card already holding the reader's attention does not need a
+   * second primary on the same screen.
+   */
+  readonly tone?: ButtonTone;
 }
 
 /**
@@ -74,7 +85,12 @@ export interface NewRoadmapProps {
  * @param props See {@link NewRoadmapProps}.
  * @returns The primary button, with the dialog beside it while it is open.
  */
-export function NewRoadmap({ mayAdminister, roadmap }: NewRoadmapProps) {
+export function NewRoadmap({
+  mayAdminister,
+  roadmap,
+  size = "md",
+  tone = "primary",
+}: NewRoadmapProps) {
   const router = useRouter();
   const fields = useId();
 
@@ -138,7 +154,12 @@ export function NewRoadmap({ mayAdminister, roadmap }: NewRoadmapProps) {
 
   return (
     <>
-      <Button onClick={openDialog} reason={newRoadmapReason(mayAdminister)} tone="primary">
+      <Button
+        onClick={openDialog}
+        reason={newRoadmapReason(mayAdminister)}
+        size={size}
+        tone={tone}
+      >
         {NEW_ROADMAP_LABEL}
       </Button>
 

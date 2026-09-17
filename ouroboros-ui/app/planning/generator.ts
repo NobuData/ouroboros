@@ -351,6 +351,29 @@ function kindWriteReason(
 }
 
 /**
+ * The trackers this workspace could actually file a batch against.
+ *
+ * A choosable option is one that names a real source **and** carries no reason it cannot be used —
+ * which is the same test {@link initialTracker} makes to decide what to open on. Named here so AM.5
+ * ([#287](https://github.com/NobuData/ouroboros/issues/287)) can ask *"is there anywhere to draft
+ * to at all?"* without restating it: `app/planning/states.ts` decides the guidance state from the
+ * emptiness of this list.
+ *
+ * @param sources The workspace's sources.
+ * @param catalog The catalog, which carries each kind's write capability.
+ * @returns The usable options. Empty for a workspace with no connected tracker, and equally for one
+ *   whose every tracker is read-only — both are *nothing to draft against*.
+ */
+export function pushableTrackers(
+  sources: readonly TicketSource[],
+  catalog: Reading<TicketSourceCatalog>,
+): TrackerOption[] {
+  return trackerOptions(sources, catalog).filter(
+    (option) => option.sourceId !== null && option.reason === undefined,
+  );
+}
+
+/**
  * The tracker the card opens on.
  *
  * @param options The segment.

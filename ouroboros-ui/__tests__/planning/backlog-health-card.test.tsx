@@ -10,6 +10,8 @@ import {
   LAST_RUN_LABEL,
 } from "@/app/planning/health";
 
+import { CARD_UNREAD_NOTE } from "@/app/planning/states";
+
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { emptyHealth, planningReadings, seededHealth } from "../helpers/planning";
 
@@ -37,11 +39,13 @@ describe("the card", () => {
     expect(screen.getByText("42 open")).toBeInTheDocument();
   });
 
-  it("degrades to the service's reason when the health could not be read", () => {
+  // Since AM.5 (#287) the reason is the banner's, said once for the whole page.
+  it("names what is missing and points at the banner for why", () => {
     render(<BacklogHealthCard readings={readings({ health: { ok: false, reason: "No." } })} />);
 
     expect(screen.getByText(HEALTH_UNREAD)).toBeInTheDocument();
-    expect(screen.getByText("No.")).toBeInTheDocument();
+    expect(screen.getByText(CARD_UNREAD_NOTE)).toBeInTheDocument();
+    expect(screen.queryByText("No.")).not.toBeInTheDocument();
     expect(screen.queryByText("42 open")).not.toBeInTheDocument();
   });
 });

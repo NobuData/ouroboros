@@ -11,17 +11,24 @@ import {
   PLANNING_TITLE,
   ROADMAP_EMPTY_NOTE,
   ROADMAP_EMPTY_TITLE,
+  ROADMAP_NO_EPICS_TITLE,
   ROADMAP_UNREAD,
   SOON_MARK,
 } from "@/app/planning/view";
 import { HEALTH_TITLE, HEALTH_TITLE_ID } from "@/app/planning/health";
 import { SYNC_TITLE, SYNC_TITLE_ID } from "@/app/planning/sync";
-import { GENERATOR_TITLE, SOURCES_UNREAD } from "@/app/planning/generator";
+import { GENERATOR_TITLE, PROMPT_LABEL, PUSH_ROLE_REASON } from "@/app/planning/generator";
+import {
+  CARD_UNREAD_NOTE,
+  PLANNING_DEGRADED_HEADLINE,
+  PLANNING_FAILED_HEADLINE,
+  SOURCES_READ,
+} from "@/app/planning/states";
 
-import { SHARE_LABEL, SHARE_SOON_NOTE } from "@/app/planning/gantt";
+import { ADD_EPIC_LABEL, READ_ONLY_STEP_REASON, SHARE_LABEL, SHARE_SOON_NOTE } from "@/app/planning/gantt";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
-import { EMPTY_ROADMAP, SEEDED_READ_MONTH, planningReadings } from "../helpers/planning";
+import { EMPTY_ROADMAP, SEEDED_READ_MONTH, planningBatch, planningReadings } from "../helpers/planning";
 
 /**
  * The planning frame as it is drawn (#283): the head copy verbatim, **Import from Jira** an honest
@@ -155,7 +162,8 @@ describe("the generator region (#284)", () => {
     expect(within(trackers).getByRole("button", { name: /^Linear/ })).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("says the trackers could not be read, and leaves the rest of the page standing", () => {
+  // Since AM.5 (#287) the reason lives in the banner, said once — not in the card.
+  it("leaves the rest of the page standing when the trackers could not be read", () => {
     render(
       <PlanningScreen
         readMonth={SEEDED_READ_MONTH}
@@ -165,7 +173,9 @@ describe("the generator region (#284)", () => {
       />,
     );
 
-    expect(screen.getByText(`${SOURCES_UNREAD} The service failed.`)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      `${SOURCES_READ}: The service failed.`,
+    );
     expect(screen.getByRole("region", { name: "Roadmap — Helios 2.1" })).toBeInTheDocument();
   });
 });
@@ -202,14 +212,192 @@ describe("the roadmap region", () => {
     expect(within(region).getByText(ROADMAP_EMPTY_NOTE)).toBeInTheDocument();
   });
 
-  it("says the roadmap could not be read, with the service's reason, and leaves the rest standing", () => {
+  it("says the roadmap could not be read, and leaves the rest standing", () => {
     render(<PlanningScreen readMonth={SEEDED_READ_MONTH} mayAdminister mayContribute readings={planningReadings({ ok: false, reason: "The service failed." })} />);
 
     const region = screen.getByRole("region", { name: "Roadmap" });
 
+    // The card names what is missing; the banner carries why (#287).
     expect(within(region).getByText(ROADMAP_UNREAD)).toBeInTheDocument();
-    expect(within(region).getByText("The service failed.")).toBeInTheDocument();
+    expect(within(region).getByText(CARD_UNREAD_NOTE)).toBeInTheDocument();
+    expect(within(region).queryByText("The service failed.")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(PLANNING_TITLE);
-    expect(screen.getByRole("button", { name: NEW_ROADMAP_LABEL })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: NEW_ROADMAP_LABEL }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("the page's states (#287)", () => {
+  /** The screen, with whatever readings a case wants. */
+  function show(
+    over: Parameters<typeof planningReadings>[1] = {},
+    roadmap?: Parameters<typeof planningReadings>[0],
+  ) {
+    return render(
+      <PlanningScreen
+        readMonth={SEEDED_READ_MONTH}
+        mayAdminister
+        mayContribute
+        readings={planningReadings(roadmap, over)}
+      />,
+    );
+  }
+
+  it("draws no banner at all when everything was read", () => {
+    show();
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  // The whole point of the banner: one reason on screen, not one per card.
+  it("says a reason once, however many reads failed", () => {
+    show({
+      sources: { ok: false, reason: "Sources failed." },
+      health: { ok: false, reason: "Health failed." },
+    });
+
+    const banner = screen.getByRole("status");
+
+    expect(banner).toHaveTextContent(PLANNING_DEGRADED_HEADLINE);
+    expect(banner).toHaveTextContent("Sources failed.");
+    expect(banner).toHaveTextContent("Health failed.");
+    // Exactly once each, and only inside the banner — never repeated by a card.
+    expect(within(banner).getByText(/Sources failed\./)).toBeInTheDocument();
+    expect(screen.getAllByText(/Sources failed\./)).toHaveLength(1);
+    expect(screen.getAllByText(/Health failed\./)).toHaveLength(1);
+  });
+
+  it("says the whole page failed when every read did", () => {
+    show(
+      {
+        sources: { ok: false, reason: "b" },
+        catalog: { ok: false, reason: "c" },
+        health: { ok: false, reason: "d" },
+        batch: null,
+      },
+      { ok: false, reason: "a" },
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(PLANNING_FAILED_HEADLINE);
+  });
+
+  // The distinction the ticket asks for: a failed read and an empty workspace must not look alike.
+  it("keeps a failed read visually distinct from an empty one", () => {
+    const { unmount } = show({}, { ok: false, reason: "The roadmap: gone" });
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByText(ROADMAP_UNREAD)).toBeInTheDocument();
+    unmount();
+
+    show({}, { ok: true, value: EMPTY_ROADMAP });
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByText(ROADMAP_EMPTY_TITLE)).toBeInTheDocument();
+  });
+});
+
+describe("the roadmap's empty states (#287)", () => {
+  /** The roadmap card. */
+  function card() {
+    return screen.getByRole("region", { name: /^Roadmap/ });
+  }
+
+  it("offers a working New roadmap control inside the card, not only in the head", () => {
+    render(
+      <PlanningScreen
+        readMonth={SEEDED_READ_MONTH}
+        mayAdminister
+        mayContribute
+        readings={planningReadings({ ok: true, value: EMPTY_ROADMAP })}
+      />,
+    );
+
+    expect(within(card()).getByText(ROADMAP_EMPTY_TITLE)).toBeInTheDocument();
+    expect(within(card()).getByRole("button", { name: NEW_ROADMAP_LABEL })).toBeEnabled();
+  });
+
+  // A named roadmap with no lanes read as "No roadmap yet" under its own name before #287.
+  it("says a named roadmap has no epics rather than no roadmap", () => {
+    render(
+      <PlanningScreen
+        readMonth={SEEDED_READ_MONTH}
+        mayAdminister
+        mayContribute
+        readings={planningReadings({
+          ok: true,
+          value: { name: "Helios 2.1", window: "Q3–Q4 2026", lanes: [] },
+        })}
+      />,
+    );
+
+    expect(within(card()).getByText(ROADMAP_NO_EPICS_TITLE)).toBeInTheDocument();
+    expect(within(card()).queryByText(ROADMAP_EMPTY_TITLE)).not.toBeInTheDocument();
+  });
+
+  it("states the reason on the card's control for a member", () => {
+    render(
+      <PlanningScreen
+        readMonth={SEEDED_READ_MONTH}
+        mayAdminister={false}
+        mayContribute
+        readings={planningReadings({ ok: true, value: EMPTY_ROADMAP })}
+      />,
+    );
+
+    expect(within(card()).getByRole("button", { name: NEW_ROADMAP_LABEL })).toHaveAttribute(
+      "title",
+      NEW_ROADMAP_ROLE_REASON,
+    );
+  });
+});
+
+describe("a member session (#287)", () => {
+  /**
+   * The page as a member sees it — may draft and edit, may not push or change the roadmap.
+   *
+   * With a batch open, because the push button only exists where there are drafts to push.
+   */
+  function asMember() {
+    return render(
+      <PlanningScreen
+        readMonth={SEEDED_READ_MONTH}
+        mayAdminister={false}
+        mayContribute
+        readings={planningReadings(undefined, { batch: { ok: true, value: planningBatch() } })}
+      />,
+    );
+  }
+
+  it("leaves the generator fully usable", () => {
+    asMember();
+
+    expect(screen.getByLabelText(PROMPT_LABEL)).toBeEnabled();
+    expect(screen.getByRole("region", { name: GENERATOR_TITLE })).toBeInTheDocument();
+  });
+
+  // Scoped, not broken: every control a member may not use says why rather than vanishing.
+  it("states the reason on every control it takes away", () => {
+    asMember();
+
+    for (const label of [NEW_ROADMAP_LABEL, ADD_EPIC_LABEL]) {
+      expect(screen.getAllByRole("button", { name: label })[0]).toHaveAttribute("title");
+    }
+  });
+
+  it("refuses the push with the role's own reason", () => {
+    asMember();
+
+    const push = screen.getByRole("button", { name: /^Push / });
+
+    expect(push).toHaveAttribute("title", PUSH_ROLE_REASON);
+    expect(push).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("refuses roadmap changes with the roadmap's own reason", () => {
+    asMember();
+
+    expect(screen.getByRole("button", { name: ADD_EPIC_LABEL })).toHaveAttribute(
+      "title",
+      READ_ONLY_STEP_REASON,
+    );
   });
 });

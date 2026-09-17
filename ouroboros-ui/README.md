@@ -293,6 +293,9 @@ ouroboros-ui/
 │   │   ├── tracker-sync-card.tsx # the rows, the dots, connect ↗ into #141
 │   │   ├── health.ts        #   the health card's meters, hues and nightly footnote · #285
 │   │   ├── backlog-health-card.tsx # the three meters and the last-run detail
+│   │   ├── states.ts        #   empty, degraded and guarded — what each state says · #287
+│   │   ├── planning-banner.tsx #  the DASH-I.7 banner: the reason once, with the retry
+│   │   ├── planning-skeleton.tsx # the loading state, at the real grid's geometry
 │   │   └── planning-screen.tsx # the page head and the four cards
 │   ├── providers/           # mockup 07's Audit log action and the sheet behind it · #225
 │   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
@@ -2802,6 +2805,33 @@ one `PATCH` of only what changed; the linked tickets with their synced states
 the bar draws immediately; and where the lane is mirrored in a tracker. **Add epic** opens it empty and
 files the lane under the roadmap's own head. **Roles:** every edit is `owner|admin`; anyone else reads
 the gantt and the sheet with the controls inert or absent.
+
+### The page's states
+
+Empty, degraded and guarded (AM.5, [#287](https://github.com/NobuData/ouroboros/issues/287)). Every
+judgement is a pure function in [`states.ts`](app/planning/states.ts).
+
+| State | What the page does |
+|---|---|
+| A read failed | The [banner](app/planning/planning-banner.tsx) carries the reason **once**, with the page's only retry (`router.refresh()`); each affected card names what is missing and points at it |
+| Nothing to draft against | The generator stays fully visible and says a tracker has to be connected, with **Open settings** → `/settings/sources` for an admin and the sentence naming who can for anyone else |
+| No roadmap, or a roadmap with no epics | Two different sentences, each with a working **New roadmap** control *in the card* rather than only in the page head |
+| A member | Drafts and edits; push and every roadmap write are inert **with the reason on them** — scoped, not broken |
+| Sizing still running | The row's `sizing…` plus the note explaining the shared estimator queue, so a wait does not read as a hang |
+| Loading | [Skeletons](app/planning/planning-skeleton.tsx) at the real grid's geometry — the head drawn for real, since none of it is read |
+
+**Could not be read and nothing here yet are different sentences**, which is the distinction the
+ticket asks for and DASH-I.7 ([#86](https://github.com/NobuData/ouroboros/issues/86)) before it.
+Before this, every card printed the service's own reason into its own `EmptyState`, so a full
+outage put four failure messages down the page in the treatment an empty workspace gets.
+
+**Drafting needs a tracker, and the page says so.** The issue assumed generation was tracker-free;
+the contract is not — `PlanningBatchCreate.targetSourceId` is required and
+`draft_batches.target_source_id` is `not null`, with a tenancy trigger resolving the workspace
+*through* it. So the honest half-working state is not *draft now, push later*: it is a generator
+that stays on screen, keeps its prompt, and is plain about what it needs. The note says a draft is
+*filed* against a tracker rather than *pushed* to one, because a reader told only that push is
+disabled would reasonably expect to draft and be refused on the first click.
 
 ## Workflow Studio
 

@@ -1052,7 +1052,7 @@ dark-only).
 | AM.2 | #284 | 🟢 Done | ouroboros-ui: [AM.2] Generator card & draft flow | Prompt/outline, tracker segment, toggles, draft rows, push flow | mvp, planning, ui, design | N (after AM.1, AL.4, AL.3) | Y | L | ouroboros-ui |
 | AM.3 | #285 | 🟢 Done | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
 | AM.4 | #286 | 🟢 Done | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
-| AM.5 | #287 | 🟡 Open | ouroboros-ui: [AM.5] Planning states & guards | Empty org, no-writable-source, member limits, load/error | mvp, planning, ui, design | N (after AM.2–AM.4) | Y | S | ouroboros-ui |
+| AM.5 | #287 | 🟢 Done | ouroboros-ui: [AM.5] Planning states & guards | Empty org, no-writable-source, member limits, load/error | mvp, planning, ui, design | N (after AM.2–AM.4) | Y | S | ouroboros-ui |
 | AM.6 | #288 | 🟡 Open | ouroboros-ui: [AM.6] Planning e2e leg | Generate→size→select→push→queue chain; gantt edits; themes | mvp, planning, ui, ci | N (after AM.1–AM.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue AM.1 — ouroboros-ui: [AM.1] Planning route, head & page frame
@@ -1308,7 +1308,7 @@ Zephyr 4.2 (proposed)                    [╌ unscoped ╌]
 
 ### Issue AM.5 — ouroboros-ui: [AM.5] Planning states & guards
 
-> **GitHub issue:** #287 · **Status:** 🟡 Open · **Parent epic:** #270
+> **GitHub issue:** #287 · **Status:** 🟢 Done · **Parent epic:** #270
 
 
 - **Problem Statement:** No writable source, no epics, member-role limits,
@@ -1324,6 +1324,47 @@ Zephyr 4.2 (proposed)                    [╌ unscoped ╌]
 - **Parallelism/Dependencies:** Needs AM.2–AM.4.
 - **Technical Stack:** React, #46 EmptyState/Skeleton.
 - **Epic:** AM
+
+- **Delivered (2026-09-17):** `app/planning/states.ts` (every judgement, pure),
+  `planning-banner.tsx` and `planning-skeleton.tsx` with `app/(app)/planning/loading.tsx` — which
+  planning was the only app route to be missing. `ouroboros-ui` 0.80.0; no service change.
+  Decisions taken in-issue:
+  - **The ticket's premise was not true of the contract.** It states a fresh workspace can draft
+    immediately because *"generation needs no tracker"*. `PlanningBatchCreate.targetSourceId` is
+    **required** and `draft_batches.target_source_id` is **`not null`** (V034), with a tenancy
+    trigger that resolves the workspace *through* it — a batch is bound to a tracker from the moment
+    it exists. Making sourceless drafting real would be a migration, a rewritten trigger and new
+    push-path guards: a new epic's work inside an `S` UI ticket, reopening AL.3 and AL.4. So the
+    contract was left alone and **the guidance state was designed instead** — the generator stays
+    fully visible and says a tracker has to be connected, with the control to do it. The copy says a
+    draft is *filed* against a tracker rather than *pushed* to one, because a reader told only that
+    push is disabled expects to draft and is refused on the first click. Noted on the issue.
+  - **The banner says the reason once; the cards went quiet.** Each of the four cards printed the
+    service's own sentence into its own `EmptyState`, so a full outage put four failure messages
+    down the page in the treatment an empty workspace gets — which is both the nine-times-over
+    problem DASH-I.7 was written against and the reason *could not be read* was indistinguishable
+    from *nothing here yet*. Now `planningFailures` collects them, the banner carries them with the
+    page's only retry (`router.refresh()`), and each card keeps a title naming what is missing over
+    `CARD_UNREAD_NOTE`. This is the providers page's own pattern.
+  - **`none-writable` covers more than *not connected*.** A workspace whose every tracker is
+    read-only, or whose only connected kind has no provider in this build, is as unable to draft as
+    one with nothing connected — so `trackerState` asks `pushableTrackers` (extracted from
+    `initialTracker`'s own test) rather than counting sources.
+  - **A control for a reader who can act, a sentence for one who cannot** — `app/issues/states.ts`'s
+    rule, applied to the connect-a-tracker CTA: a guidance card is a new member's first screen, and
+    an inert button with a tooltip is a worse first sentence than one naming who can act.
+  - **The roadmap's two empty cases were one.** A named roadmap with no lanes read *"No roadmap
+    yet"* under a head saying *"Roadmap — Helios 2.1"*; `ROADMAP_NO_EPICS_TITLE` splits them, and
+    both now carry a working **New roadmap** control inside the card rather than only in the head.
+  - **The sweep note appears whenever anything is unsized** and auto-size was on — no invented
+    threshold, and it names no duration, because the queue's depth is another workspace's business
+    and the sweep's period is configuration this page does not read.
+  - **The member guards were already there** (AM.2's `pushReason`, AM.4's `READ_ONLY_STEP_REASON`
+    and `READ_ONLY_NOTE`), so this issue verified them rather than rebuilding them — the member
+    session the acceptance criteria ask for by name is now a suite.
+  - Tests: `states.ts` (19), the banner (5), the skeleton and its route (11), plus the connect-a-
+    tracker CTA, the sweep note, the two roadmap empty states and the member session in the card and
+    screen suites — 414 across `__tests__/planning/`.
 
 ### Issue AM.6 — ouroboros-ui: [AM.6] Planning e2e leg
 

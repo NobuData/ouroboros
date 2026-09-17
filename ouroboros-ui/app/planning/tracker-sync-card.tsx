@@ -12,6 +12,7 @@ import {
   cadenceOf,
   syncRows,
 } from "./sync";
+import { CARD_UNREAD_NOTE } from "./states";
 import type { PlanningReadings } from "./view";
 
 import "./planning.css";
@@ -54,7 +55,7 @@ export function TrackerSyncCard({ readings }: Readonly<{ readings: PlanningReadi
           ))}
         </ul>
       ) : (
-        <EmptyState fill note={sources.reason} title={SYNC_UNREAD} />
+        <EmptyState fill note={CARD_UNREAD_NOTE} title={SYNC_UNREAD} />
       )}
     </Card>
   );

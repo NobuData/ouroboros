@@ -14,6 +14,8 @@ import {
   TWO_WAY_DIRECTION,
 } from "@/app/planning/sync";
 
+import { CARD_UNREAD_NOTE } from "@/app/planning/states";
+
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { planningReadings, writableCatalog } from "../helpers/planning";
 import { catalogPayload, githubEntry, jiraSource, source, sourcePage } from "../helpers/sources";
@@ -56,13 +58,15 @@ describe("the card", () => {
     expect(screen.queryByText(/^every /)).not.toBeInTheDocument();
   });
 
-  it("degrades to the service's reason when the sources could not be read", () => {
+  // Since AM.5 (#287) the reason is the banner's, said once for the whole page.
+  it("names what is missing and points at the banner for why", () => {
     render(
       <TrackerSyncCard readings={readings({ sources: { ok: false, reason: "Sources failed." } })} />,
     );
 
     expect(screen.getByText(SYNC_UNREAD)).toBeInTheDocument();
-    expect(screen.getByText("Sources failed.")).toBeInTheDocument();
+    expect(screen.getByText(CARD_UNREAD_NOTE)).toBeInTheDocument();
+    expect(screen.queryByText("Sources failed.")).not.toBeInTheDocument();
     expect(screen.queryByRole("list", { name: SYNC_LIST_LABEL })).not.toBeInTheDocument();
   });
 });

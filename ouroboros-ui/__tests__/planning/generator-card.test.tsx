@@ -3,7 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PlanningBatch } from "@/app/api/planning";
 import type { Reading } from "@/app/api/reading";
+import type { TicketSourcePage } from "@/app/api/sources";
 import type { BatchReader } from "@/app/planning/batch-poll";
+import { SOURCES_PATH } from "@/app/paths";
+import {
+  CONNECT_TRACKER_LABEL,
+  CONNECT_TRACKER_MEMBER_NOTE,
+  CONNECT_TRACKER_NOTE,
+  CONNECT_TRACKER_TITLE,
+  SWEEP_NOTE,
+} from "@/app/planning/states";
 import {
   ALL_SIZED_MARK,
   DRAFT_LABEL,
@@ -12,6 +21,7 @@ import {
   OUTLINE_GUIDANCE_ACTION,
   OUTLINE_LABEL,
   OUTLINE_TOGGLE_LABEL,
+  GENERATOR_TITLE,
   PROMPT_LABEL,
   PUSH_ROLE_REASON,
   QUEUE_SMALL_NOTE,
@@ -33,7 +43,7 @@ import {
   seededDrafts,
   writableCatalog,
 } from "../helpers/planning";
-import { SEEDED_GITHUB_ID, catalogPayload, seededSources } from "../helpers/sources";
+import { SEEDED_GITHUB_ID, catalogPayload, githubEntry, seededSources, sourcePage } from "../helpers/sources";
 
 /**
  * The generator card, drawn and driven (#284) — the acceptance criteria that are about what a person
@@ -76,14 +86,19 @@ function props(
   over: Partial<{
     batch: Reading<PlanningBatch> | null;
     catalog: Parameters<typeof trackerOptions>[1];
+    sources: Reading<TicketSourcePage>;
     mayAdminister: boolean;
     mayContribute: boolean;
   }> = {},
 ) {
+  const catalog = over.catalog ?? { ok: true as const, value: writableCatalog() };
+  const sources = over.sources ?? { ok: true as const, value: sourcePage(seededSources()) };
+
   return {
     batch: over.batch === undefined ? { ok: true as const, value: planningBatch() } : over.batch,
-    trackers: trackerOptions(seededSources(), over.catalog ?? { ok: true, value: writableCatalog() }),
-    trackersUnread: null,
+    trackers: trackerOptions(sources.ok ? sources.value.items : [], catalog),
+    sources,
+    catalog,
     mayAdminister: over.mayAdminister ?? true,
     mayContribute: over.mayContribute ?? true,
     pollOptions: { read: (etag: string | null) => read(etag), visible: () => true },
@@ -579,5 +594,99 @@ describe("inline editing, by keyboard", () => {
 
     expect(await screen.findByText("The draft's issue exists; edit it in the tracker.")).toBeInTheDocument();
     expect(screen.getByRole("form", { name: "Edit OTA-2" })).toBeInTheDocument();
+  });
+});
+
+describe("no writable source (#287)", () => {
+  /** A workspace that has connected nothing at all. */
+  const nothing = { ok: true as const, value: sourcePage([]) };
+
+  it("keeps the generator on screen — it is never hidden", () => {
+    render(<GeneratorCard {...props({ sources: nothing, batch: null })} />);
+
+    expect(screen.getByRole("region", { name: GENERATOR_TITLE })).toBeInTheDocument();
+    expect(screen.getByLabelText(PROMPT_LABEL)).toBeInTheDocument();
+  });
+
+  it("says a tracker has to be connected, and why", () => {
+    render(<GeneratorCard {...props({ sources: nothing, batch: null })} />);
+
+    expect(screen.getByText(CONNECT_TRACKER_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(CONNECT_TRACKER_NOTE)).toBeInTheDocument();
+  });
+
+  it("gives an admin the control, pointed at the sources settings", () => {
+    render(<GeneratorCard {...props({ sources: nothing, batch: null })} />);
+
+    expect(screen.getByRole("link", { name: CONNECT_TRACKER_LABEL })).toHaveAttribute(
+      "href",
+      SOURCES_PATH,
+    );
+  });
+
+  // A guidance card is a new member's first screen; an inert button with a tooltip is a worse
+  // first sentence than one naming who can act.
+  it("gives a member the sentence instead of an inert control", () => {
+    render(
+      <GeneratorCard {...props({ sources: nothing, batch: null, mayAdminister: false })} />,
+    );
+
+    expect(screen.getByText(CONNECT_TRACKER_MEMBER_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: CONNECT_TRACKER_LABEL })).not.toBeInTheDocument();
+  });
+
+  it("treats a connected but read-only tracker the same way", () => {
+    render(
+      <GeneratorCard
+        {...props({
+          batch: null,
+          catalog: { ok: true, value: catalogPayload([githubEntry()]) },
+        })}
+      />,
+    );
+
+    expect(screen.getByText(CONNECT_TRACKER_TITLE)).toBeInTheDocument();
+  });
+
+  it("says nothing of the sort once a writable tracker is connected", () => {
+    render(<GeneratorCard {...props({ batch: null })} />);
+
+    expect(screen.queryByText(CONNECT_TRACKER_TITLE)).not.toBeInTheDocument();
+  });
+});
+
+describe("the sizing pipeline (#287)", () => {
+  /** The seeded batch with one draft still waiting on the estimator. */
+  function sizing() {
+    const batch = planningBatch();
+    const [first, ...rest] = batch.drafts;
+
+    return planningBatch({
+      drafts: [{ ...first!, estimate: null }, ...rest],
+      summary: { ...batch.summary, sizedCount: 5, allSized: false },
+    });
+  }
+
+  it("explains the wait, so a queue does not read as a hang", () => {
+    render(<GeneratorCard {...props({ batch: { ok: true, value: sizing() } })} />);
+
+    expect(screen.getByText(SWEEP_NOTE)).toBeInTheDocument();
+  });
+
+  it("drops the explanation the moment everything is sized", () => {
+    render(<GeneratorCard {...props()} />);
+
+    expect(screen.queryByText(SWEEP_NOTE)).not.toBeInTheDocument();
+  });
+
+  // With auto-size off nothing is coming, so a note about waiting would be untrue.
+  it("says nothing about a queue when nothing was queued", () => {
+    const batch = sizing();
+
+    render(
+      <GeneratorCard {...props({ batch: { ok: true, value: { ...batch, autoSize: false } } })} />,
+    );
+
+    expect(screen.queryByText(SWEEP_NOTE)).not.toBeInTheDocument();
   });
 });

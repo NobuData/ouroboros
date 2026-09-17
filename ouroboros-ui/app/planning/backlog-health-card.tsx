@@ -13,6 +13,7 @@ import {
   lastRunPhrase,
   openTag,
 } from "./health";
+import { CARD_UNREAD_NOTE } from "./states";
 import type { PlanningReadings } from "./view";
 
 import "./planning.css";
@@ -70,7 +71,7 @@ export function BacklogHealthCard({ readings }: Readonly<{ readings: PlanningRea
           </p>
         </div>
       ) : (
-        <EmptyState fill note={health.reason} title={HEALTH_UNREAD} />
+        <EmptyState fill note={CARD_UNREAD_NOTE} title={HEALTH_UNREAD} />
       )}
     </Card>
   );
