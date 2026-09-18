@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**221 of 454 ordered issues are closed** — P0 through P6 are complete, and P7 and P8 are
+**225 of 454 ordered issues are closed** — P0 through P6 are complete, and P7, P8 and P9 are
 under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
@@ -43,7 +43,8 @@ and are accounted for in the counts below, not in the tables.
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
 | 🟡 **In progress** | P7 | **42** of 43 |
 | 🟡 **In progress** | P8 | **16** of 17 |
-| — **Not started** | P9–P17 | 0 of 229 |
+| 🟡 **In progress** | P9 | **4** of 20 |
+| — **Not started** | P10–P17 | 0 of 209 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --state closed --limit 1000 --json number` whenever the plan
@@ -114,7 +115,7 @@ position is not forced by dependencies, one of these decided it.
 | **P6** | Issue intake & estimation | ✅ 23/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | 🟡 42/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | 🟡 16/17 | 17 | 52 | Mockup 09 |
-| **P9** | Build farm & runner agent | — 0/20 | 20 | 70 | Mockup 08 |
+| **P9** | Build farm & runner agent | 🟡 4/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | — 0/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | — 0/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | — 0/28 | 28 | 83 | Mockups 14, 13 |
@@ -1417,7 +1418,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **20 issues** · 70 complexity points · order **#226–#245** · 9 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_08_BUILD_FARM.md` (Epics AG–AI)
-> **Status:** ⬜ **Not started** — 0 of 20 issues closed
+> **Status:** 🟡 **In progress** — 4 of 20 issues closed
 
 **Goal.** Ship the `ouroboros-runner` agent (static Go binary, three platforms), token-scoped enrollment with mTLS identity and outbound-only connections, live heartbeat telemetry, dispatchable builds, pools, and streaming logs.
 
@@ -1429,10 +1430,10 @@ the blockquote above that records what it did and what it did differently.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 226 | **AG.1** | [#243](https://github.com/NobuData/ouroboros/issues/243) | Module scaffold & agent protocol spec | ouroboros-runner, .github, docs | M | 1.1 |
-| 227 | **AH.1** | [#249](https://github.com/NobuData/ouroboros/issues/249) | Farm schema — runners, pools, jobs, tokens, logs | ouroboros-db, .github | L | 3.1, B.3 |
-| 228 | **AH.2** | [#250](https://github.com/NobuData/ouroboros/issues/250) | Enrollment API & runner CA | ouroboros-rest | L | AD.1, AH.1 |
-| 229 | **AG.2** | [#244](https://github.com/NobuData/ouroboros/issues/244) | Enrollment, identity & connection loop | ouroboros-runner | L | AG.1, AH.2 |
+| 226 | **AG.1** | ✅ [#243](https://github.com/NobuData/ouroboros/issues/243) | Module scaffold & agent protocol spec | ouroboros-runner, .github, docs | M | 1.1 |
+| 227 | **AH.1** | ✅ [#249](https://github.com/NobuData/ouroboros/issues/249) | Farm schema — runners, pools, jobs, tokens, logs | ouroboros-db, .github | L | 3.1, B.3 |
+| 228 | **AH.2** | ✅ [#250](https://github.com/NobuData/ouroboros/issues/250) | Enrollment API & runner CA | ouroboros-rest | L | AD.1, AH.1 |
+| 229 | **AG.2** | ✅ [#244](https://github.com/NobuData/ouroboros/issues/244) | Enrollment, identity & connection loop | ouroboros-runner | L | AG.1, AH.2 |
 | 230 | **AH.3** | [#251](https://github.com/NobuData/ouroboros/issues/251) | Agent WebSocket gateway | ouroboros-rest | L | AG.1, AH.2 |
 | 231 | **AG.3** | [#245](https://github.com/NobuData/ouroboros/issues/245) | Telemetry & presence reporting | ouroboros-runner | S | AG.2 |
 | 232 | **AG.4** | [#246](https://github.com/NobuData/ouroboros/issues/246) | Job executors (container & shell) | ouroboros-runner | L | AG.2 |

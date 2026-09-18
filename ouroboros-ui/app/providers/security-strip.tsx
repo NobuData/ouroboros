@@ -18,9 +18,9 @@ import "./providers.css";
  * [#232](https://github.com/NobuData/ouroboros/issues/232)): the shield, one sentence, one
  * tag, and the link to the document that backs the sentence.
  *
- * **Nothing here is this file's to say.** The copy is `docs/SECURITY_MODEL.md` § 7.1,
+ * **Nothing here is this file's to say.** The copy is `docs/SECURITY_MODEL.md` § 8.1,
  * rendered verbatim from `app/providers/view.ts`'s constants, and the mockup's two
- * compliance badges are absent because § 7.3 withdrew them: `SOC 2 Type II` and `ISO 27001`
+ * compliance badges are absent because § 8.3 withdrew them: `SOC 2 Type II` and `ISO 27001`
  * are certifications the product has not undergone, and displaying one is a false compliance
  * claim rather than an optimistic label. The tag slot holds exactly what the document lists
  * — one word — and renders nothing more until a certification exists, carries its date, and
@@ -56,7 +56,7 @@ export function SecurityStrip() {
           </>
         )}
       </p>
-      {/* The badge slot — § 7.3's rule is that it holds what is earned, and nothing else. */}
+      {/* The badge slot — § 8.3's rule is that it holds what is earned, and nothing else. */}
       {SECURITY_STRIP_TAGS.length > 0 && (
         <span className="providers-security__tags">
           {SECURITY_STRIP_TAGS.map((tag) => (

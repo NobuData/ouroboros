@@ -274,7 +274,8 @@ understood as a decision rather than an omission.
 
 ### 2.6 `ouroboros-runner` — the build farm agent
 
-**Scaffolded**, and the first component of this system that does not run inside the
+**Enrolls and connects** ([#244](https://github.com/NobuData/ouroboros/issues/244)) — it does not
+run jobs yet — and it is the first component of this system that does not run inside the
 deployment. It is a Go binary on **the customer's** machines — a Mac that can notarise, a
 rack of ARM boards, a workstation with a warm `ccache` — and it is how those machines join
 the build farm (roadmap decision **B1**,
@@ -307,6 +308,13 @@ could not have been retrofitted: the envelope carries a **version** from message
 gateway may refuse an agent below a floor (this binary runs where no upgrade can be forced),
 and terminal messages carry **idempotency ids** so a `job.finish` written to a dying socket
 is re-sent rather than lost, and deduplicated rather than counted twice.
+
+Two commands carry that out. `ouroboros-runner enroll` spends a token once for a certificate
+over a key the machine generated (the control plane never holds a runner's private key), and
+`ouroboros-runner run` holds the one outbound `wss://…/api/v1/farm/agent` connection — reconnecting
+with jittered backoff, re-sending unacknowledged terminal frames from a durable outbox, renewing
+the certificate over mTLS before it expires, and saying `bye` on SIGTERM. Its configuration is
+four environment fallbacks for its flags (§ 6.2), read from the process environment only.
 
 What it means for the invariants in § 8 is nothing: the runner reaches
 `ouroboros-rest` and only `ouroboros-rest`, so the boundary that keeps tenancy enforcement in
@@ -791,6 +799,10 @@ checkout runs with:
 | `OURO_CORS_ORIGINS` | `ouroboros-rest` | Comma-separated browser origins allowed to call the API with credentials — the origins the session cookie may travel to; never a wildcard | `http://localhost:3000` |
 | `OURO_LISTEN_HOST` | `ouroboros-rest` | Which interface to bind, when a stack has to choose explicitly — exactly `127.0.0.1` or `0.0.0.0` ([#647](https://github.com/NobuData/ouroboros/issues/647)). Unset is the posture every deployment should inherit: `NODE_ENV` decides on its own, loopback outside production. The one stack that sets it is the e2e compose override | `127.0.0.1` |
 | `OURO_FARM_CLIENT_CERT_HEADER` | `ouroboros-rest` | The request header a **trusted** reverse proxy forwards a build runner's TLS client certificate in ([#250](https://github.com/NobuData/ouroboros/issues/250), decision **B3**). Unset is the posture every deployment that terminates TLS in this process should stay in: the certificate is then read from the TLS socket and from nowhere else. A proxy that terminates TLS has already consumed it, and unless it forwards one **the handshake still succeeds and the identity check has nothing to check** — mTLS becomes decoration with nothing failing visibly. It is off by default because a certificate is *public*, so a header this service trusted unconditionally would be an impersonation of any runner whose certificate anybody has seen; naming one asserts that it cannot reach the process except through that proxy, and the proxy must strip it from inbound requests. [`SECURITY_MODEL.md` § 7.6](SECURITY_MODEL.md#76-the-deployment-requirement-that-silently-breaks-mtls) carries the nginx and Traefik directives | *(unset)* |
+| `OURO_RUNNER_SERVER` | `ouroboros-runner` | The control plane the agent enrols with and connects to, `https://` only ([#244](https://github.com/NobuData/ouroboros/issues/244)). A fallback for `--server`: **the agent reads no `.env` file** — it runs on a customer's machine, configured by its service unit — so its four variables are here because this registry is the complete list, not because a checkout's `.env` configures it | `https://localhost:8443` |
+| `OURO_RUNNER_TOKEN` | `ouroboros-runner` | The enrollment token for `ouroboros-runner enroll`, as a variable so it stays off the process list. Spent on first use by the control plane, never written anywhere by the agent; the template's value is a placeholder | `orb_enroll_placeholder-mint-one-per-machine` |
+| `OURO_RUNNER_STATE_DIR` | `ouroboros-runner` | Where the agent keeps its identity — the client certificate and key in one `0600` file, the pinned farm CA, the session to resume, the durable outbox — in a `0700` directory | `/var/lib/ouroboros-runner` |
+| `OURO_RUNNER_SERVER_CA` | `ouroboros-runner` | PEM roots to verify the control plane with in place of the system's, for a private deployment or a development TLS proxy. Not the farm CA, which signs runner certificates only | `/etc/ouroboros-runner/server-ca.pem` |
 | `OURO_LOCAL_PROVIDER_URLS` | `ouroboros-rest` | Where this deployment's **local** model providers are, as `kind=url` pairs — what a worker is told by `POST /internal/credentials/lease` ([#224](https://github.com/NobuData/ouroboros/issues/224), decision **P3**). Only `ollama` and `openai_compatible` may appear; naming a cloud provider stops the process at boot, because their credentials never leave the control plane. Unset is the normal posture | *(unset)* |
 | `OURO_WORKFLOW_SKILL_SUGGESTIONS` | `ouroboros-rest` | Skill names the stage catalog (`GET /api/v1/workflows/catalog`, [#145](https://github.com/NobuData/ouroboros/issues/145)) suggests to the workflow inspector, comma-separated. Advice by decision **P7**, never an enumeration: a workflow naming an unlisted skill still saves and publishes and is flagged as a warning. Configuration only until the skills registry ([#410](https://github.com/NobuData/ouroboros/issues/410)) replaces it; each name at most 128 characters, none listed twice | *(unset)* |
 | `OURO_DASHBOARD_POLL_SECONDS` | `ouroboros-rest` | Whole seconds sent as `X-Ouro-Poll-After` on every dashboard answer — the poll interval the client honours ([§ 5.4](#54-the-polling-contract)); raising it slows every open dashboard within one poll cycle | `15` |

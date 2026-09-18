@@ -45,6 +45,20 @@
       "diagnostics": []
     },
     {
+      "name": "hello-bearer-fallback",
+      "about": "Decision B3's degraded mode, REPORTED rather than hidden: the gateway records it in the runner row and the farm page shows it (#244, #257). The bearer secret itself travels in the upgrade request, never in a frame.",
+      "document": "valid/hello-bearer-fallback.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "hello-without-security-mode",
+      "about": "`security_mode` was added inside line 1, so it is optional and a hello without it is still legal (§ 3). The gateway reads the transport instead.",
+      "document": "valid/hello-without-security-mode.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
       "name": "ack",
       "about": "The session, the negotiated protocol, and every limit the agent must not hard-code.",
       "document": "valid/ack.json",
@@ -282,6 +296,13 @@
       "document": "invalid/hello-field-unknown.json",
       "valid": false,
       "diagnostics": [{ "code": "payload.field.unknown", "path": "/payload/token" }]
+    },
+    {
+      "name": "hello-security-mode-enum",
+      "about": "A security mode outside decision B3's two. There is no third way to authenticate, and a frame claiming one is refused rather than recorded.",
+      "document": "invalid/hello-security-mode-enum.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/security_mode" }]
     },
     {
       "name": "heartbeat-cpu-range",

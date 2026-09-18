@@ -1166,7 +1166,7 @@
   font-weight: 600;
 }
 
-/* The tag slot — what is earned, and nothing else (SECURITY_MODEL.md § 7.3). */
+/* The tag slot — what is earned, and nothing else (SECURITY_MODEL.md § 8.3). */
 .providers-security__tags {
   display: inline-flex;
   flex-wrap: wrap;

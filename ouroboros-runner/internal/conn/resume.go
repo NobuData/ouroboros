@@ -111,6 +111,30 @@ func (o *Outbox) Pending() [][]byte {
 	return frames
 }
 
+// OutboxEntry is one unacknowledged terminal frame: its envelope id, and the exact
+// bytes to re-send.
+type OutboxEntry struct {
+	ID    string
+	Frame []byte
+}
+
+// Entries is [Outbox.Pending] with each frame's id beside it — what a connection needs
+// to remember which frames it has already written on this socket, so that a frame added
+// while it is re-sending is written once rather than twice. Copies, for Pending's
+// reason.
+func (o *Outbox) Entries() []OutboxEntry {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	entries := make([]OutboxEntry, 0, len(o.order))
+	for _, id := range o.order {
+		stored := o.pending[id]
+		frame := make([]byte, len(stored))
+		copy(frame, stored)
+		entries = append(entries, OutboxEntry{ID: id, Frame: frame})
+	}
+	return entries
+}
+
 // Len is how many frames are waiting for a receipt.
 func (o *Outbox) Len() int {
 	o.mu.Lock()

@@ -4503,6 +4503,250 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/farm/authority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's farm certificate authority — the certificate a runner pins
+         * @description The **public** half of this workspace's build-farm CA
+         *     ([#250](https://github.com/NobuData/ouroboros/issues/250), decision B3): the certificate a
+         *     runner is handed once at enrollment and pins thereafter, its `sha256` fingerprint, and its
+         *     validity window.
+         *
+         *     **Creates the authority if this workspace has never had one**, which is the same lazy
+         *     creation an enrollment performs. A person setting up a TLS-terminating proxy before the
+         *     first machine arrives should get the certificate they are about to need rather than a `404`
+         *     telling them to enrol something first.
+         *
+         *     **There is no private key in this payload and no operation in this document returns one.**
+         *     The CA's private key is sealed by the vault ([#222](https://github.com/NobuData/ouroboros/issues/222)),
+         *     unwrapped in-process for the duration of one signature and zeroized; `docs/SECURITY_MODEL.md`'s
+         *     farm-CA section carries the custody model.
+         *
+         *     **Any member**, `viewer` included — a certificate is public, and requiring an administrator
+         *     to fetch a public key in order to write an nginx block would be a gate with nothing behind
+         *     it.
+         */
+        get: operations["readFarmAuthority"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/enrollment-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This workspace's enrollment tokens, newest first — masked, every one
+         * @description Every enrollment token this workspace has minted, newest first
+         *     ([#250](https://github.com/NobuData/ouroboros/issues/250)) — live, expired and revoked
+         *     alike, because *this token let four machines in before it was killed* is the question an
+         *     incident actually asks.
+         *
+         *     **Masked, without exception.** `masked` is computed from the token's id; the value exists
+         *     only as an envelope. There is no query parameter that changes this.
+         *
+         *     Not paginated: a workspace's tokens are a handful by construction — the longest TTL is
+         *     thirty days — and a workspace with hundreds of them has an incident rather than a list to
+         *     scroll.
+         *
+         *     `owner` or `admin`. The mask hides the value, but the list still says how many machines a
+         *     workspace is about to admit and when the window closes.
+         */
+        get: operations["listEnrollmentTokens"];
+        put?: never;
+        /**
+         * Mint an enrollment token — the one response that carries its value
+         * @description Mint a scoped `orb_enroll_…` token ([#250](https://github.com/NobuData/ouroboros/issues/250),
+         *     decision B3) — mockup 08's enroll card renders one into an install one-liner.
+         *
+         *     **The full value is returned here and nowhere else, ever.** Every later read — this
+         *     workspace's list, the management panel, this service's own logs — carries
+         *     `orb_enroll_••••a4b7`, computed from the token's public id rather than from its value. The
+         *     secret itself is sealed by the vault the moment it is minted; there is no operation that
+         *     un-masks one and no column that could answer a request to.
+         *
+         *     **Scope is not optional.** A token names one pool, and a registration that names a
+         *     different one is refused rather than silently enrolled into the token's — the `--pool` flag
+         *     on the command an operator reads most carefully must not be a lie.
+         *
+         *     `ttlSeconds` defaults to a day and is bounded at thirty; `maxUses` defaults to one and is
+         *     bounded at a hundred, because a rack is installed with one command and an unlimited token is
+         *     a password. `owner` or `admin`.
+         */
+        post: operations["mintEnrollmentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/enrollment-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an enrollment token — the immediate kill
+         * @description Revoke a token before it expires ([#250](https://github.com/NobuData/ouroboros/issues/250)).
+         *     *This leaked* and *this aged out* are different events and only the first is an incident,
+         *     which is why revocation is its own operation rather than a shortened TTL.
+         *
+         *     **The row survives, and the answer says how many uses it had spent.** That number is what an
+         *     incident turns on: a token revoked at zero uses leaked nothing, and one revoked at four uses
+         *     means four machines to account for.
+         *
+         *     **Idempotent.** Revoking an already-revoked token answers the token as it stands rather than
+         *     a `404` — the caller asked for it to be dead and it is. A `404` here means *no such token in
+         *     this workspace*, which is a different fact.
+         *
+         *     Revoking a token does **not** revoke the certificates it issued. Those are per-runner and
+         *     are killed through `DELETE /api/v1/farm/runners/{runnerId}/certificate`. `owner` or `admin`.
+         */
+        delete: operations["revokeEnrollmentToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/runners/{runnerId}/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a runner's certificate — refused at the next handshake
+         * @description Revoke the certificate a runner is currently presenting
+         *     ([#250](https://github.com/NobuData/ouroboros/issues/250), decision B3). **The next
+         *     handshake refuses it**, and the runner cannot renew its way back in: renewal is
+         *     authenticated by the certificate this request just killed.
+         *
+         *     **It does not remove the runner.** Removal is a different act with a different meaning —
+         *     *this machine is retired* rather than *this machine's identity is suspect* — and only one of
+         *     the two is an incident. Removal is
+         *     [#254](https://github.com/NobuData/ouroboros/issues/254)'s lifecycle action.
+         *
+         *     `409 farm_no_live_certificate` is a runner that has none to revoke: one on the bearer
+         *     fallback, which has no certificate by construction, or one whose certificate was already
+         *     revoked. Cutting off a bearer-fallback runner is a removal, not a revocation.
+         *
+         *     `owner` or `admin`.
+         */
+        delete: operations["revokeRunnerCertificate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enrol a machine — the agent's one unauthenticated call
+         * @description What the install one-liner calls ([#250](https://github.com/NobuData/ouroboros/issues/250),
+         *     decision B3). **No session**, because the caller is a machine on hardware this control plane
+         *     does not administer and no session could be issued to it; what authenticates the request is
+         *     the enrollment token in the body.
+         *
+         *     **The runner sends a certificate request, not a request for a key.** The agent generates its
+         *     own P-256 keypair and sends a PKCS#10 `csr`; this service signs it and returns the
+         *     certificate. The private key therefore never crosses the network and has never existed
+         *     inside Ouroboros.
+         *
+         *     **The CSR's own subject is ignored, completely.** The certificate's subject is composed from
+         *     the runner row this service creates and the workspace the token was scoped to — `CN` is the
+         *     runner's id, `O` is the workspace. A request claiming to be another workspace's runner is
+         *     signed with its own correct name rather than refused, because the claim was never read. The
+         *     same goes for any extensions it asks for.
+         *
+         *     **No workspace is named and none can be.** The runner lands in the token's own workspace, so
+         *     a token cannot enrol a machine anywhere else.
+         *
+         *     **`401 farm_enrollment_refused` is the answer to all six token failures** — unknown, wrong
+         *     secret, expired, spent, revoked, or scoped to a different pool — with no detail. Which one
+         *     it was is in the audit trail. `422 farm_invalid_csr` is separate and does carry a reason,
+         *     because the shape of a certificate request is the caller's own business and reveals nothing
+         *     about this workspace.
+         *
+         *     **`securityMode: bearer_fallback` needs the workspace's permission.** It exists for
+         *     corporate proxies that terminate client certificates, it is off by default, and a runner
+         *     that takes it is recorded as degraded rather than shown a green shield. The response then
+         *     carries `bearerToken` in place of `certificate` — also exactly once.
+         */
+        post: operations["registerRunner"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/registrations/renewal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace a runner's certificate over the channel it already authenticates
+         * @description Renew a certificate before it expires
+         *     ([#250](https://github.com/NobuData/ouroboros/issues/250)). The response to a registration
+         *     carries `renewAfter`; an agent starts asking then.
+         *
+         *     **There is no enrollment token here and there cannot be.** The request is authenticated by
+         *     the TLS client certificate the runner is already presenting — so a runner that has enrolled
+         *     once never needs a second token, and, the half that matters more, **a runner whose
+         *     certificate was revoked cannot renew its way back in**: the thing it would have to present
+         *     is the thing that was killed.
+         *
+         *     **The client certificate has to reach this service.** When it terminates TLS itself, the
+         *     certificate comes off the socket. When a reverse proxy terminates TLS in front of it, that
+         *     proxy has already consumed the certificate and must forward it — configured with
+         *     `OURO_FARM_CLIENT_CERT_HEADER`, which is **unset by default** because a certificate is
+         *     public and a header trusted unconditionally is a header anybody can send.
+         *     `docs/SECURITY_MODEL.md`'s farm-CA section carries the nginx and Traefik directives.
+         *     `401 farm_client_certificate_required` is what a missing one answers, and it says so.
+         *
+         *     A renewal issues a new certificate and retires the old one in one transaction, so a runner
+         *     never holds two identities. The old certificate is *superseded*, which is routine and is not
+         *     the same as revoked — both are refused at a handshake and the audit trail tells them apart.
+         */
+        post: operations["renewRunnerCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -11954,6 +12198,213 @@ export interface components {
                 externalRef: string;
                 name: string;
             }[];
+        };
+        /**
+         * FarmAuthority
+         * @description The **public** half of a workspace's build-farm certificate authority
+         *     ([#250](https://github.com/NobuData/ouroboros/issues/250)). There is no private-key field
+         *     here, in any operation, in any direction — the CA's key is sealed by the vault and exists
+         *     unsealed only inside one signature.
+         */
+        FarmAuthority: {
+            /** @description The CA certificate, PEM. What a runner is handed once and pins. */
+            certificate: string;
+            /**
+             * @description `sha256` over the certificate's DER, lowercase hex — the pin an agent compares on
+             *     every connection. A fingerprint rather than the certificate itself, because
+             *     comparing it is a string comparison an agent implementation cannot get subtly wrong.
+             */
+            fingerprint: string;
+            /** Format: date-time */
+            notBefore: string;
+            /**
+             * Format: date-time
+             * @description When the CA expires. A fleet-wide deadline with no partial failure to warn anybody
+             *     first — every runner stops at once — which is why it is published rather than implied.
+             */
+            notAfter: string;
+        };
+        /**
+         * EnrollmentToken
+         * @description A scoped enrollment token, as anything but the mint response describes it
+         *     ([#250](https://github.com/NobuData/ouroboros/issues/250)). **Masked.** `masked` is computed
+         *     from `id`, not from the value; the value is sealed and no operation un-masks one.
+         */
+        EnrollmentToken: {
+            /**
+             * Format: uuid
+             * @description The token's id, which is also the public half of its value — a presented token names
+             *     its own row, so nothing has to be searched for and there is no second column for the
+             *     secret to leak from.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The pool a runner enrolled with this token joins.
+             */
+            poolId: string;
+            /** @description `orb_enroll_••••a4b7` — what mockup 08 renders. */
+            masked: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description How many machines it may enrol. More than one, because a rack is installed with one command. */
+            maxUses: number;
+            /**
+             * @description How many it has. On a revoked token this is the number an incident turns on: revoked
+             *     at zero uses leaked nothing, revoked at four means four machines to account for.
+             */
+            uses: number;
+            revoked: boolean;
+            /** Format: date-time */
+            revokedAt: string | null;
+            /** @description Who minted it, or null if that person has since been deleted. */
+            createdBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        MintedEnrollmentToken: components["schemas"]["EnrollmentToken"] & {
+            /**
+             * @description The whole `orb_enroll_…` value. Returned here and nowhere else, ever. After this
+             *     response the plaintext exists only wherever the operator pasted it.
+             */
+            token: string;
+        };
+        /** MintEnrollmentTokenRequest */
+        MintEnrollmentTokenRequest: {
+            /**
+             * @description The pool a runner enrolled with this token joins — the mockup's `--pool pool-a`.
+             *     Required: there is no token that enrols into whichever pool the runner asks for.
+             */
+            pool: string;
+            /**
+             * @description How long the token lives. A day when absent; thirty days at the outside, because a
+             *     token good for a year is a password with extra steps.
+             */
+            ttlSeconds?: number;
+            /** @description How many machines it may enrol. One when absent. */
+            maxUses?: number;
+        };
+        /**
+         * RegisterRunnerRequest
+         * @description **No workspace field, deliberately.** The runner lands in the token's own workspace, so a
+         *     token cannot enrol a machine anywhere else — the isolation is a property of this shape
+         *     rather than a check somebody has to remember.
+         */
+        RegisterRunnerRequest: {
+            /** @description The `orb_enroll_…` value from the install one-liner. */
+            token: string;
+            /** @description What the machine is called — `forge-01`. Unique within the workspace. */
+            name: string;
+            /**
+             * @description The three architectures the agent is built for.
+             * @enum {string}
+             */
+            arch: "linux/arm64" | "linux/x86_64" | "darwin/arm64";
+            /**
+             * @description The pool the agent was told to join. **Checked against the token's scope when
+             *     present**: a token for `pool-a` refuses a registration naming `pool-b` rather than
+             *     quietly enrolling into `pool-a`.
+             */
+            pool?: string;
+            /**
+             * @description A PKCS#10 certificate request, PEM, over a P-256 key the **agent** generated.
+             *     Required unless `securityMode` is `bearer_fallback`. Its subject and any extensions
+             *     it asks for are ignored: the certificate's subject is composed from the runner row
+             *     and the workspace, never from this request.
+             */
+            csr?: string;
+            /**
+             * @description `mtls` when absent. `bearer_fallback` is refused unless the workspace permits it, and
+             *     is asked for rather than inferred from a missing `csr` — *my proxy strips client
+             *     certificates* is a claim an operator should have to make.
+             * @enum {string}
+             */
+            securityMode?: "mtls" | "bearer_fallback";
+            agentVersion?: string;
+            /** @description Whether the machine can run containers — AG.1's `hello`, asked at enrollment. */
+            docker?: boolean;
+            cpuCount?: number;
+        };
+        /**
+         * RunnerEnrollment
+         * @description What an agent gets back when it enrols. Exactly one of `certificate` and `bearerToken` is
+         *     present, and whichever it is, it is present in this response only.
+         */
+        RunnerEnrollment: {
+            /**
+             * Format: uuid
+             * @description The runner's id — what the certificate's `CN` says and what the gateway resolves.
+             */
+            runnerId: string;
+            name: string;
+            /** Format: uuid */
+            poolId: string;
+            /** @enum {string} */
+            securityMode: "mtls" | "bearer_fallback";
+            /** @description The issued certificate, PEM. Null on a bearer-fallback enrollment. */
+            certificate: string | null;
+            /** @description Its serial, lowercase hex — what a revocation names. */
+            serial: string | null;
+            /** Format: date-time */
+            notAfter: string | null;
+            /**
+             * Format: date-time
+             * @description When to start asking for a new certificate. Published rather than left to the agent to
+             *     compute as a fraction of the lifetime, so changing the policy changes every runner's
+             *     behaviour without shipping a binary.
+             */
+            renewAfter: string | null;
+            /**
+             * @description The long-lived fallback secret. Present only on a `bearer_fallback` enrollment, only
+             *     in this response, and never readable again.
+             */
+            bearerToken: string | null;
+            authority: components["schemas"]["FarmAuthority"];
+        };
+        /**
+         * RenewCertificateRequest
+         * @description One field, because the runner's identity is the client certificate it is already
+         *     presenting. **There is no token field**, so a renewal cannot be performed by anything
+         *     holding only a token.
+         */
+        RenewCertificateRequest: {
+            /** @description A fresh PKCS#10 certificate request over a new keypair the agent generated. */
+            csr: string;
+        };
+        /** CertificateRenewal */
+        CertificateRenewal: {
+            certificate: string;
+            serial: string;
+            /** Format: date-time */
+            notAfter: string;
+            /** Format: date-time */
+            renewAfter: string;
+            authority: components["schemas"]["FarmAuthority"];
+        };
+        /**
+         * RunnerCertificate
+         * @description One certificate in a runner's history, as an operator sees it. `revoked` and `supersededAt`
+         *     are **different states**: superseded is routine — a renewal replaced it — and revoked is an
+         *     incident. A handshake refuses both.
+         */
+        RunnerCertificate: {
+            /** Format: uuid */
+            id: string;
+            serial: string;
+            fingerprint: string;
+            /** @enum {string} */
+            issuedFor: "enrollment" | "renewal";
+            /** Format: date-time */
+            issuedAt: string;
+            /** Format: date-time */
+            notAfter: string;
+            revoked: boolean;
+            /** Format: date-time */
+            revokedAt: string | null;
+            /** @description One short word: `operator`, `runner_removed`. */
+            revocationReason: string | null;
+            /** Format: date-time */
+            supersededAt: string | null;
         };
     };
     responses: never;
@@ -31930,6 +32381,752 @@ export interface operations {
              *     its availability.
              */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readFarmAuthority: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The authority. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmAuthority"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listEnrollmentTokens: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentToken"][];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `insufficient_role` — `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    mintEnrollmentToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MintEnrollmentTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The token, with its value. Read it now; it is masked from here on. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MintedEnrollmentToken"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `insufficient_role` — minting a token admits a machine to the fleet, so it is
+             *     `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_pool_not_found` — this workspace has no pool of that name. Thrown before
+             *     anything is generated, so a typo mints nothing. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the body is not a mint request. `details` names the field. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeEnrollmentToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The token's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrollmentToken"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `insufficient_role` — `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_enrollment_token_not_found` — this workspace has no such token. Or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a UUID. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeRunnerCertificate: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The runner's id. */
+                runnerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The certificate as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnerCertificate"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `insufficient_role` — `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `farm_runner_not_found` — this workspace has no such runner. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `farm_no_live_certificate` — this runner holds none to revoke. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a UUID. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    registerRunner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRunnerRequest"];
+            };
+        };
+        responses: {
+            /** @description The runner's id, its certificate and the CA to pin. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunnerEnrollment"];
+                };
+            };
+            /**
+             * @description `farm_enrollment_refused` — this token cannot be used. One answer for six states,
+             *     deliberately; the trail records which.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_bearer_fallback_not_permitted` — the request asked for the bearer fallback and
+             *     this workspace requires certificates. Said plainly rather than hidden behind the
+             *     opaque refusal: the caller has already proved it holds a valid token, and an agent
+             *     behind a certificate-stripping proxy has to be able to tell this from a dead token.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `runner_name_taken` — a runner of that name already exists in the token's workspace. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_invalid_csr` — the certificate request could not be read, its key is not on
+             *     P-256, or its self-signature does not verify. Or `validation_failed` for a body that
+             *     is not a registration.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    renewRunnerCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenewCertificateRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The new certificate, when to come back, and the CA — re-sent, so a renewal is also
+             *     how a rotated authority reaches a fleet.
+             */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateRenewal"];
+                };
+            };
+            /**
+             * @description `farm_client_certificate_required` — no client certificate was presented, most often
+             *     a TLS-terminating proxy that does not pass one through. Or `farm_identity_refused` —
+             *     the certificate presented is not a live runner identity of this farm: unknown,
+             *     expired, superseded, revoked, or belonging to a removed runner, answered identically
+             *     for all five.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_invalid_csr` — the certificate request could not be read or is not the shape
+             *     this CA signs. Or `validation_failed`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -197,6 +197,10 @@
             "memory_mb": { "description": "Usable memory in mebibytes, after any operator-set limit.", "type": "integer", "minimum": 1 }
           }
         },
+        "security_mode": {
+          "description": "How this connection was authenticated -- decision B3's two answers, the same two `runners.security_mode` stores. `mtls` is a client certificate the farm CA issued; `bearer_fallback` is a long-lived secret in the upgrade request's Authorization header, for networks whose proxies strip client certificates, and only ever chosen by an explicit agent flag. REPORTED so that the fallback is visibly degraded in the runner row rather than silently weaker (#244, #257). Optional only because it was added inside line 1: every agent that connects sends it, and the gateway reads the transport for a hello that does not.",
+          "enum": ["mtls", "bearer_fallback"]
+        },
         "resume": { "$ref": "#/$defs/session_id" }
       }
     },

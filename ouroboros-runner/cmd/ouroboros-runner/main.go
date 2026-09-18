@@ -4,36 +4,44 @@
 // mTLS, registers itself, and then takes the work it is offered — which is the whole
 // point: no inbound ports, no firewall exception, no address anyone has to expose.
 //
-// It does not do that yet. This build is the module's scaffold ([#243]), and the
-// connection loop, the enrollment exchange and the executors are the issues that follow
-// ([#244], [#246]). What it has today is the protocol: the contract every one of those
-// implements against, and two commands that make it inspectable from a shell.
-//
 // Usage:
 //
+//	ouroboros-runner enroll --server URL --tenant NAME --pool NAME --token TOKEN
+//	ouroboros-runner run
 //	ouroboros-runner version    # the build, the protocol range it speaks, this machine
 //	ouroboros-runner hello      # the hello frame this machine would send, as JSON
 //
-// `hello` is not a placeholder. It is the frame the enrollment exchange begins with,
-// built from this machine's real facts and validated against the published contract
-// before it is printed — so an operator diagnosing an enrollment that a gateway refused
-// can see exactly what their machine says about itself, and a version floor refusal can
-// be checked against the range printed here without a network at all.
+// `enroll` spends a token once and leaves an identity in the state directory: a client
+// certificate over a key this machine generated and never sent anywhere ([#244],
+// decision B3). `run` is the long-lived process — a service manager's ExecStart — which
+// holds the one outbound connection, reconnects with jittered backoff when it drops,
+// renews the certificate before it expires, and says `bye` on SIGTERM.
 //
-// [#243]: https://github.com/NobuData/ouroboros/issues/243
+// Neither listens. Nothing in this command opens a listening socket, and main_test.go
+// runs the built command and reads the kernel's socket table to prove it.
+//
 // [#244]: https://github.com/NobuData/ouroboros/issues/244
-// [#246]: https://github.com/NobuData/ouroboros/issues/246
 package main
 
 import (
+	"context"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/agent"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/enroll"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/secret"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
 )
 
@@ -42,16 +50,50 @@ import (
 // says so rather than claiming a release number it is not.
 var version = "0.0.0-dev"
 
+// DefaultStateDir is where the agent keeps its identity when nothing says otherwise —
+// the directory the protocol document's worked examples put workspaces under.
+const DefaultStateDir = "/var/lib/ouroboros-runner"
+
+// The environment variables the agent reads, each a fallback for the flag of the same
+// meaning (docs/CONVENTIONS.md § 4: everything Ouroboros-specific is OURO_-prefixed). The
+// token is here so an installer can keep it off the process list; the bearer fallback
+// deliberately is not — it is a flag, stated where the agent is started, and nothing
+// else.
+const (
+	envServer   = "OURO_RUNNER_SERVER"
+	envToken    = "OURO_RUNNER_TOKEN" // #nosec G101 -- the variable's name, not a credential
+	envStateDir = "OURO_RUNNER_STATE_DIR"
+	envServerCA = "OURO_RUNNER_SERVER_CA"
+)
+
 // usage is printed for `help`, for no arguments at all, and for anything unrecognised.
 const usage = `ouroboros-runner — the Ouroboros build farm agent.
 
 Usage:
+  ouroboros-runner enroll --server URL --tenant NAME --pool NAME --token TOKEN
+                          [--name NAME] [--state-dir DIR] [--server-ca FILE]
+                          [--bearer-fallback]
+      Spend an enrollment token once and keep the identity it buys: a client
+      certificate over a key this machine generated. Nothing secret is printed.
+
+  ouroboros-runner run [--state-dir DIR] [--server-ca FILE] [--bearer-fallback]
+      Connect outbound over mTLS and stay connected: heartbeat, reconnect with
+      jittered backoff, renew the certificate before it expires, say bye on SIGTERM.
+
   ouroboros-runner version   Print the build, the protocol range and this machine.
   ouroboros-runner hello     Print the hello frame this machine would send.
 
-The agent connects outbound over mTLS and registers itself; nothing listens, and no
-inbound port is opened. Enrollment and the connection loop land with issue #244 — see
-docs/RUNNER_PROTOCOL.md for the wire contract both halves implement against.
+The agent dials out; nothing listens, and no inbound port is opened.
+
+Environment (each a fallback for its flag):
+  OURO_RUNNER_SERVER      --server     the control plane, https://
+  OURO_RUNNER_TOKEN       --token      the enrollment token, kept off the process list
+  OURO_RUNNER_STATE_DIR   --state-dir  default /var/lib/ouroboros-runner
+  OURO_RUNNER_SERVER_CA   --server-ca  a PEM file of roots to verify the control plane
+                                       with, in place of the system's
+
+--bearer-fallback has no variable: the weaker mode is stated on the command line or
+not at all. See docs/RUNNER_PROTOCOL.md for the wire contract.
 `
 
 func main() {
@@ -60,9 +102,36 @@ func main() {
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
 
-	if err := run(flag.Args(), os.Stdout); err != nil {
+	ctx, stop := signalContext()
+	defer stop()
+
+	if err := run(ctx, flag.Args(), os.Stdout, os.Stderr, os.Getenv); err != nil {
 		fmt.Fprintf(os.Stderr, "ouroboros-runner: %v\n", err)
-		os.Exit(1)
+		stop()
+		os.Exit(1) // stop has run; nothing deferred is left to lose
+	}
+}
+
+// signalContext is cancelled by SIGTERM or SIGINT, with the signal as its cause — which
+// is what the agent's `bye` says: `SIGTERM received`.
+func signalContext() (context.Context, func()) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		select {
+		case received := <-signals:
+			name := "SIGTERM"
+			if received == syscall.SIGINT {
+				name = "SIGINT"
+			}
+			cancel(fmt.Errorf("%s received", name))
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, func() {
+		signal.Stop(signals)
+		cancel(nil)
 	}
 }
 
@@ -73,25 +142,253 @@ var errUsage = errors.New("no such command")
 
 // run is main without the process, so every command is testable.
 //
-// It takes the writer rather than using os.Stdout for the same reason: what these
-// commands produce is a document — a frame an operator pastes into an issue — and a
-// test that cannot read it can only assert that nothing crashed.
-func run(args []string, out io.Writer) error {
+// It takes the writers and the environment rather than using the process's for the
+// same reason: what these commands produce is a document — a frame an operator pastes
+// into an issue, a log a service manager keeps — and a test that cannot read it can only
+// assert that nothing crashed.
+func run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv func(string) string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("%w: expected `version` or `hello`", errUsage)
+		return fmt.Errorf("%w: expected `enroll`, `run`, `version` or `hello`", errUsage)
 	}
 
 	switch command := args[0]; command {
+	case "enroll":
+		return enrollCommand(ctx, args[1:], stdout, stderr, getenv)
+	case "run":
+		return runCommand(ctx, args[1:], stderr, getenv)
 	case "version":
-		return printVersion(out)
+		return printVersion(stdout)
 	case "hello":
-		return printHello(out)
+		return printHello(ctx, args[1:], stdout, getenv)
 	case "help":
-		_, err := io.WriteString(out, usage)
+		_, err := io.WriteString(stdout, usage)
 		return err
 	default:
-		return fmt.Errorf("%w: %q — expected `version` or `hello`", errUsage, command)
+		return fmt.Errorf("%w: %q — expected `enroll`, `run`, `version` or `hello`", errUsage, command)
 	}
+}
+
+// commonFlags are the flags `enroll`, `run` and `hello` share.
+type commonFlags struct {
+	stateDir string
+	serverCA string
+}
+
+// register adds the common flags to a flag set, defaulted from the environment.
+func (c *commonFlags) register(set *flag.FlagSet, getenv func(string) string) {
+	set.StringVar(&c.stateDir, "state-dir", orDefault(getenv(envStateDir), DefaultStateDir),
+		"where the identity is kept ("+envStateDir+")")
+	set.StringVar(&c.serverCA, "server-ca", getenv(envServerCA),
+		"PEM roots to verify the control plane with, in place of the system's ("+envServerCA+")")
+}
+
+// roots reads --server-ca, or returns nil for the system's roots.
+func (c *commonFlags) roots() (*x509.CertPool, error) {
+	if c.serverCA == "" {
+		return nil, nil
+	}
+	raw, err := os.ReadFile(c.serverCA)
+	if err != nil {
+		return nil, fmt.Errorf("read --server-ca: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(raw) {
+		return nil, fmt.Errorf("--server-ca %s holds no PEM certificate", c.serverCA)
+	}
+	return pool, nil
+}
+
+// flagSet is a flag set that reports its own errors as usage errors rather than exiting.
+func flagSet(name string, stderr io.Writer) *flag.FlagSet {
+	set := flag.NewFlagSet(name, flag.ContinueOnError)
+	set.SetOutput(stderr)
+	set.Usage = func() { _, _ = fmt.Fprint(stderr, usage) }
+	return set
+}
+
+// enrollCommand is `ouroboros-runner enroll`.
+func enrollCommand(ctx context.Context, args []string, stdout, stderr io.Writer, getenv func(string) string) error {
+	var common commonFlags
+	var server, tenant, pool, token, name string
+	var bearerFallback bool
+	set := flagSet("enroll", stderr)
+	common.register(set, getenv)
+	set.StringVar(&server, "server", getenv(envServer), "the control plane, https:// ("+envServer+")")
+	set.StringVar(&tenant, "tenant", "", "the workspace this runner is enrolled into")
+	set.StringVar(&pool, "pool", "", "the pool it joins; the token must be scoped to it")
+	set.StringVar(&token, "token", getenv(envToken), "the enrollment token ("+envToken+")")
+	set.StringVar(&name, "name", "", "the runner's name (default: this machine's hostname, as a slug)")
+	set.BoolVar(&bearerFallback, "bearer-fallback", false,
+		"enrol WITHOUT a client certificate, for networks whose proxies strip one — visibly degraded")
+	if err := set.Parse(args); err != nil {
+		return fmt.Errorf("%w: %w", errUsage, err)
+	}
+	if set.NArg() > 0 {
+		return fmt.Errorf("%w: unexpected %q", errUsage, set.Arg(0))
+	}
+
+	base, err := enroll.ParseServer(server)
+	if err != nil {
+		return fmt.Errorf("--server: %w", err)
+	}
+	roots, err := common.roots()
+	if err != nil {
+		return err
+	}
+	host, err := telemetry.Describe()
+	if err != nil {
+		return err
+	}
+	if name == "" {
+		name = enroll.NameFromHostname(host.Hostname)
+	}
+	request := enroll.Request{
+		Tenant: tenant, Pool: pool, Token: secret.Secret(token), Name: name,
+		Arch: host.Arch, AgentVersion: version, CPUs: host.CPUs, BearerFallback: bearerFallback,
+	}
+	if err := request.Validate(); err != nil {
+		return err
+	}
+
+	// The directory is opened — and checked — BEFORE the token is presented. A second
+	// enrollment into a directory that already holds a runner would spend a token and
+	// create a runner row for an identity that could not then be saved.
+	dir, err := state.Open(common.stateDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	if enrolled, err := dir.Enrolled(); err != nil {
+		return err
+	} else if enrolled {
+		return fmt.Errorf("%w: %s. Remove it to enrol this machine again", state.ErrAlreadyEnrolled, common.stateDir)
+	}
+
+	logger := newLogger(stderr)
+	request.Docker = telemetry.DockerReachable(ctx, telemetry.DockerSockets())
+	logger.Info("enrolling", "server", base.String(), "tenant", tenant, "pool", pool, "name", name,
+		"arch", host.Arch, "docker", request.Docker, "bearer_fallback", bearerFallback)
+
+	client := &enroll.Client{Server: base, RootCAs: roots, UserAgent: "ouroboros-runner/" + version}
+	enrollment, err := client.Register(ctx, request)
+	if err != nil {
+		return fmt.Errorf("enrollment failed: %w", err)
+	}
+	if err := dir.SaveEnrollment(enrollment); err != nil {
+		return fmt.Errorf("enrolled, but the identity could not be saved: %w", err)
+	}
+
+	record := enrollment.Record
+	logger.Info("enrolled", "runner", record.RunnerID, "name", record.Name, "security_mode", record.SecurityMode,
+		"state_dir", common.stateDir)
+	summary := &strings.Builder{}
+	fmt.Fprintf(summary, "enrolled %s as runner %s in %s / %s\n", record.Name, record.RunnerID, record.Tenant, record.Pool)
+	if record.SecurityMode == conn.SecurityMTLS {
+		fmt.Fprintf(summary, "identity  client certificate %s, valid until %s, renewed from %s\n",
+			record.Serial, record.NotAfter.Format(time.RFC3339), record.RenewAfter.Format(time.RFC3339))
+	} else {
+		fmt.Fprint(summary, "identity  BEARER FALLBACK — no client certificate; the farm shows this runner as degraded\n")
+	}
+	fmt.Fprintf(summary, "farm CA   sha256 %s (pinned)\n", record.AuthorityFingerprint)
+	fmt.Fprintf(summary, "state     %s\n", common.stateDir)
+	runLine := "ouroboros-runner run --state-dir " + common.stateDir
+	if record.SecurityMode == conn.SecurityBearerFallback {
+		runLine += " --bearer-fallback"
+	}
+	fmt.Fprintf(summary, "next      %s\n", runLine)
+	_, err = io.WriteString(stdout, summary.String())
+	return err
+}
+
+// runCommand is `ouroboros-runner run` — the long-lived process.
+func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv func(string) string) error {
+	var common commonFlags
+	var bearerFallback bool
+	set := flagSet("run", stderr)
+	common.register(set, getenv)
+	set.BoolVar(&bearerFallback, "bearer-fallback", false,
+		"permit a runner enrolled in bearer-fallback mode to connect — required, every time, for such a runner")
+	if err := set.Parse(args); err != nil {
+		return fmt.Errorf("%w: %w", errUsage, err)
+	}
+	if set.NArg() > 0 {
+		return fmt.Errorf("%w: unexpected %q", errUsage, set.Arg(0))
+	}
+
+	roots, err := common.roots()
+	if err != nil {
+		return err
+	}
+	dir, err := state.Open(common.stateDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	record, err := dir.Record()
+	if err != nil {
+		return fmt.Errorf("%w; run `ouroboros-runner enroll` first", err)
+	}
+	server, err := enroll.ParseServer(record.Server)
+	if err != nil {
+		return fmt.Errorf("%s records the server as %q: %w", common.stateDir, record.Server, err)
+	}
+
+	host, capabilities, err := describe(ctx)
+	if err != nil {
+		return err
+	}
+	logger := newLogger(stderr)
+	runner, err := agent.New(agent.Config{
+		Dir:            dir,
+		Server:         server,
+		RootCAs:        roots,
+		Version:        version,
+		Arch:           host.Arch,
+		Hostname:       host.Hostname,
+		Capabilities:   capabilities,
+		BearerFallback: bearerFallback,
+		Renewer:        &enroll.Client{Server: server, RootCAs: roots, UserAgent: "ouroboros-runner/" + version},
+		Logger:         logger,
+	})
+	if err != nil {
+		return err
+	}
+	return runner.Run(ctx)
+}
+
+// describe is this machine, as a hello describes it: the static facts, and the
+// capabilities answered by asking.
+//
+// `shell` is false: it is an operator's answer to "will this machine run shell jobs at
+// all?", and this build has no shell executor to answer yes with ([#246]).
+//
+// [#246]: https://github.com/NobuData/ouroboros/issues/246
+func describe(ctx context.Context) (telemetry.Host, conn.Capabilities, error) {
+	host, err := telemetry.Describe()
+	if err != nil {
+		return telemetry.Host{}, conn.Capabilities{}, err
+	}
+	return host, conn.Capabilities{
+		Docker:   telemetry.DockerReachable(ctx, telemetry.DockerSockets()),
+		Shell:    false,
+		Ccache:   telemetry.CcacheOnPath(),
+		CPUs:     host.CPUs,
+		MemoryMB: host.MemoryMB,
+	}, nil
+}
+
+// newLogger is the agent's log: text, to stderr, where a service manager's journal
+// collects it.
+func newLogger(stderr io.Writer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(stderr, nil))
+}
+
+// orDefault is a value, or a default when it is empty.
+func orDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 // printVersion reports what this build is and what it can speak.
@@ -110,7 +407,7 @@ func printVersion(out io.Writer) error {
 	// has gone away.
 	report := &strings.Builder{}
 	fmt.Fprintf(report, "ouroboros-runner %s\n", version)
-	fmt.Fprintf(report, "protocol        %d (speaks %d\u2013%d)\n", conn.Version, conn.MinVersion, conn.Version)
+	fmt.Fprintf(report, "protocol        %d (speaks %d–%d)\n", conn.Version, conn.MinVersion, conn.Version)
 	fmt.Fprintf(report, "arch            %s\n", host.Arch)
 	fmt.Fprintf(report, "hostname        %s\n", host.Hostname)
 	fmt.Fprintf(report, "cpus            %d\n", host.CPUs)
@@ -122,45 +419,43 @@ func printVersion(out io.Writer) error {
 
 // printHello writes the hello frame this machine would send.
 //
-// The frame is validated against the published contract before it is printed. That is
-// not a formality: this command exists to answer "what does my machine claim?", and a
-// frame that the gateway would refuse is exactly the answer worth having — so it is
-// reported as an error naming the field, rather than printed as though it were fine.
-func printHello(out io.Writer) error {
-	host, err := telemetry.Describe()
+// It is built the way the connection loop builds it — the same probes, and, once this
+// machine is enrolled, the pool and security mode the state directory records — and
+// validated against the published contract before it is printed. So when a gateway
+// refuses an agent, this is how an operator sees exactly what their machine claims, and
+// a frame the gateway would refuse is reported as an error naming the field rather than
+// printed as though it were fine.
+func printHello(ctx context.Context, args []string, out io.Writer, getenv func(string) string) error {
+	var common commonFlags
+	set := flagSet("hello", io.Discard)
+	common.register(set, getenv)
+	if err := set.Parse(args); err != nil {
+		return fmt.Errorf("%w: %w", errUsage, err)
+	}
+
+	host, capabilities, err := describe(ctx)
 	if err != nil {
 		return err
 	}
 
-	// The id is a placeholder, and deliberately a visible one: minting a real ULID per
-	// frame belongs to the connection loop (#244), and a command that printed a
-	// plausible id would invite somebody to replay it.
-	const placeholderID = "00000000000000000000000000"
+	// Read without taking the lock: the runner this describes may be running right now.
+	// Not enrolled yet is not an error here — the frame simply names no pool and no mode.
+	var pool string
+	var mode conn.SecurityMode
+	if record, err := state.PeekRecord(common.stateDir); err == nil {
+		pool, mode = record.Pool, record.SecurityMode
+	}
 
-	frame := conn.NewHello(
-		placeholderID,
-		version,
-		host.Arch,
-		host.Hostname,
-		"", // the pool is assigned at enrollment (#244); an agent does not name its own
-		conn.Capabilities{
-			// Probing for a Docker daemon and a ccache binary is the executors' work
-			// (#246, #247) and is reported honestly as absent until they land, rather
-			// than claimed here on the strength of a file existing.
-			Docker:   false,
-			Shell:    false,
-			Ccache:   false,
-			CPUs:     host.CPUs,
-			MemoryMB: host.MemoryMB,
-		},
-		"", // no session to resume: this is not a reconnection
-	)
+	// The id is a placeholder, and deliberately a visible one: the connection loop mints
+	// a real ULID per frame, and a command that printed a plausible id would invite
+	// somebody to replay it.
+	const placeholderID = "00000000000000000000000000"
+	frame := conn.NewHello(placeholderID, version, host.Arch, host.Hostname, pool, capabilities, mode, "")
 
 	encoded, err := conn.EncodeIndent(frame)
 	if err != nil {
 		return err
 	}
-
 	wire, err := conn.Encode(frame)
 	if err != nil {
 		return err

@@ -93,13 +93,37 @@ type Capabilities struct {
 	MemoryMB int  `json:"memory_mb"`
 }
 
+// SecurityMode is how this agent authenticated the connection a hello is written on —
+// decision B3's two answers.
+//
+// It is REPORTED rather than inferred, because the whole value of the bearer fallback
+// being "visibly degraded" is that nobody has to infer it: the gateway records it in the
+// runner row's `security_mode`, and the farm page renders a fallback runner as the
+// weaker thing it is ([#257]). A silent downgrade would be worse than no fallback.
+//
+// [#257]: https://github.com/NobuData/ouroboros/issues/257
+type SecurityMode string
+
+const (
+	// SecurityMTLS is the default and the design: a client certificate the farm CA
+	// issued, presented in the TLS handshake.
+	SecurityMTLS SecurityMode = "mtls"
+
+	// SecurityBearerFallback is the degraded mode for networks whose proxies strip
+	// client certificates: a long-lived secret in the upgrade request's Authorization
+	// header. Only ever chosen by an explicit flag — never by this agent on its own.
+	SecurityBearerFallback SecurityMode = "bearer_fallback"
+)
+
 // HelloPayload is the agent's first frame on every connection, including a
 // reconnection.
 //
 // It carries NO credential. Identity is the TLS client certificate the enrollment
 // exchange issued ([#250]), so there is no token field here — and a frame that invents
 // one is refused by the contract, which is what keeps a bearer secret out of every
-// session log that will ever be captured.
+// session log that will ever be captured. Even in bearer-fallback mode the secret
+// travels in the WebSocket upgrade request, never in a frame; what the hello carries is
+// only the fact that the fallback is in use.
 //
 // [#250]: https://github.com/NobuData/ouroboros/issues/250
 type HelloPayload struct {
@@ -108,6 +132,11 @@ type HelloPayload struct {
 	Hostname     string       `json:"hostname"`
 	Pool         string       `json:"pool,omitempty"`
 	Capabilities Capabilities `json:"capabilities"`
+
+	// SecurityMode is how this connection was authenticated. Optional in the contract
+	// only because it was added inside line 1 (§ 3); every agent that can connect at
+	// all sends it.
+	SecurityMode SecurityMode `json:"security_mode,omitempty"`
 
 	// Resume names the session this agent wants back after a drop. Empty on a first
 	// connection, and omitted from the frame rather than sent as "".
@@ -119,7 +148,10 @@ type HelloPayload struct {
 // The protocol range is filled in from this package's own constants rather than taken
 // from the caller: what a build can speak is a property of the build, and a caller that
 // could claim otherwise would be able to negotiate a version it cannot read.
-func NewHello(id, agentVersion, arch, hostname, pool string, capabilities Capabilities, resume string) Frame {
+func NewHello(
+	id, agentVersion, arch, hostname, pool string,
+	capabilities Capabilities, securityMode SecurityMode, resume string,
+) Frame {
 	return NewFrame(id, TypeHello, HelloPayload{
 		Agent: Agent{
 			Version:     agentVersion,
@@ -130,6 +162,7 @@ func NewHello(id, agentVersion, arch, hostname, pool string, capabilities Capabi
 		Hostname:     hostname,
 		Pool:         pool,
 		Capabilities: capabilities,
+		SecurityMode: securityMode,
 		Resume:       resume,
 	})
 }

@@ -56,9 +56,9 @@ import "./providers.css";
  * ### The head, and the two sentences that are not this page's
  *
  * The head's subline is the sentence that makes the security claim, and its wording is
- * **not this page's to choose** — `providersSubline` renders `docs/SECURITY_MODEL.md` § 7.2
+ * **not this page's to choose** — `providersSubline` renders `docs/SECURITY_MODEL.md` § 8.2
  * with the workspace's name in it. The strip at the foot of the page is the same document's
- * § 7.1, and `security-strip.tsx` says what was removed from the mockup's version and why.
+ * § 8.1, and `security-strip.tsx` says what was removed from the mockup's version and why.
  *
  * ### The grid is one component, drawn per connection
  *

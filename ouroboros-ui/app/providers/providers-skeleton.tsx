@@ -18,7 +18,7 @@ import "./providers.css";
  * ### The head is the real head, with one slot
  *
  * The title and the tab set do not depend on the reads, so they are drawn as themselves.
- * The subline nearly is: it is `docs/SECURITY_MODEL.md` § 7.2's sentence with the workspace's
+ * The subline nearly is: it is `docs/SECURITY_MODEL.md` § 8.2's sentence with the workspace's
  * name in it, and the name is the one thing the skeleton cannot know. So the sentence is
  * drawn as itself around a bar the width of a name, which is what keeps it wrapping on the
  * same line before and after the data lands. The two head actions are bars, because one of

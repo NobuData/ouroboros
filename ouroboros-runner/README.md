@@ -15,11 +15,14 @@ words: *an outbound-only agent connection — your hardware, your network, no in
 It connects over mutual TLS, registers itself, reports what it can do, and then takes the work
 it is offered.
 
-**What exists today** is the module's scaffold and the wire protocol
-([#243](https://github.com/NobuData/ouroboros/issues/243)): the envelope, the fifteen message
-types, the validator that says whether a frame is one of them, and the two halves of resume.
-The connection itself does not exist yet — see
-[Related issues](#related-issues) for what each of the following issues adds.
+**What exists today** is the wire protocol
+([#243](https://github.com/NobuData/ouroboros/issues/243)) and the agent's half of decision **B3**
+([#244](https://github.com/NobuData/ouroboros/issues/244)): `enroll` spends a token once for a
+client certificate over a key this machine generated, and `run` holds the one outbound
+connection — `hello`, heartbeats, reconnection with jittered backoff, session resume with
+terminal frames re-sent from a durable outbox, certificate renewal before expiry, and a `bye` on
+SIGTERM. What it cannot do yet is run a job: every offer is declined with a true reason until the
+executors land. See [Related issues](#related-issues) for what each of those adds.
 
 The protocol was written **before** either implementation of it, and that is the point. The
 agent is Go and the gateway is TypeScript
@@ -64,23 +67,74 @@ make build         # this platform, into bin/
 make cross         # all three release targets, into bin/
 ```
 
-The binary has two commands, and both work without a network or an enrollment:
+### Enrol, then run
+
+Two commands do the work, and neither listens on anything:
+
+```bash
+# Once: spend the token, keep the identity it buys. The token may come from
+# OURO_RUNNER_TOKEN instead, which keeps it off the process list.
+ouroboros-runner enroll \
+  --server https://ouroboros.acme.dev \
+  --tenant acme-robotics --pool pool-a --token orb_enroll_…
+
+# Forever after — the service manager's ExecStart:
+ouroboros-runner run
+```
+
+```console
+$ ouroboros-runner enroll --server https://ouroboros.acme.dev --tenant acme-robotics --pool pool-a
+enrolled shed-pi-01 as runner 7f7c9d0e-… in acme-robotics / pool-a
+identity  client certificate 08fb5b04…, valid until 2026-12-17T23:25:14Z, renewed from 2026-11-17T23:25:14Z
+farm CA   sha256 7c0416c4… (pinned)
+state     /var/lib/ouroboros-runner
+next      ouroboros-runner run --state-dir /var/lib/ouroboros-runner
+```
+
+`enroll` generates a P-256 key on this machine and sends only a certificate request
+([`SECURITY_MODEL.md` § 7.3](../docs/SECURITY_MODEL.md#73-the-runner-generates-its-own-keypair)):
+no runner private key ever leaves it. The certificate that comes back is checked before anything
+is saved — over this key, issued by the CA the response names, for client authentication, to the
+runner id the response names — and the CA's fingerprint is recomputed and pinned. The token is
+**spent**: a second enrollment with it is refused by the control plane (`farm_enrollment_refused`),
+and the agent refuses to enrol into a state directory that already holds a runner *before*
+presenting the token, so that mistake costs nothing.
+
+`run` is the long-lived process:
+
+| | |
+|---|---|
+| Connect | `wss://<server>/api/v1/farm/agent` on 443, presenting the client certificate. The gateway's own certificate is verified against the system's roots, or `--server-ca` |
+| Hello | version, protocol range, arch, hostname, pool, capabilities — **docker** answered by pinging the daemon, **ccache** by `PATH` — and `security_mode` |
+| Heartbeat | every `ack.limits.heartbeat_interval_ms` ± its jitter; the moving telemetry is [#245](https://github.com/NobuData/ouroboros/issues/245)'s |
+| Reconnect | exponential backoff with **full jitter** (1s doubling to 60s), so a fleet dropped together does not come back together; a gateway's `reconnect_after_ms` or `retry_after_ms` is a floor, spread past |
+| Resume | `hello.resume` names the last session, and every terminal frame not yet receipted is re-sent **byte for byte** from the outbox before anything else — the gateway deduplicates on the envelope id |
+| Renew | when `renewAfter` comes, over mTLS with the certificate being replaced — no second token |
+| Stop | SIGTERM or SIGINT → `bye {reason: shutdown}`, exit 0 |
+| Refused for good | a revoked certificate (TLS alert, `farm_identity_refused`, or `refuse identity.*`), a version floor, an expired certificate → one `level=ERROR` line saying what to do, exit 1, **no retry** |
+
+Offers are declined at once — `unsupported_executor` until [#246](https://github.com/NobuData/ouroboros/issues/246),
+`draining` after a `drain` — because a decline is worth far more to a dispatcher than a silence.
+
+### Inspecting a machine
+
+Two more commands work without a network or an enrollment:
 
 ```bash
 ./bin/ouroboros-runner version   # the build, the protocol range it speaks, this machine
 ./bin/ouroboros-runner hello     # the hello frame this machine would send, as JSON
 ```
 
-`hello` is worth knowing about before you need it. It builds the frame the enrollment exchange
-begins with — from this machine's real hostname, architecture, core count and memory — and
-**validates it against the published contract** before printing it. So when a gateway refuses
-an enrollment, this is how you see exactly what your machine claims about itself, and
-`version` is how you compare the protocol range it offers against the minimum the refusal
-named. Neither needs the farm to be reachable.
+`hello` is worth knowing about before you need it. It builds the frame the connection loop
+sends — from this machine's real hostname, architecture, cores, memory and probes, and once
+enrolled the state directory's pool and security mode — and **validates it against the published
+contract** before printing it. So when a gateway refuses a connection, this is how you see exactly
+what your machine claims about itself, and `version` is how you compare the protocol range it
+offers against the minimum the refusal named.
 
 ```console
 $ ouroboros-runner version
-ouroboros-runner 0.1.0
+ouroboros-runner 0.2.0
 protocol        1 (speaks 1–1)
 arch            linux/arm64
 hostname        shed-pi-01
@@ -88,9 +142,7 @@ cpus            8
 memory          16384 MB
 ```
 
-`make dev ARGS="hello"` runs the same thing from source. There is no long-running process to
-start yet; the connection loop is
-[#244](https://github.com/NobuData/ouroboros/issues/244).
+`make dev ARGS="hello"` runs the same thing from source.
 
 To run the protocol contract's own check — the one that fails when the document, the schema and
 the fixtures stop describing the same protocol — run it from the repository root, because its
@@ -102,44 +154,90 @@ scripts/verify-runner-protocol.sh
 
 ## Configuration
 
-**None yet, deliberately.** An agent has nothing to configure until it has somewhere to
-connect, and both arrive together in
-[#244](https://github.com/NobuData/ouroboros/issues/244): the gateway URL, the pool, and where
-the client certificate the enrollment exchange issued
-([#250](https://github.com/NobuData/ouroboros/issues/250)) is kept. They will follow
-[`CONVENTIONS.md` § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables) like every
-other module's, and the repo-root `.env.example` will document them with their development
-defaults.
+Flags, each with an environment-variable fallback of the `OURO_` family
+([`CONVENTIONS.md` § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)). The agent
+reads no `.env` file: it runs on a customer's machine, configured by its service unit and nothing
+lying around beside it. The repo-root [`.env.example`](../.env.example) documents the variables.
+
+| Flag | Variable | Default | |
+|---|---|---|---|
+| `--server` | `OURO_RUNNER_SERVER` | — | The control plane, `https://` only. `enroll` records it; `run` reads it from the state directory |
+| `--token` | `OURO_RUNNER_TOKEN` | — | The enrollment token. The variable keeps it off the process list. Never written anywhere |
+| `--state-dir` | `OURO_RUNNER_STATE_DIR` | `/var/lib/ouroboros-runner` | Where the identity lives — see below |
+| `--server-ca` | `OURO_RUNNER_SERVER_CA` | the system's roots | PEM roots to verify the control plane with, for a private deployment |
+| `--tenant`, `--pool` | — | — | The mockup's one-liner. The pool is checked against the token's scope by the control plane; the tenant is recorded — the token names the workspace |
+| `--name` | — | the hostname, as a slug | The runner's name, unique in its workspace |
+| `--bearer-fallback` | *none, on purpose* | off | Decision **B3**'s degraded mode, for networks whose proxies strip client certificates. Asked for at `enroll`, and required again at **every** `run` of such a runner, so the downgrade is stated where the agent is started |
 
 What the agent *reads about itself* it reads from the machine rather than from configuration —
-hostname, architecture, cores, installed memory — because those are facts and a settable fact
-is a fact somebody can get wrong. `internal/telemetry` is where they come from.
+hostname, architecture, cores, installed memory, whether a Docker or Podman daemon answers, whether
+`ccache` is on `PATH` — because those are facts, and a settable fact is a fact somebody can get
+wrong.
 
-One thing is configuration and will never be: **the enrollment token does not travel in
-`hello`.** Identity is the TLS client certificate, and the protocol refuses a `hello` that
-carries a token at all — which is what keeps a bearer secret out of every session log that will
-ever be captured.
+### The state directory
+
+```
+/var/lib/ouroboros-runner/          0700, and locked while an enroll or a run uses it
+├── runner.json      who this runner is: ids, names, dates, the farm CA and its pin — nothing secret
+├── identity.pem     the client certificate AND its private key, one file           0600
+├── bearer.token     bearer-fallback mode only                                      0600
+├── session          the last session, for hello.resume                             0600
+└── outbox/          terminal frames sent and not yet receipted, one file each      0600
+```
+
+Every file is written `0600` — chmodded explicitly, so a permissive umask cannot widen it — and
+every write is atomic (a temporary file, fsynced, renamed, the directory fsynced). The key and its
+certificate are one file so that a renewal replaces both with **one** rename: two files replaced by
+two renames can be left disagreeing by a crash between them. And the identity is re-verified every
+time it is loaded — pin, key, chain, runner id — so a directory edited by hand is refused before
+anything is presented.
+
+**No credential is ever logged.** The token and the bearer secret are held in a type whose every
+printed form is `[redacted]`; the key lives in a `tls.Certificate` and a `0600` file and nowhere
+else. The end-to-end suite greps every line the command writes for all three.
+
+**The enrollment token does not travel in `hello`**, and neither does the bearer secret: identity
+is the TLS client certificate, and the fallback's secret goes in the upgrade request's
+`Authorization` header. The protocol refuses a `hello` that carries a token at all — which is what
+keeps a bearer secret out of every session log that will ever be captured.
 
 ## Layout
 
 ```
 ouroboros-runner/
-├── cmd/ouroboros-runner/     # the command: `version` and `hello`
+├── cmd/ouroboros-runner/     # the command: enroll · run · version · hello
 ├── internal/
-│   ├── conn/                 # THE PROTOCOL — envelope, message contracts, validator, resume
-│   ├── exec/                 # job executors: container and shell            · #246
-│   ├── telemetry/            # what this machine is, and later how loaded it is · #245
-│   └── logship/              # chunking, ordering, throttling, ccache stats   · #247
+│   ├── conn/                 # THE PROTOCOL — envelope, message contracts, validator, resume, ids
+│   ├── ws/                   # RFC 6455, the parts this protocol needs — no dependency
+│   ├── enroll/               # the two HTTPS routes: registration and renewal
+│   ├── state/                # the state directory: identity, session, durable outbox
+│   ├── agent/                # the connection loop: hello, heartbeat, backoff, resume, renewal
+│   ├── secret/               # a string that does not print
+│   ├── telemetry/            # what this machine is, and whether docker answers  · #245
+│   ├── farmtest/             # an in-process farm for the suites — never linked into the agent
+│   ├── exec/                 # job executors: container and shell               · #246
+│   └── logship/              # chunking, ordering, throttling, ccache stats      · #247
 ├── .golangci.yml             # the linter, and why each check is on
 ├── Makefile                  # the verbs — install · dev · lint · format · typecheck · test · build
 ├── VERSION                   # this module's semver (CONVENTIONS.md § 8)
 └── go.mod                    # the module, and the language floor
 ```
 
-`internal/exec` and `internal/logship` are package documentation and nothing else. That is
-deliberate: this issue owes the module its conventions and the wire contract, not its
-behaviour — but the *shape* of that behaviour is already fixed by the protocol, and each
-package's doc comment says which parts and where they are written down.
+`internal/exec` and `internal/logship` are still package documentation and nothing else: their
+behaviour is the executors' and the log shipper's issues, and the *shape* of it is already fixed by
+the protocol — each package's doc comment says which parts and where they are written down.
+
+**`internal/ws` is written, not imported.** The module keeps no dependencies (see `go.mod`), and
+the client half of RFC 6455 is small: an HTTP/1.1 upgrade, a frame header, a masking key, three
+control frames. It enforces what the protocol fixes — text frames only, the 65536-byte ceiling
+checked from the frame header before the body is read, `wss://` only — and its server half exists
+for the test farm, which has to speak the same framing to be a fair test of the client.
+
+**`internal/farmtest` is the other half the agent is tested against** until the real gateway
+([#251](https://github.com/NobuData/ouroboros/issues/251)) exists: a farm CA that issues the
+control plane's certificate shape, the two enrollment routes with the control plane's status codes
+and error codes, and a gateway that judges every frame by `conn.Decode` and by direction. It
+listens, which is why the command's tests assert it is never in the agent's dependency closure.
 
 **`VERSION` is this module's manifest** for the purpose of
 [`CONVENTIONS.md` § 8](../docs/CONVENTIONS.md#8-versioning). Go has no version field in
@@ -185,7 +283,7 @@ architecture and an `install.sh` that verifies it — which is
 | Issue | What it adds |
 |---|---|
 | [#243](https://github.com/NobuData/ouroboros/issues/243) | **This scaffold**, and `docs/RUNNER_PROTOCOL.md` — the contract both sides implement against |
-| [#244](https://github.com/NobuData/ouroboros/issues/244) | Enrollment, the client certificate, the outbound connection, reconnection and backoff |
+| [#244](https://github.com/NobuData/ouroboros/issues/244) | **Shipped** — enrollment, the client certificate, the outbound connection, reconnection and backoff, resume, renewal |
 | [#245](https://github.com/NobuData/ouroboros/issues/245) | Telemetry and presence — the moving half of `heartbeat` |
 | [#246](https://github.com/NobuData/ouroboros/issues/246) | The executors: container and shell, workspace lifecycle, cancellation |
 | [#247](https://github.com/NobuData/ouroboros/issues/247) | Log shipping and ccache statistics, with truncation reported rather than hidden |
