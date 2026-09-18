@@ -208,6 +208,38 @@
 #                                                drop planning_epics_status
 #   unique batch-local keys                      drop ticket_drafts_batch_local_key_key
 #
+# #249 (AH.1) adds the **build farm**'s. Every surface over mockup 08 is written against these
+# rather than re-checking them: AH.3's gateway writes presence, AH.4 dispatches on the queue,
+# AH.5 streams into a capped log and AH.6 computes the stat row, and none of the four asks the
+# schema whether the rule it is relying on still exists. One mutation per rule that ticket's
+# scope names:
+#
+#   AH.1 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   runner status vocabulary                     drop runners_status
+#   observed vs intended (`draining`)            drop runners_draining_is_intended
+#     (and the removal half of the same split)   drop runners_removed_is_intended
+#   security_mode carries its evidence (B3)      drop runners_cert_serial_with_mtls
+#   unique runner and pool names per workspace   drop runners_organization_name_key
+#                                                drop runner_pools_organization_name_key
+#   container pools own an image (B4)            drop runner_pools_image_for_container
+#   enrollment token TTL                         drop enrollment_tokens_ttl_positive
+#     (and the envelope-only rule beside it)     drop enrollment_tokens_sealed
+#   job status vocabulary                        drop build_jobs_status
+#   null ccache is not zero ccache (B5)          drop build_jobs_ccache_stats_shape
+#   the log cap is bounded                       drop build_jobs_log_cap_in_range
+#   the cap trigger counts, truncates and marks  drop trigger build_log_chunks_cap
+#
+# The cap is a **trigger**, so it is dropped with `drop trigger`: its four rules — the running
+# total, the clamp, the marker and the byte_start assignment — are one function, and there is no
+# constraint to remove. Dropped, every chunk is simply written whole, which is the regression
+# this whole ticket exists to prevent and the one a green suite cannot see, since a cap nothing
+# exceeds and a cap that does not exist look identical from outside.
+#
+# `runners_status` is probed against the *running* runner for the reason the planning rows
+# below are probed the way they are: an out-of-vocabulary status on a draining or removed row
+# is refused by the coherence checks first, and the marker requires the vocabulary's own name.
+#
 # Its first bullet, stored-cycle detection, is not here, because there is no rule to drop:
 # acyclicity is AL.4's (#280) to enforce and a stored cycle is *data*. Planting one — and planting
 # a bad row under each rule above — is tests/verify-planning-invariants.sh, against the seeded
@@ -371,7 +403,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -943,6 +975,79 @@ expect_red 'a lane may have any status' \
 expect_red 'a batch may hold the same local key twice' \
   'two drafts in one batch cannot share a local key .*ticket_drafts_batch_local_key_key did not fire' \
   'alter table ouroboros.ticket_drafts drop constraint ticket_drafts_batch_local_key_key;'
+
+# ---------------------------------------------------------------------------
+# The build farm's rules (#249: the two vocabularies, the observed/intended split, the mTLS
+# evidence, the two name keys, the container-pool image, the token's TTL and envelope, the
+# ccache shape, the cap's bound, and the cap trigger itself).
+#
+# Each fails quietly if lost. A sixth runner status renders in no pill; a `draining` nobody
+# asked for makes "who drained this?" unanswerable; an mtls runner with no serial is a claim
+# nothing issued; a duplicate pool name makes `--pool pool-a` ambiguous in the install
+# one-liner; a container pool with no image is a pool that cannot build; a token minted with a
+# past expiry is unusable and uncollectable; a plaintext token is a credential at rest; a
+# present-but-empty ccache summary is a division the stat row performs; an unbounded cap is no
+# cap; and a dropped cap trigger is a log that fills the volume.
+# ---------------------------------------------------------------------------
+expect_red 'a runner may hold a sixth status' \
+  'runners\.status is one of the five B7 names .*runners_status did not fire' \
+  'alter table ouroboros.runners drop constraint runners_status;'
+
+expect_red 'a heartbeat may write a drain nobody asked for' \
+  'a runner cannot show draining unless an operator asked for it .*runners_draining_is_intended did not fire' \
+  'alter table ouroboros.runners drop constraint runners_draining_is_intended;'
+
+expect_red 'a removed runner may still be wanted' \
+  'removal is observed and intended together, or neither .*runners_removed_is_intended did not fire' \
+  'alter table ouroboros.runners drop constraint runners_removed_is_intended;'
+
+expect_red 'the mTLS claim may carry no evidence' \
+  'a bearer_fallback runner carries no certificate serial .*runners_cert_serial_with_mtls did not fire' \
+  'alter table ouroboros.runners drop constraint runners_cert_serial_with_mtls;'
+
+expect_red 'a workspace may hold two runners of one name' \
+  'a runner name is unique within a workspace .*runners_organization_name_key did not fire' \
+  'alter table ouroboros.runners drop constraint runners_organization_name_key;'
+
+expect_red 'a workspace may hold two pools of one name' \
+  'a pool name is unique within a workspace .*runner_pools_organization_name_key did not fire' \
+  'alter table ouroboros.runner_pools drop constraint runner_pools_organization_name_key;'
+
+expect_red 'a container pool may have nothing to run a build in' \
+  'a container pool without an image has nothing to run a build in .*runner_pools_image_for_container did not fire' \
+  'alter table ouroboros.runner_pools drop constraint runner_pools_image_for_container;'
+
+expect_red 'an enrollment token may expire before it was minted' \
+  'a token TTL is a positive interval .*enrollment_tokens_ttl_positive did not fire' \
+  'alter table ouroboros.enrollment_tokens drop constraint enrollment_tokens_ttl_positive;'
+
+expect_red 'an enrollment token may be stored in the clear' \
+  'an enrollment token is one of AD.1.s envelopes, always .*enrollment_tokens_sealed did not fire' \
+  'alter table ouroboros.enrollment_tokens drop constraint enrollment_tokens_sealed;'
+
+expect_red 'a build job may hold an eighth status' \
+  'build_jobs\.status is one of the seven lifecycle names .*build_jobs_status did not fire' \
+  'alter table ouroboros.build_jobs drop constraint build_jobs_status;'
+
+expect_red 'a ccache summary may say nothing at all' \
+  'a ccache summary with no objects in it has no rate to report .*build_jobs_ccache_stats_shape did not fire' \
+  'alter table ouroboros.build_jobs drop constraint build_jobs_ccache_stats_shape;'
+
+expect_red 'a job may choose a cap of any size' \
+  'the per-job cap is bounded, because a cap a writer chooses without bound is not a cap .*build_jobs_log_cap_in_range did not fire' \
+  'alter table ouroboros.build_jobs drop constraint build_jobs_log_cap_in_range;'
+
+# A trigger, so dropped with `drop trigger`. Without it every chunk is written whole — no
+# running total, no clamp, no marker, no dropped-byte count — which is precisely the regression
+# a green suite cannot see, because a cap nothing exceeds and a cap that does not exist look
+# identical from outside. The marker names the *first* of those the suite notices, the job's
+# running total; the clamp and the elision marker are asserted immediately behind it, and the
+# fixtures name their own byte offsets so that this probe reaches those assertions rather than
+# stopping on the not-null the trigger would otherwise have filled in.
+expect_red 'a runaway build may fill the volume' \
+  'under the cap, a chunk is written whole and the job.s running total follows it' \
+  'drop trigger build_log_chunks_cap on ouroboros.build_log_chunks;'
+
 
 printf '\n'
 if check_summary; then

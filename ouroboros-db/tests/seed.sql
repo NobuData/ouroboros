@@ -46,7 +46,9 @@
 -- aliases with their params, a price override and run #482's resolution snapshot — by
 -- #582, with mockup 03's backlog — nine mirrored issues and the estimates behind
 -- their chips — by #103, and with mockup 09's planning page — the canonical backlog, the
--- roadmap lanes and the OTA draft batch — by #275.
+-- roadmap lanes and the OTA draft batch — by #275, and with mockup 08's build farm — two
+-- pools, six runners of which one is removed, forty-eight builds and the live log's chunks —
+-- by #249.
 
 \set ON_ERROR_STOP on
 
@@ -3094,6 +3096,295 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.epic_mirrors),
   'and nothing has been pushed, so no epic has a tracker mirror');
+
+
+-- ===========================================================================
+-- R__dev_seed_farm.sql — mockup 08's build farm (#249)
+-- ===========================================================================
+--
+-- The tenth seed, and the one whose rows are *live entities*: a `runners` row claims a
+-- machine somewhere is heartbeating. Every figure mockup 08 prints is asserted here as the
+-- aggregate it is, and each one is asked in a form that a nearly-right query gets wrong —
+-- the near misses are asserted too, because a fixture that stopped distinguishing them would
+-- leave every figure below passing for the wrong reason.
+
+-- --- the fleet, the pools, and the sixth runner that is not in either count ------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.runner_pools p
+     join ouroboros.organization o on o."id" = p.organization_id
+    where o."slug" = 'acme-robotics')
+   and (select count(*) = 5 from ouroboros.runners r
+          join ouroboros.organization o on o."id" = r.organization_id
+         where o."slug" = 'acme-robotics' and r.status <> 'removed'),
+  'the head reads "5 runners. 2 pools." — both counted, neither stored');
+
+select pg_temp.must_hold(
+  (select count(*) = 6 from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics'),
+  'and forge-00 is the sixth: a count that forgets to exclude `removed` reads 6');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics' and r.status not in ('offline', 'removed')),
+  'the stat row reads 4/5 online, which is every runner the fleet can currently reach');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics' and r.status = 'building'),
+  'and the RUNNERS card''s pill reads "1 building"');
+
+select pg_temp.must_hold(
+  (select round(extract(epoch from now() - r.last_seen_at) / 3600) = 2
+     from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics' and r.name = 'forge-03'),
+  'forge-03 was last seen two hours ago, which is what "offline · 2h" is computed from');
+
+select pg_temp.must_hold(
+  (select telemetry = '{}'::jsonb and uptime_seconds is null
+     from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics' and r.name = 'forge-03'),
+  'and it carries no snapshot and no uptime, so its row prints the mockup''s dashes');
+
+-- Three runners in pool-a and two in pool-b — the pool card's meta lines — which is also
+-- where the removed runner is: counted, pool-a would read four.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.runners r
+     join ouroboros.runner_pools p on p.id = r.pool_id
+     join ouroboros.organization o on o."id" = p.organization_id
+    where o."slug" = 'acme-robotics' and p.name = 'pool-a' and r.status <> 'removed')
+   and (select count(*) = 2 from ouroboros.runners r
+          join ouroboros.runner_pools p on p.id = r.pool_id
+          join ouroboros.organization o on o."id" = p.organization_id
+         where o."slug" = 'acme-robotics' and p.name = 'pool-b' and r.status <> 'removed'),
+  'the pools card reads "3 runners" and "2 runners", counted the same way the head is');
+
+-- --- the executor worlds, and the degraded connection ---------------------------
+select pg_temp.must_hold(
+  (select executor = 'container' and image is not null and autoscale_pref ->> 'enabled' = 'false'
+     from ouroboros.runner_pools p
+     join ouroboros.organization o on o."id" = p.organization_id
+    where o."slug" = 'acme-robotics' and p.name = 'pool-a')
+   and (select executor = 'shell' and image is null and tags @> '["hil"]'::jsonb
+          from ouroboros.runner_pools p
+          join ouroboros.organization o on o."id" = p.organization_id
+         where o."slug" = 'acme-robotics' and p.name = 'pool-b'),
+  'pool-a is a container world with a pinned image and an auto-scale preference that is off (B9); pool-b is a shell world tagged hil (#776)');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics'
+      and r.security_mode = 'bearer_fallback' and r.cert_serial is null and r.name = 'anvil-mac'),
+  'anvil-mac fell back to a bearer token, which AI.2 (#257) has a row to render as degraded');
+
+-- --- the enrollment tokens ------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.enrollment_tokens t
+     join ouroboros.organization o on o."id" = t.organization_id
+    where o."slug" = 'acme-robotics')
+   and (select count(*) = 1 from ouroboros.enrollment_tokens t
+          join ouroboros.organization o on o."id" = t.organization_id
+         where o."slug" = 'acme-robotics' and t.revoked and t.revoked_at is not null)
+   and (select bool_and(t.token_sealed like 'ouro.v1.%' and t.expires_at > t.created_at)
+          from ouroboros.enrollment_tokens t
+          join ouroboros.organization o on o."id" = t.organization_id
+         where o."slug" = 'acme-robotics'),
+  'two enrollment tokens, one revoked, both sealed envelopes with a positive TTL');
+
+-- --- the stat row, every number of it -------------------------------------------
+--
+-- One partition of today's terminal jobs answers the card's headline and its three-part
+-- delta, which is why the three numbers add up: they are one `group by`, not three queries.
+select pg_temp.must_hold(
+  (with today as (
+     select j.status from ouroboros.build_jobs j
+       join ouroboros.organization o on o."id" = j.organization_id
+      where o."slug" = 'acme-robotics'
+        and j.status in ('succeeded', 'failed', 'retried', 'canceled')
+        and j.finished_at >= date_trunc('day', now()))
+   select count(*) = 23
+      and count(*) filter (where status = 'succeeded') = 19
+      and count(*) filter (where status = 'retried')   = 3
+      and count(*) filter (where status = 'failed')    = 1
+     from today),
+  'Builds today reads 23, and 19 clean · 3 retried · 1 failed partitions it');
+
+select pg_temp.must_hold(
+  (select count(*) = 28 from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics' and j.queued_at >= date_trunc('day', now())),
+  'and the two running and three queued jobs are the near miss: counted by queued_at it reads 28');
+
+select pg_temp.must_hold(
+  (select count(*) = 43 from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics' and j.finished_at is not null),
+  'and the prior week''s twenty are the other one: without the day window it reads 43');
+
+-- Each retried attempt has a successor among the nineteen, so a retry is one failure and one
+-- success rather than two of either.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.build_jobs retry
+     join ouroboros.build_jobs original on original.id = retry.retry_of
+     join ouroboros.organization o on o."id" = retry.organization_id
+    where o."slug" = 'acme-robotics'
+      and original.status = 'retried' and retry.status = 'succeeded'
+      and retry.finished_at >= date_trunc('day', now())),
+  'each of today''s three retried attempts has the successful attempt that replaced it');
+
+select pg_temp.must_hold(
+  (select round(extract(epoch from avg(j.finished_at - j.started_at))) = 252
+     from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics'
+      and j.status in ('succeeded', 'failed', 'retried', 'canceled')
+      and j.finished_at >= date_trunc('day', now())),
+  'Avg build time is 252 seconds, which the card prints as 4m 12s');
+
+select pg_temp.must_hold(
+  (select round(extract(epoch from avg(j.finished_at - j.started_at))) = 290
+     from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics'
+      and j.finished_at <  date_trunc('day', now())
+      and j.finished_at >= date_trunc('day', now()) - interval '7 days'),
+  'and the prior week''s is 290, so the delta the card prints is 38 seconds down');
+
+-- --- the cache rate, weighted, and null is not zero ------------------------------
+select pg_temp.must_hold(
+  (select round(100.0 * sum((j.ccache_stats ->> 'hits')::numeric)
+              / sum((j.ccache_stats ->> 'hits')::numeric
+                    + (j.ccache_stats ->> 'misses')::numeric)) = 78
+     from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics'
+      and j.ccache_stats is not null
+      and j.finished_at >= date_trunc('day', now())),
+  'Cache hit rate is 78% — Σ hits over Σ objects across today''s jobs that measured any');
+
+select pg_temp.must_hold(
+  (select count(*) = 7 from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics'
+      and j.ccache_stats is null
+      and j.status in ('succeeded', 'failed', 'retried', 'canceled')
+      and j.finished_at >= date_trunc('day', now())),
+  'seven of today''s twenty-three measured no cache at all, and null is not zero (B5)');
+
+select pg_temp.must_hold(
+  (select round(100.0 * sum((j.ccache_stats ->> 'hits')::numeric)
+              / sum((j.ccache_stats ->> 'hits')::numeric
+                    + (j.ccache_stats ->> 'misses')::numeric)) = 74
+     from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics'
+      and j.ccache_stats is not null and j.finished_at is not null),
+  'and the prior week''s builds are the near miss: without the day window the rate reads 74%');
+
+-- --- the queue chips, and what is in flight -------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.build_jobs j
+     join ouroboros.runners r on r.id = j.runner_id
+    where r.name = 'forge-01' and j.status in ('queued', 'offered'))
+   and (select count(*) = 1 from ouroboros.build_jobs j
+          join ouroboros.runners r on r.id = j.runner_id
+         where r.name = 'bigiron' and j.status in ('queued', 'offered')),
+  'the runners table reads q:2 on forge-01 and q:1 on bigiron, counted from the queue itself');
+
+select pg_temp.must_hold(
+  (select bool_and((r.telemetry ->> 'queue_depth')::int = q.depth)
+     from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+     join lateral (select count(*) as depth from ouroboros.build_jobs j
+                    where j.runner_id = r.id and j.status in ('queued', 'offered')) q on true
+    where o."slug" = 'acme-robotics' and r.telemetry ? 'queue_depth'),
+  'and every heartbeat''s queue_depth agrees with the rows behind it');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics' and j.status = 'running'),
+  'two builds are running — forge-01''s #479 and the sweep a draining bigiron is finishing');
+
+-- --- run_id is null on every row, which is decision B6 in the data ---------------
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics' and j.run_id is not null),
+  'no seeded job is attributed to a loop run: AJ.3 (#265) is what fills run_id in (B6)');
+
+-- --- the live log, and the row it has to agree with ------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.build_log_chunks c
+     join ouroboros.build_jobs j on j.id = c.job_id
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics' and j.number = 479)
+   and (select count(*) = 5 from ouroboros.build_log_chunks c
+          join ouroboros.build_jobs j on j.id = c.job_id
+          join ouroboros.organization o on o."id" = j.organization_id
+         where o."slug" = 'acme-robotics'),
+  'the LIVE card''s listing is three chunks of #479, of five in the whole seed');
+
+select pg_temp.must_hold(
+  (select (j.ccache_stats ->> 'hits')::int = 412
+      and (j.ccache_stats ->> 'misses')::int = 113
+      and convert_from(c.content, 'UTF8') like '%(412/525 objects)%'
+     from ouroboros.build_jobs j
+     join ouroboros.build_log_chunks c on c.job_id = j.id and c.seq = 1
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics' and j.number = 479),
+  'and the log''s ccache line and the job''s ccache_stats tell the same story about one build');
+
+-- The cap trigger's arithmetic, as the seed leaves it: the offsets are contiguous, the job's
+-- running total is the sum of its chunks, and nothing was elided.
+select pg_temp.must_hold(
+  (select bool_and(agreed) from (
+     select j.log_bytes = sum(octet_length(c.content))
+        and min(c.byte_start) = 0
+        and j.log_dropped_bytes = 0
+        and j.log_truncated_at is null as agreed
+       from ouroboros.build_jobs j
+       join ouroboros.build_log_chunks c on c.job_id = j.id
+       join ouroboros.organization o on o."id" = j.organization_id
+      where o."slug" = 'acme-robotics'
+      group by j.id, j.log_bytes, j.log_dropped_bytes, j.log_truncated_at) totals),
+  'each logged job''s running total is the sum of its own chunks, and no seeded log was truncated');
+
+-- --- the pool-assignment window (#514) -------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runner_pool_windows w
+     join ouroboros.organization o on o."id" = w.organization_id
+    where o."slug" = 'acme-robotics'
+      and w.days_of_week = '[1, 2, 3, 4, 5]'::jsonb
+      and w.starts_at = '14:00'::time and w.ends_at = '16:00'::time),
+  'one time-windowed pool assignment exists, so #514''s capability has a fixture to read');
+
+-- --- the whole seed belongs to one workspace, and the others are empty ------------
+select pg_temp.must_hold(
+  (select count(*) = 48 from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+    where o."slug" = 'acme-robotics'),
+  'forty-eight build jobs in all — twenty last week, twenty-three today, five in flight');
+
+select pg_temp.must_hold(
+  (select not exists (select 1 from ouroboros.runner_pools p
+                        join ouroboros.organization o on o."id" = p.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))
+      and not exists (select 1 from ouroboros.runners r
+                        join ouroboros.organization o on o."id" = r.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))
+      and not exists (select 1 from ouroboros.build_jobs j
+                        join ouroboros.organization o on o."id" = j.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))
+      and not exists (select 1 from ouroboros.enrollment_tokens t
+                        join ouroboros.organization o on o."id" = t.organization_id
+                       where o."slug" in ('kensuenobu', 'acme-labs'))),
+  'the personal workspace has no pool, runner, job or token — AI.7''s (#262) guidance path');
 
 \o
 \echo 'seed.sql: all assertions passed'

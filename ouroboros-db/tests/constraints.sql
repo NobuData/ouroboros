@@ -42,7 +42,10 @@
 -- versioned latest-wins rows (V026, #100), `github_credentials`, the per-workspace
 -- GitHub token the backlog sync authenticates with (V027, #101), and `workflows` with
 -- `workflow_versions`, the studio's entities and the version history a run can pin
--- (V029, #132).
+-- (V029, #132), and the **build farm** — `runner_pools`, `runners`, `enrollment_tokens`,
+-- `runner_pool_windows`, `build_jobs` and `build_log_chunks` (V040, #249), whose section is
+-- the one that asks a *trigger* to prove it truncates: the per-job log cap has to be observed
+-- doing it, because a cap nothing exceeds and a cap that does not exist look identical.
 --
 -- The last three sections belong to no migration. Y.5 (#193) names the routing invariants
 -- Z.1's resolution is written against and asks the catalogue for each of them **by name** — a
@@ -12117,6 +12120,620 @@ select pg_temp.must_hold(
       and contype = 'c'),
   'provider_connections_kind and _status: both provider vocabularies are still closed');
 
+
+
+-- ===========================================================================
+-- V040 — the build farm: pools, runners, tokens, jobs and log chunks (#249)
+-- ===========================================================================
+--
+-- Mockup 08 renders live state, and the three rules that keep it honest are all here: a
+-- runner's **observation** and an operator's **intent** are two columns that cannot
+-- contradict each other, `build_jobs.run_id` is **nullable** because the loop that would
+-- fill it is v2 (decision B6), and the per-job log cap is a **trigger** that records what it
+-- elided rather than a limit the ingest path is asked to respect.
+--
+-- Everything else in the section is the tenancy web: every reference between these tables is
+-- a composite foreign key carrying `organization_id`, so a job on another workspace's runner
+-- is a row PostgreSQL refuses. The one join that cannot be spelled that way — a repository,
+-- which reaches its organization through `github_orgs` — is a trigger, and it is asked for
+-- by name.
+--
+-- Fixtures of its own, under two workspaces nothing else in this file names, so the counts
+-- below mean what they say.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-farm',  'Farm Co',  'farm-co',  now()),
+  ('org-farm2', 'Farm Two', 'farm-two', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login) values
+  ('7f000010-0000-4000-8000-000000000001', 'org-farm',  'farm-co'),
+  ('7f000010-0000-4000-8000-000000000002', 'org-farm2', 'farm-two');
+
+insert into ouroboros.github_repos (id, org_id, name) values
+  ('7f000011-0000-4000-8000-000000000001', '7f000010-0000-4000-8000-000000000001', 'helios-firmware'),
+  ('7f000011-0000-4000-8000-000000000002', '7f000010-0000-4000-8000-000000000002', 'other-firmware');
+
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('7f000001-0000-4000-8000-000000000001', 'org-farm',  'pool-a', 'container', 'img:0.17', '["firmware"]'),
+  ('7f000001-0000-4000-8000-000000000002', 'org-farm',  'pool-b', 'shell',     null,       '["hil"]'),
+  ('7f000001-0000-4000-8000-000000000003', 'org-farm2', 'pool-a', 'shell',     null,       '[]');
+
+insert into ouroboros.runners
+  (id, organization_id, pool_id, name, arch, status, desired_state, last_seen_at,
+   security_mode, cert_serial, telemetry, enrolled_at) values
+  ('7f000002-0000-4000-8000-000000000001', 'org-farm',  '7f000001-0000-4000-8000-000000000001',
+   'forge-01', 'linux/arm64', 'building', 'active',   now() - interval '4 seconds',
+   'mtls', '4a:11:00:01', '{"cpu_pct": 82, "queue_depth": 2}', now() - interval '30 days'),
+  ('7f000002-0000-4000-8000-000000000002', 'org-farm',  '7f000001-0000-4000-8000-000000000002',
+   'anvil-mac', 'darwin/arm64', 'online', 'active',   now() - interval '6 seconds',
+   'bearer_fallback', null, '{}', now() - interval '30 days'),
+  ('7f000002-0000-4000-8000-000000000003', 'org-farm',  '7f000001-0000-4000-8000-000000000001',
+   'forge-00', 'linux/arm64', 'removed',  'removed',  now() - interval '6 days',
+   'mtls', '4a:11:00:03', '{}', now() - interval '90 days'),
+  ('7f000002-0000-4000-8000-000000000004', 'org-farm2', '7f000001-0000-4000-8000-000000000003',
+   'forge-01', 'linux/x86_64', 'online',  'active',   now() - interval '9 seconds',
+   'mtls', '4a:11:00:04', '{}', now() - interval '30 days');
+
+insert into ouroboros.runs
+  (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model,
+   status, stage_label, stage_index, stage_total) values
+  ('7f000003-0000-4000-8000-000000000001', 'org-farm',  '7f000011-0000-4000-8000-000000000001',
+   479, 'Add OTA rollback on failed checksum', 'feature-loop', 'claude-sonnet-5',
+   'building', 'Build farm', 5, 7),
+  ('7f000003-0000-4000-8000-000000000002', 'org-farm2', '7f000011-0000-4000-8000-000000000002',
+   12, 'Something else', 'standard-fix', 'claude-sonnet-5',
+   'building', 'Build farm', 2, 6);
+
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, runner_id, github_repo_id, git_ref,
+   label, title, executor, image, command, status, queued_at, started_at, finished_at,
+   exit_code, ccache_stats, log_cap_bytes) values
+  ('7f000004-0000-4000-8000-000000000001', 'org-farm', 479,
+   '7f000001-0000-4000-8000-000000000001', '7f000002-0000-4000-8000-000000000001',
+   '7f000011-0000-4000-8000-000000000001', 'refs/heads/main',
+   'zephyr build', 'Add OTA rollback on failed checksum', 'container', 'img:0.17',
+   'west build', 'running', now() - interval '4 minutes', now() - interval '3 minutes', null,
+   null, '{"hits": 412, "misses": 113}', 65536),
+  ('7f000004-0000-4000-8000-000000000002', 'org-farm', 478,
+   '7f000001-0000-4000-8000-000000000002', '7f000002-0000-4000-8000-000000000003',
+   '7f000011-0000-4000-8000-000000000001', 'refs/heads/main',
+   'HIL test rig', 'Overnight sweep', 'shell', null,
+   'make hil', 'succeeded', now() - interval '125 minutes', now() - interval '2 hours',
+   now() - interval '110 minutes', 0, null, 65536);
+
+-- --- the vocabularies are closed -----------------------------------------------
+--
+-- Every one of these partitions a page. A value outside `runners.status` renders in no pill,
+-- a value outside `build_jobs.status` lands in none of the stat row's three numbers, and an
+-- architecture nothing ships a binary for is a runner that can never come online.
+select pg_temp.must_reject(
+  $$update ouroboros.runners set status = 'sleepy'
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'runners.status is one of the five B7 names', 'runners_status');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set desired_state = 'paused'
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'runners.desired_state is one of active, draining, removed', 'runners_desired_state');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set arch = 'windows/amd64'
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'runners.arch is one of the three architectures AG.6 builds for', 'runners_arch');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set security_mode = 'none'
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'runners.security_mode is mtls or bearer_fallback (B3)', 'runners_security_mode');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set executor = 'vm'
+     where id = '7f000001-0000-4000-8000-000000000002'$$,
+  'runner_pools.executor is container or shell (B4)', 'runner_pools_executor');
+
+-- Asked of the *running* job: the coherence checks around it are satisfied by a row that has
+-- started and not finished, so the only rule left to refuse an eighth word is the vocabulary.
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set status = 'maybe'
+     where id = '7f000004-0000-4000-8000-000000000001'$$,
+  'build_jobs.status is one of the seven lifecycle names', 'build_jobs_status');
+
+-- --- observation and intent are distinguishable ---------------------------------
+--
+-- The acceptance criterion in AH.1's own words: *"status (observed) and draining (intended)
+-- are distinguishable"*. What makes that more than a naming convention is that the pair
+-- cannot contradict itself — a heartbeat cannot write the pill an operator never chose, and
+-- a removed runner cannot still be wanted.
+select pg_temp.must_reject(
+  $$update ouroboros.runners set status = 'draining'
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'a runner cannot show draining unless an operator asked for it',
+  'runners_draining_is_intended');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set desired_state = 'removed'
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'removal is observed and intended together, or neither', 'runners_removed_is_intended');
+
+-- And the legal transition is legal: an operator drains, and the observation follows.
+update ouroboros.runners set desired_state = 'draining'
+ where id = '7f000002-0000-4000-8000-000000000002';
+update ouroboros.runners set status = 'draining'
+ where id = '7f000002-0000-4000-8000-000000000002';
+select pg_temp.must_hold(
+  (select status = 'draining' and desired_state = 'draining' from ouroboros.runners
+    where id = '7f000002-0000-4000-8000-000000000002'),
+  'an operator drains a runner and the observation follows the intent');
+update ouroboros.runners set status = 'online', desired_state = 'active'
+ where id = '7f000002-0000-4000-8000-000000000002';
+
+-- `offline` is an observation nobody chose, which is the other half of the split: it needs no
+-- intent at all.
+update ouroboros.runners set status = 'offline'
+ where id = '7f000002-0000-4000-8000-000000000002';
+select pg_temp.must_hold(
+  (select desired_state = 'active' from ouroboros.runners
+    where id = '7f000002-0000-4000-8000-000000000002'),
+  'a runner goes offline without any operator having asked for it');
+update ouroboros.runners set status = 'online'
+ where id = '7f000002-0000-4000-8000-000000000002';
+
+-- --- the degraded security mode is recordable, and carries no certificate --------
+--
+-- AI.2 (#257) surfaces `bearer_fallback` as degraded, so the seed and the schema both have to
+-- allow it — and the serial has to follow the mode, or the page would have two sources for
+-- one answer.
+select pg_temp.must_hold(
+  (select security_mode = 'bearer_fallback' and cert_serial is null
+     from ouroboros.runners where id = '7f000002-0000-4000-8000-000000000002'),
+  'security_mode records bearer_fallback, so AI.2 can surface a degraded connection');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set cert_serial = '4a:11:00:99'
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'a bearer_fallback runner carries no certificate serial', 'runners_cert_serial_with_mtls');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set cert_serial = null
+     where id = '7f000002-0000-4000-8000-000000000001'$$,
+  'an mTLS runner carries the serial its certificate was issued with',
+  'runners_cert_serial_with_mtls');
+
+-- --- names are unique per workspace, and only per workspace ---------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_pools (organization_id, name, executor)
+    values ('org-farm', 'pool-a', 'shell')$$,
+  'a pool name is unique within a workspace', 'runner_pools_organization_name_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runners (organization_id, pool_id, name, arch, cert_serial)
+    values ('org-farm', '7f000001-0000-4000-8000-000000000001', 'forge-01', 'linux/arm64', 'x')$$,
+  'a runner name is unique within a workspace', 'runners_organization_name_key');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.runners where name = 'forge-01'),
+  'and two workspaces may each have a forge-01, which is what "per workspace" means');
+
+-- --- a container pool has an image, and a shell pool has none -------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_pools (organization_id, name, executor)
+    values ('org-farm', 'pool-c', 'container')$$,
+  'a container pool without an image has nothing to run a build in',
+  'runner_pools_image_for_container');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_pools (organization_id, name, executor, image)
+    values ('org-farm', 'pool-c', 'shell', 'img:0.17')$$,
+  'a shell pool carrying a pinned image promises what it does not do',
+  'runner_pools_image_for_container');
+
+-- --- tenancy is structural ------------------------------------------------------
+--
+-- Each of these is a cross-workspace reference that a service could make by forgetting one
+-- `where`. None of them is reachable: the composite keys carry `organization_id` into every
+-- reference, so the wrong workspace is a foreign-key violation rather than a leak.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runners (organization_id, pool_id, name, arch, cert_serial)
+    values ('org-farm2', '7f000001-0000-4000-8000-000000000001', 'borrowed', 'linux/arm64', 'x')$$,
+  'a runner cannot join another workspace''s pool', 'runners_pool_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_jobs
+      (organization_id, number, pool_id, runner_id, github_repo_id, git_ref, label, title,
+       executor, command)
+    values ('org-farm2', 900, '7f000001-0000-4000-8000-000000000003',
+            '7f000002-0000-4000-8000-000000000001',
+            '7f000011-0000-4000-8000-000000000002', 'refs/heads/main', 'l', 't',
+            'shell', 'make')$$,
+  'a job cannot run on another workspace''s runner', 'build_jobs_runner_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_jobs
+      (organization_id, number, pool_id, github_repo_id, git_ref, label, title,
+       executor, command, run_id)
+    values ('org-farm', 901, '7f000001-0000-4000-8000-000000000002',
+            '7f000011-0000-4000-8000-000000000001', 'refs/heads/main', 'l', 't',
+            'shell', 'make', '7f000003-0000-4000-8000-000000000002')$$,
+  'a job cannot be attributed to another workspace''s run', 'build_jobs_run_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_jobs
+      (organization_id, number, pool_id, github_repo_id, git_ref, label, title,
+       executor, command)
+    values ('org-farm', 902, '7f000001-0000-4000-8000-000000000002',
+            '7f000011-0000-4000-8000-000000000002', 'refs/heads/main', 'l', 't',
+            'shell', 'make')$$,
+  'a job cannot build another workspace''s repository', 'build_jobs_repo_in_organization');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.enrollment_tokens
+      (organization_id, pool_id, token_sealed, expires_at)
+    values ('org-farm2', '7f000001-0000-4000-8000-000000000001',
+            'ouro.v1.1.bm9uY2U.Y2lwaGVy', now() + interval '1 day')$$,
+  'a token cannot scope another workspace''s pool', 'enrollment_tokens_pool_fk');
+
+-- --- run_id is nullable, and that is decision B6 --------------------------------
+--
+-- The acceptance criterion asks for the column to be nullable and documented as AJ.3's
+-- (#265) linkage point. Nullability is what the catalogue is asked; that it is *usable* as a
+-- linkage point is the accepted insert beside it.
+select pg_temp.must_hold(
+  (select not attnotnull from pg_attribute
+    where attrelid = 'ouroboros.build_jobs'::regclass and attname = 'run_id'),
+  'build_jobs.run_id is nullable — MVP builds belong to no loop (B6), and AJ.3 (#265) fills it in');
+
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title,
+   executor, command, run_id)
+values ('7f000004-0000-4000-8000-000000000003', 'org-farm', 903,
+        '7f000001-0000-4000-8000-000000000002', '7f000011-0000-4000-8000-000000000001',
+        'refs/heads/main', 'l', 't', 'shell', 'make', '7f000003-0000-4000-8000-000000000001');
+select pg_temp.must_hold(
+  (select run_id is not null from ouroboros.build_jobs
+    where id = '7f000004-0000-4000-8000-000000000003'),
+  'and a job of the same workspace may name its run, which is the shape AJ.3 writes');
+
+-- An unassigned queued job is representable: dispatch has not chosen a runner yet.
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title,
+   executor, command)
+values ('7f000004-0000-4000-8000-000000000004', 'org-farm', 904,
+        '7f000001-0000-4000-8000-000000000002', '7f000011-0000-4000-8000-000000000001',
+        'refs/heads/main', 'l', 't', 'shell', 'make');
+select pg_temp.must_hold(
+  (select runner_id is null and status = 'queued' from ouroboros.build_jobs
+    where id = '7f000004-0000-4000-8000-000000000004'),
+  'a queued job with no runner is representable — nullable until assigned');
+
+-- --- a job's lifecycle columns agree with its status ----------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set finished_at = null, exit_code = null
+     where id = '7f000004-0000-4000-8000-000000000002'$$,
+  'a terminal job carries the time it stopped', 'build_jobs_finished_when_terminal');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set exit_code = 1
+     where id = '7f000004-0000-4000-8000-000000000002'$$,
+  'a succeeded job exited zero', 'build_jobs_success_is_exit_zero');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set finished_at = now()
+     where id = '7f000004-0000-4000-8000-000000000001'$$,
+  'a running job has not finished', 'build_jobs_finished_when_terminal');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set retry_of = id
+     where id = '7f000004-0000-4000-8000-000000000002'$$,
+  'a job is not a retry of itself', 'build_jobs_retry_not_self');
+
+-- --- null ccache is not zero ccache (decision B5) -------------------------------
+--
+-- The shell job carries no summary at all and that is legal; what is refused is a summary
+-- that is *present* and says nothing, because the stat row would divide by it.
+select pg_temp.must_hold(
+  (select ccache_stats is null from ouroboros.build_jobs
+    where id = '7f000004-0000-4000-8000-000000000002'),
+  'a build with no cache carries no ccache summary — null, not zero (B5)');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set ccache_stats = '{"hits": 0, "misses": 0}'
+     where id = '7f000004-0000-4000-8000-000000000002'$$,
+  'a ccache summary with no objects in it has no rate to report',
+  'build_jobs_ccache_stats_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set ccache_stats = '{"hits": 412}'
+     where id = '7f000004-0000-4000-8000-000000000002'$$,
+  'a ccache summary carries both counters or neither', 'build_jobs_ccache_stats_shape');
+
+-- --- the telemetry snapshot cannot render past the end of its meter -------------
+select pg_temp.must_reject(
+  $$update ouroboros.runners set telemetry = '{"cpu_pct": 140}'
+     where id = '7f000002-0000-4000-8000-000000000001'$$,
+  'a CPU meter cannot read 140%', 'runners_telemetry_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set telemetry = '{"ram_used_bytes": 3, "ram_total_bytes": 2}'
+     where id = '7f000002-0000-4000-8000-000000000001'$$,
+  'a runner cannot be using more memory than it has', 'runners_telemetry_shape');
+
+-- --- the stored-but-inert preference is still a closed document (B9) ------------
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set autoscale_pref = '{"enabled": "yes"}'
+     where id = '7f000001-0000-4000-8000-000000000001'$$,
+  'an auto-scale preference AJ.1 could not read is refused now rather than then',
+  'runner_pools_autoscale_pref_shape');
+
+-- --- pool tags are resolvable rather than decorative (#776) ---------------------
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set tags = '["HIL"]'
+     where id = '7f000001-0000-4000-8000-000000000002'$$,
+  'a pool tag is a lowercase slug, so a snippet''s runner_tags can match it',
+  'runner_pools_tags_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set tags = '["hil", "hil"]'
+     where id = '7f000001-0000-4000-8000-000000000002'$$,
+  'a tag set holds each tag once', 'runner_pools_tags_shape');
+
+-- --- enrollment tokens: sealed, time-bounded and spendable ----------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.enrollment_tokens
+      (organization_id, pool_id, token_sealed, expires_at)
+    values ('org-farm', '7f000001-0000-4000-8000-000000000001',
+            'orb_enroll_plaintext', now() + interval '1 day')$$,
+  'an enrollment token is one of AD.1''s envelopes, always', 'enrollment_tokens_sealed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.enrollment_tokens
+      (organization_id, pool_id, token_sealed, expires_at, created_at)
+    values ('org-farm', '7f000001-0000-4000-8000-000000000001',
+            'ouro.v1.1.bm9uY2U.Y2lwaGVy', now() - interval '1 day', now())$$,
+  'a token TTL is a positive interval', 'enrollment_tokens_ttl_positive');
+
+insert into ouroboros.enrollment_tokens
+  (id, organization_id, pool_id, token_sealed, expires_at, max_uses, uses)
+values ('7f000005-0000-4000-8000-000000000001', 'org-farm',
+        '7f000001-0000-4000-8000-000000000001', 'ouro.v1.1.bm9uY2U.Y2lwaGVy',
+        now() + interval '7 days', 5, 3);
+
+select pg_temp.must_reject(
+  $$update ouroboros.enrollment_tokens set uses = 6
+     where id = '7f000005-0000-4000-8000-000000000001'$$,
+  'a token cannot be spent more times than it was minted for',
+  'enrollment_tokens_uses_within_max');
+
+select pg_temp.must_reject(
+  $$update ouroboros.enrollment_tokens set revoked = true
+     where id = '7f000005-0000-4000-8000-000000000001'$$,
+  'a revocation happened at a time', 'enrollment_tokens_revoked_at');
+
+-- --- a pool-assignment window is a set of days inside one day (#514) ------------
+insert into ouroboros.runner_pool_windows
+  (id, organization_id, runner_id, pool_id, days_of_week, starts_at, ends_at)
+values ('7f000006-0000-4000-8000-000000000001', 'org-farm',
+        '7f000002-0000-4000-8000-000000000001', '7f000001-0000-4000-8000-000000000002',
+        '[1, 2, 3, 4, 5]', '14:00', '16:00');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pool_windows set days_of_week = '[0, 8]'
+     where id = '7f000006-0000-4000-8000-000000000001'$$,
+  'a window''s weekdays are ISO weekday numbers', 'runner_pool_windows_days_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pool_windows set ends_at = '13:00'
+     where id = '7f000006-0000-4000-8000-000000000001'$$,
+  'a window lies inside one day', 'runner_pool_windows_ordered');
+
+-- --- the per-job log cap, and the marker it leaves ------------------------------
+--
+-- The acceptance criterion this ticket turns on: *"the byte-cap trigger truncates and records
+-- marker metadata the UI can render as an explicit elision"*. The job above carries a 64 KiB
+-- cap, so three 30 000-byte chunks cross it.
+--
+-- These three name their own `byte_start`, which the trigger checks against the job's running
+-- total rather than assigning. That is deliberate: it is what lets the probe that *drops* the
+-- trigger reach the clamp assertion below, instead of failing on the not-null the trigger
+-- would otherwise have filled in. The assignment itself is observed further down, on a job
+-- whose chunks arrive without one.
+insert into ouroboros.build_log_chunks (job_id, seq, byte_start, content) values
+  ('7f000004-0000-4000-8000-000000000001', 1,     0, convert_to(repeat('a', 30000), 'UTF8')),
+  ('7f000004-0000-4000-8000-000000000001', 2, 30000, convert_to(repeat('b', 30000), 'UTF8'));
+
+select pg_temp.must_hold(
+  (select log_bytes = 60000 and log_dropped_bytes = 0 and log_truncated_at is null
+     from ouroboros.build_jobs where id = '7f000004-0000-4000-8000-000000000001'),
+  'under the cap, a chunk is written whole and the job''s running total follows it');
+
+insert into ouroboros.build_log_chunks (job_id, seq, byte_start, content) values
+  ('7f000004-0000-4000-8000-000000000001', 3, 60000, convert_to(repeat('c', 30000), 'UTF8'));
+
+select pg_temp.must_hold(
+  (select octet_length(content) = 5536
+      and truncation_meta ->> 'reason' = 'per_job_cap'
+      and (truncation_meta ->> 'cap_bytes')::bigint = 65536
+      and (truncation_meta ->> 'kept_bytes')::bigint = 5536
+      and (truncation_meta ->> 'dropped_bytes')::bigint = 24464
+      and truncation_meta ? 'truncated_at'
+     from ouroboros.build_log_chunks
+    where job_id = '7f000004-0000-4000-8000-000000000001' and seq = 3),
+  'across the cap, the chunk is clamped and carries the elision marker the UI renders');
+
+select pg_temp.must_hold(
+  (select log_bytes = 65536 and log_dropped_bytes = 24464 and log_truncated_at is not null
+     from ouroboros.build_jobs where id = '7f000004-0000-4000-8000-000000000001'),
+  'and the job records the cap it reached and how much of the log it cost');
+
+insert into ouroboros.build_log_chunks (job_id, seq, content) values
+  ('7f000004-0000-4000-8000-000000000001', 4, convert_to(repeat('d', 1000), 'UTF8'));
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.build_log_chunks
+    where job_id = '7f000004-0000-4000-8000-000000000001')
+   and (select log_bytes = 65536 and log_dropped_bytes = 25464
+          from ouroboros.build_jobs where id = '7f000004-0000-4000-8000-000000000001'),
+  'past the cap, a chunk writes no row at all and only the dropped-byte total moves');
+
+-- The marker is the database's. A caller-written one would describe an elision that did not
+-- happen, which is the one thing worse than a log that stops.
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_log_chunks (job_id, seq, content, truncation_meta)
+    values ('7f000004-0000-4000-8000-000000000003', 1, convert_to('x', 'UTF8'),
+            '{"reason": "per_job_cap", "cap_bytes": 1, "kept_bytes": 1,
+              "dropped_bytes": 1, "truncated_at": "2026-01-01T00:00:00Z"}')$$,
+  'the truncation marker is written by the cap trigger, not by the caller',
+  'build_log_chunks_truncation_meta_is_the_database_s');
+
+-- An offset that does not continue the stream is a reader returning the wrong bytes later.
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_log_chunks (job_id, seq, byte_start, content)
+    values ('7f000004-0000-4000-8000-000000000003', 1, 4096, convert_to('x', 'UTF8'))$$,
+  'a chunk''s byte_start continues the job''s stream or is refused',
+  'build_log_chunks_byte_start_continuous');
+
+-- A re-sent chunk repeats its seq and writes nothing — AG.1's resume, as a unique key. Asked
+-- of a job that is *not* at its cap, because past the cap the trigger drops every chunk and an
+-- accepted-but-unwritten duplicate would read as a working key.
+insert into ouroboros.build_log_chunks (job_id, seq, content)
+  values ('7f000004-0000-4000-8000-000000000003', 1, convert_to('first', 'UTF8'));
+
+-- And this is where the assignment itself is observed: the chunk named no offset, and the
+-- trigger gave it the job's running total, which was nothing.
+select pg_temp.must_hold(
+  (select byte_start = 0 from ouroboros.build_log_chunks
+    where job_id = '7f000004-0000-4000-8000-000000000003' and seq = 1),
+  'a chunk that names no offset is given the job''s own running total, so the stream is contiguous by construction');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_log_chunks (job_id, seq, content)
+    values ('7f000004-0000-4000-8000-000000000003', 1, convert_to('again', 'UTF8'))$$,
+  'a re-sent chunk collides on its sequence number rather than duplicating the log',
+  'build_log_chunks_job_seq_key');
+
+select pg_temp.must_hold(
+  (select log_bytes = 5 from ouroboros.build_jobs
+    where id = '7f000004-0000-4000-8000-000000000003'),
+  'and the job''s running total counted those bytes exactly once');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set log_cap_bytes = 1099511627776
+     where id = '7f000004-0000-4000-8000-000000000001'$$,
+  'the per-job cap is bounded, because a cap a writer chooses without bound is not a cap',
+  'build_jobs_log_cap_in_range');
+
+-- --- a removed runner keeps its history, and cannot be deleted out from under it -
+select pg_temp.must_reject(
+  $$delete from ouroboros.runners where id = '7f000002-0000-4000-8000-000000000003'$$,
+  'a runner with builds behind it cannot be deleted — removal keeps the row',
+  'build_jobs_runner_fk');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.build_jobs j
+     join ouroboros.runners r on r.id = j.runner_id
+    where r.status = 'removed'),
+  'and its finished builds still resolve to it, which is why the row is kept');
+
+-- Deleting the *job* does take its log with it: a chunk of a build nobody can name is
+-- unreadable by construction.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.build_log_chunks
+    where job_id = '7f000004-0000-4000-8000-000000000001'),
+  'a job''s chunks are its own');
+
+-- --- the reads that have to be indexed (AH.1: verified with EXPLAIN) ------------
+--
+-- Three of them are not page loads. The presence sweep runs every few seconds forever, the
+-- queue-depth count runs once per runner per page, and the stat row's windows run four times
+-- per load — so each is asked of the plan rather than assumed.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.runners
+     where status in ('online', 'building', 'draining')
+       and last_seen_at < now() - interval '30 seconds'$$,
+  'runners_presence_idx');
+
+select pg_temp.must_use_index(
+  $$select count(*) from ouroboros.build_jobs
+     where runner_id = '7f000002-0000-4000-8000-000000000001'
+       and status in ('queued', 'offered')$$,
+  'build_jobs_runner_queue_idx');
+
+-- Asked in the order the stat row reads it. `(organization_id, finished_at desc)` answers both
+-- halves — the window and the ordering — which is what makes it the index rather than one of
+-- two that could serve the window alone.
+select pg_temp.must_use_index(
+  $$select finished_at, status from ouroboros.build_jobs
+     where organization_id = 'org-farm'
+       and finished_at >= date_trunc('day', now())
+     order by finished_at desc$$,
+  'build_jobs_organization_finished_idx');
+
+select pg_temp.must_not_plan(
+  $$select finished_at, status from ouroboros.build_jobs
+     where organization_id = 'org-farm'
+       and finished_at >= date_trunc('day', now())
+     order by finished_at desc$$,
+  'Sort',
+  'the stat row''s window comes back already ordered');
+
+select pg_temp.must_use_index(
+  $$select content from ouroboros.build_log_chunks
+     where job_id = '7f000004-0000-4000-8000-000000000001' and seq >= 2 order by seq$$,
+  'build_log_chunks_job_seq_key');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.runner_pools where tags @> '["hil"]'::jsonb$$,
+  'runner_pools_tags_idx');
+
+set local enable_seqscan = on;
+
+-- Asked in the order the stat row reads it. `(organization_id, finished_at desc)` answers both
+-- halves — the window and the ordering — which is what makes it the index rather than one of
+-- two that could serve the window alone.
+select pg_temp.must_use_index(
+  $$select finished_at, status from ouroboros.build_jobs
+     where organization_id = 'org-farm'
+       and finished_at >= date_trunc('day', now())
+     order by finished_at desc$$,
+  'build_jobs_organization_finished_idx');
+
+select pg_temp.must_not_plan(
+  $$select finished_at, status from ouroboros.build_jobs
+     where organization_id = 'org-farm'
+       and finished_at >= date_trunc('day', now())
+     order by finished_at desc$$,
+  'Sort',
+  'the stat row''s window comes back already ordered');
+
+-- --- a repository keeps its builds, and a workspace takes everything with it ----
+--
+-- A build is the record that a commit of a repository was compiled, so removing the
+-- repository must not quietly remove the record.
+select pg_temp.must_reject(
+  $$delete from ouroboros.github_repos where id = '7f000011-0000-4000-8000-000000000001'$$,
+  'a repository with builds behind it cannot be deleted',
+  'build_jobs_github_repo_id_fkey');
+
+-- And the whole farm goes when its workspace does — which is also the fixtures leaving, so
+-- the sections after this one count what they created.
+--
+-- This is why every refusing foreign key in V040 is **NO ACTION rather than RESTRICT**.
+-- Deleting an organization cascades into pools, runners and jobs at once, in an order
+-- PostgreSQL does not promise; RESTRICT is checked the moment the referenced row goes, so it
+-- would refuse whenever the pool happened to go first. NO ACTION waits for the end of the
+-- statement, by which time the referencing rows have gone too. Asserted rather than argued,
+-- because the failure it prevents would be intermittent.
+delete from ouroboros.organization where "id" in ('org-farm', 'org-farm2');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runner_pools)
+   and (select count(*) = 0 from ouroboros.runners)
+   and (select count(*) = 0 from ouroboros.enrollment_tokens)
+   and (select count(*) = 0 from ouroboros.runner_pool_windows)
+   and (select count(*) = 0 from ouroboros.build_jobs)
+   and (select count(*) = 0 from ouroboros.build_log_chunks),
+  'deleting a workspace takes its pools, runners, tokens, windows, jobs and log chunks with it, whatever order the cascade reaches them in');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

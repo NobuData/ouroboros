@@ -267,6 +267,17 @@ jobs:
       # of that ticket is data rather than a rule, so it is planted, not dropped — see the
       # seeded-database step below.
       #
+      # #249 adds the **build farm**'s thirteen: the runner and job status vocabularies, both
+      # halves of the observed/intended split (`draining` and `removed`), the certificate serial
+      # that follows `security_mode`, the two per-workspace name keys, the container pool's
+      # image, the enrollment token's TTL and its envelope-only rule, the ccache shape that
+      # makes null different from zero, the per-job log cap's bound — and the **cap trigger
+      # itself**, which is the one mutation in this list that is a `drop trigger` because the
+      # rule is a function rather than a constraint. That last one is the reason this whole
+      # ticket exists: a cap nothing exceeds and a cap that does not exist look identical from
+      # outside, so the only way to know the log cannot fill the volume is to remove it and
+      # watch the suite say so.
+      #
       # The routing rows are #193's whole acceptance criterion — *"dropping any single
       # routing invariant turns it red"* — the registry rows are #583's, in its own
       # words: *"removing any one of the registry constraints turns it red"*, and the intake
