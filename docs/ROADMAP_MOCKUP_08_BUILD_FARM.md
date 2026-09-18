@@ -448,7 +448,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AH.1 | #249 | 🟡 Open | ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs | Full relational model + seeds + ci/db probes | mvp, build-farm, db, ci | N (after #19, BA-B.3) | Y | L | ouroboros-db, .github |
+| AH.1 | #249 | 🟢 Done | ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs | Full relational model + seeds + ci/db probes | mvp, build-farm, db, ci | N (after #19, BA-B.3) | Y | L | ouroboros-db, .github |
 | AH.2 | #250 | 🟡 Open | ouroboros-rest: [AH.2] Enrollment API & runner CA | Scoped tokens (AD.1-sealed), cert issuance/renewal/revocation, audit | mvp, build-farm, rest | N (after AH.1, AD.1) | Y | L | ouroboros-rest |
 | AH.3 | #251 | 🟡 Open | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
 | AH.4 | #252 | 🟡 Open | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
@@ -458,7 +458,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 
 ### Issue AH.1 — ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs
 
-> **GitHub issue:** #249 · **Status:** 🟡 Open · **Parent epic:** #240
+> **GitHub issue:** #249 · **Status:** 🟢 Done · **Parent epic:** #240
 
 
 - **Problem Statement:** Every farm surface needs relational truth: fleets,
@@ -489,6 +489,40 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 - **Acceptance Criteria:** Migration applies cleanly; cap trigger truncates
   with marker metadata; seeds render the whole page; probes red/green
   verified.
+- **Delivered:** [`V040__farm_schema.sql`](../ouroboros-db/migrations/V040__farm_schema.sql) —
+  the six tables and the rules that make them honest. `runners` holds **live state**, so
+  observation and intent are two columns: `status` is what the fleet last saw and
+  `desired_state` is what an operator decided, with `runners_draining_is_intended` and
+  `runners_removed_is_intended` stopping either from contradicting the other — which is what
+  makes *"who drained this?"* answerable and a drained machine distinguishable from a dead one.
+  `build_jobs.run_id` is **nullable** (B6), composite with `organization_id` so AJ.3 (#265)
+  inherits tenancy rather than remembering it. The per-job log cap is
+  `build_log_chunk_cap()`, a BEFORE INSERT trigger that locks the job row, assigns `byte_start`
+  from its running total, clamps the chunk that crosses the cap and writes the **elision
+  marker** AI.6 (#261) renders — with every byte refused afterwards counted onto
+  `build_jobs.log_dropped_bytes`, because past the cap there is no row to put a second marker
+  on. Tenancy throughout is **composite foreign keys**, so a job on another workspace's runner
+  is a row PostgreSQL refuses; the one join that cannot be spelled that way, a repository, is a
+  trigger on V008's pattern. Two amendments landed with it: pool `tags`, GIN-indexed, so
+  #776's `pool tagged: hil — available` is a live resolution rather than decoration, and
+  `runner_pool_windows`, the time-windowed pool assignment #514 composes through the farm's own
+  APIs.
+  [`R__dev_seed_farm.sql`](../ouroboros-db/migrations/R__dev_seed_farm.sql) is **mockup 08 as
+  rows**: two pools, six runners — the mockup's five plus a `removed` sixth that every count of
+  the fleet has to exclude — forty-eight builds and the five chunks of the LIVE card's log.
+  Every figure the page prints is **computed**: `23` today, `19 clean · 3 retried · 1 failed`,
+  `4m 12s` from a 252-second mean, `▼ 38s` from the prior week's 290, and `78%` from Σ hits over
+  Σ objects. Each has a near miss built to catch a nearly-right query — 28 counted by
+  `queued_at`, 43 without the day window, 74% without it on the cache, 54% if a missing ccache
+  summary is read as 0%, six runners if `removed` is not excluded. `run_id` is null on every
+  row, because a seeded loop-linked job would be a state the product cannot reach.
+  [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) gains the section that asks
+  the cap trigger to prove it truncates — a cap nothing exceeds and a cap that does not exist
+  look identical — plus the EXPLAIN assertions for the presence sweep, per-runner queue depth
+  and the stat row's windows. [`tests/seed.sql`](../ouroboros-db/tests/seed.sql) asserts every
+  rendered figure and every near miss, and
+  [`tests/verify-constraint-probes.sh`](../ouroboros-db/tests/verify-constraint-probes.sh) adds
+  thirteen probes, one per rule, including the `drop trigger` that removes the cap.
 - **Parallelism/Dependencies:** Needs #19, BA-B.3 (+AD.1 for sealing). Blocks
   everything AH.
 - **Technical Stack:** PostgreSQL 17, Flyway.
