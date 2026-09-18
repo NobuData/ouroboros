@@ -320,7 +320,16 @@ describe("TABLE_COLUMNS", () => {
     // The forty-third and forty-fourth are V039's `reestimation_runs` and
     // `reestimation_run_counts`, mirrored by AL.5 (#281), whose nightly job is their one writer
     // and whose backlog-health payload is their one reader.
-    expect(TABLE_NAMES).toHaveLength(44);
+    //
+    // The forty-fifth to forty-ninth are the build farm's identity layer, mirrored by AH.2
+    // (#250): V040's `runner_pools`, `runners` and `enrollment_tokens`, and V041's
+    // `farm_authorities` and `runner_certificates`. They keep the no-reader rule — enrollment
+    // reads a pool by name, creates a runner and spends a token, and the CA and the
+    // certificates it issues are read at every handshake. The rest of V040 — `build_jobs`,
+    // `build_log_chunks`, `runner_pool_windows` — is deliberately **not** here: nothing in
+    // this service touches those yet, and AH.4 (#252) and AH.5 (#253) are the tickets that
+    // mirror them when they do.
+    expect(TABLE_NAMES).toHaveLength(49);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

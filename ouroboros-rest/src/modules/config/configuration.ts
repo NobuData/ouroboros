@@ -542,6 +542,25 @@ export interface Configuration {
    */
   readonly listenHostOverride?: ListenHost;
   /**
+   * The request header a trusted reverse proxy puts a runner's client certificate in. From
+   * `OURO_FARM_CLIENT_CERT_HEADER`; `undefined` when unset, which is the default and the
+   * posture every deployment that terminates TLS in this process should stay in.
+   *
+   * AH.2 ([#250](https://github.com/NobuData/ouroboros/issues/250)), decision **B3**. Runner
+   * identity is a TLS client certificate, and a proxy that terminates TLS in front of this
+   * service has already consumed it — so mTLS becomes decoration unless the proxy forwards
+   * it. `SECURITY_MODEL.md`'s farm-CA section is where that deployment requirement is
+   * written down.
+   *
+   * **It is unset by default because a certificate is public.** Anybody can obtain a copy of
+   * a runner's certificate — it crosses the network in the clear at every handshake — so a
+   * header this service trusts unconditionally is a header anybody can send. Naming one is
+   * therefore an assertion by the operator that *this header cannot reach the process except
+   * through my proxy*, and it is theirs to make rather than ours to assume. With it unset,
+   * `src/modules/farm/` reads the certificate from the TLS socket and from nowhere else.
+   */
+  readonly farmClientCertHeader?: string;
+  /**
    * Seconds between provider health sweeps, and the age at which a local provider's last
    * check is stale. From `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`,
    * {@link DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS} when unset.
@@ -692,6 +711,7 @@ export const VARIABLES = {
   corsOrigins: "OURO_CORS_ORIGINS",
   dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
   listenHostOverride: "OURO_LISTEN_HOST",
+  farmClientCertHeader: "OURO_FARM_CLIENT_CERT_HEADER",
   providerHealthIntervalSeconds: "OURO_PROVIDER_HEALTH_INTERVAL_SECONDS",
   providerHealthKeyCheckSeconds: "OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS",
   backlogSyncIntervalSeconds: "OURO_BACKLOG_SYNC_INTERVAL_SECONDS",
@@ -1083,6 +1103,17 @@ const environmentSchema = z.object({
     .enum(LISTEN_HOSTS, { error: `expected ${LOOPBACK_HOST} or ${ALL_INTERFACES_HOST}` })
     .optional(),
 
+  // The forwarded client-certificate header (#250) — optional, no default, and a header name
+  // rather than a boolean: a deployment that forwards one already had to choose a name, and a
+  // flag would mean this service choosing it for every proxy in the world. Shape-checked
+  // against RFC 9110's field-name grammar so a value with a newline in it cannot become two
+  // header lookups. Unset is the posture a deployment should be in unless it terminates TLS
+  // somewhere else; see the field's documentation on `Configuration` for why that matters.
+  OURO_FARM_CLIENT_CERT_HEADER: z
+    .string()
+    .regex(/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/u, { error: "expected an HTTP field name" })
+    .optional(),
+
   // The two provider-health cadences (#196), read by the same rules as PORT and the
   // dashboard's poll: anchored digits, then a range. Two variables rather than one because
   // they govern requests to two different people — see `Configuration` for which is which.
@@ -1297,6 +1328,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
     dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,
     listenHostOverride: values.OURO_LISTEN_HOST,
+    farmClientCertHeader: values.OURO_FARM_CLIENT_CERT_HEADER,
     providerHealthIntervalSeconds: values.OURO_PROVIDER_HEALTH_INTERVAL_SECONDS,
     providerHealthKeyCheckSeconds: values.OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     backlogSyncIntervalSeconds: values.OURO_BACKLOG_SYNC_INTERVAL_SECONDS,

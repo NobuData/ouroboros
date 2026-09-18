@@ -828,22 +828,25 @@ check_contains "$WORKFLOWS_SEED" 'schemas/workflow-dsl/v1\.json' \
 
 printf '\nR__dev_seed_farm.sql — the build farm\n'
 
-# Six prefixes, one per table, which is what lets a pool, a runner, a token, a window, a job
-# and a log chunk be told apart on sight in a log or a URL. `gen_random_uuid` is refused for
-# every seed by the loop above, which is the other half of the same property.
-for prefix in '5eed0024' '5eed0025' '5eed0026' '5eed0027' '5eed0028' '5eed0029'; do
+# Seven prefixes, one per table, which is what lets a pool, a runner, a token, a window, a job,
+# a log chunk and a certificate be told apart on sight in a log or a URL. `gen_random_uuid` is
+# refused for every seed by the loop above, which is the other half of the same property.
+#
+# `farm_authorities` has none and needs none: its primary key is the workspace, so there is no
+# id for a prefix to distinguish.
+for prefix in '5eed0024' '5eed0025' '5eed0026' '5eed0027' '5eed0028' '5eed0029' '5eed002a'; do
   check_contains "$FARM_BODY" "'$prefix-0000-4000-8000-'" \
     "the farm seed builds its ids from the $prefix… prefix"
 done
 
-# Every row this seed writes belongs to one of V040's six tables and to no other. A farm seed
-# that grew an insert into `runs` would be writing the dashboard seed's rows from the wrong
-# file, and the two would then have to agree about the loop.
+# Every row this seed writes belongs to V040's six tables or V041's two, and to no others. A
+# farm seed that grew an insert into `runs` would be writing the dashboard seed's rows from the
+# wrong file, and the two would then have to agree about the loop.
 farm_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$FARM_BODY" |
   sed 's/^insert into ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
-check_equals 'build_jobs build_log_chunks enrollment_tokens runner_pool_windows runner_pools runners ' \
+check_equals 'build_jobs build_log_chunks enrollment_tokens farm_authorities runner_certificates runner_pool_windows runner_pools runners ' \
   "$farm_tables" \
-  'the farm seed writes V040 s six tables and nothing else'
+  'the farm seed writes V040 s six tables and V041 s two, and nothing else'
 
 # Parents by natural key, never by naming an id a second time — the workspace by slug, the
 # people by email, the repositories by name.
@@ -872,16 +875,29 @@ for figure in '4m 12s' 'builds today' 'clean ·' 'hit rate'; do
     "the farm seed stores no rendered figure ($figure) — every one of them is computed"
 done
 
-# **The tokens are envelopes.** V040's CHECK refuses anything else outright; this is the half
-# that keeps a plaintext out of the file, and it also asserts the two are distinct — one
-# envelope written twice would be one secret in two places.
+# **Every secret here is an envelope.** V040's and V041's CHECKs refuse anything else outright;
+# this is the half that keeps a plaintext out of the file, and it also asserts the four are
+# distinct — one envelope written twice would be one secret in two places.
+#
+# Four since #250: two enrollment tokens, `anvil-mac`'s bearer secret, and the farm CA's private
+# key. The last is the one that matters most and is checked by name below as well, because a CA
+# key in the clear is the single worst row this repository could ship.
 farm_envelopes=$(grep -Eoc "'ouro\.v1\.[0-9]+\." "$FARM_BODY" || true)
-check_equals 2 "$(printf '%s' "$farm_envelopes" | tr -d ' ')" \
-  'the farm seed seals both enrollment tokens'
-check_equals 2 "$(grep -Eo "'ouro\.v1\.[^']+'" "$FARM_BODY" | sort -u | wc -l | tr -d ' ')" \
-  'and they are two distinct envelopes, one per token'
+check_equals 4 "$(printf '%s' "$farm_envelopes" | tr -d ' ')" \
+  'the farm seed seals both enrollment tokens, the bearer secret and the CA key'
+check_equals 4 "$(grep -Eo "'ouro\.v1\.[^']+'" "$FARM_BODY" | sort -u | wc -l | tr -d ' ')" \
+  'and they are four distinct envelopes, one per secret'
 check_absent "$FARM_BODY" 'orb_enroll' \
   'and the plaintext shape the mockup masks appears nowhere in a statement'
+
+# **No private key material of any kind, real or placeholder.** The CA's public certificate is
+# a PEM block with a placeholder body and is meant to be here; a `PRIVATE KEY` block would mean
+# somebody had generated a real authority inside a migration — identical in every developer's
+# database and one accident away from production.
+for block in 'PRIVATE KEY' 'BEGIN EC PARAMETERS'; do
+  check_absent "$FARM_BODY" "$block" \
+    "the farm seed carries no $block block — a CA generated in a migration is a key nobody controls"
+done
 
 # **The one statement with a `not exists` guard, and the reason it needs one.** The log-chunk
 # insert fires V040's cap trigger, which updates the job's running byte total *before*

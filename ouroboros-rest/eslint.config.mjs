@@ -6,18 +6,23 @@ import tseslint from "typescript-eslint";
 
 import { ouroborosPlugin } from "./src/modules/vault/no-secret-logging.mjs";
 import { noSecretResponses } from "./src/modules/internal/no-secret-responses.mjs";
+import { noCaKeyEscape } from "./src/modules/farm/no-ca-key-escape.mjs";
 
 /**
- * The plugin both local rules are registered through, as `ouroboros/…`.
+ * The plugin all three local rules are registered through, as `ouroboros/…`.
  *
- * Composed here rather than in either rule's own file because a flat config may define a
- * plugin name once: two config blocks each declaring `ouroboros` with a different object is
- * an error, not a merge. The vault's export is the base — it is where the plugin started
- * (#222) — and #224's rule is added to it.
+ * Composed here rather than in any rule's own file because a flat config may define a plugin
+ * name once: two config blocks each declaring `ouroboros` with a different object is an error,
+ * not a merge. The vault's export is the base — it is where the plugin started (#222) — and
+ * #224's and #250's rules are added to it.
  */
 const ouroboros = {
   ...ouroborosPlugin,
-  rules: { ...ouroborosPlugin.rules, "no-secret-in-internal-response": noSecretResponses },
+  rules: {
+    ...ouroborosPlugin.rules,
+    "no-secret-in-internal-response": noSecretResponses,
+    "no-ca-key-escape": noCaKeyEscape,
+  },
 };
 
 /**
@@ -181,6 +186,41 @@ export default tseslint.config(
     ignores: ["src/modules/internal/no-secret-responses.spec.ts"],
     plugins: { ouroboros },
     rules: { "ouroboros/no-secret-in-internal-response": "error" },
+  },
+
+  {
+    // Issue #250's fourth acceptance criterion, as a rule rather than as reviewer vigilance:
+    // *the CA private key never leaves the vault service*. The rule reports any identifier
+    // naming CA key material — a name whose words include `key` beside `sealed`, `private`,
+    // `ca`, `authority` or `signing`, or `pkcs8` — **anywhere in the file**, which is blunter
+    // than the logging rule on purpose; `src/modules/farm/no-ca-key-escape.mjs` argues why the
+    // property being protected is an architecture rather than a habit.
+    //
+    // Two exemptions in the shipped code, and they are the whole design:
+    //
+    //   * `farm.authority.ts` is the one service allowed to unwrap the key. Making it singular
+    //     is what the rule is for.
+    //   * `farm/x509/` takes a `KeyObject` as a parameter and imports nothing from this
+    //     service — no repository, no DTO, no resource — so there is no path from it to a
+    //     response. Its own header is where that is argued.
+    //
+    // Test support is exempt as well, and for a different reason rather than a weaker one: a
+    // suite that could not generate an authority could not test one, and `farm.authority.spec.ts`
+    // asserts the zeroization directly — which means naming the buffer the key was in. None of
+    // these files ship (`tsconfig.build.json` excludes them), so none of them is a path a key
+    // could take out of the process, which is the property the rule protects. It is the same
+    // exemption `no-secret-responses.spec.ts` has, widened to the fixture the suites share.
+    files: ["src/modules/farm/**/*.ts"],
+    ignores: [
+      "src/modules/farm/farm.authority.ts",
+      "src/modules/farm/x509/**/*.ts",
+      "src/modules/farm/**/*.spec.ts",
+      "src/modules/farm/**/*.integration-spec.ts",
+      "src/modules/farm/**/*.fixture.ts",
+      "src/modules/farm/no-ca-key-escape.d.ts",
+    ],
+    plugins: { ouroboros },
+    rules: { "ouroboros/no-ca-key-escape": "error" },
   },
 
   {

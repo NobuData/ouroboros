@@ -15,6 +15,7 @@ import { EngineModule } from "../engine/engine.module";
 import { EstimationModule } from "../estimation/estimation.module";
 import { GithubModule } from "../github/github.module";
 import { HealthModule } from "../health/health.module";
+import { FarmModule } from "../farm/farm.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
@@ -351,6 +352,17 @@ export class AppModule {
         // API surface, and the first routes over anything the sync wrote. After the two
         // modules it imports; the rest of Epic M's controllers land in it.
         BacklogModule,
+        // AH.2 ([#250](https://github.com/NobuData/ouroboros/issues/250)) — the build farm's
+        // identity layer: enrollment tokens, the per-workspace CA, and the revocation check
+        // AH.3 (#251) will share. After `VaultModule` and `AuditModule`, which it imports for
+        // the three secrets it owns and for the trail every one of its operations writes.
+        //
+        // Its two agent-facing routes are `@AllowAnonymous()` — a machine holds no session —
+        // so its position relative to `InternalModule` carries no guard rule: that module's
+        // global guard is gated on `@InternalOnly()`, which nothing here declares, and the
+        // routes here authenticate on an enrollment token and a TLS client certificate
+        // instead. `farm/registration.controller.ts` is where that is argued.
+        FarmModule,
         InternalModule,
       ],
     };

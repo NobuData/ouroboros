@@ -74,6 +74,24 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   // makes that safe is that it answers every domain identically — see
   // `discovery.service.ts`.
   `POST ${API_BASE_PATH}/auth/discover`,
+  // The build farm's two agent routes (#250, AH.2, decision B3). The caller is a machine on
+  // hardware this control plane does not administer: it holds no cookie, no session could be
+  // issued to it, and the thing it presents instead is named in each handler — an enrollment
+  // token for the first, a TLS client certificate for the second.
+  //
+  // They are *unsessioned* rather than unauthenticated, which is the distinction
+  // `INTERNAL_SURFACE` below draws for AD.3's routes and the same one applies here. What makes
+  // them safe to expose is that neither names a workspace: an enrollment lands in the token's
+  // own workspace and a renewal in the certificate's, verified against that workspace's CA
+  // before anything it claims is believed. A stranger reaches both and gets `422` for a body
+  // that is not a registration and `401` for one that is — identically for all six ways a
+  // token can be wrong, which `farm/farm.errors.ts` argues.
+  //
+  // They are deliberately **not** in `INTERNAL_SURFACE`: that list is the engine-facing
+  // surface behind `X-Ouro-Internal-Key`, a secret this deployment shares with itself. A
+  // runner is somebody else's machine and holds no such secret.
+  `POST ${API_BASE_PATH}/farm/registrations`,
+  `POST ${API_BASE_PATH}/farm/registrations/renewal`,
 ].sort();
 
 /**

@@ -2,6 +2,12 @@ import {
   AUDIT_ACTIONS,
   auditDetail,
   GITHUB_TOKEN_CLEARED_EVENT,
+  RUNNER_CERT_RENEWED_EVENT,
+  RUNNER_CERT_REVOKED_EVENT,
+  RUNNER_ENROLLED_EVENT,
+  RUNNER_REMOVED_EVENT,
+  RUNNER_TOKEN_MINTED_EVENT,
+  RUNNER_TOKEN_REVOKED_EVENT,
   GITHUB_TOKEN_ROTATED_EVENT,
   GITHUB_TOKEN_SET_EVENT,
   LEASE_GRANTED_EVENT,
@@ -30,12 +36,19 @@ import {
  */
 
 describe("the vocabulary", () => {
-  it("is the ten names AD.4 and AD.3 wrote down, plus K.3's three", () => {
+  it("is the ten names AD.4 and AD.3 wrote down, plus K.3's three and AH.2's six", () => {
     // The three `github.*` names are K.3's ([#101](https://github.com/NobuData/ouroboros/issues/101)),
     // under decision **AD.4**'s rule that credential operations are audited from the day they
     // exist. A workspace's GitHub token is a credential like a provider's, and adding a name
     // is an application release rather than a migration — V022 constrains the *grammar* and
     // not the vocabulary.
+    //
+    // The six `runner.*` names are AH.2's ([#250](https://github.com/NobuData/ouroboros/issues/250)),
+    // under the same rule one epic further out: an operation that changes who may connect to a
+    // workspace is audited from the day it exists. Five are that issue's own scope;
+    // `runner.removed` is declared here and written by AH.6 (#254), because this file is the
+    // vocabulary and a name that existed in one place and was filtered for in another is the
+    // thing the list exists to prevent.
     expect([...AUDIT_ACTIONS]).toEqual([
       "provider.added",
       "provider.revealed",
@@ -50,6 +63,12 @@ describe("the vocabulary", () => {
       "github.token_set",
       "github.token_rotated",
       "github.token_cleared",
+      "runner.token_minted",
+      "runner.token_revoked",
+      "runner.enrolled",
+      "runner.cert_renewed",
+      "runner.cert_revoked",
+      "runner.removed",
     ]);
   });
 
@@ -67,13 +86,13 @@ describe("the vocabulary", () => {
   });
 
   it("files each event under a family somebody would think to filter on", () => {
-    // Nine provider events, one credential-delivery event and three about the workspace's
-    // GitHub token. The families are what make `action like 'provider.%'` a useful question —
-    // and what keeps *"who changed our GitHub token"* answerable without knowing all three
-    // names.
+    // Nine provider events, one credential-delivery event, three about the workspace's GitHub
+    // token and six about its build farm. The families are what make `action like 'provider.%'`
+    // a useful question — and what keeps *"who changed our GitHub token"* and *"what has
+    // happened to our fleet"* answerable without knowing every name in either.
     const families = new Set(AUDIT_ACTIONS.map((action) => action.split(".")[0]));
 
-    expect([...families].sort()).toEqual(["credential", "github", "provider"]);
+    expect([...families].sort()).toEqual(["credential", "github", "provider", "runner"]);
   });
 
   it("exports every name individually as well as in the list", () => {
@@ -94,6 +113,12 @@ describe("the vocabulary", () => {
       GITHUB_TOKEN_SET_EVENT,
       GITHUB_TOKEN_ROTATED_EVENT,
       GITHUB_TOKEN_CLEARED_EVENT,
+      RUNNER_TOKEN_MINTED_EVENT,
+      RUNNER_TOKEN_REVOKED_EVENT,
+      RUNNER_ENROLLED_EVENT,
+      RUNNER_CERT_RENEWED_EVENT,
+      RUNNER_CERT_REVOKED_EVENT,
+      RUNNER_REMOVED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

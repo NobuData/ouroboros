@@ -95,10 +95,14 @@
 -- ---------------------------------------------------------------------------
 --
 -- * **No `run_id`.** Decision B6. See above.
--- * **No unsealed token.** Both enrollment tokens carry an `ouro.v1.…` envelope whose body is
---   base64url of a sentence saying it is not a real credential — the shape
---   R__dev_seed_providers.sql established. The schema would refuse anything else anyway, which
---   is the point of `enrollment_tokens_sealed`.
+-- * **No unsealed token, and no unsealed CA key.** Both enrollment tokens, `anvil-mac`'s bearer
+--   secret and the farm CA's private key carry an `ouro.v1.…` envelope whose body is base64url
+--   of a sentence saying it is not a real credential — the shape R__dev_seed_providers.sql
+--   established. The schema would refuse anything else anyway, which is the point of
+--   `enrollment_tokens_sealed`, `runners_bearer_sealed` and `farm_authorities_key_sealed`.
+-- * **No real certificate.** The seeded CA certificate is a PEM block with a placeholder body:
+--   nothing in development verifies a chain against it, and generating a genuine one in a
+--   migration would put a private key nobody controls into every developer's database.
 -- * **No auto-scale that does anything.** `pool-a` stores the mockup's *"when queue > 5"*
 --   preference with `enabled` false (decision **B9**). It is stored and inert until AJ.1
 --   (#263), and the card labels it as such.
@@ -120,6 +124,7 @@
 --   | `runner_pool_windows` (1)   | `5eed0027…` | 1                                        |
 --   | `build_jobs` (48)           | `5eed0028…` | the job number                           |
 --   | `build_log_chunks` (5)      | `5eed0029…` | the job number, then the chunk's `seq`   |
+--   | `runner_certificates` (5)   | `5eed002a…` | the runner's ordinal                     |
 --
 -- The same three properties as every seed, each asserted by a test: every statement ends
 -- `${ouro_dev_seed}` so it writes nothing outside a development database; every insert ends
@@ -127,8 +132,9 @@
 -- would run first; and every parent from another seed is found by natural key — the workspace by
 -- slug, a person by email, a repository by name — never by repeating its id.
 --
--- Filed as issue #249 (AH.1). Needs #23 (the base seed) and V040. Consumed by #255, #256, #257
--- and #262. Asserted in tests/seed.sql and tests/seed.test.sh.
+-- Filed as issue #249 (AH.1), extended by #250 (AH.2) with the farm CA, the certificates the
+-- mTLS runners hold and `anvil-mac`'s fallback secret. Needs #23 (the base seed), V040 and V041.
+-- Consumed by #255, #256, #257 and #262. Asserted in tests/seed.sql and tests/seed.test.sh.
 
 -- ---------------------------------------------------------------------------
 -- The two pools — the mockup's POOLS card.
@@ -181,35 +187,37 @@ on conflict do nothing;
 -- ---------------------------------------------------------------------------
 insert into ouroboros.runners
   (id, organization_id, pool_id, name, arch, status, desired_state, last_seen_at,
-   agent_version, capabilities, security_mode, cert_serial, enrolled_at, enrolled_by,
-   uptime_seconds, telemetry)
+   agent_version, capabilities, security_mode, cert_serial, bearer_sealed, enrolled_at,
+   enrolled_by, uptime_seconds, telemetry)
 select ('5eed0025-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
        org."id", pool.id, seed.name, seed.arch, seed.status, seed.desired_state,
        now() - make_interval(secs => seed.last_seen_secs_ago),
        seed.agent_version, seed.capabilities::jsonb, seed.security_mode, seed.cert_serial,
-       now() - make_interval(days => seed.enrolled_days_ago), person."id",
+       seed.bearer_sealed, now() - make_interval(days => seed.enrolled_days_ago), person."id",
        seed.uptime_seconds, seed.telemetry::jsonb
   from (values
          (1, 'forge-01', 'pool-a', 'linux/arm64', 'building', 'active', 4,
-          '1.0.0', '{"docker": true, "cpu_count": 8}', 'mtls', '4a:11:0e:97', 60, 3542400,
+          '1.0.0', '{"docker": true, "cpu_count": 8}', 'mtls', '4a110e97', null, 60, 3542400,
           '{"cpu_pct": 82, "ram_used_bytes": 14200000000, "ram_total_bytes": 32000000000, "queue_depth": 2}'),
          (2, 'forge-02', 'pool-a', 'linux/arm64', 'online', 'active', 7,
-          '1.0.0', '{"docker": true, "cpu_count": 8}', 'mtls', '4a:11:0e:98', 60, 3542400,
+          '1.0.0', '{"docker": true, "cpu_count": 8}', 'mtls', '4a110e98', null, 60, 3542400,
           '{"cpu_pct": 3, "ram_used_bytes": 2100000000, "ram_total_bytes": 32000000000, "queue_depth": 0}'),
          (3, 'anvil-mac', 'pool-b', 'darwin/arm64', 'online', 'active', 5,
-          '1.0.0', '{"docker": false, "cpu_count": 12}', 'bearer_fallback', null, 20, 1036800,
+          '1.0.0', '{"docker": false, "cpu_count": 12}', 'bearer_fallback', null,
+          'ouro.v1.1.ZmFybS1zZWVkLW5vbmNlLTM.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1iZWFyZXItc2VjcmV0',
+          20, 1036800,
           '{"cpu_pct": 6, "ram_used_bytes": 5000000000, "ram_total_bytes": 64000000000, "queue_depth": 0}'),
          (4, 'bigiron', 'pool-b', 'linux/x86_64', 'draining', 'draining', 9,
-          '1.0.0', '{"docker": true, "cpu_count": 64}', 'mtls', '4a:11:0e:99', 95, 259200,
+          '1.0.0', '{"docker": true, "cpu_count": 64}', 'mtls', '4a110e99', null, 95, 259200,
           '{"cpu_pct": 54, "ram_used_bytes": 88000000000, "ram_total_bytes": 256000000000, "queue_depth": 1}'),
          (5, 'forge-03', 'pool-a', 'linux/arm64', 'offline', 'active', 7200,
-          '0.9.2', '{"docker": true, "cpu_count": 8}', 'mtls', '4a:11:0e:9a', 60, null,
+          '0.9.2', '{"docker": true, "cpu_count": 8}', 'mtls', '4a110e9a', null, 60, null,
           '{}'),
          (6, 'forge-00', 'pool-a', 'linux/arm64', 'removed', 'removed', 518400,
-          '0.9.2', '{"docker": true, "cpu_count": 4}', 'mtls', '4a:11:0e:9b', 120, null,
+          '0.9.2', '{"docker": true, "cpu_count": 4}', 'mtls', '4a110e9b', null, 120, null,
           '{}')
        ) as seed (ordinal, name, pool_name, arch, status, desired_state, last_seen_secs_ago,
-                  agent_version, capabilities, security_mode, cert_serial,
+                  agent_version, capabilities, security_mode, cert_serial, bearer_sealed,
                   enrolled_days_ago, uptime_seconds, telemetry)
   join ouroboros.organization org  on org."slug" = 'acme-robotics'
   join ouroboros.runner_pools pool on pool.organization_id = org."id" and pool.name = seed.pool_name
@@ -561,4 +569,64 @@ select ('5eed0029-0000-4000-8000-' || lpad(seed.number::text, 9, '0')
  where ${ouro_dev_seed}
    and not exists (select 1 from ouroboros.build_log_chunks existing
                     where existing.job_id = job.id and existing.seq = seed.seq)
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The farm CA, and the certificates the fleet is holding.
+--
+-- AH.2 (#250), decision **B3**. The workspace has one authority; the five mTLS runners each
+-- hold the certificate their `cert_serial` names, and `anvil-mac` holds none because it is on
+-- the fallback — which is the pairing `runners_cert_serial_with_mtls` and
+-- `runners_bearer_with_fallback` state, made visible in rows.
+--
+-- **Neither the CA key nor the certificate is real.** The key is an `ouro.v1.…` envelope whose
+-- body decodes to a sentence saying so, as every sealed column in every seed is; the
+-- certificate is a PEM block with a placeholder body. A genuine CA generated in a migration
+-- would be a private key nobody controls, identical in every developer's database, and the
+-- first thing an accident would ship to production. Nothing in development verifies a chain
+-- against it — AH.3 (#251) verifies against what the CA service issued at run time, and its
+-- own suites mint a real one for the occasion.
+--
+-- `forge-00` is removed and still holds its certificate row, revoked with the reason a removal
+-- gives. That is the fixture AH.6 (#254) and the gateway's refusal path both need: a serial
+-- that resolves, and resolves to *no*.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.farm_authorities
+  (organization_id, certificate_pem, key_sealed, serial, fingerprint, not_before, not_after)
+select org."id",
+       '-----BEGIN CERTIFICATE-----' || chr(10)
+         || 'ZGV2LXNlZWQtY2VydGlmaWNhdGUtbm90LWEtcmVhbC1mYXJtLWNh' || chr(10)
+         || '-----END CERTIFICATE-----' || chr(10),
+       'ouro.v1.1.ZmFybS1zZWVkLW5vbmNlLTQ.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1jYS1rZXk',
+       '5eed0a11c0de0001', repeat('5e', 32),
+       now() - make_interval(days => 120), now() + make_interval(days => 3530)
+  from ouroboros.organization org
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+insert into ouroboros.runner_certificates
+  (id, organization_id, runner_id, serial, fingerprint, issued_for, not_before, not_after,
+   issued_at, revoked, revoked_at, revoked_by, revocation_reason)
+select ('5eed002a-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
+       org."id", runner.id, runner.cert_serial, repeat(seed.fingerprint_byte, 32),
+       seed.issued_for,
+       runner.enrolled_at, runner.enrolled_at + make_interval(days => 90),
+       runner.enrolled_at,
+       seed.revoked,
+       case when seed.revoked then now() - make_interval(days => 6) end,
+       case when seed.revoked then person."id" end,
+       case when seed.revoked then 'runner_removed' end
+  from (values
+         (1, 'forge-01', 'enrollment', '11', false),
+         (2, 'forge-02', 'enrollment', '22', false),
+         (4, 'bigiron',  'renewal',    '44', false),
+         (5, 'forge-03', 'enrollment', '55', false),
+         (6, 'forge-00', 'enrollment', '66', true)
+       ) as seed (ordinal, runner_name, issued_for, fingerprint_byte, revoked)
+  join ouroboros.organization org on org."slug" = 'acme-robotics'
+  join ouroboros.runners runner
+    on runner.organization_id = org."id" and runner.name = seed.runner_name
+  join ouroboros."user" person on person."email" = 'ken@acme-robotics.dev'
+ where ${ouro_dev_seed}
 on conflict do nothing;

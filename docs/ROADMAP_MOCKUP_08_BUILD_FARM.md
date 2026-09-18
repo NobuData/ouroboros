@@ -449,7 +449,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AH.1 | #249 | 🟢 Done | ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs | Full relational model + seeds + ci/db probes | mvp, build-farm, db, ci | N (after #19, BA-B.3) | Y | L | ouroboros-db, .github |
-| AH.2 | #250 | 🟡 Open | ouroboros-rest: [AH.2] Enrollment API & runner CA | Scoped tokens (AD.1-sealed), cert issuance/renewal/revocation, audit | mvp, build-farm, rest | N (after AH.1, AD.1) | Y | L | ouroboros-rest |
+| AH.2 | #250 | 🟢 Done | ouroboros-rest: [AH.2] Enrollment API & runner CA | Scoped tokens (AD.1-sealed), cert issuance/renewal/revocation, audit | mvp, build-farm, rest | N (after AH.1, AD.1) | Y | L | ouroboros-rest |
 | AH.3 | #251 | 🟡 Open | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
 | AH.4 | #252 | 🟡 Open | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.5 | #253 | 🟡 Open | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
@@ -552,7 +552,7 @@ erDiagram
 
 ### Issue AH.2 — ouroboros-rest: [AH.2] Enrollment API & runner CA
 
-> **GitHub issue:** #250 · **Status:** 🟡 Open · **Parent epic:** #240
+> **GitHub issue:** #250 · **Status:** 🟢 Done · **Parent epic:** #240
 
 
 - **Problem Statement:** Decision B3's chain — scoped token → registration →
@@ -570,6 +570,45 @@ erDiagram
 - **Acceptance Criteria:** Token TTL/uses enforced; revoked cert refused at
   handshake (test); CA key never leaves the vault service (grep/lint);
   audit rows complete; fallback visibly flagged.
+- **Delivered:** [`src/modules/farm/`](../ouroboros-rest/src/modules/farm/) and
+  [`V041__farm_certificate_authority.sql`](../ouroboros-db/migrations/V041__farm_certificate_authority.sql)
+  — decision **B3**'s chain, end to end. Seven routes: mint, list and revoke a scoped token;
+  read the CA; revoke a runner's certificate; and the two the agent calls, which are the only
+  unsessioned routes this service has grown since AD.3's.
+  **The keypair question is decided: the runner generates its own and sends a PKCS#10 request**
+  ([`x509/csr.ts`](../ouroboros-rest/src/modules/farm/x509/csr.ts) carries the argument), so no
+  runner private key has ever existed inside Ouroboros — there is no backup, log or column from
+  which one could be recovered. The cost is reading a structure an unauthenticated caller
+  composed, and it is bounded: `x509/reader.ts` is a bounds-checked, DER-strict, depth-limited
+  structural walk that decodes no values, and the key and the self-signature are parsed and
+  verified by the platform's own C. **The CSR's subject is discarded** — the certificate's
+  subject is composed from the runner row and the token's workspace, so a request claiming
+  somebody else's name is signed with its correct one rather than refused.
+  **The CA key never leaves**, and four different things hold that: `farm_authorities_key_sealed`
+  means a row with a plaintext key cannot exist whoever the writer is; `ouroboros/no-ca-key-escape`
+  refuses the *name* anywhere but `farm.authority.ts`; `farm.secrecy.spec.ts` reads that file's
+  source and holds it to having no logger, no cache and no getter; and the same suite plus
+  `farm.integration-spec.ts` grep a full lifecycle's payloads — while asserting the key *is* in
+  the database, sealed, so the claim is about the API rather than about there being nothing to
+  leak. It is unwrapped for one signature and zeroized in a `finally`.
+  **Six ways a token can fail answer one `401` with no details**; which of the six goes to the
+  AD.4 trail, under `runner.token_minted`, `runner.token_revoked`, `runner.enrolled`,
+  `runner.cert_renewed` and `runner.cert_revoked`. **Revocation is the boundary**: checked at
+  every handshake by `RunnerIdentityService` — exported so AH.3 (#251) calls it rather than
+  writing a second one — and final, because renewal is authenticated by the certificate being
+  replaced and the request has no token field. A renewal supersedes and issues in one
+  transaction, and `runner_certificates_live_idx` makes two live certificates for one runner a
+  row PostgreSQL refuses. **The bearer fallback is off by default** behind
+  `workspace_settings.runner_bearer_fallback`, recorded in `security_mode`, and refused with a
+  code that says so rather than the opaque one — an agent behind a stripping proxy has to be
+  able to tell that from a dead token.
+  [`docs/SECURITY_MODEL.md` § 7](SECURITY_MODEL.md#7-the-build-farms-certificate-authority) is
+  the amendment #226 filed, with the custody model, the CSR decision, and **the deployment
+  requirement that fails quietly**: a TLS-terminating proxy that does not pass the client
+  certificate through leaves the handshake succeeding and the identity check with nothing to
+  check. `OURO_FARM_CLIENT_CERT_HEADER` is unset by default, because a certificate is public and
+  a header trusted unconditionally is an impersonation of any runner whose certificate anybody
+  has seen.
 - **Parallelism/Dependencies:** Needs AH.1, AD.1. Blocks AG.2, AH.3.
 - **Technical Stack:** NestJS, node:crypto X.509 (or smallstep lib), AD.1.
 - **Epic:** AH

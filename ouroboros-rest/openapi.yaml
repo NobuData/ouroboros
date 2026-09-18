@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.16"
+  version: "0.35.17"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -543,6 +543,59 @@ tags:
       Reading is every member's, `viewer` included. Creating, renaming, pausing, saving a
       draft and publishing are `owner` or `admin` — a `member` is somebody who works here,
       and publishing changes what every future run of the workspace does.
+
+  - name: farm
+    description: |-
+      **The build farm's identity layer** (mockup 08, epic
+      [#240](https://github.com/NobuData/ouroboros/issues/240), issue
+      [#250](https://github.com/NobuData/ouroboros/issues/250), decision **B3**) — how a
+      machine on hardware this control plane does not administer comes to have an identity it
+      can prove.
+
+      **The chain is: a scoped token, spent once, for a certificate that lasts.** An owner or
+      an admin mints an `orb_enroll_…` token scoped to one pool, with a TTL and a use count.
+      The install one-liner carries it; the agent generates a keypair, sends a certificate
+      request, and is issued a client certificate by the workspace's own certificate
+      authority. Everything after that is mutual TLS, and the token is never used again.
+
+      **The runner generates its own keypair, and this service has never held one.** The
+      enrollment body carries a PKCS#10 certificate request rather than asking for a key to be
+      generated and sent back — so there is no backup, no log and no column from which a
+      runner's private key could be recovered, including by us.
+      `docs/SECURITY_MODEL.md`'s farm-CA section is where that is written down, together with
+      the custody of the CA key itself (sealed by the vault, unwrapped for one signature).
+
+      **The CA private key is never returned by anything here.** `GET /api/v1/farm/authority`
+      answers the *public* certificate and its fingerprint — the pin an agent checks — and
+      there is no operation, field or parameter anywhere in this document through which the
+      private half could travel.
+
+      **Revocation is the security boundary, not expiry.** A revoked certificate is refused at
+      the next handshake, and a runner cannot renew its way back in: renewal is authenticated
+      by the certificate being replaced. A certificate lasts ninety days and an agent is told
+      when to come back; that window is a backstop, not the control.
+
+      **The bearer fallback is a workspace setting and is visible where it is used.** Some
+      corporate proxies terminate TLS and strip client certificates. A workspace may permit a
+      runner to enrol without one — off by default — and a runner that does is recorded as
+      `bearer_fallback` and rendered as a visibly degraded connection rather than a green
+      shield over a weaker mode.
+
+      **Two of these operations are reachable without a session**, because the caller is a
+      machine that holds none: registration authenticates on the enrollment token, and renewal
+      on the TLS client certificate. Neither names a workspace — an enrollment lands in the
+      token's workspace and a renewal in the certificate's — so a token cannot enrol a runner
+      anywhere but where it was minted.
+
+      **A refused enrollment is always the same refusal.** A token that never existed, one
+      whose secret is wrong, an expired one, a spent one, a revoked one and one scoped to a
+      different pool all answer `401 farm_enrollment_refused` with no detail. Which of the six
+      it was is recorded in the audit trail, where an operator can read it and a caller
+      cannot.
+
+      Minting, listing and revoking are `owner` or `admin`. Reading the CA certificate is any
+      member's: it is a public certificate, and the person who needs it is whoever is
+      configuring the reverse proxy.
 
 paths:
   /api/v1:
@@ -14587,6 +14640,567 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/farm/authority:
+    get:
+      tags: [farm]
+      summary: The workspace's farm certificate authority — the certificate a runner pins
+      description: |-
+        The **public** half of this workspace's build-farm CA
+        ([#250](https://github.com/NobuData/ouroboros/issues/250), decision B3): the certificate a
+        runner is handed once at enrollment and pins thereafter, its `sha256` fingerprint, and its
+        validity window.
+
+        **Creates the authority if this workspace has never had one**, which is the same lazy
+        creation an enrollment performs. A person setting up a TLS-terminating proxy before the
+        first machine arrives should get the certificate they are about to need rather than a `404`
+        telling them to enrol something first.
+
+        **There is no private key in this payload and no operation in this document returns one.**
+        The CA's private key is sealed by the vault ([#222](https://github.com/NobuData/ouroboros/issues/222)),
+        unwrapped in-process for the duration of one signature and zeroized; `docs/SECURITY_MODEL.md`'s
+        farm-CA section carries the custody model.
+
+        **Any member**, `viewer` included — a certificate is public, and requiring an administrator
+        to fetch a public key in order to write an nginx block would be a gate with nothing behind
+        it.
+      operationId: readFarmAuthority
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The authority.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FarmAuthority"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/enrollment-tokens:
+    post:
+      tags: [farm]
+      summary: Mint an enrollment token — the one response that carries its value
+      description: |-
+        Mint a scoped `orb_enroll_…` token ([#250](https://github.com/NobuData/ouroboros/issues/250),
+        decision B3) — mockup 08's enroll card renders one into an install one-liner.
+
+        **The full value is returned here and nowhere else, ever.** Every later read — this
+        workspace's list, the management panel, this service's own logs — carries
+        `orb_enroll_••••a4b7`, computed from the token's public id rather than from its value. The
+        secret itself is sealed by the vault the moment it is minted; there is no operation that
+        un-masks one and no column that could answer a request to.
+
+        **Scope is not optional.** A token names one pool, and a registration that names a
+        different one is refused rather than silently enrolled into the token's — the `--pool` flag
+        on the command an operator reads most carefully must not be a lie.
+
+        `ttlSeconds` defaults to a day and is bounded at thirty; `maxUses` defaults to one and is
+        bounded at a hundred, because a rack is installed with one command and an unlimited token is
+        a password. `owner` or `admin`.
+      operationId: mintEnrollmentToken
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MintEnrollmentTokenRequest"
+      responses:
+        "201":
+          description: |-
+            The token, with its value. Read it now; it is masked from here on.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MintedEnrollmentToken"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `insufficient_role` — minting a token admits a machine to the fleet, so it is
+            `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_pool_not_found` — this workspace has no pool of that name. Thrown before
+            anything is generated, so a typo mints nothing. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is not a mint request. `details` names the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags: [farm]
+      summary: This workspace's enrollment tokens, newest first — masked, every one
+      description: |-
+        Every enrollment token this workspace has minted, newest first
+        ([#250](https://github.com/NobuData/ouroboros/issues/250)) — live, expired and revoked
+        alike, because *this token let four machines in before it was killed* is the question an
+        incident actually asks.
+
+        **Masked, without exception.** `masked` is computed from the token's id; the value exists
+        only as an envelope. There is no query parameter that changes this.
+
+        Not paginated: a workspace's tokens are a handful by construction — the longest TTL is
+        thirty days — and a workspace with hundreds of them has an incident rather than a list to
+        scroll.
+
+        `owner` or `admin`. The mask hides the value, but the list still says how many machines a
+        workspace is about to admit and when the window closes.
+      operationId: listEnrollmentTokens
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The tokens.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EnrollmentToken"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `insufficient_role` — `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/enrollment-tokens/{id}:
+    delete:
+      tags: [farm]
+      summary: Revoke an enrollment token — the immediate kill
+      description: |-
+        Revoke a token before it expires ([#250](https://github.com/NobuData/ouroboros/issues/250)).
+        *This leaked* and *this aged out* are different events and only the first is an incident,
+        which is why revocation is its own operation rather than a shortened TTL.
+
+        **The row survives, and the answer says how many uses it had spent.** That number is what an
+        incident turns on: a token revoked at zero uses leaked nothing, and one revoked at four uses
+        means four machines to account for.
+
+        **Idempotent.** Revoking an already-revoked token answers the token as it stands rather than
+        a `404` — the caller asked for it to be dead and it is. A `404` here means *no such token in
+        this workspace*, which is a different fact.
+
+        Revoking a token does **not** revoke the certificates it issued. Those are per-runner and
+        are killed through `DELETE /api/v1/farm/runners/{runnerId}/certificate`. `owner` or `admin`.
+      operationId: revokeEnrollmentToken
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The token's id.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: |-
+            The token as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentToken"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `insufficient_role` — `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_enrollment_token_not_found` — this workspace has no such token. Or
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/runners/{runnerId}/certificate:
+    delete:
+      tags: [farm]
+      summary: Revoke a runner's certificate — refused at the next handshake
+      description: |-
+        Revoke the certificate a runner is currently presenting
+        ([#250](https://github.com/NobuData/ouroboros/issues/250), decision B3). **The next
+        handshake refuses it**, and the runner cannot renew its way back in: renewal is
+        authenticated by the certificate this request just killed.
+
+        **It does not remove the runner.** Removal is a different act with a different meaning —
+        *this machine is retired* rather than *this machine's identity is suspect* — and only one of
+        the two is an incident. Removal is
+        [#254](https://github.com/NobuData/ouroboros/issues/254)'s lifecycle action.
+
+        `409 farm_no_live_certificate` is a runner that has none to revoke: one on the bearer
+        fallback, which has no certificate by construction, or one whose certificate was already
+        revoked. Cutting off a bearer-fallback runner is a removal, not a revocation.
+
+        `owner` or `admin`.
+      operationId: revokeRunnerCertificate
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: runnerId
+          in: path
+          required: true
+          description: The runner's id.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: |-
+            The certificate as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerCertificate"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `insufficient_role` — `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_runner_not_found` — this workspace has no such runner. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_no_live_certificate` — this runner holds none to revoke.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/registrations:
+    post:
+      tags: [farm]
+      summary: Enrol a machine — the agent's one unauthenticated call
+      description: |-
+        What the install one-liner calls ([#250](https://github.com/NobuData/ouroboros/issues/250),
+        decision B3). **No session**, because the caller is a machine on hardware this control plane
+        does not administer and no session could be issued to it; what authenticates the request is
+        the enrollment token in the body.
+
+        **The runner sends a certificate request, not a request for a key.** The agent generates its
+        own P-256 keypair and sends a PKCS#10 `csr`; this service signs it and returns the
+        certificate. The private key therefore never crosses the network and has never existed
+        inside Ouroboros.
+
+        **The CSR's own subject is ignored, completely.** The certificate's subject is composed from
+        the runner row this service creates and the workspace the token was scoped to — `CN` is the
+        runner's id, `O` is the workspace. A request claiming to be another workspace's runner is
+        signed with its own correct name rather than refused, because the claim was never read. The
+        same goes for any extensions it asks for.
+
+        **No workspace is named and none can be.** The runner lands in the token's own workspace, so
+        a token cannot enrol a machine anywhere else.
+
+        **`401 farm_enrollment_refused` is the answer to all six token failures** — unknown, wrong
+        secret, expired, spent, revoked, or scoped to a different pool — with no detail. Which one
+        it was is in the audit trail. `422 farm_invalid_csr` is separate and does carry a reason,
+        because the shape of a certificate request is the caller's own business and reveals nothing
+        about this workspace.
+
+        **`securityMode: bearer_fallback` needs the workspace's permission.** It exists for
+        corporate proxies that terminate client certificates, it is off by default, and a runner
+        that takes it is recorded as degraded rather than shown a green shield. The response then
+        carries `bearerToken` in place of `certificate` — also exactly once.
+      operationId: registerRunner
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRunnerRequest"
+      responses:
+        "201":
+          description: |-
+            The runner's id, its certificate and the CA to pin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerEnrollment"
+        "401":
+          description: |-
+            `farm_enrollment_refused` — this token cannot be used. One answer for six states,
+            deliberately; the trail records which.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `farm_bearer_fallback_not_permitted` — the request asked for the bearer fallback and
+            this workspace requires certificates. Said plainly rather than hidden behind the
+            opaque refusal: the caller has already proved it holds a valid token, and an agent
+            behind a certificate-stripping proxy has to be able to tell this from a dead token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `runner_name_taken` — a runner of that name already exists in the token's workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `farm_invalid_csr` — the certificate request could not be read, its key is not on
+            P-256, or its self-signature does not verify. Or `validation_failed` for a body that
+            is not a registration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/registrations/renewal:
+    post:
+      tags: [farm]
+      summary: Replace a runner's certificate over the channel it already authenticates
+      description: |-
+        Renew a certificate before it expires
+        ([#250](https://github.com/NobuData/ouroboros/issues/250)). The response to a registration
+        carries `renewAfter`; an agent starts asking then.
+
+        **There is no enrollment token here and there cannot be.** The request is authenticated by
+        the TLS client certificate the runner is already presenting — so a runner that has enrolled
+        once never needs a second token, and, the half that matters more, **a runner whose
+        certificate was revoked cannot renew its way back in**: the thing it would have to present
+        is the thing that was killed.
+
+        **The client certificate has to reach this service.** When it terminates TLS itself, the
+        certificate comes off the socket. When a reverse proxy terminates TLS in front of it, that
+        proxy has already consumed the certificate and must forward it — configured with
+        `OURO_FARM_CLIENT_CERT_HEADER`, which is **unset by default** because a certificate is
+        public and a header trusted unconditionally is a header anybody can send.
+        `docs/SECURITY_MODEL.md`'s farm-CA section carries the nginx and Traefik directives.
+        `401 farm_client_certificate_required` is what a missing one answers, and it says so.
+
+        A renewal issues a new certificate and retires the old one in one transaction, so a runner
+        never holds two identities. The old certificate is *superseded*, which is routine and is not
+        the same as revoked — both are refused at a handshake and the audit trail tells them apart.
+      operationId: renewRunnerCertificate
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenewCertificateRequest"
+      responses:
+        "201":
+          description: |-
+            The new certificate, when to come back, and the CA — re-sent, so a renewal is also
+            how a rotated authority reaches a fleet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateRenewal"
+        "401":
+          description: |-
+            `farm_client_certificate_required` — no client certificate was presented, most often
+            a TLS-terminating proxy that does not pass one through. Or `farm_identity_refused` —
+            the certificate presented is not a live runner identity of this farm: unknown,
+            expired, superseded, revoked, or belonging to a removed runner, answered identically
+            for all five.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `farm_invalid_csr` — the certificate request could not be read or is not the shape
+            this CA signs. Or `validation_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   # How a caller is recognised. One scheme, because there is one: the cookie the sign-in
   # flow lands.
@@ -24513,3 +25127,314 @@ components:
                 type: string
               name:
                 type: string
+
+    FarmAuthority:
+      type: object
+      title: FarmAuthority
+      description: |-
+        The **public** half of a workspace's build-farm certificate authority
+        ([#250](https://github.com/NobuData/ouroboros/issues/250)). There is no private-key field
+        here, in any operation, in any direction — the CA's key is sealed by the vault and exists
+        unsealed only inside one signature.
+      additionalProperties: false
+      required: [certificate, fingerprint, notBefore, notAfter]
+      properties:
+        certificate:
+          type: string
+          description: The CA certificate, PEM. What a runner is handed once and pins.
+        fingerprint:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: |-
+            `sha256` over the certificate's DER, lowercase hex — the pin an agent compares on
+            every connection. A fingerprint rather than the certificate itself, because
+            comparing it is a string comparison an agent implementation cannot get subtly wrong.
+        notBefore:
+          type: string
+          format: date-time
+        notAfter:
+          type: string
+          format: date-time
+          description: |-
+            When the CA expires. A fleet-wide deadline with no partial failure to warn anybody
+            first — every runner stops at once — which is why it is published rather than implied.
+
+    EnrollmentToken:
+      type: object
+      title: EnrollmentToken
+      description: |-
+        A scoped enrollment token, as anything but the mint response describes it
+        ([#250](https://github.com/NobuData/ouroboros/issues/250)). **Masked.** `masked` is computed
+        from `id`, not from the value; the value is sealed and no operation un-masks one.
+      additionalProperties: false
+      required:
+        [id, poolId, masked, expiresAt, maxUses, uses, revoked, revokedAt, createdBy, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: |-
+            The token's id, which is also the public half of its value — a presented token names
+            its own row, so nothing has to be searched for and there is no second column for the
+            secret to leak from.
+        poolId:
+          type: string
+          format: uuid
+          description: The pool a runner enrolled with this token joins.
+        masked:
+          type: string
+          description: "`orb_enroll_••••a4b7` — what mockup 08 renders."
+        expiresAt:
+          type: string
+          format: date-time
+        maxUses:
+          type: integer
+          minimum: 1
+          description: How many machines it may enrol. More than one, because a rack is installed with one command.
+        uses:
+          type: integer
+          minimum: 0
+          description: |-
+            How many it has. On a revoked token this is the number an incident turns on: revoked
+            at zero uses leaked nothing, revoked at four means four machines to account for.
+        revoked:
+          type: boolean
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdBy:
+          type: string
+          nullable: true
+          description: Who minted it, or null if that person has since been deleted.
+        createdAt:
+          type: string
+          format: date-time
+
+    MintedEnrollmentToken:
+      allOf:
+        - $ref: "#/components/schemas/EnrollmentToken"
+        - type: object
+          title: MintedEnrollmentToken
+          description: |-
+            The mint response — **the one payload in this contract that carries a live secret**.
+          required: [token]
+          properties:
+            token:
+              type: string
+              pattern: "^orb_enroll_[0-9a-f]{32}\\.[A-Za-z0-9_-]{22,}$"
+              description: |-
+                The whole `orb_enroll_…` value. Returned here and nowhere else, ever. After this
+                response the plaintext exists only wherever the operator pasted it.
+
+    MintEnrollmentTokenRequest:
+      type: object
+      title: MintEnrollmentTokenRequest
+      additionalProperties: false
+      required: [pool]
+      properties:
+        pool:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$"
+          description: |-
+            The pool a runner enrolled with this token joins — the mockup's `--pool pool-a`.
+            Required: there is no token that enrols into whichever pool the runner asks for.
+        ttlSeconds:
+          type: integer
+          minimum: 60
+          maximum: 2592000
+          description: |-
+            How long the token lives. A day when absent; thirty days at the outside, because a
+            token good for a year is a password with extra steps.
+        maxUses:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: How many machines it may enrol. One when absent.
+
+    RegisterRunnerRequest:
+      type: object
+      title: RegisterRunnerRequest
+      description: |-
+        **No workspace field, deliberately.** The runner lands in the token's own workspace, so a
+        token cannot enrol a machine anywhere else — the isolation is a property of this shape
+        rather than a check somebody has to remember.
+      additionalProperties: false
+      required: [token, name, arch]
+      properties:
+        token:
+          type: string
+          maxLength: 256
+          description: The `orb_enroll_…` value from the install one-liner.
+        name:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$"
+          description: What the machine is called — `forge-01`. Unique within the workspace.
+        arch:
+          type: string
+          enum: [linux/arm64, linux/x86_64, darwin/arm64]
+          description: The three architectures the agent is built for.
+        pool:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$"
+          description: |-
+            The pool the agent was told to join. **Checked against the token's scope when
+            present**: a token for `pool-a` refuses a registration naming `pool-b` rather than
+            quietly enrolling into `pool-a`.
+        csr:
+          type: string
+          maxLength: 16384
+          description: |-
+            A PKCS#10 certificate request, PEM, over a P-256 key the **agent** generated.
+            Required unless `securityMode` is `bearer_fallback`. Its subject and any extensions
+            it asks for are ignored: the certificate's subject is composed from the runner row
+            and the workspace, never from this request.
+        securityMode:
+          type: string
+          enum: [mtls, bearer_fallback]
+          description: |-
+            `mtls` when absent. `bearer_fallback` is refused unless the workspace permits it, and
+            is asked for rather than inferred from a missing `csr` — *my proxy strips client
+            certificates* is a claim an operator should have to make.
+        agentVersion:
+          type: string
+          maxLength: 64
+        docker:
+          type: boolean
+          description: Whether the machine can run containers — AG.1's `hello`, asked at enrollment.
+        cpuCount:
+          type: integer
+          minimum: 1
+          maximum: 4096
+
+    RunnerEnrollment:
+      type: object
+      title: RunnerEnrollment
+      description: |-
+        What an agent gets back when it enrols. Exactly one of `certificate` and `bearerToken` is
+        present, and whichever it is, it is present in this response only.
+      additionalProperties: false
+      required:
+        [runnerId, name, poolId, securityMode, certificate, serial, notAfter, renewAfter, bearerToken, authority]
+      properties:
+        runnerId:
+          type: string
+          format: uuid
+          description: The runner's id — what the certificate's `CN` says and what the gateway resolves.
+        name:
+          type: string
+        poolId:
+          type: string
+          format: uuid
+        securityMode:
+          type: string
+          enum: [mtls, bearer_fallback]
+        certificate:
+          type: string
+          nullable: true
+          description: The issued certificate, PEM. Null on a bearer-fallback enrollment.
+        serial:
+          type: string
+          nullable: true
+          description: Its serial, lowercase hex — what a revocation names.
+        notAfter:
+          type: string
+          format: date-time
+          nullable: true
+        renewAfter:
+          type: string
+          format: date-time
+          nullable: true
+          description: |-
+            When to start asking for a new certificate. Published rather than left to the agent to
+            compute as a fraction of the lifetime, so changing the policy changes every runner's
+            behaviour without shipping a binary.
+        bearerToken:
+          type: string
+          nullable: true
+          description: |-
+            The long-lived fallback secret. Present only on a `bearer_fallback` enrollment, only
+            in this response, and never readable again.
+        authority:
+          $ref: "#/components/schemas/FarmAuthority"
+
+    RenewCertificateRequest:
+      type: object
+      title: RenewCertificateRequest
+      description: |-
+        One field, because the runner's identity is the client certificate it is already
+        presenting. **There is no token field**, so a renewal cannot be performed by anything
+        holding only a token.
+      additionalProperties: false
+      required: [csr]
+      properties:
+        csr:
+          type: string
+          maxLength: 16384
+          description: A fresh PKCS#10 certificate request over a new keypair the agent generated.
+
+    CertificateRenewal:
+      type: object
+      title: CertificateRenewal
+      additionalProperties: false
+      required: [certificate, serial, notAfter, renewAfter, authority]
+      properties:
+        certificate:
+          type: string
+        serial:
+          type: string
+        notAfter:
+          type: string
+          format: date-time
+        renewAfter:
+          type: string
+          format: date-time
+        authority:
+          $ref: "#/components/schemas/FarmAuthority"
+
+    RunnerCertificate:
+      type: object
+      title: RunnerCertificate
+      description: |-
+        One certificate in a runner's history, as an operator sees it. `revoked` and `supersededAt`
+        are **different states**: superseded is routine — a renewal replaced it — and revoked is an
+        incident. A handshake refuses both.
+      additionalProperties: false
+      required:
+        [id, serial, fingerprint, issuedFor, issuedAt, notAfter, revoked, revokedAt, revocationReason, supersededAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        serial:
+          type: string
+          pattern: "^[0-9a-f]{2,64}$"
+        fingerprint:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        issuedFor:
+          type: string
+          enum: [enrollment, renewal]
+        issuedAt:
+          type: string
+          format: date-time
+        notAfter:
+          type: string
+          format: date-time
+        revoked:
+          type: boolean
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revocationReason:
+          type: string
+          nullable: true
+          description: "One short word: `operator`, `runner_removed`."
+        supersededAt:
+          type: string
+          format: date-time
+          nullable: true

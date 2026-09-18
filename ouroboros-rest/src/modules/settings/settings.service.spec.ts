@@ -22,6 +22,7 @@ function effective(enabled: boolean): WorkspaceSettingsEffective {
     organization_id: WORKSPACE,
     auto_merge_on_checks: enabled,
     is_explicit: true,
+    runner_bearer_fallback: false,
     updated_at: new Date("2026-08-13T09:00:00.000Z"),
     updated_by: FIXTURE_USER.id,
   };
@@ -32,6 +33,7 @@ function stored(enabled: boolean): WorkspaceSettings {
   return {
     organization_id: WORKSPACE,
     auto_merge_on_checks: enabled,
+    runner_bearer_fallback: false,
     updated_by: FIXTURE_USER.id,
     created_at: new Date("2026-08-11T10:20:23.114Z"),
     updated_at: new Date("2026-08-13T09:00:00.000Z"),
