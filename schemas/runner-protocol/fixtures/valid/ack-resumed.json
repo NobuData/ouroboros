@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "type": "ack",
+  "id": "01KE7NKSNS71N2AK638ZFVKTWH",
+  "payload": {
+    "session": "sess_01KE7MV3WKAG706QMDN23AJ3BE",
+    "protocol": 1,
+    "resumed": true,
+    "runner": {
+      "id": "rnr_01KE76X95CS69B659HTXZJ0HA3",
+      "name": "shed-pi-01",
+      "pool": "arm-builders"
+    },
+    "limits": {
+      "heartbeat_interval_ms": 10000,
+      "heartbeat_jitter_ms": 2000,
+      "log_chunk_max_bytes": 32768,
+      "log_rate_bytes_per_s": 262144,
+      "offer_ack_ms": 5000,
+      "resume_window_ms": 300000
+    }
+  }
+}

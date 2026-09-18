@@ -238,7 +238,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AG.1 | #243 | 🟡 Open | ouroboros-runner: [AG.1] Module scaffold & agent protocol spec | Go module, conventions, `docs/RUNNER_PROTOCOL.md`, ci/runner | mvp, build-farm, infra, ci | N (after #8) | Y | M | ouroboros-runner, .github, docs |
+| AG.1 | #243 | 🟢 Done | ouroboros-runner: [AG.1] Module scaffold & agent protocol spec | Go module, conventions, `docs/RUNNER_PROTOCOL.md`, ci/runner | mvp, build-farm, infra, ci | N (after #8) | Y | M | ouroboros-runner, .github, docs |
 | AG.2 | #244 | 🟡 Open | ouroboros-runner: [AG.2] Enrollment, identity & connection loop | Token bootstrap, mTLS cert, outbound WSS, reconnect/backoff | mvp, build-farm | N (after AG.1, AH.2) | Y | L | ouroboros-runner |
 | AG.3 | #245 | 🟡 Open | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
 | AG.4 | #246 | 🟡 Open | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
@@ -247,7 +247,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 
 ### Issue AG.1 — ouroboros-runner: [AG.1] Module scaffold & agent protocol spec
 
-> **GitHub issue:** #243 · **Status:** 🟡 Open · **Parent epic:** #239
+> **GitHub issue:** #243 · **Status:** 🟢 Done · **Parent epic:** #239
 
 
 - **Problem Statement:** The agent is a new module in a new language (decision
@@ -279,6 +279,26 @@ docs/RUNNER_PROTOCOL.md (v1)
   hello → ack(session) · heartbeat(10s) · job.offer ⇄ accept/decline
   job.start/progress/finish(idempotent) · log.chunk(≤32KB, throttled) · drain/bye
 ```
+
+- **Delivered:** [`docs/RUNNER_PROTOCOL.md`](RUNNER_PROTOCOL.md) — **fifteen** message
+  types, each with a field contract and a worked example; the frozen `{v, type, id,
+  payload}` envelope; version negotiation and the refusal path; resume and idempotency.
+  Two messages the issue's table did not name are there because the rows that did name
+  them require them: **`refuse`** is how a version-floor rejection is carried, and
+  **`receipt`** is how an agent learns it may stop re-sending — without it, resume is
+  hope rather than a protocol.
+  [`schemas/runner-protocol/`](../schemas/runner-protocol) holds the schema (with the
+  ceilings published as *numbers*, so both implementations build their boundary cases
+  from one source) and the fixtures: 21 valid, 25 invalid, four session transcripts, and
+  `expected.json` — the verdict every implementation reproduces.
+  [`ouroboros-runner/`](../ouroboros-runner) is the Go scaffold with a dependency-free
+  protocol codec, the two halves of resume, and `ouroboros-runner hello`, which prints
+  and validates the frame this machine would send.
+  `ci/runner` → `cross/runner` runs the module's own Makefile verbs and builds all three
+  architectures. [`scripts/verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh)
+  is what makes drift fail CI: every type described three times, every documented example
+  byte-identical to its fixture, every fixture asserted against, every limit agreeing.
+  The TypeScript halves (#251, #255) assert against the same bytes when they land.
 
 ### Issue AG.2 — ouroboros-runner: [AG.2] Enrollment, identity & connection loop
 

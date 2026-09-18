@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "job.progress",
+  "id": "01KE7SEN831CW72GWV2HB0H4MS",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "phase": "run",
+    "pct": 62,
+    "note": "1184 of 1902 translation units"
+  }
+}

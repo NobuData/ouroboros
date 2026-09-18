@@ -1,0 +1,8 @@
+# Build output. `make build` writes here; `make cross` fills it with one binary per
+# target in ci/runner's matrix.
+/bin/
+
+# Go's own test and coverage artefacts.
+*.test
+/coverage.out
+/coverage.html

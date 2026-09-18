@@ -9,8 +9,9 @@
 # workflow; that a module whose scaffold has not landed yet is skipped deliberately
 # instead of failing; that each pipeline runs the verbs docs/CONVENTIONS.md § 3 promises
 # for its toolchain; that `ci/db` still carries the live migration pass (#24) against
-# the PostgreSQL the development stack pins; and that each module still publishes its
-# image from its own workflow, behind its own green `ci/` job.
+# the PostgreSQL the development stack pins; that `ci/runner` still builds the Go agent for
+# all three architectures the farm supports (#243); and that each module which ships an
+# image still publishes it from its own workflow, behind its own green `ci/` job.
 #
 # It reads files and starts nothing: no runner, no network, no GitHub. Whether a
 # workflow passes is what a pull request answers; what this answers is whether the right
@@ -62,9 +63,17 @@ NODE_ACTION="$ACTIONS/node-module/action.yml"
 GATE_ACTION="$ACTIONS/scaffold-gate/action.yml"
 PARSER="$SCRIPT_DIR/lib/parse-workflow-paths.awk"
 
-# The four application modules and the workflow each one reports under. ouroboros-web is
-# not among them: it is the marketing site, and docker-publish.yml is its own pipeline.
-MODULES="ui rest engine db"
+# Every module with a `ci/<module>` workflow, and the name each one reports under.
+# ouroboros-web is not among them: it is the marketing site, and docker-publish.yml is its
+# own pipeline.
+MODULES="ui rest engine db runner"
+
+# The subset that ships a CONTAINER IMAGE, and therefore carries a `publish/<module>` job
+# (§ 9). ouroboros-runner is the one module outside it: it ships a BINARY to machines
+# nobody here administers, and a tagged release with a checksum per architecture is #248's
+# subject rather than this scaffold's. What it carries instead is `cross/runner`, asserted
+# below.
+IMAGE_MODULES="ui rest engine db"
 
 # The repo-root files the Yarn workspace and its Turborepo task graph are made of (#13).
 # A change to any of them can change what a TypeScript module builds without touching
@@ -249,6 +258,12 @@ check_route schemas/workflow-dsl/fixtures/valid/standard-fix.json 'engine.yml re
 check_route schemas/workflow-dsl/fixtures/valid/minimal.json 'engine.yml rest.yml ui.yml'
 check_route schemas/workflow-dsl/fixtures/code-invalid/expected.json 'engine.yml rest.yml'
 
+# The plan contract (#277) is the second of these, and the reason it is asserted here is the
+# narrowing that #243 forced: both filters used to be a blanket `schemas/**`, so this route was
+# a side effect rather than a decision. Now it is named, and this is what says so.
+check_route schemas/plan/v0.json 'engine.yml rest.yml'
+check_route schemas/plan/fixtures/expected.json 'engine.yml rest.yml'
+
 # The seventh (#146). ci/rest's engine stub holds every request it receives and every answer it
 # serves to ouroboros-engine's committed contract, read from this one document at test time. A
 # contract change that ran only ci/engine would leave the stub green against a document nobody
@@ -265,6 +280,26 @@ check_route docs/mockups/04-workflow-builder.html ''
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.
 check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'
+
+# The ninth (#243), and the first that belongs to a module in a fourth language. The runner
+# protocol is one contract in three places — the prose in docs/RUNNER_PROTOCOL.md, the schema
+# and golden fixtures in schemas/runner-protocol/, and the Go validator in the module — and
+# none of the first two lives inside the module, because neither implementation owns the
+# contract. So an edit to any of them runs ci/runner, or the Go half can stop agreeing with
+# the document nobody re-checked it against.
+#
+# It reaches ci/runner and nothing else *yet*: the TypeScript gateway (#251) and the fake
+# agent (#255) are the other two readers, and the pull requests that add them are the ones
+# that add rest.yml to these routes — the same way #133 did for the workflow DSL.
+check_route ouroboros-runner/cmd/ouroboros-runner/main.go 'runner.yml'
+check_route ouroboros-runner/internal/conn/protocol.go 'runner.yml'
+check_route schemas/runner-protocol/v1.json 'runner.yml'
+check_route schemas/runner-protocol/fixtures/expected.json 'runner.yml'
+check_route docs/RUNNER_PROTOCOL.md 'runner.yml'
+
+# …and the check that would notice, which is the one exception to the rule below: a change
+# to scripts/ queues nothing, except where the script IS one of a workflow's steps.
+check_route scripts/verify-runner-protocol.sh 'runner.yml'
 
 # Documentation and repo tooling affect no module's build, so they queue nothing.
 check_route docs/CONVENTIONS.md ''
@@ -307,9 +342,25 @@ for module in ui rest; do
     "$module.yml takes the shared Node pin rather than one of its own"
 done
 check_contains "$WORKFLOWS/engine.yml" '^  PYTHON_VERSION: "3\.12"$' 'engine.yml pins Python 3.12'
+# Go lives in runner.yml's GO_VERSION, and it is the FLOOR rather than the newest release:
+# ouroboros-runner/go.mod declares `go 1.24`, and a job that built with whatever was newest
+# would let a construct from a later language version land in a module that claims to compile
+# with 1.24. Both files have to move together, which is what these two assert.
+check_contains "$WORKFLOWS/runner.yml" '^  GO_VERSION: "1\.24"$' 'runner.yml pins Go 1.24'
+check_contains ouroboros-runner/go.mod '^go 1\.24$' \
+  'ouroboros-runner/go.mod declares the same floor'
+# The linter is pinned to an exact release too, and installed through the Go module proxy
+# rather than by piping a script from a branch.
+check_contains "$WORKFLOWS/runner.yml" '^  GOLANGCI_LINT_VERSION: "v[0-9]+\.[0-9]+\.[0-9]+"$' \
+  'runner.yml pins golangci-lint to a release'
+# Anchored past any `#`, so the workflow may explain in a comment why it does not pipe a
+# download into a shell while a step that did would still fail.
+check_absent "$WORKFLOWS/runner.yml" '^[^#]*curl[^|]*\|[[:space:]]*(sh|bash)' \
+  'runner.yml installs nothing by piping a download into a shell'
 # The pins are only shared if they are the ones the conventions document promises.
 check_contains docs/CONVENTIONS.md 'Node 24' 'docs/CONVENTIONS.md documents the Node pin'
 check_contains docs/CONVENTIONS.md 'Python 3\.12' 'docs/CONVENTIONS.md documents the Python pin'
+check_contains docs/CONVENTIONS.md 'Go 1\.24' 'docs/CONVENTIONS.md documents the Go pin'
 
 # ---------------------------------------------------------------------------
 # Scaffold gating
@@ -376,6 +427,12 @@ check_gated "$(ci_job "$WORKFLOWS/engine.yml")" '      ' 2 \
 # ouroboros-db is scaffolded already — its migrations run today — so ci/db is not gated.
 check_absent "$WORKFLOWS/db.yml" 'scaffold-gate' 'db.yml is not gated: its migrations exist'
 
+# Neither is ci/runner, and for a sharper version of the same reason. The gate exists so a
+# workflow can be written BEFORE its module is; #243 lands the workflow and the module in one
+# change, so a gate here would be a condition that is true on every run — and a condition
+# that is always true is one nobody would notice becoming always false.
+check_absent "$WORKFLOWS/runner.yml" 'scaffold-gate' 'runner.yml is not gated: its module exists'
+
 # ---------------------------------------------------------------------------
 # Module pipelines
 # ---------------------------------------------------------------------------
@@ -400,6 +457,70 @@ done
 
 check_contains "$WORKFLOWS/db.yml" '^        run: scripts/verify-dev-env\.sh$' \
   'db.yml asserts the migration and data-tier contract'
+
+# The Go module's verbs, and it runs them THROUGH ITS MAKEFILE rather than as `go`
+# invocations of its own (docs/CONVENTIONS.md § 1, limit 3). That is the whole point of the
+# Makefile: a `go test -race` written into this workflow would be a second definition of what
+# testing this module means, and the one CI used would be the one nobody could run locally.
+for step in 'make install' 'make format' 'make lint' 'make typecheck' 'make test' 'make build'; do
+  check_contains "$WORKFLOWS/runner.yml" "^        run: $step\$" "runner.yml runs $step"
+done
+check_contains "$WORKFLOWS/runner.yml" '^        working-directory: ouroboros-runner$' \
+  'runner.yml runs them from the module directory'
+check_contains ouroboros-runner/Makefile '^test:$' \
+  'ouroboros-runner/Makefile defines the verb CI calls'
+check_contains ouroboros-runner/Makefile 'go test -race' \
+  'and `make test` is the one that carries the race detector'
+
+# The contract's own check, run from the repository root because its subject spans three
+# directories — the document in docs/, the schema and fixtures in schemas/, and the Go
+# constants in the module. Without this step the three can stop describing the same protocol
+# with every suite still green.
+check_contains "$WORKFLOWS/runner.yml" '^        run: scripts/verify-runner-protocol\.sh$' \
+  'runner.yml verifies the protocol contract'
+check_executable scripts/verify-runner-protocol.sh \
+  'scripts/verify-runner-protocol.sh is executable'
+
+# ---------------------------------------------------------------------------
+# The runner's cross-compile matrix (#243)
+# ---------------------------------------------------------------------------
+
+# The agent is the one module whose artefact is a binary, and mockup 08's runners table names
+# three architectures it has to exist for. A `linux/arm64` or `darwin/arm64` binary cannot be
+# RUN on the x86_64 runner, so the matrix answers the question that can be answered on every
+# pull request: does the change still compile for every machine the farm supports?
+#
+# It is not a formality. internal/telemetry carries a build-tagged file per platform — a
+# /proc/meminfo reader for Linux and a sysctl one for macOS — and a platform nobody builds is
+# a file that breaks on the release that first needs it.
+
+printf '\nRunner cross-compile matrix\n'
+
+RUNNER_WORKFLOW="$WORKFLOWS/runner.yml"
+
+check_contains "$RUNNER_WORKFLOW" '^  cross:$' 'runner.yml carries a cross-compile job'
+check_contains "$RUNNER_WORKFLOW" '^    name: cross/runner \(\$\{\{ matrix\.target \}\}\)$' \
+  'each target reports as a check named for it'
+# Behind the same gate a publish job would be: a cross build of a checkout that does not lint
+# or test is an artefact nothing has run.
+check_contains "$RUNNER_WORKFLOW" '^    needs: ci$' \
+  'nothing is cross-compiled until ci/runner has passed'
+# One target failing must not cancel the others — which of the three broke is the information.
+check_contains "$RUNNER_WORKFLOW" '^      fail-fast: false$' \
+  'a failing target does not cancel its siblings'
+
+for target in linux/x86_64 linux/arm64 darwin/arm64; do
+  check_contains "$RUNNER_WORKFLOW" "^          - $target\$" "the matrix builds $target"
+  # …and the module's README says so too, since it is where somebody looks first.
+  check_contains ouroboros-runner/README.md "$(printf '%s' "$target" | sed 's#/#/#')" \
+    "ouroboros-runner/README.md names $target"
+done
+
+# The cross build goes through the module's own verb as well, narrowed to one target.
+check_contains "$RUNNER_WORKFLOW" 'make cross TARGETS=' \
+  'the matrix cross-compiles through the module Makefile'
+check_contains ouroboros-runner/Makefile '^cross:$' \
+  'ouroboros-runner/Makefile defines that verb'
 
 # ---------------------------------------------------------------------------
 # The database's live pass (#24)
@@ -511,8 +632,8 @@ check_equals "$compose_image" "$db_client_image" \
 # The published images
 # ---------------------------------------------------------------------------
 
-# Every application module ships an image, and every one of them is published by its own
-# `ci/<module>` workflow rather than by a pipeline of its own. That placement is the whole
+# Every module that ships an image is published by its own `ci/<module>` workflow rather
+# than by a pipeline of its own. That placement is the whole
 # contract: `needs: ci` is what makes a tag mean *this passed*, and a second workflow
 # watching the same directory would publish on a schedule nothing orders against the
 # checks. `ci/db` proves the migrations apply, `ci/rest` runs the service against a
@@ -542,7 +663,7 @@ image_context() {
   esac
 }
 
-for module in $MODULES; do
+for module in $IMAGE_MODULES; do
   workflow="$WORKFLOWS/$module.yml"
   image="ouroboros-$module"
   context=$(image_context "$module")

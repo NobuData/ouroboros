@@ -45,6 +45,10 @@ Four modules, one direction of travel. The browser talks to the UI, the UI talks
 communications layer, and the communications layer is the only thing that talks to the
 database and to the engine.
 
+A fifth module sits outside all of it, on hardware this deployment does not own — see
+[§ 2.6](#26-ouroboros-runner--the-build-farm-agent). It is drawn separately because it is
+the one component that **dials in**, and because nothing here can dial it.
+
 ```mermaid
 flowchart LR
     subgraph browser["Browser"]
@@ -63,6 +67,7 @@ flowchart LR
     ENGINE -- "internal HTTP<br/>/internal/* · same key<br/>proxied invocation · local-provider lease" --> REST
     REST -- "Kysely over pg" --> DB
     GH["GitHub<br/>OAuth · issues · pull requests"] -.->|"OAuth code flow"| REST
+    RUNNER["ouroboros-runner<br/>Go agent · the CUSTOMER'S hardware<br/>no listening port"] -- "outbound wss · mTLS<br/>runner protocol v1" --> REST
 ```
 
 That single boundary is the load-bearing idea. Authentication, tenant resolution and
@@ -79,6 +84,7 @@ re-implemented differently.
 | `ouroboros-rest` | 4000 | yes | yes |
 | `ouroboros-engine` | 8000 | no — compose-internal | **no** |
 | `ouroboros-db` (PostgreSQL) | 5432 | `127.0.0.1` only | **no** |
+| `ouroboros-runner` | — none | n/a — it listens on nothing | **no** |
 
 Every service reads its listen port from the unprefixed `PORT`, because that is what
 container platforms set. `ouroboros-web` also defaults to 3000; it is the marketing site,
@@ -100,6 +106,7 @@ criteria.
 | `ouroboros-rest` | Auth, sessions, tenancy, the public API, the engine gateway | `ouroboros-db`, `ouroboros-engine`, GitHub | — |
 | `ouroboros-engine` | Executes the work REST brokers | (nothing outbound yet) | the browser, the database |
 | `ouroboros-db` | Owns the schema; stores tenancy data | — (it is spoken to) | — |
+| `ouroboros-runner` | Runs build jobs on the customer's own machines | `ouroboros-rest` (outbound only) | the database, the engine, the browser |
 
 ### 2.1 `ouroboros-ui` — the product UI
 
@@ -264,6 +271,47 @@ longer account.
 its own image, its own deploy. It shares the brand and nothing else — no API, no
 database, no session. It appears here only so that its absence from the diagrams is
 understood as a decision rather than an omission.
+
+### 2.6 `ouroboros-runner` — the build farm agent
+
+**Scaffolded**, and the first component of this system that does not run inside the
+deployment. It is a Go binary on **the customer's** machines — a Mac that can notarise, a
+rack of ARM boards, a workstation with a warm `ccache` — and it is how those machines join
+the build farm (roadmap decision **B1**,
+[#243](https://github.com/NobuData/ouroboros/issues/243), epic
+[#239](https://github.com/NobuData/ouroboros/issues/239)).
+
+Three properties make it different from every module above, and all three are consequences
+of one decision: **the agent dials out.**
+
+**Nothing listens on the customer's side.** No inbound port, no firewall exception, no
+address anybody has to expose — which is what makes the farm deployable into a network
+Ouroboros has no standing in. The direction of the arrow is the security model: this
+deployment cannot reach a runner, so a compromise here cannot become a foothold there, and
+an operator does not have to trust us with a route into their build machines.
+
+**Identity is a certificate, not a secret in a header.** Every other internal hop in this
+system is authenticated by `X-Ouro-Internal-Key` between processes an operator controls. A
+runner is not: it authenticates with a **client certificate** issued by the farm CA during
+enrollment ([#250](https://github.com/NobuData/ouroboros/issues/250)), and the connection is
+mutual TLS. A bearer token would be a long-lived secret on a machine outside our control,
+readable by anything else on it, and revocable only by rotating it everywhere.
+
+**The protocol is a published contract, not an internal interface.** The agent is Go and
+the gateway is `ouroboros-rest` in TypeScript
+([#251](https://github.com/NobuData/ouroboros/issues/251)), written by different work
+streams — so the wire format was specified *before* either half, in
+[`RUNNER_PROTOCOL.md`](RUNNER_PROTOCOL.md), with golden fixtures in
+`schemas/runner-protocol/` that every implementation asserts against. Two parts of it
+could not have been retrofitted: the envelope carries a **version** from message one and the
+gateway may refuse an agent below a floor (this binary runs where no upgrade can be forced),
+and terminal messages carry **idempotency ids** so a `job.finish` written to a dying socket
+is re-sent rather than lost, and deduplicated rather than counted twice.
+
+What it means for the invariants in § 8 is nothing: the runner reaches
+`ouroboros-rest` and only `ouroboros-rest`, so the boundary that keeps tenancy enforcement in
+one place is unchanged. It is a **fourth trust boundary** rather than an exception to the
+third — see § 9.
 
 ## 3. Request paths
 
@@ -864,7 +912,7 @@ false, the decision to make it false comes first, in this document.
 
 ## 9. Trust boundaries and secrets
 
-The system has three trust boundaries, and each one has a rule:
+The system has four trust boundaries, and each one has a rule:
 
 | Boundary | Crossed by | Rule |
 |---|---|---|
@@ -872,6 +920,7 @@ The system has three trust boundaries, and each one has a rule:
 | REST → engine | `X-Ouro-Internal-Key` | Constant-time comparison; failure is a 502 to the client and a log line internally — never a 401, and never the engine's address |
 | engine → REST | `X-Ouro-Internal-Key` | The same header and the same secret, the other way: `/internal/*` is refused with one constant `401` — a session cookie is never accepted there. A worker is given a **local provider's address** and never a credential; every cloud call is made by the control plane on its behalf ([#224](https://github.com/NobuData/ouroboros/issues/224), decision **P3**) |
 | REST → database | Connection string | Parameterised queries only; the tenant predicate comes from the resolved context, never from request input |
+| runner → REST | Client certificate (mutual TLS) | The one boundary crossed from **outside the deployment**, and the only one not authenticated by a shared secret: the agent presents a certificate the farm CA issued at enrollment ([#250](https://github.com/NobuData/ouroboros/issues/250)), and the enrollment token that obtained it is single-use and never appears in a protocol frame — so no session log can leak a credential. The connection is **outbound from the customer**, so nothing here can reach a runner, and a refused agent is told why in terms it can act on ([`RUNNER_PROTOCOL.md`](RUNNER_PROTOCOL.md) § 3) |
 
 Secrets follow one rule each way: **in through the environment, out through nothing.**
 They are validated at boot, redacted from any configuration logging, never written into a
@@ -882,7 +931,7 @@ credentials — `dev-session-secret-change-me` is a value nobody deploys by acci
 Two more properties belong here as they land: the security baseline pass
 ([#38](https://github.com/NobuData/ouroboros/issues/38) — headers, CORS allow-list, rate
 limiting, session revocation) records its threat notes in this document, and row-level
-security ([#25](https://github.com/NobuData/ouroboros/issues/25)) adds a fourth row to the
+security ([#25](https://github.com/NobuData/ouroboros/issues/25)) adds a further row to the
 table above when the database stops trusting the application to filter by tenant.
 
 ## 10. Keeping this document true

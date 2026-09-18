@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "type": "job.offer",
+  "id": "01KE77W66DS419638DRR0R0QNP",
+  "payload": {
+    "job": "job_01KE7EWKB1TJFC3BXKZPY4FRD2",
+    "pool": "mac-notaries",
+    "executor": "shell",
+    "command": [
+      "./scripts/notarize.sh",
+      "dist/ouroboros.pkg"
+    ],
+    "workdir": "/Users/builder/work",
+    "env": {},
+    "repository": null,
+    "timeout_s": 900,
+    "expires_at": "2026-09-18T12:00:15.000Z",
+    "image": "registry.example.invalid/ouroboros/build-arm64:2026-09"
+  }
+}

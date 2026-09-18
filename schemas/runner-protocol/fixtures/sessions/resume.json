@@ -1,0 +1,25 @@
+{
+  "about": [
+    "The failure this protocol exists to survive: `job.finish` is written to a socket",
+    "that dies before the receipt comes back.",
+    "",
+    "The agent reconnects with `hello.resume`, is told the session survived, and re-sends",
+    "the terminal frame it never got a receipt for. That frame is the SAME file, which is",
+    "the whole point -- a re-send is byte-identical, envelope id included, so the receiver",
+    "recognises it by id and answers `receipt.duplicate: true` instead of finishing the",
+    "job twice."
+  ],
+  "frames": [
+    { "from": "agent", "message": "valid/hello.json" },
+    { "from": "server", "message": "valid/ack.json" },
+    { "from": "server", "message": "valid/job-offer.json" },
+    { "from": "agent", "message": "valid/job-accept.json" },
+    { "from": "agent", "message": "valid/job-start.json" },
+    { "from": "agent", "message": "valid/job-finish.json" },
+    { "event": "disconnect" },
+    { "from": "agent", "message": "valid/hello-resume.json" },
+    { "from": "server", "message": "valid/ack-resumed.json" },
+    { "from": "agent", "message": "valid/job-finish.json" },
+    { "from": "server", "message": "valid/receipt-duplicate.json" }
+  ]
+}

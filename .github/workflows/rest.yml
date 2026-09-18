@@ -21,6 +21,15 @@ name: ouroboros-rest · ci
 # the schema does. A rule edited there without this filter would run neither validator's
 # checks — which is the one way two validators quietly stop agreeing.
 #
+# Those contracts are named one by one rather than as a blanket `schemas/**`, which is what
+# this filter used to be. The runner protocol landed in that directory with #243, and it
+# belongs to the Go agent and the farm gateway — neither of which this module reads yet — so a
+# blanket filter queued this suite for a change it cannot be affected by, which is exactly
+# what scripts/verify-ci.sh's routing assertions exist to refuse. The consequence is
+# deliberate: a new contract added under schemas/ does not reach this workflow until somebody
+# names it here, and the pull request that makes this module a reader of the runner protocol
+# (#251) is the one that adds it.
+#
 # ouroboros-engine/openapi.yaml is here because of R.4 (#146). The engine stub every integration
 # suite talks to holds each request it receives and each answer it serves to that document, read
 # at test time. An engine contract change that ran only ci/engine would leave this module's stub —
@@ -40,7 +49,9 @@ on:
       - "ouroboros-db/migrations/**"
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
-      - "schemas/**"
+      # Named contract by contract rather than as `schemas/**` — see above.
+      - "schemas/workflow-dsl/**"
+      - "schemas/plan/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"
@@ -58,7 +69,9 @@ on:
       - "ouroboros-db/migrations/**"
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
-      - "schemas/**"
+      # Named contract by contract rather than as `schemas/**` — see above.
+      - "schemas/workflow-dsl/**"
+      - "schemas/plan/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"

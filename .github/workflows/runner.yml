@@ -1,0 +1,202 @@
+name: ouroboros-runner · ci
+
+# Path-filtered per issue #11: this runs only when the Go agent, the protocol contract it
+# implements, the document that contract is written in, the repo-level check that holds the
+# three of them together, or this file itself changes.
+#
+# Three of those paths are outside the module, and each is here for the same reason engine.yml
+# gives for schemas/. The runner protocol (#243) is one contract in three places — the prose in
+# docs/RUNNER_PROTOCOL.md, the schema in schemas/runner-protocol/v1.json, and the golden
+# fixtures both this module and the TypeScript gateway (#251) assert against. None of them lives
+# inside this module, because neither implementation owns the contract. So an edit to any of them
+# has to run this workflow, or the Go half can stop agreeing with the document nobody re-checked
+# it against.
+#
+# scripts/verify-runner-protocol.sh is the fourth, and it is the check that would notice: a
+# change to the checker has to run the suite it checks.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ouroboros-runner/**"
+      - "schemas/runner-protocol/**"
+      - "docs/RUNNER_PROTOCOL.md"
+      - "scripts/verify-runner-protocol.sh"
+      - ".github/workflows/runner.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ouroboros-runner/**"
+      - "schemas/runner-protocol/**"
+      - "docs/RUNNER_PROTOCOL.md"
+      - "scripts/verify-runner-protocol.sh"
+      - ".github/workflows/runner.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-runner-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Go pin for the one Go module, kept here rather than in a step so it is findable —
+  # docs/CONVENTIONS.md § 3, and the same placement engine.yml gives PYTHON_VERSION.
+  #
+  # It is the FLOOR, deliberately: ouroboros-runner/go.mod declares `go 1.24`, and a job that
+  # built with whatever was newest would let a 1.25-only construct land in a module that claims
+  # to compile with 1.24. Bumping the floor is a change to both files.
+  GO_VERSION: "1.24"
+
+  # The linter, pinned to an exact release and installed through the Go module proxy rather than
+  # by piping a script from a branch — `curl | sh` off HEAD is a third party's next commit
+  # running in this repository, which docs/CONVENTIONS.md § 9 rule 4 refuses for actions and
+  # which is no more acceptable for a binary.
+  GOLANGCI_LINT_VERSION: "v2.13.2"
+
+jobs:
+  # The job name is the status check name — `ci/runner`. See ui.yml.
+  #
+  # There is no scaffold gate here, for the reason db.yml has none: this module is scaffolded.
+  # The gate exists so a workflow can be written before its module is, and #243 lands both at
+  # once, so a gate would be a condition that is true on every run.
+  ci:
+    name: ci/runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          # go.mod rather than go.sum, because there is no go.sum: the module has no
+          # dependencies and is meant to keep none (see go.mod). setup-go fails on a
+          # cache-dependency-path that matches nothing, and the build cache is still worth
+          # keying — on the manifest, which is the file that would change if that ever did.
+          cache-dependency-path: ouroboros-runner/go.mod
+
+      # The pin is read from the environment rather than interpolated into the script. An
+      # expression on an `env:` line is an assignment the runner makes before the shell starts;
+      # the same expression inside a `run:` is text spliced into the shell as code — and the
+      # workflow-level `env` above is already in every step's environment, so there is nothing
+      # to splice.
+      - name: Install golangci-lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$GOLANGCI_LINT_VERSION"
+          golangci-lint --version
+
+      # Every step below runs the module's own verb from the module's own directory, the way a
+      # developer does (docs/CONVENTIONS.md § 1, limit 3). A `go` invocation written into this
+      # file would be a second definition of what linting or testing means here, and the one CI
+      # used would be the one nobody could run.
+      #
+      # `install` is this toolchain's `yarn install --immutable`: it resolves and verifies the
+      # module, which on a module with no dependencies asserts that that is still true.
+      - name: Install
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make install
+
+      # Formatting is checked, not applied. Only gofmt catches formatting, and `go vet` passes
+      # happily on unformatted code — the same split engine.yml has between `ruff check` and
+      # `ruff format --check`.
+      - name: Format
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make format
+
+      - name: Lint
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make lint
+
+      - name: Typecheck
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make typecheck
+
+      # With the race detector, which `make test` is what decides. The agent runs an executor, a
+      # heartbeat ticker and a log shipper against one connection, so most bugs it can have are
+      # data races — including in the Outbox and Ledger that resume depends on.
+      - name: Test
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make test
+
+      # The contract's own check, and it is run from the repository root because its subject is
+      # three files in three different places: the document in docs/, the schema and fixtures in
+      # schemas/, and the Go constants in this module. It is what fails when the three stop
+      # describing the same protocol — the drift that is invisible until it is wrong, because a
+      # message type nobody asserts against passes both implementations' suites.
+      - name: Verify the protocol contract
+        shell: bash
+        run: scripts/verify-runner-protocol.sh
+
+      - name: Build
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make build
+
+  # ---------------------------------------------------------------------------
+  # The cross-compile matrix — the three architectures mockup 08's runners table lists, and
+  # therefore the three this agent has to be buildable for.
+  #
+  # Build only. A `linux/arm64` or `darwin/arm64` binary cannot be RUN on a `linux/x86_64`
+  # runner, and the question worth answering on every pull request is the one that can be:
+  # whether the change still compiles for every machine the farm supports. A build-tagged file
+  # for a platform nobody builds is a file that breaks on the release that first needs it —
+  # internal/telemetry has one per platform, which is exactly that risk.
+  #
+  # A separate job rather than `make cross` inside the one above, because a failure should name
+  # the target it failed for. `cross/runner (darwin/arm64)` is a check an operator can read.
+  # ---------------------------------------------------------------------------
+  cross:
+    name: cross/runner (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    needs: ci
+    strategy:
+      # One target failing must not cancel the others: which of the three broke is the
+      # information, and a cancelled sibling reports nothing.
+      fail-fast: false
+      matrix:
+        target:
+          - linux/x86_64
+          - linux/arm64
+          - darwin/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ouroboros-runner/go.mod
+
+      # The module's own verb again, narrowed to one target. `linux/x86_64` is the protocol's
+      # spelling and `linux/amd64` is Go's; the Makefile's TARGETS takes Go's, and this step
+      # translates — once, here, rather than by giving the matrix two names for one machine.
+      - name: Cross-compile ${{ matrix.target }}
+        shell: bash
+        working-directory: ouroboros-runner
+        env:
+          TARGET: ${{ matrix.target }}
+        run: make cross TARGETS="${TARGET/x86_64/amd64}"
+
+  # ---------------------------------------------------------------------------
+  # There is deliberately no `publish/runner` job yet.
+  #
+  # Every other module ships a container image, published by its own workflow behind its own
+  # green `ci/` check (docs/CONVENTIONS.md § 9). This one ships a BINARY, to machines nobody in
+  # this repository administers, and what that needs is a tagged release with a checksum per
+  # architecture and an `install.sh` that verifies it — which is #248's whole subject, alongside
+  # the systemd and launchd units.
+  #
+  # Writing half of it here would mean publishing an artefact with no provenance story, on a
+  # workflow that would then be edited again. The matrix above is the part that belongs to the
+  # scaffold: proof that all three targets still build.
+  # ---------------------------------------------------------------------------

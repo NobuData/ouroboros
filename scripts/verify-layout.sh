@@ -29,9 +29,13 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(dirname -- "$SCRIPT_DIR")
 cd "$ROOT"
 
-# The four application modules created by #8. ouroboros-web is intentionally excluded:
-# it is the marketing site and predates these conventions.
-MODULES="ouroboros-ui ouroboros-rest ouroboros-engine ouroboros-db"
+# The application modules created by #8, plus ouroboros-runner, which joined the layout
+# with the build farm (#243) and answers to the same structural contract: a README with
+# purpose, stack and run instructions, and a row in the root README's module map.
+#
+# ouroboros-web is intentionally excluded: it is the marketing site and predates these
+# conventions.
+MODULES="ouroboros-ui ouroboros-rest ouroboros-engine ouroboros-db ouroboros-runner"
 
 # The assertion harness (pass/fail/check_*/check_summary) is shared with the repo's
 # other verify-* scripts.
@@ -71,5 +75,9 @@ check_contains .editorconfig '^\[\*\.\{?py' '.editorconfig covers Python'
 check_contains .editorconfig '^\[\*\.sql\]' '.editorconfig covers SQL'
 check_contains .editorconfig '^\[\*\.\{?md' '.editorconfig covers Markdown'
 check_contains .editorconfig '^\[\*\.\{?yml' '.editorconfig covers YAML'
+# Go joined the repository with the build farm agent (#243, roadmap decision B1). It is
+# the one language whose formatter is not configurable: gofmt uses tabs, so the section
+# exists to stop an editor's space default fighting it on every save.
+check_contains .editorconfig '^\[\*\.go\]' '.editorconfig covers Go'
 
 check_summary

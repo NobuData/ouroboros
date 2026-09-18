@@ -1,0 +1,16 @@
+{
+  "about": [
+    "The version floor. The agent says what it speaks, the gateway is configured to",
+    "accept nothing that old, and the answer is a `refuse` with the minimum named -- then",
+    "the socket closes.",
+    "",
+    "This binary runs on customer machines and cannot be force-upgraded, so the refusal",
+    "has to say what would be accepted. An agent that is told only `no` has nothing to",
+    "report to the person who has to act on it."
+  ],
+  "frames": [
+    { "from": "agent", "message": "valid/hello.json" },
+    { "from": "server", "message": "valid/refuse.json" },
+    { "event": "disconnect" }
+  ]
+}

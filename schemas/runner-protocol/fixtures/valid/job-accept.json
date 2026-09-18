@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "type": "job.accept",
+  "id": "01KE7VSZ3DCZE1D6KY7QMWEN5T",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "offer": "01KE76GYFT5404Q2FA41RMP9PE"
+  }
+}

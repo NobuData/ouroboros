@@ -1,0 +1,401 @@
+{
+  "about": [
+    "The parity contract for the runner protocol (#243): one case per rule, and the",
+    "verdict every implementation of this wire format has to produce for it.",
+    "",
+    "The agent is Go (AG.2, #244) and the gateway is TypeScript (AH.3, #251); the fake",
+    "agent that drives the gateway's suite is TypeScript too (AH.7, #255). All three read",
+    "this directory directly. That is what makes them agree without any of them importing",
+    "another: a rule added to one and forgotten in the next is a failure in the half that",
+    "was forgotten, on the pull request that forgot it.",
+    "",
+    "A diagnostic is recorded as its `code` and the RFC 6901 `path` it is anchored at. Its",
+    "message is not: each implementation renders its own prose, and a contract over English",
+    "sentences is one nobody can translate. Diagnostics are in document order -- by path,",
+    "with numeric path segments compared as numbers, then by code.",
+    "",
+    "An envelope error ends the walk. A frame whose envelope does not decode has no",
+    "payload to check, so every envelope case below carries exactly one diagnostic --",
+    "reporting a second would mean guessing which message type the payload was meant to",
+    "be.",
+    "",
+    "The 32768-byte chunk cap is NOT a fixture. It is published as a number in",
+    "`../v1.json` under `$defs/limits`, and each implementation constructs the boundary",
+    "case from it in a unit test -- which is the same assertion without 88KB of base64 in",
+    "git.",
+    "",
+    "Regenerating this file is not how it is maintained. It is reviewed and frozen; a",
+    "change to it is a change to the contract, and every suite has to be green on the new",
+    "one."
+  ],
+
+  "cases": [
+    {
+      "name": "hello",
+      "about": "The first message. Identity is the TLS client certificate (#250), so no token travels here.",
+      "document": "valid/hello.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "hello-resume",
+      "about": "The same message after a drop, naming the session it wants back.",
+      "document": "valid/hello-resume.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "ack",
+      "about": "The session, the negotiated protocol, and every limit the agent must not hard-code.",
+      "document": "valid/ack.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "ack-resumed",
+      "about": "The same answer when the session survived the drop.",
+      "document": "valid/ack-resumed.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "refuse",
+      "about": "The version floor, with the minimum named so the refusal is actionable.",
+      "document": "valid/refuse.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "heartbeat",
+      "about": "Idle presence: no job, and `job` is null rather than absent.",
+      "document": "valid/heartbeat.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "heartbeat-busy",
+      "about": "The same message with a job in it -- the row the farm table renders.",
+      "document": "valid/heartbeat-busy.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-offer",
+      "about": "A container job: the executor that requires an image.",
+      "document": "valid/job-offer.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-offer-shell",
+      "about": "A shell job: the executor that forbids one, on the darwin/arm64 pool.",
+      "document": "valid/job-offer-shell.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-accept",
+      "about": "Taken -- naming the offer envelope, so a re-offer cannot be answered twice.",
+      "document": "valid/job-accept.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-decline",
+      "about": "Refused, with a reason the dispatcher can act on rather than a silence it must time out.",
+      "document": "valid/job-decline.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-start",
+      "about": "Running, with the attempt number that makes a retry distinguishable from a re-send.",
+      "document": "valid/job-start.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-progress",
+      "about": "Advisory only: a job that sends none is not a job that has stopped.",
+      "document": "valid/job-progress.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-finish",
+      "about": "The terminal message. Its envelope id IS its idempotency id.",
+      "document": "valid/job-finish.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-finish-failed",
+      "about": "The same message for a failure: an exit code, an error, and no ccache statistics.",
+      "document": "valid/job-finish-failed.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "log-chunk",
+      "about": "Output, base64 because build logs are bytes and JSON strings are text.",
+      "document": "valid/log-chunk.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "receipt",
+      "about": "The acknowledgement that lets the agent stop re-sending.",
+      "document": "valid/receipt.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "receipt-duplicate",
+      "about": "The same acknowledgement for a frame already recorded -- how an agent learns its re-send was deduplicated rather than lost.",
+      "document": "valid/receipt-duplicate.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "drain",
+      "about": "Withdrawn from dispatch, with the deadline the operator is promising.",
+      "document": "valid/drain.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "undrain",
+      "about": "Back in rotation. An empty payload is an object, never an absence.",
+      "document": "valid/undrain.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "bye",
+      "about": "The orderly close -- what a SIGTERM becomes.",
+      "document": "valid/bye.json",
+      "valid": true,
+      "diagnostics": []
+    },
+
+    {
+      "name": "envelope-not-object",
+      "about": "A frame that is not an object at all.",
+      "document": "invalid/envelope-not-object.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.malformed", "path": "" }]
+    },
+    {
+      "name": "envelope-version-missing",
+      "about": "The version is present from message one, which is the one thing that cannot be retrofitted.",
+      "document": "invalid/envelope-version-missing.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.field.missing", "path": "/v" }]
+    },
+    {
+      "name": "envelope-version-type",
+      "about": "`v` is an integer. A string that looks like one is not one.",
+      "document": "invalid/envelope-version-type.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.field.type", "path": "/v" }]
+    },
+    {
+      "name": "envelope-version-unsupported",
+      "about": "A line this implementation does not speak. Rejected as a version, not as a bad field.",
+      "document": "invalid/envelope-version-unsupported.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.version.unsupported", "path": "/v" }]
+    },
+    {
+      "name": "envelope-type-missing",
+      "about": "No type, so there is no payload contract to apply.",
+      "document": "invalid/envelope-type-missing.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.field.missing", "path": "/type" }]
+    },
+    {
+      "name": "envelope-type-unknown",
+      "about": "A type outside the enum. The walk stops rather than guessing what was meant.",
+      "document": "invalid/envelope-type-unknown.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.type.unknown", "path": "/type" }]
+    },
+    {
+      "name": "envelope-id-missing",
+      "about": "Without an id a terminal frame cannot be deduplicated, so every frame carries one.",
+      "document": "invalid/envelope-id-missing.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.field.missing", "path": "/id" }]
+    },
+    {
+      "name": "envelope-id-malformed",
+      "about": "An id that is not a ULID. The shape is fixed so ids sort by the time they were minted.",
+      "document": "invalid/envelope-id-malformed.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.id.malformed", "path": "/id" }]
+    },
+    {
+      "name": "envelope-payload-missing",
+      "about": "A payload is always present, even when it is empty.",
+      "document": "invalid/envelope-payload-missing.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.field.missing", "path": "/payload" }]
+    },
+    {
+      "name": "envelope-payload-type",
+      "about": "The payload is an object. An array is not an object.",
+      "document": "invalid/envelope-payload-type.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.field.type", "path": "/payload" }]
+    },
+    {
+      "name": "envelope-field-unknown",
+      "about": "The envelope is frozen across every version, so a fifth key is an error rather than an extension point.",
+      "document": "invalid/envelope-field-unknown.json",
+      "valid": false,
+      "diagnostics": [{ "code": "envelope.field.unknown", "path": "/sent_at" }]
+    },
+    {
+      "name": "hello-arch-enum",
+      "about": "An architecture outside the three the fleet builds for.",
+      "document": "invalid/hello-arch-enum.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/arch" }]
+    },
+    {
+      "name": "hello-protocol-range",
+      "about": "There is no protocol 0. The advertised range starts at 1.",
+      "document": "invalid/hello-protocol-range.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/agent/protocol_min" }]
+    },
+    {
+      "name": "hello-hostname-missing",
+      "about": "An agent with no hostname is a row nobody can identify in the runners table.",
+      "document": "invalid/hello-hostname-missing.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.missing", "path": "/payload/hostname" }]
+    },
+    {
+      "name": "hello-field-unknown",
+      "about": "An enrollment token does NOT travel in `hello` (#250). A frame that carries one is refused, which is what keeps a bearer secret out of every session log.",
+      "document": "invalid/hello-field-unknown.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.unknown", "path": "/payload/token" }]
+    },
+    {
+      "name": "heartbeat-cpu-range",
+      "about": "A percentage above 100.",
+      "document": "invalid/heartbeat-cpu-range.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/cpu_pct" }]
+    },
+    {
+      "name": "heartbeat-state-enum",
+      "about": "A state the control plane has no column for.",
+      "document": "invalid/heartbeat-state-enum.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/state" }]
+    },
+    {
+      "name": "job-offer-image-conflict",
+      "about": "An image on a shell job. Not merely ignored -- refused, because a dispatcher that sent one meant a container.",
+      "document": "invalid/job-offer-image-conflict.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.conflict", "path": "/payload/image" }]
+    },
+    {
+      "name": "job-offer-image-missing",
+      "about": "A container job with nothing to run in.",
+      "document": "invalid/job-offer-image-missing.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.missing", "path": "/payload/image" }]
+    },
+    {
+      "name": "job-offer-command-type",
+      "about": "The command is an argv array, never a shell string -- there is no shell to split it.",
+      "document": "invalid/job-offer-command-type.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.type", "path": "/payload/command" }]
+    },
+    {
+      "name": "job-finish-exit-missing",
+      "about": "An outcome that ran has an exit code.",
+      "document": "invalid/job-finish-exit-missing.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.missing", "path": "/payload/exit_code" }]
+    },
+    {
+      "name": "job-finish-outcome-enum",
+      "about": "An outcome outside the five the control plane records.",
+      "document": "invalid/job-finish-outcome-enum.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/outcome" }]
+    },
+    {
+      "name": "job-finish-exit-null",
+      "about": "`succeeded` with a null exit code. Not a missing field -- the key is there, and it says the command never ran, which the outcome contradicts.",
+      "document": "invalid/job-finish-exit-null.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.conflict", "path": "/payload/exit_code" }]
+    },
+    {
+      "name": "log-chunk-data-not-base64",
+      "about": "A `data` that is not base64. Reported as a type error rather than a range one: it is not a chunk of the wrong size, it is not a chunk.",
+      "document": "invalid/log-chunk-data-not-base64.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.type", "path": "/payload/data" }]
+    },
+    {
+      "name": "log-chunk-seq-range",
+      "about": "Sequence numbers are 0-based and contiguous, which is what makes ordering checkable.",
+      "document": "invalid/log-chunk-seq-range.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/seq" }]
+    },
+    {
+      "name": "log-chunk-encoding-enum",
+      "about": "base64 is the only encoding. A build log is bytes, and not every byte sequence is text.",
+      "document": "invalid/log-chunk-encoding-enum.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/encoding" }]
+    },
+    {
+      "name": "two-mistakes",
+      "about": "Ordering, and it is not code order: `payload.field.range` at /payload/cpu_pct comes before `payload.field.enum` at /payload/state, because diagnostics sort by path first.",
+      "document": "invalid/two-mistakes.json",
+      "valid": false,
+      "diagnostics": [
+        { "code": "payload.field.range", "path": "/payload/cpu_pct" },
+        { "code": "payload.field.enum", "path": "/payload/state" }
+      ]
+    }
+  ],
+
+  "transcripts": [
+    {
+      "name": "enroll",
+      "about": "The enrollment card's sentence, frame by frame.",
+      "document": "sessions/enroll.json",
+      "duplicate_terminals": 0
+    },
+    {
+      "name": "resume",
+      "about": "A terminal frame re-sent after a drop. Exactly one duplicate, and exactly one finished job.",
+      "document": "sessions/resume.json",
+      "duplicate_terminals": 1
+    },
+    {
+      "name": "refuse",
+      "about": "The version floor, refused and closed.",
+      "document": "sessions/refuse.json",
+      "duplicate_terminals": 0
+    },
+    {
+      "name": "drain",
+      "about": "Drained, declining, undrained, closed.",
+      "document": "sessions/drain.json",
+      "duplicate_terminals": 0
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "type": "job.abandon",
+  "id": "01KE75YH3BXJEYV4F3EKH1QME1",
+  "payload": {
+    "sent_at": "2026-09-18T12:00:00.000Z",
+    "state": "idle",
+    "uptime_s": 86400,
+    "cpu_pct": 4.5,
+    "memory_used_mb": 1280,
+    "memory_total_mb": 16384,
+    "queue_depth": 0,
+    "job": null
+  }
+}

@@ -37,7 +37,8 @@ make_fixture() {
   mkdir -p "$fixture/.github/workflows" \
     "$fixture/.github/actions/node-module" \
     "$fixture/.github/actions/scaffold-gate" \
-    "$fixture/docs"
+    "$fixture/docs" \
+    "$fixture/scripts"
 
   # The two TypeScript modules run the same shared pipeline over different directories.
   #
@@ -69,7 +70,8 @@ make_fixture() {
       - "ouroboros-db/migrations/**"
       - "ouroboros-db/flyway.toml"
       - "ouroboros-db/run.sh"
-      - "schemas/**"
+      - "schemas/workflow-dsl/**"
+      - "schemas/plan/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"'
@@ -172,14 +174,16 @@ on:
     branches: [main]
     paths:
       - "ouroboros-engine/**"
-      - "schemas/**"
+      - "schemas/workflow-dsl/**"
+      - "schemas/plan/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/engine.yml"
   push:
     branches: [main]
     paths:
       - "ouroboros-engine/**"
-      - "schemas/**"
+      - "schemas/workflow-dsl/**"
+      - "schemas/plan/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/engine.yml"
   workflow_dispatch:
@@ -446,6 +450,163 @@ YAML
   mkdir -p "$fixture/ouroboros-db"
   printf 'FROM flyway/flyway:13-alpine\n' > "$fixture/ouroboros-db/Dockerfile"
 
+  # The Go agent's workflow (#243). It is the one module without a publish job — its
+  # artefact is a binary for somebody else's machine — and its second job is the
+  # cross-compile matrix instead. It is also ungated, like ci/db: the module was scaffolded
+  # by the pull request that added this workflow.
+  cat > "$fixture/.github/workflows/runner.yml" <<'YAML'
+name: ouroboros-runner · ci
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ouroboros-runner/**"
+      - "schemas/runner-protocol/**"
+      - "docs/RUNNER_PROTOCOL.md"
+      - "scripts/verify-runner-protocol.sh"
+      - ".github/workflows/runner.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ouroboros-runner/**"
+      - "schemas/runner-protocol/**"
+      - "docs/RUNNER_PROTOCOL.md"
+      - "scripts/verify-runner-protocol.sh"
+      - ".github/workflows/runner.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-runner-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.24"
+  GOLANGCI_LINT_VERSION: "v2.13.2"
+
+jobs:
+  ci:
+    name: ci/runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ouroboros-runner/go.mod
+
+      - name: Install golangci-lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$GOLANGCI_LINT_VERSION"
+
+      - name: Install
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make install
+
+      - name: Format
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make format
+
+      - name: Lint
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make lint
+
+      - name: Typecheck
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make typecheck
+
+      - name: Test
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make test
+
+      - name: Verify the protocol contract
+        shell: bash
+        run: scripts/verify-runner-protocol.sh
+
+      - name: Build
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make build
+
+  cross:
+    name: cross/runner (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    needs: ci
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - linux/x86_64
+          - linux/arm64
+          - darwin/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ouroboros-runner/go.mod
+
+      - name: Cross-compile
+        shell: bash
+        working-directory: ouroboros-runner
+        env:
+          TARGET: ${{ matrix.target }}
+        run: make cross TARGETS="${TARGET/x86_64/amd64}"
+YAML
+
+  # What that workflow's steps are cross-checked against: the module's manifest, the verbs
+  # CI calls, and the README that names the three targets. No Dockerfile — this is the one
+  # module that ships a binary rather than an image, which is the whole reason it has no
+  # publish job for the checks to look for.
+  mkdir -p "$fixture/ouroboros-runner"
+  printf 'module github.com/NobuData/ouroboros/ouroboros-runner\n\ngo 1.24\n' \
+    > "$fixture/ouroboros-runner/go.mod"
+  cat > "$fixture/ouroboros-runner/Makefile" <<'MAKE'
+install:
+	go mod download
+
+format:
+	gofmt -l .
+
+lint:
+	golangci-lint run ./...
+
+typecheck:
+	go vet ./...
+
+test:
+	go test -race ./...
+
+build:
+	go build ./cmd/ouroboros-runner
+
+cross:
+	echo cross
+MAKE
+  cat > "$fixture/ouroboros-runner/README.md" <<'DOC'
+# ouroboros-runner
+
+Targets: linux/x86_64, linux/arm64, darwin/arm64.
+DOC
+
+  # The contract's own check has to exist and be executable, because ci/runner runs it.
+  printf '#!/bin/sh\nexit 0\n' > "$fixture/scripts/verify-runner-protocol.sh"
+  chmod +x "$fixture/scripts/verify-runner-protocol.sh"
+
   # The development stack, present because ci/db's whole purpose is to migrate the
   # PostgreSQL it pins — so the pin is cross-checked against this file rather than
   # written down twice and trusted.
@@ -592,13 +753,15 @@ YAML
   cat > "$fixture/docs/CONVENTIONS.md" <<'DOC'
 # Fixture conventions
 
-TypeScript modules run on Node 24; the engine runs on Python 3.12.
+TypeScript modules run on Node 24; the engine runs on Python 3.12; the agent is built with
+Go 1.24.
 
 ```
 ouroboros-ui/**     ─▶ ci/ui
 ouroboros-rest/**   ─▶ ci/rest
 ouroboros-engine/** ─▶ ci/engine
 ouroboros-db/**     ─▶ ci/db
+ouroboros-runner/** ─▶ ci/runner
 ```
 DOC
 
@@ -659,7 +822,7 @@ check_matches "$out" 'CI workflows' 'the report names what it checked'
 
 printf '\nMissing workflows\n'
 
-for module in ui rest engine db; do
+for module in ui rest engine db runner; do
   check_break "a missing $module workflow is reported" \
     "workflows/$module\.yml exists" \
     "rm \"\$root/.github/workflows/$module.yml\""
@@ -747,13 +910,46 @@ check_break 'a rest workflow that stops watching the image pins is reported' \
 # module owns it. A half that stops watching it is a half whose validator can drift from the
 # contract — and from the other validator — with no check saying so, which is the one failure
 # mode the shared-fixture design exists to prevent.
+# The glob is `schemas/workflow-dsl/**` rather than `schemas/**` since #243 put a third
+# contract in that directory that neither of these modules reads — so dropping it is now
+# dropping a named contract rather than a wildcard.
 check_break 'a rest workflow that stops watching the shared schemas is reported' \
   'schemas/workflow-dsl/v1\.json runs db\.yml engine\.yml rest\.yml' \
-  'sed -i "/^      - \"schemas\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
+  'sed -i "/^      - \"schemas\/workflow-dsl\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
 
 check_break 'an engine workflow that stops watching the shared schemas is reported' \
   'schemas/workflow-dsl/v1\.json runs db\.yml engine\.yml rest\.yml' \
-  'sed -i "/^      - \"schemas\/\*\*\"$/d" "$root/.github/workflows/engine.yml"'
+  'sed -i "/^      - \"schemas\/workflow-dsl\/\*\*\"$/d" "$root/.github/workflows/engine.yml"'
+
+# …and the plan contract is the other one they are both readers of (#277). It was reached
+# by the wildcard before and is named now, so it needs a case of its own: a filter that
+# names one contract and forgets the other is exactly the mistake the narrowing invites.
+check_break 'a rest workflow that stops watching the plan contract is reported' \
+  'schemas/plan/v0\.json runs engine\.yml rest\.yml' \
+  'sed -i "/^      - \"schemas\/plan\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
+
+check_break 'an engine workflow that stops watching the plan contract is reported' \
+  'schemas/plan/v0\.json runs engine\.yml rest\.yml' \
+  'sed -i "/^      - \"schemas\/plan\/\*\*\"$/d" "$root/.github/workflows/engine.yml"'
+
+# The runner protocol is the third, and the one whose readers are *only* ci/runner today.
+# A wildcard restored on either workflow above would queue a suite for a contract that
+# module cannot be affected by, which is the failure the narrowing fixed.
+check_break 'a rest workflow that watches every contract wholesale is reported' \
+  'schemas/runner-protocol/v1\.json runs runner\.yml' \
+  'sed -i "s|^      - \"schemas/plan/\*\*\"$|      - \"schemas/**\"|" "$root/.github/workflows/rest.yml"'
+
+check_break 'a runner workflow that stops watching the protocol contract is reported' \
+  'schemas/runner-protocol/v1\.json runs runner\.yml' \
+  'sed -i "/^      - \"schemas\/runner-protocol\/\*\*\"$/d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a runner workflow that stops watching the protocol document is reported' \
+  'docs/RUNNER_PROTOCOL\.md runs runner\.yml' \
+  'sed -i "/^      - \"docs\/RUNNER_PROTOCOL\.md\"$/d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a runner workflow that stops watching the contract checker is reported' \
+  'scripts/verify-runner-protocol\.sh runs runner\.yml' \
+  'sed -i "/^      - \"scripts\/verify-runner-protocol\.sh\"$/d" "$root/.github/workflows/runner.yml"'
 
 # #137: ci/db validates every seeded workflow definition against that schema, so a db
 # workflow blind to it merges the one schema change that leaves the seeds behind without the
@@ -798,6 +994,32 @@ check_break 'a pin the conventions do not document is reported' \
   'documents the Python pin' \
   'sed -i "s|Python 3.12|Python 3.13|" "$root/docs/CONVENTIONS.md"'
 
+# The Go pin has to move in two files at once, and that is the point of asserting both: it
+# is a FLOOR. A workflow built with something newer than go.mod declares would let a
+# construct from a later language version land in a module that claims to compile with 1.24,
+# and the failure would be somebody else's `go build` on a machine we cannot see.
+check_break 'a Go version other than the declared floor is reported' \
+  'pins Go 1\.24' \
+  'sed -i "s|GO_VERSION: \"1.24\"|GO_VERSION: \"1.25\"|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a module whose go.mod has drifted from the pin is reported' \
+  'declares the same floor' \
+  'sed -i "s|^go 1.24$|go 1.25|" "$root/ouroboros-runner/go.mod"'
+
+check_break 'a linter pinned to a moving target is reported' \
+  'pins golangci-lint to a release' \
+  'sed -i "s|GOLANGCI_LINT_VERSION: \"v2.13.2\"|GOLANGCI_LINT_VERSION: \"latest\"|" "$root/.github/workflows/runner.yml"'
+
+# A download piped into a shell is a third party's next commit running in this repository —
+# the same objection docs/CONVENTIONS.md § 9 rule 4 makes to an action pinned to a branch.
+check_break 'installing a tool by piping a download into a shell is reported' \
+  'installs nothing by piping a download into a shell' \
+  'sed -i "s|          go install .*|          curl -sSfL https://example.invalid/install.sh \| sh|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a Go pin the conventions do not document is reported' \
+  'documents the Go pin' \
+  'sed -i "s|Go 1.24|Go 1.23|" "$root/docs/CONVENTIONS.md"'
+
 # ---------------------------------------------------------------------------
 # Scaffold gating
 # ---------------------------------------------------------------------------
@@ -831,6 +1053,12 @@ check_break 'gating the database, whose migrations already exist, is reported' \
   'db\.yml is not gated' \
   'sed -i "s|      - name: Migration|      - uses: ./.github/actions/scaffold-gate\n      - name: Migration|" "$root/.github/workflows/db.yml"'
 
+# …and the same for the agent, for a sharper version of the reason: a gate whose condition
+# is true on every run is one nobody would notice becoming always false.
+check_break 'gating the agent, whose module already exists, is reported' \
+  'runner\.yml is not gated' \
+  'sed -i "s|      - name: Install$|      - uses: ./.github/actions/scaffold-gate\n      - name: Install|" "$root/.github/workflows/runner.yml"'
+
 # ---------------------------------------------------------------------------
 # Module pipelines
 # ---------------------------------------------------------------------------
@@ -860,6 +1088,80 @@ check_break 'an engine install that may refresh the lockfile is reported' \
 check_break 'a database workflow that asserts nothing is reported' \
   'asserts the migration and data-tier contract' \
   'sed -i "s|run: scripts/verify-dev-env.sh|run: true|" "$root/.github/workflows/db.yml"'
+
+# The Go module's verbs, one case per verb, because the whole bargain of the Makefile is
+# that CI calls the same thing a developer does. A `go test -race` written into the workflow
+# instead would be a second definition of what testing this module means, and the one CI
+# used would be the one nobody could run.
+for runner_verb in install format lint typecheck test build; do
+  check_break "a runner pipeline that skips make $runner_verb is reported" \
+    "runs make $runner_verb" \
+    "sed -i \"s|run: make $runner_verb\$|run: true|\" \"\$root/.github/workflows/runner.yml\""
+done
+
+check_break 'a runner pipeline that runs go directly is reported' \
+  'runs them from the module directory' \
+  'sed -i "/working-directory: ouroboros-runner/d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a make test without the race detector is reported' \
+  'carries the race detector' \
+  'sed -i "s|go test -race ./...|go test ./...|" "$root/ouroboros-runner/Makefile"'
+
+# The contract's own check. Without it the document, the schema and the fixtures can stop
+# describing the same protocol with every suite on both sides still green — which is the one
+# failure the whole three-file arrangement exists to prevent.
+check_break 'a runner pipeline that never verifies the protocol contract is reported' \
+  'verifies the protocol contract' \
+  'sed -i "s|run: scripts/verify-runner-protocol.sh|run: true|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a protocol checker nobody can execute is reported' \
+  'verify-runner-protocol\.sh is executable' \
+  'chmod -x "$root/scripts/verify-runner-protocol.sh"'
+
+# ---------------------------------------------------------------------------
+# The runner's cross-compile matrix (#243)
+# ---------------------------------------------------------------------------
+
+# The agent is the one module whose artefact is a binary, so its second job builds rather
+# than publishes. Each case removes one part of that and asserts the run says which — a
+# matrix that quietly stops covering a target is a target that breaks on the release which
+# first needs it, and internal/telemetry has a build-tagged file per platform.
+
+printf '\nCross-compile matrix violations\n'
+
+check_break 'a runner workflow with no cross-compile job is reported' \
+  'carries a cross-compile job' \
+  'sed -i "/^  cross:$/,\$d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a matrix job whose checks are not named for their target is reported' \
+  'reports as a check named for it' \
+  'sed -i "s|    name: cross/runner (\${{ matrix.target }})|    name: cross/runner|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a cross build that does not wait for ci/runner is reported' \
+  'until ci/runner has passed' \
+  'sed -i "/^    needs: ci$/d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a matrix that cancels its siblings is reported' \
+  'does not cancel its siblings' \
+  'sed -i "s|      fail-fast: false|      fail-fast: true|" "$root/.github/workflows/runner.yml"'
+
+for runner_target in linux/x86_64 linux/arm64 darwin/arm64; do
+  check_break "a matrix that stops building $runner_target is reported" \
+    "builds $runner_target" \
+    "sed -i \"s|          - $runner_target\$||\" \"\$root/.github/workflows/runner.yml\""
+done
+
+check_break 'a target the module README does not name is reported' \
+  'README\.md names darwin/arm64' \
+  'sed -i "s|darwin/arm64||" "$root/ouroboros-runner/README.md"'
+
+check_break 'a cross build that bypasses the module Makefile is reported' \
+  'cross-compiles through the module Makefile' \
+  'sed -i "s|run: make cross TARGETS=.*|run: go build ./...|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a Makefile with no cross verb is reported' \
+  'defines that verb' \
+  'sed -i "/^cross:$/,+1d" "$root/ouroboros-runner/Makefile"'
 
 # ---------------------------------------------------------------------------
 # The database's live pass (#24)

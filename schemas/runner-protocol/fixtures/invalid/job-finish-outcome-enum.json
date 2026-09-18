@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "type": "job.finish",
+  "id": "01KE7PDZMQDPKXES55PN5RZM7Q",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "attempt": 1,
+    "outcome": "aborted",
+    "exit_code": 0,
+    "started_at": "2026-09-18T12:00:02.140Z",
+    "finished_at": "2026-09-18T12:04:51.902Z",
+    "log": {
+      "bytes": 184320,
+      "chunks": 6,
+      "dropped_bytes": 0
+    },
+    "ccache": {
+      "hits": 812,
+      "misses": 140,
+      "hit_rate_pct": 85.3,
+      "size_mb": 1024,
+      "max_size_mb": 4096
+    },
+    "error": null
+  }
+}
