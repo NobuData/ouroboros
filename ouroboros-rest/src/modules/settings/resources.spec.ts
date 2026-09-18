@@ -17,6 +17,7 @@ describe("the auto-merge resource", () => {
       organization_id: WORKSPACE,
       auto_merge_on_checks: true,
       is_explicit: true,
+      runner_bearer_fallback: false,
       updated_at: STAMP,
       updated_by: ADMINISTRATOR,
     };
@@ -35,6 +36,7 @@ describe("the auto-merge resource", () => {
       organization_id: WORKSPACE,
       auto_merge_on_checks: false,
       is_explicit: false,
+      runner_bearer_fallback: false,
       updated_at: null,
       updated_by: null,
     };
@@ -56,6 +58,7 @@ describe("the auto-merge resource", () => {
     const row: WorkspaceSettings = {
       organization_id: WORKSPACE,
       auto_merge_on_checks: true,
+      runner_bearer_fallback: false,
       updated_by: ADMINISTRATOR,
       created_at: new Date("2026-08-11T10:20:23.114Z"),
       updated_at: STAMP,
@@ -65,6 +68,7 @@ describe("the auto-merge resource", () => {
       organization_id: WORKSPACE,
       auto_merge_on_checks: true,
       is_explicit: true,
+      runner_bearer_fallback: false,
       updated_at: STAMP,
       updated_by: ADMINISTRATOR,
     };
@@ -78,6 +82,7 @@ describe("the auto-merge resource", () => {
     const row: WorkspaceSettings = {
       organization_id: WORKSPACE,
       auto_merge_on_checks: true,
+      runner_bearer_fallback: false,
       updated_by: null,
       created_at: new Date("2026-08-11T10:20:23.114Z"),
       updated_at: STAMP,

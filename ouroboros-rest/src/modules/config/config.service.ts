@@ -179,6 +179,19 @@ export class AppConfigService {
   }
 
   /**
+   * The header a trusted proxy forwards a runner's client certificate in —
+   * `OURO_FARM_CLIENT_CERT_HEADER`.
+   *
+   * `undefined` when unset, which is the default: `src/modules/farm/` then reads the
+   * certificate from the TLS socket and from nowhere else. See
+   * `Configuration.farmClientCertHeader` on why trusting a header is an assertion only an
+   * operator is in a position to make.
+   */
+  get farmClientCertHeader(): string | undefined {
+    return this.config.get<string>("farmClientCertHeader");
+  }
+
+  /**
    * Seconds between backlog sync cycles — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`.
    *
    * The nominal interval. `src/modules/backlog-sync/` jitters every delay by ±25% around it,

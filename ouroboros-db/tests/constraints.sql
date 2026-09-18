@@ -12158,21 +12158,26 @@ insert into ouroboros.runner_pools (id, organization_id, name, executor, image, 
   ('7f000001-0000-4000-8000-000000000002', 'org-farm',  'pool-b', 'shell',     null,       '["hil"]'),
   ('7f000001-0000-4000-8000-000000000003', 'org-farm2', 'pool-a', 'shell',     null,       '[]');
 
+-- `bearer_sealed` joins the fixture with V041 (#250): the fallback mode carries its own
+-- evidence exactly as mTLS carries a serial, so `anvil-mac` holds an envelope and every mTLS
+-- runner holds none.
 insert into ouroboros.runners
   (id, organization_id, pool_id, name, arch, status, desired_state, last_seen_at,
-   security_mode, cert_serial, telemetry, enrolled_at) values
+   security_mode, cert_serial, bearer_sealed, telemetry, enrolled_at) values
   ('7f000002-0000-4000-8000-000000000001', 'org-farm',  '7f000001-0000-4000-8000-000000000001',
    'forge-01', 'linux/arm64', 'building', 'active',   now() - interval '4 seconds',
-   'mtls', '4a:11:00:01', '{"cpu_pct": 82, "queue_depth": 2}', now() - interval '30 days'),
+   'mtls', '4a110001', null, '{"cpu_pct": 82, "queue_depth": 2}', now() - interval '30 days'),
   ('7f000002-0000-4000-8000-000000000002', 'org-farm',  '7f000001-0000-4000-8000-000000000002',
    'anvil-mac', 'darwin/arm64', 'online', 'active',   now() - interval '6 seconds',
-   'bearer_fallback', null, '{}', now() - interval '30 days'),
+   'bearer_fallback', null,
+   'ouro.v1.1.ZmFybS1jb25zdHJhaW50cy1ub25jZQ.ZGV2LXZhbHVlLW5vdC1hLXJlYWwtYmVhcmVyLXNlY3JldA',
+   '{}', now() - interval '30 days'),
   ('7f000002-0000-4000-8000-000000000003', 'org-farm',  '7f000001-0000-4000-8000-000000000001',
    'forge-00', 'linux/arm64', 'removed',  'removed',  now() - interval '6 days',
-   'mtls', '4a:11:00:03', '{}', now() - interval '90 days'),
+   'mtls', '4a110003', null, '{}', now() - interval '90 days'),
   ('7f000002-0000-4000-8000-000000000004', 'org-farm2', '7f000001-0000-4000-8000-000000000003',
    'forge-01', 'linux/x86_64', 'online',  'active',   now() - interval '9 seconds',
-   'mtls', '4a:11:00:04', '{}', now() - interval '30 days');
+   'mtls', '4a110004', null, '{}', now() - interval '30 days');
 
 insert into ouroboros.runs
   (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model,
@@ -12221,9 +12226,15 @@ select pg_temp.must_reject(
      where id = '7f000002-0000-4000-8000-000000000002'$$,
   'runners.arch is one of the three architectures AG.6 builds for', 'runners_arch');
 
+-- An insert rather than an update, since V041 (#250). Both security modes now carry their own
+-- evidence — `mtls` a serial, `bearer_fallback` a sealed secret — so *changing* an existing
+-- runner's mode to a third word breaks one of those pairings before it reaches the vocabulary,
+-- and the assertion would be naming whichever constraint happened to be checked first. A fresh
+-- row carrying neither piece of evidence satisfies both pairings and leaves exactly one rule
+-- with something to say.
 select pg_temp.must_reject(
-  $$update ouroboros.runners set security_mode = 'none'
-     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  $$insert into ouroboros.runners (organization_id, pool_id, name, arch, security_mode)
+    values ('org-farm', '7f000001-0000-4000-8000-000000000001', 'modeless', 'linux/arm64', 'none')$$,
   'runners.security_mode is mtls or bearer_fallback (B3)', 'runners_security_mode');
 
 select pg_temp.must_reject(
@@ -12289,7 +12300,7 @@ select pg_temp.must_hold(
   'security_mode records bearer_fallback, so AI.2 can surface a degraded connection');
 
 select pg_temp.must_reject(
-  $$update ouroboros.runners set cert_serial = '4a:11:00:99'
+  $$update ouroboros.runners set cert_serial = '4a110099'
      where id = '7f000002-0000-4000-8000-000000000002'$$,
   'a bearer_fallback runner carries no certificate serial', 'runners_cert_serial_with_mtls');
 
@@ -12706,6 +12717,169 @@ select pg_temp.must_not_plan(
   'Sort',
   'the stat row''s window comes back already ordered');
 
+-- ===========================================================================
+-- V041 — the farm CA, the certificates it issues, and the bearer fallback (#250)
+-- ===========================================================================
+--
+-- AH.2's acceptance criteria that are the schema's to keep rather than a service's:
+-- **the CA key is an envelope and can be nothing else**, **a runner has at most one live
+-- certificate**, and **the fallback mode carries its own secret exactly as mTLS carries its
+-- serial**. Everything else in that issue — token TTLs, pool scoping, revocation refusals at
+-- the handshake — is behaviour, and lives in `ouroboros-rest`'s suites.
+--
+-- The fixtures are the farm workspaces the V040 section already built, so this section runs
+-- before the cascade below takes them away.
+
+insert into ouroboros.farm_authorities
+  (organization_id, certificate_pem, key_sealed, serial, fingerprint, not_before, not_after)
+values
+  ('org-farm',
+   '-----BEGIN CERTIFICATE-----' || chr(10) || 'ZGV2LWNh' || chr(10) || '-----END CERTIFICATE-----',
+   'ouro.v1.1.ZmFybS1jYS1ub25jZQ.ZGV2LXZhbHVlLW5vdC1hLXJlYWwtY2Eta2V5',
+   '0a1b2c3d4e5f6071', repeat('ab', 32), now() - interval '1 day', now() + interval '3650 days');
+
+-- --- the CA key is an envelope, and the CHECK is about every writer ------------
+--
+-- V015's, V027's and V040's rule at the most consequential column in the farm: a plaintext CA
+-- key cannot be put here by a service, by a seed or by hand.
+select pg_temp.must_reject(
+  $$update ouroboros.farm_authorities set key_sealed = '-----BEGIN EC PRIVATE KEY-----'
+     where organization_id = 'org-farm'$$,
+  'a plaintext CA key is a row the schema refuses', 'farm_authorities_key_sealed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.farm_authorities set certificate_pem = 'not a certificate'
+     where organization_id = 'org-farm'$$,
+  'the public half of a CA is a certificate, so a key pasted into it fails the write',
+  'farm_authorities_certificate_pem');
+
+select pg_temp.must_reject(
+  $$update ouroboros.farm_authorities set not_after = not_before - interval '1 day'
+     where organization_id = 'org-farm'$$,
+  'a CA''s validity is a positive interval, for V040''s reason about token TTLs',
+  'farm_authorities_window');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.farm_authorities
+      (organization_id, certificate_pem, key_sealed, serial, fingerprint, not_before, not_after)
+    values ('org-farm', '-----BEGIN CERTIFICATE-----x',
+            'ouro.v1.1.YQ.Yg', '0a1b', repeat('cd', 32), now(), now() + interval '1 day')$$,
+  'a workspace has one certificate authority, because a second is a second chain to try',
+  'farm_authorities_pkey');
+
+-- --- a runner has at most one live certificate ---------------------------------
+--
+-- The invariant that makes "revoke this runner" unambiguous. Two live rows would mean revoking
+-- one leaves the other working, which is the exact failure the revocation list exists to stop.
+insert into ouroboros.runner_certificates
+  (id, organization_id, runner_id, serial, fingerprint, issued_for, not_before, not_after)
+values
+  ('7f000042-0000-4000-8000-000000000001', 'org-farm', '7f000002-0000-4000-8000-000000000001',
+   '4a110001', repeat('11', 32), 'enrollment', now() - interval '30 days', now() + interval '60 days');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_certificates
+      (organization_id, runner_id, serial, fingerprint, issued_for, not_before, not_after)
+    values ('org-farm', '7f000002-0000-4000-8000-000000000001', '4a110002', repeat('22', 32),
+            'renewal', now(), now() + interval '90 days')$$,
+  'a renewal that does not retire what it replaces leaves a runner with two identities',
+  'runner_certificates_live_idx');
+
+-- Retiring the first is what makes room, and the pair of writes is one transaction in the
+-- service. Asserted here as two statements because the index does not care when.
+update ouroboros.runner_certificates set superseded_at = now()
+ where id = '7f000042-0000-4000-8000-000000000001';
+
+insert into ouroboros.runner_certificates
+  (id, organization_id, runner_id, serial, fingerprint, issued_for, not_before, not_after)
+values
+  ('7f000042-0000-4000-8000-000000000002', 'org-farm', '7f000002-0000-4000-8000-000000000001',
+   '4a110002', repeat('22', 32), 'renewal', now(), now() + interval '90 days');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.runner_certificates
+    where runner_id = '7f000002-0000-4000-8000-000000000001'),
+  'the superseded certificate keeps its row — the history is what "re-certified nine times" is counted from');
+
+-- A revoked certificate is the other way out of the live index, and the two are not the same
+-- state: superseded is routine, revoked is an incident.
+select pg_temp.must_reject(
+  $$update ouroboros.runner_certificates set revoked = true
+     where id = '7f000042-0000-4000-8000-000000000002'$$,
+  'a revoked certificate records when, because "this leaked" is a question with a time',
+  'runner_certificates_revoked_at');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_certificates set revocation_reason = 'operator'
+     where id = '7f000042-0000-4000-8000-000000000002'$$,
+  'a reason without a revocation is a reason for nothing',
+  'runner_certificates_reason_with_revocation');
+
+update ouroboros.runner_certificates
+   set revoked = true, revoked_at = now(), revocation_reason = 'operator'
+ where id = '7f000042-0000-4000-8000-000000000002';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runner_certificates
+    where runner_id = '7f000002-0000-4000-8000-000000000001'
+      and not revoked and superseded_at is null),
+  'and a runner whose only live certificate was revoked has none — which is what the handshake check reads');
+
+-- --- a serial names one certificate of one workspace ---------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_certificates
+      (organization_id, runner_id, serial, fingerprint, issued_for, not_before, not_after)
+    values ('org-farm', '7f000002-0000-4000-8000-000000000003', '4a110002', repeat('33', 32),
+            'enrollment', now(), now() + interval '90 days')$$,
+  'a serial is unique within a workspace, because that pair is the handshake''s lookup',
+  'runner_certificates_serial_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_certificates
+      (organization_id, runner_id, serial, fingerprint, issued_for, not_before, not_after)
+    values ('org-farm2', '7f000002-0000-4000-8000-000000000001', '4a110005', repeat('44', 32),
+            'enrollment', now(), now() + interval '90 days')$$,
+  'a certificate cannot be issued to another workspace''s runner',
+  'runner_certificates_runner_fk');
+
+-- --- the fallback carries its own evidence, as mTLS carries a serial -----------
+select pg_temp.must_reject(
+  $$update ouroboros.runners set bearer_sealed = null
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'a bearer_fallback runner with no secret could not authenticate at all',
+  'runners_bearer_with_fallback');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners
+       set bearer_sealed = 'ouro.v1.1.YQ.Yg'
+     where id = '7f000002-0000-4000-8000-000000000001'$$,
+  'an mTLS runner holding a bearer secret is a second way in the certificate check never sees',
+  'runners_bearer_with_fallback');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set bearer_sealed = 'plaintext-secret'
+     where id = '7f000002-0000-4000-8000-000000000002'$$,
+  'and the fallback secret is an envelope like every other secret in this schema',
+  'runners_bearer_sealed');
+
+-- --- the fallback is off unless a workspace turned it on -----------------------
+--
+-- The default is the whole of the criterion: a deployment that never considers the question
+-- never has the weaker path. Bound to the view here, as V011 binds auto_merge_on_checks,
+-- because a view cannot spell "whatever that column defaults to".
+select pg_temp.must_hold(
+  (select not runner_bearer_fallback from ouroboros.workspace_settings_effective
+    where organization_id = 'org-farm'),
+  'a workspace that has never answered does not permit certificate-less enrollment');
+
+insert into ouroboros.workspace_settings (organization_id, runner_bearer_fallback)
+values ('org-farm', true);
+
+select pg_temp.must_hold(
+  (select runner_bearer_fallback and auto_merge_on_checks = false
+     from ouroboros.workspace_settings_effective where organization_id = 'org-farm'),
+  'and one setting answered leaves the other at its own default, resolved in the database');
+
 -- --- a repository keeps its builds, and a workspace takes everything with it ----
 --
 -- A build is the record that a commit of a repository was compiled, so removing the
@@ -12732,8 +12906,12 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.enrollment_tokens)
    and (select count(*) = 0 from ouroboros.runner_pool_windows)
    and (select count(*) = 0 from ouroboros.build_jobs)
-   and (select count(*) = 0 from ouroboros.build_log_chunks),
-  'deleting a workspace takes its pools, runners, tokens, windows, jobs and log chunks with it, whatever order the cascade reaches them in');
+   and (select count(*) = 0 from ouroboros.build_log_chunks)
+   -- V041's two, for AD.1's crypto-shredding reason as much as for tidiness: the CA key goes
+   -- with the workspace, and every certificate it ever signed becomes unverifiable.
+   and (select count(*) = 0 from ouroboros.farm_authorities)
+   and (select count(*) = 0 from ouroboros.runner_certificates),
+  'deleting a workspace takes its pools, runners, tokens, windows, jobs, log chunks, certificate authority and every certificate it issued with it, whatever order the cascade reaches them in');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

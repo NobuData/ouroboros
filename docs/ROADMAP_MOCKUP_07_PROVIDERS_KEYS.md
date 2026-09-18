@@ -1290,7 +1290,7 @@ rotate by Ken ─▶ audit_events {provider.rotated, actor, conn, ip, at}  (no s
 > blocked on this document.
 >
 > **Four filed amendments are listed as Planned rather than written up as true** — the
-> build-farm CA (#250, including the reverse proxy that silently breaks mTLS by not passing
+> build-farm CA (#250 — **landed** as `SECURITY_MODEL.md` § 7, including the reverse proxy that silently breaks mTLS by not passing
 > the client certificate through), workspace deletion as crypto-shredding (#489), deployment
 > truth in Settings (#483), and analyzer tenant locality (#510, which loses its stronger claim
 > when the v2 synthesis pass is enabled). §9 is the rule that keeps the document honest as

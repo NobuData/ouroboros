@@ -31,13 +31,21 @@
  * about a connection must outlive the connection. Three members today; #26 adds
  * `organization` when it lands its own events.
  *
+ * `runner` and `enrollment_token` joined with AH.2
+ * ([#250](https://github.com/NobuData/ouroboros/issues/250)), and they are the first subjects
+ * here that name a machine rather than a person's credential. The rule is AD.4's own, applied
+ * one epic further out: an operation that changes who may connect to a workspace is audited
+ * from the day it exists. A runner's `subjectId` is its row id; an enrollment token's is its
+ * row id too — never its value, which by then exists only as an envelope.
+ *
  * `github_credential` joined with K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)):
  * a workspace's GitHub token is a credential like a provider's, and decision **AD.4**'s rule
  * is that credential operations are audited from the day they exist rather than from the day
  * somebody asks who changed one. Its `subjectId` is the workspace id — there is one token per
  * workspace, so the credential has no identity of its own to name.
  */
-export type AuditSubjectType = "provider_connection" | "run" | "github_credential";
+export type AuditSubjectType =
+  "provider_connection" | "run" | "github_credential" | "runner" | "enrollment_token";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -120,6 +128,47 @@ export const GITHUB_TOKEN_ROTATED_EVENT = "github.token_rotated";
  */
 export const GITHUB_TOKEN_CLEARED_EVENT = "github.token_cleared";
 
+/* ---------------------------------------------------------------------------
+ * The build farm's identity lifecycle — AH.2
+ * ([#250](https://github.com/NobuData/ouroboros/issues/250)), decision **B3**.
+ *
+ * Five names, which are the five the issue's scope lists. They are namespaced `runner.*` for
+ * the reason the `provider.*` family is: `where action like 'runner.%'` should be the whole
+ * of *what has happened to this workspace's fleet*, and a bare `token_minted` would leave
+ * that query naming a prefix nobody enforces.
+ *
+ * `runner.cert_revoked` is a sixth, and it is not in the issue's list because the issue
+ * writes `removed` for the operator action that AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254))
+ * performs. Revoking a certificate and removing a runner are different acts — a certificate
+ * is revoked when a machine is suspected, and a runner is removed when it is retired, and
+ * only the first is an incident — so the trail gets a name for each.
+ * ------------------------------------------------------------------------ */
+
+/** An enrollment token was minted. Its value existed once, in the response; not here. */
+export const RUNNER_TOKEN_MINTED_EVENT = "runner.token_minted";
+
+/** An enrollment token was revoked before it expired. */
+export const RUNNER_TOKEN_REVOKED_EVENT = "runner.token_revoked";
+
+/** A machine enrolled — or an attempt to enrol was refused. */
+export const RUNNER_ENROLLED_EVENT = "runner.enrolled";
+
+/** A runner replaced its certificate over the already-authenticated channel. */
+export const RUNNER_CERT_RENEWED_EVENT = "runner.cert_renewed";
+
+/** A runner's certificate was revoked, so the next handshake refuses it. */
+export const RUNNER_CERT_REVOKED_EVENT = "runner.cert_revoked";
+
+/**
+ * A runner was removed from the fleet.
+ *
+ * Written by AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)), which owns the
+ * lifecycle action. The name is declared here rather than there because this file is the
+ * vocabulary — one place where `where action = …` can be answered from — and AH.2's scope is
+ * where the farm's five names were decided.
+ */
+export const RUNNER_REMOVED_EVENT = "runner.removed";
+
 /**
  * Every action this service writes.
  *
@@ -142,6 +191,12 @@ export const AUDIT_ACTIONS = [
   GITHUB_TOKEN_SET_EVENT,
   GITHUB_TOKEN_ROTATED_EVENT,
   GITHUB_TOKEN_CLEARED_EVENT,
+  RUNNER_TOKEN_MINTED_EVENT,
+  RUNNER_TOKEN_REVOKED_EVENT,
+  RUNNER_ENROLLED_EVENT,
+  RUNNER_CERT_RENEWED_EVENT,
+  RUNNER_CERT_REVOKED_EVENT,
+  RUNNER_REMOVED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

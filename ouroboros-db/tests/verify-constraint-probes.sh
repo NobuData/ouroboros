@@ -1048,6 +1048,36 @@ expect_red 'a runaway build may fill the volume' \
   'under the cap, a chunk is written whole and the job.s running total follows it' \
   'drop trigger build_log_chunks_cap on ouroboros.build_log_chunks;'
 
+# --- V041, the farm CA and the certificates it issues (#250) -------------------
+#
+# The two that would be silent failures rather than noisy ones. A CA key written in the clear
+# still works, and a runner holding two live certificates still connects — so neither shows up
+# as a broken farm, only as a farm whose security claims are no longer true.
+
+expect_red 'a CA private key may be stored in the clear' \
+  'a plaintext CA key is a row the schema refuses .*farm_authorities_key_sealed did not fire' \
+  'alter table ouroboros.farm_authorities drop constraint farm_authorities_key_sealed;'
+
+expect_red 'a runner may hold two live certificates at once' \
+  'a renewal that does not retire what it replaces leaves a runner with two identities .*runner_certificates_live_idx did not fire' \
+  'drop index ouroboros.runner_certificates_live_idx;'
+
+expect_red 'a bearer_fallback runner may hold no secret at all' \
+  'a bearer_fallback runner with no secret could not authenticate at all .*runners_bearer_with_fallback did not fire' \
+  'alter table ouroboros.runners drop constraint runners_bearer_with_fallback;'
+
+expect_red 'a bearer secret may be stored in the clear' \
+  'and the fallback secret is an envelope like every other secret in this schema .*runners_bearer_sealed did not fire' \
+  'alter table ouroboros.runners drop constraint runners_bearer_sealed;'
+
+expect_red 'a revoked certificate may not record when' \
+  'a revoked certificate records when, because .this leaked. is a question with a time .*runner_certificates_revoked_at did not fire' \
+  'alter table ouroboros.runner_certificates drop constraint runner_certificates_revoked_at;'
+
+expect_red 'a serial may name two certificates of one workspace' \
+  'a serial is unique within a workspace, because that pair is the handshake.s lookup .*runner_certificates_serial_key did not fire' \
+  'alter table ouroboros.runner_certificates drop constraint runner_certificates_serial_key;'
+
 
 printf '\n'
 if check_summary; then

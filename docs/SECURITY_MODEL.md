@@ -17,7 +17,7 @@ It has two jobs, and they pull in the same direction:
    when somebody touches a key. An operator deciding whether to trust this software with
    an Anthropic key should be able to answer *who can read it* from this document alone.
 2. **It is the single source for the wording that ships.** The strip's copy is not written
-   in a component; it is written in [§7](#7-approved-copy-and-the-badge-policy) and
+   in a component; it is written in [§8](#8-approved-copy-and-the-badge-policy) and
    rendered verbatim by AE.6 ([#232](https://github.com/NobuData/ouroboros/issues/232)). A
    claim that is not in this document does not appear on the page, which is the mechanism
    that keeps the two from drifting apart.
@@ -61,8 +61,8 @@ Claim by claim:
 | *"envelope encryption (AES-256-GCM)"* | **True** — a per-workspace DEK under AES-256-GCM, itself sealed by a KEK | [§2](#2-envelope-encryption) |
 | *"KMS-backed"* | **Qualified.** False of the default deployment, where the key-encryption key is an environment variable and custody is the operator's problem. True of deployments that configure a KMS or Vault wrapper, which is not yet built. | [§3](#3-key-custody-per-deployment-mode) |
 | *"Workers receive scoped, 15-minute tokens — never your raw key"* | **Corrected — the truth is stronger.** Workers receive no cloud credential of any kind, not a short-lived one. The control plane makes the provider call. | [§4](#4-what-a-worker-is-given) |
-| `SOC 2 Type II` | **Withdrawn.** No audit has been performed. | [§7.3](#73-the-badge-policy) |
-| `ISO 27001` | **Withdrawn.** No certification exists. | [§7.3](#73-the-badge-policy) |
+| `SOC 2 Type II` | **Withdrawn.** No audit has been performed. | [§8.3](#83-the-badge-policy) |
+| `ISO 27001` | **Withdrawn.** No certification exists. | [§8.3](#83-the-badge-policy) |
 
 The page head above the cards makes four more, in its subline:
 
@@ -75,7 +75,7 @@ The page head above the cards makes four more, in its subline:
 
 Ten rows, and every one of them names the section that answers it — which is what the
 acceptance criterion *checked as a list, not asserted* asks for.
-[§7](#7-approved-copy-and-the-badge-policy) is the corrected wording that replaces both
+[§8](#8-approved-copy-and-the-badge-policy) is the corrected wording that replaces both
 pieces of copy.
 
 ---
@@ -811,14 +811,221 @@ and the guard's refusals are shaped to leak nothing:
 
 ---
 
-## 7. Approved copy, and the badge policy
+## 7. The build farm's certificate authority
+
+> **Status:** **Shipped** — AH.2 ([#250](https://github.com/NobuData/ouroboros/issues/250)),
+> roadmap decision **B3**. `ouroboros-rest/src/modules/farm/`, `ouroboros-db`'s `V041`.
+
+A build runner is a long-lived process on hardware this control plane does not administer,
+and it needs an identity that survives that arrangement. §2 through §4 are about credentials
+the control plane *holds*; this section is about an identity a machine somewhere else
+*presents*, which is a different problem with a different failure mode.
+
+### 7.1 Why not a bearer token
+
+The simple design is a bearer token: enrollment exchanges the one-liner's
+`orb_enroll_…` string for a long-lived per-runner secret, and every connection presents it.
+It works, and it has one specific weakness — the secret sits on a machine outside the
+operator's control, and **if it is copied, the copy is indistinguishable from the original**
+until somebody notices anomalous behaviour and revokes it.
+
+Decision **B3** issues a **per-runner client certificate** from an embedded farm CA instead.
+The enrollment token is spent once to bootstrap; the certificate is the identity thereafter;
+revocation is per runner and is checked at every handshake. What that buys is not secrecy —
+a certificate is public — but *separability*: the private half never travels, so a copy of
+everything that crossed the network is not an identity.
+
+### 7.2 The chain, end to end
+
+```
+owner/admin ── mint ──▶ orb_enroll_…            scoped to one pool · TTL · max_uses
+                          │                     sealed by the vault (§2), masked forever after
+                          ▼
+agent ─── POST /api/v1/farm/registrations ───▶  token validated: TTL · uses · pool · not revoked
+          { token, name, arch, CSR }            │
+                                                ▼
+                               farm CA signs   CN = runner id · O = workspace
+                               (key unwrapped in-process for one signature)
+                                                │
+          { runner_id, certificate, CA pin } ◀──┘
+                          │
+                          ▼
+agent ─── wss:// + client certificate ───────▶  verify against the CA · CHECK REVOCATION
+```
+
+Every step writes an audit event in AD.4's shape (§5): `runner.token_minted`,
+`runner.token_revoked`, `runner.enrolled`, `runner.cert_renewed`, `runner.cert_revoked`.
+
+**The enrollment token is returned exactly once**, in the response that mints it. Every later
+read is `orb_enroll_••••a4b7`, computed from the token's public row id rather than from its
+value — so the masking is a property of the code's shape rather than a rule somebody
+remembered: there is no function in the service that can produce a mask from a secret.
+
+### 7.3 The runner generates its own keypair
+
+The issue left *server-side keypair versus agent CSR* open. It is decided here: **the agent
+generates a P-256 keypair and sends a PKCS#10 certification request.**
+
+The alternative is simpler — the control plane generates a keypair, signs a certificate over
+it, and returns `{runner_id, cert, key}` — and it is rejected because of where the private key
+would have been. In that design a runner's private key exists, briefly, in this service's
+memory, in the HTTP response body, in whatever buffers the TLS stack used, and in any reverse
+proxy between the two. Every one of those is a place it can be logged, cored, or read by an
+operator of the control plane, which is precisely the posture B3 was written against.
+
+So: **no runner private key has ever existed inside Ouroboros.** There is no backup, no log
+and no database column from which one could be recovered — including by us.
+
+What it costs is that the enrollment endpoint reads a structure an unauthenticated caller
+composed. That cost is bounded deliberately: a hand-written reader performs a *structural walk
+only* — bounds-checked, DER-strict, depth-limited, and reading no values — and everything that
+is actual parsing is delegated to the platform's own C. The key is parsed by
+`crypto.createPublicKey` and the request's self-signature verified by `crypto.verify`.
+
+**The CSR's own subject is discarded.** The certificate's subject is composed from the runner
+row this service creates and the workspace the token was scoped to. A request claiming to be
+another workspace's runner is signed with its own correct name rather than refused, because
+the claim was never read. The same is true of any extensions it asks for: the extension set is
+fixed in code and is not a function of the request, so a CSR asking for `cA: TRUE` gets a leaf
+certificate.
+
+### 7.4 Custody of the CA key
+
+The farm CA's private key is an **AD.1 envelope** (§2), sealed against the workspace's own id,
+and it is subject to everything §2 and §3 say about a credential — including §2.6: deleting a
+workspace destroys its DEK, and with it the CA key and the verifiability of every certificate
+that CA ever signed.
+
+Four things hold *never leaves*, and they are different in kind:
+
+| What | Where |
+|---|---|
+| **A row holding a plaintext CA key cannot exist.** | `farm_authorities_key_sealed`, a CHECK in `V041`. It binds every writer — a service, a seed, a migration run by hand — rather than the one service that is supposed to seal. |
+| **Only one file may hold an unwrapped key.** | `ouroboros/no-ca-key-escape`, an ESLint rule. It reports any identifier *naming* CA key material anywhere in `src/modules/farm/` except `farm.authority.ts` and the X.509 encoder, which takes a key as a parameter and can reach no response. |
+| **That file makes no logger, no cache and no getter.** | `farm.secrecy.spec.ts` reads its source and holds it to each. |
+| **No response carries one.** | The same suite drives a full lifecycle — mint, enrol, renew, revoke — and greps every payload; `farm.integration-spec.ts` does it again over a socket, and asserts the key *is* in the database, sealed, so the claim is about the API rather than about there being nothing to leak. |
+
+The key is unwrapped for the duration of **one signature** and the plaintext buffer is
+zeroized in a `finally`. That is `VaultService`'s own no-cache posture (§2, *No DEK cache*)
+applied one layer up, for the stronger of its two reasons: a CA key living in a process after
+its workspace was deleted is a window in which the crypto-shred has not happened.
+
+What this does **not** mean is that an operator with database access and the master key cannot
+open it. That is §3's custody model, unchanged, and it is the honest limit of the claim.
+
+### 7.5 Revocation is the boundary; expiry is a backstop
+
+A runner certificate is good for ninety days and an agent is told when to come back for a new
+one. That window is not the security control. **Revocation is**, and it is checked at every
+handshake against `runner_certificates` — one indexed read on `(organization_id, serial)`.
+
+Four states end in the same refusal, and the caller is not told which: unknown, expired,
+superseded by a renewal, or revoked. Telling them apart would tell somebody holding a stolen
+certificate whether the theft has been noticed. The audit trail records which; the agent
+protocol's `identity.revoked` close code is for a runner the farm already knows, being told to
+stop retrying rather than to try again.
+
+**Renewal is authenticated by the certificate being replaced.** There is no token field on the
+renewal request and there cannot be one — which is what makes revocation final: a runner whose
+certificate was revoked cannot renew its way back in, because the thing it would have to
+present is the thing that was killed. A renewal supersedes and issues inside one transaction,
+and a partial unique index (`runner_certificates_live_idx`) makes a runner holding two live
+certificates a row PostgreSQL refuses.
+
+### 7.6 The deployment requirement that silently breaks mTLS
+
+**This is the part that fails quietly, so it is stated first and plainly.**
+
+> A reverse proxy that terminates TLS in front of `ouroboros-rest` has already consumed the
+> runner's client certificate. Unless it forwards one, this service sees an ordinary TLS
+> connection, **the handshake still succeeds**, and the identity check has nothing to check.
+> Nothing fails visibly. mTLS becomes decoration.
+
+`OURO_FARM_CLIENT_CERT_HEADER` names the header a trusted proxy forwards the certificate in.
+It is **unset by default**, and that default is the security argument rather than a
+convenience: a certificate is public — it crosses the network in the clear at every handshake
+— so a header this service trusted unconditionally would be an impersonation of any runner
+whose certificate anybody has seen. Naming one is an operator asserting *this header cannot
+reach the process except through my proxy*, which is a claim only they are in a position to
+make.
+
+With it unset, the certificate is read from the TLS socket and from nowhere else.
+
+Both shapes proxies send are accepted — percent-encoded PEM, and PEM with its newlines
+replaced — and the value is decoded and re-encoded canonically rather than patched up.
+
+```nginx
+# nginx — terminate TLS, request a client certificate, and pass it through.
+ssl_client_certificate /etc/ouroboros/farm-ca.pem;   # GET /api/v1/farm/authority
+ssl_verify_client      optional;                      # `on` if only runners reach this host
+location /api/v1/farm/ {
+  proxy_set_header X-Ouro-Client-Cert $ssl_client_escaped_cert;
+  proxy_pass http://ouroboros-rest:4000;
+}
+```
+
+```yaml
+# Traefik — passTLSClientCert, header form.
+http:
+  middlewares:
+    farm-client-cert:
+      passTLSClientCert:
+        pem: true
+```
+
+Two rules go with it, and neither is optional:
+
+1. **Strip the header at the edge.** Whatever ingress the proxy listens on must remove the
+   header from inbound requests before setting it, or a client can set it itself.
+2. **Do not name the header on a deployment that terminates TLS in this process.** There is
+   nothing to gain and one thing to lose.
+
+### 7.7 The bearer fallback, and why it is visible
+
+Some corporate proxies terminate client certificates and cannot be configured to forward one.
+For those, a workspace may permit a runner to enrol **without** a certificate and authenticate
+with a long-lived sealed secret instead.
+
+It is gated and it is visible, and both halves matter:
+
+- **`workspace_settings.runner_bearer_fallback` defaults to `false`.** A deployment that never
+  considers the question never has the weaker path, and a runner asking for it on a workspace
+  that has not enabled it is refused with a code that says so — plainly, because the caller has
+  already proved it holds a live token and an operator behind a stripping proxy has to be able
+  to tell this from a dead token.
+- **`runners.security_mode` records it**, and the fleet table renders it as a **visibly
+  degraded** connection (AI.2, [#257](https://github.com/NobuData/ouroboros/issues/257)). A
+  security downgrade nobody can see is the worst of both designs.
+
+The secret is an AD.1 envelope like everything else, returned exactly once at enrollment, and
+`runners_bearer_with_fallback` makes the pairing structural: a `bearer_fallback` runner has a
+secret and an `mtls` runner has none, in both directions — the exact mirror of
+`runners_cert_serial_with_mtls`.
+
+### 7.8 What this section does not cover
+
+- **The gateway itself** — sessions, presence, heartbeat ingest — is AH.3
+  ([#251](https://github.com/NobuData/ouroboros/issues/251)). The revocation check it performs
+  is the one described here, shared as a service rather than reimplemented.
+- **The agent's side** — dialling, TLS setup, where the certificate lives on disk, reconnection
+  backoff — is AG.2 ([#244](https://github.com/NobuData/ouroboros/issues/244)).
+- **Rotating a farm CA.** The schema does not prevent it and nothing implements it; today a CA
+  lasts ten years, because its expiry is a fleet-wide outage with no partial failure to warn
+  anybody first.
+- **What a runner is trusted to run.** *The tenant's machine runs the tenant's command* is
+  decision **B4**'s trust model, revisited by
+  [#267](https://github.com/NobuData/ouroboros/issues/267).
+
+---
+
+## 8. Approved copy, and the badge policy
 
 > **Status: Shipped as copy** — this section is the source AE.6
 > ([#232](https://github.com/NobuData/ouroboros/issues/232)) and AE.1
 > ([#227](https://github.com/NobuData/ouroboros/issues/227)) render **verbatim**. A change
 > here is a change to the product's claims and is reviewed as one.
 
-### 7.1 The security strip
+### 8.1 The security strip
 
 Rendered by AE.6 ([#232](https://github.com/NobuData/ouroboros/issues/232)) in the `c-12`
 strip. The shield glyph `◈` is unchanged.
@@ -858,7 +1065,7 @@ Each clause traces: *sealed per-tenant* →
 [§3.2](#32-mode-a--the-environment-master-key-the-default-and-what-it-costs) is what the
 default deployment actually has; `scoped, 15-minute tokens`, because
 [§4.1](#41-what-was-claimed-and-what-is-true) is stronger and true; and both compliance
-badges, per [§7.3](#73-the-badge-policy).
+badges, per [§8.3](#83-the-badge-policy).
 
 **When AF.3 lands**, a deployment configured with a KMS or Vault wrapper may append one
 sentence, and only that deployment may:
@@ -871,7 +1078,7 @@ Rendered from the configured wrapper's identity, never from a setting an operato
 type, and rendered as nothing at all under the environment-master wrapper. Silence is the
 honest default; a euphemism is not.
 
-### 7.2 The page-head subline
+### 8.2 The page-head subline
 
 Rendered by AE.1 ([#227](https://github.com/NobuData/ouroboros/issues/227)).
 
@@ -888,7 +1095,7 @@ becomes *"workers never receive them at all"*, per
 because that is the word the rest of the product uses to a user — `tenant` is an internal
 term and appears in no other user-facing string.
 
-### 7.3 The badge policy
+### 8.3 The badge policy
 
 `SOC 2 Type II` and `ISO 27001` are **certifications, not features**. Displaying one
 before an audit has happened is a false compliance claim — a materially different kind of
@@ -913,24 +1120,25 @@ never leave your deployment.** That one is true of every installation today, and
 
 ---
 
-## 8. Not covered yet
+## 9. Not covered yet
 
-Later roadmaps have filed four additions against this document — three amendment comments
-on [#226](https://github.com/NobuData/ouroboros/issues/226), carrying four items between
-them. Each is **Planned**; each becomes a section of its own when the work it describes
-lands. They are listed rather than written up as though they were true, which is the same
-rule the rest of this document follows.
+Later roadmaps filed four additions against this document — three amendment comments on
+[#226](https://github.com/NobuData/ouroboros/issues/226), carrying four items between them.
+**One of the four has landed**: the build-farm CA is now
+[§7](#7-the-build-farms-certificate-authority) rather than a line in this table, which is what
+§10 means by a section moving from Planned to Shipped. The three below are still **Planned**;
+each becomes a section of its own when the work it describes lands. They are listed rather than
+written up as though they were true, which is the same rule the rest of this document follows.
 
 | Coming | From | What this document will gain |
 |---|---|---|
-| **The build-farm CA** | AH.2 ([#250](https://github.com/NobuData/ouroboros/issues/250)), roadmap decision **B3** | The farm CA's private key is sealed by the vault exactly as a credential is. The enrollment chain — scoped, TTL'd, use-limited token → registration → signed per-runner certificate → mTLS thereafter, with renewal over the already-authenticated channel. Revocation checked at the gateway handshake rather than merely recorded. **The deployment requirement that silently breaks mTLS**: a reverse proxy terminating TLS must pass the client certificate through, and if it does not the connection still succeeds as ordinary TLS with the security property lost and nothing failing visibly. And the bearer fallback for proxies that strip client certificates — gated by an org setting, recorded in `security_mode`, and surfaced in the runners table so a degraded runner is visible rather than quietly weaker. |
 | **Crypto-shredding as the deletion guarantee** | BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) | Workspace deletion — typed confirmation and step-up, then `pending_delete`, then a 30-day recovery window, then a scheduled purge that deletes tenant data across planes **and destroys the tenant DEK**. That last clause is what makes residual ciphertext in backups permanently unreadable; row deletion alone cannot reach a backup. [§2.6](#26-deleting-a-workspace-destroys-its-credentials) is the mechanism, and #489 is the lifecycle that invokes it. |
 | **Deployment truth in Settings** | BQ.4 ([#483](https://github.com/NobuData/ouroboros/issues/483)), roadmap decision **S6** | The settings page renders what is true of *this* deployment: a self-hosted install shows its region read-only rather than offering a chooser it cannot honour, and states plainly that this deployment never trains on your data. The residency documentation that card links to is this document. |
 | **Analyzer tenant locality** | BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)), BV.2 ([#511](https://github.com/NobuData/ouroboros/issues/511)) | The Build Analyzer's claim that nothing leaves the tenant: corpus assembly dispatches to the tenant's own engine, and analyzer code cannot reach the network — enforced by the execution harness, not by convention. When the v2 LLM synthesis pass ([#522](https://github.com/NobuData/ouroboros/issues/522)) is enabled, data *does* reach the configured provider, so both this document and the page must say so, and a tenant that has not enabled it keeps the stronger claim. |
 
 ---
 
-## 9. Changing this document
+## 10. Changing this document
 
 The rule that makes [§1](#1-every-claim-in-the-strip-traced) worth keeping:
 
@@ -958,5 +1166,10 @@ Two corollaries:
   — the two paths a worker calls
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — module contracts, request paths and the `OURO_*`
   registry
-- [`.env.example`](../.env.example) — `OURO_VAULT_MASTER_KEY`, `OURO_LOCAL_PROVIDER_URLS`
-  and `OURO_ENGINE_SHARED_SECRET`, each with its handling note
+- [`ROADMAP_MOCKUP_08_BUILD_FARM.md`](ROADMAP_MOCKUP_08_BUILD_FARM.md) — decision **B3**, the
+  enrollment chain it argues for, and the issue breakdown behind
+  [§7](#7-the-build-farms-certificate-authority)
+- [`RUNNER_PROTOCOL.md`](RUNNER_PROTOCOL.md) — what the agent says once its certificate has got
+  it a connection
+- [`.env.example`](../.env.example) — `OURO_VAULT_MASTER_KEY`, `OURO_LOCAL_PROVIDER_URLS`,
+  `OURO_ENGINE_SHARED_SECRET` and `OURO_FARM_CLIENT_CERT_HEADER`, each with its handling note

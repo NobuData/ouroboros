@@ -977,6 +977,15 @@ export interface WorkspaceSettingsTable {
   organization_id: string;
   /** Mockup 02's *Auto-merge when checks pass* switch (decision F6) — the dashboard's only write. */
   auto_merge_on_checks: Generated<boolean>;
+  /**
+   * Whether this workspace permits a runner to enrol without a client certificate (V041,
+   * [#250](https://github.com/NobuData/ouroboros/issues/250), decision **B3**).
+   *
+   * Default `false`, so a deployment that never considers the question never has the weaker
+   * path. A runner that takes it is recorded as `bearer_fallback` and rendered as visibly
+   * degraded by AI.2 ([#257](https://github.com/NobuData/ouroboros/issues/257)).
+   */
+  runner_bearer_fallback: Generated<boolean>;
   /** Who last changed a setting here, or null. `on delete set null`, never cascade. */
   updated_by: string | null;
   created_at: Stamped;
@@ -2973,6 +2982,14 @@ export interface WorkspaceSettingsEffectiveView {
   /** When a setting last changed, or null when nothing ever has. Not coalesced: there is no honest time to invent. */
   updated_at: Date | null;
   updated_by: string | null;
+  /**
+   * Whether certificate-less runner enrollment is permitted, `false` for a workspace that has
+   * never set it (V041, [#250](https://github.com/NobuData/ouroboros/issues/250)).
+   *
+   * Last rather than beside `auto_merge_on_checks`, because `create or replace view` may
+   * append columns and may not reorder them — see V041.
+   */
+  runner_bearer_fallback: boolean;
 }
 
 /**
@@ -3096,6 +3113,166 @@ export const READ_ONLY_VIEWS = [
  * failure this file exists to prevent. `ouroboros-db/tests/constraints.sql` asserts all four
  * stay gone, so there is no state in which re-adding them here would be right.
  */
+/** `runner_pools.executor` — the two worlds a build runs in (V040, decision **B4**). */
+export type PoolExecutor = "container" | "shell";
+
+/**
+ * `ouroboros.runner_pools` — an execution world builds are dispatched to (V040,
+ * [#249](https://github.com/NobuData/ouroboros/issues/249)).
+ *
+ * Mirrored by AH.2 ([#250](https://github.com/NobuData/ouroboros/issues/250)) for one
+ * question: *which pool does this name mean, in this workspace?* — which is what makes an
+ * enrollment token's scope enforceable.
+ */
+export interface RunnerPoolsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** Slug-shaped and unique per workspace, because it travels on a command line as `--pool`. */
+  name: string;
+  description: string | null;
+  executor: PoolExecutor;
+  image: string | null;
+  env_allowlist: Generated<unknown>;
+  /** How much one runner of this pool may run at once. */
+  max_concurrency: Generated<number>;
+  enabled: Generated<boolean>;
+  autoscale_pref: Generated<unknown>;
+  tags: Generated<unknown>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `runners.status` — what the fleet last **observed** (V040). */
+export type RunnerStatus = "online" | "building" | "draining" | "offline" | "removed";
+
+/** `runners.desired_state` — what an operator **intended** (V040). */
+export type RunnerDesiredState = "active" | "draining" | "removed";
+
+/** `runners.arch` — the three architectures AG.6 ([#248](https://github.com/NobuData/ouroboros/issues/248)) builds for. */
+export type RunnerArch = "linux/arm64" | "linux/x86_64" | "darwin/arm64";
+
+/**
+ * `runners.security_mode` — how a runner proves who it is (V040, decision **B3**).
+ *
+ * Recorded rather than assumed, so AI.2 ([#257](https://github.com/NobuData/ouroboros/issues/257))
+ * can render a connection that fell back to a bearer token as visibly degraded.
+ */
+export type RunnerSecurityMode = "mtls" | "bearer_fallback";
+
+/**
+ * `ouroboros.runners` — one machine in a workspace's build farm (V040, V041).
+ *
+ * **Observation and intent are two columns.** `status` is what the fleet last saw and
+ * `desired_state` is what somebody decided; V040's own header is where that is argued.
+ *
+ * `cert_serial` and `bearer_sealed` are the evidence for whichever `security_mode` the row
+ * claims, and each is present exactly when its mode is — `runners_cert_serial_with_mtls` and
+ * `runners_bearer_with_fallback`. **Neither is a credential this mirror lets a caller confuse
+ * for one**: a serial is public, and `bearer_sealed` is an AD.1 envelope that only
+ * `VaultService` can open.
+ */
+export interface RunnersTable {
+  id: Generated<string>;
+  organization_id: string;
+  pool_id: string;
+  /** `forge-01`, `anvil-mac` — unique per workspace, and how a person refers to a machine. */
+  name: string;
+  arch: RunnerArch;
+  status: Generated<RunnerStatus>;
+  desired_state: Generated<RunnerDesiredState>;
+  /** Null until the first heartbeat: an enrolled runner that has never connected has not been seen. */
+  last_seen_at: Date | null;
+  agent_version: string | null;
+  capabilities: Generated<unknown>;
+  security_mode: Generated<RunnerSecurityMode>;
+  /** The serial of the certificate the farm CA issued. Present exactly when `security_mode` is `mtls`. */
+  cert_serial: string | null;
+  /** The fallback secret, as an AD.1 envelope. Present exactly when `security_mode` is `bearer_fallback`. */
+  bearer_sealed: string | null;
+  enrolled_at: Generated<Date>;
+  enrolled_by: string | null;
+  uptime_seconds: string | null;
+  telemetry: Generated<unknown>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.enrollment_tokens` — the scoped secret the install one-liner carries (V040,
+ * decision **B3**).
+ *
+ * `token_sealed` is an AD.1 envelope and the schema refuses any other shape. There is
+ * deliberately **no lookup column**: a presented token names its own row — see
+ * `farm/farm.tokens.ts`.
+ */
+export interface EnrollmentTokensTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** The pool a runner enrolled with this token joins. The mockup's `--pool pool-a`. */
+  pool_id: string;
+  /** The secret, sealed. Never returned by any API after minting and never logged. */
+  token_sealed: string;
+  expires_at: Date;
+  max_uses: Generated<number>;
+  uses: Generated<number>;
+  revoked: Generated<boolean>;
+  revoked_at: Date | null;
+  created_by: string | null;
+  created_at: Generated<Date>;
+}
+
+/**
+ * `ouroboros.farm_authorities` — one workspace's build-farm certificate authority (V041,
+ * [#250](https://github.com/NobuData/ouroboros/issues/250)).
+ *
+ * **`key_sealed` is the most consequential column in this mirror.** It is an AD.1 envelope,
+ * the schema refuses anything else, no API returns it, and `ouroboros/no-ca-key-escape` is
+ * the lint rule that keeps the last of those true. Everything else here is public: the
+ * certificate and the fingerprint are what a runner pins.
+ */
+export interface FarmAuthoritiesTable {
+  /** The workspace, and the key. One authority per workspace. */
+  organization_id: string;
+  certificate_pem: string;
+  /** The CA's private key, sealed by AD.1. Opened in-process for one signature, then zeroized. */
+  key_sealed: string;
+  serial: string;
+  /** `sha256` over the CA certificate's DER, lowercase hex — the pin an agent checks. */
+  fingerprint: string;
+  not_before: Date;
+  not_after: Date;
+  created_at: Generated<Date>;
+}
+
+/** `runner_certificates.issued_for` — which exchange produced a certificate (V041). */
+export type CertificateIssuedFor = "enrollment" | "renewal";
+
+/**
+ * `ouroboros.runner_certificates` — every certificate the farm CA has issued, and therefore
+ * the revocation list the gateway checks at each handshake (V041).
+ *
+ * `revoked` and `superseded_at` are different states: superseded is routine, revoked is an
+ * incident. The gateway refuses both; the audit trail tells them apart. Rows are never
+ * deleted — see V041's header on why *not found* has to mean *refuse*.
+ */
+export interface RunnerCertificatesTable {
+  id: Generated<string>;
+  organization_id: string;
+  runner_id: string;
+  /** Lowercase hex, unique within the workspace — the handshake's lookup. */
+  serial: string;
+  fingerprint: string;
+  issued_for: CertificateIssuedFor;
+  not_before: Date;
+  not_after: Date;
+  issued_at: Generated<Date>;
+  revoked: Generated<boolean>;
+  revoked_at: Date | null;
+  revoked_by: string | null;
+  revocation_reason: string | null;
+  superseded_at: Date | null;
+}
+
 export interface Database {
   user: UserTable;
   tenant_domains: TenantDomainsTable;
@@ -3136,6 +3313,11 @@ export interface Database {
   epic_mirrors: EpicMirrorsTable;
   reestimation_runs: ReestimationRunsTable;
   reestimation_run_counts: ReestimationRunCountsTable;
+  runner_pools: RunnerPoolsTable;
+  runners: RunnersTable;
+  enrollment_tokens: EnrollmentTokensTable;
+  farm_authorities: FarmAuthoritiesTable;
+  runner_certificates: RunnerCertificatesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -3271,6 +3453,7 @@ export const TABLE_COLUMNS = {
     "updated_by",
     "created_at",
     "updated_at",
+    "runner_bearer_fallback",
   ],
   tenant_keys: [
     "organization_id",
@@ -3531,6 +3714,81 @@ export const TABLE_COLUMNS = {
   epic_mirrors: ["id", "epic_id", "source_id", "kind", "external_ref", "created_at", "updated_at"],
   reestimation_runs: ["id", "night", "started_at", "finished_at", "status", "batch_limit"],
   reestimation_run_counts: ["run_id", "organization_id", "found", "queued", "in_flight"],
+  runner_pools: [
+    "id",
+    "organization_id",
+    "name",
+    "description",
+    "executor",
+    "image",
+    "env_allowlist",
+    "max_concurrency",
+    "enabled",
+    "autoscale_pref",
+    "tags",
+    "created_at",
+    "updated_at",
+  ],
+  runners: [
+    "id",
+    "organization_id",
+    "pool_id",
+    "name",
+    "arch",
+    "status",
+    "desired_state",
+    "last_seen_at",
+    "agent_version",
+    "capabilities",
+    "security_mode",
+    "cert_serial",
+    "enrolled_at",
+    "enrolled_by",
+    "uptime_seconds",
+    "telemetry",
+    "created_at",
+    "updated_at",
+    "bearer_sealed",
+  ],
+  enrollment_tokens: [
+    "id",
+    "organization_id",
+    "pool_id",
+    "token_sealed",
+    "expires_at",
+    "max_uses",
+    "uses",
+    "revoked",
+    "revoked_at",
+    "created_by",
+    "created_at",
+  ],
+  farm_authorities: [
+    "organization_id",
+    "certificate_pem",
+    "key_sealed",
+    "serial",
+    "fingerprint",
+    "not_before",
+    "not_after",
+    "created_at",
+  ],
+  runner_certificates: [
+    "id",
+    "organization_id",
+    "runner_id",
+    "serial",
+    "fingerprint",
+    "issued_for",
+    "not_before",
+    "not_after",
+    "issued_at",
+    "revoked",
+    "revoked_at",
+    "revoked_by",
+    "revocation_reason",
+    "superseded_at",
+  ],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -3575,6 +3833,7 @@ export const TABLE_COLUMNS = {
     "is_explicit",
     "updated_at",
     "updated_by",
+    "runner_bearer_fallback",
   ],
   alias_references: [
     "organization_id",
@@ -3882,3 +4141,26 @@ export type TokenUsageDaily = Selectable<TokenUsageDailyView>;
  * `workspace_settings`.
  */
 export type WorkspaceSettingsEffective = Selectable<WorkspaceSettingsEffectiveView>;
+
+/** A row of `ouroboros.runner_pools`, as a `select` returns it. */
+export type RunnerPool = Selectable<RunnerPoolsTable>;
+
+/** A row of `ouroboros.runners`, as a `select` returns it. */
+export type Runner = Selectable<RunnersTable>;
+/** The columns an `insert` into `ouroboros.runners` may carry. */
+export type NewRunner = Insertable<RunnersTable>;
+
+/** A row of `ouroboros.enrollment_tokens`, as a `select` returns it. */
+export type EnrollmentToken = Selectable<EnrollmentTokensTable>;
+/** The columns an `insert` into `ouroboros.enrollment_tokens` may carry. */
+export type NewEnrollmentToken = Insertable<EnrollmentTokensTable>;
+
+/** A row of `ouroboros.farm_authorities`, as a `select` returns it. */
+export type FarmAuthority = Selectable<FarmAuthoritiesTable>;
+/** The columns an `insert` into `ouroboros.farm_authorities` may carry. */
+export type NewFarmAuthority = Insertable<FarmAuthoritiesTable>;
+
+/** A row of `ouroboros.runner_certificates`, as a `select` returns it. */
+export type RunnerCertificate = Selectable<RunnerCertificatesTable>;
+/** The columns an `insert` into `ouroboros.runner_certificates` may carry. */
+export type NewRunnerCertificate = Insertable<RunnerCertificatesTable>;

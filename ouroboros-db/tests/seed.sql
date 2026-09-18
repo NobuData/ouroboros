@@ -3179,8 +3179,41 @@ select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.runners r
      join ouroboros.organization o on o."id" = r.organization_id
     where o."slug" = 'acme-robotics'
-      and r.security_mode = 'bearer_fallback' and r.cert_serial is null and r.name = 'anvil-mac'),
-  'anvil-mac fell back to a bearer token, which AI.2 (#257) has a row to render as degraded');
+      and r.security_mode = 'bearer_fallback' and r.cert_serial is null and r.name = 'anvil-mac'
+      and r.bearer_sealed like 'ouro.v1.%'),
+  'anvil-mac fell back to a bearer token, which AI.2 (#257) has a row to render as degraded — and the fallback carries its own sealed secret (#250)');
+
+-- --- the farm CA, and the certificates the fleet is holding (#250) ---------------
+--
+-- One authority per workspace; its key sealed, because every secret in this schema is. The
+-- certificate rows pair with `runners.cert_serial` in both directions — an mTLS runner has one
+-- and a fallback runner has none — which is the pairing V041's live index makes unambiguous.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.farm_authorities a
+     join ouroboros.organization o on o."id" = a.organization_id
+    where o."slug" = 'acme-robotics'
+      and a.key_sealed like 'ouro.v1.%'
+      and a.certificate_pem like '-----BEGIN CERTIFICATE-----%'
+      and a.not_after > now()),
+  'the workspace has one farm CA, its key sealed and its certificate live');
+
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.runner_certificates c
+     join ouroboros.organization o on o."id" = c.organization_id
+    where o."slug" = 'acme-robotics')
+   and (select count(*) = 1 from ouroboros.runner_certificates c
+          join ouroboros.organization o on o."id" = c.organization_id
+         where o."slug" = 'acme-robotics' and c.revoked
+           and c.revoked_at is not null and c.revocation_reason = 'runner_removed'),
+  'five certificates for the five mTLS runners, one of them revoked because its runner was removed');
+
+select pg_temp.must_hold(
+  (select bool_and(exists (select 1 from ouroboros.runner_certificates c
+                            where c.runner_id = r.id and c.serial = r.cert_serial))
+     from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics' and r.security_mode = 'mtls'),
+  'and every mTLS runner''s cert_serial names a certificate that was actually issued — the pointer V041 deliberately does not spell as a foreign key');
 
 -- --- the enrollment tokens ------------------------------------------------------
 select pg_temp.must_hold(

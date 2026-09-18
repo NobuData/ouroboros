@@ -945,7 +945,7 @@ Named here so that nobody looks for it and concludes it was forgotten:
 
 | Not here | Where |
 |---|---|
-| Enrollment: the registration token, the CSR, the issued certificate | [#250](https://github.com/NobuData/ouroboros/issues/250) — and `SECURITY_MODEL.md`'s farm-CA section |
+| Enrollment: the registration token, the CSR, the issued certificate | [#250](https://github.com/NobuData/ouroboros/issues/250), shipped — [`SECURITY_MODEL.md` § 7](SECURITY_MODEL.md#7-the-build-farms-certificate-authority) and `ouroboros-rest`'s `/api/v1/farm/*` |
 | Dialling, TLS setup, reconnection backoff, the session loop | [#244](https://github.com/NobuData/ouroboros/issues/244) |
 | The gateway's session store, presence table and dispatcher | [#251](https://github.com/NobuData/ouroboros/issues/251), [#252](https://github.com/NobuData/ouroboros/issues/252) |
 | How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246) |

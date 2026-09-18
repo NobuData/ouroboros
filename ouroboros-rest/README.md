@@ -247,6 +247,7 @@ service never starts half-configured.
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 | `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
 | `OURO_LISTEN_HOST`          | Bind-interface override — set only by the e2e stack ([#647](https://github.com/NobuData/ouroboros/issues/647)); unset, `NODE_ENV` decides as always |     no — unset     | exactly `127.0.0.1` or `0.0.0.0`                                            |
+| `OURO_FARM_CLIENT_CERT_HEADER` | The header a **trusted** reverse proxy forwards a runner's TLS client certificate in ([#250](https://github.com/NobuData/ouroboros/issues/250)). Unset, the certificate is read from the TLS socket and from nowhere else — see [The build farm's identity layer](#the-build-farms-identity-layer). Set it only when something in front of this service terminates TLS, and strip the header at the edge: a certificate is public, so a header trusted unconditionally is an impersonation of any runner |     no — unset     | an HTTP field name, such as `x-ouro-client-cert`                            |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 | `OURO_WORKFLOW_SKILL_SUGGESTIONS` | Skill names the [stage catalog](#the-stage-catalog) suggests to the workflow inspector ([#145](https://github.com/NobuData/ouroboros/issues/145)) — advice, never an enumeration |     no — unset     | comma-separated names, each at most 128 characters, none listed twice |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
@@ -3241,6 +3242,94 @@ issues, and Blocked counts `synced` edges. `planning.access.integration-spec.ts`
 route off the controllers (`planning.routes.fixture.ts`) and fails when one has no case — the role
 matrix on every mutating route, isolation on every route.
 
+## The build farm's identity layer
+
+> **Issue:** [#250](https://github.com/NobuData/ouroboros/issues/250) — *[AH.2] Enrollment API
+> & runner CA* · epic [#240](https://github.com/NobuData/ouroboros/issues/240) · roadmap
+> decision **B3** · schema `V040`/`V041` ·
+> [`docs/SECURITY_MODEL.md` § 7](../docs/SECURITY_MODEL.md#7-the-build-farms-certificate-authority)
+
+A build runner is a process on hardware this control plane does not administer. `src/modules/farm/`
+is how one comes to have an identity it can prove, and how that identity is taken away again.
+
+```
+owner/admin  POST /farm/enrollment-tokens ──▶ orb_enroll_…  (returned ONCE; masked forever)
+                                                   │  scoped to one pool · TTL · max_uses
+agent        POST /farm/registrations  ────────────┘  token validated, spent, runner created
+             { token, name, arch, CSR }        ──▶ certificate signed: CN = runner id, O = workspace
+agent        POST /farm/registrations/renewal  ──▶ authenticated by the CERTIFICATE, not a token
+owner/admin  DELETE /farm/runners/{id}/certificate ──▶ refused at the next handshake
+any member   GET  /farm/authority              ──▶ the CA to pin — the public half, only
+```
+
+**The runner generates its own keypair.** The issue left that open and it is decided in
+`x509/csr.ts`: the agent sends a PKCS#10 request and the private half never travels, so **no
+runner private key has ever existed inside Ouroboros** — there is no backup, log or column
+from which one could be recovered. The cost is that an unauthenticated endpoint reads a
+structure a caller composed; `x509/reader.ts` is a bounds-checked, DER-strict, depth-limited
+*structural walk* that decodes no values, and everything that is real parsing is delegated to
+`crypto.createPublicKey` and `crypto.verify`.
+
+**The CSR's own subject is discarded.** The certificate's subject is composed from the runner
+row this service creates and the workspace the token was scoped to. A request claiming to be
+another workspace's runner is signed with its *correct* name rather than refused, because the
+claim was never read.
+
+### The CA key, and the four things that keep it in
+
+`farm.authority.ts` is the one file allowed to hold an unwrapped CA key. It unwraps through
+`VaultModule` for **one signature** and zeroizes the plaintext in a `finally` — `VaultService`'s
+own no-cache posture, one layer up, for the stronger of its reasons: a CA key living in a
+process after its workspace was deleted is a window in which the crypto-shred has not happened.
+
+| What holds it | Where |
+|---|---|
+| A row with a plaintext CA key cannot exist | `farm_authorities_key_sealed` (`V041`) — binds every writer, including a hand-run migration |
+| Only one file may name key material | `ouroboros/no-ca-key-escape` in `eslint.config.mjs`; the rule is `src/modules/farm/no-ca-key-escape.mjs` |
+| That file has no logger, no cache and no getter | `farm.secrecy.spec.ts` reads its source |
+| No response carries one | the same suite greps a full lifecycle; `farm.integration-spec.ts` does it over a socket |
+
+### Refusals say one thing
+
+Six ways a token can fail — unknown, wrong secret, expired, spent, revoked, wrong pool — answer
+one `401 farm_enrollment_refused` with no details. Which of the six it was goes to the AD.4
+trail, where an operator can read it and a caller cannot. The same posture covers a presented
+certificate: unknown, expired, superseded and revoked are one refusal, because the difference
+tells somebody holding a stolen certificate whether the theft has been noticed.
+
+The exceptions are the refusals that describe the *caller's own input* and reveal nothing about
+the workspace: `422 farm_invalid_csr`, `403 farm_bearer_fallback_not_permitted`, and
+`409 runner_name_taken` — each argued in `farm.errors.ts`.
+
+### Revocation is the boundary
+
+A certificate lasts ninety days and the response says when to renew; that window is a backstop.
+**Revocation is the control**, checked at every handshake by `RunnerIdentityService` — which is
+exported for AH.3's gateway ([#251](https://github.com/NobuData/ouroboros/issues/251)) so there
+is one implementation of *is this certificate live?* rather than two.
+
+Renewal is authenticated by the certificate being replaced, and the request has no token field,
+so a revoked runner cannot renew its way back in. A renewal supersedes and issues in one
+transaction; `runner_certificates_live_idx` makes two live certificates for one runner a row
+PostgreSQL refuses.
+
+### The deployment requirement that fails quietly
+
+A reverse proxy terminating TLS has already consumed the client certificate. Unless it forwards
+one, **the handshake still succeeds and the identity check has nothing to check** —
+`OURO_FARM_CLIENT_CERT_HEADER` names the header it forwards in, and it is **unset by default**
+because a certificate is public and a header trusted unconditionally is an impersonation of any
+runner whose certificate anybody has seen.
+[`docs/SECURITY_MODEL.md` § 7.6](../docs/SECURITY_MODEL.md#76-the-deployment-requirement-that-silently-breaks-mtls)
+carries the nginx and Traefik directives, and the two rules that go with them.
+
+### The bearer fallback is gated and visible
+
+`workspace_settings.runner_bearer_fallback` defaults to **false**. A runner that takes the
+fallback is recorded as `security_mode = 'bearer_fallback'` and rendered as a visibly degraded
+connection by AI.2 ([#257](https://github.com/NobuData/ouroboros/issues/257)) — a security
+downgrade nobody can see is the worst of both designs.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -4192,6 +4281,12 @@ ouroboros-rest/
 │       │                   #   draft.etag.ts — the If-Match guard; publish.gate.ts — zod + engine
 │       │                   #   trigger.* — which workflow claims a queued ticket, and its pin · #143
 │       │                   #   validates against ../../schemas/workflow-dsl/v1.json
+│       ├── farm/           # the build farm's identity layer               · #250
+│       │                   #   /farm/enrollment-tokens · /farm/registrations · /farm/authority
+│       │                   #   farm.authority.ts — the ONE file that may unwrap a CA key
+│       │                   #   runner.identity.ts — the handshake check AH.3 (#251) shares
+│       │                   #   x509/ — DER in, DER out; no dependency on anything above it
+│       │                   #   no-ca-key-escape.mjs — the lint rule that keeps the key in
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
@@ -4319,6 +4414,8 @@ the estimation contract it calls [#105](https://github.com/NobuData/ouroboros/is
 the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
 the workflow rail's statistics and registry [#135](https://github.com/NobuData/ouroboros/issues/135) ·
 the ticket-source SPI, registry and sync loop [#139](https://github.com/NobuData/ouroboros/issues/139) ·
+the build farm's enrollment API and runner CA [#250](https://github.com/NobuData/ouroboros/issues/250) ·
+the farm schema it writes [#249](https://github.com/NobuData/ouroboros/issues/249) ·
 the canonical ticket model it writes [#138](https://github.com/NobuData/ouroboros/issues/138) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·

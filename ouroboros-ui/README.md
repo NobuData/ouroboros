@@ -1914,7 +1914,7 @@ plane — workers never receive them at all.
 It is the sentence that makes the security claim, and the mockup's version — *"workers only
 ever see short-lived tokens"* — describes a system this is not. AD.5
 ([#226](https://github.com/NobuData/ouroboros/issues/226)) owns the wording:
-[`../docs/SECURITY_MODEL.md` § 7.2](../docs/SECURITY_MODEL.md#72-the-page-head-subline) is
+[`../docs/SECURITY_MODEL.md` § 8.2](../docs/SECURITY_MODEL.md#82-the-page-head-subline) is
 rendered **verbatim**, with `{workspace}` filled from the active membership's display name and
 nothing else touched. `__tests__/providers/view.test.ts` reads the document and compares, so a
 change to either that is not a change to both fails the suite — which is the document's own

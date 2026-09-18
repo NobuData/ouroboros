@@ -76,6 +76,20 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `GET /api/v1/workflows/:slug/code` (#167). Lower-case kebab, which is `workflows_slug_format`,
   // so the pipe lets it through and what this suite sees is the guard's answer.
   slug: "standard-fix",
+  // The planning surface's four (#272, #274, #280). Uuids everywhere but `:key`, which is a
+  // draft's key within its batch and is free text to the router. **These were missing**: AL.4
+  // landed `/planning/…` routes without revisiting this list, so every walk of the table threw
+  // here and both assertions below have been failing since. Added with #250 because that ticket
+  // is what noticed — a suite that cannot enumerate the routes cannot say anything about the
+  // two it added.
+  batch: "2f6b1c04-5d83-4a17-9e20-3c4d5e6f7a81",
+  epic: "8a1b2c3d-4e5f-4061-9273-84950a1b2c3d",
+  key: "ah-2-enrollment",
+  source: "5d4c3b2a-1908-4f76-8e5d-4c3b2a190807",
+  // `DELETE /api/v1/farm/runners/:runnerId/certificate` (#250). A well-formed uuid, for the
+  // reason above: `ParseUUIDPipe` refuses anything else, and a `422` would let the signed-in
+  // half pass without the guard having admitted anything.
+  runnerId: "9c4ab7f0-2d31-4e55-8a0b-6f1c2d3e4a5b",
 };
 
 /**

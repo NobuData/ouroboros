@@ -16,6 +16,7 @@ const EFFECTIVE = {
   organization_id: WORKSPACE,
   auto_merge_on_checks: true,
   is_explicit: true,
+  runner_bearer_fallback: false,
   updated_at: new Date("2026-08-13T09:00:00.000Z"),
   updated_by: ADMINISTRATOR,
 } satisfies WorkspaceSettingsEffective;
@@ -23,6 +24,7 @@ const EFFECTIVE = {
 const ROW = {
   organization_id: WORKSPACE,
   auto_merge_on_checks: true,
+  runner_bearer_fallback: false,
   updated_by: ADMINISTRATOR,
   created_at: new Date("2026-08-11T10:20:23.114Z"),
   updated_at: new Date("2026-08-13T09:00:00.000Z"),
