@@ -239,7 +239,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AG.1 | #243 | 🟢 Done | ouroboros-runner: [AG.1] Module scaffold & agent protocol spec | Go module, conventions, `docs/RUNNER_PROTOCOL.md`, ci/runner | mvp, build-farm, infra, ci | N (after #8) | Y | M | ouroboros-runner, .github, docs |
-| AG.2 | #244 | 🟡 Open | ouroboros-runner: [AG.2] Enrollment, identity & connection loop | Token bootstrap, mTLS cert, outbound WSS, reconnect/backoff | mvp, build-farm | N (after AG.1, AH.2) | Y | L | ouroboros-runner |
+| AG.2 | #244 | 🟢 Done | ouroboros-runner: [AG.2] Enrollment, identity & connection loop | Token bootstrap, mTLS cert, outbound WSS, reconnect/backoff | mvp, build-farm | N (after AG.1, AH.2) | Y | L | ouroboros-runner |
 | AG.3 | #245 | 🟡 Open | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
 | AG.4 | #246 | 🟡 Open | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
 | AG.5 | #247 | 🟡 Open | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
@@ -302,7 +302,7 @@ docs/RUNNER_PROTOCOL.md (v1)
 
 ### Issue AG.2 — ouroboros-runner: [AG.2] Enrollment, identity & connection loop
 
-> **GitHub issue:** #244 · **Status:** 🟡 Open · **Parent epic:** #239
+> **GitHub issue:** #244 · **Status:** 🟢 Done · **Parent epic:** #239
 
 
 - **Problem Statement:** The one-liner's promise — token in, registered
@@ -323,6 +323,36 @@ docs/RUNNER_PROTOCOL.md (v1)
     duplicate terminal states (idempotency verified).
   - Cert renewal exercised with a short-TTL test cert; revoked cert →
     connection refused + clear agent log.
+- **Delivered:** [`ouroboros-runner`](../ouroboros-runner/README.md) `enroll` and `run` — the
+  agent's half of decision **B3**. **Enrollment follows the CSR decision AH.2 made**, not the
+  issue's older *"receives … key"*: the agent generates a P-256 key, sends only a PKCS#10
+  request, verifies what comes back (over its own key, chained to the returned CA for
+  clientAuth, naming the runner and serial the response names, the CA's fingerprint recomputed)
+  and writes certificate and key to **one `0600` file** in a `0700` state directory, in one
+  atomic rename — so a crash mid-renewal cannot leave a key beside a certificate that is not its
+  own. The token is spent once; the agent refuses to enrol into an already-enrolled directory
+  *before* presenting it. **The connection is `wss://…/api/v1/farm/agent`, outbound on 443, and
+  nothing listens** — asserted twice: `nolisten_test.go` walks the command's whole dependency
+  closure for any listener or listening import, and the end-to-end suite reads a running agent's
+  sockets out of `/proc` (or `lsof`) and requires an established connection and no `LISTEN`.
+  **The WebSocket client is written, not imported** (`internal/ws`), keeping the module's
+  no-dependency rule. Reconnection is exponential backoff with **full jitter**, held to a
+  simulated thousand-agent fleet; a gateway's `reconnect_after_ms`/`retry_after_ms` is a floor,
+  spread past. **Resume is durable**: terminal frames are persisted to an outbox named by their
+  monotonic ULID before a socket sees them and re-sent byte for byte after every reconnect or
+  restart, so a `job.finish` dropped mid-delivery — or held by an agent killed with SIGKILL — is
+  recorded once and answered `duplicate` the second time. Renewal runs at `renewAfter` over mTLS
+  with the certificate being replaced; a revoked certificate — refused by TLS alert,
+  `farm_identity_refused` or `refuse identity.*` — ends the agent with one `level=ERROR` line
+  saying what to do, and exit 1. SIGTERM becomes `bye {shutdown, "SIGTERM received"}`. **The bearer
+  fallback needs `--bearer-fallback` at enrollment and at every start**, travels only in the
+  upgrade's `Authorization` header, and is reported in a new optional `hello.security_mode` —
+  a minor `v1` change with its fixtures, parity cases and prose. **The gateway (AH.3, #251) does
+  not exist yet**, so the suites run against `internal/farmtest`, an in-process farm holding the
+  control plane's certificate shape, status codes and error codes and judging every frame by the
+  published contract; enrollment, single-use refusal, renewal through a certificate-forwarding
+  proxy and revocation were also exercised against the real AH.2 routes. The compose leg of the
+  first criterion is AH.3's to close.
 - **Parallelism/Dependencies:** Needs AG.1, AH.2. Blocks AG.3–AG.5.
 - **Technical Stack:** Go (crypto/tls, gorilla/nhooyr websocket), state dir.
 - **Epic:** AG

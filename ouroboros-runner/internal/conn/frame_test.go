@@ -24,24 +24,33 @@ func TestNewHelloReproducesTheGoldenFrame(t *testing.T) {
 		name    string
 		fixture string
 		id      string
+		mode    SecurityMode
 		resume  string
 	}{
 		{
 			name:    "a first connection",
 			fixture: "valid/hello.json",
 			id:      "01KE7NAGMYAV6AVSA6FMTM53N1",
+			mode:    SecurityMTLS,
 		},
 		{
 			name:    "a reconnection naming its session",
 			fixture: "valid/hello-resume.json",
 			id:      "01KE72Q2ZSXXHS030MNRXMF2QP",
+			mode:    SecurityMTLS,
 			resume:  "sess_01KE7MV3WKAG706QMDN23AJ3BE",
+		},
+		{
+			name:    "a connection in bearer-fallback mode",
+			fixture: "valid/hello-bearer-fallback.json",
+			id:      "01KE7Q3M8ZC4WB6E0N2T5RVH7A",
+			mode:    SecurityBearerFallback,
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			frame := NewHello(
 				testCase.id, "0.1.0", "linux/arm64", "shed-pi-01", "arm-builders",
-				capabilities, testCase.resume,
+				capabilities, testCase.mode, testCase.resume,
 			)
 
 			encoded, err := EncodeIndent(frame)
@@ -65,7 +74,7 @@ func TestNewHelloReproducesTheGoldenFrame(t *testing.T) {
 // negotiation would succeed, which is the worst possible outcome of a version check.
 func TestNewHelloAdvertisesThisBuildsRange(t *testing.T) {
 	frame := NewHello("01KE7NAGMYAV6AVSA6FMTM53N1", "9.9.9", "linux/arm64", "host", "",
-		Capabilities{CPUs: 1, MemoryMB: 1024}, "")
+		Capabilities{CPUs: 1, MemoryMB: 1024}, SecurityMTLS, "")
 
 	payload, ok := frame.Payload.(HelloPayload)
 	if !ok {
@@ -85,21 +94,23 @@ func TestNewHelloAdvertisesThisBuildsRange(t *testing.T) {
 	}
 }
 
-// TestNewHelloOmitsWhatItDoesNotKnow asserts the two optional fields are absent rather
+// TestNewHelloOmitsWhatItDoesNotKnow asserts the optional fields are absent rather
 // than empty.
 //
 // `"pool": ""` and no pool at all are different frames, and only one of them is legal:
 // the contract bounds `pool` at one character, so an agent that sent an empty string
-// would be refused for a field it was trying not to claim.
+// would be refused for a field it was trying not to claim. The same holds for an
+// unset security mode — which no connecting agent sends, but `ouroboros-runner hello`
+// before enrollment may.
 func TestNewHelloOmitsWhatItDoesNotKnow(t *testing.T) {
 	frame := NewHello("01KE7NAGMYAV6AVSA6FMTM53N1", "0.1.0", "linux/arm64", "host", "",
-		Capabilities{Docker: true, Shell: true, Ccache: true, CPUs: 4, MemoryMB: 8192}, "")
+		Capabilities{Docker: true, Shell: true, Ccache: true, CPUs: 4, MemoryMB: 8192}, "", "")
 
 	encoded, err := Encode(frame)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-	for _, absent := range []string{`"pool"`, `"resume"`} {
+	for _, absent := range []string{`"pool"`, `"resume"`, `"security_mode"`} {
 		if strings.Contains(string(encoded), absent) {
 			t.Errorf("expected %s to be omitted, got %s", absent, encoded)
 		}

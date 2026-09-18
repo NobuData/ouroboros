@@ -86,6 +86,10 @@ var (
 	}
 	drainValues = []string{"operator", "upgrade", "decommission", "capacity"}
 	byeValues   = []string{"shutdown", "drained", "error", "server_shutdown"}
+
+	// securityModeValues is decision B3's two answers, as `hello.security_mode` reports
+	// them — the same two `runners.security_mode` stores.
+	securityModeValues = []string{string(SecurityMTLS), string(SecurityBearerFallback)}
 )
 
 // The reusable field shapes. Each takes the name it appears under, because the same
@@ -135,6 +139,9 @@ var specs = map[Type]*messageSpec{
 			{name: "cpus", kinds: kindInteger, min: num(1)},
 			{name: "memory_mb", kinds: kindInteger, min: num(1)},
 		}},
+		// Optional only because it was added inside line 1 (§ 3). The gateway reads the
+		// transport for a hello that omits it.
+		{name: "security_mode", kinds: kindString, enum: securityModeValues, optional: true},
 		{name: "resume", kinds: kindString, pattern: sessionRe, optional: true},
 	}},
 

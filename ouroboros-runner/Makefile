@@ -47,7 +47,7 @@ TARGETS := linux/amd64 linux/arm64 darwin/arm64
 help:
 	@printf 'ouroboros-runner — the Ouroboros build farm agent (issue #243).\n\n'
 	@printf '  make install     Resolve the module (it has no dependencies, by design).\n'
-	@printf '  make dev         Run from source: make dev ARGS="hello".\n'
+	@printf '  make dev         Run from source: make dev ARGS="hello" (or "enroll ...", "run ...").\n'
 	@printf '  make lint        golangci-lint over every package.\n'
 	@printf '  make format      Report anything gofmt would change. Fails if there is any.\n'
 	@printf '  make fmt         Apply it.\n'
@@ -69,8 +69,9 @@ install:
 	go mod download
 	go mod verify
 
-# Run from source. There is no long-running process to start yet — the connection loop
-# is #244 — so `dev` runs the command, and ARGS is how you say which.
+# Run from source. ARGS is the command and its flags — `make dev ARGS="hello"`, or
+# `make dev ARGS="run --state-dir /tmp/runner --server-ca farm-ca.pem"` for the connection
+# loop itself (#244) against a control plane you can reach.
 dev:
 	go run $(PACKAGE) $(ARGS)
 

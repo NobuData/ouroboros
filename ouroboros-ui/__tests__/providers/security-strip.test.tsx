@@ -17,7 +17,7 @@ import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/pale
 /**
  * The security strip (#232): what reaches the DOM is the approved copy and nothing else.
  *
- * That the copy *is* `docs/SECURITY_MODEL.md` § 7.1 is `view.test.ts`'s, which reads the
+ * That the copy *is* `docs/SECURITY_MODEL.md` § 8.1 is `view.test.ts`'s, which reads the
  * document; this suite is the review the roadmap asks for at the surface — the sentence,
  * one emphasis, one tag, the link, and **no stowaway badge**.
  */
@@ -67,7 +67,7 @@ describe("the strip", () => {
   });
 
   it("carries no unearned compliance badge, and none of the mockup's withdrawn claims", () => {
-    // The reviewer's check, as a test: § 7.3 withdrew `SOC 2 Type II` and `ISO 27001`, § 7.1
+    // The reviewer's check, as a test: § 8.3 withdrew `SOC 2 Type II` and `ISO 27001`, § 8.1
     // removed `KMS-backed` and the 15-minute-token line. None survives here.
     const text = strip().textContent ?? "";
 

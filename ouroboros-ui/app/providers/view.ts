@@ -258,13 +258,13 @@ export const PROVIDERS_TITLE = "Providers & keys";
 export const WORKSPACE_SLOT = "{workspace}";
 
 /**
- * The page-head subline, **verbatim from `docs/SECURITY_MODEL.md` § 7.2**.
+ * The page-head subline, **verbatim from `docs/SECURITY_MODEL.md` § 8.2**.
  *
  * This is the sentence that makes the security claim, and its wording is not this module's
  * to choose: AD.5 ([#226](https://github.com/NobuData/ouroboros/issues/226)) owns it, because
  * the mockup's version — *"workers only ever see short-lived tokens"* — is not what the
  * system does (AD.3 does something stronger, and § 4.1 of the document says what). So this
- * constant is a copy of § 7.2's block with its line breaks joined, and nothing else: no
+ * constant is a copy of § 8.2's block with its line breaks joined, and nothing else: no
  * paraphrase, no rewording of *workspace* back to the mockup's *tenant*, and the `{workspace}`
  * slot left exactly where the document puts it for {@link providersSubline} to fill.
  *
@@ -282,7 +282,7 @@ export const PROVIDERS_SUBLINE_TEMPLATE =
  * The possessive is the template's — `{workspace}'s` — and it is applied as written, with no
  * rule of this module's own about names that already end in *s*. The copy is not the UI's to
  * adjust, and an apostrophe rule would be an adjustment; if the document wants one it belongs
- * in § 7.2, where a reviewer of the claim would look for it.
+ * in § 8.2, where a reviewer of the claim would look for it.
  *
  * @param workspace The workspace's display name, as the service reports it (`Membership.name`).
  *   Substituted **literally**: a name is data, so a `$` in it must not reach
@@ -314,18 +314,18 @@ export const ADD_PROVIDER_LABEL = "+ Add provider";
  */
 export const SECURITY_STRIP_LABEL = "Security model";
 
-/** The shield glyph, unchanged from the mockup — § 7.1 says so in as many words. */
+/** The shield glyph, unchanged from the mockup — § 8.1 says so in as many words. */
 export const SECURITY_SHIELD = "◈";
 
 /**
- * The strip's copy, **verbatim from `docs/SECURITY_MODEL.md` § 7.1**.
+ * The strip's copy, **verbatim from `docs/SECURITY_MODEL.md` § 8.1**.
  *
  * The mockup's sentence made four claims, and AD.5
  * ([#226](https://github.com/NobuData/ouroboros/issues/226)) traced each: *envelope
  * encryption (AES-256-GCM)* was true; *KMS-backed* was true only of deployments that pay
  * for one; *scoped, 15-minute tokens* was wrong in the safe direction, because P3 does
  * something stronger; and the two compliance badges were certifications the product has not
- * undergone. § 7.1 is the corrected wording, and this constant is that block with its line
+ * undergone. § 8.1 is the corrected wording, and this constant is that block with its line
  * breaks joined and nothing else — no paraphrase, and no word of this module's own.
  *
  * `__tests__/providers/view.test.ts` reads the document and compares, as it does for the
@@ -336,13 +336,13 @@ export const SECURITY_STRIP_COPY =
   "your keys — every provider call is made by the control plane, and your keys never " +
   "leave your deployment.";
 
-/** The only emphasised span in the copy, as § 7.1 names it and as the mockup drew it. */
+/** The only emphasised span in the copy, as § 8.1 names it and as the mockup drew it. */
 export const SECURITY_STRIP_EMPHASIS = "envelope encryption";
 
 /**
- * The strip's tag row: **exactly one tag**, verbatim from § 7.1.
+ * The strip's tag row: **exactly one tag**, verbatim from § 8.1.
  *
- * The mockup drew `SOC 2 Type II` and `ISO 27001` here, and § 7.3 is the rule that removed
+ * The mockup drew `SOC 2 Type II` and `ISO 27001` here, and § 8.3 is the rule that removed
  * them: a certification badge renders only when the certification exists, carries its date,
  * comes down when it lapses, is never rendered from a configuration flag, and until then
  * **the slot renders nothing** — not a *certification in progress* placeholder. What the
@@ -352,15 +352,15 @@ export const SECURITY_STRIP_EMPHASIS = "envelope encryption";
 export const SECURITY_STRIP_TAGS: readonly string[] = ["self-hosted"];
 
 /**
- * The link's label, verbatim from § 7.1. It keeps its trailing `↗` because the destination
+ * The link's label, verbatim from § 8.1. It keeps its trailing `↗` because the destination
  * leaves the application.
  */
 export const SECURITY_MODEL_LINK = "Read the security model ↗";
 
 /**
- * Where the link goes — the document itself, at the path § 7.1 names.
+ * Where the link goes — the document itself, at the path § 8.1 names.
  *
- * A deployment that serves its own copy may point this elsewhere (§ 7.1 allows it); today
+ * A deployment that serves its own copy may point this elsewhere (§ 8.1 allows it); today
  * there is one copy and one path, and the test holds the constant to the file that exists.
  */
 export const SECURITY_MODEL_URL =
@@ -371,7 +371,7 @@ export const SECURITY_MODEL_URL =
  * exactly that and nothing else.
  *
  * @param copy The sentence.
- * @param span The span to emphasise — the first occurrence, which is the only one § 7.1 has.
+ * @param span The span to emphasise — the first occurrence, which is the only one § 8.1 has.
  * @returns What comes before the span, the span, and what follows it; or `null` when the
  *   span is not in the copy, so a document edit that dropped the phrase renders the
  *   sentence plain rather than emphasising a fragment of something else.

@@ -175,6 +175,10 @@ var (
 	timestampRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$`)
 )
 
+// ValidID reports whether a string is a ULID in the published shape — what an envelope
+// id, and so an outbox file's name, must be.
+func ValidID(id string) bool { return ulidRe.MatchString(id) }
+
 // envelopeKeys is the frozen set, used to report a fifth one.
 var envelopeKeys = map[string]bool{"v": true, "type": true, "id": true, "payload": true}
 

@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "type": "hello",
+  "id": "01KE7Q3M8ZC4WB6E0N2T5RVH7B",
+  "payload": {
+    "agent": {
+      "version": "0.1.0",
+      "protocol_min": 1,
+      "protocol_max": 1
+    },
+    "arch": "linux/arm64",
+    "hostname": "shed-pi-01",
+    "pool": "arm-builders",
+    "capabilities": {
+      "docker": true,
+      "shell": true,
+      "ccache": true,
+      "cpus": 8,
+      "memory_mb": 16384
+    },
+    "security_mode": "none"
+  }
+}

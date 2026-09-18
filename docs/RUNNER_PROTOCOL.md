@@ -42,8 +42,10 @@ inbound ports* — and everything below is shaped by it.
 | | |
 |---|---|
 | Transport | WebSocket over TLS (`wss://`), one long-lived connection per agent |
+| Endpoint | `wss://<control plane>/api/v1/farm/agent` — port 443 unless the control plane's URL names another |
 | Direction | Outbound only, agent → gateway. The gateway never dials an agent. |
 | Identity | mutual TLS. The agent's client certificate is issued by the farm CA at enrollment ([#250](https://github.com/NobuData/ouroboros/issues/250)) |
+| Bearer fallback | Only where a workspace permits it and the agent was started with `--bearer-fallback`: no client certificate, and `Authorization: Bearer <secret>` on the **upgrade request** — never in a frame. `hello.security_mode` says which of the two a connection is |
 | Framing | one JSON object per **text** frame. No batching, no binary frames, no fragmentation of a message across frames. |
 | Encoding | UTF-8. Bytes that are not text travel base64-encoded inside a string — see [`log.chunk`](#logchunk). |
 | Frame ceiling | 65536 bytes. A frame larger than that is not a frame and is rejected without being parsed. |
@@ -51,6 +53,13 @@ inbound ports* — and everything below is shaped by it.
 One connection carries everything: session, liveness, dispatch, execution and logs. A second
 socket would need its own authentication, its own reconnection and its own ordering
 relationship with the first, and nothing here needs one.
+
+**The gateway's own certificate is verified like any HTTPS server's** — against the system's
+roots, or against the roots an operator names with `--server-ca` for a private deployment. The
+farm CA is not a server CA: it signs runner certificates and nothing else, and its key never
+leaves the vault ([`SECURITY_MODEL.md` § 7.4](SECURITY_MODEL.md#74-custody-of-the-ca-key)). What
+the agent pins is that CA — its fingerprint is checked against its certificate every time the
+agent loads its identity, and the client certificate must chain to it before it is presented.
 
 **Ordering** is the WebSocket's: frames arrive in the order they were written, or the
 connection is gone. Messages therefore carry no global sequence number — only `log.chunk`
@@ -191,12 +200,21 @@ bearer secret out of every session log that will ever be captured.
 | `capabilities.ccache` | boolean | yes | A `ccache` on `PATH` |
 | `capabilities.cpus` | integer ≥ 1 | yes | Usable cores, after any operator limit |
 | `capabilities.memory_mb` | integer ≥ 1 | yes | Usable memory, MiB, after any operator limit |
+| `security_mode` | `mtls` · `bearer_fallback` | no | How this connection was authenticated. Optional only because it was added inside line 1 (§ 3): every agent that connects sends it |
 | `resume` | session id | no | The session this agent wants back. Absent on a first connection |
 
 `capabilities` is *answered*, not assumed. *Is docker present?* is the enrollment card's own
 question, and a pool offering container jobs to an agent without a daemon would dispatch work
 that cannot start. `shell` is an operator's answer rather than a probe: a machine that holds
 signing keys can refuse shell jobs while still taking container ones.
+
+`security_mode` is decision **B3**'s visible degradation. The bearer fallback exists for networks
+whose proxies strip client certificates, and it is weaker — so it is *reported*, recorded in the
+runner row's `security_mode`, and shown on the farm page
+([#257](https://github.com/NobuData/ouroboros/issues/257)) rather than inferred. The gateway holds
+the claim to the transport: a hello saying `mtls` on a connection that presented no certificate
+is a stripping proxy, not a runner. A hello without the field — which only an agent older than
+the field could send — is read from the transport alone.
 
 ```json
 {
@@ -218,12 +236,15 @@ signing keys can refuse shell jobs while still taking container ones.
       "ccache": true,
       "cpus": 8,
       "memory_mb": 16384
-    }
+    },
+    "security_mode": "mtls"
   }
 }
 ```
 
 A reconnection is the same frame with `resume` — [`valid/hello-resume.json`](../schemas/runner-protocol/fixtures/valid/hello-resume.json).
+The fallback is the same frame with `"security_mode": "bearer_fallback"` —
+[`valid/hello-bearer-fallback.json`](../schemas/runner-protocol/fixtures/valid/hello-bearer-fallback.json).
 
 #### `ack`
 
@@ -815,6 +836,12 @@ An agent holds every terminal frame it has sent and not had acknowledged, **as t
 sent**, in mint order. On reconnection, after `hello`/`ack` and before anything else, it
 writes them again — unchanged, envelope `id` included.
 
+"Holds" means **on disk**, not only in memory: the Go agent writes each terminal frame to its
+state directory's outbox, named for its envelope id, before the frame reaches a socket, and
+deletes it when the receipt arrives. An agent killed with a frame outstanding re-sends it from
+the next process. Envelope ids are ULIDs minted monotonically, so the outbox's file-name order is
+the mint order.
+
 *Byte for byte* is the part that matters. The receiver recognises a re-send by the id inside
 it, and re-encoding the frame from the job record is how that id, a timestamp, or a float's
 formatting quietly changes. A re-send that is not recognised is a second finished job.
@@ -946,17 +973,17 @@ Named here so that nobody looks for it and concludes it was forgotten:
 | Not here | Where |
 |---|---|
 | Enrollment: the registration token, the CSR, the issued certificate | [#250](https://github.com/NobuData/ouroboros/issues/250), shipped — [`SECURITY_MODEL.md` § 7](SECURITY_MODEL.md#7-the-build-farms-certificate-authority) and `ouroboros-rest`'s `/api/v1/farm/*` |
-| Dialling, TLS setup, reconnection backoff, the session loop | [#244](https://github.com/NobuData/ouroboros/issues/244) |
+| Dialling, TLS setup, reconnection backoff, the session loop | [#244](https://github.com/NobuData/ouroboros/issues/244), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/agent`, `internal/ws` and `internal/state` |
 | The gateway's session store, presence table and dispatcher | [#251](https://github.com/NobuData/ouroboros/issues/251), [#252](https://github.com/NobuData/ouroboros/issues/252) |
 | How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246) |
 | How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247) |
 | Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248) |
 | A remote shared cache, and the untrusted-code isolation question | [#264](https://github.com/NobuData/ouroboros/issues/264), [#267](https://github.com/NobuData/ouroboros/issues/267) |
 
-The agent's own configuration — the gateway URL, the pool, where the certificate lives — is
-deliberately absent too. It arrives with [#244](https://github.com/NobuData/ouroboros/issues/244),
-and it will follow [`CONVENTIONS.md` § 4](CONVENTIONS.md#4-configuration--environment-variables)
-like every other module's.
+The agent's own configuration — the control plane's URL, the pool, where the certificate lives —
+is deliberately absent too. It is the agent's, not the wire's: flags and their
+variables, documented in the [`ouroboros-runner` README](../ouroboros-runner/README.md#configuration)
+under [`CONVENTIONS.md` § 4](CONVENTIONS.md#4-configuration--environment-variables).
 
 ## 9. Keeping this document true
 

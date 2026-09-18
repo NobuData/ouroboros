@@ -1007,8 +1007,16 @@ secret and an `mtls` runner has none, in both directions — the exact mirror of
 - **The gateway itself** — sessions, presence, heartbeat ingest — is AH.3
   ([#251](https://github.com/NobuData/ouroboros/issues/251)). The revocation check it performs
   is the one described here, shared as a service rather than reimplemented.
-- **The agent's side** — dialling, TLS setup, where the certificate lives on disk, reconnection
-  backoff — is AG.2 ([#244](https://github.com/NobuData/ouroboros/issues/244)).
+- **The agent's side** is AG.2 ([#244](https://github.com/NobuData/ouroboros/issues/244)), shipped
+  in [`ouroboros-runner`](../ouroboros-runner/README.md). In brief: the key is generated on the
+  machine and written with its certificate to one `0600` file in a `0700` state directory, in a
+  single atomic rename, so a crash mid-renewal cannot leave a key beside a certificate that is not
+  its own; renewal is requested before `renewAfter` over the certificate being replaced; the
+  bearer secret, where the fallback is used, lives in its own `0600` file and travels only in the
+  WebSocket upgrade's `Authorization` header; the agent refuses to start a fallback identity
+  without `--bearer-fallback`, and reports the mode in `hello.security_mode`. None of the three
+  credentials reaches a log line — the agent's end-to-end suite greps every line it writes for
+  each of them.
 - **Rotating a farm CA.** The schema does not prevent it and nothing implements it; today a CA
   lasts ten years, because its expiry is a fleet-wide outage with no partial failure to warn
   anybody first.

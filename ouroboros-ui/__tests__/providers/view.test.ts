@@ -37,7 +37,7 @@ import { membership } from "../helpers/login";
  * `audit-trail.test.tsx` proves what reaches the DOM; this proves the judgements behind it.
  *
  * The foot of the file is the page's copy (#227), and the one case there that matters is the
- * subline: it is held to `docs/SECURITY_MODEL.md` § 7.2 **by reading the document**, because
+ * subline: it is held to `docs/SECURITY_MODEL.md` § 8.2 **by reading the document**, because
  * *verbatim* is a claim about two texts and a test that only looked at one of them would be
  * asserting that a constant equals itself.
  */
@@ -193,21 +193,21 @@ const SECURITY_MODEL = readFileSync(
 );
 
 /**
- * The approved subline as § 7.2 writes it: the fenced block under that heading, with its
+ * The approved subline as § 8.2 writes it: the fenced block under that heading, with its
  * line breaks joined — the document says of its own blocks that *the line breaks in them
  * are not part of the string*.
  *
  * @returns The one sentence pair the page may render, or `""` if the section has moved.
  */
 function approvedSubline(): string {
-  const section = SECURITY_MODEL.split("### 7.2 The page-head subline")[1] ?? "";
+  const section = SECURITY_MODEL.split("### 8.2 The page-head subline")[1] ?? "";
   const block = /```text\n([\s\S]*?)```/.exec(section)?.[1] ?? "";
 
   return block.replace(/\s*\n\s*/g, " ").trim();
 }
 
 describe("the subline", () => {
-  it("is docs/SECURITY_MODEL.md § 7.2, verbatim", () => {
+  it("is docs/SECURITY_MODEL.md § 8.2, verbatim", () => {
     // The ticket's second acceptance criterion, as a comparison of two texts rather than a
     // claim about one. A change to either that is not a change to both fails here — which is
     // the document's own rule: a change to that section is a change to the product's claims.
@@ -220,7 +220,7 @@ describe("the subline", () => {
   });
 
   it("says workspace, never the mockup's tenant", () => {
-    // § 7.2's second deliberate departure: `tenant` is an internal term and appears in no
+    // § 8.2's second deliberate departure: `tenant` is an internal term and appears in no
     // other user-facing string.
     expect(PROVIDERS_SUBLINE_TEMPLATE).not.toMatch(/tenant/i);
   });
@@ -242,7 +242,7 @@ describe("the subline", () => {
 
   it("applies the template's possessive as written, with no rule of its own", () => {
     // The copy is not the UI's to adjust, and an apostrophe rule for names ending in *s*
-    // would be an adjustment. If the document wants one it belongs in § 7.2.
+    // would be an adjustment. If the document wants one it belongs in § 8.2.
     expect(providersSubline("Acme Robotics")).toContain("Acme Robotics's encrypted vault");
   });
 
@@ -257,12 +257,12 @@ describe("the subline", () => {
 });
 
 /**
- * § 7.1's blocks, in order: the copy, then the tag row — each with its line breaks joined.
+ * § 8.1's blocks, in order: the copy, then the tag row — each with its line breaks joined.
  *
  * @returns The fenced blocks under that heading and before the next.
  */
 function approvedStrip(): readonly string[] {
-  const section = (SECURITY_MODEL.split("### 7.1 The security strip")[1] ?? "").split("### 7.2")[0];
+  const section = (SECURITY_MODEL.split("### 8.1 The security strip")[1] ?? "").split("### 8.2")[0];
 
   return [...section.matchAll(/```text\n([\s\S]*?)```/g)].map((match) =>
     match[1].replace(/\s*\n\s*/g, " ").trim(),
@@ -270,7 +270,7 @@ function approvedStrip(): readonly string[] {
 }
 
 describe("the security strip (#232)", () => {
-  it("is docs/SECURITY_MODEL.md § 7.1, verbatim — the copy and the tag row", () => {
+  it("is docs/SECURITY_MODEL.md § 8.1, verbatim — the copy and the tag row", () => {
     // *Verbatim* is a claim about two texts. The first block is the sentence, the second is
     // the tag row, and each is compared to what the page renders.
     const [copy, tags] = approvedStrip();
@@ -280,8 +280,8 @@ describe("the security strip (#232)", () => {
     expect([...SECURITY_STRIP_TAGS]).toEqual([tags]);
   });
 
-  it("emphasises the one span § 7.1 names, and it is in the copy", () => {
-    const section = SECURITY_MODEL.split("### 7.1 The security strip")[1] ?? "";
+  it("emphasises the one span § 8.1 names, and it is in the copy", () => {
+    const section = SECURITY_MODEL.split("### 8.1 The security strip")[1] ?? "";
 
     expect(section).toContain(`\`${SECURITY_STRIP_EMPHASIS}\` is the only emphasised span`);
     expect(emphasised(SECURITY_STRIP_COPY, SECURITY_STRIP_EMPHASIS)).toEqual([
@@ -293,8 +293,8 @@ describe("the security strip (#232)", () => {
     expect(emphasised("no such phrase here", SECURITY_STRIP_EMPHASIS)).toBeNull();
   });
 
-  it("labels and targets the link as § 7.1 writes them", () => {
-    const section = SECURITY_MODEL.split("### 7.1 The security strip")[1] ?? "";
+  it("labels and targets the link as § 8.1 writes them", () => {
+    const section = SECURITY_MODEL.split("### 8.1 The security strip")[1] ?? "";
 
     expect(section).toContain(`**Link, verbatim:** \`${SECURITY_MODEL_LINK}\``);
     expect(section).toContain(`\`${SECURITY_MODEL_URL}\``);
@@ -302,7 +302,7 @@ describe("the security strip (#232)", () => {
     expect(SECURITY_MODEL_LINK).toMatch(/↗$/);
   });
 
-  it("carries exactly one tag, and no certification — the badge policy (§ 7.3)", () => {
+  it("carries exactly one tag, and no certification — the badge policy (§ 8.3)", () => {
     // A certification badge renders only when the certification exists, carries its date,
     // and comes down when it lapses; until then the slot renders nothing. What the product
     // has earned is one word.

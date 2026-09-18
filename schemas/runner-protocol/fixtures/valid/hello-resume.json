@@ -18,6 +18,7 @@
       "cpus": 8,
       "memory_mb": 16384
     },
+    "security_mode": "mtls",
     "resume": "sess_01KE7MV3WKAG706QMDN23AJ3BE"
   }
 }

@@ -17,6 +17,7 @@
       "ccache": true,
       "cpus": 8,
       "memory_mb": 16384
-    }
+    },
+    "security_mode": "mtls"
   }
 }

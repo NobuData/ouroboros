@@ -168,3 +168,33 @@ func TestResumeIsConcurrencySafe(t *testing.T) {
 		t.Errorf("expected one pending frame, got %d", outbox.Len())
 	}
 }
+
+// TestOutboxEntriesCarryTheirIDs asserts Entries is Pending with the ids beside it: the
+// same order, the same bytes, and copies rather than the stored buffers.
+func TestOutboxEntriesCarryTheirIDs(t *testing.T) {
+	outbox := NewOutbox()
+	outbox.Add("01KE7PDZMQDPKXES55PN5RZM7Q", []byte("first"))
+	outbox.Add("01KE7PDZMQDPKXES55PN5RZM7R", []byte("second"))
+
+	entries := outbox.Entries()
+	if len(entries) != 2 || entries[0].ID != "01KE7PDZMQDPKXES55PN5RZM7Q" ||
+		string(entries[1].Frame) != "second" {
+		t.Fatalf("got %+v", entries)
+	}
+	entries[0].Frame[0] = 'X'
+	if string(outbox.Pending()[0]) != "first" {
+		t.Error("editing an entry edited the queued frame")
+	}
+}
+
+// TestValidID is the envelope-id shape, exported for the outbox's file names.
+func TestValidID(t *testing.T) {
+	if !ValidID("01KE7PDZMQDPKXES55PN5RZM7Q") {
+		t.Error("a ULID was refused")
+	}
+	for _, bad := range []string{"", "../../etc/passwd", "01KE7PDZMQDPKXES55PN5RZM7", "01KE7PDZMQDPKXES55PN5RZM7U"} {
+		if ValidID(bad) {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+}
