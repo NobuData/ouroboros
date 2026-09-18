@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "log.chunk",
+  "id": "01KE7NV941ZNP3TRSPXQNGK4QG",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "seq": 4,
+    "stream": "stdout",
+    "encoding": "base64",
+    "data": "not base64!!",
+    "dropped_bytes": 0
+  }
+}

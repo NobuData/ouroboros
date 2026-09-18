@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "type": "drain",
+  "id": "01KE798JRSC2ZV82RCNN9876GB",
+  "payload": {
+    "reason": "upgrade",
+    "deadline_ms": 900000,
+    "detail": "agent 0.1.0 is below the fleet floor for 2026-10"
+  }
+}

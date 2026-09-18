@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "job.start",
+  "id": "01KE74RQEM2VEGVMSD6Y5W4X29",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "attempt": 1,
+    "executor": "container",
+    "started_at": "2026-09-18T12:00:02.140Z",
+    "workspace": "/var/lib/ouroboros-runner/work/job_01KE7J4EZ3204KQXMHJRPQPWQ6"
+  }
+}

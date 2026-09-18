@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "type": "job.offer",
+  "id": "01KE76GYFT5404Q2FA41RMP9PE",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "pool": "arm-builders",
+    "executor": "container",
+    "image": "registry.example.invalid/ouroboros/build-arm64:2026-09",
+    "command": "make -j8 all",
+    "workdir": "/workspace",
+    "env": {
+      "CCACHE_DIR": "/cache/ccache",
+      "MAKEFLAGS": "--output-sync=target"
+    },
+    "repository": {
+      "url": "https://github.com/NobuData/ouroboros.git",
+      "ref": "refs/pull/971/head",
+      "commit": "9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80"
+    },
+    "timeout_s": 3600,
+    "expires_at": "2026-09-18T12:00:15.000Z"
+  }
+}

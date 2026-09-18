@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "job.decline",
+  "id": "01KE757ZQZTW8XKRE8P3WK5V4Z",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "offer": "01KE76GYFT5404Q2FA41RMP9PE",
+    "reason": "draining",
+    "detail": "the operator asked this agent to stop taking work"
+  }
+}

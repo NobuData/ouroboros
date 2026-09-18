@@ -38,6 +38,18 @@ indent_size = 4
 max_line_length = 88
 
 # ---------------------------------------------------------------------------
+# Go — ouroboros-runner, the build farm agent (#243, roadmap decision B1).
+#
+# The one language here whose formatter is not negotiable: gofmt indents with tabs and
+# has no options, so this section exists to stop an editor's space default fighting it
+# on every save. Line length is gofmt's business too — it has no maximum, and wrapping
+# is decided by the syntax tree rather than by a column.
+# ---------------------------------------------------------------------------
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# ---------------------------------------------------------------------------
 # SQL — ouroboros-db Flyway migrations.
 # ---------------------------------------------------------------------------
 [*.sql]

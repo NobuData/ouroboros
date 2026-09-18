@@ -1,0 +1,586 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ouroboros.build/schemas/runner-protocol/v1.json",
+  "title": "Ouroboros runner protocol, version 1",
+  "description": "The wire contract between an ouroboros-runner agent and the farm gateway (#243). Written BEFORE either half, because the agent is Go (AG.2, #244) and the gateway is TypeScript (AH.3, #251): whichever were written first would otherwise become the specification, and the second would be reverse-engineered from it. The prose, the worked examples and the reasoning are in docs/RUNNER_PROTOCOL.md; this file is the machine-readable half, and fixtures/expected.json is the verdict every implementation has to reproduce. This document describes the whole 1.x line: adding an optional field is a minor change and stays in this file, while a change that would refuse a frame this version accepts is v2.json beside it. The ENVELOPE is frozen across every line -- see $defs/envelope_note.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "type", "id", "payload"],
+
+  "properties": {
+    "v": {
+      "description": "The protocol line this frame is written in. Present from message one and on every frame after it, because a transport that has to guess its own version is one that can never be upgraded across a fleet nobody can force-upgrade.",
+      "type": "integer",
+      "const": 1
+    },
+    "type": {
+      "description": "Which message this is. The enum is closed: an unknown type ends the walk rather than being ignored, because a receiver that skips what it does not understand is a receiver that silently drops a job result.",
+      "enum": [
+        "hello",
+        "ack",
+        "refuse",
+        "heartbeat",
+        "job.offer",
+        "job.accept",
+        "job.decline",
+        "job.start",
+        "job.progress",
+        "job.finish",
+        "log.chunk",
+        "receipt",
+        "drain",
+        "undrain",
+        "bye"
+      ]
+    },
+    "id": { "$ref": "#/$defs/ulid" },
+    "payload": {
+      "description": "The message's own fields. Always an object, even when empty -- an absent payload and an empty one are different frames, and only one of them is legal.",
+      "type": "object"
+    }
+  },
+
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "hello" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/hello" } } } },
+    { "if": { "properties": { "type": { "const": "ack" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ack" } } } },
+    { "if": { "properties": { "type": { "const": "refuse" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/refuse" } } } },
+    { "if": { "properties": { "type": { "const": "heartbeat" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/heartbeat" } } } },
+    { "if": { "properties": { "type": { "const": "job.offer" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/job_offer" } } } },
+    { "if": { "properties": { "type": { "const": "job.accept" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/job_accept" } } } },
+    { "if": { "properties": { "type": { "const": "job.decline" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/job_decline" } } } },
+    { "if": { "properties": { "type": { "const": "job.start" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/job_start" } } } },
+    { "if": { "properties": { "type": { "const": "job.progress" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/job_progress" } } } },
+    { "if": { "properties": { "type": { "const": "job.finish" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/job_finish" } } } },
+    { "if": { "properties": { "type": { "const": "log.chunk" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/log_chunk" } } } },
+    { "if": { "properties": { "type": { "const": "receipt" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/receipt" } } } },
+    { "if": { "properties": { "type": { "const": "drain" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/drain" } } } },
+    { "if": { "properties": { "type": { "const": "undrain" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/undrain" } } } },
+    { "if": { "properties": { "type": { "const": "bye" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/bye" } } } }
+  ],
+
+  "$defs": {
+    "envelope_note": {
+      "description": "THE ENVELOPE IS FROZEN. `{v, type, id, payload}` and nothing else, in every version of this protocol, forever. A gateway that speaks only v1 still has to read the `v` of a v2 `hello` in order to refuse it politely, and an agent that has just been refused still has to read the `refuse` frame that says so. That is only possible if the four outer keys never change meaning -- so a fifth key is an error rather than an extension point, and new information goes in `payload`, where it is versioned.",
+      "type": "null"
+    },
+
+    "limits": {
+      "description": "The ceilings this protocol line fixes, as data rather than as prose, so both implementations construct their boundary cases from the same numbers instead of each copying a figure out of a document. These are NOT the session's operating values: those are chosen per session by the gateway and travel in `ack.limits`, and each one must be at or below its ceiling here. `log_chunk_max_bytes` is the DECODED length -- base64 inflates it to 43692 characters on the wire, which is the `maxLength` on `log.chunk.data`.",
+      "type": "object",
+      "const": {
+        "protocol": 1,
+        "envelope_max_bytes": 65536,
+        "log_chunk_max_bytes": 32768,
+        "log_chunk_max_base64_chars": 43692
+      }
+    },
+
+    "diagnostic_codes": {
+      "description": "Every rejection this contract can produce. An implementation reports a code and the RFC 6901 path it is anchored at, and renders its own prose for the human -- a contract over English sentences is one nobody can translate. fixtures/expected.json records which code lands where for every case. The envelope.* codes end the walk: a frame whose envelope does not decode has no payload to check.",
+      "enum": [
+        "envelope.malformed",
+        "envelope.field.missing",
+        "envelope.field.type",
+        "envelope.field.unknown",
+        "envelope.version.unsupported",
+        "envelope.type.unknown",
+        "envelope.id.malformed",
+        "payload.field.missing",
+        "payload.field.type",
+        "payload.field.unknown",
+        "payload.field.enum",
+        "payload.field.range",
+        "payload.field.conflict"
+      ]
+    },
+
+    "ulid": {
+      "description": "A ULID in Crockford base32 -- 26 characters, no I, L, O or U. Every frame carries one, and the shape is fixed rather than free because the first ten characters encode the millisecond it was minted: ids sort by time, which is what makes a session log readable and a duplicate obvious. On a TERMINAL frame this id is the idempotency id (see job_finish).",
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "session_id": {
+      "description": "A session, minted by the gateway in `ack` and named by `hello.resume` after a drop.",
+      "type": "string",
+      "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "runner_id": {
+      "description": "The enrolled runner this agent is, as the control plane knows it. Stable across sessions; a session is not.",
+      "type": "string",
+      "pattern": "^rnr_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "job_id": {
+      "description": "One job, as the control plane knows it. Stable across attempts and across sessions, which is what lets a terminal frame be matched to its job after a reconnect that changed everything else.",
+      "type": "string",
+      "pattern": "^job_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "arch": {
+      "description": "The three architectures the farm builds for -- mockup 08's runners table, and the cross-compile matrix in ci/runner. Closed, because a pool's jobs are offered on the strength of it.",
+      "enum": ["linux/arm64", "linux/x86_64", "darwin/arm64"]
+    },
+    "executor": {
+      "description": "How a job is run. `container` needs an image and gets isolation; `shell` runs in the agent's own environment and is how a signing or notarisation step reaches a keychain a container cannot.",
+      "enum": ["container", "shell"]
+    },
+    "phase": {
+      "description": "Where a running job is. Advisory: a job that reports no phase is not a job that has stopped, which is what `heartbeat` is for.",
+      "enum": ["fetch", "prepare", "run", "upload"]
+    },
+    "timestamp": {
+      "description": "RFC 3339 with milliseconds, always UTC and always `Z`. The agent's clock is the customer's clock and may be wrong; the control plane records its own receipt time beside this one rather than trusting it.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "percentage": {
+      "description": "A whole percentage.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+
+    "hello": {
+      "description": "The agent's first frame on every connection, including a reconnection. It carries NO credential: identity is the TLS client certificate the enrollment exchange issued (#250), so an enrollment token appears in this payload nowhere and a frame that carries one is refused -- which is what keeps a bearer secret out of every session log that will ever be captured.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "arch", "hostname", "capabilities"],
+      "properties": {
+        "agent": {
+          "description": "What is connecting, and what it can speak. The range is what makes a rolling fleet upgrade possible: the gateway picks a version inside it, or refuses with the minimum named.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "protocol_min", "protocol_max"],
+          "properties": {
+            "version": { "description": "The agent binary's own semver, as ci/runner stamped it.", "type": "string", "minLength": 1, "maxLength": 64 },
+            "protocol_min": { "description": "The oldest line this build still speaks. There is no protocol 0.", "type": "integer", "minimum": 1 },
+            "protocol_max": { "description": "The newest line this build speaks, and the `v` this frame is written in.", "type": "integer", "minimum": 1 }
+          }
+        },
+        "arch": { "$ref": "#/$defs/arch" },
+        "hostname": {
+          "description": "What the machine calls itself -- the name the runners table shows. Not trusted for identity, only for recognition.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253
+        },
+        "pool": {
+          "description": "The pool this agent believes it belongs to. Advisory: the control plane's own record wins, and an agent that names a pool it was not enrolled into is placed by the record rather than refused.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "capabilities": {
+          "description": "What this machine can actually do, answered rather than assumed -- `is docker present?` is the enrollment card's question, and a pool offering container jobs to an agent without it would dispatch work that cannot start.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["docker", "shell", "ccache", "cpus", "memory_mb"],
+          "properties": {
+            "docker": { "description": "A reachable Docker or Podman daemon.", "type": "boolean" },
+            "shell": { "description": "Whether this agent will run shell jobs at all. An operator can refuse them on a machine that holds signing keys.", "type": "boolean" },
+            "ccache": { "description": "A ccache binary on PATH, which is what makes the cache statistics in `job.finish` possible.", "type": "boolean" },
+            "cpus": { "description": "Usable cores, after any operator-set limit.", "type": "integer", "minimum": 1 },
+            "memory_mb": { "description": "Usable memory in mebibytes, after any operator-set limit.", "type": "integer", "minimum": 1 }
+          }
+        },
+        "resume": { "$ref": "#/$defs/session_id" }
+      }
+    },
+
+    "ack": {
+      "description": "The gateway's answer to a `hello` it accepted: the session, the version it chose, whether the previous session survived, and every limit the agent must NOT hard-code. Sending the limits rather than documenting them is what lets the fleet be re-tuned without a release nobody can force.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session", "protocol", "resumed", "runner", "limits"],
+      "properties": {
+        "session": { "$ref": "#/$defs/session_id" },
+        "protocol": {
+          "description": "The line chosen for this session, inside the range `hello` advertised. Every frame after this one carries it as `v`.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "resumed": {
+          "description": "True when this is the session `hello.resume` named and the gateway still held it. False means a new session -- which does NOT excuse the agent from re-sending its unacknowledged terminal frames, because deduplication is keyed on the frame, not on the session.",
+          "type": "boolean"
+        },
+        "runner": {
+          "description": "Who the control plane thinks this is. The agent logs it so an operator reading the agent's journal and an operator reading the farm page are looking at the same row.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name", "pool"],
+          "properties": {
+            "id": { "$ref": "#/$defs/runner_id" },
+            "name": { "description": "The display name, which an operator may have changed from the hostname.", "type": "string", "minLength": 1, "maxLength": 253 },
+            "pool": { "description": "The pool of record. This is the one that counts.", "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        },
+        "limits": {
+          "description": "This session's operating values, each at or below the corresponding ceiling in $defs/limits.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "heartbeat_interval_ms",
+            "heartbeat_jitter_ms",
+            "log_chunk_max_bytes",
+            "log_rate_bytes_per_s",
+            "offer_ack_ms",
+            "resume_window_ms"
+          ],
+          "properties": {
+            "heartbeat_interval_ms": { "description": "The nominal heartbeat period.", "type": "integer", "minimum": 1000, "maximum": 300000 },
+            "heartbeat_jitter_ms": { "description": "The half-width of the uniform jitter added to it, so a fleet restarted together does not stay in lockstep.", "type": "integer", "minimum": 0, "maximum": 60000 },
+            "log_chunk_max_bytes": { "description": "The largest DECODED chunk this session accepts.", "type": "integer", "minimum": 1024, "maximum": 32768 },
+            "log_rate_bytes_per_s": { "description": "The sustained decoded-byte rate the agent throttles output to.", "type": "integer", "minimum": 1024 },
+            "offer_ack_ms": { "description": "How long the agent has to answer a `job.offer` before it expires.", "type": "integer", "minimum": 100 },
+            "resume_window_ms": { "description": "How long this session survives a dropped socket, and the floor on how long the deduplication ledger keeps a terminal frame's id.", "type": "integer", "minimum": 1000 }
+          }
+        }
+      }
+    },
+
+    "refuse": {
+      "description": "The gateway declining the connection, sent INSTEAD of `ack` and followed by a close. Its whole job is to be actionable: this binary runs on customer hardware and cannot be force-upgraded, so an agent told only `no` has nothing to report to the person who has to act. `version.below_minimum` names the minimum, which is the GitHub-runner pattern.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "minimum", "detail", "retry_after_ms"],
+      "properties": {
+        "code": {
+          "description": "Why. `version.*` is a build that has to be upgraded; `identity.*` is an enrolment that has to be redone or has been revoked (#250); `pool.unknown` and `capacity.exhausted` are the control plane's own state and may clear by themselves.",
+          "enum": [
+            "version.below_minimum",
+            "version.unsupported",
+            "identity.unknown",
+            "identity.revoked",
+            "pool.unknown",
+            "capacity.exhausted"
+          ]
+        },
+        "minimum": {
+          "description": "The oldest protocol line this gateway accepts, for a `version.*` refusal. Null for every other code.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "detail": {
+          "description": "One sentence for a human, in the agent's log and in the operator's inbox. Never a secret and never a stack trace.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "retry_after_ms": {
+          "description": "How long to wait before reconnecting, when waiting could help -- `capacity.exhausted` will clear, `identity.revoked` will not. Null means do not reconnect on this code alone.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    },
+
+    "heartbeat": {
+      "description": "Presence and load, every `heartbeat_interval_ms` plus or minus the jitter. It is the agent's only unprompted frame when idle, so its absence for more than a small multiple of the interval is what makes a runner `offline` on the farm page -- which is why it carries the telemetry too (AG.3, #245) rather than a second message doing the same round trip.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sent_at", "state", "uptime_s", "cpu_pct", "memory_used_mb", "memory_total_mb", "queue_depth", "job"],
+      "properties": {
+        "sent_at": { "$ref": "#/$defs/timestamp" },
+        "state": {
+          "description": "`idle` will accept an offer, `busy` is running something, `draining` will accept nothing. What an operator sees, and what the dispatcher reads.",
+          "enum": ["idle", "busy", "draining"]
+        },
+        "uptime_s": { "description": "How long this agent process has been up. Resets on restart; the session does not have to.", "type": "integer", "minimum": 0 },
+        "cpu_pct": { "description": "Machine-wide CPU utilisation over the last interval, 0 to 100 regardless of core count.", "type": "number", "minimum": 0, "maximum": 100 },
+        "memory_used_mb": { "description": "Machine-wide memory in use, in mebibytes.", "type": "integer", "minimum": 0 },
+        "memory_total_mb": { "description": "Machine-wide memory installed, in mebibytes.", "type": "integer", "minimum": 1 },
+        "queue_depth": { "description": "Jobs accepted and not yet finished, including the running one. Almost always 0 or 1; a pool that pipelines makes it larger.", "type": "integer", "minimum": 0 },
+        "job": {
+          "description": "The running job, or null. Null rather than absent: an agent that omitted the key when idle and sent it when busy would have two shapes for one message.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["id", "phase", "pct"],
+          "properties": {
+            "id": { "$ref": "#/$defs/job_id" },
+            "phase": { "$ref": "#/$defs/phase" },
+            "pct": { "$ref": "#/$defs/percentage" }
+          }
+        }
+      }
+    },
+
+    "job_offer": {
+      "description": "Work, offered rather than assigned. The agent answers `job.accept` or `job.decline` within `offer_ack_ms`, and an offer that is not answered expires and is re-dispatched elsewhere -- which is what stops a machine that went to sleep mid-handshake from holding a job nobody is running.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "pool", "executor", "command", "workdir", "env", "repository", "timeout_s", "expires_at"],
+      "properties": {
+        "job": { "$ref": "#/$defs/job_id" },
+        "pool": { "description": "The pool this job was dispatched to.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "executor": { "$ref": "#/$defs/executor" },
+        "image": {
+          "description": "The container image, for a `container` job. REQUIRED for one and forbidden on a `shell` job -- forbidden rather than ignored, because a dispatcher that sent an image meant a container, and running the command on the host instead would be the wrong thing done quietly.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "command": {
+          "description": "argv, never a shell string: there is no shell to split it, and a quoted path that a splitter gets wrong is a build that fails for a reason nobody can see.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "type": "string" }
+        },
+        "workdir": { "description": "Where the command runs, inside the workspace the agent prepares.", "type": "string", "minLength": 1, "maxLength": 1024 },
+        "env": {
+          "description": "Environment for the command. Values are strings; there are no secrets here -- a credential a job needs is fetched by the job through the vault (AD.1), not shipped in its dispatch, because a dispatch is logged.",
+          "type": "object",
+          "maxProperties": 128,
+          "additionalProperties": { "type": "string", "maxLength": 4096 }
+        },
+        "repository": {
+          "description": "What to check out, or null for a job that needs no source.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["url", "ref", "commit"],
+          "properties": {
+            "url": { "description": "The clone URL.", "type": "string", "minLength": 1, "maxLength": 1024 },
+            "ref": { "description": "The ref to fetch.", "type": "string", "minLength": 1, "maxLength": 256 },
+            "commit": { "description": "The exact commit, so a moving ref cannot change what was built after the fact.", "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          }
+        },
+        "timeout_s": { "description": "Wall-clock budget. On expiry the agent cancels and finishes with `timed_out`.", "type": "integer", "minimum": 1, "maximum": 86400 },
+        "expires_at": { "$ref": "#/$defs/timestamp" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "executor": { "const": "container" } }, "required": ["executor"] },
+          "then": { "required": ["image"] }
+        },
+        {
+          "if": { "properties": { "executor": { "const": "shell" } }, "required": ["executor"] },
+          "then": { "not": { "required": ["image"] } }
+        }
+      ]
+    },
+
+    "job_accept": {
+      "description": "Taken. It names the offer's envelope id as well as the job, so an offer re-dispatched after a timeout cannot be accepted twice by the same agent reading two copies of it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "offer"],
+      "properties": {
+        "job": { "$ref": "#/$defs/job_id" },
+        "offer": { "$ref": "#/$defs/ulid" }
+      }
+    },
+
+    "job_decline": {
+      "description": "Refused, immediately and with a reason. A decline is worth far more to a dispatcher than a silence it has to wait out: the job goes to another agent in milliseconds instead of after `offer_ack_ms`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "offer", "reason", "detail"],
+      "properties": {
+        "job": { "$ref": "#/$defs/job_id" },
+        "offer": { "$ref": "#/$defs/ulid" },
+        "reason": {
+          "description": "`draining` and `busy` will clear; `unsupported_executor` will not, and tells the dispatcher this pool is mis-configured rather than this agent unlucky.",
+          "enum": ["draining", "busy", "unsupported_executor", "image_unavailable", "capacity", "expired"]
+        },
+        "detail": { "description": "One sentence for the operator.", "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+
+    "job_start": {
+      "description": "Running. Sent once the workspace exists and the executor has been handed the command -- not on accept, because the gap between the two is where an image pull lives, and a job shown as running while it is really downloading is a farm page that lies.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "attempt", "executor", "started_at", "workspace"],
+      "properties": {
+        "job": { "$ref": "#/$defs/job_id" },
+        "attempt": {
+          "description": "1 for the first run of this job on this agent, incrementing for each retry. It is what makes a RETRY distinguishable from a RE-SEND: a retry is new work with a new terminal frame, a re-send is the same frame again.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "executor": { "$ref": "#/$defs/executor" },
+        "started_at": { "$ref": "#/$defs/timestamp" },
+        "workspace": { "description": "The directory the job owns, reported so a failure can be inspected on the machine.", "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+
+    "job_progress": {
+      "description": "Advisory progress, at the agent's discretion and rate-limited by it. Never required: a job that reports nothing between `job.start` and `job.finish` is a job running normally, and the liveness question is `heartbeat`'s.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "phase", "pct", "note"],
+      "properties": {
+        "job": { "$ref": "#/$defs/job_id" },
+        "phase": { "$ref": "#/$defs/phase" },
+        "pct": { "$ref": "#/$defs/percentage" },
+        "note": { "description": "One short line for the run console. Empty string when there is nothing to say.", "type": "string", "maxLength": 256 }
+      }
+    },
+
+    "job_finish": {
+      "description": "TERMINAL, and the one message the whole resume design exists for. Its ENVELOPE ID IS ITS IDEMPOTENCY ID: the agent mints it once, persists it with the job record, and re-sends the frame BYTE FOR BYTE until a `receipt` comes back. A receiver records that id durably for at least `resume_window_ms` and answers a second copy with `receipt.duplicate: true` -- so a socket that dies between this frame and its receipt costs a round trip, not a second finished job.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "attempt", "outcome", "exit_code", "started_at", "finished_at", "log", "ccache", "error"],
+      "properties": {
+        "job": { "$ref": "#/$defs/job_id" },
+        "attempt": { "description": "The attempt this terminates, matching the `job.start` that opened it.", "type": "integer", "minimum": 1 },
+        "outcome": {
+          "description": "`succeeded` and `failed` are the command's own verdict; `cancelled` is an operator or a superseding push; `timed_out` is `timeout_s`; `errored` is the agent failing to run the job at all -- an image that would not pull, a workspace it could not create. The last is a different thing from a build that failed, and a control plane that conflated them would retry the wrong ones.",
+          "enum": ["succeeded", "failed", "cancelled", "timed_out", "errored"]
+        },
+        "exit_code": {
+          "description": "The command's exit status, or null when there was never a command to exit -- `errored` and a `cancelled` that never started. Required as a key either way, because an absent field and a null one would otherwise both mean `unknown` and only one of them is legal.",
+          "type": ["integer", "null"],
+          "minimum": -1,
+          "maximum": 255
+        },
+        "started_at": { "$ref": "#/$defs/timestamp" },
+        "finished_at": { "$ref": "#/$defs/timestamp" },
+        "log": {
+          "description": "What was shipped, so the run console can say whether what it is showing is everything. Truncation is reported rather than hidden (AG.5, #247).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bytes", "chunks", "dropped_bytes"],
+          "properties": {
+            "bytes": { "description": "Decoded bytes delivered.", "type": "integer", "minimum": 0 },
+            "chunks": { "description": "`log.chunk` frames sent. The receiver checks its own count against this.", "type": "integer", "minimum": 0 },
+            "dropped_bytes": { "description": "Bytes the agent elided to stay inside its throttle, summed. Non-zero means the log has holes, and the console says so.", "type": "integer", "minimum": 0 }
+          }
+        },
+        "ccache": {
+          "description": "Compiler cache statistics, or null when there was no ccache. The number the build farm exists to move (AJ.2, #264).",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["hits", "misses", "hit_rate_pct", "size_mb", "max_size_mb"],
+          "properties": {
+            "hits": { "type": "integer", "minimum": 0 },
+            "misses": { "type": "integer", "minimum": 0 },
+            "hit_rate_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+            "size_mb": { "type": "integer", "minimum": 0 },
+            "max_size_mb": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "error": {
+          "description": "Why the agent could not run the job, for `errored`, or the executor's own last word for a `failed` one. Null when there is nothing to add beyond the exit code.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["code", "detail"],
+          "properties": {
+            "code": { "description": "A stable, greppable token -- `executor.exit`, `image.pull_failed`, `workspace.unwritable`. Not an English sentence.", "type": "string", "minLength": 1, "maxLength": 64 },
+            "detail": { "description": "One sentence for the operator. Never a credential.", "type": "string", "minLength": 1, "maxLength": 1024 }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "outcome": { "enum": ["succeeded", "failed"] } }, "required": ["outcome"] },
+          "then": { "properties": { "exit_code": { "type": "integer" } } }
+        }
+      ]
+    },
+
+    "log_chunk": {
+      "description": "Output, in order and bounded. base64 because a build log is BYTES -- a compiler that prints a lone 0x80 is a compiler whose output is not a JSON string -- and ordered by `seq` because a console that reorders a stack trace is worse than one that shows nothing.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "seq", "stream", "encoding", "data", "dropped_bytes"],
+      "properties": {
+        "job": { "$ref": "#/$defs/job_id" },
+        "seq": {
+          "description": "0-based and contiguous per job, across every stream and across a reconnect. A gap is a lost frame, which is a thing the receiver can therefore notice.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "stream": {
+          "description": "`stdout` and `stderr` are the command's; `runner` is the agent's own narration -- what it pulled, what it cached -- which the console renders differently because it is not the build talking.",
+          "enum": ["stdout", "stderr", "runner"]
+        },
+        "encoding": { "description": "base64, and only base64. One encoding means one decoder to get wrong.", "const": "base64" },
+        "data": {
+          "description": "The chunk. At most `log_chunk_max_bytes` DECODED -- 32768 by this line's ceiling, which is 43692 base64 characters, which is this maxLength.",
+          "type": "string",
+          "maxLength": 43692
+        },
+        "dropped_bytes": {
+          "description": "Bytes elided immediately BEFORE this chunk to stay inside the throttle. The console renders an elision marker rather than pretending the output was contiguous.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+
+    "receipt": {
+      "description": "The gateway confirming it has DURABLY recorded a terminal frame. Without it the agent could not know whether a re-send is needed or whether it would be a second finished job, and resume semantics would be a matter of hope. `duplicate` is how an agent learns its re-send was deduplicated rather than lost, which is the difference between a clean reconnection and a bug nobody can reproduce.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["of", "of_type", "duplicate"],
+      "properties": {
+        "of": { "$ref": "#/$defs/ulid" },
+        "of_type": {
+          "description": "The type of the frame being acknowledged. Only terminal frames are acknowledged, and `job.finish` is the only terminal frame in this line -- the enum is here so a second one cannot be added without this contract changing.",
+          "enum": ["job.finish"]
+        },
+        "duplicate": {
+          "description": "True when the receiver already held this id. The agent treats both answers the same way -- stop re-sending -- and logs the difference.",
+          "type": "boolean"
+        }
+      }
+    },
+
+    "drain": {
+      "description": "Withdraw from dispatch without dying: decline new offers, let running work finish. The safe half of every upgrade and every decommission, and the reason a fleet on customer hardware can be maintained at all.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "deadline_ms", "detail"],
+      "properties": {
+        "reason": { "description": "Why, so the agent's log says what an operator did.", "enum": ["operator", "upgrade", "decommission", "capacity"] },
+        "deadline_ms": {
+          "description": "How long running work is being given before the operator expects the agent gone. Advisory -- the agent does not kill a build on it -- but it is what an `upgrade` is promising, and 0 means no grace.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "detail": { "description": "One sentence for the agent's log.", "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+
+    "undrain": {
+      "description": "Back in rotation. The payload is empty and is still an object, because `{}` and absent are different frames and only one of them is legal.",
+      "type": "object",
+      "additionalProperties": false
+    },
+
+    "bye": {
+      "description": "The orderly close, from either side. The agent's is what a SIGTERM becomes -- said before the socket goes, so the farm page shows `offline` deliberately rather than after a heartbeat timeout. The gateway's is a deploy, and it says when to come back.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "detail", "reconnect_after_ms"],
+      "properties": {
+        "reason": {
+          "description": "`shutdown` and `drained` are the agent leaving; `error` is the agent giving up on this connection; `server_shutdown` is the gateway going away.",
+          "enum": ["shutdown", "drained", "error", "server_shutdown"]
+        },
+        "detail": { "description": "One sentence for the log.", "type": "string", "minLength": 1, "maxLength": 512 },
+        "reconnect_after_ms": {
+          "description": "When to come back, for a gateway-side `bye` -- a deploy that told a thousand agents to reconnect immediately would be a self-inflicted denial of service. Null when the sender has no opinion, and the agent falls back to its own backoff (AG.2, #244).",
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

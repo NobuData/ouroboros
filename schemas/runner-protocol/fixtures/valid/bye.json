@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "type": "bye",
+  "id": "01KE7NVHQKN0VNYD8VHZNH826Z",
+  "payload": {
+    "reason": "shutdown",
+    "detail": "SIGTERM received",
+    "reconnect_after_ms": null
+  }
+}

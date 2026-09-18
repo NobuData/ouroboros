@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "log.chunk",
+  "id": "01KE7NV941ZNP3TRSPXQNGK4QG",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "seq": 4,
+    "stream": "stdout",
+    "encoding": "utf8",
+    "data": "Z2NjIC1jIC1vIGJ1aWxkL2tlcm5lbC9zY2hlZC5vIHNyYy9rZXJuZWwvc2NoZWQuYwpnY2MgLWMgLW8gYnVpbGQva2VybmVsL3RpbWVyLm8gc3JjL2tlcm5lbC90aW1lci5jCg==",
+    "dropped_bytes": 0
+  }
+}

@@ -3,7 +3,7 @@
 **Infinity in Autonomy** — an autonomous software delivery loop: issues in, verified
 pull requests out, continuously.
 
-This repository is a monorepo of modules across three toolchains, each owning how it is
+This repository is a monorepo of modules across four toolchains, each owning how it is
 built, run and tested, with [Turborepo](https://turborepo.com) over them so that one
 command starts the whole stack:
 
@@ -24,11 +24,15 @@ modules, the boundaries between them, the request paths, and the `OURO_*` regist
 | [`ouroboros-rest/`](ouroboros-rest) | Communications layer — auth, tenancy, gateway | NestJS 11, TypeScript, Kysely, Yarn | 4000 | [#4](https://github.com/NobuData/ouroboros/issues/4) |
 | [`ouroboros-engine/`](ouroboros-engine) | Backend work execution | Python 3.12, FastAPI, uv | 8000 | [#6](https://github.com/NobuData/ouroboros/issues/6) |
 | [`ouroboros-db/`](ouroboros-db) | Tenancy schema and migrations | PostgreSQL 17, Flyway 13, SQL | 5432 | [#3](https://github.com/NobuData/ouroboros/issues/3) |
+| [`ouroboros-runner/`](ouroboros-runner) | Build farm agent — runs on the customer's own hardware | Go 1.24 | — | [#239](https://github.com/NobuData/ouroboros/issues/239) |
 | [`ouroboros-web/`](ouroboros-web) | Marketing site — [ouroboros.build](https://ouroboros.build) | Next.js, TypeScript, Yarn | 3000 | — |
 | [`docs/`](docs) | Mockups, design system, brand assets, roadmaps, architecture | Markdown, HTML | — | — |
 
 `ouroboros-web` is the public marketing site and is **not** part of the application
-stack — it ships and deploys on its own.
+stack — it ships and deploys on its own. `ouroboros-runner` is not part of it either, and
+for a stronger reason: it is a binary that runs on **the customer's** machines, dialling out
+to the farm gateway, so it is not a workspace, not a compose service, and has no port at all
+([#243](https://github.com/NobuData/ouroboros/issues/243)).
 
 All four application modules are scaffolded and run; each README states what its module
 does today and what its epic still owes it.
@@ -70,7 +74,8 @@ ouroboros/
 ├── ouroboros-rest/    # NestJS communications layer
 ├── ouroboros-engine/  # Python/FastAPI backend
 ├── ouroboros-db/      # Flyway migrations
-├── schemas/           # contracts more than one module reads — the workflow DSL
+├── ouroboros-runner/  # Go build farm agent — runs on customer hardware
+├── schemas/           # contracts more than one module reads — the workflow DSL, the runner protocol
 ├── scripts/           # repo-level tooling
 ├── tests/e2e/         # the end-to-end smoke suite — the MVP exit gate
 ├── .github/           # labels, issue forms, PR template, workflows
@@ -86,7 +91,8 @@ ouroboros/
 ## Getting started
 
 You need [Node 24](https://nodejs.org) with corepack, [uv](https://docs.astral.sh/uv/)
-and Docker. From a clean checkout:
+and Docker. [Go 1.24](https://go.dev/dl/) is needed only to work on `ouroboros-runner`,
+which is not part of the stack below. From a clean checkout:
 
 ```bash
 corepack enable      # Yarn 4, pinned by package.json
@@ -319,6 +325,7 @@ scripts/verify-dev-env.sh         # compose stack, .env.example, migration namin
 scripts/verify-ci.sh              # workflow status checks, path routing, toolchain pins
 scripts/verify-workspace.sh       # the workspace roster, the task graph, the cache boundaries
 scripts/verify-architecture.sh    # architecture doc sections, port map, env registry, links
+scripts/verify-runner-protocol.sh # the runner protocol: document, schema and fixtures still agree
 scripts/verify-brand.sh           # brand assets carry alpha, at the sizes BRAND.md publishes
 scripts/verify-favicons.sh        # favicon set, manifest and the documents that describe them
 scripts/run-tests.sh              # every shell suite: scripts/tests and each module's
@@ -338,13 +345,17 @@ only the checks it can affect:
 | `ouroboros-rest/**` | `ci/rest` → `publish/rest` | the same pipeline, against `ouroboros-rest`, then the integration suite against a migrated PostgreSQL |
 | `ouroboros-engine/**` | `ci/engine` → `publish/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
 | `ouroboros-db/**` | `ci/db` → `publish/db` | the migration and data-tier contract, then the module's tooling tests, then a live migration pass |
+| `ouroboros-runner/**` | `ci/runner` → `cross/runner` | `make install` → format → lint → typecheck → test → the protocol contract → build, then a cross-compile of all three target architectures |
 | `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
 | `package.json`, `yarn.lock`, `turbo.json`, `.yarnrc.yml` | `ci/ui` + `ci/rest` | the workspace both TypeScript modules resolve through |
+| `schemas/runner-protocol/**`, `docs/RUNNER_PROTOCOL.md` | `ci/runner` | the wire contract the Go agent and the TypeScript gateway both implement |
 
 Each `publish/<module>` job builds that module's image on every run — so a Dockerfile that
 stops building fails the pull request that broke it — and pushes it as
 `ouroboros-<module>:latest` and `ouroboros-<module>:<sha>` only once its `ci/` job is green
-on `main`.
+on `main`. `ouroboros-runner` has no such job: it ships a **binary** rather than an image,
+and the tagged release with a checksum per architecture arrives with
+[#248](https://github.com/NobuData/ouroboros/issues/248).
 
 A change to `docs/` or to `scripts/` queues none of them; a change to the pipeline the
 TypeScript modules share queues both of the modules that run it, and so does a change to
@@ -378,6 +389,7 @@ routing table, the Node and Python pins, and that every step waits for its scaff
 |---|---|
 | [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) | Toolchains, env vars, containers, code style, git workflow |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System diagram, module contracts, request paths, auth flow, API contracts, port map, `OURO_*` registry, invariants |
+| [`docs/RUNNER_PROTOCOL.md`](docs/RUNNER_PROTOCOL.md) | The build farm wire contract: the frozen envelope, all fifteen messages with a schema and a worked example, version negotiation and the version floor, resume and idempotency, and the golden fixtures every implementation asserts against |
 | [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) | How credentials are encrypted and who holds the key, per deployment mode; what a worker is given; what is audited; the approved security copy and the badge policy |
 | [`docs/MODEL_PROVIDERS.md`](docs/MODEL_PROVIDERS.md) | The `ModelProviderAdapter` SPI: the interface, the five-word error taxonomy and the pills it renders as, the config-schema dialect, the conformance kit, and a walkthrough for writing an adapter |
 | [`docs/BRAND.md`](docs/BRAND.md) | The logo asset set, which treatment goes on which surface, clear space, minimum sizes |

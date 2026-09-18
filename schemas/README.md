@@ -22,6 +22,13 @@ schemas/
 │   ├── v0.json                  # the contract — $id: …/plan/v0.json, JSON Schema 2020-12
 │   └── fixtures/
 │       └── expected.json        # one case per parser rule, and the batch it must answer with
+├── runner-protocol/
+│   ├── v1.json                  # the contract — $id: …/runner-protocol/v1.json, JSON Schema 2020-12
+│   └── fixtures/
+│       ├── expected.json        # the parity contract: one case per rule, and its verdict
+│       ├── valid/               # a worked example per message type, and the variants
+│       ├── invalid/             # one document per rule, each breaking exactly that rule
+│       └── sessions/            # ordered transcripts — each frame a path into valid/
 └── workflow-dsl/
     ├── v1.json                  # the contract — $id: …/workflow-dsl/v1.json, JSON Schema 2020-12
     └── fixtures/
@@ -55,6 +62,8 @@ schemas/
 | [`docs/WORKFLOW_CODE_DSL.md`](../docs/WORKFLOW_CODE_DSL.md) | the code-view language a person reads | Worked examples taken from `fixtures/code/` |
 | [`ouroboros-db/scripts/workflow-dsl-drift.mjs`](../ouroboros-db/scripts/workflow-dsl-drift.mjs) | `ci/db`'s drift check (P.6) — every seeded workflow definition, as stored, validated against `v1.json` with ajv | `ouroboros-db/tests/workflow-dsl-drift.test.sh` (green over the valid fixtures, red over an invalid one and over a tightened copy of the schema) |
 | [`ouroboros-engine/src/ouroboros_engine/planning/`](../ouroboros-engine/src/ouroboros_engine/planning) | `POST /v0/plan` (AL.1) — the outline parser, which is the contract's first implementation | `tests/test_planning_golden.py` (every recorded case's batch verbatim, every response valid against `plan/v0.json`, and the schema and the pydantic models agreeing field for field) |
+| [`ouroboros-runner/internal/conn/`](../ouroboros-runner/internal/conn) | the Go agent's protocol codec and validator (AG.1) — the runner contract's first implementation | `protocol_test.go` (every case's diagnostics, code and path, in the contract's order; every transcript replayed; every message type and every code covered), `frame_test.go` (the encoder reproduces a committed frame byte for byte) and `limits_test.go` (the Go constants are the schema's published limits, and the two over-limit cases built from them) |
+| [`docs/RUNNER_PROTOCOL.md`](../docs/RUNNER_PROTOCOL.md) | the runner wire contract a person reads | [`scripts/verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh) — every message type has a section, a fixture and a case; every example in the document is the committed fixture; every fixture is asserted against; the limits agree |
 
 `plan/v0.json` is here for a reason the workflow DSL's `$id` neighbour is not: **it is one
 contract with two implementations rather than two readers of one document.** AL.1's outline
@@ -73,15 +82,24 @@ this directory from its own suite and asserts against the same `expected.json`. 
 one validator and forgotten in the other is a red check in the half that forgot it — which is
 the whole reason the fixtures live above both modules rather than inside either.
 
-Both `ci/rest` and `ci/engine` watch `schemas/**`
-([`scripts/verify-ci.sh`](../scripts/verify-ci.sh) asserts it), so an edit here runs both halves
-on the pull request that makes it. `ci/db` watches `workflow-dsl/v1.json` too, and only that
-file: its drift check validates the seeded workflow definitions against the schema, so a schema
-edit that leaves the seeds behind fails on the pull request that makes it rather than in the
-studio later.
+Both `ci/rest` and `ci/engine` watch `workflow-dsl/**` and `plan/**`
+([`scripts/verify-ci.sh`](../scripts/verify-ci.sh) asserts it), so an edit to either runs both
+halves on the pull request that makes it. `ci/db` watches `workflow-dsl/v1.json` too, and only
+that file: its drift check validates the seeded workflow definitions against the schema, so a
+schema edit that leaves the seeds behind fails on the pull request that makes it rather than in
+the studio later. `ci/runner` watches `runner-protocol/**`.
+
+**Those filters name each contract rather than the directory**, and that changed when
+`runner-protocol/` arrived ([#243](https://github.com/NobuData/ouroboros/issues/243)): both
+TypeScript and Python workflows used to watch `schemas/**` wholesale, which queued two suites
+for a contract neither module reads. The consequence is the rule below — **a contract here
+reaches no workflow until its readers name it** — and it is the right consequence, because a
+contract with an undeclared reader is the exact failure this directory exists to prevent.
 
 ## Changing a contract here
 
+0. Add the contract's readers to their workflows' path filters, if it is a new contract. A
+   contract nothing watches is one whose implementations can drift with every check green.
 1. Edit `v1.json` **and** both validators, in one change.
 2. Add or edit the fixture that demonstrates the rule, and its case in `expected.json`.
    A new **node type** also wants a presentation in

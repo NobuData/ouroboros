@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "type": "receipt",
+  "id": "01KE7YZ6BYE1NXC1HBJFJ05SY4",
+  "payload": {
+    "of": "01KE7PDZMQDPKXES55PN5RZM7Q",
+    "of_type": "job.finish",
+    "duplicate": true
+  }
+}

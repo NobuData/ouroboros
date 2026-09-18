@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "type": "job.finish",
+  "id": "01KE7B4TECGD3HCS900QAD3JZG",
+  "payload": {
+    "job": "job_01KE7EWKB1TJFC3BXKZPY4FRD2",
+    "attempt": 2,
+    "outcome": "failed",
+    "exit_code": 2,
+    "started_at": "2026-09-18T12:06:00.000Z",
+    "finished_at": "2026-09-18T12:06:41.117Z",
+    "log": {
+      "bytes": 4096,
+      "chunks": 1,
+      "dropped_bytes": 0
+    },
+    "ccache": null,
+    "error": {
+      "code": "executor.exit",
+      "detail": "make: *** [all] Error 2"
+    }
+  }
+}

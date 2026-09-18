@@ -4,25 +4,39 @@ name: ouroboros-engine · ci
 # validates against, the scaffold gate it shares with the TypeScript modules, or this file
 # itself changes.
 #
-# schemas/ is the one path outside this module, and it is here for the reason rest.yml gives:
+# The shared contracts are the one path outside this module, and they are here for the reason
+# rest.yml gives:
 # P.2 (#133) put the workflow DSL above both services because both read it, and this module's
 # suite asserts that its pydantic validator agrees with the published schema and with the
 # golden verdicts ouroboros-rest asserts against too. A contract edited without running both
 # halves is a contract with two halves that have stopped agreeing.
+#
+# Those contracts are named one by one rather than as a blanket `schemas/**`, which is what
+# this filter used to be. The runner protocol landed in that directory with #243, and it
+# belongs to the Go agent and the farm gateway — neither of which this module reads — so a
+# blanket filter queued this suite for a change it cannot be affected by, which is exactly
+# what scripts/verify-ci.sh's routing assertions exist to refuse. The consequence is
+# deliberate: a new contract added under schemas/ does not reach this workflow until somebody
+# names it here, and a contract with an undeclared reader is the failure that directory exists
+# to prevent.
 
 on:
   pull_request:
     branches: [main]
     paths:
       - "ouroboros-engine/**"
-      - "schemas/**"
+      # Named contract by contract rather than as `schemas/**` — see above.
+      - "schemas/workflow-dsl/**"
+      - "schemas/plan/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/engine.yml"
   push:
     branches: [main]
     paths:
       - "ouroboros-engine/**"
-      - "schemas/**"
+      # Named contract by contract rather than as `schemas/**` — see above.
+      - "schemas/workflow-dsl/**"
+      - "schemas/plan/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/engine.yml"
   workflow_dispatch:

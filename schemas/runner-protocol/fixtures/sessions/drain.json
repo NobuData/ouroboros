@@ -1,0 +1,19 @@
+{
+  "about": [
+    "Draining, and coming back. `drain` withdraws the agent from dispatch without killing",
+    "it: offers already in flight are declined with `reason: draining`, work already",
+    "running is allowed to finish, and `undrain` puts it back in rotation.",
+    "",
+    "`bye` is the orderly close, and it is the message a SIGTERM turns into."
+  ],
+  "frames": [
+    { "from": "agent", "message": "valid/hello.json" },
+    { "from": "server", "message": "valid/ack.json" },
+    { "from": "server", "message": "valid/drain.json" },
+    { "from": "server", "message": "valid/job-offer.json" },
+    { "from": "agent", "message": "valid/job-decline.json" },
+    { "from": "server", "message": "valid/undrain.json" },
+    { "from": "agent", "message": "valid/bye.json" },
+    { "event": "disconnect" }
+  ]
+}

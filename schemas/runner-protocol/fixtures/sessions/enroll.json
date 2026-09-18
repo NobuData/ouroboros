@@ -1,0 +1,22 @@
+{
+  "about": [
+    "The enrollment card's sentence, as frames: the agent connects outbound, registers",
+    "itself, is offered work, runs it and reports the result.",
+    "",
+    "Every frame is a path into this fixture set rather than an inline copy, so a",
+    "transcript cannot drift from the message it replays."
+  ],
+  "frames": [
+    { "from": "agent", "message": "valid/hello.json" },
+    { "from": "server", "message": "valid/ack.json" },
+    { "from": "agent", "message": "valid/heartbeat.json" },
+    { "from": "server", "message": "valid/job-offer.json" },
+    { "from": "agent", "message": "valid/job-accept.json" },
+    { "from": "agent", "message": "valid/job-start.json" },
+    { "from": "agent", "message": "valid/log-chunk.json" },
+    { "from": "agent", "message": "valid/job-progress.json" },
+    { "from": "agent", "message": "valid/heartbeat-busy.json" },
+    { "from": "agent", "message": "valid/job-finish.json" },
+    { "from": "server", "message": "valid/receipt.json" }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "type": "heartbeat",
+  "id": "01KE7F22M7SGPGPKF1VBG0N0FE",
+  "payload": {
+    "sent_at": "2026-09-18T12:04:10.000Z",
+    "state": "busy",
+    "uptime_s": 86650,
+    "cpu_pct": 96.25,
+    "memory_used_mb": 7040,
+    "memory_total_mb": 16384,
+    "queue_depth": 1,
+    "job": {
+      "id": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+      "phase": "run",
+      "pct": 62
+    }
+  }
+}

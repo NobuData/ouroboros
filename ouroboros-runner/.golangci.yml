@@ -1,0 +1,93 @@
+# golangci-lint — the linter for the one Go module (docs/CONVENTIONS.md § 6).
+#
+# `make lint` runs this and `ci/runner` runs the same thing, so a laptop and a pull
+# request disagree about nothing. The configuration is here rather than in the workflow
+# for the reason every other module's is: CI must not be able to lint differently from
+# the developer who is about to push.
+#
+# The selection is deliberate and short. This binary is distributed to machines nobody
+# in this repository administers, which changes what a linter is for: the value is in
+# the checks that catch a silent failure on somebody else's computer — an ignored error,
+# a command built from a string, a nil dereference in a path that only a customer's
+# network reaches — and not in stylistic opinions that a review can hold better than a
+# tool can.
+version: "2"
+
+run:
+  # Cross-compilation is ci/runner's job (the build matrix); the linter analyses this
+  # platform. The build-tagged files for the OTHER platforms are still checked, because
+  # `default` below includes them: see the exclusions note on unused.
+  timeout: 5m
+
+linters:
+  # The five golangci-lint runs by default — errcheck, govet, ineffassign, staticcheck
+  # and unused — plus the ones below. `default: standard` is stated rather than left
+  # implicit so that an upgrade which changes the default set is a change to this file.
+  default: standard
+
+  enable:
+    # An error assigned and then compared with == rather than errors.Is is an error
+    # check that stops working the first time anything wraps it. This module wraps
+    # everything it returns.
+    - errorlint
+
+    # A subprocess built from a string, a file mode nobody meant, an unchecked path
+    # join. The agent runs commands a gateway sent it on hardware it does not own, so
+    # this one earns its place more here than anywhere else in the repository.
+    - gosec
+
+    # A returned error that is checked and then not returned. It is the failure mode
+    # this module can least afford: an enrollment or a job result that quietly
+    # succeeded.
+    - nilerr
+
+    # Typos, in identifiers and in comments. This module's comments ARE its
+    # documentation, and a misspelled protocol field name is a wire-format bug.
+    - misspell
+
+    # A parameter no caller varies and no body reads. On a scaffold it is the check
+    # that notices a function whose signature was written for a plan that changed.
+    - unparam
+
+    # A conversion that converts a type to itself, which is usually the residue of a
+    # type that used to be different.
+    - unconvert
+
+  settings:
+    errcheck:
+      # Deferred Close on a file opened for reading is the one ignored error this
+      # module accepts, and it accepts it explicitly rather than by convention: there
+      # is nothing to do about it and nothing at risk in it.
+      exclude-functions:
+        - (*os.File).Close
+
+    gosec:
+      excludes:
+        # G204 — a subprocess built from a variable. The one subprocess in this module
+        # is `/usr/sbin/sysctl -n hw.memsize`, an absolute path with constant
+        # arguments, and the rule cannot see that the path is a constant. When an
+        # executor starts running a gateway's argv (#246) this exclusion has to be
+        # revisited, because there the rule is exactly right.
+        - G204
+
+    misspell:
+      locale: UK
+
+  exclusions:
+    rules:
+      # G304 — a file read from a variable path. In a test that path comes from the
+      # committed parity contract (expected.json names each fixture), which is the whole
+      # design: the suite reads the fixtures out of the repository rather than embedding
+      # a second copy of them. Narrowed to G304 and to test files, so gosec still has
+      # every other opinion about them — and still has this one everywhere else, where
+      # a path really could come from a gateway.
+      - path: _test\.go$
+        linters:
+          - gosec
+        text: G304
+
+formatters:
+  # gofmt is not negotiable and is checked rather than applied in CI: `make fmt`
+  # applies it, and a pull request that skipped that is a pull request that fails.
+  enable:
+    - gofmt

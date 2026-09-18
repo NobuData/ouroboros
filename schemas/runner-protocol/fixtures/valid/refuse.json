@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "refuse",
+  "id": "01KE76AVKJ5KEWE9K4AABJWTDM",
+  "payload": {
+    "code": "version.below_minimum",
+    "minimum": 1,
+    "detail": "this gateway no longer speaks protocol 0; upgrade the agent",
+    "retry_after_ms": null
+  }
+}

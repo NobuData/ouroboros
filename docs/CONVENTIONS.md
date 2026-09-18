@@ -1,9 +1,9 @@
 # Ouroboros — repository conventions
 
 The rules every module in this monorepo follows. They exist so a developer moving
-between `ouroboros-ui`, `ouroboros-rest`, `ouroboros-engine` and `ouroboros-db` finds
-the same shapes in the same places, and so four modules across three toolchains do not
-each invent their own.
+between `ouroboros-ui`, `ouroboros-rest`, `ouroboros-engine`, `ouroboros-db` and
+`ouroboros-runner` finds the same shapes in the same places, and so five modules across
+four toolchains do not each invent their own.
 
 Filed as issue [#8](https://github.com/NobuData/ouroboros/issues/8). The system design
 these conventions serve is described in
@@ -21,6 +21,7 @@ ouroboros/
 ├── ouroboros-rest/    # NestJS communications layer   · epic #4
 ├── ouroboros-engine/  # Python/FastAPI backend        · epic #6
 ├── ouroboros-db/      # Flyway migrations             · epic #3
+├── ouroboros-runner/  # Go build farm agent           · epic #239
 ├── schemas/           # contracts more than one module reads · issue #133
 ├── scripts/           # repo-level tooling
 ├── tests/e2e/         # the end-to-end smoke suite       · issue #56
@@ -51,7 +52,7 @@ migrations, and only then brings up `ouroboros-rest` and `ouroboros-engine` and
 paragraph of a README nobody re-reads. `yarn build`, `yarn lint`, `yarn typecheck` and
 `yarn test` run their verb across every module that has one.
 
-Four limits on it are deliberate:
+Five limits on it are deliberate:
 
 1. **`ouroboros-web` is not a workspace.** It is the marketing site, it deploys on its
    own pipeline, and it wants the same port 3000 the product UI does, so it keeps its own
@@ -70,6 +71,14 @@ Four limits on it are deliberate:
    `scripts/dev` — so the graph can reach them. `pyproject.toml` and `flyway.toml` remain
    those modules' real manifests, and neither adapter carries a version, so § 8 still has
    one place per module where a version is written down.
+5. **`ouroboros-runner` is not a workspace either**, and it is the one module that is not
+   part of the application at all. It is a **binary distributed to the customer's own
+   machines** (roadmap decision **B1**,
+   [#243](https://github.com/NobuData/ouroboros/issues/243)), dialling out to the farm
+   gateway: not a service in the stack, not a compose service, and with no port. Adding it
+   to the roster would put Go in the task graph, and `yarn test` at the root would then
+   need a Go toolchain to pass. `ouroboros-runner/Makefile` is how it is run, and it
+   exposes the same verbs everything else does (§ 3).
 
 **Directory names are kebab-case and prefixed `ouroboros-`.** A module directory is
 never nested inside another module.
@@ -85,15 +94,41 @@ with an `$id` or equivalent, that at least two modules read.** A shape one modul
 that module. Both `ci/rest` and `ci/engine` watch it (§ 9), because an edit that ran only one
 half is how two implementations of one contract stop agreeing.
 
+The **runner protocol** ([#243](https://github.com/NobuData/ouroboros/issues/243)) is the second
+such contract, and the clearest case for the rule: the agent is Go and the gateway is
+TypeScript, written by different work streams, so whichever were written first would otherwise
+have become the specification. `schemas/runner-protocol/` holds the schema and the golden
+fixtures; [`RUNNER_PROTOCOL.md`](RUNNER_PROTOCOL.md) holds the prose and a worked example per
+message; `ci/runner` runs
+[`verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh), which fails when the three
+stop describing the same protocol.
+
+One consequence of the second contract is worth stating because it changed an existing rule.
+`ci/rest` and `ci/engine` used to watch **`schemas/**`** wholesale; they now name
+`schemas/workflow-dsl/**` and `schemas/plan/**`, because neither module reads the runner
+protocol and a blanket filter queued both suites for a change they cannot be affected by. **A
+new contract here does not reach any workflow until its readers name it**, and a contract with
+an undeclared reader is the failure this directory exists to prevent — so declaring the reader
+is the work, not an oversight to be papered over with a wildcard.
+
 ## 2. Every module directory contains
 
 | File | Required | Why |
 |---|:---:|---|
 | `README.md` | yes | Purpose, stack, run instructions, configuration — the entry point |
-| `Dockerfile` | yes, once scaffolded | Every module ships as a container |
+| `Dockerfile` | yes, once scaffolded — see the exception below | Every module ships as a container |
 | `.dockerignore` | yes, with the Dockerfile | Keeps build context small and secrets out |
 | `.gitignore` | yes | Module-local artefacts, so the directory is portable |
-| Lockfile | see below | `uv.lock` (Python) and `ouroboros-web/yarn.lock` are module-local; the workspace modules share the root `yarn.lock` |
+| Lockfile | see below | `uv.lock` (Python) and `ouroboros-web/yarn.lock` are module-local; the workspace modules share the root `yarn.lock`; `ouroboros-runner` has none, because it has no dependencies |
+
+**`ouroboros-runner` ships no container**, and that is the one exception to the Dockerfile
+row. Its artefact is a **binary** that runs on the customer's machine, so a container image
+would be a thing nobody deploys: what it needs instead is a tagged release with a checksum per
+architecture and an `install.sh` that verifies it, which is
+[#248](https://github.com/NobuData/ouroboros/issues/248). Until then `cross/runner` builds all
+three targets on every pull request, which is the part of the promise a scaffold can keep. A
+containerised runner for the end-to-end suite
+([#262](https://github.com/NobuData/ouroboros/issues/262)) is a test fixture and will say so.
 
 There is exactly one `yarn.lock` per Yarn project, so making `ouroboros-ui` and
 `ouroboros-rest` workspaces moved theirs to the root (§ 1). It is still committed and
@@ -123,6 +158,7 @@ Module READMEs follow the same five sections so they are skimmable side by side:
 | `ouroboros-web` | TypeScript | Yarn 4 via corepack | Node 24 |
 | `ouroboros-engine` | Python 3.12 | [uv](https://docs.astral.sh/uv/) | Python 3.12 |
 | `ouroboros-db` | SQL | — (Flyway container) | PostgreSQL 17 |
+| `ouroboros-runner` | Go 1.24 | — (no dependencies) | Go 1.24 (a floor, not a pin) |
 
 **TypeScript modules use Yarn 4**, enabled through corepack and pinned by the
 `packageManager` field, with `nodeLinker: node-modules` in `.yarnrc.yml`. Both of those
@@ -134,6 +170,18 @@ fails the build rather than silently updating.
 
 **Python uses uv** — `uv sync` for install, `uv run <cmd>` for everything else. `uv.lock`
 is committed. Lint and format are ruff; tests are pytest.
+
+**Go uses the toolchain and nothing else.** `ouroboros-runner` has **no dependencies** and is
+meant to keep none: it is distributed to machines nobody here administers, so every dependency
+is a supply-chain surface on somebody else's laptop, and the standard library covers what an
+agent does — a socket, JSON, a subprocess, a file. There is therefore no lockfile, and
+`go.mod`'s `go 1.24` is a **floor** rather than a pin: it is the oldest toolchain the module
+compiles with, and `ci/runner` builds with exactly that so the claim stays true. Lint is
+`golangci-lint` v2; format is `gofmt`, which has no options; tests are `go test` with the
+**race detector**, because the agent runs an executor, a heartbeat ticker and a log shipper
+against one connection. Its verbs are a
+[`Makefile`](../ouroboros-runner/Makefile) rather than a `package.json` adapter, for the reason
+§ 1 limit 5 gives.
 
 **SQL uses Flyway from its container**, so no module requires a local Java install — a
 Flyway on the developer's own PATH is used when there is one, and neither is needed to
@@ -150,19 +198,24 @@ POSIX shell, run by `scripts/run-tests.sh ouroboros-db/tests`.
 Each toolchain exposes the same verbs, so CI, the workspace runner and humans can all
 rely on them:
 
-| Task | TypeScript | Python | SQL | From the repo root |
-|---|---|---|---|---|
-| install | `yarn install --immutable` | `uv sync` | — | `yarn install` |
-| dev | `yarn dev` | `uv run dev` | `scripts/dev` | `yarn dev` |
-| lint | `yarn lint` | `uv run ruff check .` | — | `yarn lint` |
-| typecheck | `yarn typecheck` | — (ruff only; a type checker is post-MVP) | — | `yarn typecheck` |
-| format | (Prettier, via `yarn lint`) | `uv run ruff format --check .` | — | (with `lint`) |
-| test | `yarn test` | `uv run pytest` | `scripts/run-tests.sh` | `yarn test` |
-| build | `yarn build` | (container build) | — | `yarn build` |
+| Task | TypeScript | Python | SQL | Go | From the repo root |
+|---|---|---|---|---|---|
+| install | `yarn install --immutable` | `uv sync` | — | `make install` | `yarn install` |
+| dev | `yarn dev` | `uv run dev` | `scripts/dev` | `make dev` | `yarn dev` |
+| lint | `yarn lint` | `uv run ruff check .` | — | `make lint` | `yarn lint` |
+| typecheck | `yarn typecheck` | — (ruff only; a type checker is post-MVP) | — | `make typecheck` (`go vet`) | `yarn typecheck` |
+| format | (Prettier, via `yarn lint`) | `uv run ruff format --check .` | — | `make format` (`gofmt`, checked) | (with `lint`) |
+| test | `yarn test` | `uv run pytest` | `scripts/run-tests.sh` | `make test` | `yarn test` |
+| build | `yarn build` | (container build) | — | `make build` · `make cross` | `yarn build` |
 
 The last column is the same verb run across every module at once, through Turborepo
 (§ 1). It is a fan-out, not a reimplementation: `yarn lint` at the root runs each
 module's own `lint`, so there is no second definition of what linting means.
+
+**The Go column is not reached from the root**, and deliberately: `ouroboros-runner` is not a
+workspace (§ 1 limit 5), so `yarn test` at the repository root does not need a Go toolchain and
+does not run the agent's suite. `ci/runner` runs those verbs, from that directory, through that
+Makefile — which is the same bargain every other module's workflow makes.
 
 The `dev` verb is the one with an ordering. `ouroboros-db`'s is not a process — it starts
 PostgreSQL from the compose stack, waits for the healthcheck, migrates, and exits — which
@@ -427,6 +480,12 @@ markup are not flagged for being unwrappable.
 - **TypeScript** — 2 spaces, double quotes (matching `ouroboros-web`), wrapped at ~100
   columns. ESLint flat config; Prettier in the NestJS layer.
 - **Python** — 4 spaces, 88 columns, enforced by ruff, which both lints and formats.
+- **Go** — **tabs**, and no maximum line length, because both are gofmt's and gofmt has no
+  options. Every other language here has a formatter with an opinion that can be configured to
+  match `.editorconfig`; Go has one that cannot, so `.editorconfig` matches *it*. Comments are
+  the module's documentation and are written as such —
+  [`ouroboros-runner`](../ouroboros-runner) has no separate API reference, and `go doc` is what
+  a reader gets.
 - **SQL** — 2 spaces, 100 columns, lower-case keywords, one concern per migration.
 - **Markdown** — prose wrapped at ~90 columns by review convention; tables and link-heavy
   lines are exempt. Trailing whitespace is preserved because two trailing spaces are a
@@ -494,6 +553,14 @@ Each module is versioned **independently** with semver in its own manifest
 `ouroboros-rest` bumps only `ouroboros-rest`. Pre-1.0 modules use `0.x` and may break
 between minors.
 
+`ouroboros-runner`'s manifest for this purpose is
+[`VERSION`](../ouroboros-runner/VERSION), a file holding the semver and nothing else. Go has no
+version field in `go.mod` — that file names the module and its language floor — so rather than
+invent a second place to write one, the module keeps one file and its
+[`Makefile`](../ouroboros-runner/Makefile) stamps the value into the binary at link time. That
+is what makes `ouroboros-runner version` and every `hello` frame report a real version instead
+of a constant somebody forgot to bump.
+
 ## 9. CI
 
 Workflows are **path-filtered** so a PR only runs the checks it can affect
@@ -508,13 +575,19 @@ ouroboros-engine/** ─▶ ci/engine  ruff · pytest
                     ─▶ publish/engine the engine image, pushed from main
 ouroboros-db/**     ─▶ ci/db      flyway migrate · validate · constraints
                     ─▶ publish/db     the migration image, pushed from main
+ouroboros-runner/** ─▶ ci/runner  make install · format · lint · typecheck · test · build
+                    ─▶ cross/runner   linux/x86_64 · linux/arm64 · darwin/arm64, build only
 
 package.json        ─▶ ci/ui + ci/rest   the workspace both resolve through
 yarn.lock
 turbo.json
 .yarnrc.yml
 
-schemas/**          ─▶ ci/rest + ci/engine  the contracts both services validate against
+schemas/workflow-dsl/**  ─▶ ci/rest + ci/engine  the contracts both services validate against
+schemas/plan/**
+
+schemas/runner-protocol/**  ─▶ ci/runner   the wire contract the agent implements
+docs/RUNNER_PROTOCOL.md
 ```
 
 Those four are the one filter that is not a directory. Since the TypeScript modules
@@ -523,31 +596,49 @@ it can break both builds without touching either module — and a filter that mi
 would report nothing at all. `ouroboros-web` is unaffected: it is not a workspace, and
 `docker-publish.yml` watches only its own directory.
 
-`schemas/**` is the same argument for a different pair (§ 1,
+The shared contracts are the same argument for a different pair (§ 1,
 [#133](https://github.com/NobuData/ouroboros/issues/133)). The workflow DSL is one published
 schema with two validators over it and a golden fixture set both suites assert against, and it
 lives in neither module because neither owns it — so an edit there has to run both, or the two
 validators can stop agreeing with no check saying so.
 
+They are named contract by contract rather than as `schemas/**`, which is what these filters
+used to be. The runner protocol arrived in that directory with
+[#243](https://github.com/NobuData/ouroboros/issues/243) and is read by neither TypeScript nor
+Python, so a blanket filter queued two suites for a change they cannot be affected by — which
+is the *opposite* of what path filtering is for. The cost is that a new contract reaches no
+workflow until its readers name it, and § 1 argues that is the right cost.
+
+`docs/RUNNER_PROTOCOL.md` is the other unusual entry, and the second document in this table
+after mockup 05: it is not documentation *about* the code, it is half of a contract, and
+`ci/runner` asserts that it still agrees with the schema and the fixtures. An edit to it that
+ran nothing would be an edit to the specification with no check that the specification is still
+consistent.
+
 One file per module — [`ui.yml`](../.github/workflows/ui.yml),
 [`rest.yml`](../.github/workflows/rest.yml),
 [`engine.yml`](../.github/workflows/engine.yml),
-[`db.yml`](../.github/workflows/db.yml) — each watching its own directory and its own
+[`db.yml`](../.github/workflows/db.yml),
+[`runner.yml`](../.github/workflows/runner.yml) — each watching its own directory and its own
 definition. Four rules keep them interchangeable:
 
-1. **The job name is the status check name.** `ci/ui`, `ci/rest`, `ci/engine`, `ci/db`
-   are what GitHub names the check runs and therefore what branch protection is
+1. **The job name is the status check name.** `ci/ui`, `ci/rest`, `ci/engine`, `ci/db` and
+   `ci/runner` are what GitHub names the check runs and therefore what branch protection is
    configured against; renaming a job silently un-requires the check.
 2. **A version is pinned once.** Node lives in the `node-version` default of
    [`.github/actions/node-module`](../.github/actions/node-module/action.yml), the
    pipeline `ouroboros-ui` and `ouroboros-rest` share; Python lives in `engine.yml`'s
-   `PYTHON_VERSION`. No workflow carries a pin of its own.
+   `PYTHON_VERSION`; **Go 1.24** lives in `runner.yml`'s `GO_VERSION`, beside the
+   `GOLANGCI_LINT_VERSION` that pins the linter to an exact release. No workflow carries a pin
+   of its own.
 3. **A module's checks activate with its scaffold.** `ouroboros-rest` is still a README,
    so each workflow asks
    [`.github/actions/scaffold-gate`](../.github/actions/scaffold-gate/action.yml) for
    the module's manifest first and reports why it stopped when there is not one. The
    pull request that adds the `package.json` or `pyproject.toml` is the one that turns
-   the checks on — no workflow is edited.
+   the checks on — no workflow is edited. `db.yml` and `runner.yml` carry no gate, because
+   both modules were scaffolded by the pull request that added their workflow, and a
+   condition that is true on every run is one nobody would notice becoming always false.
 4. **Actions are pinned to a release**, never to `@main`, and every workflow asks for no
    more than `contents: read`.
 
@@ -570,10 +661,18 @@ migrated twice with the dev-seed overlay and asserted by
 [`tests/seed.sql`](../ouroboros-db/tests/seed.sql), which is both the seed's content
 check and its idempotency check — every assertion in it says *exactly one*.
 
-**The published artefacts**: every one of the four workflows carries a second job —
-`publish/ui`, `publish/rest`, `publish/engine`, `publish/db` — which builds that module's
-`Dockerfile` (§ 5) and pushes it as `ouroboros-<module>:latest` and
+**The published artefacts**: every one of the four application workflows carries a second
+job — `publish/ui`, `publish/rest`, `publish/engine`, `publish/db` — which builds that
+module's `Dockerfile` (§ 5) and pushes it as `ouroboros-<module>:latest` and
 `ouroboros-<module>:<sha>`.
+
+`runner.yml`'s second job is not one of them. `cross/runner` **builds** the agent for all
+three target architectures and publishes nothing, because this module's artefact is a binary
+for somebody else's machine rather than an image for a deployment (§ 2) — and it builds rather
+than tests them because an `arm64` binary cannot be run on the `x86_64` runner. It carries the
+same `needs: ci` gate a publish job does, for the same reason: a cross build of a checkout
+that has not been linted or tested is an artefact nothing has run. The release itself is
+[#248](https://github.com/NobuData/ouroboros/issues/248).
 
 Each one `needs: ci`, and that is the reason a publish job lives in its module's workflow
 rather than in one of its own: the image is exactly the checkout the job above proved. For
@@ -636,6 +735,7 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 | [`verify-tokens.sh`](../scripts/verify-tokens.sh) | [`design/tokens.css`](design/tokens.css) parses to exactly three palette blocks with no literal outside them, both dark blocks are identical, every colour is themed in both palettes, the dark palette still matches the mockups' sheet, the preview page carries no literal, and every contrast ratio [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) publishes is the recomputed one, at or above its minimum |
 | [`verify-favicons.sh`](../scripts/verify-favicons.sh) | The favicon set in [`../ouroboros-ui/public`](../ouroboros-ui/public) is the size and colour type each file promises, `favicon.ico` carries every resolution it should, the manifest names only files that exist, and [`BRAND.md`](BRAND.md) and the module README still describe the set on disk |
 | [`verify-architecture.sh`](../scripts/verify-architecture.sh) | [`ARCHITECTURE.md`](ARCHITECTURE.md) carries its required sections, renders its diagrams, states every invariant, resolves every link, and documents exactly the `OURO_*` variables `.env.example` declares |
+| [`verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh) | The runner protocol's three halves still describe one protocol: every message type has a section in [`RUNNER_PROTOCOL.md`](RUNNER_PROTOCOL.md), a worked example in `schemas/runner-protocol/fixtures/valid/` and a case in `expected.json`; every example in the document is byte-identical to the fixture it names; every committed fixture is asserted against and every frame a transcript replays exists; every diagnostic code is documented and implemented; and the published limits agree across the schema, the document and the Go constants |
 | [`run-tests.sh`](../scripts/run-tests.sh) | Runs every shell suite — `scripts/tests/*.test.sh` for the tooling above, and each module's own `tests/*.test.sh`, as [`ouroboros-db`](../ouroboros-db/tests) has. Name a directory to run one suite: `scripts/run-tests.sh ouroboros-db/tests` |
 
 They share one assertion harness, [`scripts/lib/checks.sh`](../scripts/lib/checks.sh), so
