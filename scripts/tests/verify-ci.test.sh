@@ -72,6 +72,7 @@ make_fixture() {
       - "ouroboros-db/run.sh"
       - "schemas/workflow-dsl/**"
       - "schemas/plan/**"
+      - "schemas/runner-protocol/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"'
@@ -928,19 +929,27 @@ check_break 'a rest workflow that stops watching the plan contract is reported' 
   'schemas/plan/v0\.json runs engine\.yml rest\.yml' \
   'sed -i "/^      - \"schemas\/plan\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
 
+# …and the runner protocol, since AH.3 (#251) made the gateway's codec its second
+# implementation. A rest workflow that stopped watching it would leave the TypeScript parity
+# suite green against fixtures it never re-read.
+check_break 'a rest workflow that stops watching the runner protocol is reported' \
+  'schemas/runner-protocol/v1\.json runs rest\.yml runner\.yml' \
+  'sed -i "/^      - \"schemas\/runner-protocol\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
+
 check_break 'an engine workflow that stops watching the plan contract is reported' \
   'schemas/plan/v0\.json runs engine\.yml rest\.yml' \
   'sed -i "/^      - \"schemas\/plan\/\*\*\"$/d" "$root/.github/workflows/engine.yml"'
 
-# The runner protocol is the third, and the one whose readers are *only* ci/runner today.
-# A wildcard restored on either workflow above would queue a suite for a contract that
-# module cannot be affected by, which is the failure the narrowing fixed.
-check_break 'a rest workflow that watches every contract wholesale is reported' \
-  'schemas/runner-protocol/v1\.json runs runner\.yml' \
-  'sed -i "s|^      - \"schemas/plan/\*\*\"$|      - \"schemas/**\"|" "$root/.github/workflows/rest.yml"'
+# The runner protocol is the third. Its readers are ci/runner and — since AH.3 (#251) —
+# ci/rest, but not ci/engine: a wildcard restored on the engine workflow would queue a suite
+# for a contract that module cannot be affected by, which is the failure the narrowing fixed.
+# (It was the rest workflow this case broke until #251 made that module a reader.)
+check_break 'an engine workflow that watches every contract wholesale is reported' \
+  'schemas/runner-protocol/v1\.json runs rest\.yml runner\.yml' \
+  'sed -i "s|^      - \"schemas/plan/\*\*\"$|      - \"schemas/**\"|" "$root/.github/workflows/engine.yml"'
 
 check_break 'a runner workflow that stops watching the protocol contract is reported' \
-  'schemas/runner-protocol/v1\.json runs runner\.yml' \
+  'schemas/runner-protocol/v1\.json runs rest\.yml runner\.yml' \
   'sed -i "/^      - \"schemas\/runner-protocol\/\*\*\"$/d" "$root/.github/workflows/runner.yml"'
 
 check_break 'a runner workflow that stops watching the protocol document is reported' \

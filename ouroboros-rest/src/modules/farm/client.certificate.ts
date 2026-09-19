@@ -45,7 +45,7 @@
  * tested against a certificate this service really issued rather than against a socket.
  */
 
-import type { Request } from "express";
+import type { IncomingMessage } from "node:http";
 import type { TLSSocket } from "node:tls";
 
 import { fromPem, toPem } from "./x509/pem";
@@ -56,12 +56,18 @@ const CERTIFICATE_LABEL = "CERTIFICATE";
 /**
  * The certificate the caller presented, as PEM, or `undefined`.
  *
- * @param request - The inbound request.
+ * Typed on Node's `IncomingMessage` rather than Express's `Request` — which extends it — because
+ * the agent gateway (AH.3, [#251](https://github.com/NobuData/ouroboros/issues/251)) reads the
+ * certificate off a WebSocket **upgrade** request, and an upgrade never passes through Express.
+ * One function for both is the point: the renewal route and the gateway cannot disagree about
+ * where a certificate comes from.
+ *
+ * @param request - The inbound request, or upgrade request.
  * @param header - The header name `OURO_FARM_CLIENT_CERT_HEADER` gave, or `undefined` when a
  *   deployment has not named one — in which case the header is not read at all.
  * @returns The PEM, or `undefined` when nothing was presented.
  */
-export function clientCertificate(request: Request, header?: string): string | undefined {
+export function clientCertificate(request: IncomingMessage, header?: string): string | undefined {
   return fromSocket(request) ?? (header ? fromHeader(request, header) : undefined);
 }
 
@@ -73,7 +79,7 @@ export function clientCertificate(request: Request, header?: string): string | u
  *   certificate. Node answers an *empty object* rather than `undefined` for the latter, which
  *   is the case `raw?.length` is checking.
  */
-function fromSocket(request: Request): string | undefined {
+function fromSocket(request: IncomingMessage): string | undefined {
   const socket = request.socket as Partial<TLSSocket>;
 
   if (typeof socket.getPeerCertificate !== "function") return undefined;
@@ -99,7 +105,7 @@ function fromSocket(request: Request): string | undefined {
  *   something in the chain appended one, and picking either would be guessing which hop is
  *   the trusted one.
  */
-function fromHeader(request: Request, header: string): string | undefined {
+function fromHeader(request: IncomingMessage, header: string): string | undefined {
   const value = request.headers[header.toLowerCase()];
 
   if (typeof value !== "string" || value.length === 0) return undefined;

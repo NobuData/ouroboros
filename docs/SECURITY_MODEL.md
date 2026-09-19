@@ -962,6 +962,16 @@ location /api/v1/farm/ {
   proxy_set_header X-Ouro-Client-Cert $ssl_client_escaped_cert;
   proxy_pass http://ouroboros-rest:4000;
 }
+# The agent gateway (#251) is a WebSocket: the upgrade has to be passed through too, and the
+# idle timeout has to outlast a heartbeat interval (10 s) by a comfortable margin.
+location = /api/v1/farm/agent {
+  proxy_http_version 1.1;
+  proxy_set_header   Upgrade    $http_upgrade;
+  proxy_set_header   Connection "upgrade";
+  proxy_set_header   X-Ouro-Client-Cert $ssl_client_escaped_cert;
+  proxy_read_timeout 120s;
+  proxy_pass http://ouroboros-rest:4000;
+}
 ```
 
 ```yaml
@@ -979,6 +989,17 @@ Two rules go with it, and neither is optional:
    header from inbound requests before setting it, or a client can set it itself.
 2. **Do not name the header on a deployment that terminates TLS in this process.** There is
    nothing to gain and one thing to lose.
+
+**What the gateway does when the requirement is not met** (AH.3,
+[#251](https://github.com/NobuData/ouroboros/issues/251)): it *refuses*. An agent connection that
+arrives with no client certificate — and no bearer secret for a workspace that permits the
+fallback — is answered `401 farm_client_certificate_required` on the upgrade request itself,
+before any socket exists; it is never accepted as ordinary TLS. Because the failure is otherwise
+silent, the gateway also makes it **detectable**: the first such refusal in a process is logged
+with what it most likely means (which of *header not configured* and *proxy not forwarding* it
+is, and this section's name), and every one is counted in the gateway's
+`refused.no_certificate` metric. The Go agent reads the same code and says, in its own log, that
+a proxy is terminating TLS without passing the certificate through.
 
 ### 7.7 The bearer fallback, and why it is visible
 
@@ -1005,8 +1026,16 @@ secret and an `mtls` runner has none, in both directions — the exact mirror of
 ### 7.8 What this section does not cover
 
 - **The gateway itself** — sessions, presence, heartbeat ingest — is AH.3
-  ([#251](https://github.com/NobuData/ouroboros/issues/251)). The revocation check it performs
-  is the one described here, shared as a service rather than reimplemented.
+  ([#251](https://github.com/NobuData/ouroboros/issues/251)), shipped in
+  [`ouroboros-rest`'s `farm/gateway/`](../ouroboros-rest/src/modules/farm/gateway). The revocation
+  check it performs at every upgrade is the one described here, called as
+  `RunnerIdentityService` rather than reimplemented, and its refusals are this section's two
+  codes. A bearer-fallback connection is matched by opening each eligible runner's sealed secret
+  and comparing in constant time — the secret names no runner, so there is no lookup column to
+  consult, and the candidates are only fallback runners in workspaces that still permit it.
+  Revocation takes effect at the next handshake: a session already open when a certificate is
+  revoked is not cut by the revocation itself, which is the lifecycle work of AH.6
+  ([#254](https://github.com/NobuData/ouroboros/issues/254)).
 - **The agent's side** is AG.2 ([#244](https://github.com/NobuData/ouroboros/issues/244)), shipped
   in [`ouroboros-runner`](../ouroboros-runner/README.md). In brief: the key is generated on the
   machine and written with its certificate to one `0600` file in a `0700` state directory, in a

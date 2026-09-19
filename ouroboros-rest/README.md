@@ -248,6 +248,7 @@ service never starts half-configured.
 | `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
 | `OURO_LISTEN_HOST`          | Bind-interface override — set only by the e2e stack ([#647](https://github.com/NobuData/ouroboros/issues/647)); unset, `NODE_ENV` decides as always |     no — unset     | exactly `127.0.0.1` or `0.0.0.0`                                            |
 | `OURO_FARM_CLIENT_CERT_HEADER` | The header a **trusted** reverse proxy forwards a runner's TLS client certificate in ([#250](https://github.com/NobuData/ouroboros/issues/250)). Unset, the certificate is read from the TLS socket and from nowhere else — see [The build farm's identity layer](#the-build-farms-identity-layer). Set it only when something in front of this service terminates TLS, and strip the header at the edge: a certificate is public, so a header trusted unconditionally is an impersonation of any runner |     no — unset     | an HTTP field name, such as `x-ouro-client-cert`                            |
+| `OURO_FARM_MIN_AGENT_VERSION` | The oldest `ouroboros-runner` build the [agent gateway](#the-agent-gateway) accepts ([#251](https://github.com/NobuData/ouroboros/issues/251)) — a `hello` below it is refused with `version.below_minimum` and a sentence naming the floor, and the agent exits rather than reconnecting. Compared by SemVer precedence; the template's `0.0.0-0` admits every build |     no — unset     | a semantic version, such as `0.2.0`                                         |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 | `OURO_WORKFLOW_SKILL_SUGGESTIONS` | Skill names the [stage catalog](#the-stage-catalog) suggests to the workflow inspector ([#145](https://github.com/NobuData/ouroboros/issues/145)) — advice, never an enumeration |     no — unset     | comma-separated names, each at most 128 characters, none listed twice |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
@@ -3330,6 +3331,81 @@ fallback is recorded as `security_mode = 'bearer_fallback'` and rendered as a vi
 connection by AI.2 ([#257](https://github.com/NobuData/ouroboros/issues/257)) — a security
 downgrade nobody can see is the worst of both designs.
 
+## The agent gateway
+
+> **Issue:** [#251](https://github.com/NobuData/ouroboros/issues/251) — *[AH.3] Agent WebSocket
+> gateway* · epic [#240](https://github.com/NobuData/ouroboros/issues/240) · decisions **B2**/**B3**/**B7** ·
+> schema `V042` · [`docs/RUNNER_PROTOCOL.md`](../docs/RUNNER_PROTOCOL.md)
+
+`wss://<control plane>/api/v1/farm/agent` — the server half of the runner protocol, and the
+farm's nervous system. Every `ouroboros-runner` holds one outbound connection here, and
+everything the farm page shows about a machine — the pill, `last seen`, the CPU meter, the
+queue chip — arrives over it. `src/modules/farm/gateway/` is the gateway; `src/modules/farm/protocol/`
+is the codec, held to `schemas/runner-protocol/fixtures/` together with the Go agent's.
+
+```
+agent ──upgrade + client cert──▶ transport.ts: RunnerIdentityService (revocation) or the fallback
+          │ refused ─▶ 401 farm_identity_refused · 401 farm_client_certificate_required
+          ▼
+hello ──▶ version floors · security mode vs transport ─▶ refuse, or
+          runners: hostname · arch · agent_version · capabilities · online ─▶ ack {session, limits}
+heartbeat ──▶ telemetry snapshot · uptime · pill · last_seen_at ← THIS beat · drain reconciled
+job.finish ──▶ ledger + job in ONE transaction ─▶ receipt {duplicate}   (record, then answer)
+bye ──▶ offline now          silence ──▶ presence sweep: offline after 32 s, last_seen_at kept
+```
+
+It is a Nest provider holding a `ws` server on the HTTP server's `upgrade` event rather than a
+`@WebSocketGateway`: it has to refuse **before** upgrading, in this service's error envelope,
+with the codes the agent already branches on; it has to handle the protocol's
+`{v, type, id, payload}` frames one at a time and in order; and it should not need a
+process-global adapter. `agent.gateway.ts` argues each.
+
+### Exactly once, for the frame that matters
+
+A `job.finish` is recorded in `runner_terminal_frames` (`V042`) by its envelope id — the
+idempotency key the agent repeats verbatim on every re-send — in the same transaction that
+applies it to its `build_jobs` row, and the `receipt` is written only after that commits. A
+re-send finds the row and is answered `duplicate: true` without touching the job; two copies
+racing each other lose to the table's primary key rather than to a check. The ledger knows no
+sessions, so a reconnect that could not resume is deduplicated exactly as well as one that
+could. A frame naming a job that is not this runner's is recorded, receipted and applied to
+nothing — which is also the organization-isolation guarantee for terminal frames.
+
+### Presence is honest in both directions
+
+A runner that stops heartbeating is `offline` after **three missed intervals plus the jitter —
+32 seconds** — applied by a sweep every 5 seconds, so the farm table is at most 37 seconds
+behind a machine that died (`gateway.policy.ts`). The sweep **never writes `last_seen_at`**: it
+stays at the last heartbeat that genuinely arrived. A runner that comes back is `online` the
+moment it says hello, and an agent's `bye` makes it `offline` at once, deliberately.
+
+### Sessions, resume and ordered delivery
+
+`AgentSessions` is connection ↔ runner. Every frame the gateway owes a session — a receipt until
+it has been written, an offer until it is answered or expires, a drain — goes through its
+outbox in order, and a session that loses its socket waits out a five-minute resume window; a
+`hello.resume` naming it gets the ack with `resumed: true` and then everything still owed, in
+the order it was first sent. Sessions live in this process: a reconnect to another replica gets
+`resumed: false`, which the protocol is written to survive.
+
+### What other tickets call
+
+| Export | For | What it does |
+|---|---|---|
+| `AgentSessions.offer` · `.listen` · `.isConnected` | dispatch, AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)); log ingest, AH.5 ([#253](https://github.com/NobuData/ouroboros/issues/253)) | offer a job to a runner (the payload is held to the contract before it is sent); hear `job.accept`/`job.decline`/`log.chunk` |
+| `RunnerControl.drain` · `.undrain` | lifecycle actions, AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)) | write `desired_state`, then push the frame; a runner connected elsewhere is told at its next heartbeat |
+| `supportsExecutor` (`capabilities.ts`) | dispatch eligibility, AH.4 | whether a runner's stored capabilities say it can run a job under an executor |
+| `GatewayMetrics.snapshot` | health history, AJ.4 ([#266](https://github.com/NobuData/ouroboros/issues/266)) | connections, refusals by reason, frames by type, terminal records and duplicates, presence flips |
+
+### The version floor
+
+The agent runs on customer machines and cannot be force-upgraded, so the gateway refuses an old
+one from the first release. `OURO_FARM_MIN_AGENT_VERSION` is the build floor — a `hello` below it
+is answered `refuse {version.below_minimum}` with a sentence naming it, and the agent exits
+rather than reconnecting into the refusal. The protocol-*line* floor is the build's own, and a
+`hello` written in a line this gateway does not speak is still read far enough to refuse it with
+the minimum named, or to be answered in a line both ends do.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -4287,6 +4363,10 @@ ouroboros-rest/
 │       │                   #   runner.identity.ts — the handshake check AH.3 (#251) shares
 │       │                   #   x509/ — DER in, DER out; no dependency on anything above it
 │       │                   #   no-ca-key-escape.mjs — the lint rule that keeps the key in
+│       │   ├── protocol/   # the runner protocol codec, held to schemas/runner-protocol · #251
+│       │   └── gateway/    # wss://…/api/v1/farm/agent — sessions, presence, resume  · #251
+│       │                   #   transport.ts — the upgrade's identity; agent.connection.ts —
+│       │                   #   one session's protocol; gateway.repository.ts — the ledger
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*

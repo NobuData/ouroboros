@@ -12880,6 +12880,108 @@ select pg_temp.must_hold(
      from ouroboros.workspace_settings_effective where organization_id = 'org-farm'),
   'and one setting answered leaves the other at its own default, resolved in the database');
 
+-- ===========================================================================
+-- V042 — what the agent gateway remembers: the terminal-frame ledger and hostname (#251)
+-- ===========================================================================
+--
+-- AH.3's criteria that are the schema's to keep: **a terminal frame is recorded once per
+-- runner**, so a re-send after a dropped socket is a row PostgreSQL refuses rather than a second
+-- finished build; **a recorded delivery cannot be revised**; and **a frame that finished a build
+-- names it**. The rest — which frame is a re-send, which job is this runner's — is the gateway's,
+-- and lives in `ouroboros-rest`'s suites. Runs on the V040 fixtures, before the cascade below.
+
+insert into ouroboros.runner_terminal_frames
+  (organization_id, runner_id, frame_id, frame_type, job_id, applied)
+values
+  ('org-farm', '7f000002-0000-4000-8000-000000000001', '01KE7PDZMQDPKXES55PN5RZM7Q',
+   'job.finish', '7f000004-0000-4000-8000-000000000001', true);
+
+-- --- once per runner: the re-send is the row that is refused -------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_terminal_frames
+      (organization_id, runner_id, frame_id, frame_type, job_id, applied)
+    values ('org-farm', '7f000002-0000-4000-8000-000000000001', '01KE7PDZMQDPKXES55PN5RZM7Q',
+            'job.finish', '7f000004-0000-4000-8000-000000000001', true)$$,
+  'a terminal frame re-sent after a dropped socket is recorded once, not twice',
+  'runner_terminal_frames_pkey');
+
+-- The key is the runner's, not the world's: another runner's frame with the same id is its own
+-- delivery. Recorded unapplied and naming no job — a frame that finished nothing.
+insert into ouroboros.runner_terminal_frames
+  (organization_id, runner_id, frame_id, frame_type, job_id, applied)
+values
+  ('org-farm', '7f000002-0000-4000-8000-000000000003', '01KE7PDZMQDPKXES55PN5RZM7Q',
+   'job.finish', null, false);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.runner_terminal_frames
+    where frame_id = '01KE7PDZMQDPKXES55PN5RZM7Q'),
+  'the same envelope id from two runners is two deliveries — the ledger is keyed per runner');
+
+-- --- a delivery is a fact -------------------------------------------------------
+select pg_temp.must_raise(
+  $$update ouroboros.runner_terminal_frames set applied = false
+     where runner_id = '7f000002-0000-4000-8000-000000000001'$$,
+  '23001',
+  'a recorded terminal frame cannot be revised — runner_terminal_frames_no_update');
+
+-- --- the frame's shape, and its workspace ---------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_terminal_frames
+      (organization_id, runner_id, frame_id, frame_type, job_id, applied)
+    values ('org-farm', '7f000002-0000-4000-8000-000000000001', '01KE7PDZMQDPKXES55PN5RZM7R',
+            'job.finish', null, true)$$,
+  'a frame that finished a build names it',
+  'runner_terminal_frames_applied_names_job');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_terminal_frames
+      (organization_id, runner_id, frame_id, frame_type, job_id, applied)
+    values ('org-farm', '7f000002-0000-4000-8000-000000000001', 'not-a-ulid',
+            'job.finish', null, false)$$,
+  'the key is the envelope id the agent minted, and an envelope id is a ULID',
+  'runner_terminal_frames_frame_id_ulid');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_terminal_frames
+      (organization_id, runner_id, frame_id, frame_type, job_id, applied)
+    values ('org-farm', '7f000002-0000-4000-8000-000000000001', '01KE7PDZMQDPKXES55PN5RZM7S',
+            'job.start', null, false)$$,
+  'only job.finish is terminal — the ledger is not a log of every frame',
+  'runner_terminal_frames_frame_type');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_terminal_frames
+      (organization_id, runner_id, frame_id, frame_type, job_id, applied)
+    values ('org-farm2', '7f000002-0000-4000-8000-000000000001', '01KE7PDZMQDPKXES55PN5RZM7T',
+            'job.finish', null, false)$$,
+  'a frame cannot be recorded against another workspace''s runner',
+  'runner_terminal_frames_runner_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runner_terminal_frames
+      (organization_id, runner_id, frame_id, frame_type, job_id, applied)
+    values ('org-farm2', '7f000002-0000-4000-8000-000000000004', '01KE7PDZMQDPKXES55PN5RZM7V',
+            'job.finish', '7f000004-0000-4000-8000-000000000001', true)$$,
+  'and a frame cannot finish another workspace''s build',
+  'runner_terminal_frames_job_fk');
+
+-- --- the hostname a runner reports ----------------------------------------------
+update ouroboros.runners set hostname = 'shed-pi-01'
+ where id = '7f000002-0000-4000-8000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set hostname = ''
+     where id = '7f000002-0000-4000-8000-000000000001'$$,
+  'a reported hostname is not empty — a blank where the fleet table promises a machine',
+  'runners_hostname_length');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set hostname = repeat('h', 254)
+     where id = '7f000002-0000-4000-8000-000000000001'$$,
+  'and not longer than the protocol lets hello.hostname be',
+  'runners_hostname_length');
+
 -- --- a repository keeps its builds, and a workspace takes everything with it ----
 --
 -- A build is the record that a commit of a repository was compiled, so removing the
@@ -12910,8 +13012,10 @@ select pg_temp.must_hold(
    -- V041's two, for AD.1's crypto-shredding reason as much as for tidiness: the CA key goes
    -- with the workspace, and every certificate it ever signed becomes unverifiable.
    and (select count(*) = 0 from ouroboros.farm_authorities)
-   and (select count(*) = 0 from ouroboros.runner_certificates),
-  'deleting a workspace takes its pools, runners, tokens, windows, jobs, log chunks, certificate authority and every certificate it issued with it, whatever order the cascade reaches them in');
+   and (select count(*) = 0 from ouroboros.runner_certificates)
+   -- V042's ledger, which references both a runner and a job and must still go with them.
+   and (select count(*) = 0 from ouroboros.runner_terminal_frames),
+  'deleting a workspace takes its pools, runners, tokens, windows, jobs, log chunks, certificate authority, every certificate it issued and every terminal frame it recorded with it, whatever order the cascade reaches them in');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

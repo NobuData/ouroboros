@@ -63,6 +63,7 @@ schemas/
 | [`ouroboros-db/scripts/workflow-dsl-drift.mjs`](../ouroboros-db/scripts/workflow-dsl-drift.mjs) | `ci/db`'s drift check (P.6) — every seeded workflow definition, as stored, validated against `v1.json` with ajv | `ouroboros-db/tests/workflow-dsl-drift.test.sh` (green over the valid fixtures, red over an invalid one and over a tightened copy of the schema) |
 | [`ouroboros-engine/src/ouroboros_engine/planning/`](../ouroboros-engine/src/ouroboros_engine/planning) | `POST /v0/plan` (AL.1) — the outline parser, which is the contract's first implementation | `tests/test_planning_golden.py` (every recorded case's batch verbatim, every response valid against `plan/v0.json`, and the schema and the pydantic models agreeing field for field) |
 | [`ouroboros-runner/internal/conn/`](../ouroboros-runner/internal/conn) | the Go agent's protocol codec and validator (AG.1) — the runner contract's first implementation | `protocol_test.go` (every case's diagnostics, code and path, in the contract's order; every transcript replayed; every message type and every code covered), `frame_test.go` (the encoder reproduces a committed frame byte for byte) and `limits_test.go` (the Go constants are the schema's published limits, and the two over-limit cases built from them) |
+| [`ouroboros-rest/src/modules/farm/protocol/`](../ouroboros-rest/src/modules/farm/protocol) | the farm gateway's protocol codec (AH.3, [#251](https://github.com/NobuData/ouroboros/issues/251)) — the runner contract's second implementation, a table-for-table port of the Go one | `protocol.spec.ts` (every case's diagnostics, code and path, in the contract's order; every transcript's frames decoded and held to their direction; every fixture named by a case; the TypeScript constants are the schema's published limits, and the two over-limit cases built from them), and `gateway/agent.gateway.integration-spec.ts`, which replays the session transcripts against the running gateway in both directions |
 | [`docs/RUNNER_PROTOCOL.md`](../docs/RUNNER_PROTOCOL.md) | the runner wire contract a person reads | [`scripts/verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh) — every message type has a section, a fixture and a case; every example in the document is the committed fixture; every fixture is asserted against; the limits agree |
 
 `plan/v0.json` is here for a reason the workflow DSL's `$id` neighbour is not: **it is one
@@ -87,7 +88,8 @@ Both `ci/rest` and `ci/engine` watch `workflow-dsl/**` and `plan/**`
 halves on the pull request that makes it. `ci/db` watches `workflow-dsl/v1.json` too, and only
 that file: its drift check validates the seeded workflow definitions against the schema, so a
 schema edit that leaves the seeds behind fails on the pull request that makes it rather than in
-the studio later. `ci/runner` watches `runner-protocol/**`.
+the studio later. `ci/runner` and — since the farm gateway ([#251](https://github.com/NobuData/ouroboros/issues/251))
+made `ouroboros-rest` the contract's second implementation — `ci/rest` watch `runner-protocol/**`.
 
 **Those filters name each contract rather than the directory**, and that changed when
 `runner-protocol/` arrived ([#243](https://github.com/NobuData/ouroboros/issues/243)): both

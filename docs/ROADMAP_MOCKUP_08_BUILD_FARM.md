@@ -480,7 +480,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AH.1 | #249 | 🟢 Done | ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs | Full relational model + seeds + ci/db probes | mvp, build-farm, db, ci | N (after #19, BA-B.3) | Y | L | ouroboros-db, .github |
 | AH.2 | #250 | 🟢 Done | ouroboros-rest: [AH.2] Enrollment API & runner CA | Scoped tokens (AD.1-sealed), cert issuance/renewal/revocation, audit | mvp, build-farm, rest | N (after AH.1, AD.1) | Y | L | ouroboros-rest |
-| AH.3 | #251 | 🟡 Open | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
+| AH.3 | #251 | 🟢 Done | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
 | AH.4 | #252 | 🟡 Open | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.5 | #253 | 🟡 Open | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.6 | #254 | 🟡 Open | ouroboros-rest: [AH.6] Farm read APIs & stats | Runners/pools/jobs payloads, stat-row math, lifecycle actions | mvp, build-farm, rest | N (after AH.4) | Y | M | ouroboros-rest |
@@ -650,7 +650,7 @@ register(token) ─▶ runner row + cert{CN: runner_id, O: tenant} ─▶ mTLS t
 
 ### Issue AH.3 — ouroboros-rest: [AH.3] Agent WebSocket gateway
 
-> **GitHub issue:** #251 · **Status:** 🟡 Open · **Parent epic:** #240
+> **GitHub issue:** #251 · **Status:** 🟢 Done · **Parent epic:** #240
 
 
 - **Problem Statement:** The server half of the AG.1 protocol: sessions,
@@ -667,6 +667,42 @@ register(token) ─▶ runner row + cert{CN: runner_id, O: tenant} ─▶ mTLS t
   presence flips at the documented threshold and recovers; resume delivers
   exactly-once semantics for terminal messages; version-floor refusal path
   tested.
+- **Delivered:** [`src/modules/farm/gateway/`](../ouroboros-rest/src/modules/farm/gateway),
+  [`src/modules/farm/protocol/`](../ouroboros-rest/src/modules/farm/protocol) and
+  [`V042__farm_gateway.sql`](../ouroboros-db/migrations/V042__farm_gateway.sql) —
+  `wss://…/api/v1/farm/agent`, the server half of AG.1's contract. **The codec is a table-for-table
+  port of the Go agent's**, held to the same `expected.json` case by case and to every session
+  transcript, with the two over-limit cases built from `$defs/limits`; `ci/rest` now watches
+  `schemas/runner-protocol/**` beside `ci/runner`, so a fixture edit runs both halves and drift
+  fails the half that drifted. **The upgrade is refused before any socket exists**, in the
+  service's own error envelope and with AH.2's two codes: a certificate checked by
+  `RunnerIdentityService` — the revocation check AH.2 exported for exactly this — answers
+  `401 farm_identity_refused` when it is revoked, and a connection with no certificate answers
+  `401 farm_client_certificate_required` rather than being accepted as ordinary TLS; the first
+  such refusal per process is logged naming which deployment mistake it most likely is, and every
+  one is counted. The bearer fallback authenticates by opening each eligible runner's sealed
+  secret in constant time. **`hello`** is held to two floors — the protocol line, and a new
+  `OURO_FARM_MIN_AGENT_VERSION` build floor compared by SemVer precedence — each refused with
+  `version.below_minimum` and a sentence naming it; a `hello` written in a newer line is still read
+  far enough to refuse it or answer it in a line both ends speak; its `security_mode` is held to
+  the transport; and hostname (a new `runners.hostname`), architecture, version and capabilities
+  are recorded, with the executors dispatch reads derived once and `supportsExecutor` exported for
+  AH.4. **Presence**: a heartbeat writes the snapshot, uptime, pill and `last_seen_at` ← that beat;
+  a sweep flips a runner `offline` after **3 × 10 s + 2 s = 32 s** of silence (at most 37 s behind
+  a dead machine) and never writes `last_seen_at`; a `hello` recovers it at once and a `bye` takes
+  it offline deliberately. **Exactly-once**: `runner_terminal_frames` records each `job.finish` by
+  its envelope id in the transaction that applies it, before the receipt — record, then answer —
+  keyed per runner and not per session, append-only, and a re-send or a race loses to its primary
+  key and is answered `duplicate: true`. **Sessions** carry an ordered outbox: receipts until
+  written, offers until answered or expired, drains; a `hello.resume` inside the five-minute window
+  gets `resumed: true` and everything still owed, in order. **Drain/undrain** write `desired_state`
+  first and push second; a heartbeat reconciles the agent against the intent, so a drain issued on
+  another replica, or while the runner was away, still reaches it. `GatewayMetrics.snapshot()` is
+  the plain-JSON shape AJ.4 retains. The fake agent that drives the integration suite replays
+  `enroll`, `resume` and `drain` against the running gateway, and `refuse` against one configured
+  with a floor, judging every gateway frame as the Go agent does; three mutation spot checks
+  (idempotency, `last_seen_at`, revocation) each turned it red. It is a Nest provider on the HTTP
+  server's `upgrade` event rather than a `@WebSocketGateway` — `agent.gateway.ts` says why.
 - **Parallelism/Dependencies:** Needs AG.1 (spec), AH.2. Blocks AH.4, AH.5.
 - **Technical Stack:** NestJS WS (ws), protocol fixtures.
 - **Epic:** AH

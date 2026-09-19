@@ -325,11 +325,15 @@ describe("TABLE_COLUMNS", () => {
     // (#250): V040's `runner_pools`, `runners` and `enrollment_tokens`, and V041's
     // `farm_authorities` and `runner_certificates`. They keep the no-reader rule — enrollment
     // reads a pool by name, creates a runner and spends a token, and the CA and the
-    // certificates it issues are read at every handshake. The rest of V040 — `build_jobs`,
-    // `build_log_chunks`, `runner_pool_windows` — is deliberately **not** here: nothing in
-    // this service touches those yet, and AH.4 (#252) and AH.5 (#253) are the tickets that
-    // mirror them when they do.
-    expect(TABLE_NAMES).toHaveLength(49);
+    // certificates it issues are read at every handshake.
+    //
+    // The fiftieth and fifty-first are mirrored by AH.3 (#251), the agent gateway: V040's
+    // `build_jobs`, which an agent's `job.start` and `job.finish` move through the lifecycle, and
+    // V042's `runner_terminal_frames`, the ledger that makes the second of those apply exactly
+    // once. The rest of V040 — `build_log_chunks` and `runner_pool_windows` — is deliberately
+    // **not** here: nothing in this service touches those yet, and AH.5 (#253) and the pool
+    // windows' own ticket mirror them when they do.
+    expect(TABLE_NAMES).toHaveLength(51);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
