@@ -3,6 +3,7 @@ package conn
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // The typed views of the messages the connection loop writes and reads.
@@ -92,13 +93,36 @@ type Limits struct {
 	ResumeWindowMS      int `json:"resume_window_ms"`
 }
 
+// AckPool is the pool of record's execution policy (decision B4, [#246]): how many jobs
+// this runner may hold at once, and which environment variables a job may carry into its
+// build. The gateway reads both from the pool's row at every hello.
+//
+// `EnvAllowlist` is never nil when this is sent: an empty allow-list is `[]` on the wire,
+// and `null` is not a list the contract accepts.
+//
+// [#246]: https://github.com/NobuData/ouroboros/issues/246
+type AckPool struct {
+	MaxConcurrency int      `json:"max_concurrency"`
+	EnvAllowlist   []string `json:"env_allowlist"`
+}
+
+// DefaultMaxConcurrency is what an agent holds itself to when the gateway names no pool
+// policy — the `runner_pools.max_concurrency` column default. An ack without `pool` is
+// legal (the field was added inside line 1), and it gets the most conservative reading:
+// one job at a time, and no variable allowed through.
+const DefaultMaxConcurrency = 1
+
 // AckPayload is the gateway's acceptance of a hello.
+//
+// `Pool` is a pointer because it is optional: nil is an ack from a gateway that named no
+// pool policy, and it is omitted from the frame rather than sent as null.
 type AckPayload struct {
 	Session  string    `json:"session"`
 	Protocol int       `json:"protocol"`
 	Resumed  bool      `json:"resumed"`
 	Runner   AckRunner `json:"runner"`
 	Limits   Limits    `json:"limits"`
+	Pool     *AckPool  `json:"pool,omitempty"`
 }
 
 // The refusal codes, and what each obliges the agent to do (§ 4.1, `refuse`).
@@ -194,17 +218,123 @@ type HeartbeatPayload struct {
 	Job           *HeartbeatJob `json:"job"`
 }
 
-// JobOfferPayload is the part of a job.offer the connection loop reads. The executor
-// fields — image, command, workdir, env, repository — are the executors' to read
-// ([#246]); the loop only has to answer the offer in time.
+// The two executor kinds (decision B4): a pinned image through Docker or Podman, and a
+// command run directly on the host for HIL rigs and macOS.
+const (
+	ExecutorContainer = "container"
+	ExecutorShell     = "shell"
+)
+
+// JobRepository is what an offer asks to be checked out.
+type JobRepository struct {
+	URL    string `json:"url"`
+	Ref    string `json:"ref"`
+	Commit string `json:"commit"`
+}
+
+// JobOfferPayload is a job.offer, as the connection loop answers it and the executors
+// ([#246]) run it.
+//
+// `Image` is empty for a shell job — the contract forbids one there and requires one for a
+// container job, and Decode has already held the offer to that. `Command` is argv and is
+// never handed to a shell. `Repository` is nil for a job that needs no source.
 //
 // [#246]: https://github.com/NobuData/ouroboros/issues/246
 type JobOfferPayload struct {
-	Job       string `json:"job"`
-	Pool      string `json:"pool"`
-	Executor  string `json:"executor"`
-	ExpiresAt string `json:"expires_at"`
+	Job        string            `json:"job"`
+	Pool       string            `json:"pool"`
+	Executor   string            `json:"executor"`
+	Image      string            `json:"image,omitempty"`
+	Command    []string          `json:"command"`
+	Workdir    string            `json:"workdir"`
+	Env        map[string]string `json:"env"`
+	Repository *JobRepository    `json:"repository"`
+	TimeoutS   int               `json:"timeout_s"`
+	ExpiresAt  string            `json:"expires_at"`
 }
+
+// JobAcceptPayload is an offer taken. It names the offer's envelope id as well as the
+// job, so an offer re-dispatched after a timeout cannot be accepted twice.
+type JobAcceptPayload struct {
+	Job   string `json:"job"`
+	Offer string `json:"offer"`
+}
+
+// JobStartPayload is a job running: sent once the workspace exists and the executor has
+// been handed the command — after any image pull, never on accept.
+type JobStartPayload struct {
+	Job       string `json:"job"`
+	Attempt   int    `json:"attempt"`
+	Executor  string `json:"executor"`
+	StartedAt string `json:"started_at"`
+	Workspace string `json:"workspace"`
+}
+
+// JobProgressPayload is advisory progress. `Note` is always sent, and is the empty string
+// when there is nothing to say.
+type JobProgressPayload struct {
+	Job   string `json:"job"`
+	Phase string `json:"phase"`
+	Pct   int    `json:"pct"`
+	Note  string `json:"note"`
+}
+
+// The five ways a job ends — five different things, and a control plane that conflated
+// any two of them would retry the wrong jobs (docs/RUNNER_PROTOCOL.md § 4.4).
+const (
+	OutcomeSucceeded = "succeeded"
+	OutcomeFailed    = "failed"
+	OutcomeCancelled = "cancelled"
+	OutcomeTimedOut  = "timed_out"
+	OutcomeErrored   = "errored"
+)
+
+// FinishLog is what was shipped of a job's output, so the run console can say whether
+// what it shows is everything.
+type FinishLog struct {
+	Bytes        int `json:"bytes"`
+	Chunks       int `json:"chunks"`
+	DroppedBytes int `json:"dropped_bytes"`
+}
+
+// FinishCcache is a job's compiler-cache statistics ([#247]).
+//
+// [#247]: https://github.com/NobuData/ouroboros/issues/247
+type FinishCcache struct {
+	Hits       int     `json:"hits"`
+	Misses     int     `json:"misses"`
+	HitRatePct float64 `json:"hit_rate_pct"`
+	SizeMB     int     `json:"size_mb"`
+	MaxSizeMB  int     `json:"max_size_mb"`
+}
+
+// FinishError is why the agent could not run a job, or the executor's last word: a
+// stable, greppable code and one sentence.
+type FinishError struct {
+	Code   string `json:"code"`
+	Detail string `json:"detail"`
+}
+
+// JobFinishPayload is the TERMINAL frame. Its envelope id is its idempotency id, so it is
+// minted once, persisted to the outbox and re-sent byte for byte until its receipt.
+//
+// `ExitCode`, `Ccache` and `Error` are pointers because null is a value for each of them —
+// the key is always present, and none of them is `omitempty`.
+type JobFinishPayload struct {
+	Job        string        `json:"job"`
+	Attempt    int           `json:"attempt"`
+	Outcome    string        `json:"outcome"`
+	ExitCode   *int          `json:"exit_code"`
+	StartedAt  string        `json:"started_at"`
+	FinishedAt string        `json:"finished_at"`
+	Log        FinishLog     `json:"log"`
+	Ccache     *FinishCcache `json:"ccache"`
+	Error      *FinishError  `json:"error"`
+}
+
+// Timestamp is an instant in the one form the contract accepts: RFC 3339, UTC, with
+// milliseconds.
+func Timestamp(at time.Time) string { return at.UTC().Format("2006-01-02T15:04:05.000Z") }
 
 // The decline reasons.
 const (

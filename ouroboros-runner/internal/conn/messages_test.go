@@ -3,7 +3,9 @@ package conn
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 )
 
 // TestEveryTypeHasADirection asserts the direction table covers the whole closed set.
@@ -67,6 +69,18 @@ func TestIntoReadsEveryGatewayMessage(t *testing.T) {
 		ack.Limits.ResumeWindowMS != 300000 || ack.Runner.Pool != "arm-builders" {
 		t.Errorf("ack limits: %+v", ack.Limits)
 	}
+	if ack.Pool == nil || ack.Pool.MaxConcurrency != 2 ||
+		strings.Join(ack.Pool.EnvAllowlist, ",") != "CCACHE_DIR,MAKEFLAGS" {
+		t.Errorf("ack pool: %+v", ack.Pool)
+	}
+
+	// An ack from a gateway that names no pool policy is legal, and reads as nil — which
+	// the agent takes as the column defaults (#246).
+	var bare AckPayload
+	decodeInto(t, "valid/ack-without-pool.json", &bare)
+	if bare.Pool != nil {
+		t.Errorf("an ack without pool read as %+v", bare.Pool)
+	}
 
 	var refuse RefusePayload
 	decodeInto(t, "valid/refuse.json", &refuse)
@@ -83,9 +97,22 @@ func TestIntoReadsEveryGatewayMessage(t *testing.T) {
 
 	var offer JobOfferPayload
 	decodeInto(t, "valid/job-offer.json", &offer)
-	if offer.Job != "job_01KE7J4EZ3204KQXMHJRPQPWQ6" || offer.Executor != "container" ||
+	if offer.Job != "job_01KE7J4EZ3204KQXMHJRPQPWQ6" || offer.Executor != ExecutorContainer ||
 		offer.ExpiresAt != "2026-09-18T12:00:15.000Z" {
 		t.Errorf("offer: %+v", offer)
+	}
+	if offer.Image != "registry.example.invalid/ouroboros/build-arm64:2026-09" ||
+		strings.Join(offer.Command, " ") != "make -j8 all" || offer.Workdir != "/workspace" ||
+		offer.Env["MAKEFLAGS"] != "--output-sync=target" || offer.TimeoutS != 3600 ||
+		offer.Repository == nil || offer.Repository.Commit != "9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80" {
+		t.Errorf("offer executor fields: %+v", offer)
+	}
+
+	var shell JobOfferPayload
+	decodeInto(t, "valid/job-offer-shell.json", &shell)
+	if shell.Executor != ExecutorShell || shell.Image != "" || shell.Repository != nil ||
+		shell.Env == nil || len(shell.Env) != 0 || shell.Command[0] != "./scripts/notarize.sh" {
+		t.Errorf("shell offer: %+v", shell)
 	}
 
 	var drain DrainPayload
@@ -136,6 +163,107 @@ func TestOutgoingPayloadsAreLegal(t *testing.T) {
 		if _, diags := Decode(encoded); len(diags) > 0 {
 			t.Errorf("%s is not legal: %v\n%s", frame.Type, diags, encoded)
 		}
+	}
+}
+
+// TestTypedPayloadsReproduceTheGoldenFrames reads each worked example into its typed
+// struct and encodes it again, asserting the committed fixture comes back BYTE FOR BYTE.
+//
+// The executors (#246) write job.accept, job.start, job.progress and job.finish from these
+// structs, and the test farm writes ack from one — so a field out of order, a tag typo or a
+// null that became an absent key is a failure here, against the document both
+// implementations read, rather than a refusal from the gateway.
+func TestTypedPayloadsReproduceTheGoldenFrames(t *testing.T) {
+	for _, testCase := range []struct {
+		fixture string
+		payload any
+	}{
+		{"valid/ack.json", &AckPayload{}},
+		{"valid/ack-resumed.json", &AckPayload{}},
+		{"valid/ack-without-pool.json", &AckPayload{}},
+		{"valid/job-offer.json", &JobOfferPayload{}},
+		{"valid/job-offer-shell.json", &JobOfferPayload{}},
+		{"valid/job-accept.json", &JobAcceptPayload{}},
+		{"valid/job-start.json", &JobStartPayload{}},
+		{"valid/job-progress.json", &JobProgressPayload{}},
+		{"valid/job-finish.json", &JobFinishPayload{}},
+		{"valid/job-finish-failed.json", &JobFinishPayload{}},
+	} {
+		t.Run(testCase.fixture, func(t *testing.T) {
+			want := readFixture(t, testCase.fixture)
+			env, diags := Decode(want)
+			if len(diags) > 0 {
+				t.Fatalf("decode: %v", diags)
+			}
+			if err := env.Into(testCase.payload); err != nil {
+				t.Fatalf("into: %v", err)
+			}
+			encoded, err := EncodeIndent(NewFrame(env.ID, env.Type, testCase.payload))
+			if err != nil {
+				t.Fatalf("encode: %v", err)
+			}
+			if !bytes.Equal(encoded, want) {
+				t.Errorf("the typed payload does not reproduce %s.\n--- got ---\n%s\n--- want ---\n%s",
+					testCase.fixture, encoded, want)
+			}
+		})
+	}
+}
+
+// TestJobFramesAreLegalForEveryOutcome encodes a job.finish for each of the five outcomes
+// the executors report, with the exit code each may carry, and holds it to the contract.
+func TestJobFramesAreLegalForEveryOutcome(t *testing.T) {
+	zero, two, killed := 0, 2, -1
+	for _, finish := range []JobFinishPayload{
+		{Outcome: OutcomeSucceeded, ExitCode: &zero},
+		{Outcome: OutcomeFailed, ExitCode: &two, Error: &FinishError{Code: "executor.exit", Detail: "exited with status 2"}},
+		{Outcome: OutcomeCancelled, ExitCode: &killed, Error: &FinishError{Code: "executor.cancelled", Detail: "x"}},
+		{Outcome: OutcomeTimedOut, ExitCode: nil, Error: &FinishError{Code: "executor.timeout", Detail: "x"}},
+		{Outcome: OutcomeErrored, ExitCode: nil, Error: &FinishError{Code: "image.pull_failed", Detail: "x"}},
+	} {
+		finish.Job, finish.Attempt = "job_01KE7J4EZ3204KQXMHJRPQPWQ6", 1
+		finish.StartedAt = Timestamp(time.Date(2026, 9, 18, 12, 0, 2, 140e6, time.UTC))
+		finish.FinishedAt = Timestamp(time.Date(2026, 9, 18, 12, 4, 51, 902e6, time.UTC))
+		encoded, err := Encode(NewFrame(NewID(), TypeJobFinish, finish))
+		if err != nil {
+			t.Fatalf("encode %s: %v", finish.Outcome, err)
+		}
+		if _, diags := Decode(encoded); len(diags) > 0 {
+			t.Errorf("a %s finish is not legal: %v\n%s", finish.Outcome, diags, encoded)
+		}
+		for _, key := range []string{`"exit_code":`, `"ccache":null`, `"error":`} {
+			if !bytes.Contains(encoded, []byte(key)) {
+				t.Errorf("a %s finish is missing %s: %s", finish.Outcome, key, encoded)
+			}
+		}
+	}
+
+	// An ack naming an empty allow-list sends `[]`, never null.
+	encoded, err := Encode(NewFrame(NewID(), TypeAck, AckPayload{
+		Session: "sess_01KE7MV3WKAG706QMDN23AJ3BE", Protocol: 1,
+		Runner: AckRunner{ID: "rnr_01KE76X95CS69B659HTXZJ0HA3", Name: "x", Pool: "x"},
+		Limits: Limits{HeartbeatIntervalMS: 10000, LogChunkMaxBytes: 32768, LogRateBytesPerS: 262144,
+			OfferAckMS: 5000, ResumeWindowMS: 300000},
+		Pool: &AckPool{MaxConcurrency: 1, EnvAllowlist: []string{}},
+	}))
+	if err != nil {
+		t.Fatalf("encode ack: %v", err)
+	}
+	if _, diags := Decode(encoded); len(diags) > 0 || !bytes.Contains(encoded, []byte(`"env_allowlist":[]`)) {
+		t.Errorf("an ack with an empty allow-list: %v\n%s", diags, encoded)
+	}
+}
+
+// TestTimestampIsTheContractsShape pins the one timestamp form the contract accepts: UTC,
+// with milliseconds, whatever zone the clock was read in.
+func TestTimestampIsTheContractsShape(t *testing.T) {
+	tokyo := time.FixedZone("JST", 9*60*60)
+	at := time.Date(2026, 9, 18, 21, 0, 2, 140_500_000, tokyo)
+	if got := Timestamp(at); got != "2026-09-18T12:00:02.140Z" {
+		t.Errorf("Timestamp = %q", got)
+	}
+	if !timestampRe.MatchString(Timestamp(time.Now())) {
+		t.Error("Timestamp does not match the contract's pattern")
 	}
 }
 

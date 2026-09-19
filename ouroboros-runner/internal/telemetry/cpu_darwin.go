@@ -33,6 +33,7 @@ func topCPU(ctx context.Context, window time.Duration) (float64, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second+topGrace)
 	defer cancel()
 
+	// #nosec G204 -- an absolute path, constant arguments, and a number this agent formatted.
 	command := exec.CommandContext(ctx, topPath, "-l", "2", "-n", "0", "-s", strconv.Itoa(seconds))
 	command.Env = []string{"LC_ALL=C"}
 	output, err := command.Output()

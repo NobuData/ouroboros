@@ -19,6 +19,12 @@ run:
   # `default` below includes them: see the exclusions note on unused.
   timeout: 5m
 
+  # The real-daemon suite (internal/exec/container_docker_test.go, #246) is behind this tag
+  # because it needs Docker and a registry, and `make test-docker` runs it. Linting with the
+  # tag on means the file is still analysed on every pull request, so it cannot rot unrun.
+  build-tags:
+    - dockertest
+
 linters:
   # The five golangci-lint runs by default — errcheck, govet, ineffassign, staticcheck
   # and unused — plus the ones below. `default: standard` is stated rather than left
@@ -61,16 +67,11 @@ linters:
       exclude-functions:
         - (*os.File).Close
 
-    gosec:
-      excludes:
-        # G204 — a subprocess built from a variable. The two subprocesses in this
-        # module are macOS's `/usr/sbin/sysctl -n hw.memsize` at start-up and
-        # `/usr/bin/top -l 2 -n 0 -s <window>` for the heartbeat's CPU reading (#245):
-        # absolute paths, and arguments that are constants or a number this agent
-        # formatted itself. The rule cannot see either. When an executor starts running a
-        # gateway's argv (#246) this exclusion has to be revisited, because there the
-        # rule is exactly right.
-        - G204
+    # G204 — a subprocess built from a variable — is NOT excluded. It was, while the only
+    # subprocesses were macOS's `sysctl` and `top` for the heartbeat (#245); now that the
+    # shell executor runs a gateway's argv (#246) the rule is exactly right, so it stays on
+    # and each of the three call sites carries its own `#nosec G204` saying why that one is
+    # sound. A fourth subprocess has to argue its own case the same way.
 
     misspell:
       locale: UK

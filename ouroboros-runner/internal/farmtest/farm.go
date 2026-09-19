@@ -71,6 +71,7 @@ type Farm struct {
 	refuseNext    *conn.RefusePayload
 	dropOnFinish  int
 	limits        conn.Limits
+	pool          *conn.AckPool
 	ttl           time.Duration
 	lead          time.Duration
 }
@@ -113,7 +114,14 @@ type Observed struct {
 	Recorded   int
 	Duplicates int
 	Declines   []conn.JobDeclinePayload
-	Byes       []conn.ByePayload
+	// Accepts, Starts and Progress are the executors' frames (#246), and JobFrames the type
+	// of every job frame in the order it arrived — accept, start, progress, finish and
+	// decline — so a test can assert the sequence the protocol requires.
+	Accepts   []conn.JobAcceptPayload
+	Starts    []conn.JobStartPayload
+	Progress  []conn.JobProgressPayload
+	JobFrames []conn.Type
+	Byes      []conn.ByePayload
 	// Violations is every frame the farm refused, and why.
 	Violations []string
 	// Refused is every identity refusal the farm answered.
@@ -247,6 +255,14 @@ func (f *Farm) SetLimits(limits conn.Limits) {
 	f.limits = limits
 }
 
+// SetPool changes the pool policy the next ack names (#246). Nil — the default — sends an
+// ack with no `pool` at all, which is what an agent must read as the column defaults.
+func (f *Farm) SetPool(pool *conn.AckPool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pool = pool
+}
+
 // SetRefusal changes how a dead identity is refused.
 func (f *Farm) SetRefusal(refusal Refusal) {
 	f.mu.Lock()
@@ -362,6 +378,10 @@ func (f *Farm) snapshotLocked() Observed {
 	observed.Finishes = append([]string(nil), f.observed.Finishes...)
 	observed.FinishFrames = append([][]byte(nil), f.observed.FinishFrames...)
 	observed.Declines = append([]conn.JobDeclinePayload(nil), f.observed.Declines...)
+	observed.Accepts = append([]conn.JobAcceptPayload(nil), f.observed.Accepts...)
+	observed.Starts = append([]conn.JobStartPayload(nil), f.observed.Starts...)
+	observed.Progress = append([]conn.JobProgressPayload(nil), f.observed.Progress...)
+	observed.JobFrames = append([]conn.Type(nil), f.observed.JobFrames...)
 	observed.Byes = append([]conn.ByePayload(nil), f.observed.Byes...)
 	observed.Violations = append([]string(nil), f.observed.Violations...)
 	observed.Refused = append([]string(nil), f.observed.Refused...)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/enroll"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/exec"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/farmtest"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/secret"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
@@ -95,6 +96,9 @@ func config(farm *farmtest.Farm, dir *state.Dir, logs *logBuffer) Config {
 		Capabilities: conn.Capabilities{
 			Docker: true, Shell: false, Ccache: false, CPUs: 8, MemoryMB: 16384,
 		},
+		// Docker is true, so there is a container executor: New holds the two together.
+		Executors:        map[string]exec.Executor{conn.ExecutorContainer: &fakeExecutor{kind: conn.ExecutorContainer}},
+		Workspaces:       &exec.Workspaces{Root: filepath.Join(dir.Path(), "work")},
 		Telemetry:        measuring(12.5, 2048, 16384),
 		Renewer:          renewer,
 		Logger:           newLogger(logs),
@@ -181,8 +185,8 @@ func summary(o farmtest.Observed) map[string]any {
 	return map[string]any{
 		"connections": o.Connections, "hellos": len(o.Hellos), "heartbeats": len(o.Heartbeats),
 		"finishes": len(o.Finishes), "recorded": o.Recorded, "duplicates": o.Duplicates,
-		"declines": len(o.Declines), "byes": o.Byes, "violations": o.Violations, "refused": o.Refused,
-		"renewals": o.Renewals,
+		"declines": o.Declines, "byes": o.Byes, "violations": o.Violations, "refused": o.Refused,
+		"renewals": o.Renewals, "job_frames": o.JobFrames,
 	}
 }
 
@@ -578,7 +582,10 @@ func TestAProtocolViolationFromTheGatewayIsReportedAndReconnected(t *testing.T) 
 func TestOffersAreDeclinedAtOnceAndDrainIsReported(t *testing.T) {
 	t.Parallel()
 	farm := farmtest.NewFarm(t)
-	h := start(t, farm, enrolled(t, farm, false), nil)
+	// A runner with no daemon: every container offer is one it cannot satisfy.
+	h := start(t, farm, enrolled(t, farm, false), func(c *Config) {
+		c.Capabilities.Docker, c.Executors = false, nil
+	})
 	h.until("the connection", func(o farmtest.Observed) bool { return len(o.Heartbeats) >= 1 })
 
 	offer := func(expires time.Time) string {

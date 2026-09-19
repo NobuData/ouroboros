@@ -114,6 +114,26 @@ func (w *Workload) Snapshot() (queueDepth int, running *conn.HeartbeatJob) {
 	return len(w.queued), running
 }
 
+// InFlight is how many jobs this agent holds — accepted and waiting, or running. It is the
+// number the pool's concurrency cap is compared against ([#246]): a machine may not take
+// more jobs than it is allowed to hold, whether or not they have started.
+//
+// [#246]: https://github.com/NobuData/ouroboros/issues/246
+func (w *Workload) InFlight() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.queued) + len(w.running)
+}
+
+// Holds reports whether a job is already this agent's, accepted or running — so a second
+// offer of the same job, re-dispatched after a timeout this agent did not see, is not run
+// twice.
+func (w *Workload) Holds(job string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.queued[job] || w.find(job) >= 0
+}
+
 // find is a running job's index, or -1. The caller holds the lock.
 func (w *Workload) find(job string) int {
 	for index, running := range w.running {

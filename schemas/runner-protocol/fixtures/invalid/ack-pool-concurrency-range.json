@@ -1,11 +1,11 @@
 {
   "v": 1,
   "type": "ack",
-  "id": "01KE7NKSNS71N2AK638ZFVKTWH",
+  "id": "01KE7NBPCA7SKF7NYWHE1J9SVS",
   "payload": {
     "session": "sess_01KE7MV3WKAG706QMDN23AJ3BE",
     "protocol": 1,
-    "resumed": true,
+    "resumed": false,
     "runner": {
       "id": "rnr_01KE76X95CS69B659HTXZJ0HA3",
       "name": "shed-pi-01",
@@ -20,7 +20,7 @@
       "resume_window_ms": 300000
     },
     "pool": {
-      "max_concurrency": 2,
+      "max_concurrency": 0,
       "env_allowlist": [
         "CCACHE_DIR",
         "MAKEFLAGS"

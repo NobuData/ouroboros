@@ -231,3 +231,28 @@ func TestWorkloadUnderConcurrentDispatch(t *testing.T) {
 		t.Error("a third of the jobs are still running, and none was reported")
 	}
 }
+
+// TestWorkloadInFlightAndHolds is what the concurrency cap and the duplicate-offer check
+// read (#246): every job held, accepted or running, and whether one particular job is.
+func TestWorkloadInFlightAndHolds(t *testing.T) {
+	var work Workload
+	if work.InFlight() != 0 || work.Holds(job(1)) {
+		t.Fatal("an empty workload holds nothing")
+	}
+	work.Accepted(job(1))
+	work.Accepted(job(2))
+	if err := work.Started(job(1), conn.PhaseRun); err != nil {
+		t.Fatal(err)
+	}
+	if work.InFlight() != 2 {
+		t.Errorf("one running and one waiting is 2 in flight, got %d", work.InFlight())
+	}
+	if !work.Holds(job(1)) || !work.Holds(job(2)) || work.Holds(job(3)) {
+		t.Error("Holds must see both the running and the waiting job, and nothing else")
+	}
+	work.Finished(job(1))
+	work.Finished(job(2))
+	if work.InFlight() != 0 || work.Holds(job(1)) {
+		t.Errorf("a finished job is still held: %d in flight", work.InFlight())
+	}
+}
