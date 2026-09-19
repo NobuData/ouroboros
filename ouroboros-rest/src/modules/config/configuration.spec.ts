@@ -11,13 +11,16 @@ import {
   DEFAULT_REESTIMATION_HOUR_UTC,
   DEFAULT_REESTIMATION_JITTER_MINUTES,
   DEFAULT_DASHBOARD_POLL_SECONDS,
+  DEFAULT_FARM_LOG_BUDGET_BYTES,
   DEFAULT_GITHUB_API_BASE_URL,
   DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
   DEFAULT_PORT,
   LOOPBACK_HOST,
   MAX_DASHBOARD_POLL_SECONDS,
+  MAX_FARM_LOG_BUDGET_BYTES,
   MAX_PORT,
+  MIN_FARM_LOG_BUDGET_BYTES,
   MINIMUM_SECRET_LENGTH,
   NODE_ENVIRONMENTS,
   VARIABLES,
@@ -88,6 +91,8 @@ describe("the development defaults", () => {
       vaultMasterKey: "b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=",
       corsOrigins: ["http://localhost:3000"],
       dashboardPollSeconds: DEFAULT_DASHBOARD_POLL_SECONDS,
+      // AH.5's (#253) log budget, written out in the template at its default.
+      farmLogBudgetBytes: DEFAULT_FARM_LOG_BUDGET_BYTES,
       // Unset in the template, which is the posture every deployment that runs no local
       // model server is in — see `OURO_LOCAL_PROVIDER_URLS` below.
       localProviderUrls: {},
@@ -814,6 +819,47 @@ describe("OURO_FARM_RELEASES_DIR", () => {
     );
 
     expect(configuration.farmReleasesDir).toBe("../ouroboros-runner/dist");
+  });
+});
+
+describe("OURO_FARM_LOG_BUDGET_BYTES", () => {
+  it("falls back to 2 GiB per workspace when it is unset or blank", () => {
+    expect(loadConfiguration(testEnvironment()).farmLogBudgetBytes).toBe(
+      DEFAULT_FARM_LOG_BUDGET_BYTES,
+    );
+    expect(
+      loadConfiguration(testEnvironment({ OURO_FARM_LOG_BUDGET_BYTES: "" })).farmLogBudgetBytes,
+    ).toBe(DEFAULT_FARM_LOG_BUDGET_BYTES);
+    expect(DEFAULT_FARM_LOG_BUDGET_BYTES).toBe(2 * 1024 ** 3);
+  });
+
+  it.each(["1048576", "2147483648", "10737418240", "1099511627776"])("reads %s", (value) => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_FARM_LOG_BUDGET_BYTES: value })).farmLogBudgetBytes,
+    ).toBe(Number(value));
+  });
+
+  it.each([
+    ["a unit", "2GiB"],
+    ["scientific notation", "2e9"],
+    ["a sign", "-1"],
+    ["a fraction", "1048576.5"],
+  ])("rejects %s", (_description, value) => {
+    expect(failureFor(testEnvironment({ OURO_FARM_LOG_BUDGET_BYTES: value }))).toContain(
+      `OURO_FARM_LOG_BUDGET_BYTES: expected a whole number of bytes between ` +
+        `${MIN_FARM_LOG_BUDGET_BYTES} and ${MAX_FARM_LOG_BUDGET_BYTES}`,
+    );
+  });
+
+  it.each([
+    ["zero, which would sweep every log at once", "0"],
+    ["less than a mebibyte", "1048575"],
+    ["more than a tebibyte", "1099511627777"],
+  ])("rejects %s", (_description, value) => {
+    expect(failureFor(testEnvironment({ OURO_FARM_LOG_BUDGET_BYTES: value }))).toContain(
+      `OURO_FARM_LOG_BUDGET_BYTES: expected between ${MIN_FARM_LOG_BUDGET_BYTES} and ` +
+        `${MAX_FARM_LOG_BUDGET_BYTES} bytes`,
+    );
   });
 });
 

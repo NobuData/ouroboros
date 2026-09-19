@@ -346,6 +346,31 @@ describe("an agent connection", () => {
       });
     });
 
+    it("runs the terminal hooks before the ledger, so a job's log is final before it reads as finished", async () => {
+      const order: string[] = [];
+      sessions.onTerminal((context, envelope) => {
+        order.push(`hook:${context.runnerId}:${envelope.payload.job}`);
+      });
+      repository.recordTerminal.mockImplementationOnce(() => {
+        order.push("ledger");
+        return Promise.resolve({ duplicate: false, applied: true });
+      });
+
+      await send(fixtureBytes("valid/job-finish.json"));
+
+      expect(order).toEqual([`hook:${row.id}:job_01KE7J4EZ3204KQXMHJRPQPWQ6`, "ledger"]);
+      expect(socket.types()).toContain("receipt");
+    });
+
+    it("records the frame even when a terminal hook fails — a hook's bug never costs a result", async () => {
+      sessions.onTerminal(() => Promise.reject(new Error("log store down")));
+
+      await send(fixtureBytes("valid/job-finish.json"));
+
+      expect(repository.recordTerminal).toHaveBeenCalled();
+      expect(socket.last("receipt").payload.duplicate).toBe(false);
+    });
+
     it("answers a re-send the ledger recognised with duplicate: true", async () => {
       repository.recordTerminal.mockResolvedValueOnce({ duplicate: true, applied: false });
 

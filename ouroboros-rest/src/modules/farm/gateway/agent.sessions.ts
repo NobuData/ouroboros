@@ -92,6 +92,20 @@ export type FrameListener<T extends MessageType = MessageType> = (
   envelope: Envelope<T>,
 ) => void | Promise<void>;
 
+/**
+ * Something that must see a terminal frame **before** it is recorded — AH.5's log tail (#253).
+ *
+ * A `job.finish` ends a job, and once the job reads as finished its log must already be final:
+ * the live card stops polling when `live` goes false, and a tail recorded a moment later would
+ * never be drawn. So a hook runs first, and the ledger and the job's terminal status commit after
+ * it. It sees every copy of the frame, re-sends included, and must be idempotent against a job
+ * that is already finished.
+ */
+export type TerminalHook = (
+  context: FrameContext,
+  envelope: Envelope<"job.finish">,
+) => void | Promise<void>;
+
 /** What {@link AgentSessions.open} answers. */
 export interface OpenedSession {
   readonly session: AgentSession;
@@ -238,6 +252,8 @@ export class AgentSessions {
   private readonly current = new Map<string, AgentSession>();
   /** Who wants to hear about which frames. */
   private readonly listeners = new Map<MessageType, Set<FrameListener>>();
+  /** Who must see a terminal frame before it is recorded. */
+  private readonly terminalHooks = new Set<TerminalHook>();
 
   /**
    * @param now - The clock.
@@ -525,6 +541,43 @@ export class AgentSessions {
     return () => {
       set.delete(listener as FrameListener);
     };
+  }
+
+  /**
+   * See every `job.finish` before the gateway records it (#253).
+   *
+   * @param hook - Called with where the frame came from and the frame, and awaited before the
+   *   ledger's transaction. Its failure is logged and never stops the frame being recorded — a
+   *   hook's bug must not cost an agent its result.
+   * @returns A function that stops the hook.
+   */
+  onTerminal(hook: TerminalHook): () => void {
+    this.terminalHooks.add(hook);
+
+    return () => {
+      this.terminalHooks.delete(hook);
+    };
+  }
+
+  /**
+   * Run every terminal hook on a frame, in registration order — what the connection awaits before
+   * it records a `job.finish`.
+   *
+   * @param context - Where the frame came from.
+   * @param envelope - The frame.
+   * @returns When every hook has finished.
+   */
+  async beforeTerminal(context: FrameContext, envelope: Envelope<"job.finish">): Promise<void> {
+    for (const hook of this.terminalHooks) {
+      try {
+        await hook(context, envelope);
+      } catch (error) {
+        this.logger.error(
+          "A job.finish hook failed; the frame is recorded anyway.",
+          describeForLog(error),
+        );
+      }
+    }
   }
 
   /**

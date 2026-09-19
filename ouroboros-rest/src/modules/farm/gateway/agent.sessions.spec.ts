@@ -1,5 +1,5 @@
 import { Logger } from "@nestjs/common";
-import { frame } from "../protocol/protocol";
+import { frame, type Envelope } from "../protocol/protocol";
 import type { JobCancelPayload, JobOfferPayload } from "../protocol/protocol.messages";
 import { AgentSessions } from "./agent.sessions";
 import { FakeSocket, drain, fixtureFrame } from "./gateway.fixture";
@@ -381,6 +381,38 @@ describe("the session registry", () => {
       expect(() =>
         sessions.cancel(ORG, RUNNER, { ...cancelPayload(), reason: "timeout" as never }),
       ).toThrow(TypeError);
+    });
+  });
+
+  describe("terminal hooks (#253)", () => {
+    const finish = () => fixtureFrame("valid/job-finish.json") as unknown as Envelope<"job.finish">;
+    const from = { organizationId: ORG, runnerId: RUNNER, sessionId: "sess_x" };
+
+    it("runs every hook in registration order, and stops one when asked", async () => {
+      const heard: string[] = [];
+      const stop = sessions.onTerminal(() => {
+        heard.push("first");
+      });
+      sessions.onTerminal(() => Promise.resolve().then(() => void heard.push("second")));
+
+      await sessions.beforeTerminal(from, finish());
+      stop();
+      await sessions.beforeTerminal(from, finish());
+
+      expect(heard).toEqual(["first", "second", "second"]);
+    });
+
+    it("survives a hook that throws, and still runs the next", async () => {
+      const heard: string[] = [];
+      sessions.onTerminal(() => {
+        throw new Error("broken hook");
+      });
+      sessions.onTerminal(() => {
+        heard.push("next");
+      });
+
+      await expect(sessions.beforeTerminal(from, finish())).resolves.toBeUndefined();
+      expect(heard).toEqual(["next"]);
     });
   });
 

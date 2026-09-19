@@ -3329,11 +3329,47 @@ export interface BuildJobsTable {
   ccache_stats: unknown;
   retry_of: string | null;
   log_bytes: Generated<string>;
+  /**
+   * Bytes elided after the last stored byte — the log's tail: the cap's count, the agent's own
+   * tail drops and the rate guard's (V040, widened by V044, [#253](https://github.com/NobuData/ouroboros/issues/253)).
+   */
   log_dropped_bytes: Generated<string>;
   log_cap_bytes: Generated<string>;
   log_truncated_at: Date | null;
+  /** The agent's elided bytes as received so far — what splits a finish's total from its tail (V044). */
+  log_agent_dropped_bytes: Generated<string>;
+  /** Chunks after the last that arrived that never did, from `job.finish.log.chunks` (V044). */
+  log_missing_chunks: Generated<number>;
+  /** When the retention sweep removed this finished job's log — all of it (V044). */
+  log_swept_at: Date | null;
   created_at: Stamped;
   updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.build_log_chunks` — a build's log, in the chunks it was streamed as (V040, mirrored
+ * by AH.5, [#253](https://github.com/NobuData/ouroboros/issues/253)).
+ *
+ * `byte_start` and `truncation_meta` are the cap trigger's to write: a chunk is inserted without
+ * either, in `seq` order, and the trigger assigns the offset from the job's running total and
+ * clamps the chunk that crosses the cap. `elided_bytes` and `missing_chunks` (V044) are where an
+ * elision before the chunk is kept, so the console draws one marker per hole.
+ */
+export interface BuildLogChunksTable {
+  id: Generated<string>;
+  job_id: string;
+  seq: number;
+  /** Assigned by `build_log_chunk_cap()`; bigint, so it arrives as a string. */
+  byte_start: ColumnType<string, string | undefined, never>;
+  content: Buffer;
+  /** The cap's elision marker, on the one chunk it clamped. Written only by the trigger. */
+  truncation_meta: ColumnType<unknown, never, never>;
+  received_at: Generated<Date>;
+  retain_until: Generated<Date>;
+  /** Bytes elided immediately before this chunk — the agent's throttle and the rate guard (V044). */
+  elided_bytes: Generated<string>;
+  /** Chunks immediately before this one that never arrived (V044). */
+  missing_chunks: Generated<number>;
 }
 
 /** `runner_terminal_frames.frame_type` — an enum of one, as the protocol's `receipt.of_type` is. */
@@ -3407,6 +3443,7 @@ export interface Database {
   farm_authorities: FarmAuthoritiesTable;
   runner_certificates: RunnerCertificatesTable;
   build_jobs: BuildJobsTable;
+  build_log_chunks: BuildLogChunksTable;
   runner_terminal_frames: RunnerTerminalFramesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
@@ -3909,8 +3946,23 @@ export const TABLE_COLUMNS = {
     "log_dropped_bytes",
     "log_cap_bytes",
     "log_truncated_at",
+    "log_agent_dropped_bytes",
+    "log_missing_chunks",
+    "log_swept_at",
     "created_at",
     "updated_at",
+  ],
+  build_log_chunks: [
+    "id",
+    "job_id",
+    "seq",
+    "byte_start",
+    "content",
+    "truncation_meta",
+    "received_at",
+    "retain_until",
+    "elided_bytes",
+    "missing_chunks",
   ],
   runner_terminal_frames: [
     "organization_id",
@@ -4301,6 +4353,9 @@ export type NewRunnerCertificate = Insertable<RunnerCertificatesTable>;
 export type BuildJob = Selectable<BuildJobsTable>;
 /** The columns an `insert` into `ouroboros.build_jobs` may carry. */
 export type NewBuildJob = Insertable<BuildJobsTable>;
+
+/** A row of `ouroboros.build_log_chunks`, as a `select` returns it. */
+export type BuildLogChunk = Selectable<BuildLogChunksTable>;
 
 /** A row of `ouroboros.runner_terminal_frames`, as a `select` returns it. */
 export type RunnerTerminalFrame = Selectable<RunnerTerminalFramesTable>;

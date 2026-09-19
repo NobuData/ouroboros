@@ -222,6 +222,14 @@ export class AppConfigService {
   }
 
   /**
+   * The bytes of finished builds' logs one workspace keeps — `OURO_FARM_LOG_BUDGET_BYTES`. See
+   * `Configuration.farmLogBudgetBytes`.
+   */
+  get farmLogBudgetBytes(): number {
+    return this.config.getOrThrow<number>("farmLogBudgetBytes");
+  }
+
+  /**
    * Seconds between backlog sync cycles — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`.
    *
    * The nominal interval. `src/modules/backlog-sync/` jitters every delay by ±25% around it,
@@ -350,6 +358,7 @@ export class AppConfigService {
       corsOrigins: this.corsOrigins,
       dashboardPollSeconds: this.dashboardPollSeconds,
       listenHostOverride: this.listenHostOverride,
+      farmLogBudgetBytes: this.farmLogBudgetBytes,
       providerHealthIntervalSeconds: this.providerHealthIntervalSeconds,
       providerHealthKeyCheckSeconds: this.providerHealthKeyCheckSeconds,
       backlogSyncIntervalSeconds: this.backlogSyncIntervalSeconds,

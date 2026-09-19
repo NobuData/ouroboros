@@ -1105,6 +1105,19 @@ expect_red 'a pool may default to a blank command' \
   'a pool default command is not blank .*runner_pools_default_command_shape did not fire' \
   'alter table ouroboros.runner_pools drop constraint runner_pools_default_command_shape;'
 
+# --- V044, where a build log's holes are (#253) ----------------------------------
+#
+# A negative elision is a marker claiming the log holds more than it does, and a swept running
+# job is a live card that goes silent mid-build. Both are refused by the schema, whoever writes.
+
+expect_red 'the bytes elided before a chunk may be negative' \
+  'the bytes elided before a chunk are never negative .*build_log_chunks_elided_bytes_non_negative did not fire' \
+  'alter table ouroboros.build_log_chunks drop constraint build_log_chunks_elided_bytes_non_negative;'
+
+expect_red "a running job's log may be swept" \
+  'a running job.s log is never swept .*build_jobs_log_swept_when_finished did not fire' \
+  'alter table ouroboros.build_jobs drop constraint build_jobs_log_swept_when_finished;'
+
 printf '\n'
 if check_summary; then
   rm -rf "$LOG_DIR"
