@@ -202,6 +202,26 @@ export class AppConfigService {
   }
 
   /**
+   * The https origin runner machines reach this deployment at — `OURO_FARM_PUBLIC_URL`.
+   *
+   * `undefined` when unset, which is the default: the installer then uses {@link restUrl}. See
+   * `Configuration.farmPublicUrl`.
+   */
+  get farmPublicUrl(): string | undefined {
+    return this.config.get<string>("farmPublicUrl");
+  }
+
+  /**
+   * Where ouroboros-runner releases are served from — `OURO_FARM_RELEASES_DIR`.
+   *
+   * `undefined` when unset, which is the default: this deployment serves no installer. See
+   * `Configuration.farmReleasesDir`.
+   */
+  get farmReleasesDir(): string | undefined {
+    return this.config.get<string>("farmReleasesDir");
+  }
+
+  /**
    * Seconds between backlog sync cycles — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`.
    *
    * The nominal interval. `src/modules/backlog-sync/` jitters every delay by ±25% around it,

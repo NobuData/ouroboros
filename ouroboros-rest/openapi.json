@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.35.20",
+    "version": "0.35.21",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
-    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
+    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -92,7 +92,7 @@
     },
     {
       "name": "farm",
-      "description": "**The build farm's identity layer** (mockup 08, epic\n[#240](https://github.com/NobuData/ouroboros/issues/240), issue\n[#250](https://github.com/NobuData/ouroboros/issues/250), decision **B3**) — how a\nmachine on hardware this control plane does not administer comes to have an identity it\ncan prove.\n\n**The chain is: a scoped token, spent once, for a certificate that lasts.** An owner or\nan admin mints an `orb_enroll_…` token scoped to one pool, with a TTL and a use count.\nThe install one-liner carries it; the agent generates a keypair, sends a certificate\nrequest, and is issued a client certificate by the workspace's own certificate\nauthority. Everything after that is mutual TLS, and the token is never used again.\n\n**The runner generates its own keypair, and this service has never held one.** The\nenrollment body carries a PKCS#10 certificate request rather than asking for a key to be\ngenerated and sent back — so there is no backup, no log and no column from which a\nrunner's private key could be recovered, including by us.\n`docs/SECURITY_MODEL.md`'s farm-CA section is where that is written down, together with\nthe custody of the CA key itself (sealed by the vault, unwrapped for one signature).\n\n**The CA private key is never returned by anything here.** `GET /api/v1/farm/authority`\nanswers the *public* certificate and its fingerprint — the pin an agent checks — and\nthere is no operation, field or parameter anywhere in this document through which the\nprivate half could travel.\n\n**Revocation is the security boundary, not expiry.** A revoked certificate is refused at\nthe next handshake, and a runner cannot renew its way back in: renewal is authenticated\nby the certificate being replaced. A certificate lasts ninety days and an agent is told\nwhen to come back; that window is a backstop, not the control.\n\n**The bearer fallback is a workspace setting and is visible where it is used.** Some\ncorporate proxies terminate TLS and strip client certificates. A workspace may permit a\nrunner to enrol without one — off by default — and a runner that does is recorded as\n`bearer_fallback` and rendered as a visibly degraded connection rather than a green\nshield over a weaker mode.\n\n**Two of these operations are reachable without a session**, because the caller is a\nmachine that holds none: registration authenticates on the enrollment token, and renewal\non the TLS client certificate. Neither names a workspace — an enrollment lands in the\ntoken's workspace and a renewal in the certificate's — so a token cannot enrol a runner\nanywhere but where it was minted.\n\n**A refused enrollment is always the same refusal.** A token that never existed, one\nwhose secret is wrong, an expired one, a spent one, a revoked one and one scoped to a\ndifferent pool all answer `401 farm_enrollment_refused` with no detail. Which of the six\nit was is recorded in the audit trail, where an operator can read it and a caller\ncannot.\n\nMinting, listing and revoking are `owner` or `admin`. Reading the CA certificate is any\nmember's: it is a public certificate, and the person who needs it is whoever is\nconfiguring the reverse proxy.\n\n**One more endpoint lives beside these and is not an operation in this document:**\n`wss://<control plane>/api/v1/farm/agent`, the agent gateway\n([#251](https://github.com/NobuData/ouroboros/issues/251)). It is a WebSocket spoken in the\nrunner protocol — `docs/RUNNER_PROTOCOL.md`, with `schemas/runner-protocol/v1.json` as its\nmachine-readable half — rather than in requests and responses, so OpenAPI cannot describe\nit and the protocol document is its contract. Its upgrade is authenticated as renewal is,\nby the client certificate checked against the revocation list, and refused with the same\ntwo codes: `401 farm_client_certificate_required` when no certificate reached this service\n(most often a proxy that terminates TLS without passing it through — see\n`docs/SECURITY_MODEL.md` § 7.6), and `401 farm_identity_refused` for one that is not a live\nrunner identity."
+      "description": "**The build farm's identity layer** (mockup 08, epic\n[#240](https://github.com/NobuData/ouroboros/issues/240), issue\n[#250](https://github.com/NobuData/ouroboros/issues/250), decision **B3**) — how a\nmachine on hardware this control plane does not administer comes to have an identity it\ncan prove.\n\n**The chain is: a scoped token, spent once, for a certificate that lasts.** An owner or\nan admin mints an `orb_enroll_…` token scoped to one pool, with a TTL and a use count.\nThe install one-liner carries it; the agent generates a keypair, sends a certificate\nrequest, and is issued a client certificate by the workspace's own certificate\nauthority. Everything after that is mutual TLS, and the token is never used again.\n\n**The runner generates its own keypair, and this service has never held one.** The\nenrollment body carries a PKCS#10 certificate request rather than asking for a key to be\ngenerated and sent back — so there is no backup, no log and no column from which a\nrunner's private key could be recovered, including by us.\n`docs/SECURITY_MODEL.md`'s farm-CA section is where that is written down, together with\nthe custody of the CA key itself (sealed by the vault, unwrapped for one signature).\n\n**The CA private key is never returned by anything here.** `GET /api/v1/farm/authority`\nanswers the *public* certificate and its fingerprint — the pin an agent checks — and\nthere is no operation, field or parameter anywhere in this document through which the\nprivate half could travel.\n\n**Revocation is the security boundary, not expiry.** A revoked certificate is refused at\nthe next handshake, and a runner cannot renew its way back in: renewal is authenticated\nby the certificate being replaced. A certificate lasts ninety days and an agent is told\nwhen to come back; that window is a backstop, not the control.\n\n**The bearer fallback is a workspace setting and is visible where it is used.** Some\ncorporate proxies terminate TLS and strip client certificates. A workspace may permit a\nrunner to enrol without one — off by default — and a runner that does is recorded as\n`bearer_fallback` and rendered as a visibly degraded connection rather than a green\nshield over a weaker mode.\n\n**Two of these operations are reachable without a session**, because the caller is a\nmachine that holds none: registration authenticates on the enrollment token, and renewal\non the TLS client certificate. Neither names a workspace — an enrollment lands in the\ntoken's workspace and a renewal in the certificate's — so a token cannot enrol a runner\nanywhere but where it was minted.\n\n**A refused enrollment is always the same refusal.** A token that never existed, one\nwhose secret is wrong, an expired one, a spent one, a revoked one and one scoped to a\ndifferent pool all answer `401 farm_enrollment_refused` with no detail. Which of the six\nit was is recorded in the audit trail, where an operator can read it and a caller\ncannot.\n\nMinting, listing and revoking are `owner` or `admin`. Reading the CA certificate is any\nmember's: it is a public certificate, and the person who needs it is whoever is\nconfiguring the reverse proxy.\n\n**One more endpoint lives beside these and is not an operation in this document:**\n`wss://<control plane>/api/v1/farm/agent`, the agent gateway\n([#251](https://github.com/NobuData/ouroboros/issues/251)). It is a WebSocket spoken in the\nrunner protocol — `docs/RUNNER_PROTOCOL.md`, with `schemas/runner-protocol/v1.json` as its\nmachine-readable half — rather than in requests and responses, so OpenAPI cannot describe\nit and the protocol document is its contract. Its upgrade is authenticated as renewal is,\nby the client certificate checked against the revocation list, and refused with the same\ntwo codes: `401 farm_client_certificate_required` when no certificate reached this service\n(most often a proxy that terminates TLS without passing it through — see\n`docs/SECURITY_MODEL.md` § 7.6), and `401 farm_identity_refused` for one that is not a live\nrunner identity.\n\n**Two more routes answer without a session, at the origin root rather than under\n`/api/v1`:** `GET /install.sh` and `GET /runner/{version}/{file}`, the runner installer\nand the release files it downloads ([#248](https://github.com/NobuData/ouroboros/issues/248)).\nTheir reader is `curl` on a machine about to become a runner, piping a script into a shell\nin a command copied once and kept for years — so they answer where every such installer\nanswers, from this deployment's own origin rather than a public host. What they hand out\nis public: a released script and binaries, with this deployment's address filled in."
     }
   ],
   "paths": {
@@ -15938,6 +15938,163 @@
           },
           "422": {
             "description": "`farm_invalid_csr` — the certificate request could not be read or is not the shape\nthis CA signs. Or `validation_failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install.sh": {
+      "get": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "The runner installer, filled in with this deployment's own address",
+        "description": "The build farm's one-liner ([#248](https://github.com/NobuData/ouroboros/issues/248), AG.6):\n\n```\ncurl -fsSL 'https://<this deployment>/install.sh?version=0.5.0' | sh -s -- \\\n  --tenant acme-robotics --pool pool-a --token orb_enroll_…\n```\n\n**The release's `install.sh`, with one line changed**: `DEFAULT_SERVER` is filled in with\nthe https origin runner machines reach this deployment at — `OURO_FARM_PUBLIC_URL`, or\n`OURO_REST_URL` when that is unset and is https. So the command carries no `--server`: the\nscript downloads the agent from this deployment and enrols it into this deployment.\nEverything else is the release's own, byte for byte.\n\n**At the origin root, and served by this deployment rather than a public host.** Mockup\n08's `get.ouroboros.dev` is design shorthand; a self-hosted deployment behind a firewall\ninstalls its runners from itself and trusts no public domain for a binary that runs on its\nbuild machines. The releases are whatever the operator copied into\n`OURO_FARM_RELEASES_DIR` — one directory per version, exactly as the GitHub release\n`ouroboros-runner-v<version>` carries it.\n\n**`?version=` pins the release**, and the command the enroll card renders always carries\none, so two runners enrolled a month apart are the same build. Without it this answers\nthe newest stable release present.\n\n**No session**, because the caller is `curl` on a machine that is about to become a\nrunner. Nothing here is secret; what enrols the machine is the token in the command,\nspent against `POST /api/v1/farm/registrations`.",
+        "operationId": "readRunnerInstaller",
+        "security": [],
+        "parameters": [
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "description": "The release to install, a semantic version. The newest stable release present when\nomitted.",
+            "schema": {
+              "type": "string",
+              "examples": [
+                "0.5.0"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The installer. `X-Ouro-Runner-Version` names the release it installs.",
+            "headers": {
+              "X-Ouro-Runner-Version": {
+                "description": "The release this script installs.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/x-shellscript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`farm_installer_unavailable` — this deployment is not set up to serve the installer:\n`OURO_FARM_RELEASES_DIR` is unset, is not a readable directory or holds no release;\nno https origin is configured for runners to reach it at; or the release's installer\ncarries no `DEFAULT_SERVER` line to fill in. The message names which, and no path.\nOr `farm_release_not_found` — the release `?version=` named is not served here.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runner/{version}/{file}": {
+      "get": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "One file of a runner release, exactly as the release holds it",
+        "description": "What the installer downloads ([#248](https://github.com/NobuData/ouroboros/issues/248),\nAG.6): this platform's binary, and `SHA256SUMS`, which it verifies the binary against\nbefore running anything. Served from `OURO_FARM_RELEASES_DIR`, so a build machine needs a\nroute to nothing but the control plane it is about to connect to anyway.\n\n**Every file is served unchanged** — the installer too, unlike `GET /install.sh` — so each\none is the file `SHA256SUMS` names and can be verified against it.\n\n**A release holds five files and only those can be named**: the three binaries, the\ninstaller and `SHA256SUMS`. The version must be a semantic version. Nothing a request\nsends is ever joined into a path, so nothing else in the directory can be reached.\n\n**No session**, for `GET /install.sh`'s reason: the reader is `curl`, and a release is\npublic.",
+        "operationId": "readRunnerReleaseFile",
+        "security": [],
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "description": "The release, a semantic version.",
+            "schema": {
+              "type": "string",
+              "examples": [
+                "0.5.0"
+              ]
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "description": "One of the five files a release holds.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ouroboros-runner-linux-amd64",
+                "ouroboros-runner-linux-arm64",
+                "ouroboros-runner-darwin-arm64",
+                "install.sh",
+                "SHA256SUMS"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file. A binary is `application/octet-stream`, the installer\n`text/x-shellscript` and `SHA256SUMS` `text/plain`.",
+            "headers": {
+              "X-Ouro-Runner-Version": {
+                "description": "The release the file belongs to.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "application/octet-stream"
+                }
+              },
+              "text/x-shellscript": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`farm_release_not_found` — no such release is served here, or it has no such file. Or\n`farm_installer_unavailable` — this deployment serves no releases at all:\n`OURO_FARM_RELEASES_DIR` is unset or is not a readable directory.",
             "content": {
               "application/json": {
                 "schema": {

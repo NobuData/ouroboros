@@ -24,6 +24,7 @@ import { authOperationKeys } from "../auth/auth.routes";
 import { DEFAULT_PORT } from "../modules/config/configuration";
 import { testConfiguration } from "../modules/config/configuration.fixture";
 import { INTERNAL_KEY_HEADER } from "../modules/engine/engine.contract";
+import { INSTALLER_PATHS, isInstallerPath } from "../modules/farm/installer/installer.paths";
 import { PROBE_PATHS } from "../modules/health/health.paths";
 import {
   INTERNAL_ERRORS,
@@ -303,19 +304,22 @@ describe("the specification as a document", () => {
     expect(server.url).toBe(`http://localhost:${DEFAULT_PORT}`);
   });
 
-  it("describes nothing outside the versioned base path but the probes and the auth family", () => {
-    // Two exemptions, both enumerated, and for different reasons. The probes answer at the
+  it("describes nothing outside the versioned base path but the probes, the installer and the auth family", () => {
+    // Three exemptions, all enumerated, and for different reasons. The probes answer at the
     // origin root because a `HEALTHCHECK` and an orchestrator's probe have no notion of an
-    // API version (see `src/modules/health/health.paths.ts`). The auth family answers one
-    // level up at `/api/auth` because the library serves and versions its own routes
-    // (#701, #711). Anything *else* that escaped `/api/v1` would be a route published
-    // outside the contract's versioning, which is what this check exists to refuse.
+    // API version (see `src/modules/health/health.paths.ts`). The runner installer answers
+    // there because its reader is `curl` piping a script into a shell, in a command copied
+    // once and kept for years (#248, `src/modules/farm/installer/installer.paths.ts`). The auth
+    // family answers one level up at `/api/auth` because the library serves and versions its
+    // own routes (#701, #711). Anything *else* that escaped `/api/v1` would be a route
+    // published outside the contract's versioning, which is what this check exists to refuse.
     const exempt: readonly string[] = PROBE_PATHS;
     const paths = Object.keys(document().paths);
 
     expect(paths).not.toHaveLength(0);
     for (const path of paths.filter(
-      (candidate) => !exempt.includes(candidate) && !isAuthFamily(candidate),
+      (candidate) =>
+        !exempt.includes(candidate) && !isInstallerPath(candidate) && !isAuthFamily(candidate),
     )) {
       expect(path.startsWith(API_BASE_PATH)).toBe(true);
     }
@@ -328,6 +332,10 @@ describe("the specification as a document", () => {
 
     for (const path of PROBE_PATHS) {
       expect(paths).toContain(path);
+    }
+    // The installer's, in the document's own `{name}` spelling of a path parameter.
+    for (const path of INSTALLER_PATHS) {
+      expect(paths).toContain(path.replaceAll(/:(\w+)/gu, "{$1}"));
     }
   });
 });

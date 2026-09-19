@@ -123,11 +123,11 @@ is the work, not an oversight to be papered over with a wildcard.
 
 **`ouroboros-runner` ships no container**, and that is the one exception to the Dockerfile
 row. Its artefact is a **binary** that runs on the customer's machine, so a container image
-would be a thing nobody deploys: what it needs instead is a tagged release with a checksum per
-architecture and an `install.sh` that verifies it, which is
-[#248](https://github.com/NobuData/ouroboros/issues/248). Until then `cross/runner` builds all
-three targets on every pull request, which is the part of the promise a scaffold can keep. A
-containerised runner for the end-to-end suite
+would be a thing nobody deploys. What it ships instead
+([#248](https://github.com/NobuData/ouroboros/issues/248)) is a GitHub release per version —
+the three binaries, an `install.sh` that verifies them before running anything, and a
+`SHA256SUMS` over all four — which a deployment serves to its build machines from its own
+origin. A containerised runner for the end-to-end suite
 ([#262](https://github.com/NobuData/ouroboros/issues/262)) is a test fixture and will say so.
 
 There is exactly one `yarn.lock` per Yarn project, so making `ouroboros-ui` and
@@ -577,6 +577,8 @@ ouroboros-db/**     ─▶ ci/db      flyway migrate · validate · constraints
                     ─▶ publish/db     the migration image, pushed from main
 ouroboros-runner/** ─▶ ci/runner  make install · format · lint · typecheck · test · build
                     ─▶ cross/runner   linux/x86_64 · linux/arm64 · darwin/arm64, build only
+                    ─▶ package/runner make release · sha256sum -c, every event
+                    ─▶ release/runner ouroboros-runner-v<VERSION>, pushed from main
 
 package.json        ─▶ ci/ui + ci/rest   the workspace both resolve through
 yarn.lock
@@ -640,7 +642,10 @@ definition. Four rules keep them interchangeable:
    both modules were scaffolded by the pull request that added their workflow, and a
    condition that is true on every run is one nobody would notice becoming always false.
 4. **Actions are pinned to a release**, never to `@main`, and every workflow asks for no
-   more than `contents: read`.
+   more than `contents: read`. **One job is granted more, by name**: `release/runner`
+   ([#248](https://github.com/NobuData/ouroboros/issues/248)) needs `contents: write` to create
+   a GitHub release, and gets it on the job rather than the workflow — so no other job, and no
+   pull request, ever holds it. `scripts/verify-ci.sh` asserts it is the only grant.
 
 `ci/db` runs in two halves, and the order is deliberate — the cheap half first, so a
 misnamed migration is reported before a database is waited on.
@@ -666,13 +671,20 @@ job — `publish/ui`, `publish/rest`, `publish/engine`, `publish/db` — which b
 module's `Dockerfile` (§ 5) and pushes it as `ouroboros-<module>:latest` and
 `ouroboros-<module>:<sha>`.
 
-`runner.yml`'s second job is not one of them. `cross/runner` **builds** the agent for all
+`runner.yml`'s jobs after `ci` are not among them. `cross/runner` **builds** the agent for all
 three target architectures and publishes nothing, because this module's artefact is a binary
 for somebody else's machine rather than an image for a deployment (§ 2) — and it builds rather
 than tests them because an `arm64` binary cannot be run on the `x86_64` runner. It carries the
 same `needs: ci` gate a publish job does, for the same reason: a cross build of a checkout
-that has not been linted or tested is an artefact nothing has run. The release itself is
-[#248](https://github.com/NobuData/ouroboros/issues/248).
+that has not been linted or tested is an artefact nothing has run.
+
+The release is two more jobs ([#248](https://github.com/NobuData/ouroboros/issues/248)), split
+by what each may do. `package/runner` runs `make release` and checks the result with
+`sha256sum -c` on every event, read-only, so a release that stops assembling fails the pull
+request that broke it. `release/runner` publishes exactly those bytes — it downloads the
+artifact rather than rebuilding — as the GitHub release `ouroboros-runner-v<VERSION>`, only on a
+push to `main`, behind `ci`, every `cross` target and the package, and it never replaces a
+release that exists: the version is the identity, so the way to publish is to bump `VERSION`.
 
 Each one `needs: ci`, and that is the reason a publish job lives in its module's workflow
 rather than in one of its own: the image is exactly the checkout the job above proved. For

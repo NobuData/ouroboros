@@ -37,6 +37,11 @@ import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { DiscoveryService, MetadataScanner, Reflector } from "@nestjs/core";
 
 import { API_BASE_PATH } from "../../application";
+import {
+  INSTALL_SCRIPT_PATH,
+  RELEASE_FILE_PATH,
+  isInstallerBase,
+} from "../farm/installer/installer.paths";
 import { HEALTH_PATH, LIVE_ROUTE, READY_ROUTE } from "../health/health.paths";
 import { INTERNAL_ONLY } from "../internal/internal.decorators";
 import {
@@ -92,6 +97,14 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   // runner is somebody else's machine and holds no such secret.
   `POST ${API_BASE_PATH}/farm/registrations`,
   `POST ${API_BASE_PATH}/farm/registrations/renewal`,
+  // The runner installer and its release files (#248, AG.6). The reader is `curl` on a machine
+  // about to become a runner, piping the script into a shell: it holds no session and could not
+  // be given one. What they hand out is public by construction — a released script and binaries
+  // from a public repository, with this deployment's public address filled in — and they read
+  // two settings and a directory, never a table. Enrolling still takes the token, spent against
+  // the registration route above.
+  `GET ${INSTALL_SCRIPT_PATH}`,
+  `GET ${RELEASE_FILE_PATH}`,
 ].sort();
 
 /**
@@ -211,11 +224,12 @@ export function routeTable(app: INestApplication): Route[] {
  *
  * The health controller is `VERSION_NEUTRAL` and its path is excluded from the global
  * prefix, so it answers at the root; the two internal controllers are the same
- * ([#224](https://github.com/NobuData/ouroboros/issues/224)); everything else sits under
- * `/api/v1`. Those are enumerated cases rather than a general rule, because each one is a
- * decision somebody made and argued —  `src/modules/health/health.paths.ts` and
- * `src/modules/internal/internal.paths.ts` are where. A fourth would be another such
- * decision, not a pattern to be inferred.
+ * ([#224](https://github.com/NobuData/ouroboros/issues/224)), and so are the runner
+ * installer's two ([#248](https://github.com/NobuData/ouroboros/issues/248)); everything else
+ * sits under `/api/v1`. Those are enumerated cases rather than a general rule, because each one
+ * is a decision somebody made and argued — `src/modules/health/health.paths.ts`,
+ * `src/modules/internal/internal.paths.ts` and `src/modules/farm/installer/installer.paths.ts`
+ * are where. A fifth would be another such decision, not a pattern to be inferred.
  *
  * @param base - The controller's own path segment.
  * @param path - The handler's.
@@ -223,7 +237,8 @@ export function routeTable(app: INestApplication): Route[] {
  */
 export function fullPath(base: string, path: string): string {
   const segments = [base, path].filter((segment) => segment !== "" && segment !== "/");
-  const prefix = base === HEALTH_PATH || isInternalPath(base) ? "" : API_BASE_PATH;
+  const prefix =
+    base === HEALTH_PATH || isInternalPath(base) || isInstallerBase(base) ? "" : API_BASE_PATH;
   const joined = segments.join("/");
 
   return joined === "" ? prefix : `${prefix}/${joined}`;

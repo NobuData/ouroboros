@@ -29,6 +29,12 @@ pinned image through Docker or Podman, or directly on this machine for HIL rigs 
 declining at once, with a true reason, any offer it cannot satisfy. See
 [Running jobs](#running-jobs), and [Related issues](#related-issues) for what is still to come.
 
+And it installs in one line ([#248](https://github.com/NobuData/ouroboros/issues/248)): `ci/runner`
+publishes each version as a checksummed GitHub release, a deployment serves that release from its
+own origin, and `install.sh` verifies the binary before running it, enrols it, and leaves it
+running under systemd or launchd — restarted on failure and started again at boot. See
+[Install](#install).
+
 The protocol was written **before** either implementation of it, and that is the point. The
 agent is Go and the gateway is TypeScript
 ([#251](https://github.com/NobuData/ouroboros/issues/251)); whichever had been written first
@@ -71,7 +77,119 @@ make test-docker   # the container executor against this machine's real Docker o
 make lint          # golangci-lint over every package
 make build         # this platform, into bin/
 make cross         # all three release targets, into bin/
+make release       # a checksummed release, into dist/<version>/
 ```
+
+`make lint` runs [`shellcheck`](https://www.shellcheck.net) over the installer as well as
+golangci-lint over the Go, and `make test` runs the installer's suite after the Go one, so both
+need `shellcheck` and a POSIX `sh` on the machine.
+
+### Install
+
+On a build machine, the command the Build Farm page's enroll card renders:
+
+```bash
+curl -fsSL 'https://ouroboros.acme.dev/install.sh?version=0.5.0' | sh -s -- \
+  --tenant acme-robotics --pool pool-a --token orb_enroll_…
+```
+
+```console
+downloading ouroboros-runner 0.5.0 for linux/arm64 from https://ouroboros.acme.dev/runner/0.5.0
+verified   sha256 4537a98ce666a84142d6f89c8ddc93a89ff4e383e1f67a183f37f5d8c49f3994
+installed  /usr/local/bin/ouroboros-runner
+enrolled shed-pi-01 as runner 7f7c9d0e-… in acme-robotics / pool-a
+…
+
+ouroboros-runner 0.5.0 is installed and running.
+  service  systemd unit ouroboros-runner.service — starts at boot, restarts on failure
+  runs as  builder, from /var/lib/ouroboros-runner
+  logs     journalctl -u ouroboros-runner -f
+  remove   curl -fsSL 'https://ouroboros.acme.dev/install.sh' | sh -s -- --uninstall
+```
+
+**The address is your deployment's, not a public one.** Mockup 08 shows
+`get.ouroboros.dev`, and that is design shorthand: a self-hosted deployment behind a firewall
+may have no route to a public host, and no reason to trust one for a binary that will run on its
+build machines. So `ouroboros-rest` serves the installer itself
+([`GET /install.sh`](../ouroboros-rest/README.md#the-runner-installer)), with its own address
+written into the script's `DEFAULT_SERVER`, and serves the release's files beside it — the
+machine needs a route to nothing but the control plane it is about to connect to anyway.
+
+**`?version=` pins the release**, and the rendered command always carries it: two runners enrolled
+a month apart are the same build, and a release's `install.sh` installs that release and no
+other (`make release` writes its `DEFAULT_VERSION`).
+
+What it does, in order — and **nothing it downloaded runs before step 3**:
+
+1. Works out which release this machine needs — `linux/x86_64`, `linux/arm64` or `darwin/arm64`
+   (a Rosetta shell on Apple silicon counts as arm64) — and refuses any other by name.
+2. Downloads that binary and the release's `SHA256SUMS` into a private temporary directory, over
+   `https` only, redirects included.
+3. **Verifies the binary's SHA-256** against `SHA256SUMS`. A mismatch aborts with both checksums
+   and *nothing was installed*: nothing is stopped, replaced or enrolled.
+4. Asks the verified binary its version, and refuses one that is not the release it asked for.
+5. Installs it to `/usr/local/bin` and creates the state directory `0700`. This and the steps
+   after it need root; the script uses `sudo` for them when it is not root.
+6. Enrols it — the flags below go to `ouroboros-runner enroll`, and the token through
+   `OURO_RUNNER_TOKEN` from a private file, so it is on no command line the script runs — unless
+   the state directory already holds a runner. **A second run is therefore an upgrade**: it
+   stops the agent, replaces the binary, keeps the identity and spends no token.
+7. Installs and starts the service, as the account that ran the installer (`SUDO_USER` under
+   `sudo`), which owns the state directory from then on.
+
+| Option | |
+|---|---|
+| `--tenant`, `--pool`, `--name` | Passed to `enroll` |
+| `--token` | The enrollment token. `OURO_RUNNER_TOKEN` instead keeps it off even the installer's own process list. Not needed on an enrolled machine |
+| `--server URL` | The deployment. Written into the script by the deployment that served it; needed only with a copy from elsewhere |
+| `--version X.Y.Z` | The release. Written in by the release the script came from |
+| `--download-url URL` | Where the release's files are, when not `<server>/runner/<version>` — a mirror, say. `https` only |
+| `--server-ca FILE` | PEM roots for a deployment whose certificate the system does not trust: used for the downloads, installed as `/etc/ouroboros-runner/server-ca.pem`, and passed to `enroll` and `run` |
+| `--bearer-fallback`, `--no-shell` | Passed to `enroll` and `run`, as [Configuration](#configuration) describes |
+| `--user NAME` | The account the service runs as — the one whose Docker socket, `PATH` and devices jobs use |
+| `--state-dir DIR` | Where the identity lives; `/var/lib/ouroboros-runner` |
+| `--uninstall`, `--purge` | See below |
+
+**The service** restarts the agent after any exit that is not a clean one and starts it at
+boot:
+
+| | Linux — systemd | macOS — launchd |
+|---|---|---|
+| File | `/etc/systemd/system/ouroboros-runner.service` | `/Library/LaunchDaemons/dev.ouroboros.runner.plist` — a daemon, so it runs with nobody logged in |
+| Restart | `Restart=on-failure`, 10 s apart | `KeepAlive` with `SuccessfulExit` false, at most every 10 s (`ThrottleInterval`) |
+| Stop | `KillMode=mixed`: SIGTERM to the agent alone, so it reports its jobs cancelled before anything else in the group is killed; `TimeoutStopSec=30` | `ExitTimeOut` 30 |
+| Environment | systemd's, as `--user` | `HOME` and `PATH` set, so Docker Desktop's socket and Homebrew are found |
+| Logs | `journalctl -u ouroboros-runner` | `/Library/Logs/ouroboros-runner/runner.log` |
+
+A clean stop — `systemctl stop`, `launchctl bootout`, SIGTERM — is exit 0 and stays stopped. **A
+permanent refusal is exit 1**, and the agent's promise is not to retry one: a revoked certificate
+or a version below the floor. systemd honours that with a start limit — five failed starts in
+five minutes and it stops trying, with the reason in `systemctl status` — while launchd has no
+start limit and restarts such a runner every ten seconds until somebody acts; each start logs the
+same one line saying what to do.
+
+**`--uninstall`** stops and removes the service, the binary and `/etc/ouroboros-runner` (and on
+macOS the logs). The state directory is the runner's identity, its private key among it, so it
+goes only after a yes on the terminal, or with `--purge`; with neither — `curl | sh` from a
+script, say — it is kept and the output names it and the command that removes it. Uninstalling
+does not revoke the certificate, which stays valid until it expires: remove the runner on the
+Build Farm page for that.
+
+**Where a release comes from.** `make release` writes `dist/<version>/` — the three binaries,
+`install.sh` with its version filled in, and `SHA256SUMS` over the four — and `ci/runner`'s
+`release/runner` publishes exactly that as the GitHub release `ouroboros-runner-v<version>` on
+the push to `main` that carries a new `VERSION`. A release is never replaced. A deployment serves
+one by copying it into `OURO_FARM_RELEASES_DIR/<version>/`, verified with
+`sha256sum -c SHA256SUMS` — see [`ouroboros-rest`'s README](../ouroboros-rest/README.md#the-runner-installer).
+
+**What the checksum proves**, and what it does not: that the binary is the one `SHA256SUMS`
+names, so a download altered or truncated between the two is never run. `SHA256SUMS` comes from
+the same place as the binary — by default your own deployment, over TLS — so it is as trustworthy
+as that source. With `--download-url` pointing at a mirror, it is the mirror you are trusting.
+
+`install.sh` is POSIX `sh` and passes `shellcheck`; its suite
+([`tests/install.test.sh`](tests/install.test.sh)) runs it end to end under `sh`, `dash`, `bash`
+and busybox, against a fixture release, a staged root and stubbed service managers.
 
 ### Enrol, then run
 
@@ -263,7 +381,7 @@ offers against the minimum the refusal named.
 
 ```console
 $ ouroboros-runner version
-ouroboros-runner 0.4.0
+ouroboros-runner 0.5.0
 protocol        1 (speaks 1–1)
 arch            linux/arm64
 hostname        shed-pi-01
@@ -377,8 +495,10 @@ ouroboros-runner/
 │   ├── farmtest/             # an in-process farm for the suites — never linked into the agent
 │   ├── exec/                 # job executors: container and shell, workspaces, cancellation
 │   └── logship/              # chunking, ordering, throttling, ccache stats      · #247
+├── install.sh                # the one-liner's installer: verify, install, enrol, daemonize · #248
+├── tests/                    # install.sh's suite, end to end against a staged root  · #248
 ├── .golangci.yml             # the linter, and why each check is on
-├── Makefile                  # the verbs — install · dev · lint · format · typecheck · test · build
+├── Makefile                  # the verbs — install · dev · lint · format · typecheck · test · build · release
 ├── VERSION                   # this module's semver (CONVENTIONS.md § 8)
 └── go.mod                    # the module, and the language floor
 ```
@@ -438,12 +558,22 @@ install → format → lint → typecheck → test → verify the protocol → b
 binary cannot be *run* on the `x86_64` runner, and the question worth answering on every pull
 request is the one that can be — whether the change still compiles for every machine the farm
 supports. `internal/telemetry` has a build-tagged file per platform, so that is not a
-formality.
+formality. `make lint` includes shellcheck over `install.sh`, pinned to a release and its
+digest, and `make test` the installer's suite.
 
-There is deliberately no `publish/runner` job. Every other module ships a container image;
-this one ships a **binary**, and what that needs is a tagged release with a checksum per
-architecture and an `install.sh` that verifies it — which is
-[#248](https://github.com/NobuData/ouroboros/issues/248)'s whole subject.
+Then the release ([#248](https://github.com/NobuData/ouroboros/issues/248)). Every other module
+ships a container image; this one ships a **binary**, so it publishes a GitHub release instead of
+a `publish/<module>` job:
+
+```
+ci → package/runner   make release · sha256sum -c · upload       every event, read-only
+   → release/runner   gh release create ouroboros-runner-v<VERSION>   push to main only
+                      needs ci, cross and package · contents: write — the one job that may
+```
+
+`release/runner` publishes the bytes `package/runner` built and checked, not a rebuild, and
+**never replaces a release**: if the tag exists it says so and stops. So a merged `VERSION` bump
+is what publishes, and two machines installed from one version run the same binary.
 
 ## Related issues
 
@@ -454,7 +584,7 @@ architecture and an `install.sh` that verifies it — which is
 | [#245](https://github.com/NobuData/ouroboros/issues/245) | **Shipped** — telemetry and presence: CPU, memory, queue depth and job progress in every `heartbeat`, `null` where unmeasurable |
 | [#246](https://github.com/NobuData/ouroboros/issues/246) | **Shipped** — the executors: container and shell, workspace lifecycle, cancellation, the pool's concurrency cap and allow-list |
 | [#247](https://github.com/NobuData/ouroboros/issues/247) | Log shipping and ccache statistics, with truncation reported rather than hidden |
-| [#248](https://github.com/NobuData/ouroboros/issues/248) | Packaging: cross-compiled releases, `install.sh`, systemd and launchd units |
+| [#248](https://github.com/NobuData/ouroboros/issues/248) | **Shipped** — packaging: checksummed releases from `ci/runner`, `install.sh`, systemd and launchd units, served from the deployment's own origin |
 | [#250](https://github.com/NobuData/ouroboros/issues/250) | The farm CA — the other end of this agent's identity |
 | [#251](https://github.com/NobuData/ouroboros/issues/251) | The gateway: the server half of this protocol, in TypeScript |
 | [#255](https://github.com/NobuData/ouroboros/issues/255) | The fake agent — a third implementation of this contract, against the same fixtures |

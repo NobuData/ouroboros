@@ -90,6 +90,11 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // reason above: `ParseUUIDPipe` refuses anything else, and a `422` would let the signed-in
   // half pass without the guard having admitted anything.
   runnerId: "9c4ab7f0-2d31-4e55-8a0b-6f1c2d3e4a5b",
+  // `GET /runner/:version/:file` (#248). A release version and one of the five file names a
+  // release holds, so what a stranger gets is the route's own answer — `404` from a suite that
+  // configures no releases directory — rather than a refusal of the shape.
+  version: "0.5.0",
+  file: "SHA256SUMS",
 };
 
 /**

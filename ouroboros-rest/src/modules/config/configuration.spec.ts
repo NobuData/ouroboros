@@ -768,6 +768,55 @@ describe("OURO_LISTEN_HOST", () => {
   });
 });
 
+describe("OURO_FARM_PUBLIC_URL", () => {
+  it("is unset by default, leaving the installer on OURO_REST_URL", () => {
+    expect(loadConfiguration(testEnvironment()).farmPublicUrl).toBeUndefined();
+  });
+
+  it("accepts an https origin", () => {
+    const configuration = loadConfiguration(
+      testEnvironment({ OURO_FARM_PUBLIC_URL: "https://ouroboros.acme.dev" }),
+    );
+
+    expect(configuration.farmPublicUrl).toBe("https://ouroboros.acme.dev");
+  });
+
+  it("accepts an https origin with a port", () => {
+    const configuration = loadConfiguration(
+      testEnvironment({ OURO_FARM_PUBLIC_URL: "https://localhost:8443" }),
+    );
+
+    expect(configuration.farmPublicUrl).toBe("https://localhost:8443");
+  });
+
+  // It becomes the agent's --server, and the agent speaks to its control plane over TLS only;
+  // and it is an origin because the installer appends its own paths to it.
+  it.each([
+    ["plain http", "http://ouroboros.acme.dev"],
+    ["a path", "https://ouroboros.acme.dev/farm"],
+    ["a trailing slash", "https://ouroboros.acme.dev/"],
+    ["no scheme", "ouroboros.acme.dev"],
+  ])("rejects %s", (_description, value) => {
+    expect(failureFor(testEnvironment({ OURO_FARM_PUBLIC_URL: value }))).toContain(
+      `${VARIABLES.farmPublicUrl}: expected the https origin runner machines reach this deployment at`,
+    );
+  });
+});
+
+describe("OURO_FARM_RELEASES_DIR", () => {
+  it("is unset by default, which serves no installer", () => {
+    expect(loadConfiguration(testEnvironment()).farmReleasesDir).toBeUndefined();
+  });
+
+  it("is taken as written — what it holds is a question for each request", () => {
+    const configuration = loadConfiguration(
+      testEnvironment({ OURO_FARM_RELEASES_DIR: "../ouroboros-runner/dist" }),
+    );
+
+    expect(configuration.farmReleasesDir).toBe("../ouroboros-runner/dist");
+  });
+});
+
 describe("ConfigurationError", () => {
   it("is nameable in a log line and distinguishable from an ordinary failure", () => {
     const error = new ConfigurationError("PORT: nope");

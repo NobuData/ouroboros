@@ -17,6 +17,7 @@ import { GithubModule } from "../github/github.module";
 import { HealthModule } from "../health/health.module";
 import { FarmModule } from "../farm/farm.module";
 import { FarmGatewayModule } from "../farm/gateway/gateway.module";
+import { FarmInstallerModule } from "../farm/installer/installer.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
@@ -371,6 +372,12 @@ export class AppModule {
         // or above it applies — the transport authenticates the runner instead
         // (`farm/gateway/transport.ts`).
         FarmGatewayModule,
+        // AG.6 ([#248](https://github.com/NobuData/ouroboros/issues/248)) — the runner
+        // installer, `GET /install.sh` and the release files beside it, served from this
+        // deployment's own origin. Two `@AllowAnonymous()` routes whose reader is `curl` on a
+        // machine about to become a runner; they read two settings and a directory, and nothing
+        // else. `farm/installer/installer.controller.ts` is where making them public is argued.
+        FarmInstallerModule,
         InternalModule,
       ],
     };

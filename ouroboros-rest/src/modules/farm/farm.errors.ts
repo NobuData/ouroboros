@@ -67,6 +67,10 @@ export const FARM_ERRORS = {
   noLiveCertificate: "farm_no_live_certificate",
   /** A registration used a machine name this workspace already has. */
   runnerNameTaken: "runner_name_taken",
+  /** This deployment is not set up to serve the runner installer (#248). */
+  installerUnavailable: "farm_installer_unavailable",
+  /** The runner release, or the file in it, that a request named is not served here (#248). */
+  releaseNotFound: "farm_release_not_found",
 } as const;
 
 /** One of {@link FARM_ERRORS}' values. */
@@ -234,4 +238,44 @@ export function runnerNameTaken(name: string): ConflictError {
     `A runner named ${name} is already enrolled in this workspace.`,
     { name },
   );
+}
+
+/**
+ * `404` — this deployment serves no runner installer (AG.6,
+ * [#248](https://github.com/NobuData/ouroboros/issues/248)).
+ *
+ * Raised by `GET /install.sh` and the release files beside it when the deployment has not been
+ * given what they need. The reader is `curl -fsSL`, which prints the status and pipes nothing
+ * into `sh`, and then a person — so the message says which setting is missing, by the name an
+ * operator would set. It names **no path**: where the releases live on this host is the
+ * operator's business and not a stranger's.
+ *
+ * @param reason - One sentence naming the setting, from `installer.service.ts`.
+ * @returns The error.
+ */
+export function installerUnavailable(reason: string): NotFoundError {
+  return new NotFoundError(FARM_ERRORS.installerUnavailable, reason);
+}
+
+/**
+ * `404` — no such runner release, or no such file in one, is served here (AG.6,
+ * [#248](https://github.com/NobuData/ouroboros/issues/248)).
+ *
+ * @param version - The version the request named, echoed: it is the caller's own input, and
+ *   a person reading `curl`'s output needs to see the typo.
+ * @param file - The file it named, when it named one.
+ * @returns The error.
+ */
+export function releaseNotFound(version: string, file?: string): NotFoundError {
+  return file === undefined
+    ? new NotFoundError(
+        FARM_ERRORS.releaseNotFound,
+        `This deployment serves no ouroboros-runner release ${version}.`,
+        { version },
+      )
+    : new NotFoundError(
+        FARM_ERRORS.releaseNotFound,
+        `The ouroboros-runner release ${version} served here has no file named ${file}.`,
+        { version, file },
+      );
 }

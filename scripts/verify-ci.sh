@@ -10,8 +10,10 @@
 # instead of failing; that each pipeline runs the verbs docs/CONVENTIONS.md § 3 promises
 # for its toolchain; that `ci/db` still carries the live migration pass (#24) against
 # the PostgreSQL the development stack pins; that `ci/runner` still builds the Go agent for
-# all three architectures the farm supports (#243); and that each module which ships an
-# image still publishes it from its own workflow, behind its own green `ci/` job.
+# all three architectures the farm supports (#243) and still publishes it as a checksummed
+# release from main alone, with the one write permission in the repository scoped to that
+# job (#248); and that each module which ships an image still publishes it from its own
+# workflow, behind its own green `ci/` job.
 #
 # It reads files and starts nothing: no runner, no network, no GitHub. Whether a
 # workflow passes is what a pull request answers; what this answers is whether the right
@@ -70,9 +72,8 @@ MODULES="ui rest engine db runner"
 
 # The subset that ships a CONTAINER IMAGE, and therefore carries a `publish/<module>` job
 # (§ 9). ouroboros-runner is the one module outside it: it ships a BINARY to machines
-# nobody here administers, and a tagged release with a checksum per architecture is #248's
-# subject rather than this scaffold's. What it carries instead is `cross/runner`, asserted
-# below.
+# nobody here administers, so what it carries instead is `cross/runner` and a checksummed
+# GitHub release (`package/runner`, `release/runner`, #248), asserted below.
 IMAGE_MODULES="ui rest engine db"
 
 # The repo-root files the Yarn workspace and its Turborepo task graph are made of (#13).
@@ -117,6 +118,9 @@ for module in $MODULES; do
   check_contains "$workflow" "^    name: ci/$module\$" "$module.yml reports as ci/$module"
   check_contains "$workflow" '^permissions:$' "$module.yml declares its token permissions"
   check_contains "$workflow" '^  contents: read$' "$module.yml asks for no more than read access"
+  # …for the whole workflow. A job that needs more is granted it by name, which is what the
+  # runner release section below asserts of the one job that does.
+  check_absent "$workflow" '^  contents: write$' "$module.yml grants no write to every job at once"
   check_contains "$workflow" '^concurrency:$' "$module.yml groups its runs"
   check_contains "$workflow" '^  cancel-in-progress: true$' "$module.yml cancels superseded runs"
   check_contains "$workflow" '^      - uses: actions/checkout@v[0-9]' "$module.yml checks the repository out"
@@ -383,6 +387,19 @@ check_gated() {
   check_equals "$((gated_total - $3))" "$gated_count" "$4"
 }
 
+# job_block FILE JOB — print one of a workflow's jobs, without the jobs that follow it.
+#
+# ci_job below is this for `ci`; the runner's release section reads two more jobs the same
+# way, because a check that grepped the whole file would pass on a line some other job
+# carries.
+job_block() {
+  awk -v job="$2" '
+    $0 == "  " job ":" { inside = 1; print; next }
+    inside && /^  [^ #]/ { inside = 0 }
+    inside { print }
+  ' "$1" 2>/dev/null || true
+}
+
 # ci_job FILE — print a workflow's `ci:` job, without the jobs that follow it.
 #
 # The next line at the same indentation ends it, which is what a sibling job looks like.
@@ -523,6 +540,55 @@ check_contains "$RUNNER_WORKFLOW" 'make cross TARGETS=' \
   'the matrix cross-compiles through the module Makefile'
 check_contains ouroboros-runner/Makefile '^cross:$' \
   'ouroboros-runner/Makefile defines that verb'
+
+# ---------------------------------------------------------------------------
+# The runner's release (#248)
+# ---------------------------------------------------------------------------
+
+# The agent's published artefact is a GitHub release — three binaries, install.sh and a
+# SHA256SUMS over them — rather than an image, and it reaches machines nobody here
+# administers. So the checks are about what a release can be: assembled from a checkout
+# ci/runner passed, published only from main, never a rebuild of what was checked, and the
+# ONE place in this repository with write access, granted to that job alone. A write
+# permission that drifted up to the workflow would hand it to every job, pull requests'
+# included.
+
+printf '\nRunner release\n'
+
+package_job=$(job_block "$RUNNER_WORKFLOW" package)
+release_job=$(job_block "$RUNNER_WORKFLOW" release)
+
+check_matches "$package_job" '^    name: package/runner$' \
+  'runner.yml assembles the release in a job reporting as package/runner'
+check_matches "$package_job" '^    needs: ci$' 'nothing is packaged until ci/runner has passed'
+check_matches "$package_job" '^        run: make release$' \
+  'the release is assembled by the module Makefile'
+check_matches "$package_job" 'sha256sum -c SHA256SUMS' \
+  'and its checksums are verified before it is uploaded'
+check_not_matches "$package_job" 'contents: write' 'packaging is read-only'
+
+check_matches "$release_job" '^    name: release/runner$' \
+  'runner.yml publishes the release in a job reporting as release/runner'
+check_matches "$release_job" '^    needs: \[ci, cross, package\]$' \
+  'nothing is published until ci/runner, every cross target and the package have passed'
+check_matches "$release_job" "^    if: github.event_name == 'push' && github.ref == 'refs/heads/main'\$" \
+  'a release is published from a push to main and nothing else'
+check_matches "$release_job" '^      contents: write$' 'the release job is granted the write it needs'
+check_equals 1 "$(grep -cE '^[[:space:]]*contents: write$' "$RUNNER_WORKFLOW" 2>/dev/null || true)" \
+  'and it is the only grant of write in runner.yml'
+check_matches "$release_job" 'uses: actions/download-artifact@v[0-9]' \
+  'it publishes the packaged bytes rather than rebuilding them'
+check_matches "$release_job" 'gh release view' 'and never replaces a release that exists'
+
+# The installer is linted like any other code that runs on somebody else's machine, by a
+# shellcheck pinned to a release and to that release's digest.
+check_exists ouroboros-runner/install.sh 'ouroboros-runner ships an installer'
+check_contains ouroboros-runner/Makefile '^release:$' 'ouroboros-runner/Makefile defines the release verb'
+check_contains ouroboros-runner/Makefile 'shellcheck' 'ouroboros-runner/Makefile lints install.sh with shellcheck'
+check_contains "$RUNNER_WORKFLOW" '^  SHELLCHECK_VERSION: "v[0-9]+\.[0-9]+\.[0-9]+"$' \
+  'runner.yml pins shellcheck to a release'
+check_contains "$RUNNER_WORKFLOW" '^  SHELLCHECK_SHA256: "[0-9a-f]{64}"$' \
+  "and to that release's digest"
 
 # ---------------------------------------------------------------------------
 # The database's live pass (#24)

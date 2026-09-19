@@ -249,6 +249,8 @@ service never starts half-configured.
 | `OURO_LISTEN_HOST`          | Bind-interface override — set only by the e2e stack ([#647](https://github.com/NobuData/ouroboros/issues/647)); unset, `NODE_ENV` decides as always |     no — unset     | exactly `127.0.0.1` or `0.0.0.0`                                            |
 | `OURO_FARM_CLIENT_CERT_HEADER` | The header a **trusted** reverse proxy forwards a runner's TLS client certificate in ([#250](https://github.com/NobuData/ouroboros/issues/250)). Unset, the certificate is read from the TLS socket and from nowhere else — see [The build farm's identity layer](#the-build-farms-identity-layer). Set it only when something in front of this service terminates TLS, and strip the header at the edge: a certificate is public, so a header trusted unconditionally is an impersonation of any runner |     no — unset     | an HTTP field name, such as `x-ouro-client-cert`                            |
 | `OURO_FARM_MIN_AGENT_VERSION` | The oldest `ouroboros-runner` build the [agent gateway](#the-agent-gateway) accepts ([#251](https://github.com/NobuData/ouroboros/issues/251)) — a `hello` below it is refused with `version.below_minimum` and a sentence naming the floor, and the agent exits rather than reconnecting. Compared by SemVer precedence; the template's `0.0.0-0` admits every build |     no — unset     | a semantic version, such as `0.2.0`                                         |
+| `OURO_FARM_PUBLIC_URL` | The https origin runner machines reach this deployment at — what [the runner installer](#the-runner-installer) writes into `/install.sh` as the agent's `--server` ([#248](https://github.com/NobuData/ouroboros/issues/248)). Unset, `OURO_REST_URL` is used when it is https |     no — unset     | an https origin, such as `https://ouroboros.acme.dev`                       |
+| `OURO_FARM_RELEASES_DIR` | Where [the runner installer](#the-runner-installer) serves `ouroboros-runner` releases from — one directory per version, as `make release` writes them ([#248](https://github.com/NobuData/ouroboros/issues/248)). Unset, no installer is served |     no — unset     | a directory, such as `../ouroboros-runner/dist`                             |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 | `OURO_WORKFLOW_SKILL_SUGGESTIONS` | Skill names the [stage catalog](#the-stage-catalog) suggests to the workflow inspector ([#145](https://github.com/NobuData/ouroboros/issues/145)) — advice, never an enumeration |     no — unset     | comma-separated names, each at most 128 characters, none listed twice |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
@@ -3418,6 +3420,63 @@ rather than reconnecting into the refusal. The protocol-*line* floor is the buil
 `hello` written in a line this gateway does not speak is still read far enough to refuse it with
 the minimum named, or to be answered in a line both ends do.
 
+## The runner installer
+
+> **Issue:** [#248](https://github.com/NobuData/ouroboros/issues/248) — *[AG.6] Packaging, install
+> script & daemonization* · epic [#239](https://github.com/NobuData/ouroboros/issues/239) ·
+> [`ouroboros-runner` § Install](../ouroboros-runner/README.md#install)
+
+The build farm's one-liner installs the agent **from this deployment**, not from a public host:
+
+```bash
+curl -fsSL 'https://<this deployment>/install.sh?version=0.5.0' | sh -s -- \
+  --tenant acme-robotics --pool pool-a --token orb_enroll_…
+```
+
+Mockup 08 shows `get.ouroboros.dev`, which is design shorthand. A self-hosted deployment behind a
+firewall may have no route to a public host, and no reason to trust one for a binary that runs on
+its build machines — so `src/modules/farm/installer/` serves both halves itself, at the origin root
+and without a session (`curl` holds none):
+
+| Route | Answers |
+|---|---|
+| `GET /install.sh[?version=X]` | The release's `install.sh` with **one line changed**: `DEFAULT_SERVER` is filled in with `OURO_FARM_PUBLIC_URL` (or `OURO_REST_URL` when that is https). So the command needs no `--server` — the script downloads from this deployment and enrols into it. `?version=` pins the release; without it, the newest stable one present. `X-Ouro-Runner-Version` names it |
+| `GET /runner/<version>/<file>` | One file of a release, **unchanged** — the three binaries, `install.sh` and `SHA256SUMS` — so each is the file the checksums name. The installer downloads its binary and `SHA256SUMS` from here and verifies one against the other before running anything |
+
+```
+OURO_FARM_RELEASES_DIR/            one directory per version, exactly as make release writes it
+├── 0.5.0/                         and the GitHub release ouroboros-runner-v0.5.0 carries it
+│   ├── ouroboros-runner-linux-amd64
+│   ├── ouroboros-runner-linux-arm64
+│   ├── ouroboros-runner-darwin-arm64
+│   ├── install.sh                 DEFAULT_VERSION='0.5.0' — a release's installer installs that release
+│   └── SHA256SUMS
+└── 0.6.0-rc.1/                    served when asked for by version; never the default beside a stable one
+```
+
+**Nothing a request sends becomes a path.** A version is used only once it parses as SemVer,
+which has no `/`; a file only once it is one of the five names a release holds. Anything else is
+`404 farm_release_not_found`. A deployment not set up to serve the installer — no directory, no
+release in it, no https origin to write in — answers `404 farm_installer_unavailable` with a
+sentence naming the variable to set, and never the directory's path. Both are JSON envelopes, so
+`curl -f` prints the status and pipes nothing into `sh`.
+
+**The directory is read on every request.** Copying a release in serves it at once; there is
+nothing to restart and nothing cached, because `/install.sh` is called once per machine.
+
+**To serve a release**, copy the GitHub release's files into a directory named for its version and
+check them with the file that came with them:
+
+```bash
+gh release download ouroboros-runner-v0.5.0 --repo NobuData/ouroboros \
+  --dir "$OURO_FARM_RELEASES_DIR/0.5.0"
+(cd "$OURO_FARM_RELEASES_DIR/0.5.0" && sha256sum -c SHA256SUMS)
+```
+
+In development `OURO_FARM_RELEASES_DIR` is `../ouroboros-runner/dist`, which is where
+`make release` writes — so one `make release` in `ouroboros-runner/` is a release this service
+serves.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -4376,9 +4435,10 @@ ouroboros-rest/
 │       │                   #   x509/ — DER in, DER out; no dependency on anything above it
 │       │                   #   no-ca-key-escape.mjs — the lint rule that keeps the key in
 │       │   ├── protocol/   # the runner protocol codec, held to schemas/runner-protocol · #251
-│       │   └── gateway/    # wss://…/api/v1/farm/agent — sessions, presence, resume  · #251
-│       │                   #   transport.ts — the upgrade's identity; agent.connection.ts —
-│       │                   #   one session's protocol; gateway.repository.ts — the ledger
+│       │   ├── gateway/    # wss://…/api/v1/farm/agent — sessions, presence, resume  · #251
+│       │   │               #   transport.ts — the upgrade's identity; agent.connection.ts —
+│       │   │               #   one session's protocol; gateway.repository.ts — the ledger
+│       │   └── installer/  # /install.sh · /runner/<version>/<file> — the agent's installer · #248
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
@@ -4507,6 +4567,7 @@ the workflow DSL and its shared validation [#133](https://github.com/NobuData/ou
 the workflow rail's statistics and registry [#135](https://github.com/NobuData/ouroboros/issues/135) ·
 the ticket-source SPI, registry and sync loop [#139](https://github.com/NobuData/ouroboros/issues/139) ·
 the build farm's enrollment API and runner CA [#250](https://github.com/NobuData/ouroboros/issues/250) ·
+the runner installer, served from this deployment [#248](https://github.com/NobuData/ouroboros/issues/248) ·
 the farm schema it writes [#249](https://github.com/NobuData/ouroboros/issues/249) ·
 the canonical ticket model it writes [#138](https://github.com/NobuData/ouroboros/issues/138) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
