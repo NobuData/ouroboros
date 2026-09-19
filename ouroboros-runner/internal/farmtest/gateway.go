@@ -165,6 +165,7 @@ func (f *Farm) serve(agent *ws.Conn) {
 		if !ok {
 			return
 		}
+		f.record(func(o *Observed) { o.Arrivals = append(o.Arrivals, envelope.Type) })
 		switch envelope.Type {
 		case conn.TypeHeartbeat:
 			var heartbeat conn.HeartbeatPayload
@@ -208,6 +209,13 @@ func (f *Farm) serve(agent *ws.Conn) {
 				o.JobFrames = append(o.JobFrames, envelope.Type)
 			})
 
+		case conn.TypeLogChunk:
+			// Output (#247), recorded as it arrived — out of order or with a gap, if that is
+			// what was sent: which is the test's to judge, as it is the gateway's (#253).
+			var chunk conn.LogChunkPayload
+			_ = envelope.Into(&chunk)
+			f.record(func(o *Observed) { o.Chunks = append(o.Chunks, chunk) })
+
 		case conn.TypeBye:
 			var bye conn.ByePayload
 			_ = envelope.Into(&bye)
@@ -220,7 +228,6 @@ func (f *Farm) serve(agent *ws.Conn) {
 			return
 
 		default:
-			// log.chunk is the log shipper's (#247), and this build writes none.
 			f.violation(agent, fmt.Sprintf("an unexpected %s", envelope.Type))
 			return
 		}
@@ -260,6 +267,12 @@ func (f *Farm) finish(agent *ws.Conn, envelope *conn.Envelope, raw []byte) bool 
 // read reads and judges one frame from the agent, returning it decoded and as the exact
 // bytes that arrived.
 func (f *Farm) read(agent *ws.Conn) (*conn.Envelope, []byte, bool) {
+	f.mu.Lock()
+	delay := f.readDelay
+	f.mu.Unlock()
+	if delay > 0 {
+		time.Sleep(delay)
+	}
 	raw, err := agent.ReadMessage()
 	if err != nil {
 		return nil, nil, false

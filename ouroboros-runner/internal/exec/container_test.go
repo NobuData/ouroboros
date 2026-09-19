@@ -360,6 +360,74 @@ func TestContainerRunsTheJobAsSpecified(t *testing.T) {
 	}
 }
 
+// TestContainerMountsTheAgentsMountsAfterTheWorkspace asserts a job's Mounts (#247) — its
+// pool's compiler cache — are bound after the workspace, at their targets.
+func TestContainerMountsTheAgentsMountsAfterTheWorkspace(t *testing.T) {
+	t.Parallel()
+	fake, engine := newFakeEngine(t)
+	workspace, cache := t.TempDir(), t.TempDir()
+	job := containerJob()
+	job.Mounts = []Mount{{Host: cache, Target: "/ouroboros-cache"}}
+	if _, err := (&Container{Engine: engine}).Execute(context.Background(), job, workspace, Output{}); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if binds := fake.seen().created[0].HostConfig.Binds; !slices.Equal(binds,
+		[]string{workspace + ":/workspace", cache + ":/ouroboros-cache"}) {
+		t.Errorf("binds %q", binds)
+	}
+}
+
+// TestContainerRefusesAWorkdirOverlappingAMount asserts a workdir at, under or over a mount's
+// target is refused before anything is pulled or created — one bind over another would hide
+// the cache from the build, or the build from its workspace.
+func TestContainerRefusesAWorkdirOverlappingAMount(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		workdir, target string
+		refused         bool
+	}{
+		{"/ouroboros-cache", "/ouroboros-cache", true},
+		{"/ouroboros-cache/src", "/ouroboros-cache", true},
+		{"/ouroboros-cache/", "/ouroboros-cache", true},
+		{"/work", "/work/cache", true},
+		{"/ouroboros-cache-src", "/ouroboros-cache", false},
+		{"/workspace", "/ouroboros-cache", false},
+	} {
+		fake, engine := newFakeEngine(t)
+		job := containerJob()
+		job.Workdir = testCase.workdir
+		job.Mounts = []Mount{{Host: t.TempDir(), Target: testCase.target}}
+		container := &Container{Engine: engine}
+		prepareErr := container.Prepare(context.Background(), job, t.TempDir(), func(int, string) {})
+		_, executeErr := container.Execute(context.Background(), job, t.TempDir(), Output{})
+		for _, err := range []error{prepareErr, executeErr} {
+			var reason *Failure
+			refused := errors.As(err, &reason) && reason.Code == CodeWorkspaceInvalid
+			if refused != testCase.refused {
+				t.Errorf("workdir %s with a mount at %s: %v (refused %v, want %v)",
+					testCase.workdir, testCase.target, err, refused, testCase.refused)
+			}
+		}
+		if testCase.refused && len(fake.seen().created) > 0 {
+			t.Errorf("workdir %s: a container was created for a refused job", testCase.workdir)
+		}
+	}
+}
+
+// TestContainerRefusesAMountABindCannotCarry asserts a ':' in a mount's host path is refused
+// rather than handed to the daemon as a malformed bind.
+func TestContainerRefusesAMountABindCannotCarry(t *testing.T) {
+	t.Parallel()
+	_, engine := newFakeEngine(t)
+	job := containerJob()
+	job.Mounts = []Mount{{Host: "/var/lib/a:b", Target: "/ouroboros-cache"}}
+	_, err := (&Container{Engine: engine}).Execute(context.Background(), job, t.TempDir(), Output{})
+	var reason *Failure
+	if !errors.As(err, &reason) || reason.Code != CodeWorkspaceInvalid {
+		t.Errorf("err %v", err)
+	}
+}
+
 // TestContainerCancellationStopsIt is cancellation for a container job: the daemon's stop —
 // the stop signal, then SIGKILL after the grace — and the container removed.
 func TestContainerCancellationStopsIt(t *testing.T) {

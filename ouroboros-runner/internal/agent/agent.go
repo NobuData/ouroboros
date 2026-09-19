@@ -3,7 +3,7 @@
 //
 //	Connecting ──wss:// 443 + mTLS──▶ hello ──▶ ack ──▶ Connected
 //	    ▲                                               │ heartbeat · offer ⇄ accept/decline · receipt
-//	    │                                               │ job.start · job.progress · job.finish
+//	    │                                               │ job.start · job.progress · log.chunk · job.finish
 //	    │                                               │ drain · undrain · bye
 //	Backoff ◀── dropped / refused-for-now ──────────────┘
 //	    │
@@ -42,6 +42,7 @@ import (
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/enroll"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/exec"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/logship"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
 )
@@ -134,6 +135,19 @@ type Config struct {
 	// JobStopWait bounds how long a shutting-down agent waits for its cancelled jobs to
 	// report before it says bye. Zero means DefaultJobStopWait.
 	JobStopWait time.Duration
+
+	// LogCapBytes is the most of one job's output the agent ever sends (`--log-cap-bytes`,
+	// [#247]); the rest is reported as dropped. Zero means logship.DefaultCapBytes.
+	//
+	// [#247]: https://github.com/NobuData/ouroboros/issues/247
+	LogCapBytes int64
+	// CacheRoot is where each pool's compiler cache lives, `<state-dir>/cache`. Empty runs
+	// jobs with no cache directory and reports no ccache statistics.
+	CacheRoot string
+	// LogInterval and LogDrainWait override the log shipper's throttle and drain bound, for
+	// tests. Zero means logship's defaults.
+	LogInterval  time.Duration
+	LogDrainWait time.Duration
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
 }
@@ -164,6 +178,13 @@ type Agent struct {
 
 	// notices carries a running job's non-terminal frames to the live session.
 	notices noticeBoard
+
+	// logs carries the running jobs' log.chunk frames to the live session — a board of its
+	// own, so a verbose build cannot crowd a job.start out — and shipper fills it, within
+	// the session's limits (#247).
+	logs    noticeBoard
+	shipper *logship.Shipper
+	caches  logship.Caches
 
 	// cancels holds a stop handle for every job this agent holds, so a gateway's
 	// `job.cancel` (#252) can stop one job without stopping the agent.
@@ -226,13 +247,23 @@ func New(config Config) (*Agent, error) {
 		config.Logger.Error("an outbox frame could not be vouched for and will not be sent", "problem", problem)
 	}
 
-	return &Agent{
+	agent := &Agent{
 		config:  config,
 		log:     config.Logger,
 		outbox:  outbox,
 		started: config.Now(),
 		queued:  make(chan struct{}, 1),
-	}, nil
+		logs:    noticeBoard{size: chunkBuffer},
+		caches:  logship.Caches{Root: config.CacheRoot},
+	}
+	agent.shipper = logship.New(logship.Options{
+		Post:      agent.logs.post,
+		CapBytes:  config.LogCapBytes,
+		Interval:  config.LogInterval,
+		DrainWait: config.LogDrainWait,
+		Now:       config.Now,
+	})
+	return agent, nil
 }
 
 // checkExecutors holds the executors to the capabilities the hello will report — the

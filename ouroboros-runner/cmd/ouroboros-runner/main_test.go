@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/farmtest"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/logship"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
 )
 
@@ -250,8 +252,8 @@ func TestUsageDescribesTheAgent(t *testing.T) {
 	for _, want := range []string{
 		"enroll", "run", "heartbeat", "--tenant", "--pool", "--token", "--bearer-fallback",
 		"outbound", "nothing listens", "docs/RUNNER_PROTOCOL.md",
-		envServer, envToken, envStateDir, envServerCA, envNoShell, envKeep,
-		"--no-shell", "--keep-workspace-on-failure",
+		envServer, envToken, envStateDir, envServerCA, envNoShell, envKeep, envLogCap,
+		"--no-shell", "--keep-workspace-on-failure", "--log-cap-bytes",
 	} {
 		if !strings.Contains(usage, want) {
 			t.Errorf("expected the usage text to mention %q", want)
@@ -368,6 +370,54 @@ func TestEnrollRefusesBadArguments(t *testing.T) {
 	}
 	if _, err := os.Stat(stateDir); !os.IsNotExist(err) {
 		t.Error("a refused enrollment created the state directory")
+	}
+}
+
+// TestTheLogCapIsReadAndHeldToTheControlPlanesRange is the agent's own per-job output cap
+// (#247): the flag, its variable, and a value outside V040's range — or one that is not a
+// number — stopping the agent instead of being silently clamped, because a typo in a unit
+// file should be read by the operator who made it.
+func TestTheLogCapIsReadAndHeldToTheControlPlanesRange(t *testing.T) {
+	capOf := func(t *testing.T, getenv func(string) string, args ...string) (int64, error) {
+		t.Helper()
+		var jobs jobFlags
+		set := flagSet("run", io.Discard)
+		if err := jobs.register(set, getenv, true); err != nil {
+			return 0, err
+		}
+		if err := set.Parse(args); err != nil {
+			return 0, err
+		}
+		return jobs.logCapBytes, jobs.checkLogCap()
+	}
+
+	if size, err := capOf(t, env(nil)); size != logship.DefaultCapBytes || err != nil {
+		t.Errorf("by default the cap is %d, %v; want %d", size, err, logship.DefaultCapBytes)
+	}
+	if size, err := capOf(t, env(nil), "--log-cap-bytes", "1048576"); size != 1048576 || err != nil {
+		t.Errorf("--log-cap-bytes 1048576: %d, %v", size, err)
+	}
+	if size, err := capOf(t, env(map[string]string{envLogCap: "131072"})); size != 131072 || err != nil {
+		t.Errorf("%s=131072: %d, %v", envLogCap, size, err)
+	}
+	// The flag wins over the variable, as every other pair does.
+	if size, err := capOf(t, env(map[string]string{envLogCap: "131072"}), "--log-cap-bytes", "262144"); size != 262144 || err != nil {
+		t.Errorf("the flag did not win over %s: %d, %v", envLogCap, size, err)
+	}
+	for _, value := range []string{"1024", "268435457", "0"} {
+		if _, err := capOf(t, env(nil), "--log-cap-bytes", value); !errors.Is(err, errUsage) ||
+			!strings.Contains(err.Error(), "log-cap-bytes") {
+			t.Errorf("--log-cap-bytes %s: %v; want a usage error", value, err)
+		}
+	}
+	for _, value := range []string{"lots", "-1", "64 KiB"} {
+		if _, err := capOf(t, env(map[string]string{envLogCap: value})); !errors.Is(err, errUsage) ||
+			!strings.Contains(err.Error(), envLogCap) {
+			t.Errorf("%s=%s: %v; want a usage error naming the variable", envLogCap, value, err)
+		}
+	}
+	if _, _, err := runCommandLine(t, env(map[string]string{envLogCap: "enormous"}), "run", "--state-dir", t.TempDir()); !errors.Is(err, errUsage) {
+		t.Errorf("run with %s=enormous: %v", envLogCap, err)
 	}
 }
 

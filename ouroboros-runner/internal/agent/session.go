@@ -120,11 +120,14 @@ func (a *Agent) connect(ctx context.Context) result {
 		a.log.Warn("could not record the session for resume", "error", err)
 	}
 	a.pool.set(ack.Pool)
+	a.shipper.SetLimits(ack.Limits)
 	maxConcurrency, allowlist := a.pool.get()
 	a.log.Info("connected", "session", ack.Session, "resumed", ack.Resumed, "runner", ack.Runner.ID,
 		"pool", ack.Runner.Pool, "security_mode", mode, "pending_terminal_frames", a.outbox.Len())
 	a.log.Info("pool policy", "max_concurrency", maxConcurrency, "env_allowlist", allowlist,
 		"named_by_gateway", ack.Pool != nil)
+	chunkMax, rate := a.shipper.Limits()
+	a.log.Info("log shipping", "chunk_max_bytes", chunkMax, "rate_bytes_per_s", rate, "cap_bytes", a.shipper.CapBytes())
 	if mode == conn.SecurityBearerFallback {
 		a.log.Warn("connected in bearer-fallback mode: this runner authenticates with a secret, not a " +
 			"certificate, and the farm shows it as degraded")
@@ -243,9 +246,11 @@ func (s *session) hold(ctx context.Context) result {
 	go s.read(frames, readErr, done)
 
 	// The running jobs' job.start and job.progress frames reach this session through here,
-	// and stop reaching it when it ends.
+	// and their log.chunk frames through logs (#247); both stop reaching it when it ends.
 	notices := s.agent.notices.open()
 	defer s.agent.notices.release(notices)
+	logs := s.agent.logs.open()
+	defer s.agent.logs.release(logs)
 
 	// First, before anything else on this socket: every terminal frame not yet
 	// receipted, byte for byte (docs/RUNNER_PROTOCOL.md § 5). Then the first heartbeat,
@@ -269,7 +274,7 @@ func (s *session) hold(ctx context.Context) result {
 				s.agent.log.Warn("a cancelled job had not stopped in time to report before bye; " +
 					"its finish is re-sent from the outbox on the next start")
 			}
-			if s.writeNotices(notices) == nil {
+			if s.writeWaiting(notices) == nil && s.writeWaiting(logs) == nil {
 				_ = s.flush()
 			}
 			s.bye(ctx, readErr)
@@ -300,12 +305,26 @@ func (s *session) hold(ctx context.Context) result {
 				return result{reason: "writing a " + string(frame.Type) + ": " + err.Error()}
 			}
 
-		case <-s.agent.queued:
-			// A job posts its job.start before it queues its finish, so whatever it posted
-			// is already waiting here: write it first, and the gateway never reads a
-			// finish for a job it has not seen start.
-			if err := s.writeNotices(notices); err != nil {
+		case frame := <-logs:
+			// A job posts its job.start before any of its output, so a job frame waiting is
+			// written first: the gateway never reads a job's output before its start.
+			if err := s.writeWaiting(notices); err != nil {
 				return result{reason: "writing a job frame: " + err.Error()}
+			}
+			if err := write(s.socket, frame); err != nil {
+				return result{reason: "writing a log.chunk: " + err.Error()}
+			}
+
+		case <-s.agent.queued:
+			// A job posts its job.start and its output before it queues its finish, so
+			// whatever it posted is already waiting here: write it first. The gateway never
+			// reads a finish for a job it has not seen start, and never a job's output after
+			// its finish — which is when it closes the job's log (#253).
+			if err := s.writeWaiting(notices); err != nil {
+				return result{reason: "writing a job frame: " + err.Error()}
+			}
+			if err := s.writeWaiting(logs); err != nil {
+				return result{reason: "writing a log.chunk: " + err.Error()}
 			}
 			if err := s.flush(); err != nil {
 				return result{reason: "writing a terminal frame: " + err.Error()}
@@ -314,12 +333,12 @@ func (s *session) hold(ctx context.Context) result {
 	}
 }
 
-// writeNotices writes every job frame already waiting for this session, without waiting
-// for more.
-func (s *session) writeNotices(notices <-chan conn.Frame) error {
+// writeWaiting writes every frame already waiting on a channel for this session, without
+// waiting for more.
+func (s *session) writeWaiting(waiting <-chan conn.Frame) error {
 	for {
 		select {
-		case frame := <-notices:
+		case frame := <-waiting:
 			if err := write(s.socket, frame); err != nil {
 				return err
 			}

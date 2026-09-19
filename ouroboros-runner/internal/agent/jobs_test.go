@@ -171,9 +171,13 @@ func TestAnOfferThatCanBeRunIsAcceptedStartedAndFinished(t *testing.T) {
 	if finish.StartedAt != started.StartedAt || ended.Sub(begun) < 50*time.Millisecond {
 		t.Errorf("the duration runs from job.start to the end: %s → %s", finish.StartedAt, finish.FinishedAt)
 	}
-	// Output is not shipped yet (#247), so it is reported as produced and not delivered.
-	if finish.Log != (conn.FinishLog{DroppedBytes: len("building\n")}) {
+	// Its output was shipped (#247): one chunk, nothing dropped.
+	if finish.Log != (conn.FinishLog{Bytes: len("building\n"), Chunks: 1}) {
 		t.Errorf("finish log: %+v", finish.Log)
+	}
+	if chunks := observed.Chunks; len(chunks) != 1 || decodeChunk(t, chunks[0]) != "building\n" ||
+		chunks[0].Stream != conn.StreamStdout || chunks[0].Job != job(1) {
+		t.Errorf("chunks: %+v", chunks)
 	}
 
 	// The executor saw the scrubbed environment and the pool's share of the machine.
@@ -485,8 +489,12 @@ func TestAShellJobRunsForReal(t *testing.T) {
 	observed := h.until("the finish", func(o farmtest.Observed) bool { return len(o.Finishes) == 1 })
 	finish := finishes(t, observed)[0]
 	if finish.Outcome != conn.OutcomeFailed || finish.ExitCode == nil || *finish.ExitCode != 3 ||
-		finish.Error == nil || finish.Error.Code != exec.CodeExit || finish.Log.DroppedBytes != len("compiling\n") {
+		finish.Error == nil || finish.Error.Code != exec.CodeExit ||
+		finish.Log != (conn.FinishLog{Bytes: len("compiling\n"), Chunks: 1}) {
 		t.Errorf("finish: %+v %+v", finish, finish.Error)
+	}
+	if chunks := observed.Chunks; len(chunks) != 1 || decodeChunk(t, chunks[0]) != "compiling\n" {
+		t.Errorf("a real shell job's output: %+v", chunks)
 	}
 	workspace := observed.Starts[0].Workspace
 	if workspace != filepath.Join(dir.Path(), "work", job(1)) || observed.Starts[0].Executor != conn.ExecutorShell {

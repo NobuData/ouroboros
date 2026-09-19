@@ -70,6 +70,7 @@ type Farm struct {
 	refusal       Refusal
 	refuseNext    *conn.RefusePayload
 	dropOnFinish  int
+	readDelay     time.Duration
 	limits        conn.Limits
 	pool          *conn.AckPool
 	ttl           time.Duration
@@ -121,7 +122,12 @@ type Observed struct {
 	Starts    []conn.JobStartPayload
 	Progress  []conn.JobProgressPayload
 	JobFrames []conn.Type
-	Byes      []conn.ByePayload
+	// Chunks is every log.chunk (#247), in the order it arrived, and Arrivals the type of
+	// every frame the agent sent after its hello, in order — so a test can assert that a
+	// job's output arrives after its start and before its finish.
+	Chunks   []conn.LogChunkPayload
+	Arrivals []conn.Type
+	Byes     []conn.ByePayload
 	// Violations is every frame the farm refused, and why.
 	Violations []string
 	// Refused is every identity refusal the farm answered.
@@ -255,6 +261,18 @@ func (f *Farm) SetLimits(limits conn.Limits) {
 	f.limits = limits
 }
 
+// SlowReads makes the farm wait before each frame it reads, as a gateway under load does.
+// Frames then back up in the agent's socket rather than being taken the moment they are
+// written, which is what makes the ORDER the agent writes them in observable ([#247]: a
+// job's output must be written before the finish that closes its log).
+//
+// [#247]: https://github.com/NobuData/ouroboros/issues/247
+func (f *Farm) SlowReads(delay time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.readDelay = delay
+}
+
 // SetPool changes the pool policy the next ack names (#246). Nil — the default — sends an
 // ack with no `pool` at all, which is what an agent must read as the column defaults.
 func (f *Farm) SetPool(pool *conn.AckPool) {
@@ -382,6 +400,8 @@ func (f *Farm) snapshotLocked() Observed {
 	observed.Starts = append([]conn.JobStartPayload(nil), f.observed.Starts...)
 	observed.Progress = append([]conn.JobProgressPayload(nil), f.observed.Progress...)
 	observed.JobFrames = append([]conn.Type(nil), f.observed.JobFrames...)
+	observed.Chunks = append([]conn.LogChunkPayload(nil), f.observed.Chunks...)
+	observed.Arrivals = append([]conn.Type(nil), f.observed.Arrivals...)
 	observed.Byes = append([]conn.ByePayload(nil), f.observed.Byes...)
 	observed.Violations = append([]string(nil), f.observed.Violations...)
 	observed.Refused = append([]string(nil), f.observed.Refused...)

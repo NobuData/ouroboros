@@ -19,11 +19,14 @@ run:
   # `default` below includes them: see the exclusions note on unused.
   timeout: 5m
 
-  # The real-daemon suite (internal/exec/container_docker_test.go, #246) is behind this tag
-  # because it needs Docker and a registry, and `make test-docker` runs it. Linting with the
-  # tag on means the file is still analysed on every pull request, so it cannot rot unrun.
+  # The real-daemon suite (internal/exec/container_docker_test.go, #246) is behind the first
+  # tag because it needs Docker and a registry, and `make test-docker` runs it; the real-ccache
+  # suite (internal/logship/ccache_real_test.go, #247) is behind the second because it needs
+  # ccache and a C compiler, and `make test-ccache` runs it. Linting with the tags on means
+  # both files are still analysed on every pull request, so they cannot rot unrun.
   build-tags:
     - dockertest
+    - ccachetest
 
 linters:
   # The five golangci-lint runs by default — errcheck, govet, ineffassign, staticcheck

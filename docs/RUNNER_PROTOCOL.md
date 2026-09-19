@@ -784,6 +784,18 @@ inside the throttle, and the run console renders an elision marker rather than p
 output was contiguous. A console that showed a throttled log as complete would be lying about
 the build ([#247](https://github.com/NobuData/ouroboros/issues/247)).
 
+**What the agent does** ([#247](https://github.com/NobuData/ouroboros/issues/247)). It multiplexes
+the command's two streams into chunks of one stream each, and sends at most eight every 250 ms
+inside `ack.limits`'s byte rate — a throttle, so a build that prints continuously cannot become a
+frame per write. A `seq` is spent only when a chunk is handed to the live connection, so a socket
+with no room for one costs an elision and never a gap. Output that cannot be sent waits in a
+bounded buffer; when that fills, the agent counts rather than keeps — and reports the count as
+`dropped_bytes` on the next chunk it does send, which is where the hole is. It caps a job's
+output itself as well (`--log-cap-bytes`, 64 MiB by default), because an agent that ships four
+gigabytes for the control plane to discard has already done the damage: the cap keeps the head of
+the log, and the rest is the tail `job.finish` reports. Whatever happens, the arithmetic closes —
+`log.bytes` + `log.dropped_bytes` is everything the build printed.
+
 **What the gateway does with them** ([#253](https://github.com/NobuData/ouroboros/issues/253)).
 It stores chunks **in `seq` order**, whatever order they arrive in: a chunk that arrives ahead of
 a gap is held until the gap fills, for a few seconds at most, and a gap that never fills is
@@ -1085,7 +1097,7 @@ Named here so that nobody looks for it and concludes it was forgotten:
 | How each platform measures the heartbeat's CPU and memory | [#245](https://github.com/NobuData/ouroboros/issues/245), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/telemetry` |
 | The dispatcher: which runner is offered which job, retries, cancellation | [#252](https://github.com/NobuData/ouroboros/issues/252), shipped — `ouroboros-rest`'s [`farm/dispatch/`](../ouroboros-rest/src/modules/farm/dispatch) |
 | How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#running-jobs)'s `internal/exec` |
-| How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247) (the agent's half); [#253](https://github.com/NobuData/ouroboros/issues/253), shipped — `ouroboros-rest`'s [`farm/logs/`](../ouroboros-rest/src/modules/farm/logs) (ingest in `seq` order, the caps, retention, and the offset read) |
+| How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#build-output)'s `internal/logship` (the chunker, the throttle, the agent's cap and its ccache statistics); [#253](https://github.com/NobuData/ouroboros/issues/253), shipped — `ouroboros-rest`'s [`farm/logs/`](../ouroboros-rest/src/modules/farm/logs) (ingest in `seq` order, the caps, retention, and the offset read) |
 | Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#install)'s `install.sh`, `make release` and `ci/runner`'s `release/runner`; served by `ouroboros-rest`'s [`farm/installer/`](../ouroboros-rest/src/modules/farm/installer) |
 | A remote shared cache, and the untrusted-code isolation question | [#264](https://github.com/NobuData/ouroboros/issues/264), [#267](https://github.com/NobuData/ouroboros/issues/267) |
 

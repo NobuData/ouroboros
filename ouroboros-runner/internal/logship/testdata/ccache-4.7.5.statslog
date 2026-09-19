@@ -1,0 +1,87 @@
+# f1.c
+cache_miss
+direct_cache_miss
+local_storage_miss
+local_storage_read_miss
+local_storage_read_miss
+local_storage_write
+local_storage_write
+preprocessed_cache_miss
+# f2.c
+cache_miss
+direct_cache_miss
+local_storage_miss
+local_storage_read_miss
+local_storage_read_miss
+local_storage_write
+local_storage_write
+preprocessed_cache_miss
+# f3.c
+cache_miss
+direct_cache_miss
+local_storage_miss
+local_storage_read_miss
+local_storage_read_miss
+local_storage_write
+local_storage_write
+preprocessed_cache_miss
+# f4.c
+cache_miss
+direct_cache_miss
+local_storage_miss
+local_storage_read_miss
+local_storage_read_miss
+local_storage_write
+local_storage_write
+preprocessed_cache_miss
+# f5.c
+cache_miss
+direct_cache_miss
+local_storage_miss
+local_storage_read_miss
+local_storage_read_miss
+local_storage_write
+local_storage_write
+preprocessed_cache_miss
+# f6.c
+cache_miss
+direct_cache_miss
+local_storage_miss
+local_storage_read_miss
+local_storage_read_miss
+local_storage_write
+local_storage_write
+preprocessed_cache_miss
+# f1.c
+direct_cache_hit
+local_storage_hit
+local_storage_read_hit
+local_storage_read_hit
+# f2.c
+direct_cache_hit
+local_storage_hit
+local_storage_read_hit
+local_storage_read_hit
+# f3.c
+direct_cache_hit
+local_storage_hit
+local_storage_read_hit
+local_storage_read_hit
+# f4.c
+direct_cache_hit
+local_storage_hit
+local_storage_read_hit
+local_storage_read_hit
+# f5.c
+direct_cache_miss
+local_storage_hit
+local_storage_read_hit
+local_storage_read_miss
+local_storage_write
+preprocessed_cache_hit
+# f1.c
+called_for_preprocessing
+# f1.o
+called_for_link
+# 
+no_input_file

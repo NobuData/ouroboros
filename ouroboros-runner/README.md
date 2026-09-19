@@ -26,8 +26,11 @@ SIGTERM. Every heartbeat carries this machine's real load
 memory in use and installed, and `null` for anything the platform will not say. And it runs the
 jobs it is offered ([#246](https://github.com/NobuData/ouroboros/issues/246)) — in the pool's
 pinned image through Docker or Podman, or directly on this machine for HIL rigs and macOS —
-declining at once, with a true reason, any offer it cannot satisfy. See
-[Running jobs](#running-jobs), and [Related issues](#related-issues) for what is still to come.
+declining at once, with a true reason, any offer it cannot satisfy. Their output is shipped as it
+is written ([#247](https://github.com/NobuData/ouroboros/issues/247)) — ordered, throttled,
+bounded, and with every elision reported rather than hidden — along with each build's ccache hit
+rate. See [Running jobs](#running-jobs) and [Build output](#build-output), and
+[Related issues](#related-issues) for what is still to come.
 
 And it installs in one line ([#248](https://github.com/NobuData/ouroboros/issues/248)): `ci/runner`
 publishes each version as a checksummed GitHub release, a deployment serves that release from its
@@ -89,18 +92,18 @@ need `shellcheck` and a POSIX `sh` on the machine.
 On a build machine, the command the Build Farm page's enroll card renders:
 
 ```bash
-curl -fsSL 'https://ouroboros.acme.dev/install.sh?version=0.6.0' | sh -s -- \
+curl -fsSL 'https://ouroboros.acme.dev/install.sh?version=0.7.0' | sh -s -- \
   --tenant acme-robotics --pool pool-a --token orb_enroll_…
 ```
 
 ```console
-downloading ouroboros-runner 0.6.0 for linux/arm64 from https://ouroboros.acme.dev/runner/0.6.0
+downloading ouroboros-runner 0.7.0 for linux/arm64 from https://ouroboros.acme.dev/runner/0.7.0
 verified   sha256 4537a98ce666a84142d6f89c8ddc93a89ff4e383e1f67a183f37f5d8c49f3994
 installed  /usr/local/bin/ouroboros-runner
 enrolled shed-pi-01 as runner 7f7c9d0e-… in acme-robotics / pool-a
 …
 
-ouroboros-runner 0.6.0 is installed and running.
+ouroboros-runner 0.7.0 is installed and running.
   service  systemd unit ouroboros-runner.service — starts at boot, restarts on failure
   runs as  builder, from /var/lib/ouroboros-runner
   logs     journalctl -u ouroboros-runner -f
@@ -235,6 +238,7 @@ presenting the token, so that mistake costs nothing.
 | Resume | `hello.resume` names the last session, and every terminal frame not yet receipted is re-sent **byte for byte** from the outbox before anything else — the gateway deduplicates on the envelope id |
 | Renew | when `renewAfter` comes, over mTLS with the certificate being replaced — no second token |
 | Jobs | an offer is accepted and run, or declined at once with the reason — see [Running jobs](#running-jobs) |
+| Output | a job's stdout and stderr shipped as `log.chunk`, ordered and throttled, with what was elided reported — see [Build output](#build-output) |
 | Cancel | a gateway's `job.cancel` stops that one job and reports it `cancelled`; a cancel for a job this agent does not hold is logged and ignored |
 | Stop | SIGTERM or SIGINT → running jobs cancelled and their `cancelled` finishes sent, then `bye {reason: shutdown}`, exit 0 |
 | Refused for good | a revoked certificate (TLS alert, `farm_identity_refused`, or `refuse identity.*`), a version floor, an expired certificate → one `level=ERROR` line saying what to do, exit 1, **no retry** |
@@ -289,9 +293,9 @@ agent could not run at all — a workspace it could not make, an image that woul
 (`image.pull_failed`), a command that would not start — is `errored`. Every `job.finish`
 carries the command's exit code — `null` only when no command ever ran — and its start and
 end, so a duration is always there. The
-job's output goes to the log shipper ([#247](https://github.com/NobuData/ouroboros/issues/247));
-until that lands it is counted and not sent, and `job.finish.log` says so — `dropped_bytes` is
-all of it — rather than reporting an empty log.
+job's output goes to the log shipper ([#247](https://github.com/NobuData/ouroboros/issues/247)),
+and `job.finish` carries what was sent, what was elided, and the build's ccache statistics — see
+[Build output](#build-output).
 
 **Cancellation from the gateway** ([#252](https://github.com/NobuData/ouroboros/issues/252)).
 Every job runs under a context of its own, derived from the agent's, so a `job.cancel` stops that
@@ -314,6 +318,58 @@ the log says where. A later run of the same job replaces a kept workspace.
 **Concurrency.** A runner holds at most its pool's `max_concurrency` jobs at once — accepted
 or running — which the gateway sends in `ack.pool`, read from the pool's row at every hello.
 With no pool policy in the ack, the cap is 1.
+
+### Build output
+
+A job's stdout and stderr are shipped as they are written
+([#247](https://github.com/NobuData/ouroboros/issues/247), `internal/logship`): multiplexed into
+ordered `log.chunk` frames, at most 32 KiB each and at most eight every 250 ms, inside the byte
+rate the gateway chose for the session (`ack.limits`). The run console reads them live
+([#253](https://github.com/NobuData/ouroboros/issues/253) stores them, in `seq` order).
+
+**A stalled connection never stalls a build, and never loses output silently.** Writing is
+non-blocking; what cannot be sent yet waits in a 256 KiB buffer, and when that fills the log goes
+into *summary mode* — output is counted rather than kept — until the backlog drains. What was
+counted is then reported as `dropped_bytes` on the next chunk sent, which is exactly where the
+hole is, and the console draws `[… N bytes elided]` there. **The marker is data**: the agent
+writes no marker text into the log itself, because the gateway places every hole by position and
+would otherwise draw it twice.
+
+**The agent caps a job's output itself** — `--log-cap-bytes`, 64 MiB by default, the control
+plane's own default. An agent that ships four gigabytes for the control plane to discard has
+already done the damage. The cap keeps the head of the log, and everything past it is the log's
+tail: reported in `job.finish.log.dropped_bytes`, which the console renders as one marker at the
+end, together with the server's own cap.
+
+Whatever happens, the arithmetic closes: every byte a job writes is either delivered or counted,
+so `log.bytes` + `log.dropped_bytes` is exactly what the build printed. `seq` is contiguous
+across a reconnect, so a gap in it is a lost frame and nothing else — and a chunk the connection
+had no room for is not one: it keeps its place until it is sent or elided.
+
+```console
+level=WARN msg="a job finished" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 outcome=failed exit_code=2 duration=4m12.117s log_bytes=184320 log_chunks=6 log_dropped_bytes=2481392 ccache_hits=412 ccache_misses=113 ccache_hit_rate_pct=78.48
+level=WARN msg="a job's output was not all sent: the console shows where it was elided" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 dropped_bytes=2481392 cap_bytes=67108864
+```
+
+#### The compiler cache
+
+Each **pool** has a cache directory on this runner, `<state-dir>/cache/<pool>/ccache`, and every
+job of that pool runs with `CCACHE_DIR` pointing at it — set by the agent, replacing any the
+offer carried, so no job can be pointed at another pool's cache or anywhere else on the host. It
+outlives the job, which is the point of a cache; a container job sees it at `/ouroboros-cache`,
+bind-mounted, and that is the only host directory a container job sees besides its workspace.
+Two pools on one runner never share one. (MVP caches are per-runner-persistent, which is why the
+stat row reads **`ccache · per-runner`** until [#264](https://github.com/NobuData/ouroboros/issues/264)
+makes sharing real.)
+
+Each job also gets its own `CCACHE_STATSLOG`, so what `job.finish.ccache` reports is **that
+build's** hit rate rather than the cache's running total — true even when a pool runs several
+jobs at once. Hits and misses are counted as `ccache -s` counts them, and checked against real
+ccache 4.7.5 and 4.11.2 (`make test-ccache`).
+
+A build that ran no ccache reports **`"ccache": null`** — not zero. `0%` reads as *the cache is
+broken*; the truth is *there is no cache here*, and the stat row renders null as an em-dash
+(decision **B5**). ccache older than 4.0 writes no statistics log, and so reports null too.
 
 #### The trust model
 
@@ -396,7 +452,7 @@ offers against the minimum the refusal named.
 
 ```console
 $ ouroboros-runner version
-ouroboros-runner 0.6.0
+ouroboros-runner 0.7.0
 protocol        1 (speaks 1–1)
 arch            linux/arm64
 hostname        shed-pi-01
@@ -457,12 +513,14 @@ lying around beside it. The repo-root [`.env.example`](../.env.example) document
 | `--bearer-fallback` | *none, on purpose* | off | Decision **B3**'s degraded mode, for networks whose proxies strip client certificates. Asked for at `enroll`, and required again at **every** `run` of such a runner, so the downgrade is stated where the agent is started |
 | `--no-shell` | `OURO_RUNNER_NO_SHELL` | `false` | Run no job directly on this machine: the hello says `shell: false`, and shell offers are declined. `run` and `hello` |
 | `--keep-workspace-on-failure` | `OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE` | `false` | Leave the workspace of a job that failed, timed out or errored, for diagnosis. `run` |
+| `--log-cap-bytes` | `OURO_RUNNER_LOG_CAP_BYTES` | `67108864` (64 MiB) | The most of one job's output to send, 65536–268435456 — the control plane's own range. The rest is reported as dropped, which the console renders as an elision. A value outside the range, or not a number, stops the agent. `run` |
 
 What the agent *reads about itself* it reads from the machine rather than from configuration —
 hostname, architecture, cores, installed memory, whether a Docker or Podman daemon answers, whether
 `ccache` is on `PATH` — because those are facts, and a settable fact is a fact somebody can get
 wrong. The two boolean variables take `true` or `false` (or `1`/`0`); anything else stops the
-agent with a usage error naming the variable, rather than quietly meaning `false`. And what a
+agent with a usage error naming the variable, rather than quietly meaning `false`, and so does a
+`--log-cap-bytes` outside its range. And what a
 job may do is the **pool's** to say, not this machine's: its concurrency cap and environment
 allow-list arrive in every `ack`.
 
@@ -509,7 +567,7 @@ ouroboros-runner/
 │   ├── telemetry/            # what this machine is and how loaded it is, whether docker answers
 │   ├── farmtest/             # an in-process farm for the suites — never linked into the agent
 │   ├── exec/                 # job executors: container and shell, workspaces, cancellation
-│   └── logship/              # chunking, ordering, throttling, ccache stats      · #247
+│   └── logship/              # chunking, ordering, throttling, the cap, ccache stats · #247
 ├── install.sh                # the one-liner's installer: verify, install, enrol, daemonize · #248
 ├── tests/                    # install.sh's suite, end to end against a staged root  · #248
 ├── .golangci.yml             # the linter, and why each check is on
@@ -518,9 +576,12 @@ ouroboros-runner/
 └── go.mod                    # the module, and the language floor
 ```
 
-`internal/logship` is still package documentation and nothing else: its behaviour is the log
-shipper's issue, and the *shape* of it is already fixed by the protocol — the package's doc
-comment says which parts and where they are written down.
+**`internal/logship` keeps one invariant, and its suite is built around it**: every byte a job
+writes is delivered or counted. A seeded property test and a fuzz target drive a log through
+random writes, stalls and flushes and check it after each run, and the memory bound is *measured*
+rather than asserted — a real 200 MiB shell job is streamed through a stalled, a throttled and a
+fast session while the heap is sampled. The ccache half is checked against fixtures captured from
+real ccache 4.7.5 and 4.11.2, and `make test-ccache` runs it against a real ccache and compiler.
 
 **`internal/exec` is tested against the operating system, not a model of it.** The shell
 executor's suite runs real processes: a job that prints its environment, a job whose arguments
@@ -598,7 +659,7 @@ is what publishes, and two machines installed from one version run the same bina
 | [#244](https://github.com/NobuData/ouroboros/issues/244) | **Shipped** — enrollment, the client certificate, the outbound connection, reconnection and backoff, resume, renewal |
 | [#245](https://github.com/NobuData/ouroboros/issues/245) | **Shipped** — telemetry and presence: CPU, memory, queue depth and job progress in every `heartbeat`, `null` where unmeasurable |
 | [#246](https://github.com/NobuData/ouroboros/issues/246) | **Shipped** — the executors: container and shell, workspace lifecycle, cancellation, the pool's concurrency cap and allow-list |
-| [#247](https://github.com/NobuData/ouroboros/issues/247) | Log shipping and ccache statistics, with truncation reported rather than hidden |
+| [#247](https://github.com/NobuData/ouroboros/issues/247) | **Shipped** — log shipping and ccache statistics: ordered chunks inside the session's limits, the agent's own per-job cap, elision reported rather than hidden, and per-build cache statistics |
 | [#248](https://github.com/NobuData/ouroboros/issues/248) | **Shipped** — packaging: checksummed releases from `ci/runner`, `install.sh`, systemd and launchd units, served from the deployment's own origin |
 | [#250](https://github.com/NobuData/ouroboros/issues/250) | The farm CA — the other end of this agent's identity |
 | [#251](https://github.com/NobuData/ouroboros/issues/251) | The gateway: the server half of this protocol, in TypeScript |

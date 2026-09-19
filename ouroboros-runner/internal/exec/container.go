@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -27,7 +28,8 @@ const logDrain = 5 * time.Second
 // builds in `zephyr-sdk 0.17`.
 //
 // The job's workspace is bind-mounted at its `workdir`, which is also the working
-// directory; nothing else of the host is mounted. The command is the container's exec-form
+// directory; the only other host directories mounted are the agent's own [Job.Mounts] — its
+// pool's compiler cache — and never one an offer names. The command is the container's exec-form
 // CMD, so the daemon never hands it to a shell; the image's own ENTRYPOINT, if it has one, is
 // part of the pool's pinned environment and is honoured. The environment is the scrubbed
 // list and nothing of the agent's. The container gets the job's share of the machine
@@ -49,11 +51,8 @@ func (c *Container) Kind() string { return conn.ExecutorContainer }
 // does not have it — reporting progress, because a first pull of a large SDK image is
 // minutes of apparent silence otherwise.
 func (c *Container) Prepare(ctx context.Context, job Job, workspace string, progress Progress) error {
-	if _, err := ContainerWorkdir(job.Workdir); err != nil {
+	if _, err := containerBinds(job, workspace); err != nil {
 		return err
-	}
-	if strings.Contains(workspace, ":") {
-		return failure(CodeWorkspaceInvalid, fmt.Sprintf("the workspace %s contains ':', which a bind mount cannot carry", workspace))
 	}
 	if !ValidReference(job.Image) {
 		return failure(CodeImagePullFailed, fmt.Sprintf("%q is not an image reference this agent will pull", job.Image))
@@ -95,6 +94,10 @@ func (c *Container) Execute(ctx context.Context, job Job, workspace string, outp
 	if err != nil {
 		return 0, err
 	}
+	binds, err := containerBinds(job, workspace)
+	if err != nil {
+		return 0, err
+	}
 	env := job.Env
 	if env == nil {
 		env = []string{}
@@ -106,7 +109,7 @@ func (c *Container) Execute(ctx context.Context, job Job, workspace string, outp
 		WorkingDir: workdir,
 		Labels:     map[string]string{LabelJob: job.ID, LabelRunner: "ouroboros-runner"},
 		HostConfig: HostConfig{
-			Binds:    []string{workspace + ":" + workdir},
+			Binds:    binds,
 			Init:     true,
 			NanoCPUs: job.Limits.NanoCPUs,
 			Memory:   job.Limits.MemoryBytes,
@@ -184,4 +187,35 @@ func (c *Container) grace() time.Duration {
 		return DefaultGrace
 	}
 	return c.Grace
+}
+
+// containerBinds is a job's bind mounts: its workspace at its workdir, then each of the
+// agent's mounts. It refuses what a bind cannot carry — a ':' in a host path — and a workdir
+// that overlaps a mount, which would put one over the other.
+func containerBinds(job Job, workspace string) ([]string, error) {
+	workdir, err := ContainerWorkdir(job.Workdir)
+	if err != nil {
+		return nil, err
+	}
+	if strings.Contains(workspace, ":") {
+		return nil, failure(CodeWorkspaceInvalid, fmt.Sprintf("the workspace %s contains ':', which a bind mount cannot carry", workspace))
+	}
+	binds := []string{workspace + ":" + workdir}
+	for _, mount := range job.Mounts {
+		target := path.Clean(mount.Target)
+		switch {
+		case strings.Contains(mount.Host, ":") || strings.Contains(target, ":"):
+			return nil, failure(CodeWorkspaceInvalid, fmt.Sprintf("the mount %s contains ':', which a bind mount cannot carry", mount.Host))
+		case within(workdir, target) || within(target, workdir):
+			return nil, failure(CodeWorkspaceInvalid, fmt.Sprintf(
+				"a container job's workdir cannot overlap %s, which the agent mounts there", target))
+		}
+		binds = append(binds, mount.Host+":"+target)
+	}
+	return binds, nil
+}
+
+// within reports whether dir is base or under it, for clean absolute container paths.
+func within(dir, base string) bool {
+	return dir == base || strings.HasPrefix(dir, strings.TrimSuffix(base, "/")+"/")
 }

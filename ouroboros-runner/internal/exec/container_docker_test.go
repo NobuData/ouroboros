@@ -100,6 +100,28 @@ func TestDockerPullsWithProgressAndRunsAJob(t *testing.T) {
 	}
 }
 
+// TestDockerMountsThePoolCache runs a job with a mount (#247), as the agent gives each
+// container job its pool's compiler cache, and checks the build can write through it.
+func TestDockerMountsThePoolCache(t *testing.T) {
+	engine := realEngine(t)
+	ctx := context.Background()
+	container := &Container{Engine: engine, Grace: 2 * time.Second}
+	cache := t.TempDir()
+	job := realJob("sh", "-c", `mkdir -p /ouroboros-cache/ccache && echo warm > /ouroboros-cache/ccache/entry`)
+	job.Mounts = []Mount{{Host: cache, Target: "/ouroboros-cache"}}
+	workspace := t.TempDir()
+	if err := container.Prepare(ctx, job, workspace, func(int, string) {}); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	stderr := &buffer{}
+	if code, err := container.Execute(ctx, job, workspace, Output{Stderr: stderr}); err != nil || code != 0 {
+		t.Fatalf("code %d, err %v, stderr %s", code, err, stderr)
+	}
+	if entry, err := os.ReadFile(filepath.Join(cache, "ccache", "entry")); err != nil || string(entry) != "warm\n" {
+		t.Errorf("the cache was not mounted: %q, %v", entry, err)
+	}
+}
+
 // TestDockerCancellationStopsTheContainer cancels a container whose build ignores SIGTERM:
 // the daemon's stop waits the grace, then kills it, and the container is removed.
 func TestDockerCancellationStopsTheContainer(t *testing.T) {

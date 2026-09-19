@@ -44,6 +44,7 @@ import (
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/enroll"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/exec"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/logship"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/secret"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
@@ -70,11 +71,19 @@ const (
 	envServerCA = "OURO_RUNNER_SERVER_CA"
 	envNoShell  = "OURO_RUNNER_NO_SHELL"
 	envKeep     = "OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE"
+	envLogCap   = "OURO_RUNNER_LOG_CAP_BYTES"
 )
 
 // workDir is where job workspaces are made, inside the state directory: the path the
-// protocol's own `job.start` example reports.
-const workDir = "work"
+// protocol's own `job.start` example reports. cacheDir is beside it, one directory per
+// pool, and unlike a workspace it OUTLIVES the job: a compiler cache is only worth having
+// warm ([#247]).
+//
+// [#247]: https://github.com/NobuData/ouroboros/issues/247
+const (
+	workDir  = "work"
+	cacheDir = "cache"
+)
 
 // usage is printed for `help`, for no arguments at all, and for anything unrecognised.
 const usage = `ouroboros-runner — the Ouroboros build farm agent.
@@ -88,6 +97,7 @@ Usage:
 
   ouroboros-runner run [--state-dir DIR] [--server-ca FILE] [--bearer-fallback]
                        [--no-shell] [--keep-workspace-on-failure]
+                       [--log-cap-bytes N]
       Connect outbound over mTLS and stay connected: heartbeat, reconnect with
       jittered backoff, renew the certificate before it expires, say bye on SIGTERM.
       Run the jobs it is offered — in a container when a Docker or Podman daemon
@@ -114,6 +124,10 @@ Environment (each a fallback for its flag):
   OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE
                           --keep-workspace-on-failure
                                        true: leave a failed job's workspace for diagnosis
+  OURO_RUNNER_LOG_CAP_BYTES
+                          --log-cap-bytes
+                                       the most of one job's output to send, 65536–268435456
+                                       (default 67108864); the rest is reported as dropped
 
 --bearer-fallback has no variable: the weaker mode is stated on the command line or
 not at all. See docs/RUNNER_PROTOCOL.md for the wire contract.
@@ -343,6 +357,9 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 	if set.NArg() > 0 {
 		return fmt.Errorf("%w: unexpected %q", errUsage, set.Arg(0))
 	}
+	if err := jobs.checkLogCap(); err != nil {
+		return err
+	}
 
 	roots, err := common.roots()
 	if err != nil {
@@ -368,7 +385,8 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 	}
 	logger := newLogger(stderr)
 	logger.Info("executors", "container", machine.capabilities.Docker, "docker_socket", machine.dockerSocket,
-		"shell", machine.capabilities.Shell, "keep_workspace_on_failure", jobs.keepOnFailure)
+		"shell", machine.capabilities.Shell, "keep_workspace_on_failure", jobs.keepOnFailure,
+		"log_cap_bytes", jobs.logCapBytes)
 
 	// The heartbeat's measurements are taken in the background for as long as the agent
 	// runs, so a beat reads the newest sample rather than waiting a window for one.
@@ -387,6 +405,8 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 		Capabilities:   machine.capabilities,
 		Executors:      machine.executors(),
 		Workspaces:     &exec.Workspaces{Root: filepath.Join(common.stateDir, workDir), KeepOnFailure: jobs.keepOnFailure},
+		LogCapBytes:    jobs.logCapBytes,
+		CacheRoot:      filepath.Join(common.stateDir, cacheDir),
 		Telemetry:      monitor,
 		BearerFallback: bearerFallback,
 		Renewer:        &enroll.Client{Server: server, RootCAs: roots, UserAgent: "ouroboros-runner/" + version},
@@ -405,6 +425,7 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 type jobFlags struct {
 	noShell       bool
 	keepOnFailure bool
+	logCapBytes   int64
 }
 
 // register adds the job flags to a flag set, defaulted from the environment. keep says
@@ -426,7 +447,39 @@ func (j *jobFlags) register(set *flag.FlagSet, getenv func(string) string, keep 
 	}
 	set.BoolVar(&j.keepOnFailure, "keep-workspace-on-failure", keepOnFailure,
 		"leave the workspace of a job that failed, timed out or errored, for diagnosis ("+envKeep+")")
+
+	logCapBytes, err := envBytes(getenv, envLogCap, logship.DefaultCapBytes)
+	if err != nil {
+		return err
+	}
+	set.Int64Var(&j.logCapBytes, "log-cap-bytes", logCapBytes, fmt.Sprintf(
+		"the most of one job's output to send, %d–%d; the rest is reported as dropped (%s)",
+		logship.MinCapBytes, logship.MaxCapBytes, envLogCap))
 	return nil
+}
+
+// checkLogCap holds the cap to the range the control plane's own cap uses, so a value that
+// would silently be clamped stops the agent instead — in the unit file an operator reads.
+func (j *jobFlags) checkLogCap() error {
+	if j.logCapBytes < logship.MinCapBytes || j.logCapBytes > logship.MaxCapBytes {
+		return fmt.Errorf("%w: --log-cap-bytes is %d; it must be between %d and %d",
+			errUsage, j.logCapBytes, logship.MinCapBytes, logship.MaxCapBytes)
+	}
+	return nil
+}
+
+// envBytes reads a byte-count variable: unset or empty is the default, and anything
+// strconv cannot read — or a negative number — is a usage error naming the variable.
+func envBytes(getenv func(string) string, name string, fallback int64) (int64, error) {
+	raw := getenv(name)
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		return 0, fmt.Errorf("%w: %s=%q is not a number of bytes", errUsage, name, raw)
+	}
+	return value, nil
 }
 
 // envBool reads a boolean variable: unset or empty is false, and anything strconv cannot
