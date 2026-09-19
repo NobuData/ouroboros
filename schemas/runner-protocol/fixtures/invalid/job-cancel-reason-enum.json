@@ -1,0 +1,10 @@
+{
+  "v": 1,
+  "type": "job.cancel",
+  "id": "01KE7C4NCE1Q4Z8R2M6T0VXW3A",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "reason": "timeout",
+    "detail": "an operator cancelled this build from the farm page"
+  }
+}

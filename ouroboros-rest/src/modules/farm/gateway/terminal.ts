@@ -18,8 +18,11 @@
  *
  * **`errored` and `timed_out` become `failed` here, and the distinction is not lost.** Whether an
  * infrastructure-classed failure is *retried* — the `3 retried` on mockup 08's stat row — is
- * AH.4's retry policy ([#252](https://github.com/NobuData/ouroboros/issues/252)), which reads the
- * outcome it needs from the frame rather than from a status this ticket would have had to invent.
+ * AH.4's retry policy ([#252](https://github.com/NobuData/ouroboros/issues/252)), and
+ * {@link TerminalState.infrastructure} is the one fact it needs from the frame: `errored`, the
+ * agent failing to run the job at all. `timed_out` is not one — a build that ran past its budget
+ * is information about the build — and neither is a non-zero exit, which is `failed` and stays
+ * `failed`: a repository whose build is broken must never read as retried.
  * The two `failed`-with-`0` rows store `null` because `build_jobs_failure_is_not_exit_zero`
  * refuses a failure that exited cleanly, and a refused write would lose the whole result.
  *
@@ -49,6 +52,11 @@ export interface TerminalState {
   readonly status: TerminalStatus;
   readonly exitCode: number | null;
   readonly ccacheStats: CcacheStats | null;
+  /**
+   * Whether the failure is the farm's rather than the build's — the agent could not run the job
+   * at all (`errored`). Such a job is retried once by AH.4's policy instead of being `failed`.
+   */
+  readonly infrastructure: boolean;
 }
 
 /**
@@ -70,6 +78,7 @@ export function terminalState(finish: JobFinishPayload): TerminalState {
     status,
     exitCode: status === "failed" && exit === 0 ? null : exit,
     ccacheStats: ccacheOf(finish.ccache),
+    infrastructure: finish.outcome === "errored",
   };
 }
 

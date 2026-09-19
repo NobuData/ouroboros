@@ -40,9 +40,11 @@ import { DatabaseService } from "../../db/db.service";
 import type { AckPool, AgentState, Arch } from "../protocol/protocol.messages";
 import type { BuildJobStatus, Runner, RunnerStatus } from "../../db/schema";
 import { UNIQUE_VIOLATION, isDatabaseFailure } from "../../tenancy/constraints";
+import { attemptOf, infrastructureOutcome, insertRetryAttempt } from "../dispatch/job.lifecycle";
+import { assertTransition, phaseOf } from "../dispatch/job.states";
 import type { RunnerCapabilities } from "./capabilities";
 import type { TelemetrySnapshot } from "./telemetry";
-import type { TerminalState } from "./terminal";
+import type { TerminalState, TerminalStatus } from "./terminal";
 
 /** The statuses a runner that is connected — or was, until it stopped beating — can hold. */
 const LIVE_STATUSES = ["online", "building", "draining"] as const;
@@ -87,6 +89,12 @@ export interface TerminalRecord {
   readonly duplicate: boolean;
   /** True when recording it finished a job. */
   readonly applied: boolean;
+  /** The job it finished, when it applied. */
+  readonly jobId?: string;
+  /** The status it gave that job, when it applied — `retried` for a retried infrastructure failure. */
+  readonly status?: TerminalStatus | "retried";
+  /** The attempt created to replace it, when it was `retried` (AH.4, #252). */
+  readonly retryId?: string;
 }
 
 /** A runner the presence sweep flipped. */
@@ -376,6 +384,12 @@ export class AgentGatewayRepository {
    * `runner_terminal_frames_pkey`, its whole transaction — including a job update it may have
    * made — rolls back, and it is answered as the duplicate it was.
    *
+   * **The retry policy applies here, in the same transaction** (AH.4,
+   * [#252](https://github.com/NobuData/ouroboros/issues/252)): an `errored` finish — the agent
+   * could not run the job at all — is `retried` with a new attempt created beside it while the
+   * automatic retries last, and `failed` once they are spent. Creating the retry anywhere else
+   * would leave a receipted `retried` job with no successor if the process died in between.
+   *
    * @param write - The frame and what it says.
    * @param at - When the gateway received it.
    * @returns Whether it was a duplicate, and whether it finished a job.
@@ -398,7 +412,7 @@ export class AgentGatewayRepository {
         const job = write.jobId
           ? await trx
               .selectFrom("build_jobs")
-              .select(["id", "status"])
+              .selectAll()
               .where("organization_id", "=", write.organizationId)
               .where("id", "=", write.jobId)
               .where("runner_id", "=", write.runnerId)
@@ -407,13 +421,20 @@ export class AgentGatewayRepository {
           : undefined;
 
         let applied = false;
+        let status: TerminalRecord["status"];
+        let retryId: string | undefined;
 
         if (job && UNFINISHED.includes(job.status)) {
+          status = write.state.infrastructure
+            ? infrastructureOutcome(await attemptOf(trx, write.organizationId, job.id))
+            : write.state.status;
+          assertTransition(phaseOf(job), status, job.id);
+
           const started = startedAt(write.agentStartedAt, at);
           const updated = await trx
             .updateTable("build_jobs")
             .set({
-              status: write.state.status,
+              status,
               exit_code: write.state.exitCode,
               ccache_stats: write.state.ccacheStats,
               started_at: sql<Date>`coalesce(started_at, ${started})`,
@@ -426,6 +447,10 @@ export class AgentGatewayRepository {
             .executeTakeFirst();
 
           applied = updated.numUpdatedRows > 0n;
+
+          if (applied && status === "retried") {
+            retryId = (await insertRetryAttempt(trx, job, at)).id;
+          }
         }
 
         await trx
@@ -441,7 +466,9 @@ export class AgentGatewayRepository {
           })
           .execute();
 
-        return { duplicate: false, applied };
+        return applied && job
+          ? { duplicate: false, applied, jobId: job.id, status, retryId }
+          : { duplicate: false, applied };
       });
     } catch (cause) {
       if (

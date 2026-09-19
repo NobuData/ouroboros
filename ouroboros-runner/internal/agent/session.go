@@ -417,6 +417,14 @@ func (s *session) handle(ctx context.Context, envelope *conn.Envelope) error {
 		s.agent.log.Info("undrained: taking work again")
 		return nil
 
+	case conn.TypeJobCancel:
+		var cancel conn.JobCancelPayload
+		if err := envelope.Into(&cancel); err != nil {
+			return &errProtocol{err.Error()}
+		}
+		s.agent.cancelJob(cancel)
+		return nil
+
 	default:
 		// ack and refuse are only ever the answer to a hello; receipt and bye are the
 		// reader's (see read).

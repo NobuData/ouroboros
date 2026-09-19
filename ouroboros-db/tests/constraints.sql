@@ -12338,6 +12338,32 @@ select pg_temp.must_reject(
   'a shell pool carrying a pinned image promises what it does not do',
   'runner_pools_image_for_container');
 
+-- --- a pool's default command is bounded and not blank (V043, #252) ---------------
+--
+-- Dispatch copies it onto a submission that names no command, so a blank one would send a
+-- build with nothing to run — reported by the agent as an executor error, a farm fault charged
+-- to the build. The canonical rendering of an argv is legal, and so is having none at all.
+update ouroboros.runner_pools set default_command = 'west build -b helios_mainboard app'
+ where id = '7f000001-0000-4000-8000-000000000001';
+
+select pg_temp.must_hold(
+  (select default_command = 'west build -b helios_mainboard app'
+     from ouroboros.runner_pools where id = '7f000001-0000-4000-8000-000000000001'),
+  'a pool may carry the default command dispatch falls back to');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set default_command = E'  \t '
+     where id = '7f000001-0000-4000-8000-000000000001'$$,
+  'a pool default command is not blank', 'runner_pools_default_command_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set default_command = repeat('x', 8193)
+     where id = '7f000001-0000-4000-8000-000000000001'$$,
+  'a pool default command is at most 8192 characters', 'runner_pools_default_command_shape');
+
+update ouroboros.runner_pools set default_command = null
+ where id = '7f000001-0000-4000-8000-000000000001';
+
 -- --- tenancy is structural ------------------------------------------------------
 --
 -- Each of these is a cross-workspace reference that a service could make by forgetting one

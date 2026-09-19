@@ -143,6 +143,7 @@ describe("a job's terminal state", () => {
       status: "succeeded",
       exitCode: 0,
       ccacheStats: { hits: 812, misses: 140, size_bytes: 1024 * MIB, max_size_bytes: 4096 * MIB },
+      infrastructure: false,
     });
   });
 
@@ -151,6 +152,7 @@ describe("a job's terminal state", () => {
       status: "failed",
       exitCode: failed.exit_code,
       ccacheStats: null,
+      infrastructure: false,
     });
   });
 
@@ -191,5 +193,17 @@ describe("a job's terminal state", () => {
     const empty = { hits: 0, misses: 0, hit_rate_pct: 0, size_mb: 0, max_size_mb: 4096 };
 
     expect(terminalState({ ...succeeded, ccache: empty }).ccacheStats).toBeNull();
+  });
+
+  it("classes only an agent that could not run the job as the farm's failure (#252)", () => {
+    // The retry policy's one input: `errored` is information about the farm, and is retried;
+    // a build that failed or ran out of time is information about the code, and is not.
+    expect(terminalState({ ...failed, outcome: "errored", exit_code: null }).infrastructure).toBe(
+      true,
+    );
+    for (const outcome of ["failed", "timed_out", "cancelled"] as const) {
+      expect(terminalState({ ...failed, outcome }).infrastructure).toBe(false);
+    }
+    expect(terminalState(succeeded).infrastructure).toBe(false);
   });
 });

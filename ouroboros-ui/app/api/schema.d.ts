@@ -4659,6 +4659,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/farm/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a build to a pool — queued, then offered to a runner that can take it
+         * @description Submit a build job ([#252](https://github.com/NobuData/ouroboros/issues/252), decision B6 —
+         *     user- and API-submitted builds). The job is `queued` in its pool and dispatch is kicked at
+         *     once, so by the time the response is read it may already be `offered`.
+         *
+         *     **Dispatch offers it only to a runner that can take it:** in the pool (or joined to it by a
+         *     pool window), connected, not drained, reporting the job's executor in its `hello` — a
+         *     container job is never offered to a machine without docker — and holding fewer jobs than the
+         *     pool's `max_concurrency`. A declined offer returns the job to the queue for another runner.
+         *
+         *     **The command is argv, never a shell string**, and falls back to the pool's
+         *     `default_command` when absent. **The commit is required**: an offer pins the exact commit it
+         *     builds, so a moving ref cannot change what was built after the fact. The pool's executor,
+         *     image and the command are snapshotted onto the job, so editing the pool later does not change
+         *     what this build runs.
+         *
+         *     An infrastructure failure — the agent could not run the job, or its runner was lost
+         *     mid-build — is retried **once**, as a new job whose `retryOf` names this one; a second is
+         *     terminal. A build that ran and exited non-zero is `failed`, never retried. `member` and above.
+         */
+        post: operations["submitBuildJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/jobs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a build, and tell the runner holding it to stop
+         * @description Cancel a build job ([#252](https://github.com/NobuData/ouroboros/issues/252)) — waiting,
+         *     offered, accepted or running. The job is `canceled` the moment this commits; a runner
+         *     holding it is sent the runner protocol's `job.cancel`, stops the build, and reports it
+         *     `cancelled`, which changes nothing further. An unanswered offer is withdrawn.
+         *
+         *     `POST` to a sub-resource rather than `DELETE`: nothing is removed. The job keeps its row,
+         *     its number and its history. `member` and above.
+         */
+        post: operations["cancelBuildJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/farm/registrations": {
         parameters: {
             query?: never;
@@ -12484,6 +12547,131 @@ export interface components {
             revocationReason: string | null;
             /** Format: date-time */
             supersededAt: string | null;
+        };
+        /**
+         * SubmitBuildJobRequest
+         * @description A build to run ([#252](https://github.com/NobuData/ouroboros/issues/252)). No workspace
+         *     field: it is the session's.
+         * @example {
+         *       "pool": "pool-a",
+         *       "repository": "acme-robotics/helios-firmware",
+         *       "ref": "refs/heads/main",
+         *       "commit": "9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80",
+         *       "command": [
+         *         "west",
+         *         "build",
+         *         "-b",
+         *         "helios_mainboard",
+         *         "app"
+         *       ],
+         *       "title": "Add OTA rollback on failed checksum",
+         *       "label": "zephyr build"
+         *     }
+         */
+        SubmitBuildJobRequest: {
+            /** @description The pool to build in, by name. */
+            pool: string;
+            /** @description The repository to build, as GitHub's `owner/name`; one this workspace mirrors. */
+            repository: string;
+            /** @description The ref the commit was taken from — `refs/heads/main`, `refs/pull/971/head`. */
+            ref: string;
+            /** @description The exact commit to build. */
+            commit: string;
+            /**
+             * @description argv, never a shell string; the first word is the program and may not be empty. The
+             *     pool's `default_command` when absent.
+             */
+            command?: string[];
+            /** @description The one-line description the live card prints. `owner/name @ ref` when absent. */
+            title?: string;
+            /** @description The short label the runners table prints beside the number. The pool's name when absent. */
+            label?: string;
+        };
+        /**
+         * BuildJob
+         * @description One build attempt ([#252](https://github.com/NobuData/ouroboros/issues/252)). An automatic
+         *     retry is its own job, with `retryOf` naming the attempt it replaces — which keeps status
+         *     `retried`, the stat row's `3 retried`.
+         * @example {
+         *       "id": "5eed0028-0000-4000-8000-000000000483",
+         *       "number": 483,
+         *       "status": "queued",
+         *       "pool": "pool-a",
+         *       "repository": "acme-robotics/helios-firmware",
+         *       "ref": "refs/heads/main",
+         *       "commit": "9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80",
+         *       "command": [
+         *         "west",
+         *         "build",
+         *         "-b",
+         *         "helios_mainboard",
+         *         "app"
+         *       ],
+         *       "commandLine": "west build -b helios_mainboard app",
+         *       "executor": "container",
+         *       "image": "ghcr.io/acme-robotics/zephyr-sdk:0.17",
+         *       "label": "zephyr build",
+         *       "title": "Add OTA rollback on failed checksum",
+         *       "runnerId": null,
+         *       "runId": null,
+         *       "retryOf": null,
+         *       "queuedAt": "2026-09-19T12:00:00.000Z",
+         *       "offeredAt": null,
+         *       "startedAt": null,
+         *       "finishedAt": null,
+         *       "exitCode": null
+         *     }
+         */
+        BuildJob: {
+            /** Format: uuid */
+            id: string;
+            /** @description The job's public name within its workspace — mockup 08's `#479`. */
+            number: number;
+            /**
+             * @description `queued` covers two phases — waiting in the pool, and accepted by a runner and not yet
+             *     started (`runnerId` set), which is what a runner's `q:N` counts.
+             * @enum {string}
+             */
+            status: "queued" | "offered" | "running" | "succeeded" | "failed" | "retried" | "canceled";
+            pool: string;
+            /** @description GitHub's `owner/name`. */
+            repository: string;
+            ref: string;
+            /** @description The exact commit. Null only on a record this API did not write. */
+            commit: string | null;
+            /** @description argv — or null for a stored command that is not a canonical rendering of one. */
+            command: string[] | null;
+            /** @description The command as the runners table prints it. */
+            commandLine: string;
+            /** @enum {string} */
+            executor: "container" | "shell";
+            image: string | null;
+            label: string;
+            title: string;
+            /**
+             * Format: uuid
+             * @description The runner holding it, or that last held it; null while it waits in its pool's queue.
+             */
+            runnerId: string | null;
+            /**
+             * Format: uuid
+             * @description The loop run it belongs to — null for every user- and API-submitted build (B6).
+             */
+            runId: string | null;
+            /**
+             * Format: uuid
+             * @description The attempt this one retries.
+             */
+            retryOf: string | null;
+            /** Format: date-time */
+            queuedAt: string;
+            /** Format: date-time */
+            offeredAt: string | null;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
+            exitCode: number | null;
         };
     };
     responses: never;
@@ -33034,6 +33222,282 @@ export interface operations {
                 };
             };
             /** @description `farm_no_live_certificate` — this runner holds none to revoke. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a UUID. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    submitBuildJob: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitBuildJobRequest"];
+            };
+        };
+        responses: {
+            /** @description The job, `queued` — or already `offered`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildJob"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — submitting a build is `member` and above. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_pool_not_found` — this workspace has no pool of that name.
+             *     `farm_repository_not_found` — this workspace mirrors no repository of that `owner/name`.
+             *     Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_pool_disabled` — an operator has switched the pool off, and it accepts no new
+             *     builds.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is not a build request; `details` names the field.
+             *     `farm_command_required` — the body names no command and the pool has no default.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelBuildJob: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The job's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job, `canceled`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildJob"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — cancelling a build is `member` and above. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_job_not_found` — this workspace has no such build job; another workspace's job is
+             *     the same answer. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `farm_job_not_cancellable` — the job has already finished; `details.status` says how. */
             409: {
                 headers: {
                     [name: string]: unknown;

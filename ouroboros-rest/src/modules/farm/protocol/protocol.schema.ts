@@ -142,6 +142,7 @@ const DECLINE = [
   "capacity",
   "expired",
 ];
+const CANCEL = ["operator", "reassigned"];
 const DRAIN = ["operator", "upgrade", "decommission", "capacity"];
 const BYE = ["shutdown", "drained", "error", "server_shutdown"];
 const SECURITY_MODE = ["mtls", "bearer_fallback"];
@@ -429,6 +430,8 @@ export const SPECS: Readonly<Record<string, MessageSpec>> = {
       },
       { name: "timeout_s", kinds: Kind.Integer, min: 1, max: 86400 },
       timestamp("expires_at"),
+      // Added inside line 1 (#252): absent means a first attempt.
+      { name: "attempt", kinds: Kind.Integer, min: 1, optional: true },
     ],
     extra: offerExtra,
   },
@@ -442,6 +445,10 @@ export const SPECS: Readonly<Record<string, MessageSpec>> = {
       { name: "reason", kinds: Kind.String, enum: DECLINE },
       detail(512),
     ],
+  },
+
+  "job.cancel": {
+    fields: [jobId("job"), { name: "reason", kinds: Kind.String, enum: CANCEL }, detail(512)],
   },
 
   "job.start": {

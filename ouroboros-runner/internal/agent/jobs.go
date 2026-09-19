@@ -20,6 +20,8 @@ import (
 //	               job.accept ──▶ workspace · prepare (pull, job.progress) ──▶ job.start
 //	                                                                               │
 //	               job.finish (outbox, re-sent until receipted) ◀── run ◀──────────┘
+//	                    ▲
+//	job.cancel ─────────┘ the job's own context, cancelled: finish {cancelled} ([#252])
 //
 // The deciding is CAPABILITY HONESTY. A runner without docker cannot run a container job,
 // and accepting one to fail it at execution would burn a dispatch cycle and show somebody
@@ -31,12 +33,52 @@ import (
 // [#246]: https://github.com/NobuData/ouroboros/issues/246
 // [#252]: https://github.com/NobuData/ouroboros/issues/252
 
-// jobAttempt is the attempt every job.start and job.finish this agent writes reports. An
-// offer carries no attempt number — retries are the dispatcher's ([#252]) — so each run
-// this agent makes is, as far as it can know, the first.
+// attemptOf is the attempt a job's job.start and job.finish report: the offer's, which the
+// dispatcher sets on the automatic retry of an infrastructure failure ([#252]), and 1 when
+// the offer did not say — a first attempt.
 //
 // [#252]: https://github.com/NobuData/ouroboros/issues/252
-const jobAttempt = 1
+func attemptOf(offer conn.JobOfferPayload) int {
+	return max(offer.Attempt, 1)
+}
+
+// jobCancels is a stop handle for every job this agent holds, by job id — what a gateway's
+// `job.cancel` ([#252]) reaches. Each job runs under a context of its own, derived from the
+// agent's, so cancelling one stops that job alone while a SIGTERM still stops them all.
+//
+// [#252]: https://github.com/NobuData/ouroboros/issues/252
+type jobCancels struct {
+	mu      sync.Mutex
+	handles map[string]context.CancelCauseFunc
+}
+
+// add registers a job's stop handle.
+func (c *jobCancels) add(job string, cancel context.CancelCauseFunc) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.handles == nil {
+		c.handles = map[string]context.CancelCauseFunc{}
+	}
+	c.handles[job] = cancel
+}
+
+// remove forgets a job's stop handle once the job is over.
+func (c *jobCancels) remove(job string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.handles, job)
+}
+
+// cancel stops a held job with a cause, and reports whether the agent held it.
+func (c *jobCancels) cancel(job string, cause error) bool {
+	c.mu.Lock()
+	cancel, held := c.handles[job]
+	c.mu.Unlock()
+	if held {
+		cancel(cause)
+	}
+	return held
+}
 
 // DefaultJobStopWait bounds how long a shutting-down agent waits for its cancelled jobs to
 // report before it says bye: the executors' grace, and a margin for the reports.
@@ -159,8 +201,9 @@ func (a *Agent) unsupported(kind string) string {
 }
 
 // launch runs an accepted job in the background, holding it in the workload until its
-// finish is queued. The job's context is ctx — the agent's own — so a job outlives the
-// connection it was offered on, and ends when the agent is told to stop.
+// finish is queued. The job's context is derived from ctx — the agent's own — so a job
+// outlives the connection it was offered on, and ends when the agent is told to stop or
+// when the gateway cancels that one job.
 func (a *Agent) launch(ctx context.Context, offer conn.JobOfferPayload) {
 	maxConcurrency, allowlist := a.pool.get()
 	env, dropped := exec.Scrub(offer.Env, allowlist)
@@ -181,23 +224,46 @@ func (a *Agent) launch(ctx context.Context, offer conn.JobOfferPayload) {
 		Limits:  exec.ShareOf(a.config.Capabilities.CPUs, a.config.Capabilities.MemoryMB, maxConcurrency),
 	}
 	executor := a.config.Executors[offer.Executor]
+	attempt := attemptOf(offer)
+	jobCtx, cancel := context.WithCancelCause(ctx)
 
 	a.workload.Accepted(job.ID)
+	a.cancels.add(job.ID, cancel)
 	a.jobs.Add(1)
 	go func() {
 		defer a.jobs.Done()
-		a.run(ctx, executor, job)
+		defer cancel(nil)
+		a.run(jobCtx, executor, job, attempt)
+		a.cancels.remove(job.ID)
 	}()
 }
 
+// cancelJob stops a job the gateway took back ([#252]). A held job is cancelled with a
+// cause naming the reason, which the executor's `cancelled` finish carries as its detail;
+// a job this agent does not hold — its finish crossed the cancel, or the offer never
+// arrived — is logged and otherwise ignored, because there is nothing to stop.
+//
+// [#252]: https://github.com/NobuData/ouroboros/issues/252
+func (a *Agent) cancelJob(cancel conn.JobCancelPayload) {
+	cause := fmt.Errorf("the gateway cancelled it, %s: %s", cancel.Reason, cancel.Detail)
+	if a.cancels.cancel(cancel.Job, cause) {
+		a.log.Warn("the gateway cancelled a job; stopping it", "job", cancel.Job, "reason", cancel.Reason,
+			"detail", cancel.Detail)
+		return
+	}
+	a.log.Info("the gateway cancelled a job this agent does not hold; nothing to stop", "job", cancel.Job,
+		"reason", cancel.Reason)
+}
+
 // run runs one job to its end and reports it.
-func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job) {
-	a.log.Info("running a job", "job", job.ID, "executor", job.Kind, "image", job.Image, "timeout", job.Timeout)
+func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job, attempt int) {
+	a.log.Info("running a job", "job", job.ID, "attempt", attempt, "executor", job.Kind, "image", job.Image,
+		"timeout", job.Timeout)
 	produced := &outputCounter{}
-	events := &jobEvents{agent: a, job: job}
+	events := &jobEvents{agent: a, job: job, attempt: attempt}
 	runner := exec.Runner{Workspaces: a.config.Workspaces, Now: a.config.Now}
 	result := runner.Run(ctx, executor, job, exec.Output{Stdout: produced, Stderr: produced}, events)
-	a.report(job, result, produced.bytes.Load())
+	a.report(job, attempt, result, produced.bytes.Load())
 	a.workload.Finished(job.ID)
 }
 
@@ -208,10 +274,10 @@ func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job) {
 // which the run console renders as an elision rather than as an empty log.
 //
 // [#247]: https://github.com/NobuData/ouroboros/issues/247
-func (a *Agent) report(job exec.Job, result exec.Result, produced int64) {
+func (a *Agent) report(job exec.Job, attempt int, result exec.Result, produced int64) {
 	finish := conn.JobFinishPayload{
 		Job:        job.ID,
-		Attempt:    jobAttempt,
+		Attempt:    attempt,
 		Outcome:    result.Outcome,
 		ExitCode:   exitCode(result.ExitCode),
 		StartedAt:  conn.Timestamp(result.StartedAt),
@@ -279,8 +345,9 @@ func (c *outputCounter) Write(p []byte) (int, error) {
 
 // jobEvents turns what the executor reports into frames and the heartbeat's account.
 type jobEvents struct {
-	agent *Agent
-	job   exec.Job
+	agent   *Agent
+	job     exec.Job
+	attempt int
 }
 
 // Progress is preparation progress — an image pull — as a job.progress in the `prepare`
@@ -305,7 +372,7 @@ func (e *jobEvents) Started(workspace string, at time.Time) {
 	}
 	e.agent.log.Info("a job started", "job", e.job.ID, "executor", e.job.Kind, "workspace", workspace)
 	e.agent.notify(conn.NewFrame(conn.NewID(), conn.TypeJobStart, conn.JobStartPayload{
-		Job: e.job.ID, Attempt: jobAttempt, Executor: e.job.Kind,
+		Job: e.job.ID, Attempt: e.attempt, Executor: e.job.Kind,
 		StartedAt: conn.Timestamp(at), Workspace: workspace,
 	}))
 }

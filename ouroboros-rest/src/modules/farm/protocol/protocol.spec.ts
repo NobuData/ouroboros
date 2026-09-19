@@ -357,8 +357,8 @@ describe("the runner protocol codec", () => {
   });
 
   describe("helpers", () => {
-    it("recognises exactly the fifteen types", () => {
-      expect(MESSAGE_TYPES).toHaveLength(15);
+    it("recognises exactly the sixteen types", () => {
+      expect(MESSAGE_TYPES).toHaveLength(16);
       expect(isMessageType("job.finish")).toBe(true);
       expect(isMessageType("job.finished")).toBe(false);
     });

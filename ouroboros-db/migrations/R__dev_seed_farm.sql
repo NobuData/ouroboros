@@ -146,24 +146,29 @@
 -- `pool-b` carries the tag `hil`, which is what a marketplace snippet's `runner_tags`
 -- requirement resolves against (#776) — the difference between that row being a fact and being
 -- decoration.
+--
+-- `pool-a` defaults to the one command its builds all run (V043, #252), which is what AI.5's
+-- (#260) submit dialog prefills; `pool-b` runs two kinds of job and has no default, so a
+-- submission there names its own — the fixture for `farm_command_required`.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.runner_pools
   (id, organization_id, name, description, executor, image, env_allowlist,
-   max_concurrency, enabled, autoscale_pref, tags)
+   max_concurrency, enabled, autoscale_pref, tags, default_command)
 select ('5eed0024-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
        org."id", seed.name, seed.description, seed.executor, seed.image,
        seed.env_allowlist::jsonb, seed.max_concurrency, true,
-       seed.autoscale_pref::jsonb, seed.tags::jsonb
+       seed.autoscale_pref::jsonb, seed.tags::jsonb, seed.default_command
   from (values
          (1, 'pool-a', 'firmware builds', 'container',
           'ghcr.io/acme-robotics/zephyr-sdk:0.17',
           '["CCACHE_DIR", "WEST_TOPDIR", "ZEPHYR_BASE"]', 2,
-          '{"enabled": false, "queue_threshold": 5}', '["firmware", "zephyr"]'),
+          '{"enabled": false, "queue_threshold": 5}', '["firmware", "zephyr"]',
+          'west build -b helios_mainboard app'),
          (2, 'pool-b', 'HIL & macOS jobs', 'shell', null,
           '["DEVELOPER_DIR", "HIL_RIG_ID"]', 1,
-          '{}', '["hil", "macos"]')
+          '{}', '["hil", "macos"]', null)
        ) as seed (ordinal, name, description, executor, image,
-                  env_allowlist, max_concurrency, autoscale_pref, tags)
+                  env_allowlist, max_concurrency, autoscale_pref, tags, default_command)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
  where ${ouro_dev_seed}
 on conflict do nothing;

@@ -54,12 +54,13 @@ import {
   type Frame,
   type MessageType,
 } from "../protocol/protocol";
-import type { JobOfferPayload } from "../protocol/protocol.messages";
+import type { JobCancelPayload, JobOfferPayload } from "../protocol/protocol.messages";
 import { newPrefixedId, newUlid } from "../protocol/ulid";
 import type { AgentSocket } from "./agent.socket";
 import { GATEWAY_CLOCK, type GatewayClock } from "./gateway.clock";
 import { GatewayMetrics } from "./gateway.metrics";
 import { MAX_PENDING_FRAMES, OFFER_ACK_MS, RESUME_WINDOW_MS } from "./gateway.policy";
+import type { TerminalRecord } from "./gateway.repository";
 
 /** Why a frame is in an outbox, which decides when it stops being owed. */
 export type OutboundKind = "offer" | "receipt" | "control";
@@ -78,6 +79,11 @@ export interface FrameContext {
   readonly organizationId: string;
   readonly runnerId: string;
   readonly sessionId: string;
+  /**
+   * For a `job.finish`: what the ledger made of it — whether it was a duplicate, and whether it
+   * finished a build. What lets a listener tell a completion from a re-send (AH.4, #252).
+   */
+  readonly terminal?: TerminalRecord;
 }
 
 /** Something that wants to hear about a type of agent frame — AH.4 for answers, AH.5 for logs. */
@@ -412,6 +418,58 @@ export class AgentSessions {
     });
 
     return id;
+  }
+
+  /**
+   * Stop owing every unanswered offer of a job — it was cancelled, or taken back, before its
+   * agent answered (AH.4, [#252](https://github.com/NobuData/ouroboros/issues/252)).
+   *
+   * @param organizationId - The workspace.
+   * @param runnerId - The runner it was offered to.
+   * @param job - The job's wire id, as the offer named it.
+   * @returns How many offers were withdrawn. Zero when there were none, or no session here.
+   */
+  withdraw(organizationId: string, runnerId: string, job: string): number {
+    const session = this.find(organizationId, runnerId);
+    if (!session) return 0;
+
+    return session.drop(
+      (entry) =>
+        entry.kind === "offer" && (entry.frame.payload as Partial<JobOfferPayload>).job === job,
+    );
+  }
+
+  /**
+   * Tell a runner to stop a job — AH.4's cancellation, propagated
+   * ([#252](https://github.com/NobuData/ouroboros/issues/252)).
+   *
+   * A control frame: written now if the session has a socket, and replayed on resume if it does
+   * not. A runner with no session here is told again when it next reports the job — the
+   * dispatcher reconciles every `job.accept`, `job.start` and heartbeat against the job's row.
+   *
+   * @param organizationId - The workspace.
+   * @param runnerId - The runner.
+   * @param payload - The cancel. **Held to the contract before it is sent**, for
+   *   {@link offer}'s reason.
+   * @returns Whether the runner has a session here to deliver it to.
+   * @throws {TypeError} If the payload is not a legal `job.cancel`.
+   */
+  cancel(organizationId: string, runnerId: string, payload: JobCancelPayload): boolean {
+    const value = frame("job.cancel", payload);
+    const judged = decode(encode(value));
+
+    if (!judged.envelope) {
+      throw new TypeError(
+        `refusing to send an illegal job.cancel: ${judged.diagnostics.map((d) => `${d.code} at ${d.path}`).join(", ")}`,
+      );
+    }
+
+    const session = this.find(organizationId, runnerId);
+    if (!session) return false;
+
+    this.deliver(session, value, "control");
+
+    return true;
   }
 
   /**

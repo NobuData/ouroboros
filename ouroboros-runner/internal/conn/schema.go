@@ -7,7 +7,7 @@ import (
 )
 
 // This file is the Go reading of schemas/runner-protocol/v1.json, as declarative tables
-// rather than fifteen hand-written validators.
+// rather than sixteen hand-written validators.
 //
 // The tables are the point. A hand-written validator per message drifts from the
 // schema field by field, and the drift is invisible because each half looks reasonable
@@ -84,8 +84,9 @@ var (
 		"draining", "busy", "unsupported_executor",
 		"image_unavailable", "capacity", "expired",
 	}
-	drainValues = []string{"operator", "upgrade", "decommission", "capacity"}
-	byeValues   = []string{"shutdown", "drained", "error", "server_shutdown"}
+	cancelValues = []string{CancelOperator, CancelReassigned}
+	drainValues  = []string{"operator", "upgrade", "decommission", "capacity"}
+	byeValues    = []string{"shutdown", "drained", "error", "server_shutdown"}
 
 	// securityModeValues is decision B3's two answers, as `hello.security_mode` reports
 	// them — the same two `runners.security_mode` stores.
@@ -215,6 +216,8 @@ var specs = map[Type]*messageSpec{
 			}},
 			{name: "timeout_s", kinds: kindInteger, min: num(1), max: num(86400)},
 			timestampField("expires_at"),
+			// Added inside line 1 (#252): absent means a first attempt.
+			{name: "attempt", kinds: kindInteger, min: num(1), optional: true},
 		},
 		extra: offerExtra,
 	},
@@ -228,6 +231,12 @@ var specs = map[Type]*messageSpec{
 		jobIDField("job"),
 		ulidField("offer"),
 		{name: "reason", kinds: kindString, enum: declineValues},
+		detailField(512),
+	}},
+
+	TypeJobCancel: {fields: []field{
+		jobIDField("job"),
+		{name: "reason", kinds: kindString, enum: cancelValues},
 		detailField(512),
 	}},
 

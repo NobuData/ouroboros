@@ -26,12 +26,14 @@
  * which AH.2 exported for exactly this — and reads no farm table that module owns except through
  * it.
  *
- * **It exports three things, each for a named ticket:** `AgentSessions` for dispatch (AH.4,
+ * **It exports four things, each for a named ticket:** `AgentSessions` for dispatch (AH.4,
  * [#252](https://github.com/NobuData/ouroboros/issues/252)) to offer jobs and hear their answers,
  * and log ingest (AH.5, [#253](https://github.com/NobuData/ouroboros/issues/253)) to hear
  * `log.chunk`; `RunnerControl` for the lifecycle actions (AH.6,
- * [#254](https://github.com/NobuData/ouroboros/issues/254)); and `GatewayMetrics` for the health
- * history (AJ.4, [#266](https://github.com/NobuData/ouroboros/issues/266)).
+ * [#254](https://github.com/NobuData/ouroboros/issues/254)); `GatewayMetrics` for the health
+ * history (AJ.4, [#266](https://github.com/NobuData/ouroboros/issues/266)); and the clock, for
+ * dispatch — whose lost-runner cutoff is compared with the `last_seen_at` this clock wrote, so the
+ * two must be one clock.
  */
 
 import { Module } from "@nestjs/common";
@@ -76,6 +78,6 @@ import { TransportAuthenticator } from "./transport";
       }),
     },
   ],
-  exports: [AgentSessions, RunnerControl, GatewayMetrics],
+  exports: [AgentSessions, RunnerControl, GatewayMetrics, GATEWAY_CLOCK],
 })
 export class FarmGatewayModule {}

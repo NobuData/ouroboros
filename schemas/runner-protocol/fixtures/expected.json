@@ -122,6 +122,13 @@
       "diagnostics": []
     },
     {
+      "name": "job-offer-retry",
+      "about": "The automatic retry of an infrastructure failure: a new job, and the attempt it is (#252).",
+      "document": "valid/job-offer-retry.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
       "name": "job-accept",
       "about": "Taken -- naming the offer envelope, so a re-offer cannot be answered twice.",
       "document": "valid/job-accept.json",
@@ -132,6 +139,13 @@
       "name": "job-decline",
       "about": "Refused, with a reason the dispatcher can act on rather than a silence it must time out.",
       "document": "valid/job-decline.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "job-cancel",
+      "about": "Stop a job this agent holds; it reports the finish as cancelled (#252).",
+      "document": "valid/job-cancel.json",
       "valid": true,
       "diagnostics": []
     },
@@ -366,6 +380,20 @@
       "document": "invalid/job-offer-command-type.json",
       "valid": false,
       "diagnostics": [{ "code": "payload.field.type", "path": "/payload/command" }]
+    },
+    {
+      "name": "job-offer-attempt-range",
+      "about": "Attempts count from one -- a zeroth attempt is a dispatcher that lost count.",
+      "document": "invalid/job-offer-attempt-range.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/attempt" }]
+    },
+    {
+      "name": "job-cancel-reason-enum",
+      "about": "A cancellation reason outside the two the agent can log.",
+      "document": "invalid/job-cancel-reason-enum.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/reason" }]
     },
     {
       "name": "job-finish-exit-missing",

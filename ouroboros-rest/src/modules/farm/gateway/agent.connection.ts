@@ -15,9 +15,9 @@
  *                                                  │
  *                                                  ▼
  *  open ── heartbeat ──▶ telemetry · last_seen_at ← THIS beat · pill · reconcile drain
- *       ── job.finish ─▶ ledger + job, one transaction ─▶ receipt{duplicate}
+ *       ── job.finish ─▶ ledger + job (+ its retry, #252), one transaction ─▶ receipt{duplicate}
  *       ── job.start ──▶ job running
- *       ── accept/decline ─▶ the offer is settled
+ *       ── accept/decline ─▶ the offer is settled; dispatch (#252) hears it and moves the job
  *       ── bye ────────▶ offline, deliberately; session ended; close
  *       ── anything the contract refuses, or from the wrong end ─▶ bye{error} + close 1002
  * ```
@@ -51,7 +51,7 @@ import { capabilitiesOf } from "./capabilities";
 import type { GatewayClock } from "./gateway.clock";
 import type { GatewayMetrics, RefusalReason } from "./gateway.metrics";
 import { HELLO_TIMEOUT_MS, REDRAIN_DEADLINE_MS, SESSION_LIMITS } from "./gateway.policy";
-import type { AgentGatewayRepository } from "./gateway.repository";
+import type { AgentGatewayRepository, TerminalRecord } from "./gateway.repository";
 import { describe, readHello, securityModeRefusal, type VersionPolicy } from "./hello";
 import { isBuilding, telemetryOf } from "./telemetry";
 import { terminalState } from "./terminal";
@@ -275,7 +275,7 @@ export class AgentConnection {
    */
   private async dispatch(envelope: Envelope): Promise<void> {
     const session = this.session as AgentSession;
-    const context = this.frameContext();
+    let context = this.frameContext();
 
     switch (envelope.type) {
       case "hello":
@@ -287,7 +287,12 @@ export class AgentConnection {
         break;
 
       case "job.finish":
-        await this.finish(envelope as Envelope<"job.finish">, session);
+        // A listener is told what the ledger made of the frame, so a completion can be told
+        // from a re-send (#252).
+        context = {
+          ...context,
+          terminal: await this.finish(envelope as Envelope<"job.finish">, session),
+        };
         break;
 
       case "job.start":
@@ -370,9 +375,12 @@ export class AgentConnection {
    *
    * @param envelope - The `job.finish`.
    * @param session - The session to owe the receipt to.
-   * @returns When the receipt is owed.
+   * @returns What the ledger made of it, once the receipt is owed.
    */
-  private async finish(envelope: Envelope<"job.finish">, session: AgentSession): Promise<void> {
+  private async finish(
+    envelope: Envelope<"job.finish">,
+    session: AgentSession,
+  ): Promise<TerminalRecord> {
     const at = this.context.now();
     const started = new Date(envelope.payload.started_at);
 
@@ -394,6 +402,8 @@ export class AgentConnection {
       frame("receipt", { of: envelope.id, of_type: "job.finish", duplicate: record.duplicate }),
       "receipt",
     );
+
+    return record;
   }
 
   /**

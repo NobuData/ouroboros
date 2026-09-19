@@ -1,5 +1,5 @@
 /**
- * The fifteen payloads of runner protocol line 1, as TypeScript types.
+ * The sixteen payloads of runner protocol line 1, as TypeScript types.
  *
  * AH.3 ([#251](https://github.com/NobuData/ouroboros/issues/251)). One interface per section of
  * [`docs/RUNNER_PROTOCOL.md` § 4](../../../../../docs/RUNNER_PROTOCOL.md#4-the-messages), with the
@@ -130,6 +130,8 @@ export interface JobOfferPayload {
   } | null;
   readonly timeout_s: number;
   readonly expires_at: string;
+  /** Which attempt of the build this job is — absent on a first attempt (#252). */
+  readonly attempt?: number;
 }
 
 /** `job.accept` — taken. */
@@ -147,6 +149,16 @@ export interface JobDeclinePayload {
   readonly job: string;
   readonly offer: string;
   readonly reason: DeclineReason;
+  readonly detail: string;
+}
+
+/** Why the gateway cancelled a job (#252). */
+export type CancelReason = "operator" | "reassigned";
+
+/** `job.cancel` — stop a job the agent holds; it finishes `cancelled` (#252). */
+export interface JobCancelPayload {
+  readonly job: string;
+  readonly reason: CancelReason;
   readonly detail: string;
 }
 
@@ -238,6 +250,7 @@ export interface Payloads {
   readonly "job.offer": JobOfferPayload;
   readonly "job.accept": JobAcceptPayload;
   readonly "job.decline": JobDeclinePayload;
+  readonly "job.cancel": JobCancelPayload;
   readonly "job.start": JobStartPayload;
   readonly "job.progress": JobProgressPayload;
   readonly "job.finish": JobFinishPayload;

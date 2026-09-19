@@ -37,6 +37,7 @@ var directions = map[Type]Direction{
 	TypeJobOffer:    FromGateway,
 	TypeJobAccept:   FromAgent,
 	TypeJobDecline:  FromAgent,
+	TypeJobCancel:   FromGateway,
 	TypeJobStart:    FromAgent,
 	TypeJobProgress: FromAgent,
 	TypeJobFinish:   FromAgent,
@@ -238,8 +239,10 @@ type JobRepository struct {
 // `Image` is empty for a shell job — the contract forbids one there and requires one for a
 // container job, and Decode has already held the offer to that. `Command` is argv and is
 // never handed to a shell. `Repository` is nil for a job that needs no source.
+// `Attempt` is zero when the offer did not say, which is a first attempt ([#252]).
 //
 // [#246]: https://github.com/NobuData/ouroboros/issues/246
+// [#252]: https://github.com/NobuData/ouroboros/issues/252
 type JobOfferPayload struct {
 	Job        string            `json:"job"`
 	Pool       string            `json:"pool"`
@@ -251,6 +254,7 @@ type JobOfferPayload struct {
 	Repository *JobRepository    `json:"repository"`
 	TimeoutS   int               `json:"timeout_s"`
 	ExpiresAt  string            `json:"expires_at"`
+	Attempt    int               `json:"attempt,omitempty"`
 }
 
 // JobAcceptPayload is an offer taken. It names the offer's envelope id as well as the
@@ -350,6 +354,26 @@ const (
 type JobDeclinePayload struct {
 	Job    string `json:"job"`
 	Offer  string `json:"offer"`
+	Reason string `json:"reason"`
+	Detail string `json:"detail"`
+}
+
+// The cancellation reasons (#252).
+const (
+	// CancelOperator is somebody cancelling the build.
+	CancelOperator = "operator"
+	// CancelReassigned is the control plane no longer counting the job as this runner's —
+	// re-dispatched after the runner was presumed lost, or its offer lapsed first.
+	CancelReassigned = "reassigned"
+)
+
+// JobCancelPayload is the gateway taking a job back: the agent stops it if it holds it,
+// and reports a `cancelled` finish. A cancel for a job it does not hold is a race, not an
+// error ([#252]).
+//
+// [#252]: https://github.com/NobuData/ouroboros/issues/252
+type JobCancelPayload struct {
+	Job    string `json:"job"`
 	Reason string `json:"reason"`
 	Detail string `json:"detail"`
 }

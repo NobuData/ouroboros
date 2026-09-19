@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.21"
+  version: "0.35.22"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -15060,6 +15060,187 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/farm/jobs:
+    post:
+      tags: [farm]
+      summary: Submit a build to a pool — queued, then offered to a runner that can take it
+      description: |-
+        Submit a build job ([#252](https://github.com/NobuData/ouroboros/issues/252), decision B6 —
+        user- and API-submitted builds). The job is `queued` in its pool and dispatch is kicked at
+        once, so by the time the response is read it may already be `offered`.
+
+        **Dispatch offers it only to a runner that can take it:** in the pool (or joined to it by a
+        pool window), connected, not drained, reporting the job's executor in its `hello` — a
+        container job is never offered to a machine without docker — and holding fewer jobs than the
+        pool's `max_concurrency`. A declined offer returns the job to the queue for another runner.
+
+        **The command is argv, never a shell string**, and falls back to the pool's
+        `default_command` when absent. **The commit is required**: an offer pins the exact commit it
+        builds, so a moving ref cannot change what was built after the fact. The pool's executor,
+        image and the command are snapshotted onto the job, so editing the pool later does not change
+        what this build runs.
+
+        An infrastructure failure — the agent could not run the job, or its runner was lost
+        mid-build — is retried **once**, as a new job whose `retryOf` names this one; a second is
+        terminal. A build that ran and exited non-zero is `failed`, never retried. `member` and above.
+      operationId: submitBuildJob
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitBuildJobRequest"
+      responses:
+        "201":
+          description: |-
+            The job, `queued` — or already `offered`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildJob"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — submitting a build is `member` and above.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_pool_not_found` — this workspace has no pool of that name.
+            `farm_repository_not_found` — this workspace mirrors no repository of that `owner/name`.
+            Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_pool_disabled` — an operator has switched the pool off, and it accepts no new
+            builds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is not a build request; `details` names the field.
+            `farm_command_required` — the body names no command and the pool has no default.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/jobs/{id}/cancel:
+    post:
+      tags: [farm]
+      summary: Cancel a build, and tell the runner holding it to stop
+      description: |-
+        Cancel a build job ([#252](https://github.com/NobuData/ouroboros/issues/252)) — waiting,
+        offered, accepted or running. The job is `canceled` the moment this commits; a runner
+        holding it is sent the runner protocol's `job.cancel`, stops the build, and reports it
+        `cancelled`, which changes nothing further. An unanswered offer is withdrawn.
+
+        `POST` to a sub-resource rather than `DELETE`: nothing is removed. The job keeps its row,
+        its number and its history. `member` and above.
+      operationId: cancelBuildJob
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The job's id.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: |-
+            The job, `canceled`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildJob"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — cancelling a build is `member` and above.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_job_not_found` — this workspace has no such build job; another workspace's job is
+            the same answer. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_job_not_cancellable` — the job has already finished; `details.status` says how.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/farm/registrations:
     post:
       tags: [farm]
@@ -25618,3 +25799,159 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    SubmitBuildJobRequest:
+      type: object
+      title: SubmitBuildJobRequest
+      description: |-
+        A build to run ([#252](https://github.com/NobuData/ouroboros/issues/252)). No workspace
+        field: it is the session's.
+      additionalProperties: false
+      required: [pool, repository, ref, commit]
+      properties:
+        pool:
+          type: string
+          pattern: "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+          description: The pool to build in, by name.
+        repository:
+          type: string
+          pattern: "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$"
+          description: The repository to build, as GitHub's `owner/name`; one this workspace mirrors.
+        ref:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: "^\\S+$"
+          description: The ref the commit was taken from — `refs/heads/main`, `refs/pull/971/head`.
+        commit:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+          description: The exact commit to build.
+        command:
+          type: array
+          minItems: 1
+          maxItems: 256
+          items:
+            type: string
+            maxLength: 4096
+          description: |-
+            argv, never a shell string; the first word is the program and may not be empty. The
+            pool's `default_command` when absent.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The one-line description the live card prints. `owner/name @ ref` when absent.
+        label:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The short label the runners table prints beside the number. The pool's name when absent.
+      example:
+        pool: pool-a
+        repository: acme-robotics/helios-firmware
+        ref: refs/heads/main
+        commit: 9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80
+        command: [west, build, -b, helios_mainboard, app]
+        title: Add OTA rollback on failed checksum
+        label: zephyr build
+
+    BuildJob:
+      type: object
+      title: BuildJob
+      description: |-
+        One build attempt ([#252](https://github.com/NobuData/ouroboros/issues/252)). An automatic
+        retry is its own job, with `retryOf` naming the attempt it replaces — which keeps status
+        `retried`, the stat row's `3 retried`.
+      additionalProperties: false
+      required:
+        [id, number, status, pool, repository, ref, commit, command, commandLine, executor, image, label, title, runnerId, runId, retryOf, queuedAt, offeredAt, startedAt, finishedAt, exitCode]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+          description: The job's public name within its workspace — mockup 08's `#479`.
+        status:
+          type: string
+          enum: [queued, offered, running, succeeded, failed, retried, canceled]
+          description: |-
+            `queued` covers two phases — waiting in the pool, and accepted by a runner and not yet
+            started (`runnerId` set), which is what a runner's `q:N` counts.
+        pool:
+          type: string
+        repository:
+          type: string
+          description: GitHub's `owner/name`.
+        ref:
+          type: string
+        commit:
+          type: [string, "null"]
+          description: The exact commit. Null only on a record this API did not write.
+        command:
+          type: [array, "null"]
+          items:
+            type: string
+          description: argv — or null for a stored command that is not a canonical rendering of one.
+        commandLine:
+          type: string
+          description: The command as the runners table prints it.
+        executor:
+          type: string
+          enum: [container, shell]
+        image:
+          type: [string, "null"]
+        label:
+          type: string
+        title:
+          type: string
+        runnerId:
+          type: [string, "null"]
+          format: uuid
+          description: The runner holding it, or that last held it; null while it waits in its pool's queue.
+        runId:
+          type: [string, "null"]
+          format: uuid
+          description: The loop run it belongs to — null for every user- and API-submitted build (B6).
+        retryOf:
+          type: [string, "null"]
+          format: uuid
+          description: The attempt this one retries.
+        queuedAt:
+          type: string
+          format: date-time
+        offeredAt:
+          type: [string, "null"]
+          format: date-time
+        startedAt:
+          type: [string, "null"]
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+        exitCode:
+          type: [integer, "null"]
+      example:
+        id: 5eed0028-0000-4000-8000-000000000483
+        number: 483
+        status: queued
+        pool: pool-a
+        repository: acme-robotics/helios-firmware
+        ref: refs/heads/main
+        commit: 9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80
+        command: [west, build, -b, helios_mainboard, app]
+        commandLine: west build -b helios_mainboard app
+        executor: container
+        image: ghcr.io/acme-robotics/zephyr-sdk:0.17
+        label: zephyr build
+        title: Add OTA rollback on failed checksum
+        runnerId: null
+        runId: null
+        retryOf: null
+        queuedAt: "2026-09-19T12:00:00.000Z"
+        offeredAt: null
+        startedAt: null
+        finishedAt: null
+        exitCode: null

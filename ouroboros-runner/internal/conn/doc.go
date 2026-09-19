@@ -1,4 +1,4 @@
-// Package conn is the runner protocol: the envelope, the fifteen message types, the
+// Package conn is the runner protocol: the envelope, the sixteen message types, the
 // validator that says whether a frame is one of them, and the two halves of resume.
 //
 // It is deliberately the FIRST thing in this module, because the protocol was specified
