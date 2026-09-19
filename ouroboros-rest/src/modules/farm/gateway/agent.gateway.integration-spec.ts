@@ -42,9 +42,11 @@ import { RunnerControl } from "./runner.control";
  *   * **Drain and undrain reach a connected agent** and show in its status.
  *   * **Organization isolation**: a session cannot affect another organization's runners.
  *
- * AH.4 (dispatch) does not exist yet, so where a transcript has the gateway offer a job, the suite
- * plays dispatch's part through `AgentSessions.offer` — the exact method AH.4 will call — and a
- * job is a `build_jobs` row the suite inserts.
+ * Where a transcript has the gateway offer a job, the suite plays dispatch's part through
+ * `AgentSessions.offer` — the exact method AH.4's dispatcher calls — and a job is a `build_jobs`
+ * row the suite inserts, so the golden ids stay byte-identical. Dispatch itself, submission to
+ * cancellation, is `../dispatch/dispatch.integration-spec.ts`
+ * ([#252](https://github.com/NobuData/ouroboros/issues/252)).
  *
  * ```bash
  * yarn test:integration
@@ -644,7 +646,12 @@ describe("the agent gateway", () => {
         runnerId: runner.runnerId,
         frameId: FIXTURE_FINISH,
         jobId,
-        state: { status: "succeeded" as const, exitCode: 0, ccacheStats: null },
+        state: {
+          status: "succeeded" as const,
+          exitCode: 0,
+          ccacheStats: null,
+          infrastructure: false,
+        },
         agentStartedAt: new Date(),
       };
 

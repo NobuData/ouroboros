@@ -16,6 +16,7 @@ import { EstimationModule } from "../estimation/estimation.module";
 import { GithubModule } from "../github/github.module";
 import { HealthModule } from "../health/health.module";
 import { FarmModule } from "../farm/farm.module";
+import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
 import { FarmGatewayModule } from "../farm/gateway/gateway.module";
 import { FarmInstallerModule } from "../farm/installer/installer.module";
 import { InternalModule } from "../internal/internal.module";
@@ -372,6 +373,12 @@ export class AppModule {
         // or above it applies — the transport authenticates the runner instead
         // (`farm/gateway/transport.ts`).
         FarmGatewayModule,
+        // AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)) — build dispatch:
+        // `POST /api/v1/farm/jobs` and its cancel, and the loop that offers queued jobs to
+        // connected runners. After `FarmGatewayModule`, whose sessions it offers through and whose
+        // listeners it hears the agents' answers on. Its two routes are ordinary member routes,
+        // behind the session and tenant guards like every other.
+        FarmDispatchModule,
         // AG.6 ([#248](https://github.com/NobuData/ouroboros/issues/248)) — the runner
         // installer, `GET /install.sh` and the release files beside it, served from this
         // deployment's own origin. Two `@AllowAnonymous()` routes whose reader is `curl` on a

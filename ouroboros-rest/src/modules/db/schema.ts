@@ -3138,6 +3138,12 @@ export interface RunnerPoolsTable {
   enabled: Generated<boolean>;
   autoscale_pref: Generated<unknown>;
   tags: Generated<unknown>;
+  /**
+   * The command a build of this pool runs when its submission names none (V043,
+   * [#252](https://github.com/NobuData/ouroboros/issues/252)), as the canonical rendering of an
+   * argv — the form `build_jobs.command` holds, read by `farm/dispatch/command.ts`.
+   */
+  default_command: string | null;
   created_at: Stamped;
   updated_at: Stamped;
 }
@@ -3810,6 +3816,7 @@ export const TABLE_COLUMNS = {
     "enabled",
     "autoscale_pref",
     "tags",
+    "default_command",
     "created_at",
     "updated_at",
   ],

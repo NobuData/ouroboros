@@ -3406,7 +3406,7 @@ the order it was first sent. Sessions live in this process: a reconnect to anoth
 
 | Export | For | What it does |
 |---|---|---|
-| `AgentSessions.offer` · `.listen` · `.isConnected` | dispatch, AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)); log ingest, AH.5 ([#253](https://github.com/NobuData/ouroboros/issues/253)) | offer a job to a runner (the payload is held to the contract before it is sent); hear `job.accept`/`job.decline`/`log.chunk` |
+| `AgentSessions.offer` · `.listen` · `.isConnected` · `.cancel` · `.withdraw` | dispatch, AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)) — [Build dispatch](#build-dispatch); log ingest, AH.5 ([#253](https://github.com/NobuData/ouroboros/issues/253)) | offer a job to a runner, or tell it to stop one (each payload is held to the contract before it is sent); withdraw an unanswered offer; hear `job.accept`/`job.decline`/`log.chunk` — a `job.finish` listener is also told what the ledger made of the frame |
 | `RunnerControl.drain` · `.undrain` | lifecycle actions, AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)) | write `desired_state`, then push the frame; a runner connected elsewhere is told at its next heartbeat |
 | `supportsExecutor` (`capabilities.ts`) | dispatch eligibility, AH.4 | whether a runner's stored capabilities say it can run a job under an executor |
 | `GatewayMetrics.snapshot` | health history, AJ.4 ([#266](https://github.com/NobuData/ouroboros/issues/266)) | connections, refusals by reason, frames by type, terminal records and duplicates, presence flips |
@@ -3419,6 +3419,83 @@ is answered `refuse {version.below_minimum}` with a sentence naming it, and the 
 rather than reconnecting into the refusal. The protocol-*line* floor is the build's own, and a
 `hello` written in a line this gateway does not speak is still read far enough to refuse it with
 the minimum named, or to be answered in a line both ends do.
+
+## Build dispatch
+
+> **Issue:** [#252](https://github.com/NobuData/ouroboros/issues/252) — *[AH.4] Build job dispatch
+> & queueing* · epic [#240](https://github.com/NobuData/ouroboros/issues/240) · decision **B6** ·
+> schema `V043` · [`docs/RUNNER_PROTOCOL.md` § 4.3](../docs/RUNNER_PROTOCOL.md#jobcancel)
+
+Which runner is offered which job, what happens to the answer, and what happens when a runner is
+never heard from again. `src/modules/farm/dispatch/` is the module; it imports the gateway, hears
+the agents' answers through `AgentSessions.listen`, and the gateway never imports it back.
+
+```
+POST /api/v1/farm/jobs ──▶ queued ──▶ kick ──▶ for the oldest waiting job:
+   eligible runner? same workspace · the job's pool (or a pool window now) · desired_state active
+                    · live · executor in its hello · under its pool's max_concurrency · socket HERE
+   ──▶ place (runner row locked, cap re-counted) ──▶ job.offer ──accept──▶ q:N ──start──▶ running
+                                                  └─decline / no answer──▶ back to the queue
+job.finish: succeeded · failed (exit ≠ 0, timed_out) · canceled · errored ──▶ retried once, then failed
+runner offline past the resume window: offered/accepted ──▶ queue · running ──▶ retried once, then failed
+POST /api/v1/farm/jobs/:id/cancel ──▶ canceled now ──▶ job.cancel to the runner holding it
+```
+
+| Route | Role | What it does |
+|---|---|---|
+| `POST /api/v1/farm/jobs` | `member`+ | Queue a build: `pool`, `repository` (`owner/name`), `ref`, the exact `commit`, and `command` as **argv** — or the pool's `default_command` (`V043`). The pool's executor, image and the command are snapshotted onto the job. `201`, already `offered` if a runner was free |
+| `POST /api/v1/farm/jobs/:id/cancel` | `member`+ | `canceled` at once; a runner holding it is sent `job.cancel` and its later `cancelled` finish changes nothing. A finished job is `409 farm_job_not_cancellable` |
+
+**The state machine** (`job.states.ts`) keeps V040's seven statuses and splits `queued` by
+whether a runner holds it: *waiting* (no runner) and *accepted* (a runner has taken it and not
+started it). A runner's **queue depth is its accepted jobs** — the agent's own definition of
+`heartbeat.queue_depth`, so the server's `q:N` and the agent's never disagree — and its
+**in-flight count** (offered + accepted + running) is what is compared with the pool's
+`max_concurrency`. Every writer reads a row's phase under a lock and holds the move to the
+transition table; an illegal move throws `InvalidJobTransitionError` instead of writing a row the
+stat row would then miscount.
+
+**Retry is for the farm's failures, not the build's.** An `errored` finish — the agent could not
+run the job at all — and a runner lost while the job was running are infrastructure-classed:
+the attempt becomes `retried` and a **new job** replaces it (`retry_of`, a new number, the same
+snapshot), offered with `attempt: 2`. A second infrastructure failure is `failed` for good
+(`AUTOMATIC_RETRIES = 1`). A non-zero exit, and a build that ran out of time, are `failed` and
+never retried — a broken build must not read as retried. The retry of an `errored` finish is
+created inside the gateway's terminal-ledger transaction (`job.lifecycle.ts`), so a receipted
+retry always has its successor.
+
+**A lost runner** is one `offline` (or removed) for longer than the five-minute resume window —
+a runner that drops and resumes inside it carries on with its job. Its offered and accepted
+jobs go back to the queue (nothing ran), its running job through the retry policy. An offer
+nobody answers is taken back after `offer_ack_ms` plus a grace. A runner that declines a job is
+passed over for it for 30 seconds, so the job goes to another runner rather than bouncing.
+
+**Stale work is cancelled.** A runner that accepts, starts or reports (in a heartbeat) a job
+that is no longer its own — cancelled, or re-dispatched after it was presumed lost — is sent
+`job.cancel`, once per session.
+
+**Concurrency.** Kicks coalesce into one drain at a time in a process; across replicas,
+`DispatchRepository.place` decides capacity under the runner's row lock and takes the job with
+`skip locked`, and job numbers are allocated under a per-workspace advisory lock. A replica
+only offers to runners whose socket it holds.
+
+**What other tickets call:**
+
+| Export | For | What it does |
+|---|---|---|
+| `FarmJobsService.submitForRun` | AJ.3 ([#265](https://github.com/NobuData/ouroboros/issues/265)) — **defined, documented, not wired** | the internal submission surface for a workflow's build stage: the route's request plus the loop run, written to `build_jobs.run_id` (decision **B6**) |
+| `FarmJobsService.queueDepth` | AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)) | a runner's accepted-not-started count — the runners table's `q:N` |
+| `JobCompletions.subscribe` | BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) | every move into a terminal status, announced after it commits and off its path; a subscriber that fails never affects the job |
+| `FARM_DISPATCH_GATE` | BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) | asked once per workspace per pass before anything is offered; bound to an open gate until #489 makes a pause an organization state |
+
+**Known limits.** Today's agent declines any offer that names a repository (source checkout is
+not built yet), so a real runner answers every submitted build `unsupported_executor` and it
+waits in the queue — dispatch is complete up to that point, and the fake-agent suite
+(`dispatch.integration-spec.ts`) runs the whole path. An agent that restarts and silently
+forgets a job while its runner never goes offline is not detected. Agents older than runner
+0.6.0 end their session on a `job.cancel` or an offer's `attempt`; `OURO_FARM_MIN_AGENT_VERSION`
+is the lever. In a development database the seeded fleet never connects, so a few minutes after
+REST starts its seeded in-flight builds are taken back like any lost runner's.
 
 ## The runner installer
 

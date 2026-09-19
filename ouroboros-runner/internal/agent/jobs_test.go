@@ -345,6 +345,126 @@ func TestATimedOutJobIsReportedAsOne(t *testing.T) {
 	}
 }
 
+// cancelJob sends the gateway's job.cancel for job n.
+func cancelJob(t *testing.T, farm *farmtest.Farm, n int, reason string) {
+	t.Helper()
+	if err := farm.Send(conn.NewFrame(conn.NewID(), conn.TypeJobCancel, conn.JobCancelPayload{
+		Job: job(n), Reason: reason, Detail: "an operator cancelled this build from the farm page",
+	})); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAGatewayCancelStopsARunningJob is #252's propagation: a job.cancel for a running job
+// stops that job — and only that job — and it is reported as `cancelled`, naming why, on a
+// session that carries on.
+func TestAGatewayCancelStopsARunningJob(t *testing.T) {
+	t.Parallel()
+	farm := farmtest.NewFarm(t)
+	farm.SetPool(&conn.AckPool{MaxConcurrency: 2, EnvAllowlist: []string{}})
+	container := &fakeExecutor{kind: conn.ExecutorContainer, execute: blockUntilCancelled}
+	h := start(t, farm, enrolled(t, farm, false), func(c *Config) { c.Executors[conn.ExecutorContainer] = container })
+	h.until("the connection", func(o farmtest.Observed) bool { return len(o.Heartbeats) >= 1 })
+	offerJob(t, farm, 1, conn.ExecutorContainer, nil)
+	offerJob(t, farm, 2, conn.ExecutorContainer, nil)
+	h.until("both starts", func(o farmtest.Observed) bool { return len(o.Starts) == 2 })
+
+	cancelJob(t, farm, 1, conn.CancelOperator)
+	observed := h.until("the cancelled finish", func(o farmtest.Observed) bool { return len(o.Finishes) == 1 })
+	finish := finishes(t, observed)[0]
+	if finish.Job != job(1) || finish.Outcome != conn.OutcomeCancelled || finish.Error == nil ||
+		finish.Error.Code != exec.CodeCancelled || !strings.Contains(finish.Error.Detail, "operator") {
+		t.Errorf("finish: %+v %+v", finish, finish.Error)
+	}
+	if !h.agent.workload.Holds(job(2)) {
+		t.Error("cancelling one job stopped another")
+	}
+	if len(observed.Byes) != 0 || len(observed.Violations) != 0 {
+		t.Errorf("a cancel ended the session: %+v", summary(observed))
+	}
+	h.logged("the gateway cancelled a job; stopping it")
+
+	// The other job is still the agent's, and still stoppable the ordinary way.
+	if err := h.stop(); err != nil {
+		t.Fatalf("a clean shutdown returned %v", err)
+	}
+}
+
+// TestACancelDuringPreparationFinishesWithoutAStart is a job cancelled while its image is
+// still being pulled: it never started, so there is no job.start and no exit code.
+func TestACancelDuringPreparationFinishesWithoutAStart(t *testing.T) {
+	t.Parallel()
+	farm := farmtest.NewFarm(t)
+	pulling := make(chan struct{})
+	container := &fakeExecutor{
+		kind: conn.ExecutorContainer,
+		prepare: func(ctx context.Context, _ exec.Job, _ exec.Progress) error {
+			close(pulling)
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	h := start(t, farm, enrolled(t, farm, false), func(c *Config) { c.Executors[conn.ExecutorContainer] = container })
+	h.until("the connection", func(o farmtest.Observed) bool { return len(o.Heartbeats) >= 1 })
+	offerJob(t, farm, 1, conn.ExecutorContainer, nil)
+	h.until("the accept", func(o farmtest.Observed) bool { return len(o.Accepts) == 1 })
+	<-pulling
+
+	cancelJob(t, farm, 1, conn.CancelReassigned)
+	observed := h.until("the cancelled finish", func(o farmtest.Observed) bool { return len(o.Finishes) == 1 })
+	finish := finishes(t, observed)[0]
+	if finish.Outcome != conn.OutcomeCancelled || finish.ExitCode != nil || len(observed.Starts) != 0 ||
+		!strings.Contains(finish.Error.Detail, "reassigned") {
+		t.Errorf("finish: %+v %+v, starts %d", finish, finish.Error, len(observed.Starts))
+	}
+	waitForEmptyOutbox(t, h)
+	if h.agent.workload.InFlight() != 0 {
+		t.Errorf("%d jobs still held", h.agent.workload.InFlight())
+	}
+}
+
+// TestACancelForAJobNotHeldIsIgnored is the race the contract names: a cancel that crossed
+// the job's own finish, or answers an offer that never arrived. Nothing is stopped, nothing
+// is sent, and the session carries on taking work.
+func TestACancelForAJobNotHeldIsIgnored(t *testing.T) {
+	t.Parallel()
+	farm := farmtest.NewFarm(t)
+	container := &fakeExecutor{kind: conn.ExecutorContainer}
+	h := start(t, farm, enrolled(t, farm, false), func(c *Config) { c.Executors[conn.ExecutorContainer] = container })
+	h.until("the connection", func(o farmtest.Observed) bool { return len(o.Heartbeats) >= 1 })
+
+	cancelJob(t, farm, 9, conn.CancelOperator)
+	h.logged("the gateway cancelled a job this agent does not hold")
+	offerJob(t, farm, 1, conn.ExecutorContainer, nil)
+	observed := h.until("the next job's finish", func(o farmtest.Observed) bool { return len(o.Finishes) == 1 })
+
+	if finish := finishes(t, observed)[0]; finish.Job != job(1) || finish.Outcome != conn.OutcomeSucceeded {
+		t.Errorf("finish: %+v", finish)
+	}
+	if observed.Connections != 1 || len(observed.Byes) != 0 || len(observed.Violations) != 0 {
+		t.Errorf("an unknown job's cancel disturbed the session: %+v", summary(observed))
+	}
+}
+
+// TestARetryOfferReportsItsAttempt is the dispatcher's automatic retry (#252): an offer that
+// says it is attempt 2 is started and finished as attempt 2.
+func TestARetryOfferReportsItsAttempt(t *testing.T) {
+	t.Parallel()
+	farm := farmtest.NewFarm(t)
+	container := &fakeExecutor{kind: conn.ExecutorContainer}
+	h := start(t, farm, enrolled(t, farm, false), func(c *Config) { c.Executors[conn.ExecutorContainer] = container })
+	h.until("the connection", func(o farmtest.Observed) bool { return len(o.Heartbeats) >= 1 })
+	offerJob(t, farm, 1, conn.ExecutorContainer, func(p map[string]any) { p["attempt"] = 2 })
+
+	observed := h.until("the finish", func(o farmtest.Observed) bool { return len(o.Finishes) == 1 })
+	if observed.Starts[0].Attempt != 2 {
+		t.Errorf("start: %+v", observed.Starts[0])
+	}
+	if finish := finishes(t, observed)[0]; finish.Attempt != 2 {
+		t.Errorf("finish: %+v", finish)
+	}
+}
+
 // TestAShellJobRunsForReal runs a real shell executor through the whole agent: a command
 // that exits 3 is `failed` with exit code 3, in a workspace under the state directory
 // that is removed afterwards.

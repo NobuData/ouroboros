@@ -1,6 +1,6 @@
 import { Logger } from "@nestjs/common";
 import { frame } from "../protocol/protocol";
-import type { JobOfferPayload } from "../protocol/protocol.messages";
+import type { JobCancelPayload, JobOfferPayload } from "../protocol/protocol.messages";
 import { AgentSessions } from "./agent.sessions";
 import { FakeSocket, drain, fixtureFrame } from "./gateway.fixture";
 import { GatewayMetrics } from "./gateway.metrics";
@@ -313,6 +313,74 @@ describe("the session registry", () => {
       }
 
       expect(sessions.offer(ORG, RUNNER, offerPayload("2026-09-18T13:00:00.000Z"))).toBeUndefined();
+    });
+  });
+
+  describe("cancellation (#252)", () => {
+    /** The golden cancel's payload. */
+    const cancelPayload = (): JobCancelPayload =>
+      fixtureFrame("valid/job-cancel.json").payload as unknown as JobCancelPayload;
+
+    it("withdraws every unanswered offer of a job, and only that job's", async () => {
+      const { session } = connect();
+      const payload = offerPayload("2026-09-18T12:00:05.000Z");
+      sessions.offer(ORG, RUNNER, payload);
+      sessions.offer(ORG, RUNNER, { ...payload, job: "job_01KE7EWKB1TJFC3BXKZPY4FRD2" });
+      await session.flushed();
+
+      expect(sessions.withdraw(ORG, RUNNER, payload.job)).toBe(1);
+      expect(session.outbox.map((entry) => entry.frame.payload)).toEqual([
+        expect.objectContaining({ job: "job_01KE7EWKB1TJFC3BXKZPY4FRD2" }),
+      ]);
+      expect(sessions.withdraw(ORG, RUNNER, payload.job)).toBe(0);
+    });
+
+    it("withdraws nothing for a runner with no session here, or in another workspace", () => {
+      connect();
+      sessions.offer(ORG, RUNNER, offerPayload("2026-09-18T12:00:05.000Z"));
+
+      expect(sessions.withdraw(OTHER_ORG, RUNNER, "job_01KE7J4EZ3204KQXMHJRPQPWQ6")).toBe(0);
+      expect(sessions.withdraw(ORG, OTHER_RUNNER, "job_01KE7J4EZ3204KQXMHJRPQPWQ6")).toBe(0);
+      expect(sessions.find(ORG, RUNNER)?.outbox).toHaveLength(1);
+    });
+
+    it("delivers a job.cancel as a control frame — written once, then no longer owed", async () => {
+      const { session, socket } = connect();
+
+      expect(sessions.cancel(ORG, RUNNER, cancelPayload())).toBe(true);
+      await session.flushed();
+
+      expect(socket.last("job.cancel").payload).toEqual(cancelPayload());
+      expect(session.outbox).toHaveLength(0);
+    });
+
+    it("holds a cancel for a detached session and delivers it on resume", async () => {
+      const first = connect();
+      sessions.detach(first.session, first.socket);
+
+      expect(sessions.cancel(ORG, RUNNER, cancelPayload())).toBe(true);
+      expect(first.socket.sent).toHaveLength(0);
+
+      const second = connect(first.session.id);
+      await second.session.flushed();
+
+      expect(second.socket.types()).toEqual(["job.cancel"]);
+    });
+
+    it("answers false for a runner with no session here, and reaches no other workspace", async () => {
+      const other = connect(undefined, OTHER_ORG, RUNNER);
+
+      expect(sessions.cancel(ORG, RUNNER, cancelPayload())).toBe(false);
+      await other.session.flushed();
+      expect(other.socket.sent).toHaveLength(0);
+    });
+
+    it("refuses to send an illegal cancel — the agent would end the session over it", () => {
+      connect();
+
+      expect(() =>
+        sessions.cancel(ORG, RUNNER, { ...cancelPayload(), reason: "timeout" as never }),
+      ).toThrow(TypeError);
     });
   });
 

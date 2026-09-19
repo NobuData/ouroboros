@@ -114,6 +114,24 @@ func TestIntoReadsEveryGatewayMessage(t *testing.T) {
 		shell.Env == nil || len(shell.Env) != 0 || shell.Command[0] != "./scripts/notarize.sh" {
 		t.Errorf("shell offer: %+v", shell)
 	}
+	if offer.Attempt != 0 || shell.Attempt != 0 {
+		t.Errorf("a first attempt carries no attempt number: %d, %d", offer.Attempt, shell.Attempt)
+	}
+
+	// The automatic retry of an infrastructure failure is a new job that says which
+	// attempt it is (#252).
+	var retry JobOfferPayload
+	decodeInto(t, "valid/job-offer-retry.json", &retry)
+	if retry.Attempt != 2 || retry.Job != "job_01KE7RTRY3C5B1NQ8V2ZK4M6PA" {
+		t.Errorf("retry offer: %+v", retry)
+	}
+
+	var cancel JobCancelPayload
+	decodeInto(t, "valid/job-cancel.json", &cancel)
+	if cancel.Job != "job_01KE7J4EZ3204KQXMHJRPQPWQ6" || cancel.Reason != CancelOperator ||
+		cancel.Detail == "" {
+		t.Errorf("cancel: %+v", cancel)
+	}
 
 	var drain DrainPayload
 	decodeInto(t, "valid/drain.json", &drain)
@@ -183,6 +201,8 @@ func TestTypedPayloadsReproduceTheGoldenFrames(t *testing.T) {
 		{"valid/ack-without-pool.json", &AckPayload{}},
 		{"valid/job-offer.json", &JobOfferPayload{}},
 		{"valid/job-offer-shell.json", &JobOfferPayload{}},
+		{"valid/job-offer-retry.json", &JobOfferPayload{}},
+		{"valid/job-cancel.json", &JobCancelPayload{}},
 		{"valid/job-accept.json", &JobAcceptPayload{}},
 		{"valid/job-start.json", &JobStartPayload{}},
 		{"valid/job-progress.json", &JobProgressPayload{}},

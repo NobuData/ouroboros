@@ -155,6 +155,7 @@ const POOL: RunnerPool = {
   enabled: true,
   autoscale_pref: {},
   tags: [],
+  default_command: null,
   created_at: FIXTURE_NOW,
   updated_at: FIXTURE_NOW,
 };

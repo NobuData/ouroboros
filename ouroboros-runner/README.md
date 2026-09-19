@@ -89,18 +89,18 @@ need `shellcheck` and a POSIX `sh` on the machine.
 On a build machine, the command the Build Farm page's enroll card renders:
 
 ```bash
-curl -fsSL 'https://ouroboros.acme.dev/install.sh?version=0.5.0' | sh -s -- \
+curl -fsSL 'https://ouroboros.acme.dev/install.sh?version=0.6.0' | sh -s -- \
   --tenant acme-robotics --pool pool-a --token orb_enroll_…
 ```
 
 ```console
-downloading ouroboros-runner 0.5.0 for linux/arm64 from https://ouroboros.acme.dev/runner/0.5.0
+downloading ouroboros-runner 0.6.0 for linux/arm64 from https://ouroboros.acme.dev/runner/0.6.0
 verified   sha256 4537a98ce666a84142d6f89c8ddc93a89ff4e383e1f67a183f37f5d8c49f3994
 installed  /usr/local/bin/ouroboros-runner
 enrolled shed-pi-01 as runner 7f7c9d0e-… in acme-robotics / pool-a
 …
 
-ouroboros-runner 0.5.0 is installed and running.
+ouroboros-runner 0.6.0 is installed and running.
   service  systemd unit ouroboros-runner.service — starts at boot, restarts on failure
   runs as  builder, from /var/lib/ouroboros-runner
   logs     journalctl -u ouroboros-runner -f
@@ -235,6 +235,7 @@ presenting the token, so that mistake costs nothing.
 | Resume | `hello.resume` names the last session, and every terminal frame not yet receipted is re-sent **byte for byte** from the outbox before anything else — the gateway deduplicates on the envelope id |
 | Renew | when `renewAfter` comes, over mTLS with the certificate being replaced — no second token |
 | Jobs | an offer is accepted and run, or declined at once with the reason — see [Running jobs](#running-jobs) |
+| Cancel | a gateway's `job.cancel` stops that one job and reports it `cancelled`; a cancel for a job this agent does not hold is logged and ignored |
 | Stop | SIGTERM or SIGINT → running jobs cancelled and their `cancelled` finishes sent, then `bye {reason: shutdown}`, exit 0 |
 | Refused for good | a revoked certificate (TLS alert, `farm_identity_refused`, or `refuse identity.*`), a version floor, an expired certificate → one `level=ERROR` line saying what to do, exit 1, **no retry** |
 
@@ -282,7 +283,8 @@ agent cannot keep.
 
 **How a job ends** is one of the protocol's five outcomes: exit 0 is `succeeded` and anything
 else `failed` (`executor.exit`); `timeout_s` running out is `timed_out`, and the budget runs
-from accept, so it covers a pull too; the agent being stopped is `cancelled`; and a job the
+from accept, so it covers a pull too; the agent being stopped, or the gateway's `job.cancel`
+for that job, is `cancelled`; and a job the
 agent could not run at all — a workspace it could not make, an image that would not pull
 (`image.pull_failed`), a command that would not start — is `errored`. Every `job.finish`
 carries the command's exit code — `null` only when no command ever ran — and its start and
@@ -290,6 +292,19 @@ end, so a duration is always there. The
 job's output goes to the log shipper ([#247](https://github.com/NobuData/ouroboros/issues/247));
 until that lands it is counted and not sent, and `job.finish.log` says so — `dropped_bytes` is
 all of it — rather than reporting an empty log.
+
+**Cancellation from the gateway** ([#252](https://github.com/NobuData/ouroboros/issues/252)).
+Every job runs under a context of its own, derived from the agent's, so a `job.cancel` stops that
+job alone — the same SIGTERM, grace and SIGKILL as a shutdown, the same `cancelled` finish, with
+the cancel's reason in its detail (`the gateway cancelled it, operator: …`). A job still pulling
+its image finishes `cancelled` with no exit code and no `job.start`. A cancel for a job the agent
+does not hold — its finish crossed the cancel, or the offer never arrived — is logged and ignored:
+there is nothing to stop, and ending the session over it would only replay the cancel.
+
+**Retries are the dispatcher's.** An offer carries `attempt` when it is the automatic retry of an
+infrastructure failure, and the agent reports that number in the job's `job.start` and
+`job.finish`; an offer without one is a first attempt. A retry is a new job id, so its workspace,
+its log and its terminal frame are its own.
 
 **Cleanup.** A workspace is removed when its job ends — even one a build made read-only.
 `--keep-workspace-on-failure` leaves the workspace of a job that failed, timed out or errored
@@ -381,7 +396,7 @@ offers against the minimum the refusal named.
 
 ```console
 $ ouroboros-runner version
-ouroboros-runner 0.5.0
+ouroboros-runner 0.6.0
 protocol        1 (speaks 1–1)
 arch            linux/arm64
 hostname        shed-pi-01

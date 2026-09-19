@@ -71,6 +71,16 @@ export const FARM_ERRORS = {
   installerUnavailable: "farm_installer_unavailable",
   /** The runner release, or the file in it, that a request named is not served here (#248). */
   releaseNotFound: "farm_release_not_found",
+  /** A build job this workspace does not have (#252). */
+  jobNotFound: "farm_job_not_found",
+  /** A cancel named a build job that has already finished (#252). */
+  jobNotCancellable: "farm_job_not_cancellable",
+  /** A submission named a repository this workspace does not mirror (#252). */
+  repositoryNotFound: "farm_repository_not_found",
+  /** A submission named a pool an operator has switched off (#252). */
+  poolDisabled: "farm_pool_disabled",
+  /** A submission named no command, and its pool has no default to fall back to (#252). */
+  commandRequired: "farm_command_required",
 } as const;
 
 /** One of {@link FARM_ERRORS}' values. */
@@ -278,4 +288,74 @@ export function releaseNotFound(version: string, file?: string): NotFoundError {
         `The ouroboros-runner release ${version} served here has no file named ${file}.`,
         { version, file },
       );
+}
+
+/**
+ * `404` — the workspace has no such build job (AH.4,
+ * [#252](https://github.com/NobuData/ouroboros/issues/252)). Another workspace's job is the same
+ * answer: see `tenancy/roles.guard.ts` on why "you may not" is a `404`.
+ *
+ * @returns The error.
+ */
+export function jobNotFound(): NotFoundError {
+  return new NotFoundError(FARM_ERRORS.jobNotFound, "No such build job.");
+}
+
+/**
+ * `409` — the build job has already finished, so there is nothing to cancel.
+ *
+ * A conflict rather than a success: a cancel that answered `200` for a build that had already
+ * succeeded would let a client believe it stopped something, and the stat row would disagree.
+ *
+ * @param status - How it ended, echoed so the caller can see why.
+ * @returns The error.
+ */
+export function jobNotCancellable(status: string): ConflictError {
+  return new ConflictError(
+    FARM_ERRORS.jobNotCancellable,
+    `This build job has already finished (${status}); there is nothing to cancel.`,
+    { status },
+  );
+}
+
+/**
+ * `404` — the workspace mirrors no repository of that name.
+ *
+ * @param repository - The `owner/name`, echoed: it is the caller's own input.
+ * @returns The error.
+ */
+export function repositoryNotFound(repository: string): NotFoundError {
+  return new NotFoundError(
+    FARM_ERRORS.repositoryNotFound,
+    `This workspace mirrors no repository named ${repository}.`,
+    { repository },
+  );
+}
+
+/**
+ * `409` — the pool is switched off: an operator's intent that it accepts no new work.
+ *
+ * @param pool - The pool's name.
+ * @returns The error.
+ */
+export function poolDisabled(pool: string): ConflictError {
+  return new ConflictError(
+    FARM_ERRORS.poolDisabled,
+    `The pool ${pool} is disabled and accepts no new builds.`,
+    { pool },
+  );
+}
+
+/**
+ * `422` — the submission named no command, and its pool has no default to fall back to.
+ *
+ * @param pool - The pool's name.
+ * @returns The error.
+ */
+export function commandRequired(pool: string): InvalidRequestError {
+  return new InvalidRequestError(
+    FARM_ERRORS.commandRequired,
+    `The pool ${pool} has no default command; name the command to run.`,
+    { pool },
+  );
 }

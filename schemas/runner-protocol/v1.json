@@ -23,6 +23,7 @@
         "job.offer",
         "job.accept",
         "job.decline",
+        "job.cancel",
         "job.start",
         "job.progress",
         "job.finish",
@@ -55,6 +56,8 @@
       "then": { "properties": { "payload": { "$ref": "#/$defs/job_accept" } } } },
     { "if": { "properties": { "type": { "const": "job.decline" } }, "required": ["type"] },
       "then": { "properties": { "payload": { "$ref": "#/$defs/job_decline" } } } },
+    { "if": { "properties": { "type": { "const": "job.cancel" } }, "required": ["type"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/job_cancel" } } } },
     { "if": { "properties": { "type": { "const": "job.start" } }, "required": ["type"] },
       "then": { "properties": { "payload": { "$ref": "#/$defs/job_start" } } } },
     { "if": { "properties": { "type": { "const": "job.progress" } }, "required": ["type"] },
@@ -125,7 +128,7 @@
       "pattern": "^rnr_[0-9A-HJKMNP-TV-Z]{26}$"
     },
     "job_id": {
-      "description": "One job, as the control plane knows it. Stable across attempts and across sessions, which is what lets a terminal frame be matched to its job after a reconnect that changed everything else.",
+      "description": "One job, as the control plane knows it. Stable across sessions and agents, which is what lets a terminal frame be matched to its job after a reconnect that changed everything else. One job is one ATTEMPT: a retry is dispatched as a new job whose `job.offer.attempt` says which attempt it is (#252).",
       "type": "string",
       "pattern": "^job_[0-9A-HJKMNP-TV-Z]{26}$"
     },
@@ -378,7 +381,12 @@
           }
         },
         "timeout_s": { "description": "Wall-clock budget. On expiry the agent cancels and finishes with `timed_out`.", "type": "integer", "minimum": 1, "maximum": 86400 },
-        "expires_at": { "$ref": "#/$defs/timestamp" }
+        "expires_at": { "$ref": "#/$defs/timestamp" },
+        "attempt": {
+          "description": "Which attempt of the build this job is: 2 for the automatic retry of an infrastructure failure (#252). The agent reports it back in `job.start` and `job.finish`. Optional only because it was added inside line 1 (docs/RUNNER_PROTOCOL.md section 3): absent means 1, and the gateway omits it on a first attempt.",
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "allOf": [
         {
@@ -419,6 +427,21 @@
       }
     },
 
+    "job_cancel": {
+      "description": "Stop a job this agent holds -- accepted and waiting, preparing, or running (#252). The agent terminates it as it would for its own shutdown and reports `job.finish` with outcome `cancelled`. A job the agent does not hold is not an error: the cancel crossed its finish, or the offer never reached it, and there is nothing to stop.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "reason", "detail"],
+      "properties": {
+        "job": { "$ref": "#/$defs/job_id" },
+        "reason": {
+          "description": "`operator` -- somebody cancelled the build. `reassigned` -- the control plane no longer counts this job as this runner's: it was re-dispatched after the runner was presumed lost, or its offer lapsed before the accept arrived.",
+          "enum": ["operator", "reassigned"]
+        },
+        "detail": { "description": "One sentence for the agent's log.", "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+
     "job_start": {
       "description": "Running. Sent once the workspace exists and the executor has been handed the command -- not on accept, because the gap between the two is where an image pull lives, and a job shown as running while it is really downloading is a farm page that lies.",
       "type": "object",
@@ -427,7 +450,7 @@
       "properties": {
         "job": { "$ref": "#/$defs/job_id" },
         "attempt": {
-          "description": "1 for the first run of this job on this agent, incrementing for each retry. It is what makes a RETRY distinguishable from a RE-SEND: a retry is new work with a new terminal frame, a re-send is the same frame again.",
+          "description": "The offer's `attempt` -- 1 for the first run of a build, 2 for its automatic retry. It is what makes a RETRY distinguishable from a RE-SEND: a retry is new work with a new terminal frame, a re-send is the same frame again.",
           "type": "integer",
           "minimum": 1
         },
@@ -459,7 +482,7 @@
         "job": { "$ref": "#/$defs/job_id" },
         "attempt": { "description": "The attempt this terminates, matching the `job.start` that opened it.", "type": "integer", "minimum": 1 },
         "outcome": {
-          "description": "`succeeded` and `failed` are the command's own verdict; `cancelled` is an operator or a superseding push; `timed_out` is `timeout_s`; `errored` is the agent failing to run the job at all -- an image that would not pull, a workspace it could not create. The last is a different thing from a build that failed, and a control plane that conflated them would retry the wrong ones.",
+          "description": "`succeeded` and `failed` are the command's own verdict; `cancelled` is the agent being stopped, or a `job.cancel`; `timed_out` is `timeout_s`; `errored` is the agent failing to run the job at all -- an image that would not pull, a workspace it could not create. The last is a different thing from a build that failed, and a control plane that conflated them would retry the wrong ones.",
           "enum": ["succeeded", "failed", "cancelled", "timed_out", "errored"]
         },
         "exit_code": {

@@ -1095,6 +1095,16 @@ expect_red 'a recorded terminal frame may be revised' \
   'drop trigger runner_terminal_frames_no_update on ouroboros.runner_terminal_frames;'
 
 
+# --- V043, a pool's default command (#252) ---------------------------------------
+#
+# Dispatch copies a pool's default onto every submission that names no command, so a blank
+# default would send builds with nothing to run and each would come back as an executor error —
+# a farm fault charged to the build, with no refusal anywhere to say why.
+
+expect_red 'a pool may default to a blank command' \
+  'a pool default command is not blank .*runner_pools_default_command_shape did not fire' \
+  'alter table ouroboros.runner_pools drop constraint runner_pools_default_command_shape;'
+
 printf '\n'
 if check_summary; then
   rm -rf "$LOG_DIR"

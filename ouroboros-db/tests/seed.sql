@@ -3175,6 +3175,20 @@ select pg_temp.must_hold(
          where o."slug" = 'acme-robotics' and p.name = 'pool-b'),
   'pool-a is a container world with a pinned image and an auto-scale preference that is off (B9); pool-b is a shell world tagged hil (#776)');
 
+-- AH.4's (#252) fallback: pool-a's builds are all one command, which is its default and what
+-- AI.5's (#260) submit dialog prefills; pool-b runs two kinds of job and has none, so a
+-- submission there has to name its command.
+select pg_temp.must_hold(
+  (select default_command = 'west build -b helios_mainboard app'
+     from ouroboros.runner_pools p
+     join ouroboros.organization o on o."id" = p.organization_id
+    where o."slug" = 'acme-robotics' and p.name = 'pool-a')
+   and (select default_command is null
+          from ouroboros.runner_pools p
+          join ouroboros.organization o on o."id" = p.organization_id
+         where o."slug" = 'acme-robotics' and p.name = 'pool-b'),
+  'pool-a defaults to its one build command; pool-b, which runs two kinds of job, has no default');
+
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.runners r
      join ouroboros.organization o on o."id" = r.organization_id

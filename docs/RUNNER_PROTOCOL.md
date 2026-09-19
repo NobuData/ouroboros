@@ -103,7 +103,7 @@ ULID:
 | `01KE7NAGMYAV6AVSA6FMTM53N1` | one frame | the frame |
 | `sess_01KE7MV3WKAG706QMDN23AJ3BE` | one session | one connection, plus the resume window |
 | `rnr_01KE76X95CS69B659HTXZJ0HA3` | one enrolled runner | for as long as it is enrolled |
-| `job_01KE7J4EZ3204KQXMHJRPQPWQ6` | one job | across attempts, sessions and agents |
+| `job_01KE7J4EZ3204KQXMHJRPQPWQ6` | one job — one attempt of a build | across sessions and agents |
 
 The shape is fixed rather than free because a ULID's first ten characters encode the
 millisecond it was minted: **ids sort by time**. A session log sorts into the order it
@@ -164,7 +164,7 @@ conversation can be compared without a network.
 
 ## 4. The messages
 
-Fifteen types, and the `payload` column of each table below is the field's contract.
+Sixteen types, and the `payload` column of each table below is the field's contract.
 Everything is required unless the table says otherwise; every example is the committed
 fixture, byte for byte, and
 [`scripts/verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh) fails the build
@@ -439,7 +439,7 @@ sleep mid-handshake from holding a job nobody is running.
 
 | Field | Type | Required | Meaning |
 |---|---|:---:|---|
-| `job` | job id | yes | Stable across attempts, sessions and agents |
+| `job` | job id | yes | Stable across sessions and agents. A retry is a **new** job — see `attempt` |
 | `pool` | string (1–64) | yes | The pool this was dispatched to |
 | `executor` | `container` · `shell` | yes | How to run it |
 | `image` | string (1–512) | **conditional** | Required for `container`, **forbidden** for `shell` |
@@ -452,6 +452,7 @@ sleep mid-handshake from holding a job nobody is running.
 | `repository.commit` | 40 lowercase hex | yes | The exact commit, so a moving ref cannot change what was built after the fact |
 | `timeout_s` | integer 1–86400 | yes | Wall-clock budget. On expiry: cancel, and finish `timed_out` |
 | `expires_at` | timestamp | yes | When this offer stops being answerable |
+| `attempt` | integer ≥ 1 | no | Which attempt of the build this job is: 2 for the automatic retry of an infrastructure failure ([#252](https://github.com/NobuData/ouroboros/issues/252)). Absent means 1, and the gateway omits it on a first attempt. Optional only because it was added inside line 1 (§ 3) |
 
 Three of those are worth the words:
 
@@ -510,6 +511,13 @@ directory on the customer's machine for a command to run in or for cleanup to re
 A shell job on the `darwin/arm64` pool, with no image and no repository:
 [`valid/job-offer-shell.json`](../schemas/runner-protocol/fixtures/valid/job-offer-shell.json).
 
+**A retry is a new job, and says so.** The control plane keeps one record per *attempt*
+([#249](https://github.com/NobuData/ouroboros/issues/249)'s `build_jobs.retry_of`), so the
+automatic retry of an infrastructure failure is dispatched under its own job id, with
+`attempt: 2`, and the agent reports that number back in `job.start` and `job.finish`:
+[`valid/job-offer-retry.json`](../schemas/runner-protocol/fixtures/valid/job-offer-retry.json).
+A job's log, its workspace and its terminal frame therefore always belong to exactly one attempt.
+
 #### `job.accept`
 
 **agent → gateway.** Taken.
@@ -565,6 +573,40 @@ that this *pool* is mis-configured rather than that this agent was unlucky.
 }
 ```
 
+#### `job.cancel`
+
+**gateway → agent.** Stop a job this agent holds — accepted and waiting, preparing, or running
+([#252](https://github.com/NobuData/ouroboros/issues/252)).
+
+| Field | Type | Required | Meaning |
+|---|---|:---:|---|
+| `job` | job id | yes | — |
+| `reason` | `operator` · `reassigned` | yes | `operator`: somebody cancelled the build. `reassigned`: the control plane no longer counts this job as this runner's — it was re-dispatched after the runner was presumed lost, or its offer lapsed before the accept arrived |
+| `detail` | string (1–512) | yes | One sentence for the agent's log |
+
+The agent stops the job exactly as it would for its own shutdown — SIGTERM, a grace, SIGKILL,
+the process group swept — and reports it with an ordinary `job.finish` whose outcome is
+`cancelled`: an exit code when the command had started, `null` when it was still preparing.
+That finish is terminal like any other, so it is re-sent until receipted.
+
+**A cancel for a job the agent does not hold is not an error.** It crossed the job's own
+`job.finish` on the wire, or the offer it answers never reached this agent. There is nothing to
+stop, so the agent logs it and carries on; ending the session over it would only make the
+gateway replay the same cancel into the next one.
+
+```json
+{
+  "v": 1,
+  "type": "job.cancel",
+  "id": "01KE7C4NCE1Q4Z8R2M6T0VXW3A",
+  "payload": {
+    "job": "job_01KE7J4EZ3204KQXMHJRPQPWQ6",
+    "reason": "operator",
+    "detail": "an operator cancelled this build from the farm page"
+  }
+}
+```
+
 ### 4.4 Execution
 
 #### `job.start`
@@ -578,7 +620,7 @@ it is really downloading is a farm page that lies.
 | Field | Type | Required | Meaning |
 |---|---|:---:|---|
 | `job` | job id | yes | — |
-| `attempt` | integer ≥ 1 | yes | 1 for the first run, incrementing per retry |
+| `attempt` | integer ≥ 1 | yes | The offer's `attempt`: 1 for the first run of a build, 2 for its automatic retry |
 | `executor` | `container` · `shell` | yes | What it is actually running under |
 | `started_at` | timestamp | yes | — |
 | `workspace` | string (1–1024) | yes | The directory the job owns, reported so a failure can be inspected on the machine |
@@ -663,7 +705,7 @@ control plane that retries the wrong jobs:
 |---|---|---|
 | `succeeded` | The command ran and exited 0 | integer, required |
 | `failed` | The command ran and exited non-zero | integer, required |
-| `cancelled` | An operator, or a superseding push | integer or `null` |
+| `cancelled` | The agent was stopped, or a [`job.cancel`](#jobcancel) told it to stop | integer or `null` |
 | `timed_out` | `timeout_s` expired | integer or `null` |
 | `errored` | **The agent could not run the job at all** — an image that would not pull, a workspace it could not create | integer or `null` |
 
@@ -1029,7 +1071,7 @@ Named here so that nobody looks for it and concludes it was forgotten:
 | Dialling, TLS setup, reconnection backoff, the session loop | [#244](https://github.com/NobuData/ouroboros/issues/244), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/agent`, `internal/ws` and `internal/state` |
 | The gateway's session store, presence and terminal-frame ledger | [#251](https://github.com/NobuData/ouroboros/issues/251), shipped — `ouroboros-rest`'s [`farm/gateway/`](../ouroboros-rest/src/modules/farm/gateway) and `ouroboros-db`'s `V042` |
 | How each platform measures the heartbeat's CPU and memory | [#245](https://github.com/NobuData/ouroboros/issues/245), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/telemetry` |
-| The dispatcher: which runner is offered which job, retries, cancellation | [#252](https://github.com/NobuData/ouroboros/issues/252) |
+| The dispatcher: which runner is offered which job, retries, cancellation | [#252](https://github.com/NobuData/ouroboros/issues/252), shipped — `ouroboros-rest`'s [`farm/dispatch/`](../ouroboros-rest/src/modules/farm/dispatch) |
 | How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#running-jobs)'s `internal/exec` |
 | How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247) |
 | Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#install)'s `install.sh`, `make release` and `ci/runner`'s `release/runner`; served by `ouroboros-rest`'s [`farm/installer/`](../ouroboros-rest/src/modules/farm/installer) |

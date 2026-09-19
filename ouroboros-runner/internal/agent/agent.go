@@ -165,6 +165,10 @@ type Agent struct {
 	// notices carries a running job's non-terminal frames to the live session.
 	notices noticeBoard
 
+	// cancels holds a stop handle for every job this agent holds, so a gateway's
+	// `job.cancel` (#252) can stop one job without stopping the agent.
+	cancels jobCancels
+
 	// jobs is every job running in the background, waited for before Run returns.
 	jobs sync.WaitGroup
 }

@@ -40,7 +40,7 @@ const (
 // Type is a message type — the closed set in the envelope's `type` field.
 type Type string
 
-// The fifteen message types of protocol 1, grouped as
+// The sixteen message types of protocol 1, grouped as
 // docs/RUNNER_PROTOCOL.md groups them.
 const (
 	TypeHello       Type = "hello"      // session — the agent's first frame
@@ -50,6 +50,7 @@ const (
 	TypeJobOffer    Type = "job.offer"  // dispatch
 	TypeJobAccept   Type = "job.accept" // dispatch
 	TypeJobDecline  Type = "job.decline"
+	TypeJobCancel   Type = "job.cancel"   // dispatch — the gateway taking a job back (#252)
 	TypeJobStart    Type = "job.start"    // execution
 	TypeJobProgress Type = "job.progress" // execution, advisory
 	TypeJobFinish   Type = "job.finish"   // execution, TERMINAL and idempotent
@@ -68,7 +69,7 @@ const (
 // those is missing.
 var MessageTypes = []Type{
 	TypeHello, TypeAck, TypeRefuse, TypeHeartbeat,
-	TypeJobOffer, TypeJobAccept, TypeJobDecline,
+	TypeJobOffer, TypeJobAccept, TypeJobDecline, TypeJobCancel,
 	TypeJobStart, TypeJobProgress, TypeJobFinish,
 	TypeLogChunk, TypeReceipt,
 	TypeDrain, TypeUndrain, TypeBye,

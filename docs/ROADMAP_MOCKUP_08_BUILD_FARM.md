@@ -469,7 +469,7 @@ job.offer{executor: shell} on runner without docker ─▶ accept (capability ma
   printing its environment, metacharacter argv, a TERM-ignoring tree checked gone within the
   grace), a fake Engine API, and — behind `make test-docker` — rootless Docker with `busybox`.
   Not here, by design: a wire `job.cancel` (AH.4, #252), an offer's attempt number (always 1
-  until dispatch retries exist), source checkout, and log shipping (AG.5, #247 — until then
+  until dispatch retries exist — both have since landed with AH.4), source checkout, and log shipping (AG.5, #247 — until then
   `job.finish.log` reports all output as dropped rather than an empty log).
 
 ### Issue AG.5 — ouroboros-runner: [AG.5] Log shipping & ccache stats
@@ -565,7 +565,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 | AH.1 | #249 | 🟢 Done | ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs | Full relational model + seeds + ci/db probes | mvp, build-farm, db, ci | N (after #19, BA-B.3) | Y | L | ouroboros-db, .github |
 | AH.2 | #250 | 🟢 Done | ouroboros-rest: [AH.2] Enrollment API & runner CA | Scoped tokens (AD.1-sealed), cert issuance/renewal/revocation, audit | mvp, build-farm, rest | N (after AH.1, AD.1) | Y | L | ouroboros-rest |
 | AH.3 | #251 | 🟢 Done | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
-| AH.4 | #252 | 🟡 Open | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
+| AH.4 | #252 | 🟢 Done | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.5 | #253 | 🟡 Open | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.6 | #254 | 🟡 Open | ouroboros-rest: [AH.6] Farm read APIs & stats | Runners/pools/jobs payloads, stat-row math, lifecycle actions | mvp, build-farm, rest | N (after AH.4) | Y | M | ouroboros-rest |
 | AH.7 | #255 | 🟡 Open | ouroboros-rest: [AH.7] Farm integration tests (fake agent) | Protocol contract, dispatch matrix, presence, caps, isolation | mvp, build-farm, rest, ci | N (after AH.4–AH.6) | Y | M | ouroboros-rest |
@@ -798,7 +798,7 @@ heartbeat ─▶ telemetry + presence   missed×3 ─▶ offline (last_seen hone
 
 ### Issue AH.4 — ouroboros-rest: [AH.4] Build job dispatch & queueing
 
-> **GitHub issue:** #252 · **Status:** 🟡 Open · **Parent epic:** #240
+> **GitHub issue:** #252 · **Status:** 🟢 Done · **Parent epic:** #240
 
 
 - **Problem Statement:** Jobs must find eligible runners (pool, executor
@@ -825,6 +825,47 @@ heartbeat ─▶ telemetry + presence   missed×3 ─▶ offline (last_seen hone
 submit(pool-a, west build…) ─▶ eligible: forge-01(q:2)❌cap, forge-02(idle)✓ ─▶ offer ─▶ running
 runner lost ─▶ requeue(once) ─▶ retried │ failed    drain: finish current, no offers
 ```
+
+- **Delivered:** [`src/modules/farm/dispatch/`](../ouroboros-rest/src/modules/farm/dispatch),
+  [`V043__farm_dispatch.sql`](../ouroboros-db/migrations/V043__farm_dispatch.sql) and a
+  `job.cancel` in the runner protocol, both halves. **Submission** is
+  `POST /api/v1/farm/jobs` (member+, decision **B6**): pool, `owner/name`, ref, the exact commit —
+  an offer pins it, so a moving ref cannot change what was built — and the command as **argv**,
+  or the pool's new `default_command` (pool-a's is its one build command; pool-b, which runs two
+  kinds of job, has none and answers `farm_command_required`). The pool's executor, image and
+  the command are snapshotted onto the job, the command stored as the canonical rendering of the
+  argv (`command.ts`, whose reader refuses anything its writer could not have produced, so no free
+  text is ever split). **The internal surface for AJ.3 (#265)** is
+  `FarmJobsService.submitForRun(org, runId, request)` — the same path with `run_id` set,
+  exported and documented, called by nothing yet. **The state machine** (`job.states.ts`) keeps
+  V040's seven statuses and splits `queued` into *waiting* and *accepted* by whether a runner holds
+  it, so a runner's queue depth is its accepted-not-started jobs — the agent's own `q:N`, which the
+  suite holds equal under six concurrent submissions — and every writer holds its move to the
+  transition table, an illegal one throwing `InvalidJobTransitionError`. **Eligibility** is one
+  statement: the job's pool (or a `runner_pool_windows` row covering now), `desired_state
+  active`, a live status, the executor among those the `hello` reported — a container job is
+  never offered to a machine without docker — and room under the pool's `max_concurrency`; then
+  a socket held by this process. **Placement** locks the runner row and re-counts under the lock,
+  so two dispatchers never over-fill one runner (a mutation dropping the re-count turned the
+  suite red). **Offer → accept / decline**: a decline returns the job to the queue and cools that
+  runner off for it for 30 s; an unanswered offer is taken back after `offer_ack_ms` plus a grace.
+  **Retries are the farm's, never the build's**: an `errored` finish or a runner lost mid-build
+  makes the attempt `retried` and a new job with `retry_of`, offered with a new optional
+  `job.offer.attempt` the agent echoes; a second is `failed`; a non-zero exit or a timeout is
+  `failed` and never retried. The `errored` retry is created inside the gateway's terminal-ledger
+  transaction (`job.lifecycle.ts`), so a receipted retry always has its successor. **A lost
+  runner** is one offline past the five-minute resume window — one that resumes inside it keeps
+  its job. **Cancellation** (`POST /api/v1/farm/jobs/:id/cancel`) ends the job at once and sends
+  `job.cancel {operator}` to the runner holding it; the Go agent (0.6.0) now runs each job under
+  its own context and stops only that one, reporting `cancelled`, and ignores a cancel for a job
+  it does not hold. A runner that accepts, starts or reports a job no longer its own is sent
+  `job.cancel {reassigned}`, once per session. **The two amendments are seams**: a
+  `FARM_DISPATCH_GATE` asked once per workspace per pass before anything is offered (open until
+  #489's `org_state`), and `JobCompletions`, announced off the completing path for #510's counter.
+  Verified by 20 fake-agent integration cases (the dispatch matrix, retry, lost runners, cancel,
+  concurrency, isolation), seven mutation spot checks that each turned it red, and the Go agent's cancel tests under
+  `-race`. **Known limit:** today's agent still declines any offer naming a repository (source
+  checkout is unassigned), so real runners queue submitted builds rather than run them.
 
 ### Issue AH.5 — ouroboros-rest: [AH.5] Log ingest & retrieval
 
