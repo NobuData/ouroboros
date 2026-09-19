@@ -466,6 +466,27 @@ describe("the agent gateway", () => {
       expect(row.last_seen_at?.getTime()).toBeGreaterThanOrEqual(beat - 1000);
     });
 
+    it("stores NO KEY for a measurement the agent sent as null — the em-dash, never a zero (#245)", async () => {
+      const context = await farm();
+      const runner = await enrol(context);
+      const { agent } = await connect(runner);
+
+      agent.send("valid/heartbeat-busy.json");
+      await eventually(
+        () => runnerRow(runner.runnerId),
+        (r) => (r.telemetry as { cpu_pct?: number }).cpu_pct === 96.25,
+      );
+      agent.send("valid/heartbeat-unmeasured.json");
+
+      // The busy beat's numbers are not carried into the unmeasured one.
+      const row = await eventually(
+        () => runnerRow(runner.runnerId),
+        (r) => r.uptime_seconds === "3",
+      );
+      expect(row.telemetry).toEqual({ queue_depth: 0, sampled_at: "2026-09-18T12:00:00.000Z" });
+      expect(row.status).toBe("online");
+    });
+
     it("FLIPS TO OFFLINE AT THE DOCUMENTED THRESHOLD, keeps last_seen_at at the last real beat, and RECOVERS on reconnect", async () => {
       const context = await farm();
       const runner = await enrol(context);

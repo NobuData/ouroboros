@@ -3379,6 +3379,17 @@ behind a machine that died (`gateway.policy.ts`). The sweep **never writes `last
 stays at the last heartbeat that genuinely arrived. A runner that comes back is `online` the
 moment it says hello, and an agent's `bye` makes it `offline` at once, deliberately.
 
+### Telemetry is honest too
+
+A heartbeat's `cpu_pct`, `memory_used_mb` and `memory_total_mb` are `null` when the agent's
+machine cannot measure them ([#245](https://github.com/NobuData/ouroboros/issues/245)) — a
+container that cannot see the host's CPU, the first beat before a CPU window has closed.
+`telemetry.ts` then **leaves that key out** of `runners.telemetry`, which `farm_telemetry_valid`
+accepts and V040 documents as the em-dash the runners table draws; it never writes a `0` in its
+place. `queue_depth` is the agent's count of jobs **accepted and not yet started** — the running
+job is not in it — which is the definition dispatch
+([#252](https://github.com/NobuData/ouroboros/issues/252)) shares.
+
 ### Sessions, resume and ordered delivery
 
 `AgentSessions` is connection ↔ runner. Every frame the gateway owes a session — a receipt until

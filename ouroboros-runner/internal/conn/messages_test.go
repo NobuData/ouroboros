@@ -106,15 +106,21 @@ func TestIntoReadsEveryGatewayMessage(t *testing.T) {
 // here rather than a refusal from the gateway.
 func TestOutgoingPayloadsAreLegal(t *testing.T) {
 	five := 5000
+	idle, busy := 0.0, 12.5
+	none, used, total := 0, 100, 16384
 	for _, frame := range []Frame{
 		NewFrame(NewID(), TypeHeartbeat, HeartbeatPayload{
 			SentAt: "2026-09-18T12:00:00.000Z", State: StateIdle, UptimeS: 1,
-			CPUPct: 0, MemoryUsedMB: 0, MemoryTotalMB: 16384, QueueDepth: 0, Job: nil,
+			CPUPct: &idle, MemoryUsedMB: &none, MemoryTotalMB: &total, QueueDepth: 0, Job: nil,
 		}),
 		NewFrame(NewID(), TypeHeartbeat, HeartbeatPayload{
-			SentAt: "2026-09-18T12:00:00.000Z", State: StateBusy, UptimeS: 1, CPUPct: 12.5,
-			MemoryUsedMB: 100, MemoryTotalMB: 16384, QueueDepth: 1,
+			SentAt: "2026-09-18T12:00:00.000Z", State: StateBusy, UptimeS: 1, CPUPct: &busy,
+			MemoryUsedMB: &used, MemoryTotalMB: &total, QueueDepth: 1,
 			Job: &HeartbeatJob{ID: "job_01KE7J4EZ3204KQXMHJRPQPWQ6", Phase: "run", Pct: 40},
+		}),
+		// Nothing measured: the three measurements null, which the contract accepts (#245).
+		NewFrame(NewID(), TypeHeartbeat, HeartbeatPayload{
+			SentAt: "2026-09-18T12:00:00.000Z", State: StateIdle, UptimeS: 1, QueueDepth: 2,
 		}),
 		NewFrame(NewID(), TypeJobDecline, JobDeclinePayload{
 			Job: "job_01KE7J4EZ3204KQXMHJRPQPWQ6", Offer: "01KE76GYFT5404Q2FA41RMP9PE",
@@ -135,14 +141,66 @@ func TestOutgoingPayloadsAreLegal(t *testing.T) {
 
 // TestIdleHeartbeatSendsNullJob pins `"job": null` — present and null, never absent.
 func TestIdleHeartbeatSendsNullJob(t *testing.T) {
+	total := 1
 	encoded, err := Encode(NewFrame(NewID(), TypeHeartbeat, HeartbeatPayload{
-		SentAt: "2026-09-18T12:00:00.000Z", State: StateIdle, MemoryTotalMB: 1,
+		SentAt: "2026-09-18T12:00:00.000Z", State: StateIdle, MemoryTotalMB: &total,
 	}))
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
 	if !bytes.Contains(encoded, []byte(`"job":null`)) {
 		t.Errorf("expected an explicit null job, got %s", encoded)
+	}
+}
+
+// TestUnmeasuredHeartbeatSendsNulls pins what a heartbeat says about a measurement this
+// machine could not take (#245): the key present and `null` — never absent, and never a
+// zero, which is a reading.
+func TestUnmeasuredHeartbeatSendsNulls(t *testing.T) {
+	encoded, err := Encode(NewFrame(NewID(), TypeHeartbeat, HeartbeatPayload{
+		SentAt: "2026-09-18T12:00:00.000Z", State: StateIdle,
+	}))
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	for _, want := range []string{`"cpu_pct":null`, `"memory_used_mb":null`, `"memory_total_mb":null`} {
+		if !bytes.Contains(encoded, []byte(want)) {
+			t.Errorf("expected %s, got %s", want, encoded)
+		}
+	}
+	if _, diags := Decode(encoded); len(diags) > 0 {
+		t.Errorf("an unmeasured heartbeat is not legal: %v", diags)
+	}
+
+	// And a measured zero stays a zero: the pointer is what tells them apart.
+	zero := 0.0
+	encoded, err = Encode(NewFrame(NewID(), TypeHeartbeat, HeartbeatPayload{
+		SentAt: "2026-09-18T12:00:00.000Z", State: StateIdle, CPUPct: &zero,
+	}))
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if !bytes.Contains(encoded, []byte(`"cpu_pct":0`)) {
+		t.Errorf("a measured idle CPU was not sent as 0: %s", encoded)
+	}
+}
+
+// TestValidPhase is the phase vocabulary the executors report into, which must be the
+// contract's exactly: a heartbeat carrying any other phase is refused, and the session
+// with it.
+func TestValidPhase(t *testing.T) {
+	for _, phase := range []string{PhaseFetch, PhasePrepare, PhaseRun, PhaseUpload} {
+		if !ValidPhase(phase) {
+			t.Errorf("%q should be a phase", phase)
+		}
+	}
+	for _, phase := range []string{"", "compiling", "Run", "finish"} {
+		if ValidPhase(phase) {
+			t.Errorf("%q should not be a phase", phase)
+		}
+	}
+	if len(phaseValues) != 4 {
+		t.Errorf("the contract names %d phases; this test knows four", len(phaseValues))
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/ws"
 )
 
@@ -449,25 +450,51 @@ func (s *session) flush() error {
 }
 
 // heartbeat writes one heartbeat.
+func (s *session) heartbeat() error {
+	return write(s.socket, conn.NewFrame(conn.NewID(), conn.TypeHeartbeat, s.agent.heartbeat()))
+}
+
+// heartbeat is this agent's presence and load, now.
+func (a *Agent) heartbeat() conn.HeartbeatPayload {
+	var sample telemetry.Sample
+	if a.config.Telemetry != nil {
+		sample = a.config.Telemetry.Latest()
+	}
+	draining, _ := a.draining.get()
+	return NewHeartbeat(a.config.Now(), a.started, sample, &a.workload, draining)
+}
+
+// NewHeartbeat is the heartbeat an agent in this condition sends ([#245]).
 //
-// The static half is real: the state, the uptime, the machine's memory. The moving half
-// — CPU and memory in use, queue depth, the running job — is [#245]'s, and is reported as
-// idle zeros until it lands: an honest "nothing measured" rather than a guess.
+// The measurements are the sample's, and each is null when it could not be taken — never
+// zero, never the last value that could be. The queue depth and the running job are the
+// workload's. The state is `draining` while drained (a drained agent finishing its last
+// job still says so, because that is what the dispatcher must know), `busy` while a job
+// runs, and `idle` otherwise.
+//
+//   - now is the agent's clock, which `sent_at` reports.
+//   - started is when this process started, which `uptime_s` counts from.
 //
 // [#245]: https://github.com/NobuData/ouroboros/issues/245
-func (s *session) heartbeat() error {
-	now := s.agent.config.Now()
+func NewHeartbeat(now, started time.Time, sample telemetry.Sample, workload *Workload, draining bool) conn.HeartbeatPayload {
+	queueDepth, running := workload.Snapshot()
 	status := conn.StateIdle
-	if draining, _ := s.agent.draining.get(); draining {
+	if running != nil {
+		status = conn.StateBusy
+	}
+	if draining {
 		status = conn.StateDraining
 	}
-	return write(s.socket, conn.NewFrame(conn.NewID(), conn.TypeHeartbeat, conn.HeartbeatPayload{
+	return conn.HeartbeatPayload{
 		SentAt:        now.UTC().Format("2006-01-02T15:04:05.000Z"),
 		State:         status,
-		UptimeS:       int(now.Sub(s.agent.started).Seconds()),
-		MemoryTotalMB: s.agent.config.Capabilities.MemoryMB,
-		Job:           nil,
-	}))
+		UptimeS:       int(max(now.Sub(started), 0).Seconds()),
+		CPUPct:        sample.CPUPct,
+		MemoryUsedMB:  sample.MemoryUsedMB,
+		MemoryTotalMB: sample.MemoryTotalMB,
+		QueueDepth:    queueDepth,
+		Job:           running,
+	}
 }
 
 // heartbeatInterval is the gateway's interval, plus or minus its jitter — which is what

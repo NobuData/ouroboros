@@ -57,6 +57,50 @@ func TestHelloPrintsALegalFrame(t *testing.T) {
 	}
 }
 
+// TestHeartbeatPrintsThisMachine is the parity instrument (#245): the heartbeat this
+// machine would send, measured over one window, validated against the contract before it
+// is printed — and carrying real readings on a machine that can take them, which every
+// machine ci/runner runs on can.
+func TestHeartbeatPrintsThisMachine(t *testing.T) {
+	printed, logged, err := runCommandLine(t, env(nil), "heartbeat", "--window", "200ms")
+	if err != nil {
+		t.Fatalf("heartbeat: %v\n%s", err, logged)
+	}
+
+	envelope, diags := conn.Decode([]byte(printed))
+	if len(diags) > 0 {
+		t.Fatalf("the printed frame is not a legal heartbeat: %v\n%s", diags, printed)
+	}
+	if envelope.Type != conn.TypeHeartbeat || envelope.ID != placeholderID {
+		t.Errorf("expected a heartbeat with the placeholder id, got %s %s", envelope.Type, envelope.ID)
+	}
+	var beat conn.HeartbeatPayload
+	if err := envelope.Into(&beat); err != nil {
+		t.Fatal(err)
+	}
+	if beat.CPUPct == nil || beat.MemoryUsedMB == nil || beat.MemoryTotalMB == nil {
+		t.Errorf("this machine can be measured, and a measurement is missing:\n%s\n%s", printed, logged)
+	}
+	if beat.State != conn.StateIdle || beat.QueueDepth != 0 || beat.Job != nil {
+		t.Errorf("a machine measured by a command has no work: %+v", beat)
+	}
+}
+
+// TestHeartbeatStopsWhenInterrupted asserts a Ctrl-C during the window ends the command
+// with an error rather than printing a reading it did not finish taking.
+func TestHeartbeatStopsWhenInterrupted(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(errors.New("SIGINT received"))
+	stdout := &bytes.Buffer{}
+	err := run(ctx, []string{"heartbeat"}, stdout, &bytes.Buffer{}, env(nil))
+	if err == nil || !strings.Contains(err.Error(), "SIGINT received") {
+		t.Errorf("expected the interruption as the error, got %v", err)
+	}
+	if stdout.Len() > 0 {
+		t.Errorf("an interrupted measurement printed a frame:\n%s", stdout)
+	}
+}
+
 // TestHelloCarriesNoCredential is a standing assertion rather than a test of today's
 // code.
 //
@@ -132,6 +176,10 @@ func TestUsage(t *testing.T) {
 		{"hello", "--no-such-flag"},
 		{"enroll", "stray-argument"},
 		{"run", "stray-argument"},
+		{"heartbeat", "--no-such-flag"},
+		{"heartbeat", "stray-argument"},
+		{"heartbeat", "--window", "1ns"},
+		{"heartbeat", "--window", "2h"},
 	} {
 		_, _, err := runCommandLine(t, env(nil), args...)
 		if !errors.Is(err, errUsage) {
@@ -151,7 +199,7 @@ func TestUsage(t *testing.T) {
 // wire contract is.
 func TestUsageDescribesTheAgent(t *testing.T) {
 	for _, want := range []string{
-		"enroll", "run", "--tenant", "--pool", "--token", "--bearer-fallback",
+		"enroll", "run", "heartbeat", "--tenant", "--pool", "--token", "--bearer-fallback",
 		"outbound", "nothing listens", "docs/RUNNER_PROTOCOL.md",
 		envServer, envToken, envStateDir, envServerCA,
 	} {

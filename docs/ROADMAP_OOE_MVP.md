@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**226 of 454 ordered issues are closed** — P0 through P6 are complete, and P7, P8 and P9 are
+**227 of 454 ordered issues are closed** — P0 through P6 are complete, and P7, P8 and P9 are
 under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
@@ -43,7 +43,7 @@ and are accounted for in the counts below, not in the tables.
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
 | 🟡 **In progress** | P7 | **42** of 43 |
 | 🟡 **In progress** | P8 | **16** of 17 |
-| 🟡 **In progress** | P9 | **5** of 20 |
+| 🟡 **In progress** | P9 | **6** of 20 |
 | — **Not started** | P10–P17 | 0 of 209 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -115,7 +115,7 @@ position is not forced by dependencies, one of these decided it.
 | **P6** | Issue intake & estimation | ✅ 23/23 | 23 | 68 | Mockup 03 |
 | **P7** | Workflow authoring (visual + code) | 🟡 42/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | 🟡 16/17 | 17 | 52 | Mockup 09 |
-| **P9** | Build farm & runner agent | 🟡 5/20 | 20 | 70 | Mockup 08 |
+| **P9** | Build farm & runner agent | 🟡 6/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | — 0/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | — 0/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | — 0/28 | 28 | 83 | Mockups 14, 13 |
@@ -1418,7 +1418,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **20 issues** · 70 complexity points · order **#226–#245** · 9 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_08_BUILD_FARM.md` (Epics AG–AI)
-> **Status:** 🟡 **In progress** — 5 of 20 issues closed
+> **Status:** 🟡 **In progress** — 6 of 20 issues closed
 
 **Goal.** Ship the `ouroboros-runner` agent (static Go binary, three platforms), token-scoped enrollment with mTLS identity and outbound-only connections, live heartbeat telemetry, dispatchable builds, pools, and streaming logs.
 
@@ -1435,7 +1435,7 @@ the blockquote above that records what it did and what it did differently.
 | 228 | **AH.2** | ✅ [#250](https://github.com/NobuData/ouroboros/issues/250) | Enrollment API & runner CA | ouroboros-rest | L | AD.1, AH.1 |
 | 229 | **AG.2** | ✅ [#244](https://github.com/NobuData/ouroboros/issues/244) | Enrollment, identity & connection loop | ouroboros-runner | L | AG.1, AH.2 |
 | 230 | **AH.3** | ✅ [#251](https://github.com/NobuData/ouroboros/issues/251) | Agent WebSocket gateway | ouroboros-rest | L | AG.1, AH.2 |
-| 231 | **AG.3** | [#245](https://github.com/NobuData/ouroboros/issues/245) | Telemetry & presence reporting | ouroboros-runner | S | AG.2 |
+| 231 | **AG.3** | ✅ [#245](https://github.com/NobuData/ouroboros/issues/245) | Telemetry & presence reporting | ouroboros-runner | S | AG.2 |
 | 232 | **AG.4** | [#246](https://github.com/NobuData/ouroboros/issues/246) | Job executors (container & shell) | ouroboros-runner | L | AG.2 |
 | 233 | **AG.6** | [#248](https://github.com/NobuData/ouroboros/issues/248) | Packaging, install script & daemonization | ouroboros-runner, .github | M | AG.2 |
 | 234 | **AH.4** | [#252](https://github.com/NobuData/ouroboros/issues/252) | Build job dispatch & queueing | ouroboros-rest | M | AH.3 |

@@ -63,11 +63,13 @@ linters:
 
     gosec:
       excludes:
-        # G204 — a subprocess built from a variable. The one subprocess in this module
-        # is `/usr/sbin/sysctl -n hw.memsize`, an absolute path with constant
-        # arguments, and the rule cannot see that the path is a constant. When an
-        # executor starts running a gateway's argv (#246) this exclusion has to be
-        # revisited, because there the rule is exactly right.
+        # G204 — a subprocess built from a variable. The two subprocesses in this
+        # module are macOS's `/usr/sbin/sysctl -n hw.memsize` at start-up and
+        # `/usr/bin/top -l 2 -n 0 -s <window>` for the heartbeat's CPU reading (#245):
+        # absolute paths, and arguments that are constants or a number this agent
+        # formatted itself. The rule cannot see either. When an executor starts running a
+        # gateway's argv (#246) this exclusion has to be revisited, because there the
+        # rule is exactly right.
         - G204
 
     misspell:

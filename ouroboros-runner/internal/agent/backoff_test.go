@@ -141,6 +141,43 @@ func TestHeartbeatIntervalIsJitteredAroundTheGatewaysInterval(t *testing.T) {
 	}
 }
 
+// TestHeartbeatsOfAFleetAreSpread asserts the send timing is jittered with the real draw,
+// not only bounded: a thousand agents started together at the gateway's 10 s ± 2 s do not
+// beat together. Their next beats land across the whole window — some in each of its four
+// half-second-wide edges — rather than on one boundary, which is the fleet-wide spike the
+// jitter exists to prevent.
+func TestHeartbeatsOfAFleetAreSpread(t *testing.T) {
+	fleet := &session{
+		agent:  &Agent{config: Config{}},
+		limits: conn.Limits{HeartbeatIntervalMS: 10000, HeartbeatJitterMS: 2000},
+	}
+	distinct := map[time.Duration]bool{}
+	var early, late, nearlyNominal int
+	for range 1000 {
+		interval := fleet.heartbeatInterval()
+		if interval < 8*time.Second || interval > 12*time.Second {
+			t.Fatalf("%v is outside 10s ± 2s", interval)
+		}
+		distinct[interval] = true
+		switch {
+		case interval < 8500*time.Millisecond:
+			early++
+		case interval > 11500*time.Millisecond:
+			late++
+		case interval > 9750*time.Millisecond && interval < 10250*time.Millisecond:
+			nearlyNominal++
+		}
+	}
+	// Each band is an eighth of the window, so ~125 of a thousand; 40 is far below any
+	// plausible draw and far above what a lockstep fleet would produce.
+	if early < 40 || late < 40 || nearlyNominal < 40 {
+		t.Errorf("the fleet is bunched: %d early, %d late, %d near the nominal 10s", early, late, nearlyNominal)
+	}
+	if len(distinct) < 900 {
+		t.Errorf("only %d distinct intervals across a thousand agents", len(distinct))
+	}
+}
+
 // remoteAlert is the error crypto/tls returns when the peer sends an alert.
 func remoteAlert(text string) error {
 	return &net.OpError{Op: "remote error", Err: errors.New("tls: " + text)}

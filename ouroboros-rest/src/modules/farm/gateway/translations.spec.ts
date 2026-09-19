@@ -89,6 +89,43 @@ describe("telemetry", () => {
     expect(telemetryOf({ ...idle, memory_used_mb: 99999 }).ram_used_bytes).toBe(16384 * MIB);
   });
 
+  it("leaves out every measurement the agent could not take — never a zero in its place", () => {
+    const unmeasured = payloadOf<HeartbeatPayload>("valid/heartbeat-unmeasured.json");
+
+    expect(telemetryOf(unmeasured)).toEqual({
+      queue_depth: 0,
+      sampled_at: "2026-09-18T12:00:00.000Z",
+    });
+  });
+
+  it("leaves out each null measurement on its own, keeping the ones that were taken", () => {
+    expect(telemetryOf({ ...idle, cpu_pct: null })).toEqual({
+      ram_used_bytes: 1280 * MIB,
+      ram_total_bytes: 16384 * MIB,
+      queue_depth: 0,
+      sampled_at: "2026-09-18T12:00:00.000Z",
+    });
+    expect(telemetryOf({ ...idle, memory_used_mb: null })).toEqual({
+      cpu_pct: 4.5,
+      ram_total_bytes: 16384 * MIB,
+      queue_depth: 0,
+      sampled_at: "2026-09-18T12:00:00.000Z",
+    });
+  });
+
+  it("keeps a used figure whose total is unknown, with nothing to clamp it to", () => {
+    expect(telemetryOf({ ...idle, memory_total_mb: null })).toEqual({
+      cpu_pct: 4.5,
+      ram_used_bytes: 1280 * MIB,
+      queue_depth: 0,
+      sampled_at: "2026-09-18T12:00:00.000Z",
+    });
+  });
+
+  it("keeps a measured zero, which is a reading and not an absence", () => {
+    expect(telemetryOf({ ...idle, cpu_pct: 0 }).cpu_pct).toBe(0);
+  });
+
   it("calls a beat that reports a job building, whatever its state", () => {
     expect(isBuilding(idle)).toBe(false);
     expect(isBuilding(busy)).toBe(true);

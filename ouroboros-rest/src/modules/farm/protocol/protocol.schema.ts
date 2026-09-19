@@ -363,9 +363,11 @@ export const SPECS: Readonly<Record<string, MessageSpec>> = {
       timestamp("sent_at"),
       { name: "state", kinds: Kind.String, enum: STATE },
       count("uptime_s"),
-      { name: "cpu_pct", kinds: Kind.Number, min: 0, max: 100 },
-      count("memory_used_mb"),
-      { name: "memory_total_mb", kinds: Kind.Integer, min: 1 },
+      // The three measurements are null when the agent's machine cannot take them (#245):
+      // required, so the key is always there, and never a zero standing in for "unknown".
+      { name: "cpu_pct", kinds: Kind.Number | Kind.Null, min: 0, max: 100 },
+      { name: "memory_used_mb", kinds: Kind.Integer | Kind.Null, min: 0 },
+      { name: "memory_total_mb", kinds: Kind.Integer | Kind.Null, min: 1 },
       count("queue_depth"),
       {
         name: "job",

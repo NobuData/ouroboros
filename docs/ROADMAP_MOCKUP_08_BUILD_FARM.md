@@ -240,7 +240,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AG.1 | #243 | 🟢 Done | ouroboros-runner: [AG.1] Module scaffold & agent protocol spec | Go module, conventions, `docs/RUNNER_PROTOCOL.md`, ci/runner | mvp, build-farm, infra, ci | N (after #8) | Y | M | ouroboros-runner, .github, docs |
 | AG.2 | #244 | 🟢 Done | ouroboros-runner: [AG.2] Enrollment, identity & connection loop | Token bootstrap, mTLS cert, outbound WSS, reconnect/backoff | mvp, build-farm | N (after AG.1, AH.2) | Y | L | ouroboros-runner |
-| AG.3 | #245 | 🟡 Open | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
+| AG.3 | #245 | 🟢 Done | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
 | AG.4 | #246 | 🟡 Open | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
 | AG.5 | #247 | 🟡 Open | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
 | AG.6 | #248 | 🟡 Open | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
@@ -364,7 +364,7 @@ enroll(token) ─▶ {runner_id, cert, ca_pin} ─▶ wss:// (mTLS, outbound) �
 
 ### Issue AG.3 — ouroboros-runner: [AG.3] Telemetry & presence reporting
 
-> **GitHub issue:** #245 · **Status:** 🟡 Open · **Parent epic:** #239
+> **GitHub issue:** #245 · **Status:** 🟢 Done · **Parent epic:** #239
 
 
 - **Problem Statement:** The runners table's live columns — CPU, RAM, queue,
@@ -384,6 +384,33 @@ enroll(token) ─▶ {runner_id, cert, ca_pin} ─▶ wss:// (mTLS, outbound) �
 ```
 heartbeat{cpu: 82, ram: [14.2, 32], q: 2, up: 41d, job: {id, phase}} @10s ± jitter
 ```
+
+- **Delivered:** the moving half of `heartbeat`, in `ouroboros-runner`'s `internal/telemetry`
+  and `internal/agent`. **Collection is standard-library only**, keeping the module's
+  no-dependency rule rather than adding gopsutil: Linux reads `/proc/stat` and `/proc/meminfo`;
+  macOS reads memory in-process through `syscall.Sysctl` page counts and the CPU from
+  `/usr/bin/top -l 2 -n 0` (macOS publishes CPU ticks only through a Mach call Go reaches only
+  through cgo, which would break the cgo-free cross-compile). A background `Monitor` averages
+  **CPU over a 5 s window** — never one instantaneous sample — and reads memory in use as
+  total − available (the page cache is not pressure). **A measurement that cannot be taken is
+  `null`**, never 0 and never carried forward: every pass replaces every value, a sample older
+  than three windows vouches for nothing, and a failure is logged **once when it starts and once
+  when it clears**. That needed the contract to allow it: `cpu_pct`, `memory_used_mb` and
+  `memory_total_mb` became nullable inside line 1 (still required — null, not absent), with a
+  `valid/heartbeat-unmeasured.json` fixture and a `heartbeat-cpu-missing` parity case, and the
+  gateway (AH.3) now **leaves an unmeasured metric out of `runners.telemetry`** — the shape V040
+  already reads as the em-dash — rather than refusing the frame. **Queue depth is pinned to
+  accepted-not-started** in the document and the schema (the protocol had said "including the
+  running one"; the mockup's `q:2` and the dev seed agree with the issue), counted by a
+  `Workload` ledger the executors (AG.4) drive, which also gives `busy` and `job {phase, pct}`.
+  Send timing was already jittered (#244); a fleet-spread test now holds the real draw to it.
+  `ouroboros-runner heartbeat` prints the frame this machine would send, measured now — the
+  instrument for the parity spot-check against `top`. Done on linux/x86_64 (idle and at half
+  load, matching `top` to the tenth) and on the linux/arm64 build under qemu user-mode emulation;
+  **darwin/arm64 still needs a Mac**, its parsers being tested against recorded output only. Also
+  exercised live against AH.3 on a throwaway PostgreSQL 17: the first beat reached
+  `runners.telemetry` within a second of `run`, and an agent with `/proc/stat` hidden stored no
+  `cpu_pct` key — which is how a busy-loop on an instantly failing reading was found and fixed.
 
 ### Issue AG.4 — ouroboros-runner: [AG.4] Job executors (container & shell)
 

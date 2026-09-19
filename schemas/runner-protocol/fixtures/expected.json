@@ -94,6 +94,13 @@
       "diagnostics": []
     },
     {
+      "name": "heartbeat-unmeasured",
+      "about": "A machine that cannot measure itself says so: each measurement null, never 0 and never the last value it read -- and the runners table draws an em-dash (#245, #257). Also the first beat after an agent starts, before a CPU window has closed.",
+      "document": "valid/heartbeat-unmeasured.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
       "name": "job-offer",
       "about": "A container job: the executor that requires an image.",
       "document": "valid/job-offer.json",
@@ -310,6 +317,13 @@
       "document": "invalid/heartbeat-cpu-range.json",
       "valid": false,
       "diagnostics": [{ "code": "payload.field.range", "path": "/payload/cpu_pct" }]
+    },
+    {
+      "name": "heartbeat-cpu-missing",
+      "about": "Null, not absent: a measurement this machine cannot take is sent as null, and a heartbeat without the key has two shapes for one message.",
+      "document": "invalid/heartbeat-cpu-missing.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.missing", "path": "/payload/cpu_pct" }]
     },
     {
       "name": "heartbeat-state-enum",

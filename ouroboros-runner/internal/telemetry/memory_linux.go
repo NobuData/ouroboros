@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -44,13 +45,9 @@ func parseMemTotalMB(source io.Reader) (int, error) {
 		if !strings.HasPrefix(line, "MemTotal:") {
 			continue
 		}
-		parts := strings.Fields(line)
-		if len(parts) != 3 || parts[2] != "kB" {
-			return 0, fmt.Errorf("%s: cannot read %q as a MemTotal line", procMeminfo, line)
-		}
-		kibibytes, err := strconv.Atoi(parts[1])
+		kibibytes, err := meminfoKibibytes(line)
 		if err != nil {
-			return 0, fmt.Errorf("%s: %q is not a kibibyte count: %w", procMeminfo, parts[1], err)
+			return 0, err
 		}
 		if kibibytes < 1024 {
 			return 0, fmt.Errorf("%s: MemTotal is %d kB, which is not a machine", procMeminfo, kibibytes)
@@ -61,4 +58,80 @@ func parseMemTotalMB(source io.Reader) (int, error) {
 		return 0, fmt.Errorf("%s: %w", procMeminfo, err)
 	}
 	return 0, fmt.Errorf("%s: no MemTotal line", procMeminfo)
+}
+
+// parseMemory reads memory installed and memory in use out of a /proc/meminfo stream —
+// the heartbeat's two memory figures, from one read so that they agree.
+//
+// In use is MemTotal minus MemAvailable: memory the kernel could not hand to a new
+// process without swapping. That is the "used" procps's `top` and `free` report, and it
+// leaves out the page cache, which a build machine fills and which is not pressure.
+//
+// The halves fail apart. A kernel older than 3.14 publishes no MemAvailable, and on one
+// of those the heartbeat reports what is installed and a null for what is in use —
+// never MemFree in its place, which reads a warm page cache as a machine out of memory.
+func parseMemory(source io.Reader) memoryReading {
+	var total, available *int
+	var totalErr, availableErr error
+
+	scanner := bufio.NewScanner(source)
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "MemTotal:"):
+			kibibytes, err := meminfoKibibytes(line)
+			total, totalErr = &kibibytes, err
+		case strings.HasPrefix(line, "MemAvailable:"):
+			kibibytes, err := meminfoKibibytes(line)
+			available, availableErr = &kibibytes, err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		failed := fmt.Errorf("%s: %w", procMeminfo, err)
+		return memoryReading{totalErr: failed, usedErr: failed}
+	}
+
+	var reading memoryReading
+	switch {
+	case total == nil:
+		reading.totalErr = fmt.Errorf("%s: no MemTotal line", procMeminfo)
+	case totalErr != nil:
+		reading.totalErr = totalErr
+	case *total < 1024:
+		reading.totalErr = fmt.Errorf("%s: MemTotal is under a mebibyte, which is not a machine", procMeminfo)
+	default:
+		reading.totalMB = *total / 1024
+	}
+
+	switch {
+	case reading.totalErr != nil:
+		reading.usedErr = errors.New("memory in use is measured against the total, which cannot be read")
+	case available == nil:
+		reading.usedErr = fmt.Errorf("%s: no MemAvailable line (the kernel is older than 3.14)", procMeminfo)
+	case availableErr != nil:
+		reading.usedErr = availableErr
+	case *available > *total:
+		reading.usedErr = fmt.Errorf("%s: MemAvailable is larger than MemTotal", procMeminfo)
+	default:
+		reading.usedMB = (*total - *available) / 1024
+	}
+	return reading
+}
+
+// meminfoKibibytes reads the count out of one /proc/meminfo line, holding it to the
+// `Label:   <count> kB` shape.
+//
+// No error message quotes the count: the heartbeat logs a failure once per distinct
+// message, and one that changed with every read would be logged on every pass.
+func meminfoKibibytes(line string) (int, error) {
+	parts := strings.Fields(line)
+	label := strings.TrimSuffix(parts[0], ":")
+	if len(parts) != 3 || parts[2] != "kB" {
+		return 0, fmt.Errorf("%s: the %s line is not `%s: <count> kB`", procMeminfo, label, label)
+	}
+	kibibytes, err := strconv.Atoi(parts[1])
+	if err != nil || kibibytes < 0 {
+		return 0, fmt.Errorf("%s: %s is not a kibibyte count", procMeminfo, label)
+	}
+	return kibibytes, nil
 }

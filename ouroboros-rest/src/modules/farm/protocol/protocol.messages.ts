@@ -84,14 +84,20 @@ export interface RefusePayload {
 /** What an agent says it is doing. */
 export type AgentState = "idle" | "busy" | "draining";
 
-/** `heartbeat` — liveness and telemetry, every interval ± jitter. */
+/**
+ * `heartbeat` — liveness and telemetry, every interval ± jitter.
+ *
+ * The three measurements are `null` when the agent's machine could not take them (#245) —
+ * never a zero, never the last value it read. `queue_depth` counts jobs accepted and not yet
+ * started; the running one is `job`.
+ */
 export interface HeartbeatPayload {
   readonly sent_at: string;
   readonly state: AgentState;
   readonly uptime_s: number;
-  readonly cpu_pct: number;
-  readonly memory_used_mb: number;
-  readonly memory_total_mb: number;
+  readonly cpu_pct: number | null;
+  readonly memory_used_mb: number | null;
+  readonly memory_total_mb: number | null;
   readonly queue_depth: number;
   readonly job: { readonly id: string; readonly phase: Phase; readonly pct: number } | null;
 }

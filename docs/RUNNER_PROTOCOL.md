@@ -350,10 +350,10 @@ than a second message making the same round trip.
 | `sent_at` | timestamp | yes | The agent's clock. The control plane records its own receipt time beside it rather than trusting this |
 | `state` | `idle` · `busy` · `draining` | yes | `idle` will accept an offer, `draining` will accept nothing |
 | `uptime_s` | integer ≥ 0 | yes | How long this **process** has been up. Resets on restart; the session need not |
-| `cpu_pct` | number 0–100 | yes | Machine-wide, over the last interval, regardless of core count |
-| `memory_used_mb` | integer ≥ 0 | yes | Machine-wide, MiB |
-| `memory_total_mb` | integer ≥ 1 | yes | Machine-wide, MiB |
-| `queue_depth` | integer ≥ 0 | yes | Jobs accepted and not finished, including the running one |
+| `cpu_pct` | number 0–100, or `null` | yes | Machine-wide, **averaged over a short window**, regardless of core count. `null` when unmeasured |
+| `memory_used_mb` | integer ≥ 0, or `null` | yes | Machine-wide, MiB, page cache excluded. `null` when unmeasured |
+| `memory_total_mb` | integer ≥ 1, or `null` | yes | Machine-wide, MiB. `null` when unmeasured |
+| `queue_depth` | integer ≥ 0 | yes | Jobs **accepted and not yet started**. The running job is `job`, not part of this |
 | `job` | object or `null` | yes | The running job, or `null`. **Null, not absent** |
 | `job.id` | job id | yes | — |
 | `job.phase` | `fetch` · `prepare` · `run` · `upload` | yes | — |
@@ -362,6 +362,29 @@ than a second message making the same round trip.
 `job` being `null` rather than absent is the kind of decision this document exists to make
 once: an agent that omitted the key when idle and sent it when busy would have two shapes for
 one message, and every reader would need to know both.
+
+**A measurement the machine cannot take is `null`** ([#245](https://github.com/NobuData/ouroboros/issues/245)),
+and the runners table draws it as an em-dash ([#257](https://github.com/NobuData/ouroboros/issues/257)).
+The three platforms do not expose the same things — a container may not see the host's CPU, a
+restricted environment may refuse a reading outright — and the tempting substitutes are both
+lies that look like data: `0%` CPU on a machine that is mid-build is worse than no reading,
+because nobody doubts it, and the last value that could be read renders exactly like a fresh
+one. So the agent sends neither. A metric that stops being measurable is `null` on the very
+next beat, and the key is still there: null, not absent, for the reason `job` is. The first
+beat after an agent starts has a `null` CPU too — nothing has been averaged over a window yet.
+The three were made nullable inside line 1 (§ 3): the change refuses nothing the line accepted.
+
+**CPU is an average, not a sample.** One instantaneous reading is whatever the scheduler
+happened to be doing at that tick; the agent reports the busy share of CPU time over its
+sampling window instead (five seconds in the Go agent, measured in the background so that a
+beat never waits for one).
+
+**Queue depth has one definition, and dispatch shares it.** It counts jobs the agent has
+**accepted and not yet started** — what the mockup's `q:2` shows on a runner building one job
+with two waiting behind it, and what dispatch
+([#252](https://github.com/NobuData/ouroboros/issues/252)) reasons about for capacity. The
+running job is `job`. A server that counted it in the queue too would disagree with every
+agent by exactly one.
 
 ```json
 {
@@ -382,6 +405,7 @@ one message, and every reader would need to know both.
 ```
 
 With a job running, [`valid/heartbeat-busy.json`](../schemas/runner-protocol/fixtures/valid/heartbeat-busy.json).
+With nothing measured, [`valid/heartbeat-unmeasured.json`](../schemas/runner-protocol/fixtures/valid/heartbeat-unmeasured.json).
 
 ### 4.3 Dispatch
 
@@ -975,6 +999,7 @@ Named here so that nobody looks for it and concludes it was forgotten:
 | Enrollment: the registration token, the CSR, the issued certificate | [#250](https://github.com/NobuData/ouroboros/issues/250), shipped — [`SECURITY_MODEL.md` § 7](SECURITY_MODEL.md#7-the-build-farms-certificate-authority) and `ouroboros-rest`'s `/api/v1/farm/*` |
 | Dialling, TLS setup, reconnection backoff, the session loop | [#244](https://github.com/NobuData/ouroboros/issues/244), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/agent`, `internal/ws` and `internal/state` |
 | The gateway's session store, presence and terminal-frame ledger | [#251](https://github.com/NobuData/ouroboros/issues/251), shipped — `ouroboros-rest`'s [`farm/gateway/`](../ouroboros-rest/src/modules/farm/gateway) and `ouroboros-db`'s `V042` |
+| How each platform measures the heartbeat's CPU and memory | [#245](https://github.com/NobuData/ouroboros/issues/245), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/telemetry` |
 | The dispatcher: which runner is offered which job, retries, cancellation | [#252](https://github.com/NobuData/ouroboros/issues/252) |
 | How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246) |
 | How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247) |

@@ -141,6 +141,30 @@ type HeartbeatJob struct {
 	Pct   int    `json:"pct"`
 }
 
+// The phases a running job moves through, as `heartbeat.job.phase` and `job.progress`
+// name them.
+const (
+	PhaseFetch   = "fetch"
+	PhasePrepare = "prepare"
+	PhaseRun     = "run"
+	PhaseUpload  = "upload"
+)
+
+// ValidPhase reports whether a phase is one the contract accepts. The executors report
+// their phase from code, so the check is here, where one table of names holds it, rather
+// than left for the gateway to refuse a whole heartbeat over.
+func ValidPhase(phase string) bool {
+	for _, known := range phaseValues {
+		if phase == known {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidJobID reports whether a job id has the published shape, `job_` and a ULID.
+func ValidJobID(job string) bool { return jobRe.MatchString(job) }
+
 // The three states a heartbeat can report.
 const (
 	StateIdle     = "idle"
@@ -152,13 +176,20 @@ const (
 //
 // `Job` is a pointer so that an idle agent sends `"job": null` — the key present and
 // null, not absent, which is the one shape the contract accepts.
+//
+// The three measurements are pointers for the same reason and a stronger one: nil is sent
+// as `null`, which is what a heartbeat says about a metric this machine could not measure
+// ([#245]). Zero is a reading, and a `0%` CPU on a machine mid-build is a lie nobody
+// doubts. None of them is `omitempty` — a missing reading is null, never an absent key.
+//
+// [#245]: https://github.com/NobuData/ouroboros/issues/245
 type HeartbeatPayload struct {
 	SentAt        string        `json:"sent_at"`
 	State         string        `json:"state"`
 	UptimeS       int           `json:"uptime_s"`
-	CPUPct        float64       `json:"cpu_pct"`
-	MemoryUsedMB  int           `json:"memory_used_mb"`
-	MemoryTotalMB int           `json:"memory_total_mb"`
+	CPUPct        *float64      `json:"cpu_pct"`
+	MemoryUsedMB  *int          `json:"memory_used_mb"`
+	MemoryTotalMB *int          `json:"memory_total_mb"`
 	QueueDepth    int           `json:"queue_depth"`
 	Job           *HeartbeatJob `json:"job"`
 }
