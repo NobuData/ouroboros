@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "type": "heartbeat",
+  "id": "01KE7H0N6Y4WJ3T3M8ZK5QG2XA",
+  "payload": {
+    "sent_at": "2026-09-18T12:00:00.000Z",
+    "state": "idle",
+    "uptime_s": 3,
+    "cpu_pct": null,
+    "memory_used_mb": null,
+    "memory_total_mb": null,
+    "queue_depth": 0,
+    "job": null
+  }
+}

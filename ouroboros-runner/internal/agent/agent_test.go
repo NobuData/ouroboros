@@ -95,6 +95,7 @@ func config(farm *farmtest.Farm, dir *state.Dir, logs *logBuffer) Config {
 		Capabilities: conn.Capabilities{
 			Docker: true, Shell: false, Ccache: false, CPUs: 8, MemoryMB: 16384,
 		},
+		Telemetry:        measuring(12.5, 2048, 16384),
 		Renewer:          renewer,
 		Logger:           newLogger(logs),
 		Backoff:          Backoff{Base: 20 * time.Millisecond, Max: 200 * time.Millisecond},
@@ -223,7 +224,10 @@ func TestEnrollConnectHeartbeat(t *testing.T) {
 		t.Errorf("a first connection has no session to resume, got %q", hello.Resume)
 	}
 	heartbeat := observed.Heartbeats[0]
-	if heartbeat.State != conn.StateIdle || heartbeat.MemoryTotalMB != 16384 || heartbeat.Job != nil {
+	if heartbeat.State != conn.StateIdle || heartbeat.Job != nil || heartbeat.QueueDepth != 0 ||
+		heartbeat.CPUPct == nil || *heartbeat.CPUPct != 12.5 ||
+		heartbeat.MemoryUsedMB == nil || *heartbeat.MemoryUsedMB != 2048 ||
+		heartbeat.MemoryTotalMB == nil || *heartbeat.MemoryTotalMB != 16384 {
 		t.Errorf("heartbeat: %+v", heartbeat)
 	}
 	if h.dir.Session() == "" {
@@ -556,7 +560,7 @@ func TestAProtocolViolationFromTheGatewayIsReportedAndReconnected(t *testing.T) 
 
 	// A heartbeat is the agent's to send, never the gateway's.
 	if err := farm.Send(conn.NewFrame(conn.NewID(), conn.TypeHeartbeat, conn.HeartbeatPayload{
-		SentAt: "2026-09-18T12:00:00.000Z", State: conn.StateIdle, MemoryTotalMB: 1,
+		SentAt: "2026-09-18T12:00:00.000Z", State: conn.StateIdle,
 	})); err != nil {
 		t.Fatal(err)
 	}

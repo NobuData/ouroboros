@@ -21,8 +21,11 @@ it is offered.
 client certificate over a key this machine generated, and `run` holds the one outbound
 connection — `hello`, heartbeats, reconnection with jittered backoff, session resume with
 terminal frames re-sent from a durable outbox, certificate renewal before expiry, and a `bye` on
-SIGTERM. What it cannot do yet is run a job: every offer is declined with a true reason until the
-executors land. See [Related issues](#related-issues) for what each of those adds.
+SIGTERM. Every heartbeat carries this machine's real load
+([#245](https://github.com/NobuData/ouroboros/issues/245)): CPU averaged over a short window,
+memory in use and installed, and `null` for anything the platform will not say. What it cannot
+do yet is run a job: every offer is declined with a true reason until the executors land. See
+[Related issues](#related-issues) for what each of those adds.
 
 The protocol was written **before** either implementation of it, and that is the point. The
 agent is Go and the gateway is TypeScript
@@ -106,7 +109,7 @@ presenting the token, so that mistake costs nothing.
 |---|---|
 | Connect | `wss://<server>/api/v1/farm/agent` on 443, presenting the client certificate. The gateway's own certificate is verified against the system's roots, or `--server-ca` |
 | Hello | version, protocol range, arch, hostname, pool, capabilities — **docker** answered by pinging the daemon, **ccache** by `PATH` — and `security_mode` |
-| Heartbeat | every `ack.limits.heartbeat_interval_ms` ± its jitter; the moving telemetry is [#245](https://github.com/NobuData/ouroboros/issues/245)'s |
+| Heartbeat | every `ack.limits.heartbeat_interval_ms` ± its jitter (the gateway's 10 s ± 2 s), carrying the telemetry below |
 | Reconnect | exponential backoff with **full jitter** (1s doubling to 60s), so a fleet dropped together does not come back together; a gateway's `reconnect_after_ms` or `retry_after_ms` is a floor, spread past |
 | Resume | `hello.resume` names the last session, and every terminal frame not yet receipted is re-sent **byte for byte** from the outbox before anything else — the gateway deduplicates on the envelope id |
 | Renew | when `renewAfter` comes, over mTLS with the certificate being replaced — no second token |
@@ -116,13 +119,41 @@ presenting the token, so that mistake costs nothing.
 Offers are declined at once — `unsupported_executor` until [#246](https://github.com/NobuData/ouroboros/issues/246),
 `draining` after a `drain` — because a decline is worth far more to a dispatcher than a silence.
 
+### What a heartbeat reports
+
+Every heartbeat is the runners table's row for this machine
+([#245](https://github.com/NobuData/ouroboros/issues/245), decision **B7**), measured in the
+background by `internal/telemetry` so that a beat never waits for a reading:
+
+| Field | Where it comes from | When it cannot be measured |
+|---|---|---|
+| `cpu_pct` | the busy share of CPU time over a **5 s window** — an average, not one sample. Linux: `/proc/stat`. macOS: `/usr/bin/top -l 2 -n 0` | `null` — and on the first beat after start, before a window has closed |
+| `memory_used_mb` | installed minus what the kernel can reclaim without paging, so the page cache is not "used". Linux: `MemTotal − MemAvailable`. macOS: `hw.memsize` less free, speculative, file-backed and purgeable pages (Activity Monitor's *Memory Used*) | `null` |
+| `memory_total_mb` | Linux: `MemTotal`. macOS: `hw.memsize` | `null` |
+| `uptime_s` | this process's start | always there |
+| `queue_depth` | jobs **accepted and not yet started** — the definition dispatch ([#252](https://github.com/NobuData/ouroboros/issues/252)) shares; the running job is not in it | always there: `0` is a real count |
+| `job` | the running job's phase and progress, from the executor | `null` when idle |
+
+**A measurement it cannot take is `null`, never `0` and never the last value it read.** A
+container that cannot see the host's CPU, or an environment that refuses a reading, gets an
+em-dash in the runners table rather than a number nobody would doubt. A metric that stops being
+measurable is `null` on the next beat; one that comes back is reported again. Each failure is
+logged **once when it starts and once when it clears** — never on every beat:
+
+```console
+level=WARN msg="a heartbeat metric cannot be measured; it is reported as null until it can" metric=cpu_pct error="/proc/stat: no cpu line"
+```
+
+Collection uses the standard library only — see [Stack](#stack) for why.
+
 ### Inspecting a machine
 
-Two more commands work without a network or an enrollment:
+Three more commands work without a network or an enrollment:
 
 ```bash
-./bin/ouroboros-runner version   # the build, the protocol range it speaks, this machine
-./bin/ouroboros-runner hello     # the hello frame this machine would send, as JSON
+./bin/ouroboros-runner version     # the build, the protocol range it speaks, this machine
+./bin/ouroboros-runner hello       # the hello frame this machine would send, as JSON
+./bin/ouroboros-runner heartbeat   # the heartbeat it would send, measured now
 ```
 
 `hello` is worth knowing about before you need it. It builds the frame the connection loop
@@ -134,7 +165,7 @@ offers against the minimum the refusal named.
 
 ```console
 $ ouroboros-runner version
-ouroboros-runner 0.2.0
+ouroboros-runner 0.3.0
 protocol        1 (speaks 1–1)
 arch            linux/arm64
 hostname        shed-pi-01
@@ -143,6 +174,31 @@ memory          16384 MB
 ```
 
 `make dev ARGS="hello"` runs the same thing from source.
+
+`heartbeat` measures this machine for one window and prints the frame it would send, validated
+the same way. It is the parity check for the telemetry: run it beside `top -bn2 -d5` (Linux) or
+`top -l 2 -n 0 -s 5` and Activity Monitor (macOS) and the two should agree. `--window` sets the
+averaging window to match top's delay, and a metric that cannot be measured prints as the `null`
+the gateway would receive, with the reason on stderr.
+
+```console
+$ ouroboros-runner heartbeat
+{
+  "v": 1,
+  "type": "heartbeat",
+  "id": "00000000000000000000000000",
+  "payload": {
+    "sent_at": "2026-09-19T02:03:32.184Z",
+    "state": "idle",
+    "uptime_s": 5,
+    "cpu_pct": 2.9,
+    "memory_used_mb": 8891,
+    "memory_total_mb": 31679,
+    "queue_depth": 0,
+    "job": null
+  }
+}
+```
 
 To run the protocol contract's own check — the one that fails when the document, the schema and
 the fixtures stop describing the same protocol — run it from the repository root, because its
@@ -211,9 +267,9 @@ ouroboros-runner/
 │   ├── ws/                   # RFC 6455, the parts this protocol needs — no dependency
 │   ├── enroll/               # the two HTTPS routes: registration and renewal
 │   ├── state/                # the state directory: identity, session, durable outbox
-│   ├── agent/                # the connection loop: hello, heartbeat, backoff, resume, renewal
+│   ├── agent/                # the connection loop: hello, heartbeat, backoff, resume, renewal, workload
 │   ├── secret/               # a string that does not print
-│   ├── telemetry/            # what this machine is, and whether docker answers  · #245
+│   ├── telemetry/            # what this machine is and how loaded it is, whether docker answers
 │   ├── farmtest/             # an in-process farm for the suites — never linked into the agent
 │   ├── exec/                 # job executors: container and shell               · #246
 │   └── logship/              # chunking, ordering, throttling, ccache stats      · #247
@@ -284,7 +340,7 @@ architecture and an `install.sh` that verifies it — which is
 |---|---|
 | [#243](https://github.com/NobuData/ouroboros/issues/243) | **This scaffold**, and `docs/RUNNER_PROTOCOL.md` — the contract both sides implement against |
 | [#244](https://github.com/NobuData/ouroboros/issues/244) | **Shipped** — enrollment, the client certificate, the outbound connection, reconnection and backoff, resume, renewal |
-| [#245](https://github.com/NobuData/ouroboros/issues/245) | Telemetry and presence — the moving half of `heartbeat` |
+| [#245](https://github.com/NobuData/ouroboros/issues/245) | **Shipped** — telemetry and presence: CPU, memory, queue depth and job progress in every `heartbeat`, `null` where unmeasurable |
 | [#246](https://github.com/NobuData/ouroboros/issues/246) | The executors: container and shell, workspace lifecycle, cancellation |
 | [#247](https://github.com/NobuData/ouroboros/issues/247) | Log shipping and ccache statistics, with truncation reported rather than hidden |
 | [#248](https://github.com/NobuData/ouroboros/issues/248) | Packaging: cross-compiled releases, `install.sh`, systemd and launchd units |

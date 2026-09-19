@@ -14,6 +14,7 @@ import (
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/farmtest"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
 )
 
 // The command, as a process.
@@ -383,5 +384,52 @@ func assertNoSecretIn(t *testing.T, text, stateDir, token string) {
 	}
 	if strings.Contains(text, "PRIVATE KEY") {
 		t.Error("a private key block reached the output")
+	}
+}
+
+// TestTheRunningAgentReportsThisMachine is the telemetry criterion through the command as
+// a process (#245): the heartbeats a running agent sends carry this machine's real
+// measurements — a CPU figure averaged over the monitor's window, and memory that agrees
+// with what `hello` reports as installed — and every one of them is a frame the contract
+// accepts.
+func TestTheRunningAgentReportsThisMachine(t *testing.T) {
+	farm, serverCA := farmFiles(t)
+	stateDir := filepath.Join(t.TempDir(), "state")
+	output, code := execute(t, "enroll", "--server", farm.URL, "--tenant", "acme-robotics", "--pool", "pool-a",
+		"--token", farm.MintToken("pool-a", 1), "--name", "forge-01", "--state-dir", stateDir, "--server-ca", serverCA)
+	if code != 0 {
+		t.Fatalf("enroll exited %d:\n%s", code, output)
+	}
+
+	agent := spawn(t, "run", "--state-dir", stateDir, "--server-ca", serverCA)
+	observed := awaitFarm(t, farm, "a heartbeat with a CPU reading", agent.output, func(o farmtest.Observed) bool {
+		return len(o.Heartbeats) > 0 && o.Heartbeats[len(o.Heartbeats)-1].CPUPct != nil
+	})
+	beat := observed.Heartbeats[len(observed.Heartbeats)-1]
+	if *beat.CPUPct < 0 || *beat.CPUPct > 100 {
+		t.Errorf("CPU %v is outside 0–100", *beat.CPUPct)
+	}
+	installed, err := telemetry.TotalMemoryMB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if beat.MemoryTotalMB == nil || *beat.MemoryTotalMB != installed {
+		t.Errorf("the heartbeat's total memory %v disagrees with the %d MB hello reports", beat.MemoryTotalMB, installed)
+	}
+	if beat.MemoryUsedMB == nil || *beat.MemoryUsedMB < 1 || *beat.MemoryUsedMB > installed {
+		t.Errorf("memory in use %v is not a reading of a %d MB machine", beat.MemoryUsedMB, installed)
+	}
+	if beat.State != conn.StateIdle || beat.QueueDepth != 0 || beat.Job != nil {
+		t.Errorf("an agent with no work: %+v", beat)
+	}
+
+	if code := agent.signal(syscall.SIGTERM); code != 0 {
+		t.Errorf("SIGTERM exited %d:\n%s", code, agent.output)
+	}
+	if violations := farm.Observe().Violations; len(violations) > 0 {
+		t.Errorf("the agent wrote frames the contract refuses: %v", violations)
+	}
+	if strings.Contains(agent.output.String(), "cannot be measured") {
+		t.Errorf("a metric this machine can measure was reported as failing:\n%s", agent.output)
 	}
 }

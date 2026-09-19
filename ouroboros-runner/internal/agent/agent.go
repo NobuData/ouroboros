@@ -40,6 +40,7 @@ import (
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/enroll"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
 )
 
 // GatewayPath is the agent endpoint, under the control plane's base URL. The gateway
@@ -73,6 +74,12 @@ type Renewer interface {
 	Renew(ctx context.Context, identity state.Identity) (enroll.Renewal, error)
 }
 
+// Telemetry is the newest measurement of this machine, for a heartbeat.
+// *telemetry.Monitor is one.
+type Telemetry interface {
+	Latest() telemetry.Sample
+}
+
 // Config is everything the loop needs. The state directory must already be open — and
 // therefore locked — by the caller.
 type Config struct {
@@ -88,6 +95,10 @@ type Config struct {
 	Arch, Hostname string
 	// Capabilities is `hello.capabilities` — answered by probes, not assumed.
 	Capabilities conn.Capabilities
+	// Telemetry is where each heartbeat's measurements come from — a running
+	// *telemetry.Monitor. Nil sends every measurement as null: an agent that cannot say
+	// how loaded it is says so, rather than reporting an idle machine.
+	Telemetry Telemetry
 	// BearerFallback is the explicit flag that permits a bearer-fallback identity to
 	// connect at all. Without it, a runner enrolled in fallback mode refuses to start:
 	// the downgrade has to be stated every time the agent is started, in the unit file
@@ -125,6 +136,10 @@ type Agent struct {
 	// draining is set by the gateway's `drain` and cleared by `undrain`. It outlives a
 	// connection: a drained agent that reconnects is still drained until told otherwise.
 	draining drainState
+
+	// workload is the jobs this agent holds, which every heartbeat reports. It outlives a
+	// connection too: a job does not stop running because the socket dropped.
+	workload Workload
 }
 
 // New prepares an agent. It opens the outbox — logging, not failing, over any frame a
@@ -182,6 +197,12 @@ func New(config Config) (*Agent, error) {
 		queued:  make(chan struct{}, 1),
 	}, nil
 }
+
+// Workload is the account of the jobs this agent holds, which the executors ([#246])
+// keep and every heartbeat reports: the queue depth, and the running job's phase.
+//
+// [#246]: https://github.com/NobuData/ouroboros/issues/246
+func (a *Agent) Workload() *Workload { return &a.workload }
 
 // SendTerminal queues a terminal frame for delivery: persisted to the outbox first, then
 // written to the live connection if there is one, and re-sent after every reconnect

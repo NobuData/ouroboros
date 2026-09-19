@@ -10,6 +10,7 @@
 //	ouroboros-runner run
 //	ouroboros-runner version    # the build, the protocol range it speaks, this machine
 //	ouroboros-runner hello      # the hello frame this machine would send, as JSON
+//	ouroboros-runner heartbeat  # the heartbeat it would send: this machine, measured now
 //
 // `enroll` spends a token once and leaves an identity in the state directory: a client
 // certificate over a key this machine generated and never sent anywhere ([#244],
@@ -82,6 +83,9 @@ Usage:
 
   ouroboros-runner version   Print the build, the protocol range and this machine.
   ouroboros-runner hello     Print the hello frame this machine would send.
+  ouroboros-runner heartbeat [--window 5s]
+      Measure this machine for one window and print the heartbeat it would send —
+      CPU, memory in use and installed, each null where it cannot be measured.
 
 The agent dials out; nothing listens, and no inbound port is opened.
 
@@ -148,7 +152,7 @@ var errUsage = errors.New("no such command")
 // assert that nothing crashed.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv func(string) string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("%w: expected `enroll`, `run`, `version` or `hello`", errUsage)
+		return fmt.Errorf("%w: expected `enroll`, `run`, `version`, `hello` or `heartbeat`", errUsage)
 	}
 
 	switch command := args[0]; command {
@@ -160,11 +164,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv fu
 		return printVersion(stdout)
 	case "hello":
 		return printHello(ctx, args[1:], stdout, getenv)
+	case "heartbeat":
+		return printHeartbeat(ctx, args[1:], stdout, stderr)
 	case "help":
 		_, err := io.WriteString(stdout, usage)
 		return err
 	default:
-		return fmt.Errorf("%w: %q — expected `enroll`, `run`, `version` or `hello`", errUsage, command)
+		return fmt.Errorf("%w: %q — expected `enroll`, `run`, `version`, `hello` or `heartbeat`", errUsage, command)
 	}
 }
 
@@ -338,6 +344,14 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 		return err
 	}
 	logger := newLogger(stderr)
+
+	// The heartbeat's measurements are taken in the background for as long as the agent
+	// runs, so a beat reads the newest sample rather than waiting a window for one.
+	monitor := telemetry.NewMonitor(telemetry.DefaultWindow, logger)
+	measuring, stopMeasuring := context.WithCancel(ctx)
+	defer stopMeasuring()
+	go monitor.Run(measuring)
+
 	runner, err := agent.New(agent.Config{
 		Dir:            dir,
 		Server:         server,
@@ -346,6 +360,7 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 		Arch:           host.Arch,
 		Hostname:       host.Hostname,
 		Capabilities:   capabilities,
+		Telemetry:      monitor,
 		BearerFallback: bearerFallback,
 		Renewer:        &enroll.Client{Server: server, RootCAs: roots, UserAgent: "ouroboros-runner/" + version},
 		Logger:         logger,
@@ -446,12 +461,19 @@ func printHello(ctx context.Context, args []string, out io.Writer, getenv func(s
 		pool, mode = record.Pool, record.SecurityMode
 	}
 
-	// The id is a placeholder, and deliberately a visible one: the connection loop mints
-	// a real ULID per frame, and a command that printed a plausible id would invite
-	// somebody to replay it.
-	const placeholderID = "00000000000000000000000000"
 	frame := conn.NewHello(placeholderID, version, host.Arch, host.Hostname, pool, capabilities, mode, "")
+	return printFrame(out, frame)
+}
 
+// placeholderID is the envelope id of a frame printed rather than sent. It is
+// deliberately a visible placeholder: the connection loop mints a real ULID per frame,
+// and a command that printed a plausible id would invite somebody to replay it.
+const placeholderID = "00000000000000000000000000"
+
+// printFrame writes a frame for an operator to read, after holding it to the published
+// contract — so a frame the gateway would refuse is reported as an error naming the
+// field, rather than printed as though it were fine.
+func printFrame(out io.Writer, frame conn.Frame) error {
 	encoded, err := conn.EncodeIndent(frame)
 	if err != nil {
 		return err
@@ -467,4 +489,41 @@ func printHello(ctx context.Context, args []string, out io.Writer, getenv func(s
 
 	_, err = out.Write(encoded)
 	return err
+}
+
+// printHeartbeat writes the heartbeat this machine would send, measured now ([#245]).
+//
+// It is the parity check the telemetry is held to: run it beside `top` (or Activity
+// Monitor) and the two should agree, on each of the three platforms. It measures one
+// window — `--window`, five seconds unless told otherwise, so it can be matched to top's
+// own delay — and then prints the frame, validated like `hello`'s. A measurement the
+// platform cannot provide is printed as the `null` the gateway would receive, and why is
+// logged to stderr.
+//
+// It needs no network and no enrollment. The frame reports this command's own uptime,
+// an empty queue and no job, because it is a measurement of the machine rather than of a
+// running agent.
+//
+// [#245]: https://github.com/NobuData/ouroboros/issues/245
+func printHeartbeat(ctx context.Context, args []string, out, stderr io.Writer) error {
+	started := time.Now()
+	set := flagSet("heartbeat", stderr)
+	window := set.Duration("window", telemetry.DefaultWindow, "how long the CPU is watched for the reading")
+	if err := set.Parse(args); err != nil {
+		return fmt.Errorf("%w: %w", errUsage, err)
+	}
+	if set.NArg() > 0 {
+		return fmt.Errorf("%w: unexpected %q", errUsage, set.Arg(0))
+	}
+	if *window < 100*time.Millisecond || *window > time.Minute {
+		return fmt.Errorf("%w: --window %v is outside 100ms–1m", errUsage, *window)
+	}
+
+	monitor := telemetry.NewMonitor(*window, newLogger(stderr))
+	sample, ok := monitor.Measure(ctx)
+	if !ok {
+		return fmt.Errorf("interrupted before the window closed: %w", context.Cause(ctx))
+	}
+	payload := agent.NewHeartbeat(time.Now(), started, sample, &agent.Workload{}, false)
+	return printFrame(out, conn.NewFrame(placeholderID, conn.TypeHeartbeat, payload))
 }

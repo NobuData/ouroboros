@@ -304,10 +304,10 @@
           "enum": ["idle", "busy", "draining"]
         },
         "uptime_s": { "description": "How long this agent process has been up. Resets on restart; the session does not have to.", "type": "integer", "minimum": 0 },
-        "cpu_pct": { "description": "Machine-wide CPU utilisation over the last interval, 0 to 100 regardless of core count.", "type": "number", "minimum": 0, "maximum": 100 },
-        "memory_used_mb": { "description": "Machine-wide memory in use, in mebibytes.", "type": "integer", "minimum": 0 },
-        "memory_total_mb": { "description": "Machine-wide memory installed, in mebibytes.", "type": "integer", "minimum": 1 },
-        "queue_depth": { "description": "Jobs accepted and not yet finished, including the running one. Almost always 0 or 1; a pool that pipelines makes it larger.", "type": "integer", "minimum": 0 },
+        "cpu_pct": { "description": "Machine-wide CPU utilisation averaged over a short window (the Go agent's is five seconds), 0 to 100 regardless of core count -- never a single instantaneous sample. Null when this machine cannot measure it, or has not yet completed a window since the agent started: never 0, and never the last value it could read (#245).", "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "memory_used_mb": { "description": "Machine-wide memory in use, in mebibytes -- what the kernel could not hand to a new process without paging, so the page cache is not in it. Null when this machine cannot measure it (#245).", "type": ["integer", "null"], "minimum": 0 },
+        "memory_total_mb": { "description": "Machine-wide memory installed, in mebibytes. Null when this machine cannot measure it (#245).", "type": ["integer", "null"], "minimum": 1 },
+        "queue_depth": { "description": "Jobs ACCEPTED AND NOT YET STARTED -- the running job is `job`, not part of this. The one definition the agent and dispatch (AH.4, #252) share, and what the runners table prints as `q:2`. Never null: 0 is a real count.", "type": "integer", "minimum": 0 },
         "job": {
           "description": "The running job, or null. Null rather than absent: an agent that omitted the key when idle and sent it when busy would have two shapes for one message.",
           "type": ["object", "null"],

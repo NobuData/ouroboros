@@ -175,9 +175,11 @@ var specs = map[Type]*messageSpec{
 		timestampField("sent_at"),
 		{name: "state", kinds: kindString, enum: stateValues},
 		countField("uptime_s"),
-		{name: "cpu_pct", kinds: kindNumber, min: num(0), max: num(100)},
-		countField("memory_used_mb"),
-		{name: "memory_total_mb", kinds: kindInteger, min: num(1)},
+		// The three measurements are null when this machine cannot take them (#245):
+		// required, so the key is always there, and never a zero standing in for "unknown".
+		{name: "cpu_pct", kinds: kindNumber | kindNull, min: num(0), max: num(100)},
+		{name: "memory_used_mb", kinds: kindInteger | kindNull, min: num(0)},
+		{name: "memory_total_mb", kinds: kindInteger | kindNull, min: num(1)},
 		countField("queue_depth"),
 		{name: "job", kinds: kindObject | kindNull, fields: []field{
 			jobIDField("id"),
