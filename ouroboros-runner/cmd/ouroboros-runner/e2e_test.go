@@ -14,6 +14,7 @@ import (
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/farmtest"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/logship"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
 )
@@ -513,14 +514,25 @@ func TestTheRunningAgentRunsAShellJob(t *testing.T) {
 		name, _, _ := strings.Cut(line, "=")
 		names[name] = true
 	}
-	// CI is the pool's; PWD, SHLVL and _ are what the job's own sh exports about itself.
+	// CI is the pool's; PWD, SHLVL and _ are what the job's own sh exports about itself; and
+	// the two CCACHE_ variables are the agent's own (#247), which it sets on every job —
+	// never the offer's, and never another pool's directory.
+	allowed := map[string]bool{"CI": true, "PWD": true, "SHLVL": true, "_": true,
+		logship.EnvCcacheDir: true, logship.EnvCcacheStatsLog: true}
 	for name := range names {
-		if name != "CI" && name != "PWD" && name != "SHLVL" && name != "_" {
+		if !allowed[name] {
 			t.Errorf("the job saw %s, which the pool does not allow:\n%s", name, printed)
 		}
 	}
 	if !names["CI"] {
 		t.Errorf("the job did not see the allowed CI:\n%s", printed)
+	}
+	cache := filepath.Join(stateDir, "cache", "pool-b", "ccache")
+	if !strings.Contains(string(printed), logship.EnvCcacheDir+"="+cache+"\n") {
+		t.Errorf("the job did not run against its pool's cache (%s):\n%s", cache, printed)
+	}
+	if info, err := os.Stat(cache); err != nil || !info.IsDir() {
+		t.Errorf("the pool's cache directory was not made: %v", err)
 	}
 
 	if code := agent.signal(syscall.SIGTERM); code != 0 {

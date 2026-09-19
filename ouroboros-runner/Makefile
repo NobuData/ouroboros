@@ -49,7 +49,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 RELEASE_TARGETS := linux/amd64 linux/arm64 darwin/arm64
 TARGETS := $(RELEASE_TARGETS)
 
-.PHONY: help install dev lint format fmt typecheck test test-docker cover build cross release clean
+.PHONY: help install dev lint format fmt typecheck test test-docker test-ccache cover build cross release clean
 
 # The default target is help, so a bare `make` in an unfamiliar module explains itself.
 help:
@@ -62,6 +62,7 @@ help:
 	@printf '  make typecheck   go vet over every package.\n'
 	@printf '  make test        The suite, with the race detector, and the installer suite.\n'
 	@printf '  make test-docker The container executor against a real Docker or Podman daemon.\n'
+	@printf '  make test-ccache The ccache statistics against a real ccache and C compiler.\n'
 	@printf '  make cover       The suite, with a coverage report.\n'
 	@printf '  make build       This platform, into %s/.\n' '$(BIN)'
 	@printf '  make cross       All three release targets, into %s/.\n' '$(BIN)'
@@ -106,10 +107,11 @@ format:
 fmt:
 	gofmt -w .
 
-# With the dockertest tag, so the real-daemon suite (see test-docker) is vetted on every
-# run even though it only RUNS where a daemon is.
+# With the dockertest and ccachetest tags, so the real-daemon and real-ccache suites (see
+# test-docker and test-ccache) are vetted on every run even though they only RUN where a
+# daemon, or a ccache, is.
 typecheck:
-	go vet -tags dockertest ./...
+	go vet -tags dockertest,ccachetest ./...
 
 # The race detector is not optional here. This agent runs an executor, a heartbeat
 # ticker and a log shipper against one connection, so every interesting bug it can have
@@ -128,6 +130,14 @@ test:
 # hermetic — and it fails, rather than skipping, where no daemon answers.
 test-docker:
 	go test -race -count=1 -tags dockertest -run Docker ./internal/exec/...
+
+# The ccache statistics (#247) against a REAL ccache (4.0 or later) and C compiler: a cold
+# build's hits and misses equal to `ccache -s`, a warm one's to `ccache --show-log-stats`,
+# two pools that share nothing, and a build without ccache reporting null. Separate from
+# `test` for the reason test-docker is, and it fails, rather than skipping, where either is
+# missing from PATH.
+test-ccache:
+	go test -race -count=1 -tags ccachetest -run Ccache ./internal/logship/...
 
 cover:
 	go test -race -coverprofile=coverage.out ./...

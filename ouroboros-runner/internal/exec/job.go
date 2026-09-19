@@ -55,6 +55,20 @@ type Job struct {
 	Timeout time.Duration
 	// Limits is the share of this machine a container job may use. Zero values are no limit.
 	Limits Limits
+	// Mounts is what else of the host a container job sees besides its workspace — the
+	// agent's choice, never the offer's: its pool's compiler cache ([#247]). A shell job
+	// runs on the host and ignores them.
+	//
+	// [#247]: https://github.com/NobuData/ouroboros/issues/247
+	Mounts []Mount
+}
+
+// Mount is a host directory a container job sees at Target.
+type Mount struct {
+	// Host is the directory on this machine, absolute.
+	Host string
+	// Target is where the container sees it, absolute. A job's workdir may not overlap it.
+	Target string
 }
 
 // Limits is a container job's resource share.

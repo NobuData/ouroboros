@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
@@ -117,11 +116,23 @@ func (p *poolPolicy) get() (maxConcurrency int, allowlist []string) {
 // reported at most once a second per job, so this is minutes of headroom.
 const noticeBuffer = 256
 
-// noticeBoard carries the non-terminal frames a job produces — job.start, job.progress —
-// to whichever session is live. They are advisory: the protocol re-sends only terminal
-// frames, so one produced while no session is live is dropped rather than held, and a
-// stale job.start can never arrive after the finish it preceded.
+// chunkBuffer is how many log.chunk frames a session holds for writing ([#247]) — half a
+// megabyte of output at the protocol's largest chunk. It is small on purpose: a socket that
+// cannot keep up fills it quickly, and the log shipper then keeps the output back, and past
+// its own bound counts it as dropped, instead of queueing it here without limit.
+//
+// [#247]: https://github.com/NobuData/ouroboros/issues/247
+const chunkBuffer = 16
+
+// noticeBoard carries the non-terminal frames a job produces — job.start, job.progress, and
+// on a board of its own log.chunk — to whichever session is live. They are not re-sent: the
+// protocol re-sends only terminal frames, so one produced while no session is live is
+// refused rather than held, and a stale job.start can never arrive after the finish it
+// preceded.
 type noticeBoard struct {
+	// size is the channel's capacity: noticeBuffer when zero.
+	size int
+
 	mu   sync.Mutex
 	live chan conn.Frame
 }
@@ -130,7 +141,11 @@ type noticeBoard struct {
 func (n *noticeBoard) open() chan conn.Frame {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	n.live = make(chan conn.Frame, noticeBuffer)
+	size := n.size
+	if size <= 0 {
+		size = noticeBuffer
+	}
+	n.live = make(chan conn.Frame, size)
 	return n.live
 }
 
@@ -233,7 +248,7 @@ func (a *Agent) launch(ctx context.Context, offer conn.JobOfferPayload) {
 	go func() {
 		defer a.jobs.Done()
 		defer cancel(nil)
-		a.run(jobCtx, executor, job, attempt)
+		a.run(jobCtx, executor, job, offer.Pool, attempt)
 		a.cancels.remove(job.ID)
 	}()
 }
@@ -256,25 +271,44 @@ func (a *Agent) cancelJob(cancel conn.JobCancelPayload) {
 }
 
 // run runs one job to its end and reports it.
-func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job, attempt int) {
+//
+// Its output goes to the log shipper as it is written ([#247]), and the job runs with its
+// pool's compiler cache: `CCACHE_DIR` for the pool, `CCACHE_STATSLOG` for the job, and — for
+// a container job — the pool's directory mounted. Once the command has ended, what is still
+// held of its output is given its moment to leave, and only then is the finish queued: a
+// gateway closes a job's log when it records the finish ([#253]), so every chunk goes first.
+//
+// [#247]: https://github.com/NobuData/ouroboros/issues/247
+// [#253]: https://github.com/NobuData/ouroboros/issues/253
+func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job, pool string, attempt int) {
 	a.log.Info("running a job", "job", job.ID, "attempt", attempt, "executor", job.Kind, "image", job.Image,
 		"timeout", job.Timeout)
-	produced := &outputCounter{}
+	cache, err := a.caches.Prepare(pool, job.ID, job.Kind)
+	if err != nil {
+		a.log.Warn("the pool's compiler cache could not be prepared; the job runs without one", "job", job.ID,
+			"pool", pool, "error", err)
+	}
+	var replaced []string
+	job.Env, replaced = cache.Apply(job.Env)
+	job.Mounts = cache.Mounts()
+	if len(replaced) > 0 {
+		a.log.Info("the pool's compiler cache replaced variables the job carried", "job", job.ID, "replaced", replaced)
+	}
+
+	output := a.shipper.Open(job.ID)
 	events := &jobEvents{agent: a, job: job, attempt: attempt}
 	runner := exec.Runner{Workspaces: a.config.Workspaces, Now: a.config.Now}
-	result := runner.Run(ctx, executor, job, exec.Output{Stdout: produced, Stderr: produced}, events)
-	a.report(job, attempt, result, produced.bytes.Load())
+	result := runner.Run(ctx, executor, job, exec.Output{Stdout: output.Stdout(), Stderr: output.Stderr()}, events)
+	shipped := output.Close()
+	a.report(job, attempt, result, shipped, cache.Stats(job.Env))
 	a.workload.Finished(job.ID)
 }
 
-// report queues a job's terminal frame and logs how it ended.
-//
-// The output is counted and not yet shipped — log shipping is [#247]'s — so the finish says
-// so honestly: nothing delivered, and every byte the command wrote reported as dropped,
-// which the run console renders as an elision rather than as an empty log.
-//
-// [#247]: https://github.com/NobuData/ouroboros/issues/247
-func (a *Agent) report(job exec.Job, attempt int, result exec.Result, produced int64) {
+// report queues a job's terminal frame and logs how it ended: what of its output was sent
+// and what was dropped — which the run console renders as elisions rather than as an
+// output that looks complete — and its compiler-cache statistics, or null when there were
+// none to measure.
+func (a *Agent) report(job exec.Job, attempt int, result exec.Result, shipped conn.FinishLog, ccache *conn.FinishCcache) {
 	finish := conn.JobFinishPayload{
 		Job:        job.ID,
 		Attempt:    attempt,
@@ -282,7 +316,8 @@ func (a *Agent) report(job exec.Job, attempt int, result exec.Result, produced i
 		ExitCode:   exitCode(result.ExitCode),
 		StartedAt:  conn.Timestamp(result.StartedAt),
 		FinishedAt: conn.Timestamp(result.FinishedAt),
-		Log:        conn.FinishLog{DroppedBytes: int(min(produced, int64(maxInt)))},
+		Log:        shipped,
+		Ccache:     ccache,
 	}
 	if result.Error != nil {
 		finish.Error = &conn.FinishError{Code: result.Error.Code, Detail: result.Error.Detail}
@@ -293,7 +328,12 @@ func (a *Agent) report(job exec.Job, attempt int, result exec.Result, produced i
 	}
 
 	attributes := []any{"job", job.ID, "outcome", result.Outcome, "exit_code", finish.ExitCode,
-		"duration", result.FinishedAt.Sub(result.StartedAt).Round(time.Millisecond)}
+		"duration", result.FinishedAt.Sub(result.StartedAt).Round(time.Millisecond),
+		"log_bytes", shipped.Bytes, "log_chunks", shipped.Chunks, "log_dropped_bytes", shipped.DroppedBytes}
+	if ccache != nil {
+		attributes = append(attributes, "ccache_hits", ccache.Hits, "ccache_misses", ccache.Misses,
+			"ccache_hit_rate_pct", ccache.HitRatePct)
+	}
 	if result.Error != nil {
 		attributes = append(attributes, "error", result.Error.Code, "detail", result.Error.Detail)
 	}
@@ -301,6 +341,10 @@ func (a *Agent) report(job exec.Job, attempt int, result exec.Result, produced i
 		a.log.Info("a job finished", attributes...)
 	} else {
 		a.log.Warn("a job finished", attributes...)
+	}
+	if shipped.DroppedBytes > 0 {
+		a.log.Warn("a job's output was not all sent: the console shows where it was elided", "job", job.ID,
+			"dropped_bytes", shipped.DroppedBytes, "cap_bytes", a.shipper.CapBytes())
 	}
 	if result.ReplacedWorkspace {
 		a.log.Warn("an old workspace of the same job was replaced", "job", job.ID, "workspace", result.Workspace)
@@ -315,9 +359,6 @@ func (a *Agent) report(job exec.Job, attempt int, result exec.Result, produced i
 	}
 }
 
-// maxInt is the largest int, for a byte count that must fit one.
-const maxInt = int(^uint(0) >> 1)
-
 // exitCode is an exit status as a job.finish carries it: nil stays nil, and anything outside
 // the contract's −1–255 — which no executor produces — is −1 rather than an illegal frame.
 func exitCode(code *int) *int {
@@ -329,18 +370,6 @@ func exitCode(code *int) *int {
 		value = -1
 	}
 	return &value
-}
-
-// outputCounter is a job's output until the log shipper ([#247]) carries it: counted and
-// discarded. Both streams write to one counter, from two goroutines.
-//
-// [#247]: https://github.com/NobuData/ouroboros/issues/247
-type outputCounter struct{ bytes atomic.Int64 }
-
-// Write counts and discards.
-func (c *outputCounter) Write(p []byte) (int, error) {
-	c.bytes.Add(int64(len(p)))
-	return len(p), nil
 }
 
 // jobEvents turns what the executor reports into frames and the heartbeat's account.

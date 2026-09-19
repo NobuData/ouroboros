@@ -378,6 +378,33 @@ type JobCancelPayload struct {
 	Detail string `json:"detail"`
 }
 
+// The streams a log chunk can carry: the command's two, and the agent's own narration.
+const (
+	StreamStdout = "stdout"
+	StreamStderr = "stderr"
+	StreamRunner = "runner"
+)
+
+// EncodingBase64 is a log chunk's encoding — the only one, because a build log is bytes.
+const EncodingBase64 = "base64"
+
+// LogChunkPayload is a job's output, in order and bounded ([#247]).
+//
+// `Seq` is 0-based and contiguous per job, across every stream and across a reconnect.
+// `Data` is base64 of at most `log_chunk_max_bytes` decoded bytes. `DroppedBytes` is what
+// was elided immediately BEFORE this chunk — the elision is data, never marker text in
+// `Data`, and the console draws the marker (docs/RUNNER_PROTOCOL.md § 4.5).
+//
+// [#247]: https://github.com/NobuData/ouroboros/issues/247
+type LogChunkPayload struct {
+	Job          string `json:"job"`
+	Seq          int    `json:"seq"`
+	Stream       string `json:"stream"`
+	Encoding     string `json:"encoding"`
+	Data         string `json:"data"`
+	DroppedBytes int    `json:"dropped_bytes"`
+}
+
 // ReceiptPayload is the gateway's confirmation that a terminal frame is durably
 // recorded — the message that lets a re-send stop.
 type ReceiptPayload struct {

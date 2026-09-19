@@ -242,7 +242,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 | AG.2 | #244 | 🟢 Done | ouroboros-runner: [AG.2] Enrollment, identity & connection loop | Token bootstrap, mTLS cert, outbound WSS, reconnect/backoff | mvp, build-farm | N (after AG.1, AH.2) | Y | L | ouroboros-runner |
 | AG.3 | #245 | 🟢 Done | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
 | AG.4 | #246 | 🟢 Done | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
-| AG.5 | #247 | 🟡 Open | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
+| AG.5 | #247 | 🟢 Done | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
 | AG.6 | #248 | 🟢 Done | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
 
 ### Issue AG.1 — ouroboros-runner: [AG.1] Module scaffold & agent protocol spec
@@ -469,12 +469,12 @@ job.offer{executor: shell} on runner without docker ─▶ accept (capability ma
   printing its environment, metacharacter argv, a TERM-ignoring tree checked gone within the
   grace), a fake Engine API, and — behind `make test-docker` — rootless Docker with `busybox`.
   Not here, by design: a wire `job.cancel` (AH.4, #252), an offer's attempt number (always 1
-  until dispatch retries exist — both have since landed with AH.4), source checkout, and log shipping (AG.5, #247 — until then
-  `job.finish.log` reports all output as dropped rather than an empty log).
+  until dispatch retries exist — both have since landed with AH.4), source checkout, and log
+  shipping (AG.5, #247 — which has since landed too).
 
 ### Issue AG.5 — ouroboros-runner: [AG.5] Log shipping & ccache stats
 
-> **GitHub issue:** #247 · **Status:** 🟡 Open · **Parent epic:** #239
+> **GitHub issue:** #247 · **Status:** 🟢 Done · **Parent epic:** #239
 
 
 - **Problem Statement:** The live log card and the cache stat need agent-side
@@ -497,6 +497,35 @@ job.offer{executor: shell} on runner without docker ─▶ accept (capability ma
 stdout ─▶ chunker(≤32KB, throttled, ordered) ─▶ log.chunk*
 job.finish += {ccache: {hit_rate: 78.4, hits: 412, misses: 113} | null}
 ```
+
+- **Delivered:** [`internal/logship/`](../ouroboros-runner/internal/logship) — the chunker, the
+  throttle, the agent's own cap and the ccache statistics — wired into `internal/agent` and a log
+  channel of the session's own. **Output is shipped as it is written**: the command's two streams
+  multiplexed into ordered `log.chunk` frames, one stream each, at most eight every 250 ms inside
+  `ack.limits`'s byte rate, which every ack re-tunes. **A `seq` is spent only when the session
+  takes the frame**, so a socket with no room costs an elision and never a gap — and `seq` stays
+  contiguous across a reconnect, which is what makes a gap mean a lost frame. **Nothing blocks the
+  build**: writing never blocks or fails, output waits in a 256 KiB buffer, and past it the log
+  goes into *summary mode* — counted, not kept — until the backlog drains; the count is then
+  reported as `dropped_bytes` on the next chunk, exactly where the hole is. **The marker is data**:
+  the agent writes no `[… N bytes elided]` text into the stream, because AH.5's gateway places
+  every hole by position and the console (AI.6) draws one marker for each — the issue's marker,
+  rendered once rather than twice. The agent also caps a job's output itself
+  (`--log-cap-bytes` / `OURO_RUNNER_LOG_CAP_BYTES`, 64 MiB, V040's own default and range), keeping
+  the head of the log; the rest is the tail AH.5 folds into one marker with its own cap. The
+  invariant, tested everywhere: **`log.bytes` + `log.dropped_bytes` is everything the build
+  printed**. **ccache** (decision **B5**): each pool gets `<state-dir>/cache/<pool>/ccache`, kept
+  across its jobs and never shared with another pool's — a container job sees it at
+  `/ouroboros-cache`, the only host directory it sees besides its workspace — and each job gets its
+  own `CCACHE_STATSLOG`, so `job.finish.ccache` is **that build's** hit rate and not the cache's
+  running total, even with several of a pool's jobs at once. A build that ran no ccache reports
+  **null**, never 0%. Tests: 40 in `internal/logship` — including a seeded property test and a fuzz
+  target on the invariant, and a **measured** memory bound (a real 200 MiB shell job streamed
+  through a stalled, a throttled and a fast session peaks ~3 MiB above baseline) — 6 through the
+  whole agent against the in-process farm (order, forced backpressure, the cap, ccache per pool,
+  `seq` across a reconnect), 3 in `internal/exec` for the cache mount plus a real-daemon one, 2 in
+  `cmd` for the flag, and `make test-ccache` against real ccache 4.7.5 and 4.11.2, whose fixtures
+  are committed. Agent 0.7.0.
 
 ### Issue AG.6 — ouroboros-runner: [AG.6] Packaging, install script & daemonization
 
@@ -922,8 +951,8 @@ log.chunk(seq, bytes) ─▶ append(cap-aware) ─▶ GET ?after=18122 ─▶ {b
   lost frame, the rate guard across two workspaces, age and budget retention, isolation, bad
   offsets); seven mutation spot
   checks that each turned them red. Not here: tail reads for #510, and the agent's shipper
-  (AG.5, #247). Until AG.5 ships, a finished job's log is empty and its tail is all of its
-  output.
+  (AG.5, #247), which has since landed — so a finished job's log is the build's output, with the
+  two caps rendered as one marker.
 
 ### Issue AH.6 — ouroboros-rest: [AH.6] Farm read APIs & stats
 

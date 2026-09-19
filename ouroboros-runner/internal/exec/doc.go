@@ -45,8 +45,9 @@
 //     workspace under `<state-dir>/work/<job id>`. A shell job's `workdir` is resolved
 //     INSIDE it — a leading `/` is the workspace root and a `..` is refused — so no offer can
 //     choose where on the host a command runs or which directory cleanup removes. A
-//     container job's workspace is bind-mounted at its `workdir`, and nothing else of the
-//     host is.
+//     container job's workspace is bind-mounted at its `workdir`; the one other thing of the
+//     host it sees is its own pool's compiler cache ([Job.Mounts], [#247]) — a directory the
+//     agent chooses, which the same pool's jobs share and no other pool's ever see.
 //  4. NOTHING OUTLIVES THE JOB. The shell executor starts the command as the leader of a
 //     new process group and, however the job ends, signals the whole group: SIGTERM, then
 //     SIGKILL after the grace period. A build that spawns a compiler farm leaves no
@@ -57,7 +58,8 @@
 // # What a job produces
 //
 // Logs only — there is no artefact collection in the MVP. A job's stdout and stderr go to
-// an [Output], which the agent connects to the log shipper ([#247]).
+// an [Output], which the agent connects to the log shipper ([#247]); its writers never
+// block, so a stalled connection cannot stall a build.
 //
 // [#246]: https://github.com/NobuData/ouroboros/issues/246
 // [#247]: https://github.com/NobuData/ouroboros/issues/247

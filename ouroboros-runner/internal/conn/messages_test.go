@@ -188,7 +188,8 @@ func TestOutgoingPayloadsAreLegal(t *testing.T) {
 // struct and encodes it again, asserting the committed fixture comes back BYTE FOR BYTE.
 //
 // The executors (#246) write job.accept, job.start, job.progress and job.finish from these
-// structs, and the test farm writes ack from one — so a field out of order, a tag typo or a
+// structs, the log shipper (#247) writes log.chunk from one, and the test farm writes ack
+// from one — so a field out of order, a tag typo or a
 // null that became an absent key is a failure here, against the document both
 // implementations read, rather than a refusal from the gateway.
 func TestTypedPayloadsReproduceTheGoldenFrames(t *testing.T) {
@@ -208,6 +209,7 @@ func TestTypedPayloadsReproduceTheGoldenFrames(t *testing.T) {
 		{"valid/job-progress.json", &JobProgressPayload{}},
 		{"valid/job-finish.json", &JobFinishPayload{}},
 		{"valid/job-finish-failed.json", &JobFinishPayload{}},
+		{"valid/log-chunk.json", &LogChunkPayload{}},
 	} {
 		t.Run(testCase.fixture, func(t *testing.T) {
 			want := readFixture(t, testCase.fixture)

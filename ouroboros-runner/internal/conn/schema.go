@@ -74,7 +74,7 @@ var (
 	phaseValues    = []string{"fetch", "prepare", "run", "upload"}
 	stateValues    = []string{"idle", "busy", "draining"}
 	outcomeValues  = []string{"succeeded", "failed", "cancelled", "timed_out", "errored"}
-	streamValues   = []string{"stdout", "stderr", "runner"}
+	streamValues   = []string{StreamStdout, StreamStderr, StreamRunner}
 	refuseValues   = []string{
 		"version.below_minimum", "version.unsupported",
 		"identity.unknown", "identity.revoked",
@@ -290,7 +290,7 @@ var specs = map[Type]*messageSpec{
 			jobIDField("job"),
 			countField("seq"),
 			{name: "stream", kinds: kindString, enum: streamValues},
-			{name: "encoding", kinds: kindString, enum: []string{"base64"}},
+			{name: "encoding", kinds: kindString, enum: []string{EncodingBase64}},
 			{name: "data", kinds: kindString, maxLen: LogChunkMaxBase64Chars},
 			countField("dropped_bytes"),
 		},
