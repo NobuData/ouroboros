@@ -15,7 +15,8 @@
  *                                                  │
  *                                                  ▼
  *  open ── heartbeat ──▶ telemetry · last_seen_at ← THIS beat · pill · reconcile drain
- *       ── job.finish ─▶ ledger + job (+ its retry, #252), one transaction ─▶ receipt{duplicate}
+ *       ── job.finish ─▶ terminal hooks (the log's tail, #253) ─▶ ledger + job (+ its retry, #252),
+ *                        one transaction ─▶ receipt{duplicate}
  *       ── job.start ──▶ job running
  *       ── accept/decline ─▶ the offer is settled; dispatch (#252) hears it and moves the job
  *       ── bye ────────▶ offline, deliberately; session ended; close
@@ -381,6 +382,9 @@ export class AgentConnection {
     envelope: Envelope<"job.finish">,
     session: AgentSession,
   ): Promise<TerminalRecord> {
+    // Whatever must be final before the job reads as finished — the log's tail (#253) — first.
+    await this.context.sessions.beforeTerminal(this.frameContext(), envelope);
+
     const at = this.context.now();
     const started = new Date(envelope.payload.started_at);
 

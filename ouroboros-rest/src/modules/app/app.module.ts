@@ -18,6 +18,7 @@ import { HealthModule } from "../health/health.module";
 import { FarmModule } from "../farm/farm.module";
 import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
 import { FarmGatewayModule } from "../farm/gateway/gateway.module";
+import { FarmLogsModule } from "../farm/logs/logs.module";
 import { FarmInstallerModule } from "../farm/installer/installer.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
@@ -379,6 +380,11 @@ export class AppModule {
         // listeners it hears the agents' answers on. Its two routes are ordinary member routes,
         // behind the session and tenant guards like every other.
         FarmDispatchModule,
+        // AH.5 ([#253](https://github.com/NobuData/ouroboros/issues/253)) — build logs: ingest of
+        // `log.chunk` through the gateway's listeners, `GET /api/v1/farm/jobs/:id/log?after=`, and
+        // the retention sweep. After `FarmGatewayModule` for the same reason dispatch is; its one
+        // route is an ordinary member read behind the session and tenant guards.
+        FarmLogsModule,
         // AG.6 ([#248](https://github.com/NobuData/ouroboros/issues/248)) — the runner
         // installer, `GET /install.sh` and the release files beside it, served from this
         // deployment's own origin. Two `@AllowAnonymous()` routes whose reader is `curl` on a

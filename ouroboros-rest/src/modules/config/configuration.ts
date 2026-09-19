@@ -125,6 +125,29 @@ export const DEFAULT_DASHBOARD_POLL_SECONDS = 15;
 export const MAX_DASHBOARD_POLL_SECONDS = 3600;
 
 /**
+ * Bytes of finished builds' logs a workspace keeps when `OURO_FARM_LOG_BUDGET_BYTES` is not
+ * set — 2 GiB.
+ *
+ * AH.5 ([#253](https://github.com/NobuData/ouroboros/issues/253)), decision **B8**: build logs
+ * live in PostgreSQL, so an unbounded workspace is a shared disk filling up. Two gibibytes is
+ * about thirty logs at the default 64 MiB per-job cap, or thousands of ordinary ones; the
+ * retention sweep removes the oldest finished jobs' logs, whole, until a workspace is under it.
+ */
+export const DEFAULT_FARM_LOG_BUDGET_BYTES = 2_147_483_648;
+
+/**
+ * The smallest `OURO_FARM_LOG_BUDGET_BYTES` — 1 MiB.
+ *
+ * Below the per-job cap one finished build can exceed the budget on its own and is swept the
+ * moment it finishes; that is a legitimate choice for a deployment short of disk, so the floor
+ * is only what keeps the value a budget rather than zero, which would sweep every log at once.
+ */
+export const MIN_FARM_LOG_BUDGET_BYTES = 1_048_576;
+
+/** The largest `OURO_FARM_LOG_BUDGET_BYTES` — 1 TiB, far past any single database's disk. */
+export const MAX_FARM_LOG_BUDGET_BYTES = 1_099_511_627_776;
+
+/**
  * Seconds between provider health sweeps when `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` is
  * not set, and the age at which a *local* provider's last check is stale.
  *
@@ -600,6 +623,15 @@ export interface Configuration {
    */
   readonly farmReleasesDir?: string;
   /**
+   * The bytes of finished builds' logs one workspace keeps. From `OURO_FARM_LOG_BUDGET_BYTES`,
+   * {@link DEFAULT_FARM_LOG_BUDGET_BYTES} when unset.
+   *
+   * AH.5 ([#253](https://github.com/NobuData/ouroboros/issues/253)). The retention sweep keeps
+   * each log for thirty days and each workspace under this budget, removing the oldest finished
+   * jobs' logs — whole, never in part — when it is over. A running build's log is never swept.
+   */
+  readonly farmLogBudgetBytes: number;
+  /**
    * Seconds between provider health sweeps, and the age at which a local provider's last
    * check is stale. From `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`,
    * {@link DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS} when unset.
@@ -754,6 +786,7 @@ export const VARIABLES = {
   farmMinAgentVersion: "OURO_FARM_MIN_AGENT_VERSION",
   farmPublicUrl: "OURO_FARM_PUBLIC_URL",
   farmReleasesDir: "OURO_FARM_RELEASES_DIR",
+  farmLogBudgetBytes: "OURO_FARM_LOG_BUDGET_BYTES",
   providerHealthIntervalSeconds: "OURO_PROVIDER_HEALTH_INTERVAL_SECONDS",
   providerHealthKeyCheckSeconds: "OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS",
   backlogSyncIntervalSeconds: "OURO_BACKLOG_SYNC_INTERVAL_SECONDS",
@@ -1182,6 +1215,20 @@ const environmentSchema = z.object({
     )
     .optional(),
   OURO_FARM_RELEASES_DIR: z.string().optional(),
+  // The log budget (#253), read by PORT's rules: anchored digits, then a range — so `2GiB`,
+  // `2e9` and `-1` are named boot failures rather than a budget nobody chose.
+  OURO_FARM_LOG_BUDGET_BYTES: z
+    .string()
+    .regex(
+      /^\d+$/,
+      `expected a whole number of bytes between ${MIN_FARM_LOG_BUDGET_BYTES} and ${MAX_FARM_LOG_BUDGET_BYTES}`,
+    )
+    .transform(Number)
+    .refine(
+      (value) => value >= MIN_FARM_LOG_BUDGET_BYTES && value <= MAX_FARM_LOG_BUDGET_BYTES,
+      `expected between ${MIN_FARM_LOG_BUDGET_BYTES} and ${MAX_FARM_LOG_BUDGET_BYTES} bytes`,
+    )
+    .default(DEFAULT_FARM_LOG_BUDGET_BYTES),
 
   // The two provider-health cadences (#196), read by the same rules as PORT and the
   // dashboard's poll: anchored digits, then a range. Two variables rather than one because
@@ -1401,6 +1448,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     farmMinAgentVersion: values.OURO_FARM_MIN_AGENT_VERSION,
     farmPublicUrl: values.OURO_FARM_PUBLIC_URL,
     farmReleasesDir: values.OURO_FARM_RELEASES_DIR,
+    farmLogBudgetBytes: values.OURO_FARM_LOG_BUDGET_BYTES,
     providerHealthIntervalSeconds: values.OURO_PROVIDER_HEALTH_INTERVAL_SECONDS,
     providerHealthKeyCheckSeconds: values.OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     backlogSyncIntervalSeconds: values.OURO_BACKLOG_SYNC_INTERVAL_SECONDS,

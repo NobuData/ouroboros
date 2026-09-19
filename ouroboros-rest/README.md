@@ -251,6 +251,7 @@ service never starts half-configured.
 | `OURO_FARM_MIN_AGENT_VERSION` | The oldest `ouroboros-runner` build the [agent gateway](#the-agent-gateway) accepts ([#251](https://github.com/NobuData/ouroboros/issues/251)) — a `hello` below it is refused with `version.below_minimum` and a sentence naming the floor, and the agent exits rather than reconnecting. Compared by SemVer precedence; the template's `0.0.0-0` admits every build |     no — unset     | a semantic version, such as `0.2.0`                                         |
 | `OURO_FARM_PUBLIC_URL` | The https origin runner machines reach this deployment at — what [the runner installer](#the-runner-installer) writes into `/install.sh` as the agent's `--server` ([#248](https://github.com/NobuData/ouroboros/issues/248)). Unset, `OURO_REST_URL` is used when it is https |     no — unset     | an https origin, such as `https://ouroboros.acme.dev`                       |
 | `OURO_FARM_RELEASES_DIR` | Where [the runner installer](#the-runner-installer) serves `ouroboros-runner` releases from — one directory per version, as `make release` writes them ([#248](https://github.com/NobuData/ouroboros/issues/248)). Unset, no installer is served |     no — unset     | a directory, such as `../ouroboros-runner/dist`                             |
+| `OURO_FARM_LOG_BUDGET_BYTES` | The bytes of finished builds' logs one workspace keeps — [build logs](#build-logs)' retention sweep removes the oldest finished jobs' logs, whole, until a workspace is under it ([#253](https://github.com/NobuData/ouroboros/issues/253)) |     no — `2147483648`     | a whole number of bytes, 1 MiB to 1 TiB |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 | `OURO_WORKFLOW_SKILL_SUGGESTIONS` | Skill names the [stage catalog](#the-stage-catalog) suggests to the workflow inspector ([#145](https://github.com/NobuData/ouroboros/issues/145)) — advice, never an enumeration |     no — unset     | comma-separated names, each at most 128 characters, none listed twice |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
@@ -3406,7 +3407,7 @@ the order it was first sent. Sessions live in this process: a reconnect to anoth
 
 | Export | For | What it does |
 |---|---|---|
-| `AgentSessions.offer` · `.listen` · `.isConnected` · `.cancel` · `.withdraw` | dispatch, AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)) — [Build dispatch](#build-dispatch); log ingest, AH.5 ([#253](https://github.com/NobuData/ouroboros/issues/253)) | offer a job to a runner, or tell it to stop one (each payload is held to the contract before it is sent); withdraw an unanswered offer; hear `job.accept`/`job.decline`/`log.chunk` — a `job.finish` listener is also told what the ledger made of the frame |
+| `AgentSessions.offer` · `.listen` · `.onTerminal` · `.isConnected` · `.cancel` · `.withdraw` | dispatch, AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)) — [Build dispatch](#build-dispatch); log ingest, AH.5 ([#253](https://github.com/NobuData/ouroboros/issues/253)) | offer a job to a runner, or tell it to stop one (each payload is held to the contract before it is sent); withdraw an unanswered offer; hear `job.accept`/`job.decline`/`log.chunk` — a `job.finish` listener is also told what the ledger made of the frame; `onTerminal` sees a `job.finish` *before* it is recorded (build logs' tail, #253) |
 | `RunnerControl.drain` · `.undrain` | lifecycle actions, AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)) | write `desired_state`, then push the frame; a runner connected elsewhere is told at its next heartbeat |
 | `supportsExecutor` (`capabilities.ts`) | dispatch eligibility, AH.4 | whether a runner's stored capabilities say it can run a job under an executor |
 | `GatewayMetrics.snapshot` | health history, AJ.4 ([#266](https://github.com/NobuData/ouroboros/issues/266)) | connections, refusals by reason, frames by type, terminal records and duplicates, presence flips |
@@ -3496,6 +3497,67 @@ forgets a job while its runner never goes offline is not detected. Agents older 
 0.6.0 end their session on a `job.cancel` or an offer's `attempt`; `OURO_FARM_MIN_AGENT_VERSION`
 is the lever. In a development database the seeded fleet never connects, so a few minutes after
 REST starts its seeded in-flight builds are taken back like any lost runner's.
+
+## Build logs
+
+> **Issue:** [#253](https://github.com/NobuData/ouroboros/issues/253) — *[AH.5] Log ingest &
+> retrieval* · epic [#240](https://github.com/NobuData/ouroboros/issues/240) · decision **B8** ·
+> schema `V044` · [`docs/RUNNER_PROTOCOL.md` § 4.5](../docs/RUNNER_PROTOCOL.md#logchunk)
+
+The pipe between an agent's output and the live log card (AI.6, #261): `log.chunk` frames in,
+stored in PostgreSQL within caps, and read back by offset. `src/modules/farm/logs/` is the
+module; like dispatch, it hears frames through `AgentSessions.listen` and the gateway never
+imports it. Keeping logs in PostgreSQL is decision **B8** — no new infrastructure at MVP scale,
+with object storage as the documented v2 path — and it is also why the caps and the retention
+sweep are not optional.
+
+```
+log.chunk ──▶ this runner's job? ──▶ reassembly (seq order; a gap held ≤ 10 s / 64 chunks)
+          ──▶ per-workspace rate guard (2 MiB/s, 8 MiB burst) ──refused──▶ elided, marked on the next chunk
+          ──▶ insert: V040's cap trigger assigns byte_start, clamps at the per-job cap, counts the rest
+job.finish ──▶ (a terminal hook, BEFORE the ledger marks the job finished) gaps given up ──▶ the tail
+GET /api/v1/farm/jobs/:id/log?after= ──▶ {bytes, nextOffset, end, live, elisions, tail, retained, pollAfter}
+sweep (every 10 min, ≤ 200 jobs per rule) ──▶ finished logs past 30 days, then each workspace over its budget
+```
+
+| Route | Role | What it answers |
+|---|---|---|
+| `GET /api/v1/farm/jobs/:id/log?after=` | every member | One page (≤ 256 KiB) from `after`, the `nextOffset` the reader last reached. Pages concatenate to exactly the stored log, and each ends on a UTF-8 character boundary; bytes that are not UTF-8 read as U+FFFD. `Cache-Control: private, no-cache` and `X-Ouro-Poll-After` (2 s while live, 15 s after) per the polling contract. `farm_job_not_found` for another workspace's job, `farm_log_offset_out_of_range` past the end |
+
+**`live` is the job's state, never chunk recency — and a finished job's log is final.** A finished
+job answers `live: false` at once, even if its last chunk landed a second ago, because the card's
+blinking cursor is bound to it and the card stops polling on it. So nothing may change after:
+the agent's `job.finish` is accounted on `AgentSessions.onTerminal`, a hook the gateway awaits
+*before* its ledger transaction marks the job finished, and chunks are written only while the job
+is offered, accepted or running — a cancelled build's later output is not written.
+
+**Chunks are stored in `seq` order.** V040's cap trigger assigns each chunk's `byte_start` from the
+job's running total when it is inserted, and offsets a reader has already been given must never
+move. So a chunk that overtook a gap across a reconnect is held until the gap fills. A gap that
+never fills is recorded as lost chunks at that position, after 10 s, after 64 chunks are held, or
+when the job finishes. Inserts never use `on conflict`, because the BEFORE trigger would still
+advance the running total; a re-sent `seq` is caught as a unique violation instead, which rolls
+the trigger's update back with it.
+
+**One honest marker.** Elision is data, never text in the stream. A hole before a chunk is
+returned in `elisions` as `{offset, bytes, missingChunks}`: the agent's throttle drops, the rate
+guard's refusals, and frames that never arrived, summed at that position. Everything after the
+last stored byte is `tail`: the per-job cap's refusals, what arrived past the cap, and the
+agent's own tail drops, which is its `job.finish.log.dropped_bytes` less what it had already
+placed. That is one figure, so the console draws one marker where two caps meet. Until the agent
+ships logs (AG.5, #247), every finished job's log is empty and its tail is all of its output,
+which is the truth.
+
+**Retention.** Each chunk keeps its V040 `retain_until`, written at ingest thirty days out. Each
+workspace also keeps at most `OURO_FARM_LOG_BUDGET_BYTES` (2 GiB) of finished builds' logs, with
+the oldest removed first. Logs are removed whole, never in part, and only a finished job's; the
+job keeps `log_swept_at`, so a read answers `retained: false` rather than an empty log. The sweep
+is bounded to 200 jobs per rule per run, and logs its tombstone counts. BQ.3 (#482) will govern
+the policy per class through the `FARM_LOG_RETENTION` token, and its defaults reproduce these.
+
+**Known limits.** The reorder buffer and the rate guard live in one process, so after a restart
+or a reconnect to another replica, a gap in flight is recorded as lost chunks rather than waited
+for.
 
 ## The runner installer
 

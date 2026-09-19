@@ -81,6 +81,8 @@ export const FARM_ERRORS = {
   poolDisabled: "farm_pool_disabled",
   /** A submission named no command, and its pool has no default to fall back to (#252). */
   commandRequired: "farm_command_required",
+  /** A log read asked for an offset past the end of what is stored (#253). */
+  logOffsetOutOfRange: "farm_log_offset_out_of_range",
 } as const;
 
 /** One of {@link FARM_ERRORS}' values. */
@@ -357,5 +359,24 @@ export function commandRequired(pool: string): InvalidRequestError {
     FARM_ERRORS.commandRequired,
     `The pool ${pool} has no default command; name the command to run.`,
     { pool },
+  );
+}
+
+/**
+ * `422` — a log read's `after` is past the end of the stored log (AH.5,
+ * [#253](https://github.com/NobuData/ouroboros/issues/253)).
+ *
+ * Refused rather than clamped: a client only ever asks from the `nextOffset` it was given, so an
+ * offset past the end is a client that lost count, and quietly answering from the end would hide
+ * that it had skipped — or invented — bytes.
+ *
+ * @param end - How many bytes are stored, so the client can see how far off it is.
+ * @returns The error.
+ */
+export function logOffsetOutOfRange(end: number): InvalidRequestError {
+  return new InvalidRequestError(
+    FARM_ERRORS.logOffsetOutOfRange,
+    `This build log holds ${String(end)} bytes; there is nothing to read after that.`,
+    { end },
   );
 }

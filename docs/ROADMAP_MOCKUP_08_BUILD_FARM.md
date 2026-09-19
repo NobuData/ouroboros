@@ -566,7 +566,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 | AH.2 | #250 | 🟢 Done | ouroboros-rest: [AH.2] Enrollment API & runner CA | Scoped tokens (AD.1-sealed), cert issuance/renewal/revocation, audit | mvp, build-farm, rest | N (after AH.1, AD.1) | Y | L | ouroboros-rest |
 | AH.3 | #251 | 🟢 Done | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
 | AH.4 | #252 | 🟢 Done | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
-| AH.5 | #253 | 🟡 Open | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
+| AH.5 | #253 | 🟢 Done | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.6 | #254 | 🟡 Open | ouroboros-rest: [AH.6] Farm read APIs & stats | Runners/pools/jobs payloads, stat-row math, lifecycle actions | mvp, build-farm, rest | N (after AH.4) | Y | M | ouroboros-rest |
 | AH.7 | #255 | 🟡 Open | ouroboros-rest: [AH.7] Farm integration tests (fake agent) | Protocol contract, dispatch matrix, presence, caps, isolation | mvp, build-farm, rest, ci | N (after AH.4–AH.6) | Y | M | ouroboros-rest |
 
@@ -869,7 +869,7 @@ runner lost ─▶ requeue(once) ─▶ retried │ failed    drain: finish curr
 
 ### Issue AH.5 — ouroboros-rest: [AH.5] Log ingest & retrieval
 
-> **GitHub issue:** #253 · **Status:** 🟡 Open · **Parent epic:** #240
+> **GitHub issue:** #253 · **Status:** 🟢 Done · **Parent epic:** #240
 
 
 - **Problem Statement:** Chunked agent logs must persist within caps and
@@ -891,6 +891,39 @@ runner lost ─▶ requeue(once) ─▶ retried │ failed    drain: finish curr
 ```
 log.chunk(seq, bytes) ─▶ append(cap-aware) ─▶ GET ?after=18122 ─▶ {bytes, next: 24576, live: true}
 ```
+
+- **Delivered:** [`src/modules/farm/logs/`](../ouroboros-rest/src/modules/farm/logs) and
+  [`V044__farm_log_ingest.sql`](../ouroboros-db/migrations/V044__farm_log_ingest.sql). **Ingest**
+  hears `log.chunk` through the gateway's listeners, as dispatch does. It stores chunks **in `seq`
+  order**, because V040's cap trigger assigns offsets at insert time and offsets already given to
+  a reader must never move. A chunk that overtook a gap is held, for at most 10 s or 64 chunks or
+  until the job finishes, and a gap never filled is recorded as lost chunks where it was. A
+  per-workspace **rate guard** (2 MiB/s, 8 MiB burst) refuses a runaway's excess, and marks it on
+  the next stored chunk. **One honest marker**: elision is data, never text in the stream, kept
+  by position. Before a chunk is V044's `elided_bytes`/`missing_chunks`. After the last stored
+  byte is `build_jobs.log_dropped_bytes`, widened to carry the agent's own tail drops (its
+  `job.finish.log.dropped_bytes` less what it had already placed, split by the new
+  `log_agent_dropped_bytes`) beside the cap's, so where the two caps meet the card draws one
+  marker. **Retrieval** is `GET /api/v1/farm/jobs/:id/log?after=` for every member:
+  `{bytes, nextOffset, end, live, elisions, tail, retained, pollAfter}`, at most 256 KiB, UTF-8
+  text ending on a character boundary so successive polls concatenate exactly. It sends the
+  polling contract's `Cache-Control` and `X-Ouro-Poll-After` (2 s live, 15 s done). **`live` is
+  the job's state**, never chunk recency. The same resource paged from `after=0` is mockup 10's
+  **Full log**. **A finished job's log is final**: the agent's `job.finish` is accounted on a new
+  gateway hook, `AgentSessions.onTerminal`, awaited *before* the ledger marks the job finished,
+  and chunks are written only while the job is live — found when the full suite, under load, read
+  a log between the two. **Retention**: thirty days per chunk (`retain_until`, written at ingest) and a
+  per-workspace budget, `OURO_FARM_LOG_BUDGET_BYTES` (2 GiB), oldest finished logs first.
+  Logs are removed whole and only when finished, leaving a `log_swept_at` tombstone
+  (`retained: false`), at most 200 jobs per rule per run, with tombstone counts logged. The
+  policy is a `FARM_LOG_RETENTION` seam for #482. **Verification**: 90 unit tests (and four for the gateway hook); 12
+  fake-agent integration cases (out-of-order reassembly, exact resume across splits inside
+  ✓/é/𝄞/—, the cap and the agent's tail as one figure, `live`, a cancelled build's log closed, a
+  lost frame, the rate guard across two workspaces, age and budget retention, isolation, bad
+  offsets); seven mutation spot
+  checks that each turned them red. Not here: tail reads for #510, and the agent's shipper
+  (AG.5, #247). Until AG.5 ships, a finished job's log is empty and its tail is all of its
+  output.
 
 ### Issue AH.6 — ouroboros-rest: [AH.6] Farm read APIs & stats
 

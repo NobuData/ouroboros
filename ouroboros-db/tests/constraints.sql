@@ -13008,6 +13008,77 @@ select pg_temp.must_reject(
   'and not longer than the protocol lets hello.hostname be',
   'runners_hostname_length');
 
+-- --- V044: where a log's holes are, and the retention tombstone (#253) ----------
+--
+-- Log ingest places every elision by position — before a chunk (the agent's throttle and the
+-- rate guard's refusals, and frames that never arrived), or after the last stored byte — so the
+-- console draws one marker per hole. The trigger must carry the new columns through untouched,
+-- and none of the counts may go negative: a negative elision is a marker claiming the log has
+-- more bytes than it has.
+insert into ouroboros.build_log_chunks (job_id, seq, content, elided_bytes, missing_chunks)
+  values ('7f000004-0000-4000-8000-000000000003', 3, convert_to('after a hole', 'UTF8'), 4096, 1);
+
+select pg_temp.must_hold(
+  (select byte_start = 5 and elided_bytes = 4096 and missing_chunks = 1
+     from ouroboros.build_log_chunks
+    where job_id = '7f000004-0000-4000-8000-000000000003' and seq = 3),
+  'a chunk carries the elision before it through the cap trigger, and still continues the stream');
+
+select pg_temp.must_hold(
+  (select elided_bytes = 0 and missing_chunks = 0 from ouroboros.build_log_chunks
+    where job_id = '7f000004-0000-4000-8000-000000000003' and seq = 1),
+  'an ordinary chunk has no elision before it');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_log_chunks set elided_bytes = -1
+     where job_id = '7f000004-0000-4000-8000-000000000003' and seq = 3$$,
+  'the bytes elided before a chunk are never negative',
+  'build_log_chunks_elided_bytes_non_negative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_log_chunks set missing_chunks = -1
+     where job_id = '7f000004-0000-4000-8000-000000000003' and seq = 3$$,
+  'the chunks missing before a chunk are never negative',
+  'build_log_chunks_missing_chunks_non_negative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set log_agent_dropped_bytes = -1
+     where id = '7f000004-0000-4000-8000-000000000002'$$,
+  'the agent''s dropped-byte total is never negative',
+  'build_jobs_log_agent_dropped_non_negative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set log_missing_chunks = -1
+     where id = '7f000004-0000-4000-8000-000000000002'$$,
+  'the tail''s missing chunks are never negative',
+  'build_jobs_log_missing_chunks_non_negative');
+
+-- Only a finished job's log is ever swept. The live card reads a running build's log, and a
+-- sweep under it would read as a build that went silent.
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set log_swept_at = now()
+     where id = '7f000004-0000-4000-8000-000000000001'$$,
+  'a running job''s log is never swept',
+  'build_jobs_log_swept_when_finished');
+
+update ouroboros.build_jobs set log_swept_at = now()
+ where id = '7f000004-0000-4000-8000-000000000002';
+
+select pg_temp.must_hold(
+  (select log_swept_at is not null from ouroboros.build_jobs
+    where id = '7f000004-0000-4000-8000-000000000002'),
+  'a finished job carries the tombstone of its swept log');
+
+-- The budget sweep reads a workspace's finished jobs that still hold a log, oldest first.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id from ouroboros.build_jobs
+     where organization_id = 'org-farm' and log_swept_at is null and log_bytes > 0
+       and finished_at is not null
+     order by finished_at limit 10$$,
+  'build_jobs_log_retained_idx');
+set local enable_seqscan = on;
+
 -- --- a repository keeps its builds, and a workspace takes everything with it ----
 --
 -- A build is the record that a commit of a repository was compiled, so removing the

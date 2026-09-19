@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.35.22",
+    "version": "0.35.23",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -15920,6 +15920,120 @@
         }
       }
     },
+    "/api/v1/farm/jobs/{id}/log": {
+      "get": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "A build job's log, a page at a time, from an offset",
+        "description": "One page of a build job's log ([#253](https://github.com/NobuData/ouroboros/issues/253),\ndecision B8), starting at `?after=` — the `nextOffset` the reader last reached, or 0.\nSuccessive pages concatenate to exactly the stored log: nothing skipped, nothing\nrepeated. A page ends on a UTF-8 character boundary, so a multi-byte character is never\nsplit between two pages; bytes that are not UTF-8 read as U+FFFD, and are still counted\nonce.\n\n**`live` is the job's state, never how recently a chunk arrived** — a finished job answers\n`false` at once. Poll while it is `true`, at the interval `X-Ouro-Poll-After` names (two\nseconds while live, fifteen after; the same value is `pollAfter` in the body).\n\n**Holes are data, not text.** `elisions` places one marker per position inside the page —\nbytes the agent's throttle or the per-workspace rate guard dropped, and chunks that never\narrived. `tail` is everything elided after the last stored byte — the per-job cap, the\nagent's own tail drops — as one figure, drawn once after the text. `retained: false` means\nthe retention sweep removed the log (thirty days per chunk, and the workspace's\n`OURO_FARM_LOG_BUDGET_BYTES`, whole logs only).\n\nThe run console's **Full log** (mockup 10) is this resource paged from `after=0` until\n`nextOffset` reaches `end`. Every member of the workspace may read it.",
+        "operationId": "readBuildJobLog",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The job's id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "The offset to read from — the `nextOffset` of the previous page. 0 when absent.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 268435456
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "headers": {
+              "Cache-Control": {
+                "description": "`private, no-cache` — one workspace's build output, which no shared cache may store.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "private, no-cache"
+              },
+              "X-Ouro-Poll-After": {
+                "description": "How many seconds to wait before asking again: `2` while the build runs, `15` once it\nhas finished.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "2"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildLog"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`farm_job_not_found` — this workspace has no such build job; another workspace's job is\nthe same answer. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a UUID, or `after` is not a whole number in range.\n`farm_log_offset_out_of_range` — `after` is past the end of the stored log;\n`details.end` is how many bytes there are.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/farm/jobs/{id}/cancel": {
       "post": {
         "tags": [
@@ -30065,6 +30179,135 @@
           "startedAt": null,
           "finishedAt": null,
           "exitCode": null
+        }
+      },
+      "BuildLog": {
+        "type": "object",
+        "title": "BuildLog",
+        "description": "One page of a build job's log ([#253](https://github.com/NobuData/ouroboros/issues/253)).\nAsk for the next with `?after=` set to `nextOffset`; the reader has everything stored when\n`nextOffset` equals `end`.",
+        "additionalProperties": false,
+        "required": [
+          "jobId",
+          "offset",
+          "nextOffset",
+          "end",
+          "bytes",
+          "live",
+          "elisions",
+          "tail",
+          "retained",
+          "pollAfter"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Where this page starts — the `after` asked for."
+          },
+          "nextOffset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Where the next page starts."
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many bytes are stored."
+          },
+          "bytes": {
+            "type": "string",
+            "description": "The page's bytes as UTF-8 text, ending on a character boundary."
+          },
+          "live": {
+            "type": "boolean",
+            "description": "Whether the log can still grow — the job is not finished. Never chunk recency."
+          },
+          "elisions": {
+            "type": "array",
+            "description": "Elision markers inside `[offset, nextOffset)`, one per position.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "offset",
+                "bytes",
+                "missingChunks"
+              ],
+              "properties": {
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "The stream offset the marker sits at — before the byte there."
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Bytes elided there — the agent's throttle and the rate guard."
+                },
+                "missingChunks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Chunks lost there, whose size is unknown."
+                }
+              }
+            }
+          },
+          "tail": {
+            "description": "Everything elided after the last stored byte, drawn once after the text; null when nothing was.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "bytes",
+                  "missingChunks",
+                  "capped"
+                ],
+                "properties": {
+                  "bytes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "missingChunks": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "capped": {
+                    "type": "boolean",
+                    "description": "Whether the per-job cap was reached."
+                  }
+                }
+              }
+            ]
+          },
+          "retained": {
+            "type": "boolean",
+            "description": "False once the retention sweep removed the log."
+          },
+          "pollAfter": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Seconds to wait before asking again — `X-Ouro-Poll-After`, in the body too."
+          }
+        },
+        "example": {
+          "jobId": "5eed0028-0000-4000-8000-000000000479",
+          "offset": 18122,
+          "nextOffset": 24576,
+          "end": 24576,
+          "bytes": "[6/7] Linking zephyr.elf …",
+          "live": true,
+          "elisions": [],
+          "tail": null,
+          "retained": true,
+          "pollAfter": 2
         }
       }
     }
