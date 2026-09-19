@@ -561,6 +561,19 @@ export interface Configuration {
    */
   readonly farmClientCertHeader?: string;
   /**
+   * The oldest `ouroboros-runner` build the agent gateway accepts, as a semantic version. From
+   * `OURO_FARM_MIN_AGENT_VERSION`; `undefined` when unset, which is the default and means no
+   * agent-version floor.
+   *
+   * AH.3 ([#251](https://github.com/NobuData/ouroboros/issues/251)) — the GitHub-runner pattern.
+   * The agent runs on customer machines and cannot be force-upgraded, so the right to refuse an
+   * old one has to exist from the first release: an agent whose `hello` reports a version below
+   * this is answered `refuse {version.below_minimum}` with a sentence naming the floor, and
+   * exits rather than reconnecting into the refusal. The *protocol-line* floor is separate and is
+   * the build's own, in `src/modules/farm/gateway/hello.ts`.
+   */
+  readonly farmMinAgentVersion?: string;
+  /**
    * Seconds between provider health sweeps, and the age at which a local provider's last
    * check is stale. From `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`,
    * {@link DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS} when unset.
@@ -712,6 +725,7 @@ export const VARIABLES = {
   dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
   listenHostOverride: "OURO_LISTEN_HOST",
   farmClientCertHeader: "OURO_FARM_CLIENT_CERT_HEADER",
+  farmMinAgentVersion: "OURO_FARM_MIN_AGENT_VERSION",
   providerHealthIntervalSeconds: "OURO_PROVIDER_HEALTH_INTERVAL_SECONDS",
   providerHealthKeyCheckSeconds: "OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS",
   backlogSyncIntervalSeconds: "OURO_BACKLOG_SYNC_INTERVAL_SECONDS",
@@ -1114,6 +1128,18 @@ const environmentSchema = z.object({
     .regex(/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/u, { error: "expected an HTTP field name" })
     .optional(),
 
+  // The agent-version floor (#251) — optional, no default. SemVer's own grammar, less the
+  // `v` prefix SemVer does not have: the floor is compared by precedence
+  // (`src/modules/farm/gateway/semver.ts`), and a value that does not parse would be a floor
+  // that refuses every agent or none, silently.
+  OURO_FARM_MIN_AGENT_VERSION: z
+    .string()
+    .regex(
+      /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u,
+      { error: "expected a semantic version such as 0.4.0" },
+    )
+    .optional(),
+
   // The two provider-health cadences (#196), read by the same rules as PORT and the
   // dashboard's poll: anchored digits, then a range. Two variables rather than one because
   // they govern requests to two different people — see `Configuration` for which is which.
@@ -1329,6 +1355,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,
     listenHostOverride: values.OURO_LISTEN_HOST,
     farmClientCertHeader: values.OURO_FARM_CLIENT_CERT_HEADER,
+    farmMinAgentVersion: values.OURO_FARM_MIN_AGENT_VERSION,
     providerHealthIntervalSeconds: values.OURO_PROVIDER_HEALTH_INTERVAL_SECONDS,
     providerHealthKeyCheckSeconds: values.OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     backlogSyncIntervalSeconds: values.OURO_BACKLOG_SYNC_INTERVAL_SECONDS,

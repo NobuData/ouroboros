@@ -974,7 +974,8 @@ Named here so that nobody looks for it and concludes it was forgotten:
 |---|---|
 | Enrollment: the registration token, the CSR, the issued certificate | [#250](https://github.com/NobuData/ouroboros/issues/250), shipped — [`SECURITY_MODEL.md` § 7](SECURITY_MODEL.md#7-the-build-farms-certificate-authority) and `ouroboros-rest`'s `/api/v1/farm/*` |
 | Dialling, TLS setup, reconnection backoff, the session loop | [#244](https://github.com/NobuData/ouroboros/issues/244), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/agent`, `internal/ws` and `internal/state` |
-| The gateway's session store, presence table and dispatcher | [#251](https://github.com/NobuData/ouroboros/issues/251), [#252](https://github.com/NobuData/ouroboros/issues/252) |
+| The gateway's session store, presence and terminal-frame ledger | [#251](https://github.com/NobuData/ouroboros/issues/251), shipped — `ouroboros-rest`'s [`farm/gateway/`](../ouroboros-rest/src/modules/farm/gateway) and `ouroboros-db`'s `V042` |
+| The dispatcher: which runner is offered which job, retries, cancellation | [#252](https://github.com/NobuData/ouroboros/issues/252) |
 | How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246) |
 | How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247) |
 | Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248) |
@@ -1000,7 +1001,13 @@ runs it:
 4. **The limits agree** across this document, `v1.json` and the Go constants.
 
 The Go side is held to `expected.json` by
-`ouroboros-runner/internal/conn/protocol_test.go`, and the TypeScript side will be by
-[#255](https://github.com/NobuData/ouroboros/issues/255). Adding a message type means editing
-`v1.json`, adding a fixture, adding a case, adding a section here — and both suites going
-green on all of it.
+`ouroboros-runner/internal/conn/protocol_test.go`, and the TypeScript side by
+`ouroboros-rest/src/modules/farm/protocol/protocol.spec.ts` — the gateway's codec
+([#251](https://github.com/NobuData/ouroboros/issues/251)), a table-for-table port of the Go one,
+decoding every case and every transcript, with the two over-limit cases built from
+`$defs/limits`. The gateway's integration suite replays the transcripts against the running
+service in both directions, and the fake agent that drives it is what
+[#255](https://github.com/NobuData/ouroboros/issues/255) grows. `ci/rest` and `ci/runner` both
+watch `schemas/runner-protocol/**`, so a fixture edit runs both halves. Adding a message type
+means editing `v1.json`, adding a fixture, adding a case, adding a section here — and both
+suites going green on all of it.

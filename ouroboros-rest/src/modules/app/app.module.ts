@@ -16,6 +16,7 @@ import { EstimationModule } from "../estimation/estimation.module";
 import { GithubModule } from "../github/github.module";
 import { HealthModule } from "../health/health.module";
 import { FarmModule } from "../farm/farm.module";
+import { FarmGatewayModule } from "../farm/gateway/gateway.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
@@ -363,6 +364,13 @@ export class AppModule {
         // routes here authenticate on an enrollment token and a TLS client certificate
         // instead. `farm/registration.controller.ts` is where that is argued.
         FarmModule,
+        // AH.3 ([#251](https://github.com/NobuData/ouroboros/issues/251)) — the agent gateway,
+        // `wss://…/api/v1/farm/agent`. After `FarmModule`, whose `RunnerIdentityService` is the
+        // handshake's revocation check. It registers no route: it answers the HTTP server's
+        // `upgrade` event, which a request never reaches the router through, so no guard below
+        // or above it applies — the transport authenticates the runner instead
+        // (`farm/gateway/transport.ts`).
+        FarmGatewayModule,
         InternalModule,
       ],
     };

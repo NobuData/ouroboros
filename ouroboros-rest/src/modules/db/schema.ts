@@ -3189,6 +3189,11 @@ export interface RunnersTable {
   cert_serial: string | null;
   /** The fallback secret, as an AD.1 envelope. Present exactly when `security_mode` is `bearer_fallback`. */
   bearer_sealed: string | null;
+  /**
+   * What the machine called itself in its last `hello` (V042, [#251](https://github.com/NobuData/ouroboros/issues/251)).
+   * Recognition, never identity — the certificate is the identity. Null until it has connected.
+   */
+  hostname: string | null;
   enrolled_at: Generated<Date>;
   enrolled_by: string | null;
   uptime_seconds: string | null;
@@ -3273,6 +3278,83 @@ export interface RunnerCertificatesTable {
   superseded_at: Date | null;
 }
 
+/** `build_jobs.status` — the seven-name lifecycle V040 closes (decision **B5**). */
+export type BuildJobStatus =
+  "queued" | "offered" | "running" | "succeeded" | "failed" | "retried" | "canceled";
+
+/** `build_jobs.executor` — what an attempt actually ran under, as a snapshot of its pool's. */
+export type BuildExecutor = "container" | "shell";
+
+/**
+ * `ouroboros.build_jobs` — one build attempt (V040, [#249](https://github.com/NobuData/ouroboros/issues/249)).
+ *
+ * Mirrored by AH.3 ([#251](https://github.com/NobuData/ouroboros/issues/251)), whose gateway is
+ * the first writer: an agent's `job.start` and `job.finish` move a job to `running` and to its
+ * terminal status. Dispatch — creating rows, offering them, retrying them — is AH.4's
+ * ([#252](https://github.com/NobuData/ouroboros/issues/252)).
+ *
+ * The bigint counters arrive as strings, as `runners.uptime_seconds` does: `pg` will not turn a
+ * 64-bit integer into a JavaScript number that might not hold it.
+ */
+export interface BuildJobsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** The job's public name within its workspace — mockup 08's `#479`. */
+  number: number;
+  pool_id: string;
+  runner_id: string | null;
+  run_id: string | null;
+  github_repo_id: string;
+  git_ref: string;
+  commit_sha: string | null;
+  label: string;
+  title: string;
+  executor: BuildExecutor;
+  image: string | null;
+  command: string;
+  env: Generated<unknown>;
+  status: Generated<BuildJobStatus>;
+  queued_at: Generated<Date>;
+  offered_at: Date | null;
+  started_at: Date | null;
+  finished_at: Date | null;
+  exit_code: number | null;
+  /** The ccache summary, or null — and null is not zero (decision **B5**). */
+  ccache_stats: unknown;
+  retry_of: string | null;
+  log_bytes: Generated<string>;
+  log_dropped_bytes: Generated<string>;
+  log_cap_bytes: Generated<string>;
+  log_truncated_at: Date | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `runner_terminal_frames.frame_type` — an enum of one, as the protocol's `receipt.of_type` is. */
+export type TerminalFrameType = "job.finish";
+
+/**
+ * `ouroboros.runner_terminal_frames` — the gateway's ledger of terminal frames (V042,
+ * [#251](https://github.com/NobuData/ouroboros/issues/251)).
+ *
+ * The receiver's half of the protocol's resume rule: a `job.finish` is recorded here by its
+ * envelope id in the transaction that applies it, before its `receipt` is written, and a
+ * re-send finds its row. **Append-only in the database** — `runner_terminal_frames_no_update`
+ * — so every column carries a `never` in its update position.
+ */
+export interface RunnerTerminalFramesTable {
+  organization_id: ColumnType<string, string, never>;
+  runner_id: ColumnType<string, string, never>;
+  /** The frame's envelope id — the idempotency key the agent repeats on every re-send. */
+  frame_id: ColumnType<string, string, never>;
+  frame_type: ColumnType<TerminalFrameType, TerminalFrameType, never>;
+  /** The build it finished, when it named one of this runner's. */
+  job_id: ColumnType<string | null, string | null, never>;
+  /** Whether recording it changed that build. */
+  applied: ColumnType<boolean, boolean, never>;
+  received_at: ColumnType<Date, Date | undefined, never>;
+}
+
 export interface Database {
   user: UserTable;
   tenant_domains: TenantDomainsTable;
@@ -3318,6 +3400,8 @@ export interface Database {
   enrollment_tokens: EnrollmentTokensTable;
   farm_authorities: FarmAuthoritiesTable;
   runner_certificates: RunnerCertificatesTable;
+  build_jobs: BuildJobsTable;
+  runner_terminal_frames: RunnerTerminalFramesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -3749,6 +3833,7 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
     "bearer_sealed",
+    "hostname",
   ],
   enrollment_tokens: [
     "id",
@@ -3788,6 +3873,46 @@ export const TABLE_COLUMNS = {
     "revoked_by",
     "revocation_reason",
     "superseded_at",
+  ],
+  build_jobs: [
+    "id",
+    "organization_id",
+    "number",
+    "pool_id",
+    "runner_id",
+    "run_id",
+    "github_repo_id",
+    "git_ref",
+    "commit_sha",
+    "label",
+    "title",
+    "executor",
+    "image",
+    "command",
+    "env",
+    "status",
+    "queued_at",
+    "offered_at",
+    "started_at",
+    "finished_at",
+    "exit_code",
+    "ccache_stats",
+    "retry_of",
+    "log_bytes",
+    "log_dropped_bytes",
+    "log_cap_bytes",
+    "log_truncated_at",
+    "created_at",
+    "updated_at",
+  ],
+  runner_terminal_frames: [
+    "organization_id",
+    "runner_id",
+    "frame_id",
+    "frame_type",
+    "job_id",
+    "applied",
+    "received_at",
   ],
   planning_epic_progress: [
     "epic_id",
@@ -4164,3 +4289,13 @@ export type NewFarmAuthority = Insertable<FarmAuthoritiesTable>;
 export type RunnerCertificate = Selectable<RunnerCertificatesTable>;
 /** The columns an `insert` into `ouroboros.runner_certificates` may carry. */
 export type NewRunnerCertificate = Insertable<RunnerCertificatesTable>;
+
+/** A row of `ouroboros.build_jobs`, as a `select` returns it. */
+export type BuildJob = Selectable<BuildJobsTable>;
+/** The columns an `insert` into `ouroboros.build_jobs` may carry. */
+export type NewBuildJob = Insertable<BuildJobsTable>;
+
+/** A row of `ouroboros.runner_terminal_frames`, as a `select` returns it. */
+export type RunnerTerminalFrame = Selectable<RunnerTerminalFramesTable>;
+/** The columns an `insert` into `ouroboros.runner_terminal_frames` may carry. */
+export type NewRunnerTerminalFrame = Insertable<RunnerTerminalFramesTable>;

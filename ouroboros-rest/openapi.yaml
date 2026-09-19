@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.17"
+  version: "0.35.18"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -596,6 +596,18 @@ tags:
       Minting, listing and revoking are `owner` or `admin`. Reading the CA certificate is any
       member's: it is a public certificate, and the person who needs it is whoever is
       configuring the reverse proxy.
+
+      **One more endpoint lives beside these and is not an operation in this document:**
+      `wss://<control plane>/api/v1/farm/agent`, the agent gateway
+      ([#251](https://github.com/NobuData/ouroboros/issues/251)). It is a WebSocket spoken in the
+      runner protocol — `docs/RUNNER_PROTOCOL.md`, with `schemas/runner-protocol/v1.json` as its
+      machine-readable half — rather than in requests and responses, so OpenAPI cannot describe
+      it and the protocol document is its contract. Its upgrade is authenticated as renewal is,
+      by the client certificate checked against the revocation list, and refused with the same
+      two codes: `401 farm_client_certificate_required` when no certificate reached this service
+      (most often a proxy that terminates TLS without passing it through — see
+      `docs/SECURITY_MODEL.md` § 7.6), and `401 farm_identity_refused` for one that is not a live
+      runner identity.
 
 paths:
   /api/v1:

@@ -1079,6 +1079,22 @@ expect_red 'a serial may name two certificates of one workspace' \
   'alter table ouroboros.runner_certificates drop constraint runner_certificates_serial_key;'
 
 
+# --- V042, the gateway's terminal-frame ledger (#251) --------------------------
+#
+# The rule the whole resume design rests on, and a silent one when it goes: without the key a
+# re-sent `job.finish` is simply a second row, and the only symptom is a stat row that stops
+# adding up. The append-only trigger beside it, because a ledger entry that could be revised is
+# one a re-send could be made to slip past.
+
+expect_red 'a terminal frame may be recorded twice for one runner' \
+  'a terminal frame re-sent after a dropped socket is recorded once, not twice .*runner_terminal_frames_pkey did not fire' \
+  'alter table ouroboros.runner_terminal_frames drop constraint runner_terminal_frames_pkey;'
+
+expect_red 'a recorded terminal frame may be revised' \
+  'a recorded terminal frame cannot be revised' \
+  'drop trigger runner_terminal_frames_no_update on ouroboros.runner_terminal_frames;'
+
+
 printf '\n'
 if check_summary; then
   rm -rf "$LOG_DIR"

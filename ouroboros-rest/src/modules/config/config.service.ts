@@ -192,6 +192,16 @@ export class AppConfigService {
   }
 
   /**
+   * The oldest agent build the farm gateway accepts — `OURO_FARM_MIN_AGENT_VERSION`.
+   *
+   * `undefined` when unset, which is the default: no agent-version floor. See
+   * `Configuration.farmMinAgentVersion`.
+   */
+  get farmMinAgentVersion(): string | undefined {
+    return this.config.get<string>("farmMinAgentVersion");
+  }
+
+  /**
    * Seconds between backlog sync cycles — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`.
    *
    * The nominal interval. `src/modules/backlog-sync/` jitters every delay by ±25% around it,

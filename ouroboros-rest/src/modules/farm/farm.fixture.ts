@@ -210,6 +210,7 @@ export function runner(overrides: Partial<Runner> = {}): Runner {
     security_mode: "mtls",
     cert_serial: "4a110e97",
     bearer_sealed: null,
+    hostname: null,
     enrolled_at: FIXTURE_NOW,
     enrolled_by: null,
     uptime_seconds: null,

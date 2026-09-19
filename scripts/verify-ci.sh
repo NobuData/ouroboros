@@ -288,13 +288,15 @@ check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'
 # contract. So an edit to any of them runs ci/runner, or the Go half can stop agreeing with
 # the document nobody re-checked it against.
 #
-# It reaches ci/runner and nothing else *yet*: the TypeScript gateway (#251) and the fake
-# agent (#255) are the other two readers, and the pull requests that add them are the ones
-# that add rest.yml to these routes — the same way #133 did for the workflow DSL.
+# The schema and fixtures reach ci/rest too since AH.3 (#251): the TypeScript gateway's codec
+# is the second implementation held to them, and its parity suite runs there — the same way
+# #133 added the workflow DSL. The prose stays ci/runner's alone, because the check that holds
+# the document to the fixtures is verify-runner-protocol.sh, which only that workflow runs.
 check_route ouroboros-runner/cmd/ouroboros-runner/main.go 'runner.yml'
 check_route ouroboros-runner/internal/conn/protocol.go 'runner.yml'
-check_route schemas/runner-protocol/v1.json 'runner.yml'
-check_route schemas/runner-protocol/fixtures/expected.json 'runner.yml'
+check_route schemas/runner-protocol/v1.json 'rest.yml runner.yml'
+check_route schemas/runner-protocol/fixtures/expected.json 'rest.yml runner.yml'
+check_route schemas/runner-protocol/fixtures/sessions/resume.json 'rest.yml runner.yml'
 check_route docs/RUNNER_PROTOCOL.md 'runner.yml'
 
 # …and the check that would notice, which is the one exception to the rule below: a change
