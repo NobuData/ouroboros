@@ -2,7 +2,8 @@
 // one connection to the farm, and keeps holding it.
 //
 //	Connecting ──wss:// 443 + mTLS──▶ hello ──▶ ack ──▶ Connected
-//	    ▲                                               │ heartbeat · offer ⇄ decline · receipt
+//	    ▲                                               │ heartbeat · offer ⇄ accept/decline · receipt
+//	    │                                               │ job.start · job.progress · job.finish
 //	    │                                               │ drain · undrain · bye
 //	Backoff ◀── dropped / refused-for-now ──────────────┘
 //	    │
@@ -35,10 +36,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/enroll"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/exec"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
 )
@@ -95,6 +98,17 @@ type Config struct {
 	Arch, Hostname string
 	// Capabilities is `hello.capabilities` — answered by probes, not assumed.
 	Capabilities conn.Capabilities
+	// Executors runs jobs, by kind ([#246]). An offer of a kind with no executor is declined
+	// `unsupported_executor`. They are held to Capabilities: `docker` must be true exactly
+	// when there is a container executor and `shell` exactly when there is a shell one, and
+	// New refuses a configuration that would advertise a capability it cannot honour — or
+	// hide one it has.
+	//
+	// [#246]: https://github.com/NobuData/ouroboros/issues/246
+	Executors map[string]exec.Executor
+	// Workspaces is where jobs run, and whether a failed job's workspace is kept. Required
+	// when there are executors.
+	Workspaces *exec.Workspaces
 	// Telemetry is where each heartbeat's measurements come from — a running
 	// *telemetry.Monitor. Nil sends every measurement as null: an agent that cannot say
 	// how loaded it is says so, rather than reporting an idle machine.
@@ -117,6 +131,9 @@ type Config struct {
 	HandshakeTimeout time.Duration
 	StableAfter      time.Duration
 	CloseGrace       time.Duration
+	// JobStopWait bounds how long a shutting-down agent waits for its cancelled jobs to
+	// report before it says bye. Zero means DefaultJobStopWait.
+	JobStopWait time.Duration
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
 }
@@ -140,6 +157,16 @@ type Agent struct {
 	// workload is the jobs this agent holds, which every heartbeat reports. It outlives a
 	// connection too: a job does not stop running because the socket dropped.
 	workload Workload
+
+	// pool is the pool of record's execution policy, from the last ack: the concurrency
+	// cap and the environment allow-list. It outlives a connection like the drain.
+	pool poolPolicy
+
+	// notices carries a running job's non-terminal frames to the live session.
+	notices noticeBoard
+
+	// jobs is every job running in the background, waited for before Run returns.
+	jobs sync.WaitGroup
 }
 
 // New prepares an agent. It opens the outbox — logging, not failing, over any frame a
@@ -170,6 +197,12 @@ func New(config Config) (*Agent, error) {
 	if config.RenewalBackoff.Max <= 0 {
 		config.RenewalBackoff.Max = DefaultRenewalRetryMax
 	}
+	if config.JobStopWait <= 0 {
+		config.JobStopWait = DefaultJobStopWait
+	}
+	if err := checkExecutors(config); err != nil {
+		return nil, err
+	}
 
 	identity, err := config.Dir.LoadIdentity()
 	if err != nil {
@@ -196,6 +229,31 @@ func New(config Config) (*Agent, error) {
 		started: config.Now(),
 		queued:  make(chan struct{}, 1),
 	}, nil
+}
+
+// checkExecutors holds the executors to the capabilities the hello will report — the
+// capability honesty dispatch relies on ([#252]): a runner that says `docker: true` must be
+// able to run a container job, and one that can must say so.
+//
+// [#252]: https://github.com/NobuData/ouroboros/issues/252
+func checkExecutors(config Config) error {
+	for kind, executor := range config.Executors {
+		if executor == nil || executor.Kind() != kind {
+			return fmt.Errorf("the %s executor is missing or runs another kind of job", kind)
+		}
+	}
+	if has := config.Executors[conn.ExecutorContainer] != nil; has != config.Capabilities.Docker {
+		return fmt.Errorf("the hello would say docker: %t, but a container executor is configured: %t",
+			config.Capabilities.Docker, has)
+	}
+	if has := config.Executors[conn.ExecutorShell] != nil; has != config.Capabilities.Shell {
+		return fmt.Errorf("the hello would say shell: %t, but a shell executor is configured: %t",
+			config.Capabilities.Shell, has)
+	}
+	if len(config.Executors) > 0 && config.Workspaces == nil {
+		return errors.New("an agent with executors needs a workspace root")
+	}
+	return nil
 }
 
 // Workload is the account of the jobs this agent holds, which the executors ([#246])
@@ -265,6 +323,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	fatal := a.connectLoop(loop)
 	stop(nil)
 	<-renewalDone
+
+	// Every job's context is the loop's, which has just ended: each is being cancelled —
+	// its process tree terminated — and its `cancelled` finish queued to the outbox, which
+	// the next process re-sends. The agent does not exit with a build still running.
+	a.jobs.Wait()
 
 	var renewalFatal *FatalError
 	if errors.As(context.Cause(loop), &renewalFatal) {

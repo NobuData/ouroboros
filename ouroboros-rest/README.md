@@ -3348,7 +3348,8 @@ agent ──upgrade + client cert──▶ transport.ts: RunnerIdentityService (
           │ refused ─▶ 401 farm_identity_refused · 401 farm_client_certificate_required
           ▼
 hello ──▶ version floors · security mode vs transport ─▶ refuse, or
-          runners: hostname · arch · agent_version · capabilities · online ─▶ ack {session, limits}
+          runners: hostname · arch · agent_version · capabilities · online ─▶ ack {session, limits,
+          pool: {max_concurrency, env_allowlist}}   ← the pool's row, read at every hello (#246)
 heartbeat ──▶ telemetry snapshot · uptime · pill · last_seen_at ← THIS beat · drain reconciled
 job.finish ──▶ ledger + job in ONE transaction ─▶ receipt {duplicate}   (record, then answer)
 bye ──▶ offline now          silence ──▶ presence sweep: offline after 32 s, last_seen_at kept

@@ -75,6 +75,15 @@ func TestDockerReachableAsksTheDaemon(t *testing.T) {
 	if !DockerReachable(ctx, []string{failing, notASocket, answering}) {
 		t.Error("expected the sockets to be tried in turn until one answers")
 	}
+
+	// FindDocker answers the same question with WHICH daemon — the socket the container
+	// executor then talks to (#246) — and names nothing when none answers.
+	if socket, found := FindDocker(ctx, []string{failing, impostor, answering}); !found || socket != answering {
+		t.Errorf("FindDocker = %q, %t; want the answering socket", socket, found)
+	}
+	if socket, found := FindDocker(ctx, []string{failing, notASocket}); found || socket != "" {
+		t.Errorf("FindDocker with no daemon = %q, %t", socket, found)
+	}
 }
 
 // TestAHungDaemonDoesNotHoldTheAgent asserts a socket that accepts and never answers is

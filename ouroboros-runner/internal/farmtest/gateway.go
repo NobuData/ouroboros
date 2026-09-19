@@ -145,6 +145,7 @@ func (f *Farm) acknowledge(agent *ws.Conn, hello conn.HelloPayload, runnerID str
 	}
 	pool := f.runners[runnerID].pool
 	limits := f.limits
+	policy := f.pool
 	f.mu.Unlock()
 
 	return f.write(agent, conn.TypeAck, conn.AckPayload{
@@ -153,6 +154,7 @@ func (f *Farm) acknowledge(agent *ws.Conn, hello conn.HelloPayload, runnerID str
 		Resumed:  resumed,
 		Runner:   conn.AckRunner{ID: "rnr_" + conn.NewID(), Name: hello.Hostname, Pool: pool},
 		Limits:   limits,
+		Pool:     policy,
 	}) == nil
 }
 
@@ -177,7 +179,34 @@ func (f *Farm) serve(agent *ws.Conn) {
 		case conn.TypeJobDecline:
 			var decline conn.JobDeclinePayload
 			_ = envelope.Into(&decline)
-			f.record(func(o *Observed) { o.Declines = append(o.Declines, decline) })
+			f.record(func(o *Observed) {
+				o.Declines = append(o.Declines, decline)
+				o.JobFrames = append(o.JobFrames, envelope.Type)
+			})
+
+		case conn.TypeJobAccept:
+			var accept conn.JobAcceptPayload
+			_ = envelope.Into(&accept)
+			f.record(func(o *Observed) {
+				o.Accepts = append(o.Accepts, accept)
+				o.JobFrames = append(o.JobFrames, envelope.Type)
+			})
+
+		case conn.TypeJobStart:
+			var start conn.JobStartPayload
+			_ = envelope.Into(&start)
+			f.record(func(o *Observed) {
+				o.Starts = append(o.Starts, start)
+				o.JobFrames = append(o.JobFrames, envelope.Type)
+			})
+
+		case conn.TypeJobProgress:
+			var progress conn.JobProgressPayload
+			_ = envelope.Into(&progress)
+			f.record(func(o *Observed) {
+				o.Progress = append(o.Progress, progress)
+				o.JobFrames = append(o.JobFrames, envelope.Type)
+			})
 
 		case conn.TypeBye:
 			var bye conn.ByePayload
@@ -191,8 +220,7 @@ func (f *Farm) serve(agent *ws.Conn) {
 			return
 
 		default:
-			// job.accept, job.start, job.progress and log.chunk are the executors'
-			// (#246, #247). This build writes none of them.
+			// log.chunk is the log shipper's (#247), and this build writes none.
 			f.violation(agent, fmt.Sprintf("an unexpected %s", envelope.Type))
 			return
 		}
@@ -209,6 +237,7 @@ func (f *Farm) finish(agent *ws.Conn, envelope *conn.Envelope, raw []byte) bool 
 	f.mu.Lock()
 	f.observed.Finishes = append(f.observed.Finishes, envelope.ID)
 	f.observed.FinishFrames = append(f.observed.FinishFrames, raw)
+	f.observed.JobFrames = append(f.observed.JobFrames, envelope.Type)
 	if duplicate {
 		f.observed.Duplicates++
 	}

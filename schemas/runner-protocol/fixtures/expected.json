@@ -60,7 +60,7 @@
     },
     {
       "name": "ack",
-      "about": "The session, the negotiated protocol, and every limit the agent must not hard-code.",
+      "about": "The session, the negotiated protocol, every limit the agent must not hard-code, and the pool's execution policy (#246).",
       "document": "valid/ack.json",
       "valid": true,
       "diagnostics": []
@@ -69,6 +69,13 @@
       "name": "ack-resumed",
       "about": "The same answer when the session survived the drop.",
       "document": "valid/ack-resumed.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "ack-without-pool",
+      "about": "`pool` was added inside line 1 (#246), so it is optional and an ack without it is still legal (§ 3). The agent assumes the pool column defaults: one job at a time, and no variable allowed through.",
+      "document": "valid/ack-without-pool.json",
       "valid": true,
       "diagnostics": []
     },
@@ -310,6 +317,13 @@
       "document": "invalid/hello-security-mode-enum.json",
       "valid": false,
       "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/security_mode" }]
+    },
+    {
+      "name": "ack-pool-concurrency-range",
+      "about": "A pool that lets a runner hold no jobs at all. `max_concurrency` is 1-64, the bounds `runner_pools` holds it to (#249); zero is a pool that could never run anything.",
+      "document": "invalid/ack-pool-concurrency-range.json",
+      "valid": false,
+      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/pool/max_concurrency" }]
     },
     {
       "name": "heartbeat-cpu-range",

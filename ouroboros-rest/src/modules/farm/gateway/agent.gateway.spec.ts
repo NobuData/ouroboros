@@ -63,7 +63,10 @@ describe("the agent gateway's socket", () => {
 
     const repository = {
       recordHello: jest.fn().mockResolvedValue(row),
-      poolName: jest.fn().mockResolvedValue("pool-a"),
+      poolOfRecord: jest.fn().mockResolvedValue({
+        name: "pool-a",
+        policy: { max_concurrency: 1, env_allowlist: [] },
+      }),
     };
 
     gateway = new AgentGateway(

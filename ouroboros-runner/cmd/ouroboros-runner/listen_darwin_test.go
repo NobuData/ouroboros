@@ -13,6 +13,7 @@ import (
 // saw nothing cannot pass the test.
 func assertNoListeningSockets(t *testing.T, pid int) {
 	t.Helper()
+	// #nosec G204 -- an absolute path, constant arguments, and a pid this test formatted.
 	output, err := exec.Command("/usr/sbin/lsof", "-nP", "-a", "-p", strconv.Itoa(pid), "-i").CombinedOutput()
 	if err != nil {
 		t.Fatalf("lsof: %v\n%s", err, output)

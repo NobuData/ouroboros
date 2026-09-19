@@ -233,8 +233,7 @@ export class AgentConnection {
 
     this.runner = runner;
 
-    const pool =
-      (await this.context.repository.poolName(runner.organization_id, runner.pool_id)) ?? "unknown";
+    const pool = await this.context.repository.poolOfRecord(runner.organization_id, runner.pool_id);
     const { session, resumed } = this.context.sessions.open(
       runner.organization_id,
       runner.id,
@@ -243,12 +242,16 @@ export class AgentConnection {
     this.session = session;
     this.context.sessions.attach(session, this.socket);
 
+    // The pool's policy travels with the ack (#246): the agent holds itself to the pool's
+    // concurrency cap and passes a job only the variables the pool allows. A pool that has gone
+    // is stated as `unknown` with no policy, which the agent reads as the column defaults.
     const ack = frame("ack", {
       session: session.id,
       protocol: reading.protocol,
       resumed,
-      runner: { id: wireId("rnr", runner.id), name: runner.name, pool },
+      runner: { id: wireId("rnr", runner.id), name: runner.name, pool: pool?.name ?? "unknown" },
       limits: SESSION_LIMITS,
+      ...(pool ? { pool: pool.policy } : {}),
     });
 
     if (!(await this.write(ack))) return;

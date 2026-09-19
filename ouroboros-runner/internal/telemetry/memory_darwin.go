@@ -22,6 +22,7 @@ const sysctlPath = "/usr/sbin/sysctl"
 // and its answer is carried in every `hello` after that. The heartbeat's reads, which
 // repeat every few seconds, are made in-process instead — see [sysctlMemory].
 func TotalMemoryMB() (int, error) {
+	// #nosec G204 -- an absolute path and constant arguments: nothing here comes from outside.
 	out, err := exec.Command(sysctlPath, "-n", "hw.memsize").Output()
 	if err != nil {
 		return 0, fmt.Errorf("read installed memory from %s: %w", sysctlPath, err)

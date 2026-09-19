@@ -252,6 +252,21 @@
             "offer_ack_ms": { "description": "How long the agent has to answer a `job.offer` before it expires.", "type": "integer", "minimum": 100 },
             "resume_window_ms": { "description": "How long this session survives a dropped socket, and the floor on how long the deduplication ledger keeps a terminal frame's id.", "type": "integer", "minimum": 1000 }
           }
+        },
+        "pool": {
+          "description": "The pool of record's execution policy (decision B4, #246): how many jobs this runner may hold at once, and which environment variables a job may carry into its build. Read from the pool's row (`runner_pools`, #249) at every hello, so a pool edited while the agent was away is honoured when it comes back. Optional only because it was added inside line 1: an agent given an ack without it assumes the column defaults -- one job at a time, and no variable allowed through.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_concurrency", "env_allowlist"],
+          "properties": {
+            "max_concurrency": { "description": "Jobs one runner of this pool may hold at once -- accepted or running. An offer past it is declined `busy`.", "type": "integer", "minimum": 1, "maximum": 64 },
+            "env_allowlist": {
+              "description": "The environment variable names a job's `env` may carry into its build. The agent drops every other name, and a job's environment is ONLY these: nothing is inherited from the agent's own process.",
+              "type": "array",
+              "maxItems": 64,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
         }
       }
     },

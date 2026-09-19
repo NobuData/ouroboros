@@ -162,6 +162,13 @@ var specs = map[Type]*messageSpec{
 			{name: "offer_ack_ms", kinds: kindInteger, min: num(100)},
 			{name: "resume_window_ms", kinds: kindInteger, min: num(1000)},
 		}},
+		// Optional only because it was added inside line 1 (§ 3, #246). The bounds are the
+		// ones runner_pools holds the same two columns to (#249).
+		{name: "pool", kinds: kindObject, optional: true, fields: []field{
+			{name: "max_concurrency", kinds: kindInteger, min: num(1), max: num(64)},
+			{name: "env_allowlist", kinds: kindArray, maxItems: 64,
+				item: &field{kinds: kindString, minLen: 1}},
+		}},
 	}},
 
 	TypeRefuse: {fields: []field{

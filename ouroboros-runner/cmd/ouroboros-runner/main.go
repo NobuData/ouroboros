@@ -34,6 +34,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -41,6 +43,7 @@ import (
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/agent"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/enroll"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/exec"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/secret"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/telemetry"
@@ -65,7 +68,13 @@ const (
 	envToken    = "OURO_RUNNER_TOKEN" // #nosec G101 -- the variable's name, not a credential
 	envStateDir = "OURO_RUNNER_STATE_DIR"
 	envServerCA = "OURO_RUNNER_SERVER_CA"
+	envNoShell  = "OURO_RUNNER_NO_SHELL"
+	envKeep     = "OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE"
 )
+
+// workDir is where job workspaces are made, inside the state directory: the path the
+// protocol's own `job.start` example reports.
+const workDir = "work"
 
 // usage is printed for `help`, for no arguments at all, and for anything unrecognised.
 const usage = `ouroboros-runner — the Ouroboros build farm agent.
@@ -78,11 +87,16 @@ Usage:
       certificate over a key this machine generated. Nothing secret is printed.
 
   ouroboros-runner run [--state-dir DIR] [--server-ca FILE] [--bearer-fallback]
+                       [--no-shell] [--keep-workspace-on-failure]
       Connect outbound over mTLS and stay connected: heartbeat, reconnect with
       jittered backoff, renew the certificate before it expires, say bye on SIGTERM.
+      Run the jobs it is offered — in a container when a Docker or Podman daemon
+      answers, and on this machine directly unless --no-shell — and decline the
+      ones it cannot run.
 
   ouroboros-runner version   Print the build, the protocol range and this machine.
-  ouroboros-runner hello     Print the hello frame this machine would send.
+  ouroboros-runner hello [--no-shell]
+      Print the hello frame this machine would send.
   ouroboros-runner heartbeat [--window 5s]
       Measure this machine for one window and print the heartbeat it would send —
       CPU, memory in use and installed, each null where it cannot be measured.
@@ -95,6 +109,11 @@ Environment (each a fallback for its flag):
   OURO_RUNNER_STATE_DIR   --state-dir  default /var/lib/ouroboros-runner
   OURO_RUNNER_SERVER_CA   --server-ca  a PEM file of roots to verify the control plane
                                        with, in place of the system's
+  OURO_RUNNER_NO_SHELL    --no-shell   true: run no job directly on this machine, and say
+                                       so in the hello
+  OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE
+                          --keep-workspace-on-failure
+                                       true: leave a failed job's workspace for diagnosis
 
 --bearer-fallback has no variable: the weaker mode is stated on the command line or
 not at all. See docs/RUNNER_PROTOCOL.md for the wire contract.
@@ -309,11 +328,15 @@ func enrollCommand(ctx context.Context, args []string, stdout, stderr io.Writer,
 // runCommand is `ouroboros-runner run` — the long-lived process.
 func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv func(string) string) error {
 	var common commonFlags
+	var jobs jobFlags
 	var bearerFallback bool
 	set := flagSet("run", stderr)
 	common.register(set, getenv)
 	set.BoolVar(&bearerFallback, "bearer-fallback", false,
 		"permit a runner enrolled in bearer-fallback mode to connect — required, every time, for such a runner")
+	if err := jobs.register(set, getenv, true); err != nil {
+		return err
+	}
 	if err := set.Parse(args); err != nil {
 		return fmt.Errorf("%w: %w", errUsage, err)
 	}
@@ -339,11 +362,13 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 		return fmt.Errorf("%s records the server as %q: %w", common.stateDir, record.Server, err)
 	}
 
-	host, capabilities, err := describe(ctx)
+	host, machine, err := describe(ctx, jobs.noShell)
 	if err != nil {
 		return err
 	}
 	logger := newLogger(stderr)
+	logger.Info("executors", "container", machine.capabilities.Docker, "docker_socket", machine.dockerSocket,
+		"shell", machine.capabilities.Shell, "keep_workspace_on_failure", jobs.keepOnFailure)
 
 	// The heartbeat's measurements are taken in the background for as long as the agent
 	// runs, so a beat reads the newest sample rather than waiting a window for one.
@@ -359,7 +384,9 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 		Version:        version,
 		Arch:           host.Arch,
 		Hostname:       host.Hostname,
-		Capabilities:   capabilities,
+		Capabilities:   machine.capabilities,
+		Executors:      machine.executors(),
+		Workspaces:     &exec.Workspaces{Root: filepath.Join(common.stateDir, workDir), KeepOnFailure: jobs.keepOnFailure},
 		Telemetry:      monitor,
 		BearerFallback: bearerFallback,
 		Renewer:        &enroll.Client{Server: server, RootCAs: roots, UserAgent: "ouroboros-runner/" + version},
@@ -371,24 +398,94 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 	return runner.Run(ctx)
 }
 
+// jobFlags are the flags that decide which jobs this runner takes and what it leaves
+// behind ([#246]).
+//
+// [#246]: https://github.com/NobuData/ouroboros/issues/246
+type jobFlags struct {
+	noShell       bool
+	keepOnFailure bool
+}
+
+// register adds the job flags to a flag set, defaulted from the environment. keep says
+// whether --keep-workspace-on-failure belongs to this command: `hello` describes the
+// machine, and a cleanup policy is not part of a hello.
+func (j *jobFlags) register(set *flag.FlagSet, getenv func(string) string, keep bool) error {
+	noShell, err := envBool(getenv, envNoShell)
+	if err != nil {
+		return err
+	}
+	set.BoolVar(&j.noShell, "no-shell", noShell,
+		"run no job directly on this machine; the hello says shell: false ("+envNoShell+")")
+	if !keep {
+		return nil
+	}
+	keepOnFailure, err := envBool(getenv, envKeep)
+	if err != nil {
+		return err
+	}
+	set.BoolVar(&j.keepOnFailure, "keep-workspace-on-failure", keepOnFailure,
+		"leave the workspace of a job that failed, timed out or errored, for diagnosis ("+envKeep+")")
+	return nil
+}
+
+// envBool reads a boolean variable: unset or empty is false, and anything strconv cannot
+// read is a usage error naming the variable — a typo in a unit file should stop the agent,
+// not quietly mean false.
+func envBool(getenv func(string) string, name string) (bool, error) {
+	raw := getenv(name)
+	if raw == "" {
+		return false, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%w: %s=%q is not true or false", errUsage, name, raw)
+	}
+	return value, nil
+}
+
+// machine is what this runner can do, answered by asking: the hello's capabilities, and
+// the daemon socket the container executor will talk to.
+type machine struct {
+	capabilities conn.Capabilities
+	dockerSocket string
+}
+
+// executors is one executor per capability the hello reports — built from the same probe,
+// so the agent can never advertise a kind of job it cannot run (agent.New checks it again).
+func (m machine) executors() map[string]exec.Executor {
+	executors := map[string]exec.Executor{}
+	if m.capabilities.Docker {
+		executors[conn.ExecutorContainer] = &exec.Container{Engine: exec.NewEngine(m.dockerSocket)}
+	}
+	if m.capabilities.Shell {
+		executors[conn.ExecutorShell] = &exec.Shell{}
+	}
+	return executors
+}
+
 // describe is this machine, as a hello describes it: the static facts, and the
 // capabilities answered by asking.
 //
-// `shell` is false: it is an operator's answer to "will this machine run shell jobs at
-// all?", and this build has no shell executor to answer yes with ([#246]).
-//
-// [#246]: https://github.com/NobuData/ouroboros/issues/246
-func describe(ctx context.Context) (telemetry.Host, conn.Capabilities, error) {
+// `docker` is a daemon answering its ping — and the socket that answered is the one the
+// container executor uses. `shell` is the operator's answer rather than a probe: true
+// unless --no-shell, because a machine that holds signing keys can refuse shell jobs while
+// still taking container ones.
+func describe(ctx context.Context, noShell bool) (telemetry.Host, machine, error) {
 	host, err := telemetry.Describe()
 	if err != nil {
-		return telemetry.Host{}, conn.Capabilities{}, err
+		return telemetry.Host{}, machine{}, err
 	}
-	return host, conn.Capabilities{
-		Docker:   telemetry.DockerReachable(ctx, telemetry.DockerSockets()),
-		Shell:    false,
-		Ccache:   telemetry.CcacheOnPath(),
-		CPUs:     host.CPUs,
-		MemoryMB: host.MemoryMB,
+	socket, docker := telemetry.FindDocker(ctx, telemetry.DockerSockets())
+	return host, machine{
+		capabilities: conn.Capabilities{
+			Docker:   docker,
+			Shell:    !noShell,
+			Ccache:   telemetry.CcacheOnPath(),
+			CPUs:     host.CPUs,
+			MemoryMB: host.MemoryMB,
+		},
+		dockerSocket: socket,
 	}, nil
 }
 
@@ -442,16 +539,21 @@ func printVersion(out io.Writer) error {
 // printed as though it were fine.
 func printHello(ctx context.Context, args []string, out io.Writer, getenv func(string) string) error {
 	var common commonFlags
+	var jobs jobFlags
 	set := flagSet("hello", io.Discard)
 	common.register(set, getenv)
+	if err := jobs.register(set, getenv, false); err != nil {
+		return err
+	}
 	if err := set.Parse(args); err != nil {
 		return fmt.Errorf("%w: %w", errUsage, err)
 	}
 
-	host, capabilities, err := describe(ctx)
+	host, machine, err := describe(ctx, jobs.noShell)
 	if err != nil {
 		return err
 	}
+	capabilities := machine.capabilities
 
 	// Read without taking the lock: the runner this describes may be running right now.
 	// Not enrolled yet is not an error here — the frame simply names no pool and no mode.

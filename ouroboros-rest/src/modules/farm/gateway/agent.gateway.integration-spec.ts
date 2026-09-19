@@ -342,6 +342,8 @@ describe("the agent gateway", () => {
         resumed: false,
         runner: { id: wireId("rnr", runner.runnerId), name: "forge-01", pool: "arm-builders" },
         limits: SESSION_LIMITS,
+        // A pool created with the column defaults: one job at a time, nothing allowed through.
+        pool: { max_concurrency: 1, env_allowlist: [] },
       });
       expect(uuidOf("rnr", ack.payload.runner.id)).toBe(runner.runnerId);
       expect(agent.violations).toEqual([]);
@@ -354,6 +356,22 @@ describe("the agent gateway", () => {
         agent_version: "0.1.0",
       });
       expect(row.last_seen_at).toBeInstanceOf(Date);
+    });
+
+    it("hands the agent its POOL'S POLICY, as the pool's row holds it at this hello", async () => {
+      const context = await farm();
+      const runner = await enrol(context, "forge-01");
+      await api.sql.query(
+        `update ouroboros.runner_pools
+            set max_concurrency = 3, env_allowlist = '["CI", "MAKEFLAGS"]'::jsonb
+          where id = $1`,
+        [context.poolId],
+      );
+
+      const { agent, ack } = await connect(runner);
+
+      expect(ack.payload.pool).toEqual({ max_concurrency: 3, env_allowlist: ["CI", "MAKEFLAGS"] });
+      expect(agent.violations).toEqual([]);
     });
 
     it("STORES CAPABILITIES where dispatch eligibility reads them", async () => {

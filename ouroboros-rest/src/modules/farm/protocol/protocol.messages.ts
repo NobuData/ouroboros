@@ -55,6 +55,16 @@ export interface Limits {
   readonly resume_window_ms: number;
 }
 
+/**
+ * The pool of record's execution policy (decision B4, #246), read from its `runner_pools` row:
+ * how many jobs one runner may hold at once, and which environment variables a job may carry
+ * into its build.
+ */
+export interface AckPool {
+  readonly max_concurrency: number;
+  readonly env_allowlist: readonly string[];
+}
+
 /** `ack` — the answer to a `hello` that was accepted. */
 export interface AckPayload {
   readonly session: string;
@@ -62,6 +72,8 @@ export interface AckPayload {
   readonly resumed: boolean;
   readonly runner: { readonly id: string; readonly name: string; readonly pool: string };
   readonly limits: Limits;
+  /** Optional only because it was added inside line 1: an agent given none assumes the defaults. */
+  readonly pool?: AckPool;
 }
 
 /** Why a `hello` was refused. */

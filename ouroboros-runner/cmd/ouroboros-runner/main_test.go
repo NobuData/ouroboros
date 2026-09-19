@@ -57,6 +57,53 @@ func TestHelloPrintsALegalFrame(t *testing.T) {
 	}
 }
 
+// TestHelloReportsShellUnlessRefused is `capabilities.shell` as an operator's answer
+// (#246): true by default now that there is a shell executor, and false when the runner is
+// started with --no-shell or OURO_RUNNER_NO_SHELL — the refusal a machine holding signing
+// keys makes. A value that is not a boolean is a mistake to stop on, not a silent false.
+func TestHelloReportsShellUnlessRefused(t *testing.T) {
+	shell := func(getenv func(string) string, args ...string) bool {
+		t.Helper()
+		printed, _, err := runCommandLine(t, getenv, append([]string{"hello", "--state-dir", t.TempDir()}, args...)...)
+		if err != nil {
+			t.Fatalf("hello %v: %v", args, err)
+		}
+		var hello conn.HelloPayload
+		frame, diags := conn.Decode([]byte(printed))
+		if len(diags) > 0 {
+			t.Fatalf("an illegal hello: %v", diags)
+		}
+		if err := frame.Into(&hello); err != nil {
+			t.Fatal(err)
+		}
+		return hello.Capabilities.Shell
+	}
+	if !shell(env(nil)) {
+		t.Error("a runner started plainly refuses shell jobs")
+	}
+	if shell(env(nil), "--no-shell") {
+		t.Error("--no-shell still reports shell: true")
+	}
+	if shell(env(map[string]string{envNoShell: "true"})) {
+		t.Errorf("%s=true still reports shell: true", envNoShell)
+	}
+	if !shell(env(map[string]string{envNoShell: "false"})) {
+		t.Errorf("%s=false refuses shell jobs", envNoShell)
+	}
+
+	for _, command := range []string{"hello", "run"} {
+		for _, variable := range []string{envNoShell, envKeep} {
+			if command == "hello" && variable == envKeep {
+				continue // hello does not read the cleanup policy
+			}
+			_, _, err := runCommandLine(t, env(map[string]string{variable: "maybe"}), command, "--state-dir", t.TempDir())
+			if !errors.Is(err, errUsage) || !strings.Contains(err.Error(), variable) {
+				t.Errorf("%s with %s=maybe: %v", command, variable, err)
+			}
+		}
+	}
+}
+
 // TestHeartbeatPrintsThisMachine is the parity instrument (#245): the heartbeat this
 // machine would send, measured over one window, validated against the contract before it
 // is printed — and carrying real readings on a machine that can take them, which every
@@ -180,6 +227,8 @@ func TestUsage(t *testing.T) {
 		{"heartbeat", "stray-argument"},
 		{"heartbeat", "--window", "1ns"},
 		{"heartbeat", "--window", "2h"},
+		{"run", "--no-shell=maybe"},
+		{"hello", "--keep-workspace-on-failure"}, // a cleanup policy is not part of a hello
 	} {
 		_, _, err := runCommandLine(t, env(nil), args...)
 		if !errors.Is(err, errUsage) {
@@ -201,7 +250,8 @@ func TestUsageDescribesTheAgent(t *testing.T) {
 	for _, want := range []string{
 		"enroll", "run", "heartbeat", "--tenant", "--pool", "--token", "--bearer-fallback",
 		"outbound", "nothing listens", "docs/RUNNER_PROTOCOL.md",
-		envServer, envToken, envStateDir, envServerCA,
+		envServer, envToken, envStateDir, envServerCA, envNoShell, envKeep,
+		"--no-shell", "--keep-workspace-on-failure",
 	} {
 		if !strings.Contains(usage, want) {
 			t.Errorf("expected the usage text to mention %q", want)

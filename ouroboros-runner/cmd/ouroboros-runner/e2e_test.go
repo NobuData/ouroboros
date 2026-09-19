@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -91,7 +92,14 @@ func execute(t *testing.T, args ...string) (string, int) {
 // spawn starts a long-lived command.
 func spawn(t *testing.T, args ...string) *process {
 	t.Helper()
+	return spawnWith(t, nil, args...)
+}
+
+// spawnWith starts a long-lived command with extra environment variables.
+func spawnWith(t *testing.T, extra []string, args ...string) *process {
+	t.Helper()
 	cmd := command(t, args...)
+	cmd.Env = append(cmd.Env, extra...)
 	output := &lockedBuffer{}
 	cmd.Stdout, cmd.Stderr = output, output
 	if err := cmd.Start(); err != nil {
@@ -431,5 +439,97 @@ func TestTheRunningAgentReportsThisMachine(t *testing.T) {
 	}
 	if strings.Contains(agent.output.String(), "cannot be measured") {
 		t.Errorf("a metric this machine can measure was reported as failing:\n%s", agent.output)
+	}
+}
+
+// TestTheRunningAgentRunsAShellJob is the shell executor through the command, as a process
+// (#246): an offer accepted, started in a workspace under the state directory, and finished
+// with the command's exit code and a duration — with the cleanup policy and the pool's
+// allow-list read from where an operator and the gateway set them.
+//
+// The job prints its own environment to a file and fails, so the workspace is kept
+// (OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE) and the file can be read: it holds the one
+// variable the pool allows, and nothing of the agent's — though the agent was started with
+// a sentinel in its environment.
+func TestTheRunningAgentRunsAShellJob(t *testing.T) {
+	farm, serverCA := farmFiles(t)
+	farm.SetPool(&conn.AckPool{MaxConcurrency: 1, EnvAllowlist: []string{"CI"}})
+	stateDir := filepath.Join(t.TempDir(), "state")
+	output, code := execute(t, "enroll", "--server", farm.URL, "--tenant", "acme-robotics", "--pool", "pool-b",
+		"--token", farm.MintToken("pool-b", 1), "--name", "anvil-mac", "--state-dir", stateDir, "--server-ca", serverCA)
+	if code != 0 {
+		t.Fatalf("enroll exited %d:\n%s", code, output)
+	}
+
+	agent := spawnWith(t, []string{envKeep + "=true", "OURO_TEST_SENTINEL=the agent's own"},
+		"run", "--state-dir", stateDir, "--server-ca", serverCA)
+	observed := awaitFarm(t, farm, "the connection", agent.output, func(o farmtest.Observed) bool {
+		return len(o.Hellos) == 1 && len(o.Heartbeats) >= 1
+	})
+	if !observed.Hellos[0].Capabilities.Shell {
+		t.Fatalf("the runner does not advertise shell jobs: %+v", observed.Hellos[0].Capabilities)
+	}
+
+	job := "job_01KE7EWKB1TJFC3BXKZPY4FRD2"
+	if err := farm.Send(conn.NewFrame(conn.NewID(), conn.TypeJobOffer, map[string]any{
+		"job": job, "pool": "pool-b", "executor": "shell",
+		"command": []string{"sh", "-c", "env > env.txt; sleep 0.2; exit 3"}, "workdir": "/",
+		"env":        map[string]string{"CI": "true", "HOME": "/root"},
+		"repository": nil, "timeout_s": 60, "expires_at": conn.Timestamp(time.Now().Add(time.Minute)),
+	})); err != nil {
+		t.Fatal(err)
+	}
+	observed = awaitFarm(t, farm, "the job's finish", agent.output, func(o farmtest.Observed) bool {
+		return len(o.Finishes) == 1
+	})
+	if !slices.Equal(observed.JobFrames, []conn.Type{conn.TypeJobAccept, conn.TypeJobStart, conn.TypeJobFinish}) {
+		t.Errorf("job frames: %v", observed.JobFrames)
+	}
+	envelope, diags := conn.Decode(observed.FinishFrames[0])
+	if len(diags) > 0 {
+		t.Fatalf("an illegal finish: %v", diags)
+	}
+	var finish conn.JobFinishPayload
+	if err := envelope.Into(&finish); err != nil {
+		t.Fatal(err)
+	}
+	started, _ := time.Parse(time.RFC3339Nano, finish.StartedAt)
+	finished, _ := time.Parse(time.RFC3339Nano, finish.FinishedAt)
+	if finish.Outcome != conn.OutcomeFailed || finish.ExitCode == nil || *finish.ExitCode != 3 ||
+		finished.Sub(started) < 200*time.Millisecond {
+		t.Errorf("finish: %+v", finish)
+	}
+
+	workspace := filepath.Join(stateDir, "work", job)
+	if observed.Starts[0].Workspace != workspace {
+		t.Errorf("started in %s, want %s", observed.Starts[0].Workspace, workspace)
+	}
+	printed, err := os.ReadFile(filepath.Join(workspace, "env.txt")) // kept: the job failed
+	if err != nil {
+		t.Fatalf("the failed job's workspace was not kept: %v\n%s", err, agent.output)
+	}
+	names := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(string(printed)), "\n") {
+		name, _, _ := strings.Cut(line, "=")
+		names[name] = true
+	}
+	// CI is the pool's; PWD, SHLVL and _ are what the job's own sh exports about itself.
+	for name := range names {
+		if name != "CI" && name != "PWD" && name != "SHLVL" && name != "_" {
+			t.Errorf("the job saw %s, which the pool does not allow:\n%s", name, printed)
+		}
+	}
+	if !names["CI"] {
+		t.Errorf("the job did not see the allowed CI:\n%s", printed)
+	}
+
+	if code := agent.signal(syscall.SIGTERM); code != 0 {
+		t.Errorf("SIGTERM exited %d:\n%s", code, agent.output)
+	}
+	if violations := farm.Observe().Violations; len(violations) > 0 {
+		t.Errorf("the agent wrote frames the contract refuses: %v", violations)
+	}
+	if !strings.Contains(agent.output.String(), "dropped=[HOME]") {
+		t.Errorf("the dropped variable was not logged:\n%s", agent.output)
 	}
 }

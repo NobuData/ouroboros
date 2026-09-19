@@ -241,7 +241,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 | AG.1 | #243 | 🟢 Done | ouroboros-runner: [AG.1] Module scaffold & agent protocol spec | Go module, conventions, `docs/RUNNER_PROTOCOL.md`, ci/runner | mvp, build-farm, infra, ci | N (after #8) | Y | M | ouroboros-runner, .github, docs |
 | AG.2 | #244 | 🟢 Done | ouroboros-runner: [AG.2] Enrollment, identity & connection loop | Token bootstrap, mTLS cert, outbound WSS, reconnect/backoff | mvp, build-farm | N (after AG.1, AH.2) | Y | L | ouroboros-runner |
 | AG.3 | #245 | 🟢 Done | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
-| AG.4 | #246 | 🟡 Open | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
+| AG.4 | #246 | 🟢 Done | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
 | AG.5 | #247 | 🟡 Open | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
 | AG.6 | #248 | 🟡 Open | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
 
@@ -414,7 +414,7 @@ heartbeat{cpu: 82, ram: [14.2, 32], q: 2, up: 41d, job: {id, phase}} @10s ± jit
 
 ### Issue AG.4 — ouroboros-runner: [AG.4] Job executors (container & shell)
 
-> **GitHub issue:** #246 · **Status:** 🟡 Open · **Parent epic:** #239
+> **GitHub issue:** #246 · **Status:** 🟢 Done · **Parent epic:** #239
 
 
 - **Problem Statement:** pool-a builds run in a pinned SDK image; pool-b runs
@@ -443,6 +443,34 @@ heartbeat{cpu: 82, ram: [14.2, 32], q: 2, up: 41d, job: {id, phase}} @10s ± jit
 job.offer{executor: container, image: zephyr-sdk:0.17} ─▶ accept ─▶ pull? ─▶ run ─▶ finish{exit, 4m12s}
 job.offer{executor: shell} on runner without docker ─▶ accept (capability match)
 ```
+
+- **Delivered:** both executor worlds in `ouroboros-runner`'s new `internal/exec`, driven by the
+  agent's offer handling. **Container** jobs run through the **Docker Engine API** on the very
+  socket the hello's `docker` probe found (Docker, or Podman's compatible API — no CLI needed, so
+  the capability and the executor are one fact): pull-if-missing with `job.progress` in the
+  `prepare` phase (bytes across layers, before `job.start`), the workspace bind-mounted at the
+  offer's `workdir`, the command as an exec-form CMD, an init as PID 1, and each job's share of
+  the machine (cores and memory ÷ the pool's cap). **Shell** jobs run argv-exec only, in a fresh
+  `<state-dir>/work/<job>` with `workdir` resolved inside it (a `..` is refused), and with an
+  environment that is **exactly the pool's allow-list and nothing inherited** — no PATH unless
+  the pool allows one. **Cancellation** is SIGTERM → 10 s → SIGKILL to the whole **process
+  group** (the daemon's `stop` for a container), and the group is swept after a normal exit too;
+  it is driven by `timeout_s` (`timed_out`) and by the agent's own SIGTERM (`cancelled`, sent
+  before the bye). **Capability honesty:** no daemon, `--no-shell`, a `repository` this build
+  cannot check out yet, or no room under the cap is a decline at once (`unsupported_executor` /
+  `busy`), and `agent.New` refuses a hello whose capabilities disagree with its executors.
+  `--keep-workspace-on-failure` keeps a failed, timed-out or errored job's workspace; the
+  default cleans up, read-only trees included. The pool's policy needed the contract: an
+  optional **`ack.pool {max_concurrency, env_allowlist}`** inside line 1, with
+  `valid/ack-without-pool.json` and an `ack-pool-concurrency-range` parity case, which the
+  gateway (AH.3) fills from `runner_pools` at every hello — absent means the column defaults,
+  one job and no variables. The trust model — the tenant's machine runs the tenant's command —
+  is written in the package doc and the module README. Tested against real processes (a job
+  printing its environment, metacharacter argv, a TERM-ignoring tree checked gone within the
+  grace), a fake Engine API, and — behind `make test-docker` — rootless Docker with `busybox`.
+  Not here, by design: a wire `job.cancel` (AH.4, #252), an offer's attempt number (always 1
+  until dispatch retries exist), source checkout, and log shipping (AG.5, #247 — until then
+  `job.finish.log` reports all output as dropped rather than an empty log).
 
 ### Issue AG.5 — ouroboros-runner: [AG.5] Log shipping & ccache stats
 

@@ -346,6 +346,22 @@ export const SPECS: Readonly<Record<string, MessageSpec>> = {
           { name: "resume_window_ms", kinds: Kind.Integer, min: 1000 },
         ],
       },
+      // Optional only because it was added inside line 1 (§ 3, #246). The bounds are the ones
+      // runner_pools holds the same two columns to (#249).
+      {
+        name: "pool",
+        kinds: Kind.Object,
+        optional: true,
+        fields: [
+          { name: "max_concurrency", kinds: Kind.Integer, min: 1, max: 64 },
+          {
+            name: "env_allowlist",
+            kinds: Kind.Array,
+            maxItems: 64,
+            item: { name: "", kinds: Kind.String, minLen: 1 },
+          },
+        ],
+      },
     ],
   },
 

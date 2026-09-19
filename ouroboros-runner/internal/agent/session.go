@@ -119,8 +119,12 @@ func (a *Agent) connect(ctx context.Context) result {
 	if err := a.config.Dir.SaveSession(ack.Session); err != nil {
 		a.log.Warn("could not record the session for resume", "error", err)
 	}
+	a.pool.set(ack.Pool)
+	maxConcurrency, allowlist := a.pool.get()
 	a.log.Info("connected", "session", ack.Session, "resumed", ack.Resumed, "runner", ack.Runner.ID,
 		"pool", ack.Runner.Pool, "security_mode", mode, "pending_terminal_frames", a.outbox.Len())
+	a.log.Info("pool policy", "max_concurrency", maxConcurrency, "env_allowlist", allowlist,
+		"named_by_gateway", ack.Pool != nil)
 	if mode == conn.SecurityBearerFallback {
 		a.log.Warn("connected in bearer-fallback mode: this runner authenticates with a secret, not a " +
 			"certificate, and the farm shows it as degraded")
@@ -238,6 +242,11 @@ func (s *session) hold(ctx context.Context) result {
 	defer close(done)
 	go s.read(frames, readErr, done)
 
+	// The running jobs' job.start and job.progress frames reach this session through here,
+	// and stop reaching it when it ends.
+	notices := s.agent.notices.open()
+	defer s.agent.notices.release(notices)
+
 	// First, before anything else on this socket: every terminal frame not yet
 	// receipted, byte for byte (docs/RUNNER_PROTOCOL.md § 5). Then the first heartbeat,
 	// so the gateway has this agent's telemetry from the moment it is connected.
@@ -253,6 +262,16 @@ func (s *session) hold(ctx context.Context) result {
 	for {
 		select {
 		case <-ctx.Done():
+			// The jobs are being cancelled with the same context. Their `cancelled`
+			// finishes are worth delivering on this socket rather than the next process's,
+			// so the farm page does not show them running until the agent comes back.
+			if !s.agent.awaitJobs(s.agent.config.JobStopWait) {
+				s.agent.log.Warn("a cancelled job had not stopped in time to report before bye; " +
+					"its finish is re-sent from the outbox on the next start")
+			}
+			if s.writeNotices(notices) == nil {
+				_ = s.flush()
+			}
 			s.bye(ctx, readErr)
 			return result{reason: "shutting down"}
 
@@ -260,7 +279,7 @@ func (s *session) hold(ctx context.Context) result {
 			return s.ended(err)
 
 		case envelope := <-frames:
-			if err := s.handle(envelope); err != nil {
+			if err := s.handle(ctx, envelope); err != nil {
 				// Only the gateway's own mistake is answered with a bye saying so; a write
 				// that failed is a connection that has gone, and there is nobody to tell.
 				var protocol *errProtocol
@@ -276,10 +295,36 @@ func (s *session) hold(ctx context.Context) result {
 			}
 			heartbeat.Reset(s.heartbeatInterval())
 
+		case frame := <-notices:
+			if err := write(s.socket, frame); err != nil {
+				return result{reason: "writing a " + string(frame.Type) + ": " + err.Error()}
+			}
+
 		case <-s.agent.queued:
+			// A job posts its job.start before it queues its finish, so whatever it posted
+			// is already waiting here: write it first, and the gateway never reads a
+			// finish for a job it has not seen start.
+			if err := s.writeNotices(notices); err != nil {
+				return result{reason: "writing a job frame: " + err.Error()}
+			}
 			if err := s.flush(); err != nil {
 				return result{reason: "writing a terminal frame: " + err.Error()}
 			}
+		}
+	}
+}
+
+// writeNotices writes every job frame already waiting for this session, without waiting
+// for more.
+func (s *session) writeNotices(notices <-chan conn.Frame) error {
+	for {
+		select {
+		case frame := <-notices:
+			if err := write(s.socket, frame); err != nil {
+				return err
+			}
+		default:
+			return nil
 		}
 	}
 }
@@ -350,11 +395,12 @@ func (s *session) ended(err error) result {
 	}
 }
 
-// handle answers one frame from the gateway.
-func (s *session) handle(envelope *conn.Envelope) error {
+// handle answers one frame from the gateway. ctx is the agent's, which an accepted job
+// runs under.
+func (s *session) handle(ctx context.Context, envelope *conn.Envelope) error {
 	switch envelope.Type {
 	case conn.TypeJobOffer:
-		return s.offer(envelope)
+		return s.offer(ctx, envelope)
 
 	case conn.TypeDrain:
 		var drain conn.DrainPayload
@@ -378,34 +424,38 @@ func (s *session) handle(envelope *conn.Envelope) error {
 	}
 }
 
-// offer answers a job.offer at once.
+// offer answers a job.offer at once: a job.accept and the job started in the background,
+// or a job.decline with the reason ([#246]).
 //
-// This build has no executors — they are [#246]'s — so every offer is declined, and
-// declined IMMEDIATELY, with a reason: a decline is worth far more to a dispatcher than a
-// silence it has to wait `offer_ack_ms` out. A drained agent declines with `draining`, an
-// offer that has already expired with `expired`, and anything else with
-// `unsupported_executor`, which is exactly true of this build.
+// Either way the answer is immediate. A decline is worth far more to a dispatcher than a
+// silence it has to wait `offer_ack_ms` out, and an offer this runner cannot satisfy is
+// declined rather than accepted and failed — see Agent.decline for the reasons and their
+// order. An accepted job is started only once its accept is on the wire: a job whose accept
+// never left is one the gateway will re-offer elsewhere, and must not also run here.
 //
 // [#246]: https://github.com/NobuData/ouroboros/issues/246
-func (s *session) offer(envelope *conn.Envelope) error {
+func (s *session) offer(ctx context.Context, envelope *conn.Envelope) error {
 	var offer conn.JobOfferPayload
 	if err := envelope.Into(&offer); err != nil {
 		return &errProtocol{err.Error()}
 	}
-	decline := conn.JobDeclinePayload{Job: offer.Job, Offer: envelope.ID}
-	expires, _ := time.Parse(time.RFC3339Nano, offer.ExpiresAt)
 
-	switch draining, detail := s.agent.draining.get(); {
-	case draining:
-		decline.Reason, decline.Detail = conn.DeclineDraining, "this agent is draining: "+detail
-	case !expires.IsZero() && !s.agent.config.Now().Before(expires):
-		decline.Reason, decline.Detail = conn.DeclineExpired, "the offer expired before it arrived"
-	default:
-		decline.Reason = conn.DeclineUnsupportedExecutor
-		decline.Detail = fmt.Sprintf("this agent build (%s) has no %s executor", s.agent.config.Version, offer.Executor)
+	if reason, detail := s.agent.decline(offer); reason != "" {
+		s.agent.log.Info("declined a job offer", "job", offer.Job, "executor", offer.Executor, "reason", reason,
+			"detail", detail)
+		return write(s.socket, conn.NewFrame(conn.NewID(), conn.TypeJobDecline, conn.JobDeclinePayload{
+			Job: offer.Job, Offer: envelope.ID, Reason: reason, Detail: truncate(detail),
+		}))
 	}
-	s.agent.log.Info("declined a job offer", "job", offer.Job, "reason", decline.Reason)
-	return write(s.socket, conn.NewFrame(conn.NewID(), conn.TypeJobDecline, decline))
+
+	if err := write(s.socket, conn.NewFrame(conn.NewID(), conn.TypeJobAccept, conn.JobAcceptPayload{
+		Job: offer.Job, Offer: envelope.ID,
+	})); err != nil {
+		return err
+	}
+	s.agent.log.Info("accepted a job offer", "job", offer.Job, "executor", offer.Executor, "image", offer.Image)
+	s.agent.launch(ctx, offer)
+	return nil
 }
 
 // receipt stops re-sending a terminal frame.
@@ -486,7 +536,7 @@ func NewHeartbeat(now, started time.Time, sample telemetry.Sample, workload *Wor
 		status = conn.StateDraining
 	}
 	return conn.HeartbeatPayload{
-		SentAt:        now.UTC().Format("2006-01-02T15:04:05.000Z"),
+		SentAt:        conn.Timestamp(now),
 		State:         status,
 		UptimeS:       int(max(now.Sub(started), 0).Seconds()),
 		CPUPct:        sample.CPUPct,

@@ -41,7 +41,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # toolchain wants Go's spelling.
 TARGETS := linux/amd64 linux/arm64 darwin/arm64
 
-.PHONY: help install dev lint format fmt typecheck test cover build cross clean
+.PHONY: help install dev lint format fmt typecheck test test-docker cover build cross clean
 
 # The default target is help, so a bare `make` in an unfamiliar module explains itself.
 help:
@@ -53,6 +53,7 @@ help:
 	@printf '  make fmt         Apply it.\n'
 	@printf '  make typecheck   go vet over every package.\n'
 	@printf '  make test        The suite, with the race detector.\n'
+	@printf '  make test-docker The container executor against a real Docker or Podman daemon.\n'
 	@printf '  make cover       The suite, with a coverage report.\n'
 	@printf '  make build       This platform, into %s/.\n' '$(BIN)'
 	@printf '  make cross       All three release targets, into %s/.\n' '$(BIN)'
@@ -92,8 +93,10 @@ format:
 fmt:
 	gofmt -w .
 
+# With the dockertest tag, so the real-daemon suite (see test-docker) is vetted on every
+# run even though it only RUNS where a daemon is.
 typecheck:
-	go vet ./...
+	go vet -tags dockertest ./...
 
 # The race detector is not optional here. This agent runs an executor, a heartbeat
 # ticker and a log shipper against one connection, so every interesting bug it can have
@@ -101,6 +104,13 @@ typecheck:
 # those goroutines.
 test:
 	go test -race ./...
+
+# The container executor (#246) against a REAL Docker or Podman daemon: a first pull of a
+# small pinned image with its progress, a job's exit code and output, and a cancellation.
+# Separate from `test` because it needs a daemon and a registry — the default suite stays
+# hermetic — and it fails, rather than skipping, where no daemon answers.
+test-docker:
+	go test -race -count=1 -tags dockertest -run Docker ./internal/exec/...
 
 cover:
 	go test -race -coverprofile=coverage.out ./...

@@ -50,12 +50,25 @@ func DockerSockets() []string {
 // a daemon, is "no". So is a daemon this user may not talk to: a socket the agent's user
 // cannot open is a daemon that cannot run this agent's jobs.
 func DockerReachable(ctx context.Context, sockets []string) bool {
+	_, found := FindDocker(ctx, sockets)
+	return found
+}
+
+// FindDocker is the first of the given sockets whose daemon answers the ping, and whether
+// there was one — the same question as [DockerReachable], answered with WHICH daemon.
+//
+// The container executor ([#246]) talks to exactly the socket this returns, so the
+// capability a `hello` reports and the daemon the executor uses are one fact rather than
+// two that could disagree.
+//
+// [#246]: https://github.com/NobuData/ouroboros/issues/246
+func FindDocker(ctx context.Context, sockets []string) (string, bool) {
 	for _, socket := range sockets {
 		if pingDocker(ctx, socket) {
-			return true
+			return socket, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // pingDocker asks one socket for the Engine API's ping.

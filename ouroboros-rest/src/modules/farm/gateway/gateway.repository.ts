@@ -37,7 +37,7 @@ import { Injectable } from "@nestjs/common";
 import { sql, type RawBuilder } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
-import type { AgentState, Arch } from "../protocol/protocol.messages";
+import type { AckPool, AgentState, Arch } from "../protocol/protocol.messages";
 import type { BuildJobStatus, Runner, RunnerStatus } from "../../db/schema";
 import { UNIQUE_VIOLATION, isDatabaseFailure } from "../../tenancy/constraints";
 import type { RunnerCapabilities } from "./capabilities";
@@ -96,6 +96,30 @@ export interface SweptRunner {
   readonly last_seen_at: Date | null;
 }
 
+/** A pool as an `ack` states it: the name of record, and its execution policy. */
+export interface PoolOfRecord {
+  readonly name: string;
+  readonly policy: AckPool;
+}
+
+/**
+ * A pool's `env_allowlist` column as the `ack.pool.env_allowlist` it becomes.
+ *
+ * The column is jsonb, so its type here is `unknown`, and V040's `runner_pools_env_allowlist_shape`
+ * is what really holds it to a set of non-empty strings. It is still read defensively: a value that
+ * is not one is sent as the entries that are — never as something the contract would make the
+ * agent refuse the whole ack over.
+ *
+ * @param column - The `env_allowlist` value, as the driver returned it.
+ * @returns The allow-list: non-empty strings, at most 64 of them.
+ */
+export function allowlistOf(column: unknown): string[] {
+  if (!Array.isArray(column)) return [];
+  return column
+    .filter((name): name is string => typeof name === "string" && name.length > 0)
+    .slice(0, 64);
+}
+
 @Injectable()
 export class AgentGatewayRepository {
   /**
@@ -104,21 +128,33 @@ export class AgentGatewayRepository {
   constructor(private readonly database: DatabaseService) {}
 
   /**
-   * A pool's name — what `ack.runner.pool` states as the pool of record.
+   * The pool of record, as an `ack` states it: its name for `ack.runner.pool`, and its execution
+   * policy for `ack.pool` (#246) — how many jobs one runner may hold, and which variables a job
+   * may carry into its build.
+   *
+   * Read at every hello rather than cached, so a pool an operator edited while the agent was away
+   * is the pool the agent comes back to.
    *
    * @param organizationId - The workspace.
    * @param poolId - The pool.
-   * @returns The name, or `undefined`.
+   * @returns The pool, or `undefined`.
    */
-  async poolName(organizationId: string, poolId: string): Promise<string | undefined> {
+  async poolOfRecord(organizationId: string, poolId: string): Promise<PoolOfRecord | undefined> {
     const row = await this.database.db
       .selectFrom("runner_pools")
-      .select("name")
+      .select(["name", "max_concurrency", "env_allowlist"])
       .where("organization_id", "=", organizationId)
       .where("id", "=", poolId)
       .executeTakeFirst();
 
-    return row?.name;
+    if (!row) return undefined;
+    return {
+      name: row.name,
+      policy: {
+        max_concurrency: row.max_concurrency,
+        env_allowlist: allowlistOf(row.env_allowlist),
+      },
+    };
   }
 
   /**

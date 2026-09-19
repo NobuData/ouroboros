@@ -23,9 +23,11 @@ connection — `hello`, heartbeats, reconnection with jittered backoff, session 
 terminal frames re-sent from a durable outbox, certificate renewal before expiry, and a `bye` on
 SIGTERM. Every heartbeat carries this machine's real load
 ([#245](https://github.com/NobuData/ouroboros/issues/245)): CPU averaged over a short window,
-memory in use and installed, and `null` for anything the platform will not say. What it cannot
-do yet is run a job: every offer is declined with a true reason until the executors land. See
-[Related issues](#related-issues) for what each of those adds.
+memory in use and installed, and `null` for anything the platform will not say. And it runs the
+jobs it is offered ([#246](https://github.com/NobuData/ouroboros/issues/246)) — in the pool's
+pinned image through Docker or Podman, or directly on this machine for HIL rigs and macOS —
+declining at once, with a true reason, any offer it cannot satisfy. See
+[Running jobs](#running-jobs), and [Related issues](#related-issues) for what is still to come.
 
 The protocol was written **before** either implementation of it, and that is the point. The
 agent is Go and the gateway is TypeScript
@@ -65,6 +67,7 @@ You need Go 1.24 or newer. From this directory:
 ```bash
 make               # what every verb does
 make test          # the suite, with the race detector
+make test-docker   # the container executor against this machine's real Docker or Podman
 make lint          # golangci-lint over every package
 make build         # this platform, into bin/
 make cross         # all three release targets, into bin/
@@ -108,16 +111,111 @@ presenting the token, so that mistake costs nothing.
 | | |
 |---|---|
 | Connect | `wss://<server>/api/v1/farm/agent` on 443, presenting the client certificate. The gateway's own certificate is verified against the system's roots, or `--server-ca` |
-| Hello | version, protocol range, arch, hostname, pool, capabilities — **docker** answered by pinging the daemon, **ccache** by `PATH` — and `security_mode` |
+| Hello | version, protocol range, arch, hostname, pool, capabilities — **docker** answered by pinging the daemon, **shell** unless `--no-shell`, **ccache** by `PATH` — and `security_mode` |
 | Heartbeat | every `ack.limits.heartbeat_interval_ms` ± its jitter (the gateway's 10 s ± 2 s), carrying the telemetry below |
 | Reconnect | exponential backoff with **full jitter** (1s doubling to 60s), so a fleet dropped together does not come back together; a gateway's `reconnect_after_ms` or `retry_after_ms` is a floor, spread past |
 | Resume | `hello.resume` names the last session, and every terminal frame not yet receipted is re-sent **byte for byte** from the outbox before anything else — the gateway deduplicates on the envelope id |
 | Renew | when `renewAfter` comes, over mTLS with the certificate being replaced — no second token |
-| Stop | SIGTERM or SIGINT → `bye {reason: shutdown}`, exit 0 |
+| Jobs | an offer is accepted and run, or declined at once with the reason — see [Running jobs](#running-jobs) |
+| Stop | SIGTERM or SIGINT → running jobs cancelled and their `cancelled` finishes sent, then `bye {reason: shutdown}`, exit 0 |
 | Refused for good | a revoked certificate (TLS alert, `farm_identity_refused`, or `refuse identity.*`), a version floor, an expired certificate → one `level=ERROR` line saying what to do, exit 1, **no retry** |
 
-Offers are declined at once — `unsupported_executor` until [#246](https://github.com/NobuData/ouroboros/issues/246),
-`draining` after a `drain` — because a decline is worth far more to a dispatcher than a silence.
+An offer is answered at once — accepted, or declined with a reason — because a decline is worth
+far more to a dispatcher than a silence.
+
+### Running jobs
+
+A pool owns an executor kind (decision **B4**), and this agent has both
+([#246](https://github.com/NobuData/ouroboros/issues/246), `internal/exec`):
+
+| | Container | Shell |
+|---|---|---|
+| For | build pools — mockup 08's `pool-a`, *zephyr-sdk 0.17 image* | HIL rigs and macOS — `pool-b` |
+| Runs | the command in the pool's pinned image, through the **Docker Engine API** on the socket the hello's `docker` probe found — Docker, or Podman's compatible API; no `docker` binary needed | the command directly on this machine, as the agent's user |
+| Before `job.start` | pulls the image if the daemon lacks it, reporting `job.progress` (`prepare`, `pulling … — 412.0 MB of 980.0 MB, 1 of 3 layers`) so a first pull is not minutes of apparent silence | makes the workdir |
+| Workspace | `<state-dir>/work/<job id>`, bind-mounted at the offer's `workdir` | `<state-dir>/work/<job id>`, with `workdir` resolved inside it |
+| Limits | the job's share of this machine — its cores and memory divided by the pool's `max_concurrency` — and an init process as PID 1 | — |
+| Cancellation | the daemon's `stop`: SIGTERM, SIGKILL after 10 s | SIGTERM to the whole **process group**, SIGKILL after 10 s |
+
+```console
+level=INFO msg="accepted a job offer" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 executor=container image=zephyr-sdk:0.17
+level=INFO msg="preparing a job" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 pct=0 note="pulling zephyr-sdk:0.17"
+level=INFO msg="preparing a job" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 pct=100 note="pulled zephyr-sdk:0.17 — 980.0 MB"
+level=INFO msg="a job started" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 executor=container workspace=/var/lib/ouroboros-runner/work/job_01KE7J4EZ3204KQXMHJRPQPWQ6
+level=WARN msg="a job finished" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 outcome=failed exit_code=2 duration=4m12.117s error=executor.exit detail="the command exited with status 2"
+```
+
+**What is declined, and why.** Capability honesty: a runner that cannot run an offer says so
+rather than accepting it and failing, which would burn a dispatch cycle and show somebody a
+build failure that is really a farm fact.
+
+| The offer | Declined as |
+|---|---|
+| any, while drained | `draining` |
+| one whose `expires_at` has passed | `expired` |
+| a container job, and no Docker or Podman daemon answered | `unsupported_executor` — the same fact the hello's `docker: false` reported |
+| a shell job, and the agent was started with `--no-shell` | `unsupported_executor` — the hello's `shell: false` |
+| one naming a `repository` — this build does not check out source yet | `unsupported_executor` |
+| a job this runner already holds, or one past the pool's `max_concurrency` | `busy` |
+
+The hello's capabilities and the executors are built from the same probe, and the agent refuses
+to start with a configuration where they disagree — so `docker: true` is never a claim the
+agent cannot keep.
+
+**How a job ends** is one of the protocol's five outcomes: exit 0 is `succeeded` and anything
+else `failed` (`executor.exit`); `timeout_s` running out is `timed_out`, and the budget runs
+from accept, so it covers a pull too; the agent being stopped is `cancelled`; and a job the
+agent could not run at all — a workspace it could not make, an image that would not pull
+(`image.pull_failed`), a command that would not start — is `errored`. Every `job.finish`
+carries the command's exit code — `null` only when no command ever ran — and its start and
+end, so a duration is always there. The
+job's output goes to the log shipper ([#247](https://github.com/NobuData/ouroboros/issues/247));
+until that lands it is counted and not sent, and `job.finish.log` says so — `dropped_bytes` is
+all of it — rather than reporting an empty log.
+
+**Cleanup.** A workspace is removed when its job ends — even one a build made read-only.
+`--keep-workspace-on-failure` leaves the workspace of a job that failed, timed out or errored
+in place, because a failed firmware build is often only diagnosable from what it left behind;
+the log says where. A later run of the same job replaces a kept workspace.
+
+**Concurrency.** A runner holds at most its pool's `max_concurrency` jobs at once — accepted
+or running — which the gateway sends in `ack.pool`, read from the pool's row at every hello.
+With no pool policy in the ack, the cap is 1.
+
+#### The trust model
+
+The shell executor runs commands directly on the customer's machine, with no sandbox. That is
+correct for this product, and it is written down rather than implied: **the tenant's machine
+runs the tenant's command** — a machine the tenant enrolled into the tenant's own farm, running
+the command the tenant's pool dispatched, exactly as it would under any self-hosted CI agent.
+The container executor is the same trust with a filesystem boundary, not an isolation
+boundary; untrusted code is [#267](https://github.com/NobuData/ouroboros/issues/267)'s
+question.
+
+What the agent does promise is that the implementation never *widens* that trust by accident:
+
+1. **argv-exec only.** A job's command is executed as the argv it arrived as — never joined into
+   a string, never handed to `sh -c` by the agent. `$(id)`, `;`, `*` and backticks reach the
+   program as those characters. A container's command is its exec-form CMD, which the daemon
+   runs without a shell too.
+2. **The environment is an allow-list, not an inheritance.** A job sees exactly the variables its
+   offer carried whose names the pool's `env_allowlist` holds — nothing of the agent's own
+   environment, not even `PATH` unless the pool allows it. (The command's own program is found
+   on the agent's `PATH`; what it runs after that, it finds in its own environment.) The names
+   of any variables dropped are logged; their values never are.
+3. **The job owns one directory, and the server cannot name another.** A shell job's `workdir`
+   is resolved *inside* its workspace — `/Users/builder/work` is a directory under it, and a
+   `..` is refused — so no offer can pick where on this machine a command runs or which
+   directory cleanup removes. A container job's workspace is its only bind mount.
+4. **Nothing outlives the job.** A shell job's command leads a new process group, and however
+   the job ends the whole group is signalled: SIGTERM, then SIGKILL after the grace period. A
+   build that spawned a compiler farm leaves no orphans — not when it is cancelled, and not when
+   its leader exits and leaves children behind. The one way out is the one every CI agent has: a
+   process that deliberately leaves the group (`setsid`, a daemon detaching itself).
+
+A machine that should not run host commands at all — one holding signing keys, say — is started
+with `--no-shell`: its hello says `shell: false`, and it declines every shell offer while still
+taking container ones.
 
 ### What a heartbeat reports
 
@@ -165,7 +263,7 @@ offers against the minimum the refusal named.
 
 ```console
 $ ouroboros-runner version
-ouroboros-runner 0.3.0
+ouroboros-runner 0.4.0
 protocol        1 (speaks 1–1)
 arch            linux/arm64
 hostname        shed-pi-01
@@ -224,11 +322,16 @@ lying around beside it. The repo-root [`.env.example`](../.env.example) document
 | `--tenant`, `--pool` | — | — | The mockup's one-liner. The pool is checked against the token's scope by the control plane; the tenant is recorded — the token names the workspace |
 | `--name` | — | the hostname, as a slug | The runner's name, unique in its workspace |
 | `--bearer-fallback` | *none, on purpose* | off | Decision **B3**'s degraded mode, for networks whose proxies strip client certificates. Asked for at `enroll`, and required again at **every** `run` of such a runner, so the downgrade is stated where the agent is started |
+| `--no-shell` | `OURO_RUNNER_NO_SHELL` | `false` | Run no job directly on this machine: the hello says `shell: false`, and shell offers are declined. `run` and `hello` |
+| `--keep-workspace-on-failure` | `OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE` | `false` | Leave the workspace of a job that failed, timed out or errored, for diagnosis. `run` |
 
 What the agent *reads about itself* it reads from the machine rather than from configuration —
 hostname, architecture, cores, installed memory, whether a Docker or Podman daemon answers, whether
 `ccache` is on `PATH` — because those are facts, and a settable fact is a fact somebody can get
-wrong.
+wrong. The two boolean variables take `true` or `false` (or `1`/`0`); anything else stops the
+agent with a usage error naming the variable, rather than quietly meaning `false`. And what a
+job may do is the **pool's** to say, not this machine's: its concurrency cap and environment
+allow-list arrive in every `ack`.
 
 ### The state directory
 
@@ -238,7 +341,8 @@ wrong.
 ├── identity.pem     the client certificate AND its private key, one file           0600
 ├── bearer.token     bearer-fallback mode only                                      0600
 ├── session          the last session, for hello.resume                             0600
-└── outbox/          terminal frames sent and not yet receipted, one file each      0600
+├── outbox/          terminal frames sent and not yet receipted, one file each      0600
+└── work/            one workspace per running job, removed when it ends            0700
 ```
 
 Every file is written `0600` — chmodded explicitly, so a permissive umask cannot widen it — and
@@ -271,7 +375,7 @@ ouroboros-runner/
 │   ├── secret/               # a string that does not print
 │   ├── telemetry/            # what this machine is and how loaded it is, whether docker answers
 │   ├── farmtest/             # an in-process farm for the suites — never linked into the agent
-│   ├── exec/                 # job executors: container and shell               · #246
+│   ├── exec/                 # job executors: container and shell, workspaces, cancellation
 │   └── logship/              # chunking, ordering, throttling, ccache stats      · #247
 ├── .golangci.yml             # the linter, and why each check is on
 ├── Makefile                  # the verbs — install · dev · lint · format · typecheck · test · build
@@ -279,9 +383,16 @@ ouroboros-runner/
 └── go.mod                    # the module, and the language floor
 ```
 
-`internal/exec` and `internal/logship` are still package documentation and nothing else: their
-behaviour is the executors' and the log shipper's issues, and the *shape* of it is already fixed by
-the protocol — each package's doc comment says which parts and where they are written down.
+`internal/logship` is still package documentation and nothing else: its behaviour is the log
+shipper's issue, and the *shape* of it is already fixed by the protocol — the package's doc
+comment says which parts and where they are written down.
+
+**`internal/exec` is tested against the operating system, not a model of it.** The shell
+executor's suite runs real processes: a job that prints its environment, a job whose arguments
+are shell metacharacters, and a build tree with a child that ignores SIGTERM, whose every pid is
+checked gone after the cancellation. The container executor's default suite runs against a fake
+Engine API on a unix socket; `make test-docker` runs it against this machine's real daemon, and
+`ci/runner` compiles and lints that file (the `dockertest` tag) without pulling anything.
 
 **`internal/ws` is written, not imported.** The module keeps no dependencies (see `go.mod`), and
 the client half of RFC 6455 is small: an HTTP/1.1 upgrade, a frame header, a masking key, three
@@ -341,7 +452,7 @@ architecture and an `install.sh` that verifies it — which is
 | [#243](https://github.com/NobuData/ouroboros/issues/243) | **This scaffold**, and `docs/RUNNER_PROTOCOL.md` — the contract both sides implement against |
 | [#244](https://github.com/NobuData/ouroboros/issues/244) | **Shipped** — enrollment, the client certificate, the outbound connection, reconnection and backoff, resume, renewal |
 | [#245](https://github.com/NobuData/ouroboros/issues/245) | **Shipped** — telemetry and presence: CPU, memory, queue depth and job progress in every `heartbeat`, `null` where unmeasurable |
-| [#246](https://github.com/NobuData/ouroboros/issues/246) | The executors: container and shell, workspace lifecycle, cancellation |
+| [#246](https://github.com/NobuData/ouroboros/issues/246) | **Shipped** — the executors: container and shell, workspace lifecycle, cancellation, the pool's concurrency cap and allow-list |
 | [#247](https://github.com/NobuData/ouroboros/issues/247) | Log shipping and ccache statistics, with truncation reported rather than hidden |
 | [#248](https://github.com/NobuData/ouroboros/issues/248) | Packaging: cross-compiled releases, `install.sh`, systemd and launchd units |
 | [#250](https://github.com/NobuData/ouroboros/issues/250) | The farm CA — the other end of this agent's identity |

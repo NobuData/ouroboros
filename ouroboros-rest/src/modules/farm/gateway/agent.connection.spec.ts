@@ -53,7 +53,12 @@ describe("an agent connection", () => {
   let repository: jest.Mocked<
     Pick<
       AgentGatewayRepository,
-      "recordHello" | "poolName" | "recordHeartbeat" | "recordTerminal" | "startJob" | "recordBye"
+      | "recordHello"
+      | "poolOfRecord"
+      | "recordHeartbeat"
+      | "recordTerminal"
+      | "startJob"
+      | "recordBye"
     >
   >;
   let connection: AgentConnection;
@@ -93,7 +98,10 @@ describe("an agent connection", () => {
     sessions = new AgentSessions(() => NOW, metrics);
     repository = {
       recordHello: jest.fn().mockResolvedValue({ ...row, status: "online" }),
-      poolName: jest.fn().mockResolvedValue("arm-builders"),
+      poolOfRecord: jest.fn().mockResolvedValue({
+        name: "arm-builders",
+        policy: { max_concurrency: 2, env_allowlist: ["CCACHE_DIR", "MAKEFLAGS"] },
+      }),
       recordHeartbeat: jest.fn().mockResolvedValue({ ...row, status: "online" }),
       recordTerminal: jest.fn().mockResolvedValue({ duplicate: false, applied: true }),
       startJob: jest.fn().mockResolvedValue(true),
@@ -130,9 +138,20 @@ describe("an agent connection", () => {
         resumed: false,
         runner: { id: wireId("rnr", row.id), name: row.name, pool: "arm-builders" },
         limits: SESSION_LIMITS,
+        pool: { max_concurrency: 2, env_allowlist: ["CCACHE_DIR", "MAKEFLAGS"] },
       });
+      expect(repository.poolOfRecord).toHaveBeenCalledWith(row.organization_id, row.pool_id);
       expect(socket.types()).toEqual(["ack"]);
       expect(sessions.isConnected(row.organization_id, row.id)).toBe(true);
+    });
+
+    it("states a pool that has gone as unknown, with no policy for the agent to hold to", async () => {
+      repository.poolOfRecord.mockResolvedValueOnce(undefined);
+
+      const ack = await hello();
+
+      expect(ack.payload.runner.pool).toBe("unknown");
+      expect(ack.payload).not.toHaveProperty("pool");
     });
 
     it("resumes the session it names, and replays what that session was owed", async () => {

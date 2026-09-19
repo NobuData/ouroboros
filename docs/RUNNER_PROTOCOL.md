@@ -265,11 +265,24 @@ whether the previous session survived, and **every limit the agent must not hard
 | `limits.log_rate_bytes_per_s` | integer ≥ 1024 | yes | Sustained decoded-byte rate to throttle to |
 | `limits.offer_ack_ms` | integer ≥ 100 | yes | How long the agent has to answer a `job.offer` |
 | `limits.resume_window_ms` | integer ≥ 1000 | yes | How long this session survives a dropped socket |
+| `pool` | object | no | The pool of record's execution policy ([#246](https://github.com/NobuData/ouroboros/issues/246)). Optional only because it was added inside line 1 (§ 3): the gateway sends it on every ack |
+| `pool.max_concurrency` | integer 1–64 | yes | Jobs one runner of this pool may hold at once, accepted or running. An offer past it is declined `busy` |
+| `pool.env_allowlist` | array of string (1+), ≤ 64 | yes | The variable names a job's `env` may carry into its build. Every other name is dropped |
 
 Sending the limits rather than documenting them is what lets the fleet be re-tuned without a
 release nobody can force. Each is at or below the corresponding **ceiling** in
 `$defs/limits` — the ceilings belong to the protocol line and cannot be raised by a
 configuration change.
+
+`pool` is the same idea for the pool's rules (decision **B4**): the gateway reads the pool's
+row (`runner_pools`, [#249](https://github.com/NobuData/ouroboros/issues/249)) at every
+hello, so a pool edited while an agent was away is the pool it comes back to. The agent holds
+itself to both: it declines an offer that would take it past `max_concurrency`, and a job's
+environment is **only** the variables its offer carried whose names `env_allowlist` holds —
+nothing is inherited from the agent's own process. An ack without `pool` — which only a
+gateway older than the field could send — is read as the columns' defaults: one job at a
+time, and no variable allowed through
+([`valid/ack-without-pool.json`](../schemas/runner-protocol/fixtures/valid/ack-without-pool.json)).
 
 ```json
 {
@@ -292,6 +305,13 @@ configuration change.
       "log_rate_bytes_per_s": 262144,
       "offer_ack_ms": 5000,
       "resume_window_ms": 300000
+    },
+    "pool": {
+      "max_concurrency": 2,
+      "env_allowlist": [
+        "CCACHE_DIR",
+        "MAKEFLAGS"
+      ]
     }
   }
 }
@@ -445,7 +465,16 @@ gets wrong is a build that fails for a reason nobody can see.
 
 **`env` carries no credential.** A dispatch is logged, and a secret in a logged message is a
 secret in a log. A job that needs one fetches it itself, through the vault
-([#222](https://github.com/NobuData/ouroboros/issues/222)).
+([#222](https://github.com/NobuData/ouroboros/issues/222)). And it is filtered again where it
+lands: the agent passes a job only the names its pool's `ack.pool.env_allowlist` holds.
+
+**`workdir` is inside the workspace, never beside it.** Every job gets a fresh directory of its
+own on the agent ([#246](https://github.com/NobuData/ouroboros/issues/246)). A container job's
+workspace is bind-mounted at `workdir`, which must therefore be an absolute path other than
+`/`. A shell job's `workdir` is resolved *inside* the workspace — a leading `/` is the
+workspace's root, so the shell example's `/Users/builder/work` is a directory under it — and a
+`..` is refused. A dispatcher can say where in its workspace a job runs; it cannot name a
+directory on the customer's machine for a command to run in or for cleanup to remove.
 
 ```json
 {
@@ -1001,7 +1030,7 @@ Named here so that nobody looks for it and concludes it was forgotten:
 | The gateway's session store, presence and terminal-frame ledger | [#251](https://github.com/NobuData/ouroboros/issues/251), shipped — `ouroboros-rest`'s [`farm/gateway/`](../ouroboros-rest/src/modules/farm/gateway) and `ouroboros-db`'s `V042` |
 | How each platform measures the heartbeat's CPU and memory | [#245](https://github.com/NobuData/ouroboros/issues/245), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/telemetry` |
 | The dispatcher: which runner is offered which job, retries, cancellation | [#252](https://github.com/NobuData/ouroboros/issues/252) |
-| How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246) |
+| How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#running-jobs)'s `internal/exec` |
 | How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247) |
 | Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248) |
 | A remote shared cache, and the untrusted-code isolation question | [#264](https://github.com/NobuData/ouroboros/issues/264), [#267](https://github.com/NobuData/ouroboros/issues/267) |
