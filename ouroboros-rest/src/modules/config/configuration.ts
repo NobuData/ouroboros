@@ -574,6 +574,32 @@ export interface Configuration {
    */
   readonly farmMinAgentVersion?: string;
   /**
+   * The `https` origin a runner machine reaches this deployment at. From
+   * `OURO_FARM_PUBLIC_URL`; `undefined` when unset, which means {@link restUrl}.
+   *
+   * AG.6 ([#248](https://github.com/NobuData/ouroboros/issues/248)). It is what
+   * `GET /install.sh` fills the installer's `DEFAULT_SERVER` in with, so it is both where the
+   * one-liner downloads the agent from and the control plane the agent enrols into — the
+   * deployment's own address, never a public domain it would have to trust. It is separate
+   * from {@link restUrl} because the two readers are different machines: a browser reaches
+   * this service at one address, and a build machine on the far side of a TLS-terminating
+   * proxy that forwards client certificates may reach it at another. Validated as an `https`
+   * origin, because the agent speaks to its control plane over TLS and nothing else.
+   */
+  readonly farmPublicUrl?: string;
+  /**
+   * The directory ouroboros-runner releases are served from. From `OURO_FARM_RELEASES_DIR`;
+   * `undefined` when unset, which means this deployment serves no installer.
+   *
+   * AG.6 ([#248](https://github.com/NobuData/ouroboros/issues/248)). One subdirectory per
+   * version, each exactly as `make release` writes it and the GitHub release
+   * `ouroboros-runner-v<version>` carries it — the three binaries, `install.sh` and
+   * `SHA256SUMS` — so an operator copies a release in and the deployment serves it from its
+   * own origin, with no public host between a build machine and the binary it runs. A
+   * relative path is resolved against the working directory.
+   */
+  readonly farmReleasesDir?: string;
+  /**
    * Seconds between provider health sweeps, and the age at which a local provider's last
    * check is stale. From `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`,
    * {@link DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS} when unset.
@@ -726,6 +752,8 @@ export const VARIABLES = {
   listenHostOverride: "OURO_LISTEN_HOST",
   farmClientCertHeader: "OURO_FARM_CLIENT_CERT_HEADER",
   farmMinAgentVersion: "OURO_FARM_MIN_AGENT_VERSION",
+  farmPublicUrl: "OURO_FARM_PUBLIC_URL",
+  farmReleasesDir: "OURO_FARM_RELEASES_DIR",
   providerHealthIntervalSeconds: "OURO_PROVIDER_HEALTH_INTERVAL_SECONDS",
   providerHealthKeyCheckSeconds: "OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS",
   backlogSyncIntervalSeconds: "OURO_BACKLOG_SYNC_INTERVAL_SECONDS",
@@ -1140,6 +1168,21 @@ const environmentSchema = z.object({
     )
     .optional(),
 
+  // The installer's origin and releases (#248) — both optional, neither with a default. The
+  // origin is an *https* origin, since it becomes the agent's `--server` and the agent refuses
+  // anything else; unset, the installer falls back to OURO_REST_URL and says so when that is
+  // not https either (`src/modules/farm/installer/`). The directory is taken as written: whether
+  // it exists and what it holds is a question for each request, because a release copied in
+  // after boot should be served without a restart.
+  OURO_FARM_PUBLIC_URL: z
+    .string()
+    .refine(
+      (value) => isOrigin(value) && value.startsWith("https://"),
+      "expected the https origin runner machines reach this deployment at, such as https://ouroboros.acme.dev",
+    )
+    .optional(),
+  OURO_FARM_RELEASES_DIR: z.string().optional(),
+
   // The two provider-health cadences (#196), read by the same rules as PORT and the
   // dashboard's poll: anchored digits, then a range. Two variables rather than one because
   // they govern requests to two different people — see `Configuration` for which is which.
@@ -1356,6 +1399,8 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     listenHostOverride: values.OURO_LISTEN_HOST,
     farmClientCertHeader: values.OURO_FARM_CLIENT_CERT_HEADER,
     farmMinAgentVersion: values.OURO_FARM_MIN_AGENT_VERSION,
+    farmPublicUrl: values.OURO_FARM_PUBLIC_URL,
+    farmReleasesDir: values.OURO_FARM_RELEASES_DIR,
     providerHealthIntervalSeconds: values.OURO_PROVIDER_HEALTH_INTERVAL_SECONDS,
     providerHealthKeyCheckSeconds: values.OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     backlogSyncIntervalSeconds: values.OURO_BACKLOG_SYNC_INTERVAL_SECONDS,

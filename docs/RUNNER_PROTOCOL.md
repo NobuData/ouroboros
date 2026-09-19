@@ -1032,7 +1032,7 @@ Named here so that nobody looks for it and concludes it was forgotten:
 | The dispatcher: which runner is offered which job, retries, cancellation | [#252](https://github.com/NobuData/ouroboros/issues/252) |
 | How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#running-jobs)'s `internal/exec` |
 | How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247) |
-| Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248) |
+| Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#install)'s `install.sh`, `make release` and `ci/runner`'s `release/runner`; served by `ouroboros-rest`'s [`farm/installer/`](../ouroboros-rest/src/modules/farm/installer) |
 | A remote shared cache, and the untrusted-code isolation question | [#264](https://github.com/NobuData/ouroboros/issues/264), [#267](https://github.com/NobuData/ouroboros/issues/267) |
 
 The agent's own configuration — the control plane's URL, the pool, where the certificate lives —

@@ -243,7 +243,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 | AG.3 | #245 | 🟢 Done | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
 | AG.4 | #246 | 🟢 Done | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
 | AG.5 | #247 | 🟡 Open | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
-| AG.6 | #248 | 🟡 Open | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
+| AG.6 | #248 | 🟢 Done | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
 
 ### Issue AG.1 — ouroboros-runner: [AG.1] Module scaffold & agent protocol spec
 
@@ -500,7 +500,7 @@ job.finish += {ccache: {hit_rate: 78.4, hits: 412, misses: 113} | null}
 
 ### Issue AG.6 — ouroboros-runner: [AG.6] Packaging, install script & daemonization
 
-> **GitHub issue:** #248 · **Status:** 🟡 Open · **Parent epic:** #239
+> **GitHub issue:** #248 · **Status:** 🟢 Done · **Parent epic:** #239
 
 
 - **Problem Statement:** `curl -fsSL https://get.ouroboros.dev | sh` with
@@ -522,6 +522,35 @@ job.finish += {ccache: {hit_rate: 78.4, hits: 412, misses: 113} | null}
 - **Parallelism/Dependencies:** Needs AG.2 (+release infra from #11 patterns).
 - **Technical Stack:** Go releases, shell, systemd/launchd.
 - **Epic:** AG
+- **Delivered:** `ouroboros-runner/install.sh` (POSIX `sh`, shellcheck-clean) and a
+  `make release` verb that writes `dist/<version>/` — the three binaries, the installer with its
+  `DEFAULT_VERSION` filled in, and a `SHA256SUMS` over the four. `ci/runner` gains
+  **`package/runner`** (`make release` + `sha256sum -c` on every event, read-only) and
+  **`release/runner`** (the GitHub release `ouroboros-runner-v<VERSION>`, from a push to `main`
+  only, behind `ci`, every `cross` target and the package; it publishes the packaged bytes, never
+  replaces a release, and is the **one job in the repository with `contents: write`**, granted
+  to the job — `verify-ci.sh` asserts it is the only grant). shellcheck is pinned to a release
+  and its SHA-256. **The origin is the deployment's own**: `ouroboros-rest` serves
+  `GET /install.sh[?version=]` with `DEFAULT_SERVER` filled in from `OURO_FARM_PUBLIC_URL`
+  (falling back to an https `OURO_REST_URL`) and `GET /runner/<version>/<file>` unchanged from
+  `OURO_FARM_RELEASES_DIR` — allow-listed names, SemVer versions, no path from the request — so
+  the one-liner carries no `--server`, pins a version, and needs no public host
+  (`get.ouroboros.dev` stays design shorthand). The installer detects linux/x86_64,
+  linux/arm64 and darwin/arm64 (Rosetta counts as arm64), **verifies the SHA-256 before
+  running anything** and checks the binary's reported version, installs to `/usr/local/bin`,
+  enrols with the flags passed through (the token via a private file into
+  `OURO_RUNNER_TOKEN`, on no command line), and installs a **systemd unit**
+  (`Restart=on-failure`, a start limit so a permanent refusal is not retried forever,
+  `KillMode=mixed`) or a **launchd daemon** (`KeepAlive` on unsuccessful exit, `HOME`/`PATH`
+  for Docker Desktop), running as the invoking account. A re-run is an upgrade that spends no
+  token and keeps the installed CA; a run that fails after stopping the agent starts it again.
+  `--uninstall` removes the binary, the unit or plist, `/etc/ouroboros-runner` and the macOS
+  logs, and the state directory only on a yes or `--purge`. Verified end to end on a real
+  systemd Debian 12 machine against a live REST: install, enrolment, reboot survival,
+  restart after SIGKILL (with session resume), a tampered binary aborting with nothing
+  installed, upgrade, and a clean uninstall. **macOS was not exercised on real hardware** — the
+  plist is covered by the installer's suite (`tests/install.test.sh`, 211 checks under `sh`,
+  `dash`, `bash` and busybox) and awaits a Mac.
 
 ```
 install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─▶ systemd/launchd unit ─▶ running

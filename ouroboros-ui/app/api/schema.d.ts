@@ -4747,6 +4747,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/install.sh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The runner installer, filled in with this deployment's own address
+         * @description The build farm's one-liner ([#248](https://github.com/NobuData/ouroboros/issues/248), AG.6):
+         *
+         *     ```
+         *     curl -fsSL 'https://<this deployment>/install.sh?version=0.5.0' | sh -s -- \
+         *       --tenant acme-robotics --pool pool-a --token orb_enroll_…
+         *     ```
+         *
+         *     **The release's `install.sh`, with one line changed**: `DEFAULT_SERVER` is filled in with
+         *     the https origin runner machines reach this deployment at — `OURO_FARM_PUBLIC_URL`, or
+         *     `OURO_REST_URL` when that is unset and is https. So the command carries no `--server`: the
+         *     script downloads the agent from this deployment and enrols it into this deployment.
+         *     Everything else is the release's own, byte for byte.
+         *
+         *     **At the origin root, and served by this deployment rather than a public host.** Mockup
+         *     08's `get.ouroboros.dev` is design shorthand; a self-hosted deployment behind a firewall
+         *     installs its runners from itself and trusts no public domain for a binary that runs on its
+         *     build machines. The releases are whatever the operator copied into
+         *     `OURO_FARM_RELEASES_DIR` — one directory per version, exactly as the GitHub release
+         *     `ouroboros-runner-v<version>` carries it.
+         *
+         *     **`?version=` pins the release**, and the command the enroll card renders always carries
+         *     one, so two runners enrolled a month apart are the same build. Without it this answers
+         *     the newest stable release present.
+         *
+         *     **No session**, because the caller is `curl` on a machine that is about to become a
+         *     runner. Nothing here is secret; what enrols the machine is the token in the command,
+         *     spent against `POST /api/v1/farm/registrations`.
+         */
+        get: operations["readRunnerInstaller"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runner/{version}/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One file of a runner release, exactly as the release holds it
+         * @description What the installer downloads ([#248](https://github.com/NobuData/ouroboros/issues/248),
+         *     AG.6): this platform's binary, and `SHA256SUMS`, which it verifies the binary against
+         *     before running anything. Served from `OURO_FARM_RELEASES_DIR`, so a build machine needs a
+         *     route to nothing but the control plane it is about to connect to anyway.
+         *
+         *     **Every file is served unchanged** — the installer too, unlike `GET /install.sh` — so each
+         *     one is the file `SHA256SUMS` names and can be verified against it.
+         *
+         *     **A release holds five files and only those can be named**: the three binaries, the
+         *     installer and `SHA256SUMS`. The version must be a semantic version. Nothing a request
+         *     sends is ever joined into a path, so nothing else in the directory can be reached.
+         *
+         *     **No session**, for `GET /install.sh`'s reason: the reader is `curl`, and a release is
+         *     public.
+         */
+        get: operations["readRunnerReleaseFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -33115,6 +33194,118 @@ export interface operations {
              *     this CA signs. Or `validation_failed`.
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readRunnerInstaller: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The release to install, a semantic version. The newest stable release present when
+                 *     omitted.
+                 */
+                version?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The installer. `X-Ouro-Runner-Version` names the release it installs. */
+            200: {
+                headers: {
+                    /** @description The release this script installs. */
+                    "X-Ouro-Runner-Version"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/x-shellscript": string;
+                };
+            };
+            /**
+             * @description `farm_installer_unavailable` — this deployment is not set up to serve the installer:
+             *     `OURO_FARM_RELEASES_DIR` is unset, is not a readable directory or holds no release;
+             *     no https origin is configured for runners to reach it at; or the release's installer
+             *     carries no `DEFAULT_SERVER` line to fill in. The message names which, and no path.
+             *     Or `farm_release_not_found` — the release `?version=` named is not served here.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readRunnerReleaseFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The release, a semantic version. */
+                version: string;
+                /** @description One of the five files a release holds. */
+                file: "ouroboros-runner-linux-amd64" | "ouroboros-runner-linux-arm64" | "ouroboros-runner-darwin-arm64" | "install.sh" | "SHA256SUMS";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The file. A binary is `application/octet-stream`, the installer
+             *     `text/x-shellscript` and `SHA256SUMS` `text/plain`.
+             */
+            200: {
+                headers: {
+                    /** @description The release the file belongs to. */
+                    "X-Ouro-Runner-Version"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                    "text/x-shellscript": string;
+                    "text/plain": string;
+                };
+            };
+            /**
+             * @description `farm_release_not_found` — no such release is served here, or it has no such file. Or
+             *     `farm_installer_unavailable` — this deployment serves no releases at all:
+             *     `OURO_FARM_RELEASES_DIR` is unset or is not a readable directory.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -56,6 +56,12 @@ env:
   # which is no more acceptable for a binary.
   GOLANGCI_LINT_VERSION: "v2.13.2"
 
+  # shellcheck, for install.sh (#248) — pinned to a release and to that release's SHA-256, for
+  # the reason the line above gives: the installer is linted by a binary this workflow verified
+  # before running, which is the same promise the installer makes to every build machine.
+  SHELLCHECK_VERSION: "v0.10.0"
+  SHELLCHECK_SHA256: "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"
+
 jobs:
   # The job name is the status check name — `ci/runner`. See ui.yml.
   #
@@ -90,6 +96,21 @@ jobs:
           go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$GOLANGCI_LINT_VERSION"
           golangci-lint --version
 
+      # `make lint` runs shellcheck over install.sh and its suite (#248). The runner image ships a
+      # shellcheck of its own, at whatever version the image was last built with; this one is the
+      # pinned release, checked against its pinned digest before it runs.
+      - name: Install shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="shellcheck-$SHELLCHECK_VERSION.linux.x86_64.tar.xz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/koalaman/shellcheck/releases/download/$SHELLCHECK_VERSION/$archive"
+          printf '%s  %s\n' "$SHELLCHECK_SHA256" "$RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          printf '%s\n' "$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION" >>"$GITHUB_PATH"
+          "$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION/shellcheck" --version
+
       # Every step below runs the module's own verb from the module's own directory, the way a
       # developer does (docs/CONVENTIONS.md § 1, limit 3). A `go` invocation written into this
       # file would be a second definition of what linting or testing means here, and the one CI
@@ -122,7 +143,8 @@ jobs:
 
       # With the race detector, which `make test` is what decides. The agent runs an executor, a
       # heartbeat ticker and a log shipper against one connection, so most bugs it can have are
-      # data races — including in the Outbox and Ledger that resume depends on.
+      # data races — including in the Outbox and Ledger that resume depends on. `make test` also
+      # runs install.sh end to end against a fixture release (#248, tests/install.test.sh).
       - name: Test
         shell: bash
         working-directory: ouroboros-runner
@@ -188,15 +210,112 @@ jobs:
         run: make cross TARGETS="${TARGET/x86_64/amd64}"
 
   # ---------------------------------------------------------------------------
-  # There is deliberately no `publish/runner` job yet.
+  # The release (#248) — two jobs, because only one of them may write.
   #
-  # Every other module ships a container image, published by its own workflow behind its own
-  # green `ci/` check (docs/CONVENTIONS.md § 9). This one ships a BINARY, to machines nobody in
-  # this repository administers, and what that needs is a tagged release with a checksum per
-  # architecture and an `install.sh` that verifies it — which is #248's whole subject, alongside
-  # the systemd and launchd units.
+  # Every other module ships a container image, published by a `publish/<module>` job. This one
+  # ships a BINARY to machines nobody in this repository administers, so what it publishes is a
+  # GitHub release, `ouroboros-runner-v<VERSION>`: the three binaries, install.sh, and a
+  # SHA256SUMS over the four — exactly `make release`'s dist/<VERSION>/, which is also the
+  # directory a deployment copies into OURO_FARM_RELEASES_DIR and serves from its own origin.
   #
-  # Writing half of it here would mean publishing an artefact with no provenance story, on a
-  # workflow that would then be edited again. The matrix above is the part that belongs to the
-  # scaffold: proof that all three targets still build.
+  # `package/runner` assembles and verifies it on every event, read-only, so a release that
+  # stops assembling fails the pull request that broke it. `release/runner` publishes exactly
+  # those bytes — it downloads the artifact rather than rebuilding — and only on a push to main,
+  # behind ci/runner and every cross target. It is the ONE job in this repository with
+  # `contents: write`, granted to the job and not the workflow (docs/CONVENTIONS.md § 9 rule 4).
+  #
+  # A release is never replaced. If ouroboros-runner-v<VERSION> already exists the job says so
+  # and stops: two runners installed from one version, a month apart, run the same bytes. The
+  # way to publish is to bump ouroboros-runner/VERSION, which every change to the agent does.
   # ---------------------------------------------------------------------------
+  package:
+    name: package/runner
+    runs-on: ubuntu-latest
+    # The same gate every publish job has: nothing is packaged from a checkout that has not been
+    # linted and tested. It does not wait for `cross` — it builds the same three targets itself,
+    # and `release` is what waits for both.
+    needs: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ouroboros-runner/go.mod
+
+      - name: Package the release
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make release
+
+      # The checksums are checked the way a machine installing the release checks them, before
+      # anything is uploaded — a SHA256SUMS that did not verify here would fail every install.
+      - name: Verify the checksums
+        shell: bash
+        working-directory: ouroboros-runner
+        run: |
+          set -euo pipefail
+          cd "dist/$(cat VERSION)"
+          sha256sum -c SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ouroboros-runner-release
+          path: ouroboros-runner/dist/
+          if-no-files-found: error
+
+  release:
+    name: release/runner
+    runs-on: ubuntu-latest
+    needs: [ci, cross, package]
+    # Published from main and nowhere else: a pull request's release would be a version nobody
+    # has merged, and a fork's pull request has no write token to publish one with.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      # For VERSION: the tag is named from the file the release was built from.
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ouroboros-runner-release
+          path: ouroboros-runner/dist
+
+      # `gh release create` with files creates a draft, uploads them, then publishes it, so a
+      # run cancelled halfway leaves a draft rather than a published release missing a binary.
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(cat ouroboros-runner/VERSION)
+          tag="ouroboros-runner-v$version"
+          dir="ouroboros-runner/dist/$version"
+          (cd "$dir" && sha256sum -c SHA256SUMS)
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            printf '::notice::%s is already released, and a release is never replaced. Bump ouroboros-runner/VERSION to publish another.\n' "$tag"
+            exit 0
+          fi
+
+          # The one-liner itself is not repeated here: this file refuses a download piped into
+          # a shell on any line, and the README is where the command is written down.
+          cat >"$RUNNER_TEMP/notes.md" <<NOTES
+          The Ouroboros build farm agent, for linux/x86_64, linux/arm64 and darwin/arm64.
+
+          Install it from your own deployment: copy this release's files into
+          \`\$OURO_FARM_RELEASES_DIR/$version/\` there, and it serves the installer as
+          \`https://<your deployment>/install.sh?version=$version\` — see
+          ouroboros-runner/README.md § Install.
+
+          The installer verifies the binary against SHA256SUMS before running it. To verify a
+          download by hand: \`sha256sum -c SHA256SUMS\`.
+          NOTES
+
+          gh release create "$tag" "$dir"/* \
+            --target "$GITHUB_SHA" \
+            --title "ouroboros-runner $version" \
+            --notes-file "$RUNNER_TEMP/notes.md"

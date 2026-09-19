@@ -29,6 +29,13 @@ BINARY  := ouroboros-runner
 PACKAGE := ./cmd/ouroboros-runner
 BIN     := bin
 
+# Where `make release` assembles a release (#248): one directory per version, laid out
+# exactly as ouroboros-rest serves it (`GET /runner/<version>/<file>`) and as ci/runner
+# uploads it to the GitHub release — so a deployment's releases directory is a copy of one
+# of these, and the repo-root .env.example points a development REST at this one.
+DIST        := dist
+RELEASE_DIR := $(DIST)/$(VERSION)
+
 # -s -w strip the symbol table and DWARF: this binary is downloaded over somebody
 # else's connection, and a debugger on a customer's machine is not how it is diagnosed.
 # The stamp is what makes `ouroboros-runner version` and every `hello` frame report a
@@ -39,25 +46,27 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # matrix in .github/workflows/runner.yml. `linux/x86_64` is the protocol's spelling of
 # `linux/amd64`; the mapping lives in internal/telemetry, not here, because Go's
 # toolchain wants Go's spelling.
-TARGETS := linux/amd64 linux/arm64 darwin/arm64
+RELEASE_TARGETS := linux/amd64 linux/arm64 darwin/arm64
+TARGETS := $(RELEASE_TARGETS)
 
-.PHONY: help install dev lint format fmt typecheck test test-docker cover build cross clean
+.PHONY: help install dev lint format fmt typecheck test test-docker cover build cross release clean
 
 # The default target is help, so a bare `make` in an unfamiliar module explains itself.
 help:
 	@printf 'ouroboros-runner — the Ouroboros build farm agent (issue #243).\n\n'
 	@printf '  make install     Resolve the module (it has no dependencies, by design).\n'
 	@printf '  make dev         Run from source: make dev ARGS="hello" (or "enroll ...", "run ...").\n'
-	@printf '  make lint        golangci-lint over every package.\n'
+	@printf '  make lint        golangci-lint over every package, shellcheck over install.sh.\n'
 	@printf '  make format      Report anything gofmt would change. Fails if there is any.\n'
 	@printf '  make fmt         Apply it.\n'
 	@printf '  make typecheck   go vet over every package.\n'
-	@printf '  make test        The suite, with the race detector.\n'
+	@printf '  make test        The suite, with the race detector, and the installer suite.\n'
 	@printf '  make test-docker The container executor against a real Docker or Podman daemon.\n'
 	@printf '  make cover       The suite, with a coverage report.\n'
 	@printf '  make build       This platform, into %s/.\n' '$(BIN)'
 	@printf '  make cross       All three release targets, into %s/.\n' '$(BIN)'
-	@printf '  make clean       Remove %s/ and the coverage output.\n\n' '$(BIN)'
+	@printf '  make release     A checksummed release, into %s/.\n' '$(RELEASE_DIR)'
+	@printf '  make clean       Remove %s/, %s/ and the coverage output.\n\n' '$(BIN)' '$(DIST)'
 	@printf 'Version %s. The wire contract is docs/RUNNER_PROTOCOL.md.\n' '$(VERSION)'
 
 # The locked install, this toolchain's `yarn install --immutable`. There is nothing to
@@ -76,8 +85,12 @@ install:
 dev:
 	go run $(PACKAGE) $(ARGS)
 
+# shellcheck over the installer and its suite, beside golangci-lint over the Go: install.sh
+# is piped into a shell on machines nobody here administers, so it is linted like any
+# other code that runs there (#248). -x follows the suite's source of scripts/lib/checks.sh.
 lint:
 	golangci-lint run ./...
+	shellcheck -x install.sh tests/*.sh
 
 # Checked, not applied: a pull request that skipped `make fmt` fails rather than being
 # silently reformatted by CI, which is the same bargain `ruff format --check` strikes in
@@ -102,8 +115,12 @@ typecheck:
 # ticker and a log shipper against one connection, so every interesting bug it can have
 # is a data race — and internal/conn's Outbox and Ledger are shared between exactly
 # those goroutines.
+#
+# The installer's suite runs beside it (#248): install.sh end to end against a fixture
+# release and a staged root, with the service managers stubbed — see tests/install.test.sh.
 test:
 	go test -race ./...
+	sh tests/install.test.sh
 
 # The container executor (#246) against a REAL Docker or Podman daemon: a first pull of a
 # small pinned image with its progress, a job's exit code and output, and a cancellation.
@@ -136,5 +153,25 @@ cross:
 	done
 	@ls -1 $(BIN)
 
+# A release (#248): all three targets, the installer, and a SHA256SUMS over the four, in
+# dist/<version>/ — what ci/runner publishes as the GitHub release ouroboros-runner-v<version>,
+# and what a deployment serves from its own origin.
+#
+# install.sh goes in with DEFAULT_VERSION filled in, so a release's installer installs that
+# release and nothing else; a line that is no longer there to fill in fails the release
+# rather than shipping an installer that asks for a version. The directory is emptied first:
+# a file left from an earlier build would be listed in SHA256SUMS as if it belonged.
+release:
+	@rm -rf '$(RELEASE_DIR)'
+	@$(MAKE) --no-print-directory cross BIN='$(RELEASE_DIR)' TARGETS='$(RELEASE_TARGETS)'
+	@sed "s/^DEFAULT_VERSION=''$$/DEFAULT_VERSION='$(VERSION)'/" install.sh >'$(RELEASE_DIR)/install.sh'
+	@grep -q "^DEFAULT_VERSION='$(VERSION)'$$" '$(RELEASE_DIR)/install.sh' || { \
+		printf 'install.sh has no DEFAULT_VERSION line to fill in.\n' >&2; exit 1; }
+	@chmod 0755 '$(RELEASE_DIR)/install.sh'
+	@cd '$(RELEASE_DIR)' && if command -v sha256sum >/dev/null 2>&1; then \
+		sha256sum $(BINARY)-* install.sh; else shasum -a 256 $(BINARY)-* install.sh; fi >SHA256SUMS
+	@printf '\nreleased %s into %s:\n' '$(VERSION)' '$(RELEASE_DIR)'
+	@cat '$(RELEASE_DIR)/SHA256SUMS'
+
 clean:
-	rm -rf $(BIN) coverage.out
+	rm -rf $(BIN) $(DIST) coverage.out

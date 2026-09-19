@@ -345,7 +345,7 @@ only the checks it can affect:
 | `ouroboros-rest/**` | `ci/rest` → `publish/rest` | the same pipeline, against `ouroboros-rest`, then the integration suite against a migrated PostgreSQL |
 | `ouroboros-engine/**` | `ci/engine` → `publish/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
 | `ouroboros-db/**` | `ci/db` → `publish/db` | the migration and data-tier contract, then the module's tooling tests, then a live migration pass |
-| `ouroboros-runner/**` | `ci/runner` → `cross/runner` | `make install` → format → lint → typecheck → test → the protocol contract → build, then a cross-compile of all three target architectures |
+| `ouroboros-runner/**` | `ci/runner` → `cross/runner` → `package/runner` → `release/runner` | `make install` → format → lint (with shellcheck over `install.sh`) → typecheck → test → the protocol contract → build, then a cross-compile of all three target architectures; `make release` and its checksums on every event, published as the GitHub release `ouroboros-runner-v<VERSION>` from `main` only ([#248](https://github.com/NobuData/ouroboros/issues/248)) |
 | `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
 | `package.json`, `yarn.lock`, `turbo.json`, `.yarnrc.yml` | `ci/ui` + `ci/rest` | the workspace both TypeScript modules resolve through |
 | `schemas/runner-protocol/**`, `docs/RUNNER_PROTOCOL.md` | `ci/runner` | the wire contract the Go agent and the TypeScript gateway both implement |

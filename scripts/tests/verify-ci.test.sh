@@ -453,8 +453,9 @@ YAML
 
   # The Go agent's workflow (#243). It is the one module without a publish job — its
   # artefact is a binary for somebody else's machine — and its second job is the
-  # cross-compile matrix instead. It is also ungated, like ci/db: the module was scaffolded
-  # by the pull request that added this workflow.
+  # cross-compile matrix instead, then the release (#248): a read-only package job and a
+  # release job that alone may write. It is also ungated, like ci/db: the module was
+  # scaffolded by the pull request that added this workflow.
   cat > "$fixture/.github/workflows/runner.yml" <<'YAML'
 name: ouroboros-runner · ci
 
@@ -487,6 +488,8 @@ concurrency:
 env:
   GO_VERSION: "1.24"
   GOLANGCI_LINT_VERSION: "v2.13.2"
+  SHELLCHECK_VERSION: "v0.10.0"
+  SHELLCHECK_SHA256: "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"
 
 jobs:
   ci:
@@ -567,6 +570,56 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: make cross TARGETS="${TARGET/x86_64/amd64}"
+
+  package:
+    name: package/runner
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package the release
+        shell: bash
+        working-directory: ouroboros-runner
+        run: make release
+
+      - name: Verify the checksums
+        shell: bash
+        working-directory: ouroboros-runner
+        run: |
+          set -euo pipefail
+          cd "dist/$(cat VERSION)"
+          sha256sum -c SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ouroboros-runner-release
+          path: ouroboros-runner/dist/
+
+  release:
+    name: release/runner
+    runs-on: ubuntu-latest
+    needs: [ci, cross, package]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ouroboros-runner-release
+          path: ouroboros-runner/dist
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="ouroboros-runner-v$(cat ouroboros-runner/VERSION)"
+          if gh release view "$tag" >/dev/null 2>&1; then exit 0; fi
+          gh release create "$tag" ouroboros-runner/dist/*/*
 YAML
 
   # What that workflow's steps are cross-checked against: the module's manifest, the verbs
@@ -585,6 +638,7 @@ format:
 
 lint:
 	golangci-lint run ./...
+	shellcheck -x install.sh tests/*.sh
 
 typecheck:
 	go vet ./...
@@ -597,7 +651,11 @@ build:
 
 cross:
 	echo cross
+
+release:
+	echo release
 MAKE
+  printf '#!/bin/sh\n' > "$fixture/ouroboros-runner/install.sh"
   cat > "$fixture/ouroboros-runner/README.md" <<'DOC'
 # ouroboros-runner
 
@@ -1171,6 +1229,75 @@ check_break 'a cross build that bypasses the module Makefile is reported' \
 check_break 'a Makefile with no cross verb is reported' \
   'defines that verb' \
   'sed -i "/^cross:$/,+1d" "$root/ouroboros-runner/Makefile"'
+
+# ---------------------------------------------------------------------------
+# The runner's release (#248)
+# ---------------------------------------------------------------------------
+
+# The one job in the repository that may write, and what keeps it that way: each case widens
+# or loosens one part of it and asserts the run says which.
+
+printf '\nRunner release violations\n'
+
+check_break 'a write permission granted to the whole workflow is reported' \
+  'grants no write to every job at once' \
+  'sed -i "s|^  contents: read$|  contents: write|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a second job granted write is reported' \
+  'the only grant of write in runner.yml' \
+  'sed -i "/^    name: package\/runner$/a\\    permissions:\\n      contents: write" "$root/.github/workflows/runner.yml"'
+
+check_break 'a packaging job granted write is reported as not read-only' \
+  'packaging is read-only' \
+  'sed -i "/^    name: package\/runner$/a\\    permissions:\\n      contents: write" "$root/.github/workflows/runner.yml"'
+
+check_break 'a release published from a pull request is reported' \
+  'published from a push to main and nothing else' \
+  'sed -i "/^    if: github.event_name == .push. && github.ref == .refs\/heads\/main.$/d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a release that does not wait for every cross target is reported' \
+  'every cross target and the package have passed' \
+  'sed -i "s|^    needs: \[ci, cross, package\]$|    needs: [ci, package]|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a release that rebuilds rather than publishing the package is reported' \
+  'publishes the packaged bytes rather than rebuilding them' \
+  'sed -i "s|uses: actions/download-artifact@v4|run: make release|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a release that would replace an existing one is reported' \
+  'never replaces a release that exists' \
+  'sed -i "/gh release view/d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a package whose checksums are not verified is reported' \
+  'checksums are verified before it is uploaded' \
+  'sed -i "/sha256sum -c SHA256SUMS/d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a package job that does not wait for ci/runner is reported' \
+  'nothing is packaged until ci/runner has passed' \
+  'sed -i "/^    name: package\/runner$/,/^    steps:$/{/^    needs: ci$/d}" "$root/.github/workflows/runner.yml"'
+
+check_break 'no package job at all is reported' \
+  'reporting as package/runner' \
+  'sed -i "s|^  package:$|  bundle:|" "$root/.github/workflows/runner.yml"'
+
+check_break 'a Makefile with no release verb is reported' \
+  'defines the release verb' \
+  'sed -i "/^release:$/,+1d" "$root/ouroboros-runner/Makefile"'
+
+check_break 'an installer nobody lints is reported' \
+  'lints install.sh with shellcheck' \
+  'sed -i "/shellcheck/d" "$root/ouroboros-runner/Makefile"'
+
+check_break 'a module with no installer is reported' \
+  'ships an installer' \
+  'rm "$root/ouroboros-runner/install.sh"'
+
+check_break 'a shellcheck with no pinned digest is reported' \
+  "that release's digest" \
+  'sed -i "/^  SHELLCHECK_SHA256:/d" "$root/.github/workflows/runner.yml"'
+
+check_break 'a shellcheck on no pinned release is reported' \
+  'pins shellcheck to a release' \
+  'sed -i "s|^  SHELLCHECK_VERSION: .*|  SHELLCHECK_VERSION: latest|" "$root/.github/workflows/runner.yml"'
 
 # ---------------------------------------------------------------------------
 # The database's live pass (#24)

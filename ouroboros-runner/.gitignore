@@ -2,6 +2,10 @@
 # target in ci/runner's matrix.
 /bin/
 
+# Releases. `make release` writes one directory per version here (#248) — what ci/runner
+# publishes and a deployment's OURO_FARM_RELEASES_DIR serves — and none is ever committed.
+/dist/
+
 # Go's own test and coverage artefacts.
 *.test
 /coverage.out
