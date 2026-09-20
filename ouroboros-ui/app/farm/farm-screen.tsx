@@ -4,6 +4,7 @@ import { FarmHead } from "./farm-head";
 import type { FarmPollOptions } from "./farm-poll";
 import { FarmStatRow } from "./farm-stat-row";
 import { FarmProvider } from "./farm-store";
+import { RunnersCard } from "./runners-card";
 
 import "./farm.css";
 
@@ -19,11 +20,12 @@ import "./farm.css";
  *
  * ### One store, and every region under it
  *
- * The page is one observation (`app/api/farm.ts`), so it is provided once, here, and the head
- * and the stat row both read it (`app/farm/farm-store.tsx`). The regions still to come — the
- * runners table (AI.2, #257), the enroll card (AI.3, #258), the pools card (AI.4, #259) and the
- * live log (AI.6, #261) — mount in {@link FarmScreen}'s grid beneath the stat row and read the
- * same store, which is what keeps `4/5` and the table it counts on one answer.
+ * The page is one observation (`app/api/farm.ts`), so it is provided once, here, and the head,
+ * the stat row and the runners table (AI.2, [#257](https://github.com/NobuData/ouroboros/issues/257))
+ * all read it (`app/farm/farm-store.tsx`) — which is what keeps `4/5` and the table it counts on
+ * one answer. The regions still to come — the enroll card (AI.3, #258), the pools card (AI.4,
+ * #259) and the live log (AI.6, #261) — mount in {@link FarmScreen}'s grid beside and beneath the
+ * table and read the same store.
  *
  * The banner sits above the head rather than in the grid, for the dashboard's reason: it is a
  * fact about the whole page, and a reader handed old data should be told before they read it.
@@ -45,6 +47,7 @@ export function FarmScreen({
         <FarmHead />
         <div className="farm__grid">
           <FarmStatRow />
+          <RunnersCard />
         </div>
       </main>
     </FarmProvider>

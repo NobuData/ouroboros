@@ -32,6 +32,7 @@
  */
 
 import type { BacklogEstimate, BacklogListing, BacklogRow, SyncStatus } from "@/app/api/backlog";
+import { ageOfSeconds } from "@/app/format";
 import type { ChipTone, Effort } from "@/app/ui/chip";
 
 import type { HeadOutcome } from "./view";
@@ -272,14 +273,13 @@ export const SYNC_ROLE_REASON =
   "Syncing the backlog is for workspace owners, admins and members — a viewer can read the " +
   "backlog but not ask GitHub for it again.";
 
-/** Seconds in a minute, an hour and a day, for the relative age. */
-const MINUTE = 60;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
 /**
  * How long ago an instant was, in the coarsest unit that is still honest — the mockup's
  * `40s`, then `3m`, `2h`, `5d`.
+ *
+ * The rule itself is `ageOfSeconds` in `app/format.ts`, where it moved when the build farm's
+ * runners table ([#257](https://github.com/NobuData/ouroboros/issues/257)) became its second
+ * caller; this keeps the name the backlog's modules already import.
  *
  * Whole units, rounded down: `59s` is not yet a minute, and a tag that read `1m` over a sync
  * fifty-nine seconds old would be claiming a freshness the backlog does not have — the same
@@ -290,12 +290,7 @@ const DAY = 24 * HOUR;
  * @returns `40s`, `3m`, `2h` or `5d`.
  */
 export function age(seconds: number): string {
-  const elapsed = Math.max(0, Math.floor(seconds));
-
-  if (elapsed < MINUTE) return `${elapsed}s`;
-  if (elapsed < HOUR) return `${Math.floor(elapsed / MINUTE)}m`;
-  if (elapsed < DAY) return `${Math.floor(elapsed / HOUR)}h`;
-  return `${Math.floor(elapsed / DAY)}d`;
+  return ageOfSeconds(seconds);
 }
 
 /**

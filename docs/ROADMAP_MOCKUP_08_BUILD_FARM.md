@@ -1099,7 +1099,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AI.1 | #256 | 🟢 Done | ouroboros-ui: [AI.1] Build Farm route, head & stat row | `/build-farm` frame, live stats, honest head actions | mvp, build-farm, ui, design | N (after #41, AH.6, BA-D.5) | Y | S | ouroboros-ui |
-| AI.2 | #257 | 🟡 Open | ouroboros-ui: [AI.2] Runners table (live) | Five status archetypes, telemetry cells, live refresh | mvp, build-farm, ui, design | N (after AI.1) | Y | L | ouroboros-ui |
+| AI.2 | #257 | 🟢 Done | ouroboros-ui: [AI.2] Runners table (live) | Five status archetypes, telemetry cells, live refresh | mvp, build-farm, ui, design | N (after AI.1) | Y | L | ouroboros-ui |
 | AI.3 | #258 | 🟡 Open | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
 | AI.4 | #259 | 🟡 Open | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
 | AI.5 | #260 | 🟡 Open | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
@@ -1175,7 +1175,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue AI.2 — ouroboros-ui: [AI.2] Runners table (live)
 
-> **GitHub issue:** #257 · **Status:** 🟡 Open · **Parent epic:** #241
+> **GitHub issue:** #257 · **Status:** 🟢 Done · **Parent epic:** #241
 
 
 - **Problem Statement:** The fleet view: five status archetypes with live
@@ -1201,6 +1201,59 @@ the #16 tokens (both themes; the mockup is dark-only).
 forge-01 linux/arm64 [pool-a] (●building) #479 zephyr build ▓▓▓▓░ 82% 14.2/32GB q:2 41d ⋯
 forge-03 linux/arm64 [pool-a] (●offline · last seen 2h)  —  —  —  q:0  —  ⋯   (dimmed)
 ```
+
+- **Delivered (2026-09-19):** `ouroboros-ui` 0.82.0 — [`app/farm/`](../ouroboros-ui/app/farm)
+  gains `runners.ts` (every judgement, pure, over flat rows), `runners-card.tsx`,
+  `runner-cells.tsx` and `job-sheet.tsx`, mounted in `farm-screen.tsx`'s grid at the mockup's `c-8`
+  and reading the one `useFarm()` store, so the rows and the `4/5` above them are one answer.
+  Decisions taken in-issue:
+  - **Stale data is not rendered as current, whatever the payload carries.** V040 already clears an
+    offline runner's snapshot; the view does not rely on it — a row the fleet cannot vouch for draws
+    an em dash in every *agent-reported* cell (CPU, RAM, uptime), is dimmed by ink (the mockup's
+    `tr.offline`, not an opacity) and says `last seen 2h ago`. What the *control plane* knows stays:
+    `q:0` is its own count, and so is a `running` job.
+  - **`null` is an em dash with no meter** — an empty bar is a picture of `0%` — beside the metrics
+    the platform could report; a measured `0%` keeps its meter.
+  - **`last seen 2h ago` and the tile's `offline · 2h` are one rule**: the backlog's `age()` moved to
+    `app/format.ts` as `ageOfSeconds` (its second caller), which is also how AH.6 composes the note.
+    It is measured from the store's `dataAt`, so a server render and its hydration agree.
+  - **CPU tones:** `warn` at ≥ 80 (the AC), and — to match the mockup's `3%`/`6%` rows against its
+    `54%` — `ok` under 50 and the plain accent between. Decided on the figure *drawn*: `79.6` reads
+    `80%` and warns.
+  - **RAM is decimal gigabytes** (the seed's `32000000000` is the mockup's `32`): one decimal under
+    100 GB — `5.0`, never `5`, so the column holds its width — and whole numbers from there
+    (`88/256 GB`).
+  - **The default order is pool, then name** (a total order over facts that do not move on a
+    heartbeat), and **Group by status** is the opt-in — and is exactly the mockup's row order
+    (building · idle · idle · draining · offline). The service orders by name; the table sorts.
+  - **The current-job cell opens a job sheet, not a page.** `/runs/:id` is #309 and is not built,
+    and `RunnerJobRef` carries no run until #300 — so the amendment's link lands on the commit that
+    makes both true, and until then the sheet lists what the page already knows and says the
+    console is coming. It is held by the *job's* id, so it closes when the build ends. **The
+    mockup's `· helios-firmware` is not drawn**: the job reference carries no repository
+    (`· finishing` is derived from `draining`). Widening AH.6's payload is left to whoever needs it.
+  - **`bearer_fallback` (B3)** is a small shield in the warning ink beside the name — tooltip,
+    visually hidden sentence and row announcement all say it in words. In the seed that runner is
+    `anvil-mac`, not the issue diagram's `bigiron`.
+  - **No flicker, verified at both levels** (`__tests__/farm/runners-live.test.tsx`): a
+    `MutationObserver` over the table body sees no element added or removed and no mutation outside
+    the row that moved, and a spied `Meter` shows one CPU cell rendering rather than four (cells are
+    memoised over the flat row's primitives). The meter's fill now eases to its new width in
+    `app/ui/ui.css`, inside the reduced-motion guard. Checked against a real stack as well: three
+    heartbeats changed two text nodes and two custom properties; stopping one runner's heartbeats
+    flipped **the same row element** to dimmed em dashes in 37 s (the presence threshold plus one
+    poll), with the tile reading `3/5 · forge-02 offline · 37s` beside `last seen 37s ago`.
+  - **Keyboard:** the design system's selectable grid — one tab stop, `↑ ↓ Home End`, the landing row
+    announced from a polite region (which also covers a pointer). A selection whose runner has left
+    the fleet is dropped, or no row would hold the tab stop.
+  - **`Health history →` (#266) and each row's `⋯` (#260) are inert *soon* controls**; the `⋯` is out
+    of the tab order (a control that acts for nobody is no loss to a keyboard), the job cell is in it.
+  - **A defect found on the way, fixed in the primitive:** `.ou-table-scroll` is now
+    `position: relative`. `.sr-only` text is absolutely positioned, and a hidden heading over the
+    last column of a table wider than its wrapper sat outside the wrapper's clip and widened the
+    *document* — the page scrolled sideways past the shell at narrow widths. The routing matrix's
+    hidden *Edit* heading had the same exposure.
+  - The empty-fleet guidance and the e2e leg stay with AI.7 (#262); this draws one honest line.
 
 ### Issue AI.3 — ouroboros-ui: [AI.3] Enroll-runner card & token flow
 

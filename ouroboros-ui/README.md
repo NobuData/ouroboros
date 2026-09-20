@@ -221,7 +221,7 @@ ouroboros-ui/
 │   ├── paths.ts             # every route more than one module has to agree about
 │   ├── browser.ts           # window and localStorage, read in the way that cannot throw
 │   ├── media-query.ts       # useMediaQuery() — asking CSS a question from React
-│   ├── format.ts            # relativeAgo() — the one clock-to-words rule
+│   ├── format.ts            # relativeAgo(), ageOfSeconds() — the clock-to-words rules
 │   ├── catalog-tiles.ts     # a picker's tiles — live entries and honest *coming soon* ones
 │   ├── api/                 # the two clients for ouroboros-rest
 │   │   ├── schema.d.ts      #   generated from the contract by `yarn api:sync`
@@ -287,7 +287,7 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
-│   ├── farm/                # mockup 08's head and stat row, kept live · #256
+│   ├── farm/                # mockup 08's head, stat row and runners table, kept live · #256, #257
 │   │   ├── view.ts          #   the computed headline, the four tiles, down-is-good, the soon actions
 │   │   ├── data.ts          #   readFarm() — the first paint's read, degraded rather than thrown
 │   │   ├── farm-poll.ts     #   the loop's reader and guard — the fleet's own ten-second cadence
@@ -295,6 +295,10 @@ ouroboros-ui/
 │   │   ├── farm-head.tsx    #   the live h1 and the three honest actions
 │   │   ├── farm-stat-row.tsx #  four shared StatCards, one with a meter
 │   │   ├── farm-banner.tsx  #   the DASH-I.7 banner: stale or unread, and the retry
+│   │   ├── runners.ts       #   every judgement the runners table makes — pure, flat rows · #257
+│   │   ├── runners-card.tsx #   the RUNNERS card: the live table, the grouping, the keyboard
+│   │   ├── runner-cells.tsx #   its cells, memoised over primitives — a poll re-renders what moved
+│   │   ├── job-sheet.tsx    #   what a current-job cell opens until the run console (#309) exists
 │   │   └── farm-screen.tsx  #   the frame the rest of mockup 08 mounts in
 │   ├── planning/            # mockup 09's frame: head, honest actions, the 7 / 5 + 12 grid · #283
 │   │   ├── view.ts          #   the verbatim head copy and what each region is headed with
@@ -2644,8 +2648,8 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 
 `/build-farm` ([#256](https://github.com/NobuData/ouroboros/issues/256)) is
 [`docs/mockups/08-build-farm.html`](../docs/mockups/08-build-farm.html)'s **head and stat row**,
-and the frame the rest of that page mounts in: the runners table
-([#257](https://github.com/NobuData/ouroboros/issues/257)), the enroll card
+[the runners table](#the-runners-table) ([#257](https://github.com/NobuData/ouroboros/issues/257)),
+and the frame the rest of that page mounts in: the enroll card
 ([#258](https://github.com/NobuData/ouroboros/issues/258)), the pools card
 ([#259](https://github.com/NobuData/ouroboros/issues/259)) and the live log
 ([#261](https://github.com/NobuData/ouroboros/issues/261)). The sidebar's **Build Farm** entry is
@@ -2708,9 +2712,68 @@ shape.
 **The stat tile is shared.** The row is four [`StatCard`](#ui-primitives)s — the dashboard's tile,
 moved to `app/ui` on the commit that made this its second caller — so the two rows cannot drift.
 [`farm.css`](app/farm/farm.css) holds only what is this page's: the head, the twelve-column grid
-(the stat row halves below `68.75rem` and stacks below `40rem`), and the *soon* mark. Every colour
+(the stat row halves below `68.75rem` and stacks below `40rem`), the *soon* mark, and what the
+runners table puts inside its cells. Every colour
 is a token and every length a rem, which is what makes both palettes and the 125% font-scale step
 correct from one sheet.
+
+### The runners table
+
+The `RUNNERS` card ([#257](https://github.com/NobuData/ouroboros/issues/257)) is the one table in
+the product that renders **machines that are running right now** rather than stored records. It
+reads the same store as the tiles above it, so `4/5` and the rows it counts are one answer.
+
+```
+RUNNERS  (● 1 building)                                  [Group by status] [Health history → SOON]
+RUNNER          POOL     STATUS                     CURRENT JOB                   CPU        RAM         QUEUE  UPTIME
+forge-01        pool-a   (● building)               #479 zephyr build             ▓▓▓▓░ 82%  14.2/32 GB  q:2    41d     ⋯
+forge-02        pool-a   (● idle)                   —                             ░░░░░  3%   2.1/32 GB  q:0    41d     ⋯
+forge-03        pool-a   (● offline) last seen 2h ago  —                          —          —           q:0    —       ⋯   ← dimmed
+anvil-mac 🛡    pool-b   (● idle)                   —                             ░░░░░  6%   5.0/64 GB  q:0    12d     ⋯   ← bearer_fallback
+bigiron         pool-b   (● draining)               #472 HIL test rig · finishing ▓▓▓░░ 54%  88/256 GB   q:1    3d      ⋯
+```
+
+Every judgement is a pure function in [`app/farm/runners.ts`](app/farm/runners.ts):
+
+| What it says | Where it is decided |
+|---|---|
+| **Stale data is not rendered as current.** A row the fleet cannot vouch for (`offline`) draws an em dash in every cell an *agent* reported — CPU, RAM, uptime — **whatever the payload carries**, is dimmed (by ink, as the mockup does it, not by opacity), and says `last seen 2h ago`. What the *control plane* knows stays: `q:0` is its own count | `runnerRow`, `isVouchedFor`, `lastSeen` |
+| **`null` is an em dash, never zero.** A metric a platform could not report is `—` with **no meter** (an empty bar is a picture of `0%`), beside the metrics it could; a measured `0%` keeps its meter | `cpuReading`, `ramReading`, `uptimeReading` |
+| **The pill**: `building` accent + pulse · `online` reads **idle** · `draining` warn · `offline` err. Every status differs by its word and its dot, not only its hue | `RUNNER_PILLS` |
+| **CPU warns at ≥ 80**, healthy under 50, plain accent between — decided on the figure that is *drawn*, so `79.6` reads `80%` and warns | `cpuReading` |
+| **RAM is `14.2/32 GB`** — decimal gigabytes, one decimal under 100 GB (`5.0`, not `5`, so the column keeps its width), whole numbers from there (`88/256 GB`) | `ramReading` |
+| **`bearer_fallback` is visible** (decision B3): a small shield in the warning ink beside the name, whose tooltip, hidden text and row announcement all say it in words | `RunnerRow.degraded`, `BEARER_FALLBACK_NOTE` |
+| **The order is pool, then name** — facts that do not move on a heartbeat, and a total order, so a row never moves because a build started. **Group by status** is the reader's opt-in to the mockup's own order (building · idle · draining · offline) | `sortRunners` |
+| **`last seen` and the tile's `offline · 2h` are one figure**: both are `ageOfSeconds` ([`app/format.ts`](app/format.ts)) — the rule the service composes its note by — measured from the store's `dataAt`, so a server render and its hydration agree | `lastSeen` |
+
+**Live updates do not flicker, and that is tested.** Rows are keyed by the runner's id and cells are
+memoised over the flat row's primitives ([`runner-cells.tsx`](app/farm/runner-cells.tsx)), so a poll
+changes a text node and a meter's custom property and replaces nothing; the meter's fill eases to its
+new width (`.ou-meter__fill`, inside the reduced-motion guard).
+[`runners-live.test.tsx`](__tests__/farm/runners-live.test.tsx) holds both halves — a
+`MutationObserver` over the table body sees no element added or removed and no mutation outside the
+row that moved, and a spied `Meter` shows one CPU cell rendering, not four — and that a runner
+reported offline flips **the same row element** to dimmed em dashes on the poll that reports it.
+
+**The keyboard** is the design system's selectable grid ([`Table`](#ui-primitives)): one tab stop,
+then `↑` `↓` `Home` `End` between rows, with the landing row announced from a polite region (which
+also covers a pointer, which moves no focus). Nothing is selected on arrival, and a selection whose
+runner has left the fleet is dropped so the table is never unreachable.
+
+**What cannot act yet says so.** `Health history →` waits for
+[#266](https://github.com/NobuData/ouroboros/issues/266) and each row's `⋯` for
+[#260](https://github.com/NobuData/ouroboros/issues/260): both are inert *soon* controls, and neither
+navigates. The **current-job cell** opens a **job sheet** ([`job-sheet.tsx`](app/farm/job-sheet.tsx))
+over what the page already knows — the run console it will link to is
+[#309](https://github.com/NobuData/ouroboros/issues/309), and the payload carries no run to link to
+until [#300](https://github.com/NobuData/ouroboros/issues/300). The sheet is held by the *job*, so it
+closes itself when the build ends rather than becoming a sheet about the next one. The mockup's
+`· helios-firmware` is not drawn: the payload's job reference carries no repository.
+
+**The table scrolls inside its own wrapper.** The card is a grid item with `min-width: 0`, so nine
+`nowrap` columns scroll in `.ou-table-scroll` and the pane never moves sideways. That wrapper is now
+`position: relative` too: visually hidden text is absolutely positioned, and a hidden heading over
+the last column of a wide table otherwise sits outside the clip and widens the *document*.
 
 ## Planning
 
@@ -4030,8 +4093,8 @@ import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 | `Card` / `CardHead` | The raised plane a panel is drawn on, on three surfaces, and the head that names one | `.card` / `.card-head` |
 | `Chip` / `EffortChip` | A small marker carrying a state in its hue, optionally with a dot; and the square XS–XL estimate | `.pill` / `.effort` |
 | `Tag` / `Badge` | Metadata with no state; and a count attached to something else | `.tag` / `.nav-badge` |
-| `Table` | Columns and rows, inside their own horizontal scroll container; rows selectable one at a time, or checkable any number at a time | `.tbl` |
-| `Meter` | A proportion drawn as a bar — a stage, a rate, a budget | `.meter` |
+| `Table` | Columns and rows, inside their own horizontal scroll container — which is also the containing block for anything positioned inside it, so visually hidden text in a far column cannot widen the page ([#257](https://github.com/NobuData/ouroboros/issues/257)); rows selectable one at a time, or checkable any number at a time | `.tbl` |
+| `Meter` | A proportion drawn as a bar — a stage, a rate, a budget, a live CPU figure. Over live data the fill eases to its new width rather than jumping, inside the reduced-motion guard ([#257](https://github.com/NobuData/ouroboros/issues/257)) | `.meter` |
 | `StatCard` | A caption, a figure and a line about the figure, in a card — with an optional quieter suffix on the figure (`4/5`) and a slot for a meter. The dashboard's composition ([#81](https://github.com/NobuData/ouroboros/issues/81)) until the build farm drew the same row ([#256](https://github.com/NobuData/ouroboros/issues/256)) | `.stat` |
 | `TextField` / `SelectField` / `Toggle` | A labelled field, a native select, and a switch | `.field` / `.input` / `.switch` |
 | `EmptyState` | A surface that is not ready, labelled rather than blank | — |
@@ -4369,6 +4432,7 @@ the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/2
 ticket sources [#141](https://github.com/NobuData/ouroboros/issues/141) ·
 planning [#283](https://github.com/NobuData/ouroboros/issues/283) ·
 build farm [#256](https://github.com/NobuData/ouroboros/issues/256) ·
+the runners table [#257](https://github.com/NobuData/ouroboros/issues/257) ·
 workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
 the React Flow canvas [#148](https://github.com/NobuData/ouroboros/issues/148) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
