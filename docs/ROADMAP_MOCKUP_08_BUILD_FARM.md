@@ -1100,7 +1100,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AI.1 | #256 | 🟢 Done | ouroboros-ui: [AI.1] Build Farm route, head & stat row | `/build-farm` frame, live stats, honest head actions | mvp, build-farm, ui, design | N (after #41, AH.6, BA-D.5) | Y | S | ouroboros-ui |
 | AI.2 | #257 | 🟢 Done | ouroboros-ui: [AI.2] Runners table (live) | Five status archetypes, telemetry cells, live refresh | mvp, build-farm, ui, design | N (after AI.1) | Y | L | ouroboros-ui |
-| AI.3 | #258 | 🟡 Open | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
+| AI.3 | #258 | 🟢 Done | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
 | AI.4 | #259 | 🟡 Open | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
 | AI.5 | #260 | 🟡 Open | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
 | AI.6 | #261 | 🟡 Open | ouroboros-ui: [AI.6] Live log card | Offset-streamed log, ANSI-safe rendering, cursor, full-log path | mvp, build-farm, ui, design | N (after AI.1, AH.5) | Y | M | ouroboros-ui |
@@ -1257,7 +1257,7 @@ forge-03 linux/arm64 [pool-a] (●offline · last seen 2h)  —  —  —  q:0  
 
 ### Issue AI.3 — ouroboros-ui: [AI.3] Enroll-runner card & token flow
 
-> **GitHub issue:** #258 · **Status:** 🟡 Open · **Parent epic:** #241
+> **GitHub issue:** #258 · **Status:** 🟢 Done · **Parent epic:** #241
 
 
 - **Problem Statement:** The enroll card must render a *working* command —
@@ -1281,6 +1281,61 @@ forge-03 linux/arm64 [pool-a] (●offline · last seen 2h)  —  —  —  q:0  
 [pool-a ▾]  curl -fsSL https://<host>/install.sh | sh -s -- --tenant acme --pool pool-a --token orb_••••
 [Copy command] → full token in clipboard only · [Manage tokens →]
 ```
+
+- **Delivered (2026-09-19):** `ouroboros-ui` 0.83.0 — [`app/farm/`](../ouroboros-ui/app/farm)
+  gains `enroll.ts` (every judgement, pure), `enroll-actions.ts` (the Server Actions),
+  `token-data.ts`, `clipboard.ts`, `enroll-card.tsx` (mounted in `farm-screen.tsx`'s grid at the
+  mockup's `c-4`), `token-list.tsx`, `token-sheet.tsx` and the settings tab's screen and skeleton;
+  `app/api/farm.ts` gains `enrollCommand()`, `tokens()`, `revokeToken()` and `pools()`.
+  Decisions taken in-issue:
+  - **The mint is the copy** (decided with the owner). AH.6's enroll-command read mints on every
+    call and is the *only* read that knows the deployment's origin and pinned version — and it is
+    `403` for a member. Minting on card open would leave a live token behind every admin page
+    view, which is the failure this issue names; so nothing is minted to draw the card. At rest
+    the block is the command's **shape** (`<this deployment>/install.sh`, the workspace, the chosen
+    pool, `orb_enroll_••••`) and the explainer says *this deployment*; one press of **Copy command**
+    mints one single-use, day-long token. From then on the explainer names the real `host:443`
+    and the block is the service's own command, masked. A reader who may not mint never learns the
+    host from this card, because the read that knows it is one they may not make.
+  - **The value is never in the DOM and never in React state.** The Server Action answers the
+    command twice — whole, and **masked on the server** (`maskedCommand`) — and the whole one goes
+    from the action's promise into the clipboard write and nowhere else; what the card keeps is a
+    type with no field for it. The mask **fails closed**: no `--token` flag, or a token-shaped value
+    before it, and the command is withheld (the origin and version are still said). Verified by
+    inspection in a real browser against a real REST, not only in jsdom: after a copy the 87-character
+    value was in the clipboard and in the action's response, and in **no** markup, attribute, form
+    value, storage or URL — nor was its 12-character tail.
+  - **The clipboard write is asked for inside the press**: a `ClipboardItem` over the mint's promise
+    where the engine has one (the only form Safari accepts), `writeText` after the wait elsewhere.
+  - **A blocked copy leaves nothing live** — not in the issue, and the misuse worth guarding: if the
+    browser refuses the clipboard after the mint took, the value is lost and the token is not, so it
+    is revoked at once and the card says so (or points at *Manage tokens* if that fails too).
+  - **The toast** is *Copied — treat this as a secret.*, in a status region, until dismissed — and
+    a test holds it to saying nothing about the clipboard's lifetime.
+  - **`expires in 24h · 1 of 1 use left`** at mint time. `ageOfSeconds` would call a fresh day-long
+    token `1d` and its next second `23h`; the second day is said in hours, so it reads `24h`. The
+    enroll-command read always mints single-use with the default TTL, so the diagram's `4 of 5` is
+    a rack token minted elsewhere — the list draws those too.
+  - **Token management is one list mounted twice** (decided with the owner, reconciling the issue's
+    *sheet* with its amendment's *settings tab*, decision S2): *Manage tokens →* opens it as a sheet
+    on `/build-farm`, and `/settings/farm-tokens` mounts it as the settings section's second live
+    tab, **Farm tokens**. Every token is listed, newest first — expired, spent and revoked ones
+    dimmed, because *how many machines did this let in* is the incident's question — and **Revoke**
+    is offered where it changes something. The rows say `4 of 5 uses left` rather than the diagram's
+    `4/5 uses`, which reads as *four used* as easily as *four left*. A list rather than a table: it
+    is drawn at a sheet's measure and at a page's, and wraps instead of scrolling.
+  - **Names are decoration.** A token carries a pool id and a user id; the listing joins the pools'
+    and the members' names (`token-data.ts`). Either read failing leaves an em dash or no name —
+    never *deleted pool* or *a former member* over something merely not read.
+  - **+ Enroll runner acts** — AI.1's *soon* note named this issue. It moves focus to the card's
+    pool selector (focus, because the pane is the scroll container); for a reader who may not mint
+    it is inert with the reason. The admin gate AI.1 deferred arrives here through `mayAdminister`,
+    handed to the screen as a boolean; the gates that **decide** — and the audit — are the service's.
+  - **Checked against a real stack:** page loads minted nothing (token count unchanged); two copies
+    wrote two `runner.token_minted` audit rows and the sheet's revoke one `runner.token_revoked`; the
+    revoked token then answered `401 farm_enrollment_refused` at `POST /farm/registrations`; both
+    palettes; no sideways overflow at 600/900/1200/1440 px; the command's type scales ×1.25 at the
+    125% step. **The copied command enrolling a real agent is AI.7's (#262)**, as this issue says.
 
 ### Issue AI.4 — ouroboros-ui: [AI.4] Pools card & configuration
 

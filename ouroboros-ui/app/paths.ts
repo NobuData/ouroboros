@@ -103,6 +103,18 @@ export const SETTINGS_PATH = "/settings";
 export const SOURCES_PATH = `${SETTINGS_PATH}/sources`;
 
 /**
+ * Farm tokens (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258)) — the build farm's
+ * enrollment tokens, as the settings section's second mounted tab.
+ *
+ * The amendment on #258 is decision S2 applied to it: the token list is an admin surface, so it
+ * mounts under `/settings` beside {@link SOURCES_PATH}, and it is spelled from
+ * {@link SETTINGS_PATH} for that constant's reason — the **Settings** entry stays lit here, and
+ * BS.1's hub moves no URL. The same list opens as a sheet from the enroll card on
+ * {@link BUILD_FARM_PATH}; this is its address.
+ */
+export const FARM_TOKENS_PATH = `${SETTINGS_PATH}/farm-tokens`;
+
+/**
  * The model registry ([#591](https://github.com/NobuData/ouroboros/issues/591)) — mockup 21.
  *
  * The third Models surface, and spelled from {@link MODELS_PATH} for the reason

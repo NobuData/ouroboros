@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FarmPage } from "@/app/api/farm";
+import { COPY_COMMAND, ENROLL_MEMBER_REASON, POOL_LABEL } from "@/app/farm/enroll";
 import type { FarmPollOptions } from "@/app/farm/farm-poll";
 import { FarmScreen } from "@/app/farm/farm-screen";
 import {
@@ -18,8 +19,24 @@ import {
 import type { PollAnswer } from "@/app/poll";
 import { RETRYING_LABEL, RETRY_LABEL } from "@/app/ui";
 
-import { emptyFarm, failedFarmReadings, farmReadings, farmStats, seededFarm } from "../helpers/farm";
+import {
+  ADMIN_READER,
+  MEMBER_READER,
+  emptyFarm,
+  failedFarmReadings,
+  farmReadings,
+  farmStats,
+  seededFarm,
+} from "../helpers/farm";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
+
+// The enroll card (#258) reaches the service through Server Actions, which import the
+// server-only client; this suite presses none of them.
+vi.mock("@/app/farm/enroll-actions", () => ({
+  mintEnrollCommand: vi.fn(),
+  readEnrollmentTokens: vi.fn(),
+  revokeEnrollmentToken: vi.fn(),
+}));
 
 /**
  * The build farm as it is drawn (#256): mockup 08's head and stat row from the seeded farm, the
@@ -71,7 +88,7 @@ afterEach(() => {
 
 describe("the head", () => {
   it("draws the mockup's eyebrow, computed headline and subline", () => {
-    render(<FarmScreen poll={QUIET} readings={farmReadings()} />);
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
     expect(screen.getByText(FARM_EYEBROW)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("5 runners. 2 pools. 78% cache hits.");
@@ -79,17 +96,20 @@ describe("the head", () => {
   });
 
   it("reads naturally at zero runners, zero pools and no cache data", () => {
-    render(<FarmScreen poll={QUIET} readings={farmReadings(emptyFarm())} />);
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings(emptyFarm())} />);
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "No runners yet. No pools yet. No cache data today.",
     );
   });
 
-  it("draws the three actions as soon — labelled, inert, and saying what each waits for", () => {
-    render(<FarmScreen poll={QUIET} readings={farmReadings()} />);
+  it("draws the two unbuilt actions as soon — labelled, inert, and saying what each waits for", () => {
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
-    for (const action of FARM_ACTIONS) {
+    const soon = FARM_ACTIONS.filter((action) => action.soonNote !== null);
+
+    expect(soon.map(({ id }) => id)).toEqual(["analyzer", "pools"]);
+    for (const action of soon) {
       const control = screen.getByRole("button", { name: `${action.label} ${SOON_MARK}` });
 
       expect(control).toHaveAttribute("aria-disabled", "true");
@@ -97,8 +117,36 @@ describe("the head", () => {
     }
   });
 
+  it("moves an administrator from + Enroll runner to the enroll card's pool selector (#258)", () => {
+    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
+
+    const control = screen.getByRole("button", { name: "+ Enroll runner" });
+
+    expect(control).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(control);
+
+    expect(screen.getByRole("combobox", { name: POOL_LABEL })).toHaveFocus();
+  });
+
+  it("moves them to the copy control instead when there is no pool to select", () => {
+    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings(emptyFarm())} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Enroll runner" }));
+
+    expect(screen.getByRole("button", { name: COPY_COMMAND })).toHaveFocus();
+  });
+
+  it("draws + Enroll runner inert for a reader who may not mint, with the reason", () => {
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
+
+    const control = screen.getByRole("button", { name: "+ Enroll runner" });
+
+    expect(control).toHaveAttribute("aria-disabled", "true");
+    expect(control).toHaveAttribute("title", ENROLL_MEMBER_REASON);
+  });
+
   it("navigates nowhere from Build Analyzer — there is no link on the page, to a dead route or any other", () => {
-    const { container } = render(<FarmScreen poll={QUIET} readings={farmReadings()} />);
+    const { container } = render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Build Analyzer/ }));
 
@@ -110,7 +158,7 @@ describe("the head", () => {
 
 describe("the stat row, from the seeded farm", () => {
   beforeEach(() => {
-    render(<FarmScreen poll={QUIET} readings={farmReadings()} />);
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
   });
 
   it("is four tiles, each a region named by its caption", () => {
@@ -167,7 +215,7 @@ describe("the stat row, from the seeded farm", () => {
 
 describe("the stat row, for an empty organization", () => {
   beforeEach(() => {
-    render(<FarmScreen poll={QUIET} readings={farmReadings(emptyFarm())} />);
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings(emptyFarm())} />);
   });
 
   it("shows genuine zeros for the counts", () => {
@@ -201,7 +249,7 @@ describe("the delta", () => {
       }),
     });
 
-    render(<FarmScreen poll={QUIET} readings={farmReadings(slower)} />);
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings(slower)} />);
 
     expect(screen.getByText("▲ 38s vs last week")).toHaveClass("ou-stat__delta--down");
   });
@@ -209,21 +257,21 @@ describe("the delta", () => {
 
 describe("both themes", () => {
   it("renders the same markup under either palette, so the theme is the sheet's alone", () => {
-    const [light, dark] = renderInBothPalettes(<FarmScreen poll={QUIET} readings={farmReadings()} />);
+    const [light, dark] = renderInBothPalettes(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
   });
 
   it("does the same for the empty organization and for the page that could not be read", () => {
     for (const readings of [farmReadings(emptyFarm()), failedFarmReadings()]) {
-      const [light, dark] = renderInBothPalettes(<FarmScreen poll={QUIET} readings={readings} />);
+      const [light, dark] = renderInBothPalettes(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={readings} />);
 
       expect(maskIds(light!)).toBe(maskIds(dark!));
     }
   });
 
   it("writes no inline style but a meter's fill, so every size is the sheet's rem", () => {
-    const { container } = render(<FarmScreen poll={QUIET} readings={farmReadings()} />);
+    const { container } = render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
     const styled = [...container.querySelectorAll("[style]")];
 
     // The cache tile's meter, and one CPU meter for each of the four connected runners.
@@ -234,7 +282,7 @@ describe("both themes", () => {
 
 describe("the shell", () => {
   it("draws one main landmark and no chrome of its own", () => {
-    const { container } = render(<FarmScreen poll={QUIET} readings={farmReadings()} />);
+    const { container } = render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(container.querySelector("nav, aside")).toBeNull();
@@ -249,7 +297,7 @@ describe("the shell", () => {
 describe("staying live", () => {
   it("moves the headline and the tiles together when the poll brings a new page", async () => {
     vi.useFakeTimers();
-    render(<FarmScreen poll={LIVE} readings={farmReadings(emptyFarm())} />);
+    render(<FarmScreen poll={LIVE} reader={MEMBER_READER} readings={farmReadings(emptyFarm())} />);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -262,7 +310,7 @@ describe("staying live", () => {
   it("keeps the page under one banner when a refresh fails, with the way to ask again", async () => {
     vi.useFakeTimers();
     answer = { state: "failed", reason: "The build farm could not be reached.", pollAfterSeconds: null };
-    render(<FarmScreen poll={LIVE} readings={farmReadings()} />);
+    render(<FarmScreen poll={LIVE} reader={MEMBER_READER} readings={farmReadings()} />);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -293,7 +341,7 @@ describe("staying live", () => {
       read: () => ((reads += 1) === 1 ? Promise.resolve(answer) : new Promise(() => {})),
       visible: () => true,
     };
-    render(<FarmScreen poll={poll} readings={farmReadings()} />);
+    render(<FarmScreen poll={poll} reader={MEMBER_READER} readings={farmReadings()} />);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -306,7 +354,7 @@ describe("staying live", () => {
 
 describe("a page that could not be read", () => {
   beforeEach(() => {
-    render(<FarmScreen poll={QUIET} readings={failedFarmReadings("Choose a workspace.")} />);
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={failedFarmReadings("Choose a workspace.")} />);
   });
 
   it("says why once, in the banner", () => {
@@ -327,8 +375,9 @@ describe("a page that could not be read", () => {
 
   it("keeps the head, the actions and four named tiles holding em-dashes", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(FARM_HEADLINE_UNREAD);
-    // The head's three actions, and the runners card's *Health history* (#257).
-    expect(screen.getAllByRole("button", { name: new RegExp(SOON_MARK) })).toHaveLength(4);
+    // The head's two unbuilt actions, and the runners card's *Health history* (#257).
+    expect(screen.getAllByRole("button", { name: new RegExp(SOON_MARK) })).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "+ Enroll runner" })).toBeInTheDocument();
     expect(screen.getAllByRole("region").filter((region) => region.hasAttribute("aria-label"))).toHaveLength(4);
     expect(screen.getAllByText(NOT_READ)).toHaveLength(4);
     expect(document.querySelectorAll(".ou-stat__delta--failed")).toHaveLength(4);

@@ -1,4 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
+import { mayAdminister } from "@/app/api/membership";
 import { readFarm } from "@/app/farm/data";
 import { FarmScreen } from "@/app/farm/farm-screen";
 
@@ -16,9 +17,12 @@ import { FarmScreen } from "@/app/farm/farm-screen";
  * (`app/shell/nav-modules.ts`), and lights on this route through `BUILD_FARM_PATH`.
  *
  * `requireWorkspace()` is called here rather than in the group's layout for the reason
- * `app/(app)/layout.tsx` sets out. **No role is read from it**: every member may look at the
- * farm, a `viewer` included, and none of the head's three actions can act for anybody yet — the
- * admin gate arrives with the flows it guards (AI.3, #258; AI.4, #259).
+ * `app/(app)/layout.tsx` sets out. Every member may look at the farm, a `viewer` included. The
+ * gate is also one of the page's **inputs** since the enroll flow arrived (AI.3,
+ * [#258](https://github.com/NobuData/ouroboros/issues/258)): minting an enrollment token is
+ * `owner` or `admin`, so whether this reader may is answered once, here, through the existing
+ * `mayAdminister`, and the screen is handed a boolean rather than a role — with the workspace's
+ * slug, which is the enroll command's `--tenant`. The gate that **enforces** is the service's.
  *
  * The read here is the first paint's. From then on the browser keeps the page fresh on the
  * fleet's own cadence (`app/farm/farm-store.tsx`), so this is a Server Component handing one
@@ -29,5 +33,13 @@ import { FarmScreen } from "@/app/farm/farm-screen";
 export default async function Page() {
   const access = await requireWorkspace();
 
-  return <FarmScreen readings={await readFarm(access)} />;
+  return (
+    <FarmScreen
+      reader={{
+        mayAdminister: mayAdminister(access.membership.roles),
+        tenant: access.membership.slug,
+      }}
+      readings={await readFarm(access)}
+    />
+  );
 }

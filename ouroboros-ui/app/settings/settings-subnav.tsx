@@ -11,7 +11,7 @@ import "./settings.css";
  * ([#141](https://github.com/NobuData/ouroboros/issues/141)).
  *
  * The same row `app/models/models-subnav.tsx` draws for its section, over
- * `app/settings/view.ts`'s list: one live tab, and six `soon` ones that name BS.1
+ * `app/settings/view.ts`'s list: the mounted live tabs, and six `soon` ones that name BS.1
  * ([#491](https://github.com/NobuData/ouroboros/issues/491)) as where they come from. One
  * list, so no page of the section can disagree with another about which tabs are built.
  */

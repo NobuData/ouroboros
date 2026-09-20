@@ -6,9 +6,11 @@
  * one observation** — the four stat cards, the runners, the pools and the live build. One payload
  * rather than four endpoints because the figures are claims about each other: `4/5` counts the
  * rows of the table beside it, and a pool's `3 runners` partitions the same set. The runners
- * table (AI.2, #257), the enroll flow (AI.3, #258), the pools card (AI.4, #259) and the lifecycle
- * writes (AI.5, #260) add their own operations here as they arrive; none of them is drawn yet, so
- * none of them is here.
+ * table (AI.2, #257) reads that payload and nothing else. The enroll flow (AI.3,
+ * [#258](https://github.com/NobuData/ouroboros/issues/258)) added its three — the minting read of
+ * the install command, the token list and the revoke — and the pools' own listing, for naming a
+ * token's pool. The pools card (AI.4, #259) and the lifecycle writes (AI.5, #260) add theirs as
+ * they arrive.
  *
  * ### `null` is not `0`, and this module keeps it that way
  *
@@ -49,6 +51,15 @@ export type FarmRunner = components["schemas"]["FarmRunner"];
 /** One pool, with its metadata and how many runners it holds (AI.4). */
 export type RunnerPool = components["schemas"]["RunnerPool"];
 
+/**
+ * The enroll card's one-liner and the parts it was built from (AI.3). **`command` carries a live
+ * enrollment token** — see {@link farm.enrollCommand} for what that obliges a caller to.
+ */
+export type EnrollCommand = components["schemas"]["EnrollCommand"];
+
+/** One enrollment token, **masked** — there is no operation that answers one un-masked (AI.3). */
+export type EnrollmentToken = components["schemas"]["EnrollmentToken"];
+
 /** One read of the page, and the cadence the service asked for beside it. */
 export interface FarmObservation {
   /** The page, as served. */
@@ -88,5 +99,66 @@ export const farm = {
     const result = await client.GET("/api/v1/farm", { signal });
 
     return { page: unwrap(result), pollAfterSeconds: readPollAfter(result.response.headers) };
+  },
+
+  /**
+   * Mint an enrollment token and read the install one-liner that carries it
+   * (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258)).
+   *
+   * **This mints, although it is a `GET`** — every call leaves a live, single-use token in the
+   * workspace's list, so it is called when somebody asks for a command and never to draw a page.
+   * `command` is one of the two places in the whole API a token's value appears: a caller hands
+   * it to the clipboard and to nothing else (`app/farm/enroll-actions.ts`).
+   *
+   * @param pool The pool the enrolled machine joins — the command's `--pool`.
+   * @param client The client to call through.
+   * @returns The command, the parts it was built from, and the masked token it carries.
+   * @throws {ApiError} `403 forbidden` for anybody but an `owner` or `admin`,
+   *   `404 farm_pool_not_found`, or `404 farm_enroll_command_unavailable` when this deployment
+   *   cannot serve an installer. **A refusal means nothing was minted.**
+   */
+  async enrollCommand(pool: string, client: ApiClient = api()): Promise<EnrollCommand> {
+    return unwrap(
+      await client.GET("/api/v1/farm/enroll-command", { params: { query: { pool } } }),
+    );
+  },
+
+  /**
+   * Every enrollment token this workspace has minted, newest first — live, expired and revoked
+   * alike, and masked without exception.
+   *
+   * @param client The client to call through.
+   * @returns The tokens, as served.
+   * @throws {ApiError} `403 forbidden` for anybody but an `owner` or `admin`.
+   */
+  async tokens(client: ApiClient = api()): Promise<EnrollmentToken[]> {
+    return unwrap(await client.GET("/api/v1/farm/enrollment-tokens"));
+  },
+
+  /**
+   * Revoke a token before it expires. Idempotent: revoking a revoked token answers it as it
+   * stands. The certificates it already issued are untouched — those are per-runner (AI.5).
+   *
+   * @param id The token.
+   * @param client The client to call through.
+   * @returns The token as it now stands, with the uses it had spent.
+   * @throws {ApiError} `403 forbidden`, or `404 farm_enrollment_token_not_found`.
+   */
+  async revokeToken(id: string, client: ApiClient = api()): Promise<EnrollmentToken> {
+    return unwrap(
+      await client.DELETE("/api/v1/farm/enrollment-tokens/{id}", { params: { path: { id } } }),
+    );
+  },
+
+  /**
+   * The workspace's pools, on their own — for a surface that names a token's pool and has no use
+   * for the fleet beside it (`app/farm/token-data.ts`). Every member may read it.
+   *
+   * @param client The client to call through.
+   * @returns The pools, as served.
+   * @throws {ApiError} When the service refuses.
+   */
+  async pools(client: ApiClient = api()): Promise<RunnerPool[]> {
+    return unwrap(await client.GET("/api/v1/farm/pools"));
   },
 };

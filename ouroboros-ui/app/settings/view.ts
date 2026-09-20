@@ -6,26 +6,27 @@
  * Mockup 17's page head is *Settings · acme-robotics* over **Workspace settings**, and its
  * section nav is six anchors — Workspace · Members · Policies · Integrations · Audit · Danger
  * zone. Decision **S2** of the Workspace Settings roadmap mounts the existing admin surfaces
- * beside them as tabs, and Ticket sources is the first of those to exist. So this is the
- * section's tab set with one live tab and six honest `soon` ones, each naming BS.1 as where
- * it comes from — the same honesty pair `app/models/view.ts` keeps for the Models section:
- * a live tab carries an `href` and a soon one carries a `note`, and the type makes it
+ * beside them as tabs: Ticket sources was the first of those to exist, and the build farm's
+ * enrollment tokens (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258)) the second.
+ * So this is the section's tab set with two live tabs and six honest `soon` ones, each naming
+ * BS.1 as where it comes from — the same honesty pair `app/models/view.ts` keeps for the Models
+ * section: a live tab carries an `href` and a soon one carries a `note`, and the type makes it
  * impossible to have both or neither.
  *
  * **BS.1 owns the frame.** When it lands, the six `soon` tabs become anchors into the hub's
- * sections and this list is where that happens; the Sources tab, the surface behind it and
- * the route it links to move nowhere.
+ * sections and this list is where that happens; the mounted tabs, the surfaces behind them and
+ * the routes they link to move nowhere.
  *
  * Framework-free and pure, the way `app/models/view.ts` is.
  */
 
-import { SOURCES_PATH } from "@/app/paths";
+import { FARM_TOKENS_PATH, SOURCES_PATH } from "@/app/paths";
 
 /** The eyebrow's first word — what every page in the section is filed under. */
 export const SETTINGS_EYEBROW = "Settings";
 
 /** The built surfaces of the section — the tabs that carry an `href`. */
-export type SettingsSurface = "sources";
+export type SettingsSurface = "sources" | "farm-tokens";
 
 /** Every tab the section's row draws, built or not. */
 export type SettingsTabId =
@@ -79,14 +80,15 @@ export function isLiveTab(tab: SettingsTab): tab is LiveSettingsTab {
 export const HUB_NOTE = "Arrives with #491.";
 
 /**
- * The tabs, in mockup 17's order with the mounted surface slotted where S2 puts it: among
- * the sections, after the governance ones, before the integrations it is a kind of.
+ * The tabs, in mockup 17's order with the mounted surfaces slotted where S2 puts them: among
+ * the sections, after the governance ones, before the integrations they are a kind of.
  */
 export const SETTINGS_TABS: readonly SettingsTab[] = [
   { id: "workspace", label: "Workspace", note: HUB_NOTE },
   { id: "members", label: "Members", note: HUB_NOTE },
   { id: "policies", label: "Policies", note: HUB_NOTE },
   { id: "sources", label: "Sources", href: SOURCES_PATH },
+  { id: "farm-tokens", label: "Farm tokens", href: FARM_TOKENS_PATH },
   { id: "integrations", label: "Integrations", note: HUB_NOTE },
   { id: "audit", label: "Audit", note: HUB_NOTE },
   { id: "danger", label: "Danger zone", note: HUB_NOTE },

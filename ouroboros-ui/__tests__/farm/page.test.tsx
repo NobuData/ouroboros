@@ -2,13 +2,15 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Role } from "@/app/api/membership";
+import { COPY_COMMAND, MANAGE_TOKENS, MEMBER_NOTE } from "@/app/farm/enroll";
 
 import { failedFarmReadings, farmReadings } from "../helpers/farm";
 import { membership, sessionUser } from "../helpers/login";
 
 /**
  * The build farm route (#256): the gate is asked first, and what it returns is what the reader is
- * given. No role changes the page — every member may look, and no action can act yet.
+ * given. Every member may look; the one thing a role changes is the enroll flow (#258), which the
+ * route decides once, through `mayAdminister`.
  */
 
 /** What the gate answers this case with, or the signal it throws instead. */
@@ -19,6 +21,12 @@ const readFarm = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/farm/data", () => ({ readFarm: (access: unknown) => readFarm(access) }));
+// The enroll card's Server Actions import the server-only client; the route presses none.
+vi.mock("@/app/farm/enroll-actions", () => ({
+  mintEnrollCommand: vi.fn(),
+  readEnrollmentTokens: vi.fn(),
+  revokeEnrollmentToken: vi.fn(),
+}));
 
 // The route passes the screen no test seam, so the poll it starts is the real one; what it asks
 // is this origin, which answers nothing here — the page under test is the server's.
@@ -60,15 +68,47 @@ describe("the build farm route", () => {
     expect(readFarm).not.toHaveBeenCalled();
   });
 
-  it("draws the same page for a viewer as for an owner, because looking is what a viewer is for", async () => {
+  it("draws the same farm for a viewer as for an owner, because looking is what a viewer is for", async () => {
     const owner = render(await Page());
-    const asOwner = owner.container.innerHTML;
+    const asOwner = owner.container.querySelector(".farm-runners")?.innerHTML;
+    const tiles = owner.container.querySelectorAll(".ou-stat").length;
     owner.unmount();
 
     requireWorkspace.mockResolvedValue(access(["viewer"]));
     const viewer = render(await Page());
 
-    expect(viewer.container.innerHTML).toBe(asOwner);
+    expect(asOwner).toBeDefined();
+    expect(viewer.container.querySelector(".farm-runners")?.innerHTML).toBe(asOwner);
+    expect(viewer.container.querySelectorAll(".ou-stat")).toHaveLength(tiles);
+  });
+
+  it.each<[Role]>([["owner"], ["admin"]])("hands an %s the mint and the way back (#258)", async (role) => {
+    requireWorkspace.mockResolvedValue(access([role]));
+
+    render(await Page());
+
+    expect(screen.getByRole("button", { name: COPY_COMMAND })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: MANAGE_TOKENS })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Enroll runner" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it.each<[Role]>([["member"], ["viewer"]])("hands a %s the explainer and neither (#258)", async (role) => {
+    requireWorkspace.mockResolvedValue(access([role]));
+
+    render(await Page());
+
+    expect(screen.getByText(MEMBER_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: COPY_COMMAND })).toBeNull();
+    expect(screen.queryByRole("button", { name: MANAGE_TOKENS })).toBeNull();
+    expect(screen.getByRole("button", { name: "+ Enroll runner" })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("names the workspace's own slug in the command, which is what --tenant takes", async () => {
+    render(await Page());
+
+    expect(screen.getByRole("group", { name: "Enroll command" })).toHaveTextContent(
+      `--tenant ${access().membership.slug}`,
+    );
   });
 
   it("renders a refused read as a page under a banner rather than throwing", async () => {
