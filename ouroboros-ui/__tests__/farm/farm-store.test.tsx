@@ -8,7 +8,7 @@ import type { FarmPollOptions } from "@/app/farm/farm-poll";
 import { FarmProvider, farmReading, useFarm } from "@/app/farm/farm-store";
 import { EMPTY_POLL_SNAPSHOT, type PollAnswer, SESSION_ENDED } from "@/app/poll";
 
-import { FARM_READ_AT, emptyFarm, seededFarm } from "../helpers/farm";
+import { FARM_READ_AT, emptyFarm, farmStats, seededFarm } from "../helpers/farm";
 
 /**
  * The farm's store, where the loop meets React (#256): one poll per screen however many regions
@@ -46,7 +46,7 @@ function fresh(page: FarmPage): PollAnswer<FarmPage> {
 
 /** One region, drawing whatever the store holds. */
 function Region({ label }: Readonly<{ label: string }>) {
-  const { page, failure, dataAt, retry, retrying } = useFarm();
+  const { page, failure, dataAt, retry, retrying, refresh } = useFarm();
 
   return (
     <p data-testid={label}>
@@ -56,6 +56,9 @@ function Region({ label }: Readonly<{ label: string }>) {
       {retrying ? " · retrying" : ""}
       <button onClick={retry} type="button">
         retry {label}
+      </button>
+      <button onClick={refresh} type="button">
+        refresh {label}
       </button>
     </p>
   );
@@ -257,6 +260,45 @@ describe("the farm store", () => {
     expect(screen.getByTestId("row")).not.toHaveTextContent("retrying");
   });
 
+  it("asks at once on refresh — what a write calls — without reporting a retry in flight (#259)", async () => {
+    await mount({ ok: true, value: seededFarm() });
+    expect(asks).toBe(1);
+
+    held = new Promise(() => {});
+    fireEvent.click(screen.getByRole("button", { name: "refresh row" }));
+
+    expect(asks).toBe(2);
+    // Not a control's press: there is no *retrying* for the banner to draw.
+    expect(screen.getByTestId("row")).not.toHaveTextContent("retrying");
+  });
+
+  it("supersedes an ask already in the air on refresh, so the page that lands was read after the write", async () => {
+    await mount({ ok: true, value: seededFarm() });
+
+    /** Releases the ask that was in the air when the write was answered. */
+    let landStale: (value: PollAnswer<FarmPage>) => void = () => {};
+    held = new Promise((resolve) => (landStale = resolve));
+    fireEvent.click(screen.getByRole("button", { name: "retry row" }));
+
+    // The write is answered; the store is asked for a read made after it.
+    held = null;
+    answer = fresh(seededFarm({ stats: farmStats({ runnersOnline: { online: 6, total: 7, note: null, offline: null } }) }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "refresh row" }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.getByTestId("row")).toHaveTextContent("total 7");
+
+    // The overtaken ask lands last, and is dropped: an old page never replaces a newer one.
+    await act(async () => {
+      landStale(fresh(seededFarm()));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.getByTestId("row")).toHaveTextContent("total 7");
+  });
+
   it("asks again the moment the workspace changes", async () => {
     await mount({ ok: true, value: seededFarm() });
     expect(asks).toBe(1);
@@ -288,6 +330,7 @@ describe("the farm store", () => {
 
     expect(screen.getByTestId("orphan")).toHaveTextContent("nothing");
     fireEvent.click(screen.getByRole("button", { name: "retry orphan" }));
+    fireEvent.click(screen.getByRole("button", { name: "refresh orphan" }));
     expect(asks).toBe(0);
   });
 });

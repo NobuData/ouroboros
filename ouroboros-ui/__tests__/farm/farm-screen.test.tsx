@@ -5,6 +5,7 @@ import type { FarmPage } from "@/app/api/farm";
 import { COPY_COMMAND, ENROLL_MEMBER_REASON, POOL_LABEL } from "@/app/farm/enroll";
 import type { FarmPollOptions } from "@/app/farm/farm-poll";
 import { FarmScreen } from "@/app/farm/farm-screen";
+import { POOLS_UNREAD, SHEET_TITLE } from "@/app/farm/pools";
 import {
   FARM_ACTIONS,
   FARM_EYEBROW,
@@ -36,6 +37,13 @@ vi.mock("@/app/farm/enroll-actions", () => ({
   mintEnrollCommand: vi.fn(),
   readEnrollmentTokens: vi.fn(),
   revokeEnrollmentToken: vi.fn(),
+}));
+
+// The pools card (#259) writes through Server Actions too; this suite presses none of them.
+vi.mock("@/app/farm/pool-actions", () => ({
+  createPool: vi.fn(),
+  deletePool: vi.fn(),
+  updatePool: vi.fn(),
 }));
 
 /**
@@ -103,18 +111,29 @@ describe("the head", () => {
     );
   });
 
-  it("draws the two unbuilt actions as soon — labelled, inert, and saying what each waits for", () => {
+  it("draws the one unbuilt action as soon — labelled, inert, and saying what it waits for", () => {
     render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
     const soon = FARM_ACTIONS.filter((action) => action.soonNote !== null);
 
-    expect(soon.map(({ id }) => id)).toEqual(["analyzer", "pools"]);
+    expect(soon.map(({ id }) => id)).toEqual(["analyzer"]);
     for (const action of soon) {
       const control = screen.getByRole("button", { name: `${action.label} ${SOON_MARK}` });
 
       expect(control).toHaveAttribute("aria-disabled", "true");
       expect(control).toHaveAttribute("title", action.soonNote);
     }
+  });
+
+  it("opens the pool configuration sheet from Pool settings, for every member (#259)", () => {
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
+
+    const control = screen.getByRole("button", { name: "Pool settings" });
+
+    expect(control).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(control);
+
+    expect(screen.getByRole("dialog", { name: SHEET_TITLE })).toBeInTheDocument();
   });
 
   it("moves an administrator from + Enroll runner to the enroll card's pool selector (#258)", () => {
@@ -373,10 +392,20 @@ describe("a page that could not be read", () => {
     expect(frame.firstElementChild).toBe(unread);
   });
 
+  it("draws Pool settings inert with the reason — with no page there are no pools to configure (#259)", () => {
+    const control = screen.getByRole("button", { name: "Pool settings" });
+
+    expect(control).toHaveAttribute("aria-disabled", "true");
+    expect(control).toHaveAttribute("title", POOLS_UNREAD);
+
+    fireEvent.click(control);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("keeps the head, the actions and four named tiles holding em-dashes", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(FARM_HEADLINE_UNREAD);
-    // The head's two unbuilt actions, and the runners card's *Health history* (#257).
-    expect(screen.getAllByRole("button", { name: new RegExp(SOON_MARK) })).toHaveLength(3);
+    // The head's one unbuilt action, and the runners card's *Health history* (#257).
+    expect(screen.getAllByRole("button", { name: new RegExp(SOON_MARK) })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "+ Enroll runner" })).toBeInTheDocument();
     expect(screen.getAllByRole("region").filter((region) => region.hasAttribute("aria-label"))).toHaveLength(4);
     expect(screen.getAllByText(NOT_READ)).toHaveLength(4);

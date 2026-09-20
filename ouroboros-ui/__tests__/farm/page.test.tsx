@@ -28,6 +28,13 @@ vi.mock("@/app/farm/enroll-actions", () => ({
   revokeEnrollmentToken: vi.fn(),
 }));
 
+// The pools card (#259) writes through Server Actions too; this suite presses none of them.
+vi.mock("@/app/farm/pool-actions", () => ({
+  createPool: vi.fn(),
+  deletePool: vi.fn(),
+  updatePool: vi.fn(),
+}));
+
 // The route passes the screen no test seam, so the poll it starts is the real one; what it asks
 // is this origin, which answers nothing here — the page under test is the server's.
 vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));

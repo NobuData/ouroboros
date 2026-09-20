@@ -10,6 +10,7 @@ import {
   emptyFarm,
   enrollmentToken,
   mintedCommand,
+  runnerPool,
   seededFarm,
 } from "../helpers/farm";
 
@@ -197,5 +198,76 @@ describe("farm.pools", () => {
 
     await expect(farm.pools(client)).resolves.toEqual(seededFarm().pools);
     expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/farm/pools");
+  });
+});
+
+describe("farm.createPool", () => {
+  it("POSTs the pool as given and hands back the pool as stored", async () => {
+    const stored = runnerPool({ name: "pool-c", runners: 0 });
+    const { client, requests } = clientAnswering(stored, 201);
+    const body = { name: "pool-c", executor: "container" as const, image: "img:1" };
+
+    await expect(farm.createPool(body, client)).resolves.toEqual(stored);
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/farm/pools");
+    await expect(requests[0]?.json()).resolves.toEqual(body);
+  });
+
+  it("rejects with the service's code when the name is taken", async () => {
+    const { client } = clientAnswering({ code: "farm_pool_name_taken", message: "Taken.", details: {} }, 409);
+
+    const failure: unknown = await farm
+      .createPool({ name: "pool-a", executor: "shell" }, client)
+      .catch((error: unknown) => error);
+
+    expect((failure as ApiError).code).toBe("farm_pool_name_taken");
+  });
+});
+
+describe("farm.updatePool", () => {
+  it("PATCHes only what it was handed — a null image included, because null is a value", async () => {
+    const changed = runnerPool({ executor: "shell", image: null });
+    const { client, requests } = clientAnswering(changed);
+
+    await expect(farm.updatePool(changed.id, { executor: "shell", image: null }, client)).resolves.toEqual(changed);
+    expect(requests[0]?.method).toBe("PATCH");
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/farm/pools/${changed.id}`);
+    await expect(requests[0]?.json()).resolves.toEqual({ executor: "shell", image: null });
+  });
+
+  it("names no workspace, so a pool can only be changed in the session's own", async () => {
+    const { client, requests } = clientAnswering(runnerPool());
+
+    await farm.updatePool(runnerPool().id, { enabled: false }, client);
+
+    expect(requests[0]?.headers.has("X-Ouro-Tenant")).toBe(false);
+  });
+
+  it("rejects a member's 403 rather than answering the pool unchanged", async () => {
+    const { client } = clientAnswering({ code: "forbidden", message: "No.", details: {} }, 403);
+
+    await expect(farm.updatePool(runnerPool().id, { enabled: false }, client)).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("farm.deletePool", () => {
+  it("DELETEs the pool by id and resolves to nothing on the 204", async () => {
+    const { client, requests } = stubClient(() => ({ body: undefined, status: 204 }));
+
+    await expect(farm.deletePool(runnerPool().id, client)).resolves.toBeUndefined();
+    expect(requests[0]?.method).toBe("DELETE");
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/farm/pools/${runnerPool().id}`);
+  });
+
+  it("rejects with the counts the service took when runners or builds still name the pool", async () => {
+    const { client } = clientAnswering(
+      { code: "farm_pool_in_use", message: "In use.", details: { pool: "pool-a", runners: 4, jobs: 31 } },
+      409,
+    );
+
+    const failure: unknown = await farm.deletePool(runnerPool().id, client).catch((error: unknown) => error);
+
+    expect((failure as ApiError).code).toBe("farm_pool_in_use");
+    expect((failure as ApiError).details).toMatchObject({ runners: 4, jobs: 31 });
   });
 });

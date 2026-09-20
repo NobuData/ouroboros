@@ -9,6 +9,7 @@ import { fixtureFrame } from "../gateway/gateway.fixture";
 import { PRESENCE_THRESHOLD_MS } from "../gateway/gateway.policy";
 import { PresenceSweeper } from "../gateway/presence.sweeper";
 import { RunnerControl } from "../gateway/runner.control";
+import type { PoolResource } from "../fleet/fleet.resources";
 import type { Envelope } from "../protocol/protocol";
 import { newUlid, uuidOf } from "../protocol/ulid";
 import { DECLINE_COOLDOWN_MS, LOST_RUNNER_AFTER_MS, OFFER_RECLAIM_MS } from "./dispatch.policy";
@@ -36,6 +37,10 @@ import type { BuildJobResource } from "./jobs.resources";
  *   * **Queue depths are accurate under concurrent submission** and match the agent's `q:N`.
  *   * **A declined offer returns the job to the queue** rather than stranding it.
  *   * **Organization isolation** on submission, dispatch and cancellation.
+ *   * **The pools sheet's writes reach dispatch** (AI.4,
+ *     [#259](https://github.com/NobuData/ouroboros/issues/259)) — an executor edit changes where
+ *     the *next* build can go, an allow-list edit is what the agent is handed at its next
+ *     hello, and the stored auto-scale preference changes nothing at all (decision **B9**).
  *
  * ```bash
  * yarn test:integration
@@ -213,6 +218,17 @@ describe("build dispatch", () => {
     body: Record<string, unknown> = {},
   ): Promise<BuildJobResource> {
     return bodyOf<BuildJobResource>(await submit(context, body));
+  }
+
+  /** Change pool-a through the real route — the bodies the pools sheet and card send (#259). */
+  async function patchPool(context: Farm, change: Record<string, unknown>): Promise<PoolResource> {
+    return bodyOf<PoolResource>(
+      await api
+        .as(context.owner)("patch", `/api/v1/farm/pools/${context.poolId}`)
+        .set(TENANT_HEADER, context.workspace.id)
+        .send(change)
+        .expect(200),
+    );
   }
 
   /** Cancel a build. */
@@ -846,6 +862,112 @@ describe("build dispatch", () => {
       expect(
         placements.filter((placement) => placement.kind === "runner_unavailable"),
       ).toHaveLength(3);
+    });
+  });
+
+  describe("pool configuration — what the pools sheet writes (#259)", () => {
+    it("AN EXECUTOR EDIT CHANGES WHERE THE NEXT BUILD CAN GO — and rewrites nothing already submitted", async () => {
+      const context = await farm();
+      const mac = await connect(await enrol(context, "anvil-mac"), { docker: false });
+
+      // A container pool: the docker-less machine is the only runner, and is not offered it.
+      const before = await submitted(context);
+      await dispatcher().tick();
+      expect(await offersIn(mac)).toEqual([]);
+
+      // The sheet's save of an executor flip: the executor, and the `null` image beside it.
+      const patched = await patchPool(context, { executor: "shell", image: null });
+      expect(patched).toMatchObject({ executor: "shell", image: null });
+
+      // The very next submission snapshots the new executor, and that machine can now take it.
+      const after = await submitted(context);
+      const offer = await mac.next("job.offer");
+
+      expect(uuidOf("job", offer.payload.job)).toBe(after.id);
+      expect(offer.payload.executor).toBe("shell");
+      expect(offer.payload).not.toHaveProperty("image");
+
+      // The earlier build recorded what it was submitted under, and still waits for a daemon.
+      await dispatcher().tick();
+      const { rows } = await api.sql.query<{ executor: string; image: string | null }>(
+        `select executor, image from ouroboros.build_jobs where id = $1`,
+        [before.id],
+      );
+      expect(rows[0]).toEqual({ executor: "container", image: "img:0.17" });
+      expect(await jobRow(before.id)).toMatchObject({ status: "queued", runner_id: null });
+      expect(mac.violations).toEqual([]);
+    });
+
+    it("turns a shell pool into a container one the same way — the next build needs a daemon", async () => {
+      const context = await farm({ executor: "shell" });
+      const mac = await connect(await enrol(context, "anvil-mac"), { docker: false });
+
+      await patchPool(context, { executor: "container", image: "ghcr.io/acme/sdk:1" });
+
+      const job = await submitted(context);
+      await dispatcher().tick();
+
+      expect(await offersIn(mac)).toEqual([]);
+      expect(await jobRow(job.id)).toMatchObject({ status: "queued", runner_id: null });
+
+      const docker = await connect(await enrol(context, "forge-01"));
+      const offer = await docker.next("job.offer");
+
+      expect(uuidOf("job", offer.payload.job)).toBe(job.id);
+      expect(offer.payload).toMatchObject({ executor: "container", image: "ghcr.io/acme/sdk:1" });
+    });
+
+    it("HANDS THE AGENT THE ALLOW-LIST THE SHEET SAVED — what the shell executor enforces (#246)", async () => {
+      const context = await farm({ executor: "shell" });
+      const runner = await enrol(context, "anvil-mac");
+
+      const patched = await patchPool(context, { envAllowlist: ["DEVELOPER_DIR", "HIL_RIG_ID"] });
+      expect(patched.envAllowlist).toEqual(["DEVELOPER_DIR", "HIL_RIG_ID"]);
+
+      const agent = await FakeAgent.connect(api.baseUrl, {
+        certificate: runner.certificate,
+        header: HEADER,
+      });
+      if (isRefused(agent)) throw new Error(`refused: ${String(agent.status)} ${agent.code}`);
+      agents.push(agent);
+      agent.send(fixtureFrame("valid/hello.json"));
+      const ack = await agent.next("ack");
+
+      expect(ack.payload.pool).toEqual({
+        max_concurrency: 1,
+        env_allowlist: ["DEVELOPER_DIR", "HIL_RIG_ID"],
+      });
+    });
+
+    it("STORES THE AUTO-SCALE PREFERENCE AND ACTS ON NONE OF IT — inert by design until #263", async () => {
+      const context = await farm();
+
+      // Switched on, with a threshold the queue is about to pass three times over.
+      const pref = { enabled: true, queue_threshold: 1, max_runners: 4 };
+      expect((await patchPool(context, { autoscalePref: pref })).autoscalePref).toEqual(pref);
+
+      const queued = [await submitted(context), await submitted(context), await submitted(context)];
+      await dispatcher().tick();
+      await loseTime(60_000);
+      await dispatcher().tick();
+
+      // Nothing was provisioned, enrolled or minted on the pool's behalf, and nothing was placed.
+      const { rows: counts } = await api.sql.query<{ runners: string; tokens: string }>(
+        `select (select count(*) from ouroboros.runners where organization_id = $1) as runners,
+                (select count(*) from ouroboros.enrollment_tokens where organization_id = $1) as tokens`,
+        [context.workspace.id],
+      );
+      expect(counts[0]).toEqual({ runners: "0", tokens: "0" });
+      for (const job of queued) {
+        expect(await jobRow(job.id)).toMatchObject({ status: "queued", runner_id: null });
+      }
+
+      // And it is still exactly what was stored.
+      const { rows } = await api.sql.query<{ autoscale_pref: unknown }>(
+        `select autoscale_pref from ouroboros.runner_pools where id = $1`,
+        [context.poolId],
+      );
+      expect(rows[0].autoscale_pref).toEqual(pref);
     });
   });
 

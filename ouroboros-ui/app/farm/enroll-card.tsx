@@ -73,7 +73,7 @@ import { TokenSheet } from "./token-sheet";
  *
  * @param props.mayAdminister Whether this reader may mint — `mayAdminister`, from the route.
  * @param props.tenant The workspace's slug — the command's `--tenant`.
- * @returns The card, as a direct child of the farm's grid.
+ * @returns The card, for the farm's right-hand column (`farm__side`).
  */
 export function EnrollCard({
   mayAdminister,
@@ -159,7 +159,7 @@ export function EnrollCard({
   }
 
   return (
-    <Card aria-labelledby={TITLE_ID} as="section" className="farm-col--4 farm-enroll">
+    <Card aria-labelledby={TITLE_ID} as="section" className="farm-enroll">
       <CardHead title={ENROLL_TITLE} titleId={TITLE_ID} />
 
       <p className="farm-enroll__lead">

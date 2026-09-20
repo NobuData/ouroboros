@@ -125,14 +125,17 @@ export interface FarmAction {
 }
 
 /**
- * The mockup's three head actions: two honest *soon*s, and one that acts.
+ * The mockup's three head actions: one honest *soon*, and two that act.
  *
  * - **✦ Build Analyzer** is mockup 18, whose route is BW.1
  *   ([#516](https://github.com/NobuData/ouroboros/issues/516)). The mockup links it to a page
  *   that does not exist; here it is inert and says so, rather than a link into a 404. The
  *   amendment on #256 records the other half: on the commit that builds `/analyzer`, this entry
  *   becomes a link to it and the soon-state copy is retired.
- * - **Pool settings** opens AI.4's sheet ([#259](https://github.com/NobuData/ouroboros/issues/259)).
+ * - **Pool settings** opens AI.4's configuration sheet
+ *   ([#259](https://github.com/NobuData/ouroboros/issues/259)), which is built — the same sheet
+ *   the pools card's `Configure →` opens (`app/farm/pool-store.tsx`). Every member may open it;
+ *   what a role changes is whether its form may be written.
  * - **+ Enroll runner** starts AI.3's flow ([#258](https://github.com/NobuData/ouroboros/issues/258)),
  *   which is built: it moves the reader to the enroll card (`app/farm/farm-head.tsx`). It is the
  *   one action with a *for whom* — minting is `owner` or `admin` — so a reader who may not is
@@ -140,8 +143,8 @@ export interface FarmAction {
  *   `app/farm/enroll.ts`), through the existing `mayAdminister`.
  *
  * The design system's honesty rule (§ 3.5) is that a surface that is not ready is *labelled*,
- * never dead: each unbuilt control keeps its place and its label, is inert, and its tooltip
- * names the issue it waits for.
+ * never dead: an unbuilt control keeps its place and its label, is inert, and its tooltip names
+ * the issue it waits for.
  */
 export const FARM_ACTIONS: readonly FarmAction[] = [
   {
@@ -150,12 +153,7 @@ export const FARM_ACTIONS: readonly FarmAction[] = [
     tone: "ghost",
     soonNote: "The Build Analyzer arrives with #516.",
   },
-  {
-    id: "pools",
-    label: "Pool settings",
-    tone: "ghost",
-    soonNote: "Pool settings arrive with the pools card (#259).",
-  },
+  { id: "pools", label: "Pool settings", tone: "ghost", soonNote: null },
   { id: "enroll", label: "+ Enroll runner", tone: "primary", soonNote: null },
 ];
 

@@ -228,3 +228,48 @@ describe("the token list (#258)", () => {
     expect(CODE).not.toMatch(/\.ou-/);
   });
 });
+
+describe("the pools card and its sheet (#259)", () => {
+  it("stacks the enroll card and the pools card in the mockup's one right-hand column", () => {
+    expect(rule("\\.farm__side")).toMatch(/flex-direction:\s*column/);
+    expect(rule("\\.farm__side")).toMatch(/gap:\s*var\(--sp-8\)/);
+    // The grid's own gap, so the stack and the row it sits in keep one rhythm.
+    expect(rule("\\.farm__grid")).toMatch(/gap:\s*var\(--sp-8\)/);
+  });
+
+  it("draws the mockup's row: a mono name, a muted line, and a hairline between pools", () => {
+    expect(rule("\\.farm-pool__name")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.farm-pool__meta")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.farm-pool \\+ \\.farm-pool")).toMatch(/border-top:\s*1px solid var\(--line\)/);
+  });
+
+  it("lets a long description wrap inside the row instead of pushing the switch out of the card", () => {
+    expect(rule("\\.farm-pool__info")).toMatch(/min-width:\s*0/);
+    expect(rule("\\.farm-pool__meta")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule("\\.farm-pool__name")).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("draws the sub-toggle in the mockup's well", () => {
+    expect(rule("\\.farm-pool__subtoggle")).toMatch(/background:\s*var\(--inset\)/);
+    expect(rule("\\.farm-pool__subtoggle")).toMatch(/border:\s*1px solid var\(--line\)/);
+  });
+
+  it("draws the v2 affix as readable text — never hidden, and not the faintest ink in the well", () => {
+    const affix = rule("\\.farm-pool__affix");
+
+    expect(affix).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(affix).not.toMatch(/display:\s*none|visibility|opacity|clip|font-size:\s*0/);
+    expect(rule("\\.farm-pool__keep")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+
+  it("says a refusal in the error hue, on the card and in the sheet", () => {
+    expect(rule("\\.farm-pool__failure")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.farm-pool-form__failure")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.farm-pool-form__confirm")).toMatch(/background:\s*var\(--err-tint\)/);
+  });
+
+  it("wraps the sheet's actions rather than crowding them, and gives an empty status region no room", () => {
+    expect(rule("\\.farm-pool-form__actions")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule("\\.farm-pool-form__notice:empty")).toMatch(/display:\s*none/);
+  });
+});

@@ -251,6 +251,7 @@ ouroboros-ui/
 │   │   ├── planning.ts      #   planning.roadmap() / createEpic() — mockup 09's roadmap head and New roadmap
 │   │   ├── farm.ts          #   farm.page() / observe() — mockup 08 in one observation, and its cadence · #256
 │   │   │                    #   + enrollCommand() (it mints) / tokens() / revokeToken() / pools() · #258
+│   │   │                    #   + createPool() / updatePool() / deletePool() — the pool writes · #259
 │   │   ├── farm-page.ts     #   readFarmPage() — the same read, answered for the farm's poll
 │   │   ├── farm/route.ts    #   GET /api/farm — that poll, on this origin
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
@@ -288,12 +289,12 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
-│   ├── farm/                # mockup 08's head, stat row, runners table and enroll card · #256–#258
+│   ├── farm/                # mockup 08's head, stat row, runners table, enroll and pools cards · #256–#259
 │   │   ├── view.ts          #   the computed headline, the four tiles, down-is-good, the head's actions
 │   │   ├── data.ts          #   readFarm() — the first paint's read, degraded rather than thrown
 │   │   ├── farm-poll.ts     #   the loop's reader and guard — the fleet's own ten-second cadence
 │   │   ├── farm-store.tsx   #   the provider at the screen, and useFarm() — one poll, every region
-│   │   ├── farm-head.tsx    #   the live h1, two honest soons, and + Enroll runner
+│   │   ├── farm-head.tsx    #   the live h1, one honest soon, Pool settings and + Enroll runner
 │   │   ├── farm-stat-row.tsx #  four shared StatCards, one with a meter
 │   │   ├── farm-banner.tsx  #   the DASH-I.7 banner: stale or unread, and the retry
 │   │   ├── runners.ts       #   every judgement the runners table makes — pure, flat rows · #257
@@ -309,6 +310,12 @@ ouroboros-ui/
 │   │   ├── token-sheet.tsx  #   …as the sheet Manage tokens → opens
 │   │   ├── farm-tokens-screen.tsx # …and as the settings section's Farm tokens tab
 │   │   ├── farm-tokens-skeleton.tsx # that tab's loading state
+│   │   ├── pools.ts         #   every judgement of the pools card and its sheet — pure · #259
+│   │   ├── pool-actions.ts  #   the Server Actions: create, change, delete — refusals as values
+│   │   ├── pool-store.tsx   #   usePools() — one sheet with two doors, and a write seen at once
+│   │   ├── pools-card.tsx   #   the POOLS card: composed meta, the switch, the B9 sub-toggle
+│   │   ├── pool-sheet.tsx   #   what Configure → and Pool settings open: the picker, + New pool
+│   │   ├── pool-form.tsx    #   one pool's form: executor, image, allow-list, the guarded delete
 │   │   └── farm-screen.tsx  #   the frame the rest of mockup 08 mounts in
 │   ├── planning/            # mockup 09's frame: head, honest actions, the 7 / 5 + 12 grid · #283
 │   │   ├── view.ts          #   the verbatim head copy and what each region is headed with
@@ -2662,15 +2669,15 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 [`docs/mockups/08-build-farm.html`](../docs/mockups/08-build-farm.html)'s **head and stat row**,
 [the runners table](#the-runners-table) ([#257](https://github.com/NobuData/ouroboros/issues/257)),
 [the enroll card](#the-enroll-card) ([#258](https://github.com/NobuData/ouroboros/issues/258)),
-and the frame the rest of that page mounts in: the pools card
-([#259](https://github.com/NobuData/ouroboros/issues/259)) and the live log
+[the pools card](#the-pools-card) ([#259](https://github.com/NobuData/ouroboros/issues/259)),
+and the frame the rest of that page mounts in: the live log
 ([#261](https://github.com/NobuData/ouroboros/issues/261)). The sidebar's **Build Farm** entry is
 live and leads here; the mockup's topbar is superseded by the shell, and the page adds no chrome
 of its own, so the header and the sidebar stay put while the pane scrolls.
 
 ```
 BUILD FARM
-5 runners. 2 pools. 78% cache hits.      [✦ Build Analyzer SOON] [Pool settings SOON] [+ Enroll runner]
+5 runners. 2 pools. 78% cache hits.      [✦ Build Analyzer SOON]    [Pool settings]   [+ Enroll runner]
 The Ouroboros server dispatches builds to your own machines over an outbound-only agent
 connection — your hardware, your network, no inbound ports.
 ┌ RUNNERS ONLINE ──┐ ┌ BUILDS TODAY ────┐ ┌ AVG BUILD TIME ──┐ ┌ CACHE HIT RATE ──────┐
@@ -2693,16 +2700,18 @@ criterion is a unit test on a small value.
 | **The split is always printed** once there is a build to split (`5 clean · 0 retried · 0 failed` is a good day said out loud); a cancelled build joins the line only when there is one, so the seeded day reads as the mockup does and the line still adds up | `buildsStat` |
 | **The offline note is the service's**, re-aged on every poll by the clock that also decided *offline* | `runnersStat` |
 
-**The three actions are honest.** Two have nothing to open yet, so each is an inert button
-carrying a *soon* mark whose tooltip names the issue it waits for: **✦ Build Analyzer** →
+**The three actions are honest.** One has nothing to open yet, so it is an inert button carrying
+a *soon* mark whose tooltip names the issue it waits for: **✦ Build Analyzer** →
 [#516](https://github.com/NobuData/ouroboros/issues/516) (mockup 18 — the mockup links it to a page
 that does not exist; here it navigates nowhere, and becomes a link to `/analyzer` on the commit that
-builds that route) and **Pool settings** → [#259](https://github.com/NobuData/ouroboros/issues/259).
+builds that route). **Pool settings** acts since
+[#259](https://github.com/NobuData/ouroboros/issues/259): it opens
+[the pool configuration sheet](#the-pools-card), for every member.
 **+ Enroll runner** acts since [#258](https://github.com/NobuData/ouroboros/issues/258): it moves
 focus to [the enroll card](#the-enroll-card)'s first control — focus, because the pane rather than
 the window is the scroll container and focus is what scrolls it natively. Every member, a `viewer`
-included, may look at the farm; the one thing a role changes is the enroll flow, which the route
-decides once through `mayAdminister` and hands down as a boolean. For a reader who may not mint,
+included, may look at the farm; what a role changes is what may be written — the enroll flow and
+the pools — which the route decides once through `mayAdminister` and hands down as a boolean. For a reader who may not mint,
 **+ Enroll runner** is the same control, inert, with the reason.
 
 **The page stays live, from one poll.** `GET /api/v1/farm` is the page in one observation — its
@@ -2851,6 +2860,82 @@ for a reader who may have it, and tells anybody else so by role.
 **The gates that decide are the service's.** Minting, listing and revoking are `owner` or `admin`
 at `ouroboros-rest`, and minting and revoking are audited there (AH.2). What the UI does for a
 member — no selector, no copy, no sheet — is presentation.
+
+### The pools card
+
+The `POOLS` card and its `Configure →` sheet ([#259](https://github.com/NobuData/ouroboros/issues/259))
+are where a pool's **executor** is decided (decision **B4**) — which changes what dispatch
+([#252](https://github.com/NobuData/ouroboros/issues/252)) can send where, so the sheet is not
+cosmetic. It sits under the enroll card in the mockup's right-hand column (`farm__side`), and every
+write is AH.6's ([#254](https://github.com/NobuData/ouroboros/issues/254)): `POST /farm/pools`,
+`PATCH` and `DELETE /farm/pools/{id}`.
+
+```
+┌ POOLS ─────────────────────────────────────────── [Configure →] ┐
+│ pool-a                                                   (● on) │
+│ firmware builds · zephyr-sdk 0.17 image · 3 runners             │
+│ ┌──────────────────────────────────────────────────────┐        │
+│ │ (○) Auto-scale to cloud when queue > 5               │        │
+│ │     keep builds on-prem                              │        │
+│ │     — arrives with cloud runners (v2)                │        │
+│ └──────────────────────────────────────────────────────┘        │
+│ ─────────────────────────────────────────────────────────────── │
+│ pool-b                                                   (● on) │
+│ HIL & macOS jobs · 2 runners                                    │
+└─────────────────────────────────────────────────────────────────┘
+┌ CONFIGURE POOLS ────────────────────────────────────────────────┐
+│ Pool         [pool-a ▾]   pool-a · pool-b · + New pool          │
+│ Name         [pool-a                 ]  what --pool says        │
+│ Description  [firmware builds        ]                          │
+│ Executor     [container ▾]              decides where dispatch  │
+│ Image        [ghcr.io/…/zephyr-sdk:0.17]  container pools only  │
+│ Env allow-list  CCACHE_DIR ⏎ WEST_TOPDIR ⏎ ZEPHYR_BASE          │
+│ Concurrency  [2] per runner                                     │
+│                          [Delete — blocked: 3 runners]  [Save]  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Every judgement is a pure function in [`app/farm/pools.ts`](app/farm/pools.ts).
+
+| What it says | Where it is decided |
+|---|---|
+| **The meta line is composed from truth**, never a stored string: the description, the image a container pool pins, and the **live** runner count. `ghcr.io/acme-robotics/zephyr-sdk:0.17` reads `zephyr-sdk 0.17 image` — the last path segment, the tag looked for there only (a registry port is not one), a digest dropped. A shell pool pins no image and has no middle part, which is mockup 08's wording (decided with the owner over the issue diagram's `· shell ·`) | `poolMeta`, `imageLabel` |
+| **The enable switch persists.** A disabled pool takes no new work and keeps what it is running: operator intent, not a delete | `enableLabel` |
+| **The auto-scale sub-toggle is stored, inert, and says so** (decision **B9**). It persists its value and carries `arrives with cloud runners (v2)` as **text on the card** — in the switch's `aria-describedby` too — never a tooltip a reader has to find. Nothing acts on it until AJ.1 ([#263](https://github.com/NobuData/ouroboros/issues/263)), which removes the affix. It is drawn **only where a `queue_threshold` is stored**: the sentence names a number, and no default is invented. A press sends the whole stored preference back with `enabled` flipped, so the threshold survives | `autoscaleView`, `nextAutoscalePref`, `AUTOSCALE_AFFIX` |
+| **A save names only what differs.** A `PATCH` leaves alone what it does not name and the service's audit row lists the columns that moved, so a rename is one field. Turning a container pool into a shell one sends `image: null` beside the executor — the pair the service checks against the merged row. With nothing changed, **Save** is inert and says so | `poolChanges`, `hasChanges` |
+| **Image is drawn only for a container pool.** A shell pool pins none; what was typed is kept across a flip and back | `pool-form.tsx`, `validatePoolDraft` |
+| **Every bound restates `ouroboros-rest`'s `fleet.dto.ts`** — the slug, 200 characters of description, 64 distinct allow-list names, 1–64 builds per runner — so a field is fixed while the reader is still in it. One guard is this form's own: a pasted `NAME=value` is refused, because the list names what a build *may* carry | `validatePoolDraft` |
+| **Delete is guarded**: a pool with runners draws `Delete — blocked: 3 runners`, inert, with the reason; an empty one asks first. The service counts more — retired machines and builds — and its `409 farm_pool_in_use` is said with its own counts. Both refusals offer what the reader usually meant: disable it | `deleteGuard`, `deleteRefusal` |
+
+**One sheet, two doors.** The card's `Configure →` and the head's **Pool settings** open the same
+sheet, so *open* is held above both by [`pool-store.tsx`](app/farm/pool-store.tsx). The link sits on
+the card rather than on a row and the scope includes creating a pool, so the sheet carries a
+picker — every pool, then `+ New pool` — over a form remounted per pool
+([`pool-sheet.tsx`](app/farm/pool-sheet.tsx), [`pool-form.tsx`](app/farm/pool-form.tsx)). The modal
+contract is the shell overlay's.
+
+**A write is seen before the page catches up.** The pools are the farm page's one observation, up
+to ten seconds old, and a switch that snapped back until the next poll would read as a write that
+failed. So each switch moves when pressed (`useOptimistic`), the write's **answer** stands in for
+the page's copy of that pool, and the store asks for a fresh page at once through
+`useFarm().refresh()` — which supersedes any ask already in the air, so the first page confirmed
+after a write was read after it, and wins (`mergedPools`). A refused flip goes back on its own,
+with the reason under the row.
+
+**A member session is read-only across the card and the sheet.** Every switch renders in its real
+position, `aria-disabled`, with the reason; the sheet opens, and its fields are genuinely
+`disabled` with **Save** and **Delete** inert — and no `+ New pool`. That is presentation: the
+writes are `owner` or `admin` at `ouroboros-rest`, audited there, and
+[`pool-actions.ts`](app/farm/pool-actions.ts) answers a member who reaches an action anyway with
+the service's `403` as a sentence.
+
+**What the sheet writes is proven where it lands**, in AH.4's dispatch harness
+(`ouroboros-rest/src/modules/farm/dispatch/dispatch.integration-spec.ts`), with the bodies the
+sheet sends: an executor edit changes which runner the **next** build is offered to and rewrites
+nothing already submitted; a saved allow-list is what the agent is handed in its next
+`ack.pool.env_allowlist`, which is what the shell executor
+([#246](https://github.com/NobuData/ouroboros/issues/246)) enforces; and an auto-scale preference
+switched on over a backed-up queue provisions, enrols and mints nothing.
 
 ## Planning
 
