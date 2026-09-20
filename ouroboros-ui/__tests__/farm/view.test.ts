@@ -106,13 +106,18 @@ describe("the head's actions", () => {
     ]);
   });
 
-  it("each name the issue that builds what it opens, so the tooltip answers when", () => {
+  it("name the issue that builds what the unbuilt two open, so the tooltip answers when", () => {
     const notes = Object.fromEntries(FARM_ACTIONS.map(({ id, soonNote }) => [id, soonNote]));
 
     expect(notes.analyzer).toContain("#516");
     expect(notes.pools).toContain("#259");
-    expect(notes.enroll).toContain("#258");
-    for (const { soonNote } of FARM_ACTIONS) expect(soonNote).toMatch(/arrives? with/);
+    expect(notes.analyzer).toMatch(/arrives? with/);
+    expect(notes.pools).toMatch(/arrives? with/);
+  });
+
+  it("stop calling + Enroll runner soon on the commit that builds the enroll card (#258)", () => {
+    // `null` is what makes the head draw it as a control that acts (`app/farm/farm-head.tsx`).
+    expect(FARM_ACTIONS.find(({ id }) => id === "enroll")?.soonNote).toBeNull();
   });
 
   it("carry no destination at all, so none of them can navigate to a dead route", () => {

@@ -250,6 +250,7 @@ ouroboros-ui/
 │   │   ├── workflows.ts     #   workflows.list() / read() / create() / saveDraft() / publish() / dryRun()
 │   │   ├── planning.ts      #   planning.roadmap() / createEpic() — mockup 09's roadmap head and New roadmap
 │   │   ├── farm.ts          #   farm.page() / observe() — mockup 08 in one observation, and its cadence · #256
+│   │   │                    #   + enrollCommand() (it mints) / tokens() / revokeToken() / pools() · #258
 │   │   ├── farm-page.ts     #   readFarmPage() — the same read, answered for the farm's poll
 │   │   ├── farm/route.ts    #   GET /api/farm — that poll, on this origin
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
@@ -287,18 +288,27 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
-│   ├── farm/                # mockup 08's head, stat row and runners table, kept live · #256, #257
-│   │   ├── view.ts          #   the computed headline, the four tiles, down-is-good, the soon actions
+│   ├── farm/                # mockup 08's head, stat row, runners table and enroll card · #256–#258
+│   │   ├── view.ts          #   the computed headline, the four tiles, down-is-good, the head's actions
 │   │   ├── data.ts          #   readFarm() — the first paint's read, degraded rather than thrown
 │   │   ├── farm-poll.ts     #   the loop's reader and guard — the fleet's own ten-second cadence
 │   │   ├── farm-store.tsx   #   the provider at the screen, and useFarm() — one poll, every region
-│   │   ├── farm-head.tsx    #   the live h1 and the three honest actions
+│   │   ├── farm-head.tsx    #   the live h1, two honest soons, and + Enroll runner
 │   │   ├── farm-stat-row.tsx #  four shared StatCards, one with a meter
 │   │   ├── farm-banner.tsx  #   the DASH-I.7 banner: stale or unread, and the retry
 │   │   ├── runners.ts       #   every judgement the runners table makes — pure, flat rows · #257
 │   │   ├── runners-card.tsx #   the RUNNERS card: the live table, the grouping, the keyboard
 │   │   ├── runner-cells.tsx #   its cells, memoised over primitives — a poll re-renders what moved
 │   │   ├── job-sheet.tsx    #   what a current-job cell opens until the run console (#309) exists
+│   │   ├── enroll.ts        #   every judgement of the enroll flow — the mask, the TTL, the rows · #258
+│   │   ├── enroll-actions.ts #  the Server Actions: mint (masked on the server), list, revoke
+│   │   ├── token-data.ts    #   readTokenListing() — the tokens, with pool and member names
+│   │   ├── clipboard.ts     #   copyWhenReady() — a write asked for inside the press
+│   │   ├── enroll-card.tsx  #   the ENROLL A RUNNER card: Copy command is the mint
+│   │   ├── token-list.tsx   #   the token list and the revoke — mounted twice
+│   │   ├── token-sheet.tsx  #   …as the sheet Manage tokens → opens
+│   │   ├── farm-tokens-screen.tsx # …and as the settings section's Farm tokens tab
+│   │   ├── farm-tokens-skeleton.tsx # that tab's loading state
 │   │   └── farm-screen.tsx  #   the frame the rest of mockup 08 mounts in
 │   ├── planning/            # mockup 09's frame: head, honest actions, the 7 / 5 + 12 grid · #283
 │   │   ├── view.ts          #   the verbatim head copy and what each region is headed with
@@ -316,7 +326,7 @@ ouroboros-ui/
 │   │   └── planning-screen.tsx # the page head and the four cards
 │   ├── providers/           # mockup 07's Audit log action and the sheet behind it · #225
 │   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
-│   │   ├── view.ts          #   the seven tabs, one live; the eyebrow
+│   │   ├── view.ts          #   the eight tabs, two live (Sources, Farm tokens); the eyebrow
 │   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath
 │   ├── sources/             # ticket sources — the section's first built tab · #141
 │   │   ├── view.ts          #   the status pill, the summary, the sync line, every label
@@ -372,7 +382,8 @@ ouroboros-ui/
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
 contribute nothing to the URL, so the dashboard is `/dashboard`, model routing is
 `/models`, the workflow studio is `/workflows` (and `/workflows/<slug>` for one workflow),
-ticket sources are `/settings/sources` and sign-in is `/login`.
+ticket sources are `/settings/sources`, the build farm's enrollment tokens are
+`/settings/farm-tokens` and sign-in is `/login`.
 `/` belongs to no module and is a redirect to the dashboard, kept so that everything
 already pointing at it still arrives. `(app)`
 renders its screens inside the [app shell](#app-shell); `(auth)` is a pass-through, because
@@ -2591,9 +2602,10 @@ Providers & keys.
 workspace says where its tickets come from — mockup 17's **Ticket sources** section, mounted
 as the first built tab of the settings frame. The sidebar's **Settings** entry is live and
 leads to `/settings`, which redirects here until BS.1
-([#491](https://github.com/NobuData/ouroboros/issues/491)) builds the hub; the other six
+([#491](https://github.com/NobuData/ouroboros/issues/491)) builds the hub; the six mockup
 tabs — Workspace, Members, Policies, Integrations, Audit, Danger zone — are drawn in the tab
-row and say honestly that they arrive with #491.
+row and say honestly that they arrive with #491. The second mounted tab is
+[**Farm tokens**](#the-enroll-card) ([#258](https://github.com/NobuData/ouroboros/issues/258)).
 
 ```
 SETTINGS · acme-robotics
@@ -2649,8 +2661,8 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 `/build-farm` ([#256](https://github.com/NobuData/ouroboros/issues/256)) is
 [`docs/mockups/08-build-farm.html`](../docs/mockups/08-build-farm.html)'s **head and stat row**,
 [the runners table](#the-runners-table) ([#257](https://github.com/NobuData/ouroboros/issues/257)),
-and the frame the rest of that page mounts in: the enroll card
-([#258](https://github.com/NobuData/ouroboros/issues/258)), the pools card
+[the enroll card](#the-enroll-card) ([#258](https://github.com/NobuData/ouroboros/issues/258)),
+and the frame the rest of that page mounts in: the pools card
 ([#259](https://github.com/NobuData/ouroboros/issues/259)) and the live log
 ([#261](https://github.com/NobuData/ouroboros/issues/261)). The sidebar's **Build Farm** entry is
 live and leads here; the mockup's topbar is superseded by the shell, and the page adds no chrome
@@ -2658,7 +2670,7 @@ of its own, so the header and the sidebar stay put while the pane scrolls.
 
 ```
 BUILD FARM
-5 runners. 2 pools. 78% cache hits.      [✦ Build Analyzer SOON] [Pool settings SOON] [+ Enroll runner SOON]
+5 runners. 2 pools. 78% cache hits.      [✦ Build Analyzer SOON] [Pool settings SOON] [+ Enroll runner]
 The Ouroboros server dispatches builds to your own machines over an outbound-only agent
 connection — your hardware, your network, no inbound ports.
 ┌ RUNNERS ONLINE ──┐ ┌ BUILDS TODAY ────┐ ┌ AVG BUILD TIME ──┐ ┌ CACHE HIT RATE ──────┐
@@ -2681,14 +2693,17 @@ criterion is a unit test on a small value.
 | **The split is always printed** once there is a build to split (`5 clean · 0 retried · 0 failed` is a good day said out loud); a cancelled build joins the line only when there is one, so the seeded day reads as the mockup does and the line still adds up | `buildsStat` |
 | **The offline note is the service's**, re-aged on every poll by the clock that also decided *offline* | `runnersStat` |
 
-**The three actions are honest.** None has anything to open yet, so each is an inert button
+**The three actions are honest.** Two have nothing to open yet, so each is an inert button
 carrying a *soon* mark whose tooltip names the issue it waits for: **✦ Build Analyzer** →
 [#516](https://github.com/NobuData/ouroboros/issues/516) (mockup 18 — the mockup links it to a page
 that does not exist; here it navigates nowhere, and becomes a link to `/analyzer` on the commit that
-builds that route), **Pool settings** → [#259](https://github.com/NobuData/ouroboros/issues/259),
-**+ Enroll runner** → [#258](https://github.com/NobuData/ouroboros/issues/258). No role is decided on
-this page for the same reason — a control that acts for nobody has no *for whom*; every member,
-a `viewer` included, may look.
+builds that route) and **Pool settings** → [#259](https://github.com/NobuData/ouroboros/issues/259).
+**+ Enroll runner** acts since [#258](https://github.com/NobuData/ouroboros/issues/258): it moves
+focus to [the enroll card](#the-enroll-card)'s first control — focus, because the pane rather than
+the window is the scroll container and focus is what scrolls it natively. Every member, a `viewer`
+included, may look at the farm; the one thing a role changes is the enroll flow, which the route
+decides once through `mayAdminister` and hands down as a boolean. For a reader who may not mint,
+**+ Enroll runner** is the same control, inert, with the reason.
 
 **The page stays live, from one poll.** `GET /api/v1/farm` is the page in one observation — its
 figures are claims about each other — so [`farm-store.tsx`](app/farm/farm-store.tsx) provides it
@@ -2774,6 +2789,68 @@ closes itself when the build ends rather than becoming a sheet about the next on
 `nowrap` columns scroll in `.ou-table-scroll` and the pane never moves sideways. That wrapper is now
 `position: relative` too: visually hidden text is absolutely positioned, and a hidden heading over
 the last column of a wide table otherwise sits outside the clip and widens the *document*.
+
+### The enroll card
+
+The `ENROLL A RUNNER` card ([#258](https://github.com/NobuData/ouroboros/issues/258)) prints a
+command that **actually enrols a runner**, which makes it a credential surface. The mockup's
+static text would look right and do nothing; the card mints a real scoped token (AH.2,
+[#250](https://github.com/NobuData/ouroboros/issues/250)) through AH.6's enroll-command read
+([#254](https://github.com/NobuData/ouroboros/issues/254)).
+
+```
+AT REST — nothing minted                          AFTER Copy command
+┌ ENROLL A RUNNER ─────────────────────────┐      ┌ ENROLL A RUNNER ──────────────────────────────┐
+│ Run this on any machine that can reach   │      │ …that can reach ouroboros.acme.dev:443 — …    │
+│ this deployment — no inbound ports…      │      │ Pool [pool-a ▾]                               │
+│ Pool [pool-a ▾]                          │      │ curl -fsSL 'https://ouroboros.acme.dev/       │
+│ curl -fsSL <this deployment>/install.sh  │      │   install.sh?version=0.9.0' | sh -s -- \      │
+│   | sh -s -- \                           │      │   --tenant 'acme-robotics' --pool 'pool-a' \  │
+│   --tenant acme-robotics --pool pool-a \ │      │   --token 'orb_enroll_••••a4b7'               │
+│   --token orb_enroll_••••                │      │ The agent connects outbound over mTLS…        │
+│ The agent connects outbound over mTLS…   │      │ [Copy command]             [Manage tokens →]  │
+│ [Copy command]        [Manage tokens →]  │      │ Token orb_enroll_••••a4b7: expires in 24h ·   │
+└──────────────────────────────────────────┘      │   1 of 1 use left                             │
+  member ▸ explainer, shape and mTLS note only    │ ( Copied — treat this as a secret.        × ) │
+           — no selector, no copy, no sheet       └───────────────────────────────────────────────┘
+```
+
+Every judgement is a pure function in [`app/farm/enroll.ts`](app/farm/enroll.ts):
+
+| What it says | Where it is decided |
+|---|---|
+| **The mint is the copy.** `GET /api/v1/farm/enroll-command` mints on every call and is the only read that knows this deployment's origin and pinned agent version — so nothing is minted to draw the card. At rest the block is the command's *shape* and the explainer names no host (a guess from `window.location` would be the UI's address, not the one runner machines reach); one press of **Copy command** mints one single-use token | `restingCommand`, `explainer` |
+| **The token's value is never in the DOM, and never in React state.** The Server Action answers the command twice — whole, and **masked on the server** — and the whole one goes from the action's promise straight into the clipboard write. What the card keeps is `MintedView`, which has no field for the value. The mask **fails closed**: a command with no `--token` flag, or with a token-shaped value before it, is withheld rather than shown | `maskedCommand`, `MintedView` |
+| **The command is the deployment's own**: its origin and a pinned `?version=`, as the service rendered them — never the mockup's `get.ouroboros.dev` — and once a mint has answered, the explainer names the real `host:port` | `hostOf` |
+| **The toast says it is a secret and promises nothing about the clipboard.** It stays until dismissed | `COPIED_TOAST` |
+| **TTL and uses are said at mint time**: `expires in 24h · 1 of 1 use left`. A day-long token reads `24h`, not `1d` and not `23h` | `tokenLine`, `tokenWindow` |
+| **A blocked copy leaves nothing live.** If the browser refuses the clipboard after the mint took, the value is lost and the token is not — so it is revoked at once and the card says so | `COPY_BLOCKED_REVOKED` |
+| **A refusal always says whether anything was minted** — a deleted pool, a deployment with no `OURO_FARM_PUBLIC_URL` or no runner release, a role that changed | `mintRefusal` |
+
+**The clipboard write is asked for inside the press** ([`clipboard.ts`](app/farm/clipboard.ts)): the
+text does not exist yet when the press happens, so where the engine has one the write is a
+`ClipboardItem` over the mint's promise — the only form Safari accepts — and `writeText` after the
+wait elsewhere.
+
+**Minted tokens have a way back.** *Manage tokens →* opens a sheet
+([`token-sheet.tsx`](app/farm/token-sheet.tsx)) listing every token the workspace has minted — mask,
+pool, window, uses left, who minted it — with **Revoke** on each one that is still live; expired,
+spent and revoked tokens stay listed, dimmed, because *this token let four machines in before it was
+killed* is the question an incident asks. A revoke replaces its row in place and says what it did
+with the number of machines the token had admitted. The pools' and the members' names are
+decoration: a listing of either that failed leaves an em dash or no name, never *deleted pool* or
+*a former member* over something that was merely not read
+([`token-data.ts`](app/farm/token-data.ts)).
+
+**The same list is the settings section's _Farm tokens_ tab**, at `/settings/farm-tokens` — the
+amendment on #258, which is decision S2 of the Workspace Settings roadmap: `/settings` is the
+administration hub, and existing admin surfaces mount in its nav rather than being written twice.
+[`token-list.tsx`](app/farm/token-list.tsx) is mounted by both; the route reads the listing only
+for a reader who may have it, and tells anybody else so by role.
+
+**The gates that decide are the service's.** Minting, listing and revoking are `owner` or `admin`
+at `ouroboros-rest`, and minting and revoking are audited there (AH.2). What the UI does for a
+member — no selector, no copy, no sheet — is presentation.
 
 ## Planning
 

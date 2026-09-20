@@ -9,7 +9,7 @@ import { NOT_MEASURED } from "@/app/farm/view";
 import type { PollAnswer } from "@/app/poll";
 import { Meter } from "@/app/ui/meter";
 
-import { FARM_READ_AT, farmReadings, runnerTelemetry, seededFarm } from "../helpers/farm";
+import { FARM_READ_AT, MEMBER_READER, farmReadings, runnerTelemetry, seededFarm } from "../helpers/farm";
 
 /**
  * The runners table while the poll moves under it (#257) — the two acceptance criteria no other
@@ -23,6 +23,14 @@ import { FARM_READ_AT, farmReadings, runnerTelemetry, seededFarm } from "../help
  * - **Killing a runner flips its row** — dimmed, em dashes — on the poll that reports it, with no
  *   reload, and the row that flips is the same element it was.
  */
+
+// The enroll card (#258) reaches the service through Server Actions, which import the
+// server-only client; this suite presses none of them.
+vi.mock("@/app/farm/enroll-actions", () => ({
+  mintEnrollCommand: vi.fn(),
+  readEnrollmentTokens: vi.fn(),
+  revokeEnrollmentToken: vi.fn(),
+}));
 
 // The real meter, counted: which CPU cells React rendered is how the memo is observed.
 vi.mock("@/app/ui/meter", async (original) => {
@@ -134,7 +142,7 @@ beforeEach(async () => {
   // The fixtures' own instant, so an age measured from the poll's clock is a small, known one.
   vi.setSystemTime(FARM_READ_AT);
   answer = fresh();
-  render(<FarmScreen poll={LIVE} readings={farmReadings()} />);
+  render(<FarmScreen poll={LIVE} reader={MEMBER_READER} readings={farmReadings()} />);
 
   // The poll's first answer — the same page the server read — so every case starts settled.
   await act(async () => {

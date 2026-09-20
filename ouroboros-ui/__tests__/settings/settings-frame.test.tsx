@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { SOURCES_PATH } from "@/app/paths";
+import { FARM_TOKENS_PATH, SOURCES_PATH } from "@/app/paths";
 import { SettingsFrame } from "@/app/settings/settings-frame";
 import { HUB_NOTE, SETTINGS_TABS, isLiveTab, settingsEyebrow } from "@/app/settings/view";
 
@@ -10,7 +10,7 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 /**
  * The settings section's frame and tab row
  * ([#141](https://github.com/NobuData/ouroboros/issues/141), ahead of BS.1 #491): mockup 17's
- * chrome, one live tab, six honest `soon` ones.
+ * chrome, the mounted live tabs — Sources, and Farm tokens since #258 — and six honest `soon` ones.
  */
 
 function frame() {
@@ -76,7 +76,7 @@ describe("the anatomy", () => {
 });
 
 describe("the tab row", () => {
-  it("draws mockup 17's sections with Sources slotted among them, in one order on every page", () => {
+  it("draws mockup 17's sections with the mounted surfaces slotted among them, in one order on every page", () => {
     frame();
 
     const tabs = screen.getByRole("navigation", { name: "Settings" });
@@ -86,21 +86,26 @@ describe("the tab row", () => {
       "Memberssoon",
       "Policiessoon",
       "Sources",
+      "Farm tokens",
       "Integrationssoon",
       "Auditsoon",
       "Danger zonesoon",
     ]);
   });
 
-  it("links the one built surface, current, and names BS.1 on every other", () => {
+  it("links the built surfaces — the active one current — and names BS.1 on every other", () => {
     frame();
 
     const tabs = screen.getByRole("navigation", { name: "Settings" });
     const sources = within(tabs).getByRole("link", { name: "Sources" });
+    const farmTokens = within(tabs).getByRole("link", { name: "Farm tokens" });
 
     expect(sources).toHaveAttribute("href", SOURCES_PATH);
     expect(sources).toHaveAttribute("aria-current", "page");
-    expect(within(tabs).getAllByRole("link")).toHaveLength(1);
+    // The build farm's enrollment tokens, mounted by the amendment on #258 (decision S2).
+    expect(farmTokens).toHaveAttribute("href", FARM_TOKENS_PATH);
+    expect(farmTokens).not.toHaveAttribute("aria-current");
+    expect(within(tabs).getAllByRole("link")).toHaveLength(2);
 
     for (const tab of SETTINGS_TABS) {
       if (isLiveTab(tab)) continue;
@@ -111,6 +116,19 @@ describe("the tab row", () => {
       expect(soon).toHaveAttribute("title", `${tab.label} — ${HUB_NOTE}`);
       expect(HUB_NOTE).toContain("#491");
     }
+  });
+
+  it("moves the underline to Farm tokens on that page", () => {
+    render(
+      <SettingsFrame actions={null} active="farm-tokens" subline="s" title="t" workspaceName="w">
+        <p />
+      </SettingsFrame>,
+    );
+
+    const tabs = screen.getByRole("navigation", { name: "Settings" });
+
+    expect(within(tabs).getByRole("link", { name: "Farm tokens" })).toHaveAttribute("aria-current", "page");
+    expect(within(tabs).getByRole("link", { name: "Sources" })).not.toHaveAttribute("aria-current");
   });
 
   it("makes the honesty pair a type: a live tab has an href, a soon tab a note, never both", () => {

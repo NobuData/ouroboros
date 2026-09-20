@@ -1,6 +1,8 @@
-import type { FarmPage, FarmRunner, FarmStats, RunnerPool } from "@/app/api/farm";
+import type { EnrollmentToken, FarmPage, FarmRunner, FarmStats, RunnerPool } from "@/app/api/farm";
 import type { components } from "@/app/api/schema";
 import type { FarmReadings } from "@/app/farm/data";
+import type { MintOutcome, TokenListing } from "@/app/farm/enroll";
+import type { FarmReader } from "@/app/farm/farm-screen";
 
 /**
  * Build farm fixtures (#256): the development seed's fleet
@@ -276,4 +278,112 @@ export function farmReadings(page: FarmPage = seededFarm()): FarmReadings {
  */
 export function failedFarmReadings(reason = "The farm is unavailable."): FarmReadings {
   return { page: { ok: false, reason }, readAt: FARM_READ_AT };
+}
+
+/* ------------------------------------------------------------------ the enroll flow (#258) */
+
+/** A reader who may look and not mint — a `member`, or a `viewer`. */
+export const MEMBER_READER: FarmReader = { mayAdminister: false, tenant: "acme-robotics" };
+
+/** A reader who may mint and revoke — an `owner` or an `admin`. */
+export const ADMIN_READER: FarmReader = { mayAdminister: true, tenant: "acme-robotics" };
+
+/**
+ * A token value no fixture renders: the string the *no full token in the DOM* cases search the
+ * document for. Shaped like a real one so a mask that only recognised a test value would fail.
+ */
+export const TOKEN_SECRET = "orb_enroll_5eed0400a4b7.Zm9yZ2UtZmFybS1zZWNyZXQtdmFsdWU";
+
+/** The https origin the fixtures' deployment answers — not the UI's own. */
+export const FARM_ORIGIN = "https://ouroboros.acme.dev";
+
+/** The agent release the fixtures' command pins. */
+export const FARM_AGENT_VERSION = "0.9.0";
+
+/**
+ * One enrollment token, masked — single-use, a day to live from {@link FARM_READ_AT}, unused.
+ *
+ * @param over Fields to replace.
+ * @returns The token.
+ */
+export function enrollmentToken(over: Partial<EnrollmentToken> = {}): EnrollmentToken {
+  return {
+    id: "5eed0400-0000-4000-8000-00000000a4b7",
+    poolId: POOL_IDS["pool-a"]!,
+    masked: "orb_enroll_••••a4b7",
+    expiresAt: "2026-09-20T14:02:00.000Z",
+    maxUses: 1,
+    uses: 0,
+    revoked: false,
+    revokedAt: null,
+    createdBy: "user-ken",
+    createdAt: "2026-09-19T14:02:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * The command `GET /api/v1/farm/enroll-command` answers, **with its live token** — four lines,
+ * every value single-quoted, as `ouroboros-rest`'s `renderEnrollCommand` writes it.
+ *
+ * @param pool The pool.
+ * @param secret The token's value.
+ * @returns The command.
+ */
+export function mintedCommand(pool = "pool-a", secret = TOKEN_SECRET): string {
+  return [
+    `curl -fsSL '${FARM_ORIGIN}/install.sh?version=${FARM_AGENT_VERSION}' | sh -s --`,
+    "--tenant 'acme-robotics'",
+    `--pool '${pool}'`,
+    `--token '${secret}'`,
+  ].join(" \\\n  ");
+}
+
+/**
+ * What a press of *Copy command* is answered — the command whole, and masked as the action
+ * masks it.
+ *
+ * @param pool The pool.
+ * @param token The masked token it carries.
+ * @returns The outcome.
+ */
+export function mintOutcome(
+  pool = "pool-a",
+  token: EnrollmentToken = enrollmentToken(),
+): Extract<MintOutcome, { ok: true }> {
+  return {
+    ok: true,
+    command: mintedCommand(pool),
+    shown: mintedCommand(pool, token.masked),
+    origin: FARM_ORIGIN,
+    version: FARM_AGENT_VERSION,
+    token,
+  };
+}
+
+/**
+ * A listing of the diagram's two rows: a live token for `pool-a`, and an expired one for `pool-b`.
+ *
+ * @param tokens The tokens, newest first. Defaults to the diagram's.
+ * @returns The listing, read at {@link FARM_READ_AT}.
+ */
+export function tokenListing(
+  tokens: readonly EnrollmentToken[] = [
+    enrollmentToken({ maxUses: 5, uses: 1 }),
+    enrollmentToken({
+      id: "5eed0400-0000-4000-8000-00000000c0de",
+      poolId: POOL_IDS["pool-b"]!,
+      masked: "orb_enroll_••••c0de",
+      expiresAt: "2026-09-18T14:02:00.000Z",
+      createdAt: "2026-09-17T14:02:00.000Z",
+    }),
+  ],
+): Extract<TokenListing, { ok: true }> {
+  return {
+    ok: true,
+    tokens,
+    pools: { [POOL_IDS["pool-a"]!]: "pool-a", [POOL_IDS["pool-b"]!]: "pool-b" },
+    people: { "user-ken": "Ken" },
+    readAt: FARM_READ_AT,
+  };
 }

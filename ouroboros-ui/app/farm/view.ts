@@ -109,20 +109,23 @@ export function farmHeadline(page: FarmPage | null): string {
 /** The mark an unbuilt control carries in its text, as the sidebar's *soon* rows do. */
 export const SOON_MARK = "soon";
 
-/** One action in the page head. None of the three can act yet — see {@link FARM_ACTIONS}. */
+/** One action in the page head — see {@link FARM_ACTIONS}. */
 export interface FarmAction {
   /** Stable identifier, and the React key. */
-  readonly id: string;
+  readonly id: "analyzer" | "pools" | "enroll";
   /** The control's label, verbatim from the mockup. */
   readonly label: string;
   /** Which button tone — the mockup's two ghosts and one primary. */
   readonly tone: "ghost" | "primary";
-  /** Why it cannot act, naming the issue that builds what it opens. The control's tooltip. */
-  readonly soonNote: string;
+  /**
+   * Why it cannot act, naming the issue that builds what it opens — the control's tooltip — or
+   * `null` for an action that is built.
+   */
+  readonly soonNote: string | null;
 }
 
 /**
- * The mockup's three head actions, each an honest *soon*.
+ * The mockup's three head actions: two honest *soon*s, and one that acts.
  *
  * - **✦ Build Analyzer** is mockup 18, whose route is BW.1
  *   ([#516](https://github.com/NobuData/ouroboros/issues/516)). The mockup links it to a page
@@ -130,13 +133,15 @@ export interface FarmAction {
  *   amendment on #256 records the other half: on the commit that builds `/analyzer`, this entry
  *   becomes a link to it and the soon-state copy is retired.
  * - **Pool settings** opens AI.4's sheet ([#259](https://github.com/NobuData/ouroboros/issues/259)).
- * - **+ Enroll runner** starts AI.3's flow ([#258](https://github.com/NobuData/ouroboros/issues/258)).
+ * - **+ Enroll runner** starts AI.3's flow ([#258](https://github.com/NobuData/ouroboros/issues/258)),
+ *   which is built: it moves the reader to the enroll card (`app/farm/farm-head.tsx`). It is the
+ *   one action with a *for whom* — minting is `owner` or `admin` — so a reader who may not is
+ *   given the same control, inert, with the reason (`ENROLL_MEMBER_REASON` in
+ *   `app/farm/enroll.ts`), through the existing `mayAdminister`.
  *
- * Both of those depend on this issue, so neither exists yet. The design system's honesty rule
- * (§ 3.5) is that a surface that is not ready is *labelled*, never dead: each control keeps its
- * place and its label, is inert, and its tooltip names the issue it waits for. No role is
- * decided here for the same reason — a control that cannot act for anybody has no *for whom*;
- * the admin gate arrives with the flows it guards.
+ * The design system's honesty rule (§ 3.5) is that a surface that is not ready is *labelled*,
+ * never dead: each unbuilt control keeps its place and its label, is inert, and its tooltip
+ * names the issue it waits for.
  */
 export const FARM_ACTIONS: readonly FarmAction[] = [
   {
@@ -151,12 +156,7 @@ export const FARM_ACTIONS: readonly FarmAction[] = [
     tone: "ghost",
     soonNote: "Pool settings arrive with the pools card (#259).",
   },
-  {
-    id: "enroll",
-    label: "+ Enroll runner",
-    tone: "primary",
-    soonNote: "Enrolling a runner arrives with the enroll card (#258).",
-  },
+  { id: "enroll", label: "+ Enroll runner", tone: "primary", soonNote: null },
 ];
 
 /* ------------------------------------------------------------------ the stat row */

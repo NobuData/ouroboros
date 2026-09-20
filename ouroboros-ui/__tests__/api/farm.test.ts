@@ -4,7 +4,14 @@ import { ApiError } from "@/app/api/errors";
 import { POLL_AFTER_HEADER } from "@/app/poll";
 
 import { clientAnswering, stubClient } from "../helpers/api";
-import { emptyFarm, seededFarm } from "../helpers/farm";
+import {
+  FARM_AGENT_VERSION,
+  FARM_ORIGIN,
+  emptyFarm,
+  enrollmentToken,
+  mintedCommand,
+  seededFarm,
+} from "../helpers/farm";
 
 // The facade sits on the server-side client — see `server.test.ts`.
 vi.mock("server-only", () => ({}));
@@ -94,5 +101,101 @@ describe("farm.observe", () => {
     controller.abort();
 
     expect(requests[0]?.signal.aborted).toBe(true);
+  });
+});
+
+/**
+ * The enroll flow's share (#250 and #254, consumed by #258): the minting read of the install
+ * command, the masked token list, the revoke, and the pools on their own.
+ */
+
+describe("farm.enrollCommand", () => {
+  const answer = {
+    command: mintedCommand(),
+    origin: FARM_ORIGIN,
+    version: FARM_AGENT_VERSION,
+    tenant: "acme-robotics",
+    pool: "pool-a",
+    token: enrollmentToken(),
+  };
+
+  it("asks for a command for one pool, and hands back what was minted as served", async () => {
+    const { client, requests } = clientAnswering(answer);
+
+    const minted = await farm.enrollCommand("pool-a", client);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/farm/enroll-command?pool=pool-a");
+    expect(minted).toEqual(answer);
+  });
+
+  it("names no workspace, so a token can only be minted into the session's own", async () => {
+    const { client, requests } = clientAnswering(answer);
+
+    await farm.enrollCommand("pool-a", client);
+
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+  });
+
+  it.each([
+    [403, "forbidden"],
+    [404, "farm_pool_not_found"],
+    [404, "farm_enroll_command_unavailable"],
+  ])("rejects a %i %s with the service's envelope — nothing was minted", async (status, code) => {
+    const { client } = clientAnswering({ code, message: "No.", details: {} }, status);
+
+    const failure: unknown = await farm.enrollCommand("pool-a", client).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect((failure as ApiError).code).toBe(code);
+  });
+});
+
+describe("farm.tokens", () => {
+  it("lists the workspace's tokens as served — masked, every one", async () => {
+    const tokens = [enrollmentToken(), enrollmentToken({ id: "other", revoked: true })];
+    const { client, requests } = clientAnswering(tokens);
+
+    await expect(farm.tokens(client)).resolves.toEqual(tokens);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/farm/enrollment-tokens");
+  });
+
+  it("rejects a member's 403 rather than answering an empty list", async () => {
+    const { client } = clientAnswering({ code: "forbidden", message: "No.", details: {} }, 403);
+
+    await expect(farm.tokens(client)).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("farm.revokeToken", () => {
+  it("deletes the token by id and hands back the token as it now stands", async () => {
+    const revoked = enrollmentToken({ revoked: true, revokedAt: "2026-09-19T14:05:00.000Z" });
+    const { client, requests } = clientAnswering(revoked);
+
+    await expect(farm.revokeToken(revoked.id, client)).resolves.toEqual(revoked);
+    expect(requests[0]?.method).toBe("DELETE");
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/farm/enrollment-tokens/${revoked.id}`);
+  });
+
+  it("rejects with the service's code for a token this workspace does not have", async () => {
+    const { client } = clientAnswering(
+      { code: "farm_enrollment_token_not_found", message: "No such token.", details: {} },
+      404,
+    );
+
+    const failure: unknown = await farm.revokeToken("missing", client).catch((error: unknown) => error);
+
+    expect((failure as ApiError).code).toBe("farm_enrollment_token_not_found");
+  });
+});
+
+describe("farm.pools", () => {
+  it("reads the pools on their own, without the fleet beside them", async () => {
+    const { client, requests } = clientAnswering(seededFarm().pools);
+
+    await expect(farm.pools(client)).resolves.toEqual(seededFarm().pools);
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/farm/pools");
   });
 });

@@ -165,3 +165,66 @@ describe("the shell", () => {
     expect(CODE).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/);
   });
 });
+
+describe("the enroll card (#258)", () => {
+  it("takes the mockup's four columns beside the table, and the full row once the pane narrows", () => {
+    expect(rule("\\.farm-col--4")).toMatch(/grid-column:\s*span 4/);
+    expect(CODE).toMatch(/@media \(max-width: 68\.75rem\)\s*\{[^@]*\.farm-col--4\s*\{\s*grid-column:\s*span 12;/);
+  });
+
+  it("lets the card shrink under its command, so a long URL cannot hold the track open", () => {
+    expect(rule("\\.farm-col--4")).toMatch(/min-width:\s*0/);
+  });
+
+  it("wraps the command rather than scrolling it, keeping the service's own line breaks", () => {
+    const code = rule("\\.farm-enroll__code");
+
+    expect(code).toMatch(/white-space:\s*pre-wrap/);
+    expect(code).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(code).not.toMatch(/overflow(-x)?:\s*(auto|scroll)/);
+  });
+
+  it("draws the command in the mono face at a token size, so the 125% step moves it", () => {
+    const code = rule("\\.farm-enroll__code");
+
+    expect(code).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(code).toMatch(/font-size:\s*var\(--t-/);
+  });
+
+  it("draws the toast in the accent triple — *this happened*, not an alarm", () => {
+    const toast = rule("\\.farm-enroll__toast");
+
+    expect(toast).toMatch(/border:\s*1px solid var\(--accent-line\)/);
+    expect(toast).toMatch(/background:\s*var\(--accent-tint\)/);
+  });
+
+  it("gives an empty live region no room, so a card with nothing to say has no gap", () => {
+    expect(rule("\\.farm-enroll__toast-seat:empty")).toMatch(/display:\s*none/);
+    expect(rule("\\.farm-tokens__said:empty")).toMatch(/display:\s*none/);
+  });
+
+  it("says a refusal in the error hue, on the card and in the list", () => {
+    expect(rule("\\.farm-enroll__failure")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule('\\.farm-tokens__said\\[role="alert"\\]')).toMatch(/color:\s*var\(--err\)/);
+  });
+});
+
+describe("the token list (#258)", () => {
+  it("wraps every row, because it is drawn at a sheet's measure and at a page's", () => {
+    expect(rule("\\.farm-tokens__row")).toMatch(/flex-wrap:\s*wrap/);
+  });
+
+  it("keeps the revoke on the trailing edge however the facts before it wrapped", () => {
+    expect(rule("\\.farm-tokens__revoke")).toMatch(/margin-left:\s*auto/);
+  });
+
+  it("recedes a dead token by ink rather than by opacity, as the offline runner's row does", () => {
+    expect(CODE).toMatch(/\.farm-tokens__row--dead \.farm-tokens__mask,\s*\.farm-tokens__row--dead \.farm-tokens__fact\s*\{\s*color:\s*var\(--ink-faint\)/);
+    expect(CODE).not.toMatch(/opacity/);
+  });
+
+  it("uses the design system's buttons and tags rather than drawing its own", () => {
+    expect(COMPONENT).toContain("<Tag>");
+    expect(CODE).not.toMatch(/\.ou-/);
+  });
+});

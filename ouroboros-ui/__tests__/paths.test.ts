@@ -4,6 +4,7 @@ import {
   BUILD_FARM_PATH,
   DASHBOARD_PATH,
   DASHBOARD_QUEUE_HASH,
+  FARM_TOKENS_PATH,
   ISSUES_PATH,
   LOGIN_PATH,
   MODELS_PATH,
@@ -81,6 +82,14 @@ describe("the paths themselves", () => {
     expect(SETTINGS_PATH).toBe("/settings");
     expect(SOURCES_PATH).toBe("/settings/sources");
     expect(SOURCES_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
+  });
+
+  it("put the farm's enrollment tokens under Settings too, beside the sources (#258)", () => {
+    // The amendment on #258 is decision S2 applied to it: the token list is an admin surface, so
+    // it mounts as a settings tab — and under `/settings`, so the **Settings** entry stays lit.
+    expect(FARM_TOKENS_PATH).toBe("/settings/farm-tokens");
+    expect(FARM_TOKENS_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
+    expect(FARM_TOKENS_PATH.startsWith(`${BUILD_FARM_PATH}/`)).toBe(false);
   });
 
   it("give the workflow studio a section of its own, with each workflow beneath it (#147)", () => {

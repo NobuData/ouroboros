@@ -1,4 +1,5 @@
 import type { FarmReadings } from "./data";
+import { EnrollCard } from "./enroll-card";
 import { FarmBanner } from "./farm-banner";
 import { FarmHead } from "./farm-head";
 import type { FarmPollOptions } from "./farm-poll";
@@ -23,9 +24,17 @@ import "./farm.css";
  * The page is one observation (`app/api/farm.ts`), so it is provided once, here, and the head,
  * the stat row and the runners table (AI.2, [#257](https://github.com/NobuData/ouroboros/issues/257))
  * all read it (`app/farm/farm-store.tsx`) — which is what keeps `4/5` and the table it counts on
- * one answer. The regions still to come — the enroll card (AI.3, #258), the pools card (AI.4,
- * #259) and the live log (AI.6, #261) — mount in {@link FarmScreen}'s grid beside and beneath the
- * table and read the same store.
+ * one answer. The enroll card (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258))
+ * sits beside the table in the mockup's four columns and reads the same store for its pools. The
+ * regions still to come — the pools card (AI.4, #259) and the live log (AI.6, #261) — mount in
+ * {@link FarmScreen}'s grid beside and beneath them.
+ *
+ * ### One role decision, made by the route
+ *
+ * Everything on the page may be read by every member. What a role changes is the enroll flow —
+ * minting a token is `owner` or `admin` — so the route hands down one boolean
+ * ({@link FarmReader}) and the head's **+ Enroll runner** and the card both draw from it. The
+ * gate that **enforces** is the service's.
  *
  * The banner sits above the head rather than in the grid, for the dashboard's reason: it is a
  * fact about the whole page, and a reader handed old data should be told before they read it.
@@ -33,23 +42,38 @@ import "./farm.css";
  * by construction rather than by a margin kept in step with `.farm`'s padding.
  *
  * @param props.readings What the route read for the first paint.
+ * @param props.reader Who is reading — see {@link FarmReader}.
  * @param props.poll Test seams for the poll; the route passes none.
  * @returns The screen.
  */
 export function FarmScreen({
   readings,
+  reader,
   poll,
-}: Readonly<{ readings: FarmReadings; poll?: FarmPollOptions }>) {
+}: Readonly<{ readings: FarmReadings; reader: FarmReader; poll?: FarmPollOptions }>) {
   return (
     <FarmProvider initial={readings.page} poll={poll} readAt={readings.readAt}>
       <main className="farm">
         <FarmBanner />
-        <FarmHead />
+        <FarmHead mayAdminister={reader.mayAdminister} />
         <div className="farm__grid">
           <FarmStatRow />
           <RunnersCard />
+          <EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />
         </div>
       </main>
     </FarmProvider>
   );
+}
+
+/** Who is reading the farm, as far as the page needs to know. */
+export interface FarmReader {
+  /**
+   * Whether this reader may mint and revoke enrollment tokens — `app/api/membership.ts`'s
+   * `mayAdminister`, decided once by the route. A boolean rather than a role, so there is one
+   * place deciding what a role may do.
+   */
+  readonly mayAdminister: boolean;
+  /** The active workspace's slug — the enroll command's `--tenant`. */
+  readonly tenant: string;
 }

@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**235 of 454 ordered issues are closed** — P0 through P6 are complete, and P7, P8 and P9 are
+**236 of 454 ordered issues are closed** — P0 through P6 are complete, and P7, P8 and P9 are
 under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
@@ -43,7 +43,7 @@ and are accounted for in the counts below, not in the tables.
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
 | 🟡 **In progress** | P7 | **42** of 43 |
 | 🟡 **In progress** | P8 | **16** of 17 |
-| 🟡 **In progress** | P9 | **14** of 20 |
+| 🟡 **In progress** | P9 | **15** of 20 |
 | — **Not started** | P10–P17 | 0 of 209 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1418,7 +1418,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **20 issues** · 70 complexity points · order **#226–#245** · 9 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_08_BUILD_FARM.md` (Epics AG–AI)
-> **Status:** 🟡 **In progress** — 14 of 20 issues closed
+> **Status:** 🟡 **In progress** — 15 of 20 issues closed
 
 **Goal.** Ship the `ouroboros-runner` agent (static Go binary, three platforms), token-scoped enrollment with mTLS identity and outbound-only connections, live heartbeat telemetry, dispatchable builds, pools, and streaming logs.
 
@@ -1445,7 +1445,7 @@ the blockquote above that records what it did and what it did differently.
 | 238 | **AH.7** | [#255](https://github.com/NobuData/ouroboros/issues/255) | Farm integration tests (fake agent) | ouroboros-rest | M | AH.4, AH.6 |
 | 239 | **AI.1** | ✅ [#256](https://github.com/NobuData/ouroboros/issues/256) | Build Farm route, head & stat row | ouroboros-ui | S | 5.3, D.5, AH.6 |
 | 240 | **AI.2** | ✅ [#257](https://github.com/NobuData/ouroboros/issues/257) | Runners table (live) | ouroboros-ui | L | AI.1 |
-| 241 | **AI.3** | [#258](https://github.com/NobuData/ouroboros/issues/258) | Enroll-runner card & token flow | ouroboros-ui | M | AH.2, AI.1 |
+| 241 | **AI.3** | ✅ [#258](https://github.com/NobuData/ouroboros/issues/258) | Enroll-runner card & token flow | ouroboros-ui | M | AH.2, AI.1 |
 | 242 | **AI.4** | [#259](https://github.com/NobuData/ouroboros/issues/259) | Pools card & configuration | ouroboros-ui | M | AH.6, AI.1 |
 | 243 | **AI.6** | [#261](https://github.com/NobuData/ouroboros/issues/261) | Live log card | ouroboros-ui | M | AH.5, AI.1 |
 | 244 | **AI.5** | [#260](https://github.com/NobuData/ouroboros/issues/260) | Runner actions & job submission | ouroboros-ui | M | AH.4, AI.2 |

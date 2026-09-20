@@ -23,6 +23,7 @@ import { NOT_MEASURED, SOON_MARK } from "@/app/farm/view";
 import type { PollAnswer } from "@/app/poll";
 
 import {
+  MEMBER_READER,
   emptyFarm,
   failedFarmReadings,
   farmReadings,
@@ -31,6 +32,14 @@ import {
   seededFarm,
 } from "../helpers/farm";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
+
+// The enroll card (#258) reaches the service through Server Actions, which import the
+// server-only client; this suite presses none of them.
+vi.mock("@/app/farm/enroll-actions", () => ({
+  mintEnrollCommand: vi.fn(),
+  readEnrollmentTokens: vi.fn(),
+  revokeEnrollmentToken: vi.fn(),
+}));
 
 /**
  * The runners table as it is drawn (#257): mockup 08's `RUNNERS` card from the seeded farm, row
@@ -58,7 +67,7 @@ const LIVE: FarmPollOptions = { read: () => Promise.resolve(answer), visible: ()
  * @returns The render result.
  */
 function draw(page: FarmPage = seededFarm(), poll: FarmPollOptions = QUIET) {
-  return render(<FarmScreen poll={poll} readings={farmReadings(page)} />);
+  return render(<FarmScreen poll={poll} reader={MEMBER_READER} readings={farmReadings(page)} />);
 }
 
 /** The runners card. */
@@ -577,7 +586,7 @@ describe("the other states", () => {
   });
 
   it("says what could not be read, and leaves the why to the banner", () => {
-    render(<FarmScreen poll={QUIET} readings={failedFarmReadings("Choose a workspace.")} />);
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={failedFarmReadings("Choose a workspace.")} />);
 
     expect(within(card()).getByText(RUNNERS_UNREAD_TITLE)).toBeInTheDocument();
     expect(within(card()).queryByText(/Choose a workspace/)).toBeNull();
@@ -586,7 +595,7 @@ describe("the other states", () => {
 
 describe("both themes", () => {
   it("renders the same markup under either palette, dimmed row and affix included", () => {
-    const [light, dark] = renderInBothPalettes(<FarmScreen poll={QUIET} readings={farmReadings()} />);
+    const [light, dark] = renderInBothPalettes(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
     expect(light).toContain("farm-runners__row--dim");
     expect(light).toContain("farm-runners__shield");
