@@ -65,6 +65,15 @@ vi.mock("@/app/farm/pool-actions", () => ({
   updatePool: vi.fn(),
 }));
 
+// The runner menu and the submit dialog (#260) share the screen; this suite presses neither.
+vi.mock("@/app/farm/lifecycle-actions", () => ({
+  drainRunner: vi.fn(),
+  undrainRunner: vi.fn(),
+  removeRunner: vi.fn(),
+}));
+
+vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
+
 /**
  * The enroll card on the farm screen (#258), end to end through the browser's half: what it shows
  * before anything is minted, that **Copy command** mints and the value reaches the clipboard and

@@ -48,6 +48,15 @@ vi.mock("@/app/farm/pool-actions", () => ({
   updatePool: vi.fn(),
 }));
 
+// The runner menu and the submit dialog (#260) share the screen; this suite presses neither.
+vi.mock("@/app/farm/lifecycle-actions", () => ({
+  drainRunner: vi.fn(),
+  undrainRunner: vi.fn(),
+  removeRunner: vi.fn(),
+}));
+
+vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
+
 /**
  * The live log card on the farm screen (#261), through the whole stack — the farm's store for
  * *which* build, a log stream for *what it printed*, the pane for how it is drawn — against a

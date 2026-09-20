@@ -13,10 +13,16 @@
  * **Both are `member` and above** (`CONTRIBUTORS`). Submitting a build is ordinary work, not
  * administration — it is what the farm is for — and a person who may submit one may stop it.
  * Enrolling machines, draining them and editing pools stay an administrator's (AH.2, AH.6).
+ *
+ * **A submission names who made it.** The session's user is handed to the service for the
+ * audit trail (`runner.job_submitted`, #260) — read from the session, like the workspace, and
+ * never from the body.
  */
 
 import { Body, Controller, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from "@nestjs/common";
+import { Session } from "@thallesp/nestjs-better-auth";
 
+import type { Principal } from "../../auth/principal";
 import type { Organization } from "../../db/schema";
 import { CONTRIBUTORS, Roles } from "../../tenancy/roles.guard";
 import { CurrentTenant } from "../../tenancy/tenant.decorators";
@@ -35,6 +41,7 @@ export class FarmJobsController {
    * Submit a build.
    *
    * @param tenant - The workspace, established by the tenant guard.
+   * @param principal - Who is submitting, for the audit trail.
    * @param request - The pool, repository, ref, commit and — or the pool's default — command.
    * @returns The job, `201`. Dispatch has been kicked, so it may already be offered.
    */
@@ -42,9 +49,10 @@ export class FarmJobsController {
   @Roles(...CONTRIBUTORS)
   submit(
     @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
     @Body() request: SubmitBuildJobDto,
   ): Promise<BuildJobResource> {
-    return this.jobs.submit(tenant.id, request);
+    return this.jobs.submit(tenant.id, principal.user.id, request);
   }
 
   /**

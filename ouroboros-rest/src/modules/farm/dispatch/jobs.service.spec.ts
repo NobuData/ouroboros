@@ -1,5 +1,8 @@
 import { Logger } from "@nestjs/common";
 
+import type { AuditRecord } from "../../audit/audit.events";
+import type { AuditService } from "../../audit/audit.service";
+import { FarmAudit } from "../farm.audit";
 import { drain } from "../gateway/gateway.fixture";
 import { COMMIT, JOB, ORG, RUNNER, buildJob, jobView, runnerPool } from "./dispatch.fixture";
 import type { DispatchRepository, JobSubmission } from "./dispatch.repository";
@@ -22,6 +25,9 @@ const REQUEST: BuildJobRequest = {
 
 const NOW = new Date("2026-09-19T12:00:00.000Z");
 
+/** Who is submitting, as the controller reads them off the session. */
+const ACTOR = "user_ken";
+
 /** A caught throw, for asserting on its code. */
 async function refusal(work: Promise<unknown>): Promise<unknown> {
   try {
@@ -42,6 +48,8 @@ describe("build job submission and cancellation", () => {
   >;
   let dispatcher: jest.Mocked<Pick<DispatchService, "kick" | "propagateCancel">>;
   let completed: JobCompleted[];
+  let trail: AuditRecord[];
+  let record: jest.Mock<Promise<string>, [AuditRecord]>;
   let jobs: FarmJobsService;
 
   beforeEach(() => {
@@ -63,10 +71,17 @@ describe("build job submission and cancellation", () => {
     completions.subscribe((event) => {
       completed.push(event);
     });
+    trail = [];
+    record = jest.fn((event: AuditRecord) => {
+      trail.push(event);
+
+      return Promise.resolve("event");
+    });
     jobs = new FarmJobsService(
       repository as unknown as DispatchRepository,
       dispatcher as unknown as DispatchService,
       completions,
+      new FarmAudit({ record } as unknown as AuditService),
       () => NOW,
     );
   });
@@ -78,7 +93,7 @@ describe("build job submission and cancellation", () => {
 
   describe("submitting", () => {
     it("queues a build with the pool's snapshot and default command, then kicks dispatch", async () => {
-      const resource = await jobs.submit(ORG, REQUEST);
+      const resource = await jobs.submit(ORG, ACTOR, REQUEST);
 
       expect(repository.pool).toHaveBeenCalledWith(ORG, "pool-a");
       expect(repository.repository).toHaveBeenCalledWith(ORG, "acme-robotics", "helios-firmware");
@@ -102,7 +117,7 @@ describe("build job submission and cancellation", () => {
     });
 
     it("stores a named command as its canonical rendering, and keeps a title and label", async () => {
-      await jobs.submit(ORG, {
+      await jobs.submit(ORG, ACTOR, {
         ...REQUEST,
         command: ["sh", "-c", "west build -p always"],
         title: "Pristine build",
@@ -121,7 +136,7 @@ describe("build job submission and cancellation", () => {
         runnerPool({ name: "pool-b", executor: "shell", image: null, default_command: null }),
       );
 
-      await jobs.submit(ORG, { ...REQUEST, pool: "pool-b", command: ["make", "hil-sweep"] });
+      await jobs.submit(ORG, ACTOR, { ...REQUEST, pool: "pool-b", command: ["make", "hil-sweep"] });
 
       expect(written()).toMatchObject({ executor: "shell", image: null });
     });
@@ -155,9 +170,65 @@ describe("build job submission and cancellation", () => {
     ])("refuses %s, and queues nothing", async (_, code, arrange) => {
       arrange();
 
-      expect(await refusal(jobs.submit(ORG, REQUEST))).toMatchObject({ code });
+      expect(await refusal(jobs.submit(ORG, ACTOR, REQUEST))).toMatchObject({ code });
       expect(repository.submit).not.toHaveBeenCalled();
       expect(dispatcher.kick).not.toHaveBeenCalled();
+      // The trail is of builds that were submitted, not of attempts.
+      expect(trail).toEqual([]);
+    });
+  });
+
+  describe("who submitted it (#260)", () => {
+    it("records the build, the person and the exact commit", async () => {
+      await jobs.submit(ORG, ACTOR, REQUEST);
+
+      expect(trail).toEqual([
+        {
+          organizationId: ORG,
+          actorId: ACTOR,
+          action: "runner.job_submitted",
+          subjectType: "build_job",
+          subjectId: JOB,
+          at: NOW,
+          detail: {
+            number: 483,
+            pool: "pool-a",
+            // As stored — lower-cased — so one repository is one spelling in the trail.
+            repository: "acme-robotics/helios-firmware",
+            ref: "refs/heads/main",
+            commit: COMMIT,
+          },
+        },
+      ]);
+    });
+
+    it("never records the command", async () => {
+      // A token pasted onto a command line is the likeliest secret a submission carries.
+      await jobs.submit(ORG, ACTOR, {
+        ...REQUEST,
+        command: ["sh", "-c", "curl -H 'Authorization: Bearer hunter2' https://example.test"],
+      });
+
+      expect(JSON.stringify(trail)).not.toContain("hunter2");
+    });
+
+    it("records before dispatch is kicked, and a failure to record fails the submission", async () => {
+      // `farm.audit.ts`'s rule: a farm operation that cannot be recorded did not succeed.
+      // Nothing is offered to a runner on the strength of a build nobody can be asked about.
+      record.mockRejectedValueOnce(new Error("audit store unavailable"));
+
+      await expect(jobs.submit(ORG, ACTOR, REQUEST)).rejects.toThrow("audit store unavailable");
+      expect(dispatcher.kick).not.toHaveBeenCalled();
+    });
+
+    it("names the run and no person when a run submitted it", async () => {
+      await jobs.submitForRun(ORG, "7f000009-0000-4000-8000-000000000001", REQUEST);
+
+      expect(trail[0]).toMatchObject({
+        actorId: null,
+        action: "runner.job_submitted",
+        detail: { runId: "7f000009-0000-4000-8000-000000000001" },
+      });
     });
   });
 

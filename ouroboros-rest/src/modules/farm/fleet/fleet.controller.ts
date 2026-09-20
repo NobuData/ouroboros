@@ -20,7 +20,11 @@
  *
  * Nothing on this payload is a secret. There is no token value, no envelope and no private
  * key on any resource `fleet.resources.ts` defines, and `security_mode` is published on
- * purpose so a degraded connection renders as degraded rather than as a green shield.
+ * purpose so a degraded connection renders as degraded rather than as a green shield. The
+ * certificate reference a runner carries since AI.5
+ * ([#260](https://github.com/NobuData/ouroboros/issues/260)) is a serial and two dates: a
+ * serial is public by construction — it travels in every handshake and is already in the
+ * `runner.enrolled` audit event — and neither the fingerprint nor any key material is here.
  */
 
 import { Controller, Get, Res } from "@nestjs/common";

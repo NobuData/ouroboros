@@ -23,6 +23,13 @@
  * after a build was submitted does not change what that build runs. The workspace is always the
  * caller's: the route's is the session's, and AJ.3's is the run's.
  *
+ * **A submission is audited** (`runner.job_submitted`, since AI.5 —
+ * [#260](https://github.com/NobuData/ouroboros/issues/260)). It runs somebody's command on
+ * hardware the workspace owns, and the job row says what ran without saying who asked. Recorded
+ * after the row lands and **before dispatch is kicked**, and awaited: `farm.audit.ts`'s rule is
+ * that a failure to record is a failure of the operation. The actor is the session's user for the
+ * route and `null` for a run, which names itself through `runId`.
+ *
  * **Cancellation is final and immediate.** The row is `canceled` the moment the request commits;
  * the runner holding it is then told (`job.cancel`), and the finish it sends back changes
  * nothing, because the ledger only applies a finish to a job that has not already ended.
@@ -30,6 +37,7 @@
 
 import { Inject, Injectable } from "@nestjs/common";
 
+import { FarmAudit } from "../farm.audit";
 import { GATEWAY_CLOCK, type GatewayClock } from "../gateway/gateway.clock";
 import {
   commandRequired,
@@ -52,12 +60,14 @@ export class FarmJobsService {
    * @param repository - Every statement dispatch issues.
    * @param dispatcher - Kicked after a submission, and told of a cancellation to propagate.
    * @param completions - Where a cancellation is announced as a completion (#510's seam).
+   * @param audit - AD.4's trail, for who submitted what (#260).
    * @param now - The gateway's clock.
    */
   constructor(
     private readonly repository: DispatchRepository,
     private readonly dispatcher: DispatchService,
     private readonly completions: JobCompletions,
+    private readonly audit: FarmAudit,
     @Inject(GATEWAY_CLOCK) private readonly now: GatewayClock,
   ) {}
 
@@ -65,14 +75,19 @@ export class FarmJobsService {
    * Submit a build — the route's entry point.
    *
    * @param organizationId - The workspace, from the session.
+   * @param actorId - Who submitted it, from the session — what the trail records.
    * @param request - The pool, repository, ref, commit and command.
    * @returns The job, `queued`. Dispatch has been kicked and may already have offered it.
    * @throws {NotFoundError} `farm_pool_not_found` or `farm_repository_not_found`.
    * @throws {ConflictError} `farm_pool_disabled`.
    * @throws {InvalidRequestError} `farm_command_required`.
    */
-  submit(organizationId: string, request: BuildJobRequest): Promise<BuildJobResource> {
-    return this.enqueue(organizationId, request, null);
+  submit(
+    organizationId: string,
+    actorId: string,
+    request: BuildJobRequest,
+  ): Promise<BuildJobResource> {
+    return this.enqueue(organizationId, actorId, request, null);
   }
 
   /**
@@ -91,7 +106,8 @@ export class FarmJobsService {
     runId: string,
     request: BuildJobRequest,
   ): Promise<BuildJobResource> {
-    return this.enqueue(organizationId, request, runId);
+    // No person authorised this one: the run did, and the event names it by `runId`.
+    return this.enqueue(organizationId, null, request, runId);
   }
 
   /**
@@ -132,12 +148,14 @@ export class FarmJobsService {
    * The one path both entry points share.
    *
    * @param organizationId - The workspace.
+   * @param actorId - The person who submitted it, or null when a run did.
    * @param request - What to build.
    * @param runId - The loop run, or null for a user- or API-submitted build.
    * @returns The job.
    */
   private async enqueue(
     organizationId: string,
+    actorId: string | null,
     request: BuildJobRequest,
     runId: string | null,
   ): Promise<BuildJobResource> {
@@ -171,6 +189,22 @@ export class FarmJobsService {
       env: {},
       queued_at: this.now(),
     });
+
+    // A refusal above threw before anything was written, so it records nothing: the trail is
+    // of builds that were submitted, not of attempts. The repository is named as it was
+    // stored — lower-cased — so one repository is one spelling to whoever filters the trail.
+    await this.audit.jobSubmitted(
+      { organizationId, actorId, at: job.queued_at },
+      {
+        jobId: job.id,
+        number: job.number,
+        pool: pool.name,
+        repository: `${owner}/${name}`,
+        ref: request.ref,
+        commit: request.commit,
+        runId,
+      },
+    );
 
     void this.dispatcher.kick();
 

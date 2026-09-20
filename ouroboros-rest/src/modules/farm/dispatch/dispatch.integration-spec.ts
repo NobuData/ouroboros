@@ -414,6 +414,47 @@ describe("build dispatch", () => {
       expect(await jobs(context)).toEqual([]);
     });
 
+    it("RECORDS WHO SUBMITTED WHAT — and nothing for a submission it refused (#260)", async () => {
+      const context = await farm();
+      const member = await api.signIn();
+      await api.join(context.workspace.id, member, "member");
+
+      const job = bodyOf<BuildJobResource>(
+        await submit(context, { command: ["sh", "-c", "echo hunter2"] }, member),
+      );
+      await submit(context, { pool: "pool-z" }, member, 404);
+
+      const { rows } = await api.sql.query<{
+        actor_id: string;
+        subject_type: string;
+        subject_id: string;
+        detail: Record<string, unknown>;
+      }>(
+        `select actor_id, subject_type, subject_id, detail from ouroboros.audit_events
+          where organization_id = $1 and action = 'runner.job_submitted'`,
+        [context.workspace.id],
+      );
+
+      // One row: the refused submission queued nothing and recorded nothing. It names the
+      // member, not the workspace's owner — the actor is the session's — and carries what was
+      // asked to be built, never the command that builds it.
+      expect(rows).toEqual([
+        {
+          actor_id: member.id,
+          subject_type: "build_job",
+          subject_id: job.id,
+          detail: {
+            number: job.number,
+            pool: "pool-a",
+            repository: "acme-robotics/helios-firmware",
+            ref: "refs/heads/main",
+            commit: COMMIT,
+          },
+        },
+      ]);
+      expect(JSON.stringify(rows)).not.toContain("hunter2");
+    });
+
     it("lets a member submit and cancel, and refuses a viewer", async () => {
       const context = await farm();
       const member = await api.signIn();

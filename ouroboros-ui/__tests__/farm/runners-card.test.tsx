@@ -15,7 +15,6 @@ import {
   RUNNERS_CAPTION,
   RUNNERS_TITLE,
   RUNNERS_UNREAD_TITLE,
-  RUNNER_ACTIONS_SOON,
   RUNNER_COLUMNS,
   runnerActionsLabel,
 } from "@/app/farm/runners";
@@ -47,6 +46,15 @@ vi.mock("@/app/farm/pool-actions", () => ({
   deletePool: vi.fn(),
   updatePool: vi.fn(),
 }));
+
+// The runner menu and the submit dialog (#260) share the screen; this suite presses neither.
+vi.mock("@/app/farm/lifecycle-actions", () => ({
+  drainRunner: vi.fn(),
+  undrainRunner: vi.fn(),
+  removeRunner: vi.fn(),
+}));
+
+vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
 
 /**
  * The runners table as it is drawn (#257): mockup 08's `RUNNERS` card from the seeded farm, row
@@ -124,9 +132,13 @@ function cellsOf(row: HTMLElement): string[] {
   });
 }
 
-/** The card's polite region, where the current row is said out loud. */
+/**
+ * The card's polite region where the current row is said out loud — the first of three since
+ * #260, which added one for what a lifecycle write did and one for queue depths that moved
+ * (`runner-menu.test.tsx`). Separate regions, so one being said never replaces another.
+ */
 function announcement(): HTMLElement {
-  return within(card()).getByRole("status");
+  return within(card()).getAllByRole("status")[0];
 }
 
 beforeEach(() => {
@@ -482,17 +494,21 @@ describe("what cannot act yet", () => {
     expect(container.querySelector("a")).toBeNull();
   });
 
-  it("draws each row's ⋯ as inert, named for its machine, and out of the tab order", () => {
+  it("no longer counts a row's ⋯ among them: it acts, is named for its machine, and is a tab stop", () => {
+    // #260 built the menu this control was waiting for. What it opens, for whom, and what each
+    // item does is `runner-menu.test.tsx`'s; what is held here is that the *soon* is gone —
+    // and that it joined the tab order, because a control that acts must be reachable.
     draw();
 
     for (const name of ["forge-01", "forge-02", "forge-03", "anvil-mac", "bigiron"]) {
       const control = within(rowFor(name)).getByRole("button", { name: runnerActionsLabel(name) });
 
-      expect(control).toHaveAttribute("aria-disabled", "true");
-      expect(control).toHaveAttribute("title", RUNNER_ACTIONS_SOON);
-      expect(control).toHaveAttribute("tabindex", "-1");
+      expect(control).not.toHaveAttribute("aria-disabled");
+      expect(control).not.toHaveAttribute("title");
+      expect(control).not.toHaveAttribute("tabindex");
+      expect(control).toHaveAttribute("aria-haspopup", "menu");
+      expect(control).toHaveAttribute("aria-expanded", "false");
     }
-    expect(RUNNER_ACTIONS_SOON).toContain("#260");
   });
 });
 

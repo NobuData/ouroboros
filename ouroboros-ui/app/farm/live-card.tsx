@@ -10,6 +10,7 @@ import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 import { useFarm } from "./farm-store";
 import {
   FULL_LOG,
+  LIVE_CARD_TITLE_ID,
   LIVE_UNREAD,
   LOG_LABEL,
   type LiveJob,
@@ -84,8 +85,8 @@ export function LiveCard({ log }: Readonly<{ log?: LogStreamOptions }>) {
   );
 }
 
-/** The id the card's `aria-labelledby` points at. */
-const TITLE_ID = "live-card-title";
+/** The id the card's `aria-labelledby` points at — shared with the submit toast (#260). */
+const TITLE_ID = LIVE_CARD_TITLE_ID;
 
 /** Milliseconds in a second. */
 const MS_PER_SECOND = 1000;

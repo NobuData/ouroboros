@@ -13,7 +13,10 @@
  * `DispatchRepository.queueDepth` answers that for one runner and is the definition this file
  * is held to — {@link queueDepths} is the same predicate as a `group by`, asserted against it
  * by the suite so the two cannot drift. Asking it N times would be an N+1 against a table
- * that grows with a workspace's build history, on the page a workspace leaves open.
+ * that grows with a workspace's build history, on the page a workspace leaves open. The
+ * certificate each runner presents ({@link liveCertificates}, AI.5's details sheet —
+ * [#260](https://github.com/NobuData/ouroboros/issues/260)) is read the same way: one set
+ * statement for the fleet, never one per row.
  *
  * ---------------------------------------------------------------------------
  * **`coalesce(avg(…), 0)` appears nowhere here, and that is the point.**
@@ -30,7 +33,14 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
-import type { BuildJob, PoolExecutor, Runner, RunnerPool, RunnerStatus } from "../../db/schema";
+import type {
+  BuildJob,
+  PoolExecutor,
+  Runner,
+  RunnerCertificate,
+  RunnerPool,
+  RunnerStatus,
+} from "../../db/schema";
 import type { CacheAggregate, DurationAggregate } from "./fleet.stats";
 import type { FarmWindows } from "./fleet.policy";
 
@@ -216,6 +226,34 @@ export class FleetRepository {
     }
 
     return current;
+  }
+
+  /**
+   * The certificate each runner is presenting — what AI.5's details sheet
+   * ([#260](https://github.com/NobuData/ouroboros/issues/260)) prints as a serial and a
+   * renewal date.
+   *
+   * **Live** is `FarmRepository.liveCertificate`'s predicate exactly — not revoked and not
+   * superseded — as a set over the workspace rather than a lookup for one machine. V041's
+   * `runner_certificates_live_idx` makes it unique per runner, so the map cannot hold a
+   * second candidate. *Live* is not *valid*: a machine that has been off for a quarter still
+   * holds a certificate whose `not_after` has passed, and saying so is the sheet's to do.
+   *
+   * @param organizationId - The workspace.
+   * @returns The certificate by runner id. **A runner without one is absent** — a machine on
+   *   the bearer fallback has none by construction (decision B3), and a revoked one has none
+   *   any more.
+   */
+  async liveCertificates(organizationId: string): Promise<Map<string, RunnerCertificate>> {
+    const rows = await this.database.db
+      .selectFrom("runner_certificates")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("revoked", "=", false)
+      .where("superseded_at", "is", null)
+      .execute();
+
+    return new Map(rows.map((row) => [row.runner_id, row]));
   }
 
   /**

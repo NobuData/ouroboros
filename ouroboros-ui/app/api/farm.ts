@@ -12,7 +12,9 @@
  * token's pool. The pools card (AI.4, [#259](https://github.com/NobuData/ouroboros/issues/259))
  * added the three pool writes — create, change and delete. The live log card (AI.6,
  * [#261](https://github.com/NobuData/ouroboros/issues/261)) added AH.5's offset read of one
- * build's log. The lifecycle writes (AI.5, #260) add theirs as they arrive.
+ * build's log. The runner menu and the submit dialog (AI.5,
+ * [#260](https://github.com/NobuData/ouroboros/issues/260)) added the last four: drain, undrain,
+ * the guarded remove, and AH.4's build submission.
  *
  * ### `null` is not `0`, and this module keeps it that way
  *
@@ -78,6 +80,22 @@ export type EnrollmentToken = components["schemas"]["EnrollmentToken"];
  * data, by position, never as text in the stream.
  */
 export type BuildLog = components["schemas"]["BuildLog"];
+
+/**
+ * What a drain or an undrain did (AI.5): the runner as it now stands, and whether the frame
+ * reached a session in the process that answered. **`pushed: false` is not a failure** — the
+ * intent is written first and the agent is told at its next heartbeat.
+ */
+export type RunnerLifecycle = components["schemas"]["RunnerLifecycle"];
+
+/** One build attempt, as a submission answers it (AI.5) — `queued`, with its public number. */
+export type BuildJob = components["schemas"]["BuildJob"];
+
+/**
+ * A build to run (AI.5). **`command` is argv, never a shell string**, and the pool's default
+ * applies when it is absent; **`commit` is required**, because an offer pins the exact commit.
+ */
+export type BuildJobSubmission = components["schemas"]["SubmitBuildJobRequest"];
 
 /** One read of the page, and the cadence the service asked for beside it. */
 export interface FarmObservation {
@@ -260,5 +278,72 @@ export const farm = {
   async deletePool(id: string, client: ApiClient = api()): Promise<void> {
     // A `204`: there is no body to unwrap, and a refusal is thrown by the client's middleware.
     await client.DELETE("/api/v1/farm/pools/{id}", { params: { path: { id } } });
+  },
+
+  /**
+   * Withdraw a runner from dispatch (AI.5, [#260](https://github.com/NobuData/ouroboros/issues/260)):
+   * it declines new offers and **finishes the build it is holding**. There is no deadline.
+   *
+   * **The pill does not change in this answer.** What this writes is `desiredState`; `status`
+   * is the agent's own heartbeat and reads `draining` on the next one.
+   *
+   * @param id The runner.
+   * @param client The client to call through.
+   * @returns The runner as it now stands, and whether the frame was pushed.
+   * @throws {ApiError} `403 forbidden` for anybody but an `owner` or `admin`,
+   *   `404 farm_runner_not_found`, or `409 farm_runner_removed`.
+   */
+  async drainRunner(id: string, client: ApiClient = api()): Promise<RunnerLifecycle> {
+    return unwrap(
+      await client.POST("/api/v1/farm/runners/{id}/drain", { params: { path: { id } } }),
+    );
+  },
+
+  /**
+   * Return a drained runner to dispatch — the other half of {@link farm.drainRunner}.
+   *
+   * @param id The runner.
+   * @param client The client to call through.
+   * @returns The runner as it now stands, and whether the frame was pushed.
+   * @throws {ApiError} As {@link farm.drainRunner}.
+   */
+  async undrainRunner(id: string, client: ApiClient = api()): Promise<RunnerLifecycle> {
+    return unwrap(
+      await client.POST("/api/v1/farm/runners/{id}/undrain", { params: { path: { id } } }),
+    );
+  },
+
+  /**
+   * Retire a runner from the fleet — **guarded to machines that are `offline` or `draining`**.
+   *
+   * The service applies the guard again inside the write, so a machine that heartbeated its
+   * way back to `online` in between is refused with the state it is *now* in. A removal also
+   * revokes the machine's certificate, so it cannot reconnect; its builds keep their rows.
+   *
+   * @param id The runner.
+   * @param client The client to call through.
+   * @returns The runner, `removed`.
+   * @throws {ApiError} `403 forbidden`, `404 farm_runner_not_found`, `409 farm_runner_removed`,
+   *   or `409 farm_runner_not_removable` — with the status it is in under `details.status`.
+   */
+  async removeRunner(id: string, client: ApiClient = api()): Promise<FarmRunner> {
+    return unwrap(await client.DELETE("/api/v1/farm/runners/{id}", { params: { path: { id } } }));
+  },
+
+  /**
+   * Submit a build to a pool (AH.4, [#252](https://github.com/NobuData/ouroboros/issues/252)) —
+   * the MVP's workload source (decision B6). Dispatch is kicked at once, so the job may already
+   * be `offered` by the time this answers.
+   *
+   * @param submission The pool, repository, ref, exact commit and — or the pool's default — argv.
+   * @param client The client to call through.
+   * @returns The job, `queued`, with the number it is known by.
+   * @throws {ApiError} `403 forbidden` for a `viewer`, `404 farm_pool_not_found` or
+   *   `404 farm_repository_not_found`, `409 farm_pool_disabled`, or `422` —
+   *   `farm_command_required`, or `validation_failed` naming the field. **A refusal means
+   *   nothing was queued.**
+   */
+  async submitJob(submission: BuildJobSubmission, client: ApiClient = api()): Promise<BuildJob> {
+    return unwrap(await client.POST("/api/v1/farm/jobs", { body: submission }));
   },
 };

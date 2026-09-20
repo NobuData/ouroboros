@@ -11,6 +11,9 @@ import { PoolProvider } from "./pool-store";
 import { PoolsCard } from "./pools-card";
 import { RunnersCard } from "./runners-card";
 import { SelectionProvider } from "./selection-store";
+import { SubmitDialog } from "./submit-dialog";
+import { SubmitProvider } from "./submit-store";
+import { SubmitToast } from "./submit-toast";
 
 import "./farm.css";
 
@@ -39,13 +42,20 @@ import "./farm.css";
  * the mockup's `c-12`. It reads the store for *which* build is running and a stream of its own
  * for what that build printed (`app/farm/log-stream.ts`), and it follows the runner selected in
  * the table, which is why the selection is provided here too (`app/farm/selection-store.tsx`).
+ * The submit-build dialog (AI.5, [#260](https://github.com/NobuData/ouroboros/issues/260)) has
+ * two doors as well — the head's **Submit build** and each pool's row — so its state and the
+ * toast it leaves are provided here (`app/farm/submit-store.tsx`), and the dialog is mounted
+ * once, beside the grid rather than inside any one card.
  *
  * ### One role decision, made by the route
  *
  * Everything on the page may be read by every member. What a role changes is what may be
- * written — minting a token and changing a pool are `owner` or `admin` — so the route hands down
- * one boolean ({@link FarmReader}) and the head's **+ Enroll runner**, the enroll card and the
- * pools card all draw from it. The gate that **enforces** is the service's.
+ * written — minting a token, changing a pool, and draining or removing a runner are `owner` or
+ * `admin` — so the route hands down one boolean ({@link FarmReader}) and the head, the runners
+ * table's `⋯` menus, the enroll card and the pools card all draw from it. **Submit build** draws
+ * from it too: the service admits a `member` there, and the issue gates the page's control to
+ * administrators, so the page is the stricter of the two. The gate that **enforces** is the
+ * service's.
  *
  * The banner sits above the head rather than in the grid, for the dashboard's reason: it is a
  * fact about the whole page, and a reader handed old data should be told before they read it.
@@ -73,19 +83,23 @@ export function FarmScreen({
     <FarmProvider initial={readings.page} poll={poll} readAt={readings.readAt}>
       <PoolProvider>
         <SelectionProvider>
-          <main className="farm">
-            <FarmBanner />
-            <FarmHead mayAdminister={reader.mayAdminister} />
-            <div className="farm__grid">
-              <FarmStatRow />
-              <RunnersCard />
-              <div className="farm-col--4 farm__side">
-                <EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />
-                <PoolsCard mayAdminister={reader.mayAdminister} />
+          <SubmitProvider>
+            <main className="farm">
+              <FarmBanner />
+              <FarmHead mayAdminister={reader.mayAdminister} />
+              <SubmitToast />
+              <div className="farm__grid">
+                <FarmStatRow />
+                <RunnersCard mayAdminister={reader.mayAdminister} />
+                <div className="farm-col--4 farm__side">
+                  <EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />
+                  <PoolsCard mayAdminister={reader.mayAdminister} />
+                </div>
+                <LiveCard log={log} />
               </div>
-              <LiveCard log={log} />
-            </div>
-          </main>
+              <SubmitDialog />
+            </main>
+          </SubmitProvider>
         </SelectionProvider>
       </PoolProvider>
     </FarmProvider>
@@ -95,7 +109,8 @@ export function FarmScreen({
 /** Who is reading the farm, as far as the page needs to know. */
 export interface FarmReader {
   /**
-   * Whether this reader may mint and revoke enrollment tokens and change pools —
+   * Whether this reader may mint and revoke enrollment tokens, change pools, drain, undrain and
+   * remove runners, and — on this page — submit a build:
    * `app/api/membership.ts`'s `mayAdminister`, decided once by the route. A boolean rather than a
    * role, so there is one place deciding what a role may do.
    */

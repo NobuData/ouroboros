@@ -35,6 +35,15 @@ vi.mock("@/app/farm/pool-actions", () => ({
   updatePool: vi.fn(),
 }));
 
+// The runner menu and the submit dialog (#260) share the screen; this suite presses neither.
+vi.mock("@/app/farm/lifecycle-actions", () => ({
+  drainRunner: vi.fn(),
+  undrainRunner: vi.fn(),
+  removeRunner: vi.fn(),
+}));
+
+vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
+
 // The route passes the screen no test seam, so the poll it starts is the real one; what it asks
 // is this origin, which answers nothing here — the page under test is the server's.
 vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));

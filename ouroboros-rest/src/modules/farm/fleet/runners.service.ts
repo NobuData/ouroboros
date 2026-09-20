@@ -272,10 +272,11 @@ export class RunnersService {
    * @throws {NotFoundError} `farm_runner_not_found` if it has gone in between.
    */
   private async view(organizationId: string, runnerId: string): Promise<RunnerResource> {
-    const [rows, depths, current] = await Promise.all([
+    const [rows, depths, current, certificates] = await Promise.all([
       this.fleet.runners(organizationId),
       this.fleet.queueDepths(organizationId),
       this.fleet.currentJobs(organizationId),
+      this.fleet.liveCertificates(organizationId),
     ]);
 
     const row = rows.find((candidate) => candidate.runner.id === runnerId);
@@ -285,12 +286,14 @@ export class RunnersService {
         poolName: row.poolName,
         queueDepth: depths.get(runnerId) ?? 0,
         currentJob: current.get(runnerId),
+        certificate: certificates.get(runnerId),
       });
     }
 
     // A removal takes the runner out of `runners()`, which excludes retired machines — so the
     // row it just wrote is read directly. The retired resource is what the caller is owed:
-    // `status: removed`, no telemetry, no queue.
+    // `status: removed`, no telemetry, no queue — and no certificate, which the removal has
+    // just revoked (and a bearer-fallback machine never held).
     const removed = await this.fleet.runnerById(organizationId, runnerId);
     if (!removed) throw runnerNotFound();
 
@@ -301,6 +304,7 @@ export class RunnersService {
       poolName: pool?.name ?? "",
       queueDepth: 0,
       currentJob: undefined,
+      certificate: undefined,
     });
   }
 }

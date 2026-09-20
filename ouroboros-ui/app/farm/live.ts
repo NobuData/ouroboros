@@ -181,6 +181,13 @@ export function liveTitle(job: LiveJob | null): string {
   return `${LIVE_TITLE} — ${job.runner === null ? subject : `${job.runner} · ${subject}`}`;
 }
 
+/**
+ * The id of the card's heading — what its `aria-labelledby` points at, and **where the submit
+ * toast's *Go to the live log* lands** (AI.5, #260; `app/farm/submit-toast.tsx`). One constant
+ * for both, so the toast cannot point at a heading the card no longer has.
+ */
+export const LIVE_CARD_TITLE_ID = "live-card-title";
+
 /** The empty state, in the issue's words. */
 export const NO_BUILDS_RUNNING = "No builds running — submit one or wait for the loop.";
 

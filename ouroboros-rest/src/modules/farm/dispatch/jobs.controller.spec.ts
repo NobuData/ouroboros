@@ -2,6 +2,7 @@ import { HttpStatus } from "@nestjs/common";
 import { HTTP_CODE_METADATA } from "@nestjs/common/constants";
 import { Reflector } from "@nestjs/core";
 
+import type { Principal } from "../../auth/principal";
 import type { Organization } from "../../db/schema";
 import { CONTRIBUTORS, REQUIRED_ROLES } from "../../tenancy/roles.guard";
 import { COMMIT, JOB, ORG, jobView } from "./dispatch.fixture";
@@ -12,6 +13,7 @@ import type { FarmJobsService } from "./jobs.service";
 /** The two job routes (#252): who may call them, and that the workspace is the session's. */
 describe("the build job routes", () => {
   const TENANT = { id: ORG } as Organization;
+  const PRINCIPAL = { user: { id: "user_ken" } } as Principal;
   const reflector = new Reflector();
 
   function subject(): { controller: FarmJobsController; jobs: jest.Mocked<FarmJobsService> } {
@@ -38,7 +40,9 @@ describe("the build job routes", () => {
     );
   });
 
-  it("submits into the session's workspace", async () => {
+  it("submits into the session's workspace, as the session's user", async () => {
+    // Both come off the session and neither off the body: the workspace scopes the build, and
+    // the user is who the audit trail says submitted it (#260).
     const { controller, jobs } = subject();
     const body = {
       pool: "pool-a",
@@ -47,9 +51,9 @@ describe("the build job routes", () => {
       commit: COMMIT,
     };
 
-    await controller.submit(TENANT, body);
+    await controller.submit(TENANT, PRINCIPAL, body);
 
-    expect(jobs.submit).toHaveBeenCalledWith(ORG, body);
+    expect(jobs.submit).toHaveBeenCalledWith(ORG, "user_ken", body);
   });
 
   it("cancels in the session's workspace", async () => {

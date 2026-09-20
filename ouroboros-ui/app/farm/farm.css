@@ -378,6 +378,204 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- runner actions (#260) ---------- */
+
+/*
+ * What stands beside the pill while intent and observation disagree — `drain requested`. The
+ * warn ink rather than the muted one `last seen` takes: it is something an operator did, and it
+ * has not taken effect yet.
+ */
+.farm-runners__intent {
+  color: var(--warn);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+/* Somewhere for the card's focus rescue to look, and no box on screen. */
+.farm-runners__scope {
+  display: contents;
+}
+
+/* The confirmation's body: the shell overlay owns the frame, this groups what is inside it. */
+.farm-lifecycle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* What a removal does, as a list to be read rather than a sentence to be skimmed. */
+.farm-lifecycle__consequences {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding-left: var(--sp-8);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.farm-lifecycle__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The safe answer first, the write beside it — and they wrap rather than crowd. */
+.farm-lifecycle__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+/* ---------- the runner details sheet (#260) ---------- */
+
+/* One titled group of facts; the list inside it is the job sheet's. */
+.farm-runner-sheet__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.farm-runner-sheet__heading {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+/* A wider term column than the job sheet's: `Certificate expires` is the longest term here. */
+.farm-runner-sheet__group .farm-job__term {
+  width: 9rem;
+}
+
+/* The value and the sentence under it stack, so a warning's words sit below what they explain. */
+.farm-runner-sheet__group .farm-job__value {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A fact's value. Plain by default; the modifiers below are the three ways it is not. */
+.farm-runner-sheet__value {
+  min-width: 0;
+}
+
+.farm-runner-sheet__value--mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* Hue is never the only signal: a toned value always has `.farm-runner-sheet__note` under it. */
+.farm-runner-sheet__value--warn {
+  color: var(--warn);
+}
+
+.farm-runner-sheet__value--err {
+  color: var(--err);
+}
+
+.farm-runner-sheet__note {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the submit-build dialog (#260) ---------- */
+
+.farm-submit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* The command, as the words it will be sent as — each its own chip, so the split can be seen. */
+.farm-submit__argv {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.farm-submit__argv-lead {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+.farm-submit__word {
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  overflow-wrap: anywhere;
+}
+
+.farm-submit__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.farm-submit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-5);
+}
+
+/*
+ * The toast's seat, under the head: always mounted so the live region exists before it has
+ * something to say, and collapsed to nothing while it is empty.
+ */
+.farm-submit-toast__seat:empty {
+  display: none;
+}
+
+.farm-submit-toast__seat {
+  margin-bottom: var(--sp-8);
+}
+
+/* The enroll card's toast, at the page's measure: the accent triple says *this happened*. */
+.farm-submit-toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-6);
+  padding: var(--sp-4) var(--sp-6);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.farm-submit-toast__text {
+  flex: 1;
+  min-width: 14rem;
+}
+
+/* A pool row's own door to the dialog, under its line and its sub-toggle. */
+.farm-pool__submit {
+  display: flex;
+  margin-top: var(--sp-3);
+}
+
 /* ---------- the enroll card (#258) ---------- */
 
 /* The card's own rhythm: a column of short paragraphs around one block. */

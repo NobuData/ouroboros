@@ -100,17 +100,18 @@ export class FleetService {
   }
 
   /**
-   * The fleet, with each runner's queue depth and current build.
+   * The fleet, with each runner's queue depth, current build and live certificate.
    *
    * @param organizationId - The workspace.
    * @returns The resources the table renders, and the rows the stat row counts — the same
    *   machines, returned together so the two can never be taken from different reads.
    */
   private async runners(organizationId: string): Promise<FleetView> {
-    const [rows, depths, current] = await Promise.all([
+    const [rows, depths, current, certificates] = await Promise.all([
       this.fleet.runners(organizationId),
       this.fleet.queueDepths(organizationId),
       this.fleet.currentJobs(organizationId),
+      this.fleet.liveCertificates(organizationId),
     ]);
 
     return {
@@ -122,6 +123,8 @@ export class FleetService {
           // which has no row for a runner with an empty queue.
           queueDepth: depths.get(row.runner.id) ?? 0,
           currentJob: current.get(row.runner.id),
+          // Absent means it holds none: a bearer-fallback machine, or a revoked certificate.
+          certificate: certificates.get(row.runner.id),
         }),
       ),
       rows: rows.map((row) => row.runner),

@@ -50,6 +50,15 @@ vi.mock("@/app/farm/enroll-actions", () => ({
   revokeEnrollmentToken: vi.fn(),
 }));
 
+// The runner menu and the submit dialog (#260) share the screen; this suite presses neither.
+vi.mock("@/app/farm/lifecycle-actions", () => ({
+  drainRunner: vi.fn(),
+  undrainRunner: vi.fn(),
+  removeRunner: vi.fn(),
+}));
+
+vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
+
 /**
  * The pools card on the farm screen (#259): the seeded rows reading exactly as mockup 08 draws
  * them, composed from the live page; the enable switch and the auto-scale sub-toggle persisting

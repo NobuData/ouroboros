@@ -13110,6 +13110,41 @@ export interface components {
             capabilities: {
                 [key: string]: unknown;
             };
+            /**
+             * @description The certificate it is presenting, for the details sheet
+             *     ([#260](https://github.com/NobuData/ouroboros/issues/260)). **Null when it holds
+             *     none** — a machine on the bearer fallback has none by construction (decision B3), and
+             *     a removal revokes the one a retired machine held.
+             */
+            certificate: components["schemas"]["RunnerCertificateRef"] | null;
+        };
+        /**
+         * RunnerCertificateRef
+         * @description The certificate a runner is presenting, as the details sheet prints it
+         *     ([#260](https://github.com/NobuData/ouroboros/issues/260)) — a serial and two dates.
+         *
+         *     **Live is not valid.** The certificate is the one that is neither revoked nor superseded,
+         *     and a machine that has been switched off for a quarter still holds one whose `notAfter`
+         *     has passed. A client says so; this payload does not hide it.
+         *
+         *     None of the three is a secret. A serial travels in every handshake and is recorded by the
+         *     `runner.enrolled` audit event; the fingerprint and the rest are on `RunnerCertificate`,
+         *     which a revocation answers to an `owner` or `admin`.
+         */
+        RunnerCertificateRef: {
+            /** @description Lower-case hex. */
+            serial: string;
+            /**
+             * Format: date-time
+             * @description When it stops being accepted. May be in the past.
+             */
+            notAfter: string;
+            /**
+             * Format: date-time
+             * @description When the agent starts renewing — `notAfter` less the renewal lead, the same instant
+             *     the agent was handed as `renewAfter` when the certificate was issued.
+             */
+            renewAfter: string;
         };
         /**
          * RunnerTelemetry

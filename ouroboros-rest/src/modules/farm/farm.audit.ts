@@ -37,6 +37,7 @@ import {
   RUNNER_CERT_REVOKED_EVENT,
   RUNNER_DRAINED_EVENT,
   RUNNER_ENROLLED_EVENT,
+  RUNNER_JOB_SUBMITTED_EVENT,
   RUNNER_POOL_CREATED_EVENT,
   RUNNER_POOL_DELETED_EVENT,
   RUNNER_POOL_UPDATED_EVENT,
@@ -379,6 +380,53 @@ export class FarmAudit {
       subjectId: pool.id,
       at: actor.at,
       detail: { name: pool.name },
+    });
+  }
+
+  /**
+   * A build was submitted to a pool (AH.4's submission, audited since AI.5 —
+   * [#260](https://github.com/NobuData/ouroboros/issues/260)).
+   *
+   * What is recorded is **what was asked to be built, never the command that builds it**. The
+   * command is argv somebody typed, and a token pasted onto a command line is the likeliest
+   * secret a submission will ever carry — so there is no parameter here it could arrive in.
+   * The job row holds the command for whoever may read the job; the trail holds who asked.
+   *
+   * @param actor - Who, where and when. `actorId` is `null` when a run submitted the build
+   *   rather than a person; `runId` then says which.
+   * @param job - The build: its id and public number, the pool, and the exact commit of which
+   *   repository and ref.
+   * @returns When the event is written.
+   */
+  async jobSubmitted(
+    actor: FarmActor,
+    job: {
+      jobId: string;
+      number: number;
+      pool: string;
+      repository: string;
+      ref: string;
+      commit: string;
+      runId: string | null;
+    },
+  ): Promise<void> {
+    await this.audit.record({
+      organizationId: actor.organizationId,
+      actorId: actor.actorId,
+      action: RUNNER_JOB_SUBMITTED_EVENT,
+      subjectType: "build_job",
+      subjectId: job.jobId,
+      at: actor.at,
+      detail: {
+        number: job.number,
+        pool: job.pool,
+        repository: job.repository,
+        ref: job.ref,
+        commit: job.commit,
+        // Only when a run submitted it: the detail stays flat scalars, and a key holding
+        // `null` on every build a person submitted would be a fact about nothing.
+        ...(job.runId === null ? {} : { runId: job.runId }),
+      },
     });
   }
 }

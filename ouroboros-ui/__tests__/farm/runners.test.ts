@@ -4,11 +4,14 @@ import {
   BEARER_FALLBACK_NOTE,
   CPU_OK_BELOW,
   CPU_WARN_FROM,
+  DRAIN_REQUESTED,
   FINISHING,
   NEVER_SEEN,
   RUNNER_PILLS,
+  UNDRAIN_REQUESTED,
   buildingPill,
   cpuReading,
+  intentNote,
   isVouchedFor,
   jobFacts,
   jobNote,
@@ -63,6 +66,34 @@ describe("the status pill", () => {
   it("vouches for exactly the three connected statuses — the ones the stat row counts online", () => {
     expect(["online", "building", "draining"].map((s) => isVouchedFor(s as never))).toEqual([true, true, true]);
     expect(["offline", "removed"].map((s) => isVouchedFor(s as never))).toEqual([false, false]);
+  });
+});
+
+describe("intent beside the pill (#260)", () => {
+  it("says nothing while what was asked and what is observed agree", () => {
+    expect(intentNote("online", "active")).toBeNull();
+    expect(intentNote("building", "active")).toBeNull();
+    expect(intentNote("offline", "active")).toBeNull();
+    expect(intentNote("draining", "draining")).toBeNull();
+  });
+
+  it.each(["online", "building", "offline"] as const)(
+    "says a drain was requested of a machine still reporting %s",
+    (status) => {
+      // A drain writes intent; the pill is the agent's own heartbeat and follows on the next
+      // one. Without the note the click would look like it did nothing.
+      expect(intentNote(status, "draining")).toBe(DRAIN_REQUESTED);
+    },
+  );
+
+  it("says a machine returned to service is on its way back, while it still reports draining", () => {
+    expect(intentNote("draining", "active")).toBe(UNDRAIN_REQUESTED);
+  });
+
+  it("says nothing about a machine that is gone", () => {
+    expect(intentNote("removed", "removed")).toBeNull();
+    expect(intentNote("offline", "removed")).toBeNull();
+    expect(intentNote("removed", "draining")).toBeNull();
   });
 });
 
@@ -201,6 +232,8 @@ describe("a row", () => {
       arch: "linux/arm64",
       pool: "pool-a",
       status: "building",
+      desiredState: "active",
+      intent: null,
       degraded: false,
       dim: false,
       lastSeen: null,
@@ -346,6 +379,18 @@ describe("what is said out loud", () => {
 
   it("says how stale an offline row is", () => {
     expect(rowAnnouncement(rows[4]!)).toBe("forge-03, pool-a, offline, last seen 2h ago");
+  });
+
+  it("says what was asked of a machine that has not said so yet (#260)", () => {
+    const drained = runnerRow(
+      farmRunner({ name: "forge-02", status: "online", desiredState: "draining" }),
+      FARM_READ_AT,
+    );
+
+    expect(drained).toMatchObject({ desiredState: "draining", intent: DRAIN_REQUESTED });
+    expect(rowAnnouncement(drained)).toBe("forge-02, pool-a, idle, drain requested");
+    // The seeded bigiron was drained long enough ago that the two agree.
+    expect(rows.find((row) => row.name === "bigiron")?.intent).toBeNull();
   });
 
   it("says the degraded-security mark in words — a shield only the sighted are warned by is half a warning", () => {

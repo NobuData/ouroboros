@@ -74,12 +74,6 @@ export const HEALTH_HISTORY = "Health history →";
  */
 export const HEALTH_HISTORY_SOON = "Health history arrives with #266.";
 
-/**
- * Why a row's `⋯` cannot act: the menu it opens — drain, undrain, remove — is AI.5
- * ([#260](https://github.com/NobuData/ouroboros/issues/260)), which depends on this table.
- */
-export const RUNNER_ACTIONS_SOON = "Runner actions — drain, undrain and remove — arrive with #260.";
-
 /** The glyph on a row's overflow control, verbatim from the mockup. */
 export const RUNNER_ACTIONS_GLYPH = "⋯";
 
@@ -152,6 +146,36 @@ export const RUNNER_PILLS: Readonly<Record<RunnerStatus, RunnerPill>> = {
  */
 export function isVouchedFor(status: RunnerStatus): boolean {
   return status === "online" || status === "building" || status === "draining";
+}
+
+/** What an operator **intended** for a runner — the payload's own vocabulary. */
+export type RunnerIntent = FarmRunner["desiredState"];
+
+/** Beside the pill of a runner that has been drained and has not said so yet. */
+export const DRAIN_REQUESTED = "drain requested";
+
+/** Beside the pill of a runner that has been returned to service and still reports `draining`. */
+export const UNDRAIN_REQUESTED = "returning to service";
+
+/**
+ * What stands beside the pill while intent and observation disagree
+ * (AI.5, [#260](https://github.com/NobuData/ouroboros/issues/260)).
+ *
+ * A drain writes `desiredState`; the pill is `status`, the agent's own heartbeat, and it follows
+ * on the next one. This is the honest reading of the seconds in between: the pill still says
+ * *building*, because that is what the machine last reported, and the note says what was asked
+ * of it. Without it a drain would look like a click that did nothing.
+ *
+ * @param status What the fleet last observed.
+ * @param intent What an operator last intended.
+ * @returns The note, or `null` when the two agree — or when the machine is gone.
+ */
+export function intentNote(status: RunnerStatus, intent: RunnerIntent): string | null {
+  if (status === "removed" || intent === "removed") return null;
+  if (intent === "draining" && status !== "draining") return DRAIN_REQUESTED;
+  if (intent === "active" && status === "draining") return UNDRAIN_REQUESTED;
+
+  return null;
 }
 
 /** What stands beside the pill of a machine that enrolled and never connected. */
@@ -344,6 +368,10 @@ export interface RunnerRow {
   readonly degraded: boolean;
   /** What was last observed, in the payload's vocabulary. */
   readonly status: RunnerStatus;
+  /** What an operator last intended — what decides between Drain and Undrain (#260). */
+  readonly desiredState: RunnerIntent;
+  /** `drain requested`, while intent and observation disagree, or `null`. */
+  readonly intent: string | null;
   /** `last seen 2h ago`, for an offline row and only for one. */
   readonly lastSeen: string | null;
   /** Whether the row is dimmed: the fleet cannot vouch for it. */
@@ -393,6 +421,8 @@ export function runnerRow(runner: FarmRunner, nowMs: number): RunnerRow {
     pool: runner.pool,
     degraded: runner.securityMode === "bearer_fallback",
     status: runner.status,
+    desiredState: runner.desiredState,
+    intent: intentNote(runner.status, runner.desiredState),
     lastSeen: runner.status === "offline" ? lastSeen(runner.lastSeenAt, nowMs) : null,
     dim: !vouched,
     jobId: job?.id ?? null,
@@ -528,6 +558,7 @@ const BEARER_FALLBACK_SHORT = "bearer-token fallback";
 export function rowAnnouncement(row: RunnerRow): string {
   const parts = [row.name, row.pool, RUNNER_PILLS[row.status].label];
 
+  if (row.intent !== null) parts.push(row.intent);
   if (row.lastSeen !== null) parts.push(row.lastSeen);
   if (row.jobNumber !== null && row.jobNote !== null) parts.push(`${row.jobNumber} ${row.jobNote}`);
   if (row.degraded) parts.push(BEARER_FALLBACK_SHORT);

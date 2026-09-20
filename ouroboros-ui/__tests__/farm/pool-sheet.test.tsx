@@ -58,6 +58,15 @@ vi.mock("@/app/farm/enroll-actions", () => ({
   revokeEnrollmentToken: vi.fn(),
 }));
 
+// The runner menu and the submit dialog (#260) share the screen; this suite presses neither.
+vi.mock("@/app/farm/lifecycle-actions", () => ({
+  drainRunner: vi.fn(),
+  undrainRunner: vi.fn(),
+  removeRunner: vi.fn(),
+}));
+
+vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
+
 /**
  * The pool configuration sheet on the farm screen (#259): its two doors, the picker, the image
  * field appearing only for a container pool, an executor edit and an allow-list edit round
