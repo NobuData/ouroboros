@@ -24,6 +24,8 @@ import {
 } from "node:crypto";
 
 import type { FarmAuthority, Runner, RunnerCertificate } from "../db/schema";
+import { enrollCommandUnavailable } from "./farm.errors";
+import type { InstallerService } from "./installer/installer.service";
 import { CURVE, newSerial, runnerUri, selfSignedAuthority } from "./x509/certificate";
 import { issueRunnerCertificate } from "./x509/certificate";
 import { authoritySubject, runnerSubject } from "./x509/name";
@@ -40,6 +42,12 @@ export const FIXTURE_RUNNER = "9c4ab7f0-2d31-4e55-8a0b-6f1c2d3e4a5b";
 
 /** A moment every window in this module is placed around. */
 export const FIXTURE_NOW = new Date("2026-09-18T12:00:00.000Z");
+
+/** The https origin a fixture deployment serves its installer from (AH.6). */
+export const FIXTURE_ORIGIN = "https://ouroboros.acme.dev";
+
+/** The agent release a fixture deployment would install (AH.6). */
+export const FIXTURE_RELEASE = "0.7.0";
 
 /**
  * A fresh P-256 keypair.
@@ -262,4 +270,37 @@ export function certificationRequest(
  */
 export function privateKeyPem(key: KeyObject): string {
   return toPem("PRIVATE KEY", key.export({ type: "pkcs8", format: "der" }));
+}
+
+/**
+ * An {@link InstallerService} that answers with a release, and nothing else.
+ *
+ * AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)). The enroll command needs
+ * two facts from AG.6's installer — this deployment's origin and the release it would serve —
+ * and nothing else about it. A stub rather than a real one because the real one reads a
+ * directory off disk: a suite that had to lay out `<releases>/0.7.0/install.sh` to assert how
+ * a command is *rendered* would be testing the filesystem.
+ *
+ * **Only `enrollTarget` is implemented.** Every other method is absent, so a caller that
+ * reached for one would fail loudly rather than receive `undefined` — which is the property
+ * worth having: minting a token must not read a release file, and this stub is what says so.
+ *
+ * @param target - The origin and version to answer with, or nothing to make the deployment
+ *   one that cannot render a command at all — the `farm_enroll_command_unavailable` case.
+ * @returns The stub.
+ */
+export function installerStub(
+  target: { origin: string; version: string } | undefined = {
+    origin: FIXTURE_ORIGIN,
+    version: FIXTURE_RELEASE,
+  },
+): InstallerService {
+  return {
+    enrollTarget: (): Promise<{ origin: string; version: string }> =>
+      target
+        ? Promise.resolve(target)
+        : Promise.reject(
+            enrollCommandUnavailable("This deployment has no ouroboros-runner release."),
+          ),
+  } as unknown as InstallerService;
 }

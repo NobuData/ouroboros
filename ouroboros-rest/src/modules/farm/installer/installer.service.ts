@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { Injectable } from "@nestjs/common";
 
 import { AppConfigService } from "../../config/config.service";
-import { installerUnavailable, releaseNotFound } from "../farm.errors";
+import { enrollCommandUnavailable, installerUnavailable, releaseNotFound } from "../farm.errors";
 import {
   INSTALL_SCRIPT_FILE,
   RELEASE_FILES,
@@ -22,6 +22,14 @@ export interface InstallScript {
   readonly version: string;
   /** The script, with this deployment's origin filled in. */
   readonly body: string;
+}
+
+/** Where an enroll command points, and at which release. */
+export interface EnrollTarget {
+  /** The https origin runner machines reach this deployment at. */
+  readonly origin: string;
+  /** The newest stable release here — what the command pins with `?version=`. */
+  readonly version: string;
 }
 
 /** One release file, ready to stream. */
@@ -91,6 +99,45 @@ export class InstallerService {
     }
 
     return { version: chosen, body };
+  }
+
+  /**
+   * What an enroll command should point at: this deployment, and the release it would install.
+   *
+   * The same two facts {@link script} resolves, without reading the script — AH.6's enroll
+   * card ([#254](https://github.com/NobuData/ouroboros/issues/254)) needs the origin and the
+   * version to render a one-liner, and has no use for the hundreds of lines of shell that
+   * one-liner downloads. Resolved through the same helpers, so the version the card pins is
+   * the version `GET /install.sh` with no query would have served.
+   *
+   * **Pinned deliberately.** A command with no `?version=` would install whatever was newest
+   * on the day it was *run* rather than the day it was *copied*, and two machines enrolled a
+   * month apart from one pasted command would be two different builds.
+   *
+   * @returns The origin and the release.
+   * @throws {NotFoundError} `farm_enroll_command_unavailable` when this deployment has no
+   *   https origin to name, or no release to install. Distinct from
+   *   `farm_installer_unavailable` because the caller is the enroll card rather than `curl`
+   *   on a build machine — `farm.errors.ts` says why that is worth two codes.
+   */
+  async enrollTarget(): Promise<EnrollTarget> {
+    const origin = installerOrigin(this.config.farmPublicUrl, this.config.restUrl);
+    if (origin === undefined) {
+      throw enrollCommandUnavailable(
+        "This deployment cannot render an enroll command: it does not know the https address " +
+          "runner machines reach it at. Set OURO_FARM_PUBLIC_URL.",
+      );
+    }
+
+    const version = newestRelease(await this.releaseNames(await this.releasesRoot()));
+    if (version === undefined) {
+      throw enrollCommandUnavailable(
+        "This deployment has no ouroboros-runner release to install, so an enroll command " +
+          "would download nothing. Copy one into OURO_FARM_RELEASES_DIR.",
+      );
+    }
+
+    return { origin, version };
   }
 
   /**

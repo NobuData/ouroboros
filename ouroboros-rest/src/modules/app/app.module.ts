@@ -18,6 +18,7 @@ import { HealthModule } from "../health/health.module";
 import { FarmModule } from "../farm/farm.module";
 import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
 import { FarmGatewayModule } from "../farm/gateway/gateway.module";
+import { FarmFleetModule } from "../farm/fleet/fleet.module";
 import { FarmLogsModule } from "../farm/logs/logs.module";
 import { FarmInstallerModule } from "../farm/installer/installer.module";
 import { InternalModule } from "../internal/internal.module";
@@ -391,6 +392,14 @@ export class AppModule {
         // machine about to become a runner; they read two settings and a directory, and nothing
         // else. `farm/installer/installer.controller.ts` is where making them public is argued.
         FarmInstallerModule,
+        // AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)) — mockup 08's read
+        // surfaces and lifecycle actions: `GET /api/v1/farm` with the stat row, the fleet, the
+        // pools and the live build; drain, undrain and the guarded remove; pool CRUD. After
+        // `FarmModule`, whose `RegistrationService` a removal revokes through, and after
+        // `FarmGatewayModule`, whose `RunnerControl` a drain is pushed by and whose clock the
+        // stat row's *2h* is measured against. Reads are every member's and mutations are
+        // `admin` and above, on the routes themselves.
+        FarmFleetModule,
         InternalModule,
       ],
     };

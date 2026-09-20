@@ -83,6 +83,18 @@ export const FARM_ERRORS = {
   commandRequired: "farm_command_required",
   /** A log read asked for an offset past the end of what is stored (#253). */
   logOffsetOutOfRange: "farm_log_offset_out_of_range",
+  /** A removal named a runner that is still connected — the lifecycle guard (#254). */
+  runnerNotRemovable: "farm_runner_not_removable",
+  /** A lifecycle action named a runner that has already been retired (#254). */
+  runnerRemoved: "farm_runner_removed",
+  /** A pool create or rename used a name this workspace already has (#254). */
+  poolNameTaken: "farm_pool_name_taken",
+  /** A pool delete named a pool that still has runners or builds (#254). */
+  poolInUse: "farm_pool_in_use",
+  /** This deployment cannot render an enroll command — no origin, or no release (#254). */
+  enrollCommandUnavailable: "farm_enroll_command_unavailable",
+  /** A pool write would leave a container pool imageless, or a shell pool with one (#254). */
+  poolImageMismatch: "farm_pool_image_mismatch",
 } as const;
 
 /** One of {@link FARM_ERRORS}' values. */
@@ -378,5 +390,157 @@ export function logOffsetOutOfRange(end: number): InvalidRequestError {
     FARM_ERRORS.logOffsetOutOfRange,
     `This build log holds ${String(end)} bytes; there is nothing to read after that.`,
     { end },
+  );
+}
+
+/**
+ * `409` — the runner is still connected, so it may not be removed (AH.6,
+ * [#254](https://github.com/NobuData/ouroboros/issues/254)).
+ *
+ * **The guard the issue asks for, and the error names the reason rather than the rule.**
+ * A machine may be retired when it is `offline` — the fleet cannot reach it anyway — or when
+ * it is `draining`, which is an operator who has already decided and has watched it finish.
+ * Removing a runner mid-build would strand that build: the row would say `removed`, dispatch
+ * would stop offering to it, and the agent would go on compiling something nobody was waiting
+ * for until it tried to report a finish the gateway no longer recognises.
+ *
+ * A conflict rather than a refusal, because it is a fact about the runner's *state* and the
+ * request becomes possible the moment that changes — drain it, and this succeeds. The message
+ * says which of the two ways out applies, since *drain it first* is the answer for a busy
+ * machine and *wait* is the answer for one that is merely reachable.
+ *
+ * @param status - What the fleet last observed, echoed so the message is checkable against
+ *   the row the caller is looking at.
+ * @returns The error.
+ */
+export function runnerNotRemovable(status: string): ConflictError {
+  return new ConflictError(
+    FARM_ERRORS.runnerNotRemovable,
+    `This runner is ${status}; drain it and let it finish, or wait until it goes offline, ` +
+      "before removing it.",
+    { status },
+  );
+}
+
+/**
+ * `409` — the runner has already been retired (AH.6,
+ * [#254](https://github.com/NobuData/ouroboros/issues/254)).
+ *
+ * Not a `404`, even though a removed runner is absent from `GET /api/v1/farm`. The row is
+ * there, the caller may act on this workspace, and *no such runner* would send somebody
+ * looking for a machine they are holding the identifier of. It is the answer to draining,
+ * undraining or re-removing something that is gone — all three of which are the same fact.
+ *
+ * @returns The error.
+ */
+export function runnerRemoved(): ConflictError {
+  return new ConflictError(
+    FARM_ERRORS.runnerRemoved,
+    "This runner has been removed from the fleet.",
+  );
+}
+
+/**
+ * `409` — the workspace already has a pool of that name (AH.6,
+ * [#254](https://github.com/NobuData/ouroboros/issues/254)).
+ *
+ * A pool's name is how the install one-liner names it (`--pool`) and how a submission selects
+ * one, so it is unique per workspace (`runner_pools_organization_name_key`). Raised from that
+ * constraint rather than from a check first, for `runnerNameTaken`'s reason: a check-then-insert
+ * leaves the race it was describing.
+ *
+ * @param name - The name, echoed. The caller's own input.
+ * @returns The error.
+ */
+export function poolNameTaken(name: string): ConflictError {
+  return new ConflictError(
+    FARM_ERRORS.poolNameTaken,
+    `This workspace already has a pool named ${name}.`,
+    { name },
+  );
+}
+
+/**
+ * `409` — the pool still has runners or builds, so it cannot be deleted (AH.6,
+ * [#254](https://github.com/NobuData/ouroboros/issues/254)).
+ *
+ * V040's `runners_pool_fk` and `build_jobs_pool_fk` are `on delete no action`: the database
+ * refuses this delete whatever a service believes, and it refuses it with a foreign-key
+ * violation nobody outside PostgreSQL can read. So the counts are taken first and the refusal
+ * says what is in the way — and the **retired** runners are counted too, because the
+ * constraint counts them.
+ *
+ * **Disabling is the answer most callers want**, and the message says so: `enabled: false`
+ * stops a pool taking new work and keeps its history, which is what *delete* usually means
+ * when a pool has built things.
+ *
+ * @param pool - The pool's name.
+ * @param references - How many runners and builds still name it.
+ * @returns The error.
+ */
+export function poolInUse(
+  pool: string,
+  references: { runners: number; jobs: number },
+): ConflictError {
+  return new ConflictError(
+    FARM_ERRORS.poolInUse,
+    `The pool ${pool} still has ${String(references.runners)} runner(s) and ` +
+      `${String(references.jobs)} build(s); disable it instead, or move them first.`,
+    { pool, runners: references.runners, jobs: references.jobs },
+  );
+}
+
+/**
+ * `404` — this deployment cannot render an enroll command (AH.6,
+ * [#254](https://github.com/NobuData/ouroboros/issues/254)).
+ *
+ * The same shape and the same code family as `installerUnavailable`, and separate from it
+ * because the caller is different: that one answers `curl` on a build machine, this one
+ * answers the enroll card. A command this deployment cannot serve the installer for would be
+ * a one-liner that downloads nothing — mockup 08's `get.ouroboros.dev` is design shorthand,
+ * and the honest answer is to say what is missing rather than to render a public host a
+ * self-hosted tenant never agreed to trust.
+ *
+ * @param reason - What is missing, in a sentence an operator can act on.
+ * @returns The error.
+ */
+export function enrollCommandUnavailable(reason: string): NotFoundError {
+  return new NotFoundError(FARM_ERRORS.enrollCommandUnavailable, reason);
+}
+
+/**
+ * `422` — a container pool must pin an image, and a shell pool must not (AH.6,
+ * [#254](https://github.com/NobuData/ouroboros/issues/254)).
+ *
+ * V040's `runner_pools_image_for_container` is a **both-directions** CHECK, and both
+ * directions earn their place: a container pool with no image has nothing to run a build in,
+ * and a shell pool carrying one is a pinned image nothing will ever pull — which the pools
+ * card would render as a promise the pool does not keep.
+ *
+ * A `422` rather than a `409`, because it is a fact about the request rather than about the
+ * workspace: the body describes a pool that cannot exist. It cannot be decided by the DTO on
+ * a `PATCH`, where the executor may be unchanged and absent — `fleet.dto.ts` says why, and
+ * `pools.service.ts` decides it against the merged row.
+ *
+ * @returns The error.
+ */
+export function imageRequired(): InvalidRequestError {
+  return new InvalidRequestError(
+    FARM_ERRORS.poolImageMismatch,
+    "A container pool must pin the image its builds run in; name one in `image`.",
+    { field: "image", executor: "container" },
+  );
+}
+
+/**
+ * `422` — the other direction of {@link imageRequired}.
+ *
+ * @returns The error.
+ */
+export function imageNotAllowed(): InvalidRequestError {
+  return new InvalidRequestError(
+    FARM_ERRORS.poolImageMismatch,
+    "A shell pool runs on the machine itself and cannot pin an image; clear `image`.",
+    { field: "image", executor: "shell" },
   );
 }

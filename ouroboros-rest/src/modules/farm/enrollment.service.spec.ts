@@ -5,7 +5,7 @@ import { FarmAudit } from "./farm.audit";
 import type { FarmRepository } from "./farm.repository";
 import { DEFAULT_TOKEN_TTL_MS } from "./farm.policy";
 import { parseToken, TOKEN_PREFIX } from "./farm.tokens";
-import { FIXTURE_NOW, FIXTURE_ORGANIZATION, FIXTURE_SEALED } from "./farm.fixture";
+import { FIXTURE_NOW, FIXTURE_ORGANIZATION, FIXTURE_SEALED, installerStub } from "./farm.fixture";
 import type { AuditService } from "../audit/audit.service";
 import type { AuditRecord } from "../audit/audit.events";
 
@@ -81,7 +81,15 @@ function subject(overrides: Partial<Record<string, unknown>> = {}): {
   } as unknown as AuditService;
 
   return {
-    service: new EnrollmentService(farm, vault, new FarmAudit(auditService), () => FIXTURE_NOW),
+    // The installer is the enroll command's (AH.6); minting itself never reaches it, and a
+    // stub that would throw if it did is what says so.
+    service: new EnrollmentService(
+      farm,
+      vault,
+      new FarmAudit(auditService),
+      installerStub(),
+      () => FIXTURE_NOW,
+    ),
     inserted,
     sealed,
     written,

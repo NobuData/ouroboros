@@ -4,8 +4,13 @@ import {
   GITHUB_TOKEN_CLEARED_EVENT,
   RUNNER_CERT_RENEWED_EVENT,
   RUNNER_CERT_REVOKED_EVENT,
+  RUNNER_DRAINED_EVENT,
   RUNNER_ENROLLED_EVENT,
+  RUNNER_POOL_CREATED_EVENT,
+  RUNNER_POOL_DELETED_EVENT,
+  RUNNER_POOL_UPDATED_EVENT,
   RUNNER_REMOVED_EVENT,
+  RUNNER_UNDRAINED_EVENT,
   RUNNER_TOKEN_MINTED_EVENT,
   RUNNER_TOKEN_REVOKED_EVENT,
   GITHUB_TOKEN_ROTATED_EVENT,
@@ -36,7 +41,7 @@ import {
  */
 
 describe("the vocabulary", () => {
-  it("is the ten names AD.4 and AD.3 wrote down, plus K.3's three and AH.2's six", () => {
+  it("is the ten names AD.4 and AD.3 wrote down, plus K.3's three, AH.2's six and AH.6's five", () => {
     // The three `github.*` names are K.3's ([#101](https://github.com/NobuData/ouroboros/issues/101)),
     // under decision **AD.4**'s rule that credential operations are audited from the day they
     // exist. A workspace's GitHub token is a credential like a provider's, and adding a name
@@ -49,6 +54,12 @@ describe("the vocabulary", () => {
     // `runner.removed` is declared here and written by AH.6 (#254), because this file is the
     // vocabulary and a name that existed in one place and was filtered for in another is the
     // thing the list exists to prevent.
+    //
+    // The last five are AH.6's own ([#254](https://github.com/NobuData/ouroboros/issues/254)):
+    // the lifecycle actions on mockup 08's `⋯` menu and the POOLS card's CRUD. Draining is
+    // here because V040 split `status` from `desired_state` precisely so that "who drained
+    // bigiron?" has an answer, and the column records that a decision was made while this
+    // records who made it.
     expect([...AUDIT_ACTIONS]).toEqual([
       "provider.added",
       "provider.revealed",
@@ -69,6 +80,11 @@ describe("the vocabulary", () => {
       "runner.cert_renewed",
       "runner.cert_revoked",
       "runner.removed",
+      "runner.drained",
+      "runner.undrained",
+      "runner.pool_created",
+      "runner.pool_updated",
+      "runner.pool_deleted",
     ]);
   });
 
@@ -87,9 +103,11 @@ describe("the vocabulary", () => {
 
   it("files each event under a family somebody would think to filter on", () => {
     // Nine provider events, one credential-delivery event, three about the workspace's GitHub
-    // token and six about its build farm. The families are what make `action like 'provider.%'`
-    // a useful question — and what keeps *"who changed our GitHub token"* and *"what has
-    // happened to our fleet"* answerable without knowing every name in either.
+    // token and eleven about its build farm — its machines and the pools they run in. The
+    // families are what make `action like 'provider.%'` a useful question — and what keeps
+    // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
+    // without knowing every name in either. The pool events are deliberately inside
+    // `runner.` rather than a family of their own, so the fleet stays one question.
     const families = new Set(AUDIT_ACTIONS.map((action) => action.split(".")[0]));
 
     expect([...families].sort()).toEqual(["credential", "github", "provider", "runner"]);
@@ -119,6 +137,11 @@ describe("the vocabulary", () => {
       RUNNER_CERT_RENEWED_EVENT,
       RUNNER_CERT_REVOKED_EVENT,
       RUNNER_REMOVED_EVENT,
+      RUNNER_DRAINED_EVENT,
+      RUNNER_UNDRAINED_EVENT,
+      RUNNER_POOL_CREATED_EVENT,
+      RUNNER_POOL_UPDATED_EVENT,
+      RUNNER_POOL_DELETED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

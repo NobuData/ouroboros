@@ -16,6 +16,7 @@ import { mintToken, parseToken } from "./farm.tokens";
 import {
   authority,
   certificationRequest,
+  installerStub,
   privateKeyPem,
   runner,
   FIXTURE_NOW,
@@ -224,7 +225,7 @@ describe("what the module answers", () => {
 
     const clock = (): Date => FIXTURE_NOW;
     const authorityService = new FarmAuthorityService(farm, vault, clock);
-    const enrollment = new EnrollmentService(farm, vault, audit, clock);
+    const enrollment = new EnrollmentService(farm, vault, audit, installerStub(), clock);
     const registration = new RegistrationService(farm, authorityService, vault, audit, clock);
 
     const minted = await enrollment.mint(FIXTURE_ORGANIZATION, "user_ken", { pool: "pool-a" });

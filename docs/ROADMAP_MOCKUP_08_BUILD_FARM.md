@@ -596,7 +596,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 | AH.3 | #251 | 🟢 Done | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
 | AH.4 | #252 | 🟢 Done | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.5 | #253 | 🟢 Done | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
-| AH.6 | #254 | 🟡 Open | ouroboros-rest: [AH.6] Farm read APIs & stats | Runners/pools/jobs payloads, stat-row math, lifecycle actions | mvp, build-farm, rest | N (after AH.4) | Y | M | ouroboros-rest |
+| AH.6 | #254 | 🟢 Done | ouroboros-rest: [AH.6] Farm read APIs & stats | Runners/pools/jobs payloads, stat-row math, lifecycle actions | mvp, build-farm, rest | N (after AH.4) | Y | M | ouroboros-rest |
 | AH.7 | #255 | 🟡 Open | ouroboros-rest: [AH.7] Farm integration tests (fake agent) | Protocol contract, dispatch matrix, presence, caps, isolation | mvp, build-farm, rest, ci | N (after AH.4–AH.6) | Y | M | ouroboros-rest |
 
 ### Issue AH.1 — ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs
@@ -956,7 +956,7 @@ log.chunk(seq, bytes) ─▶ append(cap-aware) ─▶ GET ?after=18122 ─▶ {b
 
 ### Issue AH.6 — ouroboros-rest: [AH.6] Farm read APIs & stats
 
-> **GitHub issue:** #254 · **Status:** 🟡 Open · **Parent epic:** #240
+> **GitHub issue:** #254 · **Status:** 🟢 Done · **Parent epic:** #240
 
 
 - **Problem Statement:** The page's read surfaces — runners table, pools,
@@ -983,6 +983,40 @@ log.chunk(seq, bytes) ─▶ append(cap-aware) ─▶ GET ?after=18122 ─▶ {b
 GET /farm ─▶ {stats{4/5, 23(19·3·1), 4m12s ▼38s, 78%}, runners[5], pools[2], live: #479}
 POST /runners/:id/drain ─▶ push drain ─▶ status: draining
 ```
+
+- **Delivered:** [`src/modules/farm/fleet/`](../ouroboros-rest/src/modules/farm/fleet), plus the
+  enroll command on AH.2's controller. **`GET /api/v1/farm`** is the page in one observation —
+  four statements over one set of boundaries, because `4/5` counts the rows in the table beside
+  it and a pool's `3 runners` partitions the same set. **The windows have edges.** They are
+  computed once per request (`fleet.policy.ts`): *today* is a calendar day in **UTC**, through
+  the same `startOfDay` the dashboard uses so two pages mean one day, and the payload publishes
+  the `since` instant and the zone rather than leaving *today* a word; *last week* is the seven
+  whole days **before** today, stepped back from the day boundary rather than from `now`, so the
+  two windows are adjacent and disjoint and today's builds are never on both sides of their own
+  comparison. **`null` is not `0`** (`fleet.stats.ts`): a count of nothing is zero, an average of
+  nothing is null — `0m 00s` is not a fast farm and `0%` is not a cache that missed — and
+  `deltaVsLastWeek` is **absent** when either window is empty rather than claiming a comparison
+  nobody made. That is also why the repository returns sums and counts separately and
+  `coalesce(avg(…), 0)` appears nowhere: the zero the database would supply is the value the
+  issue refuses. **The cache label is composed from B5**, not written out — `ccache · per-runner`
+  until AJ.2 (#264), and `grep CACHE_SHARING` is that whole edit. **Lifecycle**: drain and undrain
+  go through AH.3's `RunnerControl`, so the intent is written first and the push is an
+  optimisation of it; the **pill stays the agent's**, which is what keeps *who drained bigiron?*
+  answerable (`runner.drained`). Removal is **guarded to offline or drained**, checked for a
+  readable error and applied again in the `update`'s `where` because a machine can heartbeat back
+  to `online` in between; it revokes the certificate through `RegistrationService` — newly
+  exported, and the header argues why that export bypasses nothing. **Pool CRUD** with the card's
+  switch, and `autoscale_pref` stored, inert and returned unchanged (B9). **The enroll command**
+  renders this deployment's own origin, a pinned release and a live token, every value
+  shell-quoted; it is the second place in the product a token value reaches a response, and
+  `farm.resources.ts`' greppable claim was amended to say so. **Verification**: 118 unit tests and
+  49 integration cases — every mockup number against real rows, a build two minutes either side
+  of midnight, an empty organization, the delta's absence, a drain round-tripped to a live fake
+  agent and the pill following its heartbeat, the removal guard, `autoscale_pref`'s round trip, an
+  enroll command whose token is **spent against the real registration route**, the member/admin
+  split on all seven mutations, and isolation on every route; five mutation spot checks each
+  turned them red. Not here: a runner's health history (AJ.4, #266) and the auto-scale the
+  preference describes (AJ.1, #263).
 
 ### Issue AH.7 — ouroboros-rest: [AH.7] Farm integration tests (fake agent)
 
