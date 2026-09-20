@@ -597,7 +597,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 | AH.4 | #252 | 🟢 Done | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.5 | #253 | 🟢 Done | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
 | AH.6 | #254 | 🟢 Done | ouroboros-rest: [AH.6] Farm read APIs & stats | Runners/pools/jobs payloads, stat-row math, lifecycle actions | mvp, build-farm, rest | N (after AH.4) | Y | M | ouroboros-rest |
-| AH.7 | #255 | 🟡 Open | ouroboros-rest: [AH.7] Farm integration tests (fake agent) | Protocol contract, dispatch matrix, presence, caps, isolation | mvp, build-farm, rest, ci | N (after AH.4–AH.6) | Y | M | ouroboros-rest |
+| AH.7 | #255 | 🟢 Done | ouroboros-rest: [AH.7] Farm integration tests (fake agent) | Protocol contract, dispatch matrix, presence, caps, isolation | mvp, build-farm, rest, ci | N (after AH.4–AH.6) | Y | M | ouroboros-rest |
 
 ### Issue AH.1 — ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs
 
@@ -1020,7 +1020,7 @@ POST /runners/:id/drain ─▶ push drain ─▶ status: draining
 
 ### Issue AH.7 — ouroboros-rest: [AH.7] Farm integration tests (fake agent)
 
-> **GitHub issue:** #255 · **Status:** 🟡 Open · **Parent epic:** #240
+> **GitHub issue:** #255 · **Status:** 🟢 Done · **Parent epic:** #240
 
 
 - **Problem Statement:** Protocol, dispatch, presence, and caps are
@@ -1041,6 +1041,51 @@ POST /runners/:id/drain ─▶ push drain ─▶ status: draining
 FakeAgent scripts: happy ✓ · lost-runner requeue ✓ · resume ✓ · caps ✓ · isolation ✓
 golden fixtures ⇄ Go agent tests (one protocol, two implementations)
 ```
+
+- **Delivered:** the **scripted peer** and the two suites that need one nobody owned.
+  [`gateway/fake.agent.fixture.ts`](../ouroboros-rest/src/modules/farm/gateway/fake.agent.fixture.ts)
+  grew from AH.3's handshake-only stand-in into the misbehaving agent this issue names —
+  `hello`/`heartbeat`/`accept`/`decline`/`start`/`progress`/`chunk`/`stream`/`finish`, and beside
+  them `drop`, `reconnect`, `bye` and a `terminal` that hands back the frame *unsent* so a suite
+  can deliver the same bytes twice. Every one of them builds its frame from a file under
+  `schemas/runner-protocol/fixtures/` through one private helper, so no frame is ever typed from
+  what its author remembered the protocol to be. Two of the issue's scripted misbehaviours got no
+  method: a **wedged** peer is the existing `quiet`, and a peer that **outruns the log cap** is a
+  `log.chunk` run AH.5's suite already builds and asserts far more precisely — the elision at its
+  exact offset, the cap and the agent's own tail as one figure. Shipping an unused helper and a
+  weaker second copy of that assertion would have been worse than shipping neither.
+  [`farm.lifecycle.integration-spec.ts`](../ouroboros-rest/src/modules/farm/farm.lifecycle.integration-spec.ts)
+  is the chain with no seams in it — a token minted over HTTP, spent over HTTP, the certificate it
+  issued presented on a real socket, a build submitted by a person, offered, accepted, **streamed**
+  and finished, then read back as a row, a log and the stat row. The five module suites each reach
+  for the seam beside them (dispatch inserts the log it never streams; logs insert the job nothing
+  dispatched), and every one of those is a place two modules can pass their own suites and still
+  disagree. What it adds is the crossings: a runner killed mid-job requeues once, fails terminally,
+  and **the dead attempt's log is still readable**; a terminal frame re-sent after a real reconnect
+  applies once **and does not append the output twice**; a declined offer is run to completion by
+  somebody else.
+  [`farm.isolation.integration-spec.ts`](../ouroboros-rest/src/modules/farm/farm.isolation.integration-spec.ts)
+  settles *every* route rather than a sample: it walks AH.2's own `routeTable` — the enumeration
+  `guard.surface` uses to ask what a **stranger** gets — and asks what a **neighbour** gets, a
+  signed-in administrator of another workspace, which is the more dangerous caller because every
+  guard before the query admits them. Its first test compares the written-down claims against what
+  the router registered, so a farm route added without one **fails rather than going uncovered**;
+  that caught five routes the per-feature blocks had never touched, the authority and the three
+  token routes among them. Each refusal is asserted **with the row afterwards**, since a `404`
+  served after the delete would satisfy a status-only check. The unsessioned four are a different
+  claim and are written as one: the credential decides the workspace, and a tenant header naming
+  another cannot move it.
+- **Not built, because it already existed:** the issue asks for *golden protocol fixtures shared
+  with the Go agent's tests* as a new drift guard. AG.1 and AH.3 had already built it, and
+  verifying that before adding machinery is the work this bullet records.
+  `protocol.spec.ts` holds the TypeScript constants, `MESSAGE_TYPES` and the diagnostic codes to
+  `v1.json` directly, and `schemas/runner-protocol/**` is in `rest.yml`'s path filter as well as
+  `runner.yml`'s — so changing one side's limit or type list already fails `ci/rest`, and changing
+  a fixture already runs both halves. Adding the symmetric checks to
+  `scripts/verify-runner-protocol.sh` would have been a second copy of a live assertion, bought by
+  making `ci/runner` run on every edit to a REST file. **≤ 90s: the two new suites add ~5s**
+  (isolation 23 tests in ~2.0s, lifecycle 5 in ~3.2s) on top of a container this pipeline already
+  starts.
 
 ---
 
