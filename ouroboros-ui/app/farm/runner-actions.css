@@ -1,0 +1,139 @@
+/*
+ * The two parts of AI.5 (#260) that `farm.css` has rules against, in a sheet of their own.
+ *
+ * `farm.css` places nothing against the viewport and animates nothing itself, and
+ * `__tests__/farm/farm-styles.test.ts` holds it to both. The runner's `⋯` menu has to break the
+ * first and the queue chip the second, each for a stated reason — so they live here, under
+ * prefixes that are not `farm…`, and `__tests__/farm/runner-actions-styles.test.ts` pins each
+ * exception to the one selector that needs it. `log-pane.css` is the same arrangement for the
+ * live card's scroller and cursor (#261).
+ *
+ * Everything else about the actions — the dialogs, the sheet, the toast — is static and is in
+ * `farm.css`. The rules here keep that sheet's others: rem and tokens only, no colour literal.
+ */
+
+/* ---------- the runner's ⋯ menu ---------- */
+
+/* The trigger's own box, so the panel's dismissal can tell a press on it from one elsewhere. */
+.runner-menu {
+  display: inline-flex;
+}
+
+/*
+ * The panel — `position: fixed`, which is the exception.
+ *
+ * The runners table sits in a sideways scroller (`.ou-table-scroll`), and a scroll container
+ * clips an absolutely positioned descendant in both axes: a panel anchored to the last row's
+ * trigger would open inside a box one row tall. So it is portalled into the shell's overlay
+ * layer and placed against the viewport from the trigger's rectangle, which
+ * `app/farm/runner-menu.tsx` measures and hands over as the two custom properties. It
+ * re-anchors on every scroll and resize and closes once its trigger has left the viewport, so
+ * it is never left behind by the row it belongs to.
+ *
+ * The box itself is the providers' card menu's (`app/providers/providers.css`). The z-index is
+ * above the page and below the shell's modal, whose values `app/ui/chrome.ts` owns.
+ */
+.runner-menu__panel {
+  position: fixed;
+  z-index: 20;
+  top: var(--runner-menu-top, 0);
+  right: var(--runner-menu-right, 0);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: max-content;
+  min-width: 12rem;
+  max-width: 18rem;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/* One action. A reset button, the shape the providers' and the registry's menu items take. */
+.runner-menu__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.runner-menu__item:hover,
+.runner-menu__item:focus-visible {
+  background: var(--inset);
+  color: var(--ink);
+}
+
+/* Remove is destructive, so it wears the error hue under the pointer — colour plus the word. */
+.runner-menu__item--danger:hover,
+.runner-menu__item--danger:focus-visible {
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+/*
+ * Blocked: drawn, reachable by the arrow keys, and inert — it recedes by ink rather than by
+ * opacity, and the reason inside it is what says why.
+ */
+.runner-menu__item--blocked,
+.runner-menu__item--blocked:hover,
+.runner-menu__item--blocked:focus-visible {
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+/* The explanation, inside the item it explains, at a measure that wraps. */
+.runner-menu__reason {
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  white-space: normal;
+}
+
+/* ---------- a queue depth that just moved ---------- */
+
+/*
+ * `[data-moved]` is set on the chip of a runner whose `q:N` differs from the page before
+ * (`app/farm/queue-moves.ts`), for as long as that page is on screen.
+ *
+ * **The accent is the signal, and it is there for everybody**: it sits outside the motion guard,
+ * so a reader who has asked for less motion still sees which queues moved. The pulse is the
+ * part that is optional. The move is also said out loud by the card's status region — a tint is
+ * a signal only a sighted reader gets.
+ */
+.queue-move[data-moved] {
+  border-radius: var(--r-sm);
+  background: var(--accent-tint);
+  color: var(--accent);
+  box-shadow: 0 0 0 0.1875rem var(--accent-tint);
+}
+
+/*
+ * The one animation: a ring that arrives and settles, once, when the attribute appears. The
+ * attribute lands on an element that stays put, so this plays on a change and never on the
+ * first paint of a page.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .queue-move[data-moved] {
+    animation: queue-move-arrive 900ms ease-out;
+  }
+}
+
+@keyframes queue-move-arrive {
+  from {
+    box-shadow: 0 0 0 0.5rem var(--accent-glow);
+  }
+
+  to {
+    box-shadow: 0 0 0 0.1875rem var(--accent-tint);
+  }
+}

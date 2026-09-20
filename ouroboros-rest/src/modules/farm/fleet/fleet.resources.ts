@@ -28,7 +28,8 @@
  * closed in the meantime.
  */
 
-import type { BuildJob, Runner, RunnerPool } from "../../db/schema";
+import type { BuildJob, Runner, RunnerCertificate, RunnerPool } from "../../db/schema";
+import { renewAfter } from "../farm.resources";
 
 /** *Runners online* — mockup 08's `4/5` and the line under it. */
 export interface RunnersOnlineStat {
@@ -136,6 +137,27 @@ export interface RunnerJobRef {
   readonly startedAt: string | null;
 }
 
+/**
+ * The certificate a runner is presenting, as AI.5's details sheet prints it
+ * ([#260](https://github.com/NobuData/ouroboros/issues/260)).
+ *
+ * Three facts and no more. **None of them is a secret**: a serial is public by construction —
+ * it is in every handshake the machine makes and in the `runner.enrolled` audit event
+ * (`farm.audit.ts`) — and there is no key, fingerprint or PEM here to mistake for one. The
+ * operator-facing `RunnerCertificate` that a revocation answers carries the rest.
+ */
+export interface RunnerCertificateRef {
+  /** Lower-case hex, as V041 stores it. */
+  readonly serial: string;
+  /** When it stops being accepted, ISO 8601. **May be in the past** — live is not valid. */
+  readonly notAfter: string;
+  /**
+   * When the agent starts renewing, ISO 8601 — `notAfter` less `RENEWAL_LEAD_MS`, derived by
+   * the rule the agent itself was handed at enrollment rather than stored.
+   */
+  readonly renewAfter: string;
+}
+
 /** One machine in the fleet, as the runners table draws it. */
 export interface RunnerResource {
   readonly id: string;
@@ -180,6 +202,11 @@ export interface RunnerResource {
   readonly currentJob: RunnerJobRef | null;
   /** What it reported it can do, as it reported it. */
   readonly capabilities: unknown;
+  /**
+   * The certificate it is presenting, or **`null`** when it has none: a machine on the bearer
+   * fallback (decision B3), or one whose certificate was revoked — which a removal does.
+   */
+  readonly certificate: RunnerCertificateRef | null;
 }
 
 /** One pool, as the pools card draws it. */
@@ -250,6 +277,8 @@ export interface RunnerView {
   readonly queueDepth: number;
   /** What it is running, if anything. */
   readonly currentJob: BuildJob | undefined;
+  /** Its live certificate, if it holds one. */
+  readonly certificate: RunnerCertificate | undefined;
 }
 
 /** A pool row with its runner count. */
@@ -262,7 +291,8 @@ export interface PoolView {
 /**
  * A runner, as the table draws it.
  *
- * @param view - The row, its pool's name, its queue depth and its current build.
+ * @param view - The row, its pool's name, its queue depth, its current build and its live
+ *   certificate.
  * @returns The resource.
  */
 export function runnerResource(view: RunnerView): RunnerResource {
@@ -289,6 +319,21 @@ export function runnerResource(view: RunnerView): RunnerResource {
     queueDepth: view.queueDepth,
     currentJob: view.currentJob ? runnerJobRef(view.currentJob) : null,
     capabilities: runner.capabilities,
+    certificate: view.certificate ? runnerCertificateRef(view.certificate) : null,
+  };
+}
+
+/**
+ * A live certificate, as the details sheet prints it.
+ *
+ * @param certificate - The row.
+ * @returns The serial, the expiry and the instant renewal starts.
+ */
+function runnerCertificateRef(certificate: RunnerCertificate): RunnerCertificateRef {
+  return {
+    serial: certificate.serial,
+    notAfter: certificate.not_after.toISOString(),
+    renewAfter: renewAfter(certificate.not_after),
   };
 }
 

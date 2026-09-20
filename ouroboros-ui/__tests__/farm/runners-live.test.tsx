@@ -39,6 +39,15 @@ vi.mock("@/app/farm/pool-actions", () => ({
   updatePool: vi.fn(),
 }));
 
+// The runner menu and the submit dialog (#260) share the screen; this suite presses neither.
+vi.mock("@/app/farm/lifecycle-actions", () => ({
+  drainRunner: vi.fn(),
+  undrainRunner: vi.fn(),
+  removeRunner: vi.fn(),
+}));
+
+vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
+
 // The real meter, counted: which CPU cells React rendered is how the memo is observed.
 vi.mock("@/app/ui/meter", async (original) => {
   const actual = await original<typeof import("@/app/ui/meter")>();
@@ -290,5 +299,65 @@ describe("killing a runner", () => {
     await nextPoll();
 
     expect([...body().querySelectorAll("tr")]).toEqual(before);
+  });
+});
+
+describe("a poll that moves one machine's queue (#260)", () => {
+  beforeEach(() => {
+    answer = fresh({ "forge-02": { queueDepth: 1 } });
+  });
+
+  /** A runner's queue chip. */
+  function chip(name: string): Element {
+    return rowFor(name).querySelector(".queue-move") as Element;
+  }
+
+  it("draws the new depth and marks the chip as having moved", async () => {
+    expect(chip("forge-02")).not.toHaveAttribute("data-moved");
+
+    await nextPoll();
+
+    expect(chip("forge-02")).toHaveTextContent("q:1");
+    expect(chip("forge-02")).toHaveAttribute("data-moved");
+  });
+
+  it("marks it on the chip that was already there — an attribute, never a remount", async () => {
+    // A remount would play the entry on every change by replacing the node; this plays it by
+    // the attribute arriving, so the row still replaces nothing on a poll.
+    const before = chip("forge-02");
+
+    const records = await nextPoll();
+
+    expect(chip("forge-02")).toBe(before);
+    expect(elementsMoved(records)).toEqual([]);
+    for (const record of records) {
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+
+      expect(rowFor("forge-02")).toContainElement(target as HTMLElement);
+    }
+  });
+
+  it("marks no other row, and renders no CPU cell", async () => {
+    await nextPoll();
+
+    for (const name of ["forge-01", "forge-03", "anvil-mac", "bigiron"]) {
+      expect(chip(name)).not.toHaveAttribute("data-moved");
+    }
+    expect(meterRenders()).toBe(0);
+  });
+
+  it("lets the mark go with the next page that does not move it", async () => {
+    await nextPoll();
+    expect(chip("forge-02")).toHaveAttribute("data-moved");
+
+    // The next read: a fresh payload, as every poll's is, saying the same depth. It is still 1,
+    // and it has not moved since the page before.
+    answer = fresh({ "forge-02": { queueDepth: 1 } });
+    const records = await nextPoll();
+
+    expect(chip("forge-02")).toHaveTextContent("q:1");
+    expect(chip("forge-02")).not.toHaveAttribute("data-moved");
+    // The one thing that changed is that attribute leaving.
+    expect(records.map((record) => record.attributeName)).toEqual(["data-moved"]);
   });
 });

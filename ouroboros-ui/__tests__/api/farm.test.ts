@@ -11,6 +11,7 @@ import {
   buildLog,
   emptyFarm,
   enrollmentToken,
+  farmRunner,
   mintedCommand,
   runnerPool,
   seededFarm,
@@ -326,6 +327,128 @@ describe("farm.log", () => {
     await expect(farm.log(LIVE_JOB_ID, 0, missing.client)).rejects.toMatchObject({ code: "farm_job_not_found" });
     await expect(farm.log(LIVE_JOB_ID, 99, beyond.client)).rejects.toMatchObject({
       code: "farm_log_offset_out_of_range",
+    });
+  });
+});
+
+/** The runner every lifecycle case acts on — `forge-02`, the factory's. */
+const RUNNER_ID = farmRunner().id;
+
+describe.each([
+  ["drainRunner", "drain"],
+  ["undrainRunner", "undrain"],
+] as const)("farm.%s (#260)", (operation, verb) => {
+  it("POSTs to the runner's own sub-resource, with no body, and hands back what it did", async () => {
+    const answer = { runner: farmRunner({ desiredState: "draining" }), pushed: true };
+    const { client, requests } = clientAnswering(answer);
+
+    const result = await farm[operation](RUNNER_ID, client);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/farm/runners/${RUNNER_ID}/${verb}`);
+    expect(await requests[0]?.text()).toBe("");
+    expect(result).toEqual(answer);
+  });
+
+  it("keeps `pushed: false` as the answer it is — asked, not failed", async () => {
+    const { client } = clientAnswering({ runner: farmRunner(), pushed: false });
+
+    expect((await farm[operation](RUNNER_ID, client)).pushed).toBe(false);
+  });
+
+  it("names no workspace, so a runner can only be acted on in the session's own", async () => {
+    const { client, requests } = clientAnswering({ runner: farmRunner(), pushed: true });
+
+    await farm[operation](RUNNER_ID, client);
+
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+  });
+
+  it("rejects a member's 403, and a retired machine's 409, with the service's codes", async () => {
+    const forbidden = clientAnswering({ code: "forbidden", message: "No.", details: {} }, 403);
+    const retired = clientAnswering({ code: "farm_runner_removed", message: "Gone.", details: {} }, 409);
+
+    await expect(farm[operation](RUNNER_ID, forbidden.client)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(farm[operation](RUNNER_ID, retired.client)).rejects.toMatchObject({
+      code: "farm_runner_removed",
+    });
+  });
+});
+
+describe("farm.removeRunner (#260)", () => {
+  it("DELETEs the runner by id and hands back the retired machine", async () => {
+    const removed = farmRunner({ status: "removed", desiredState: "removed", certificate: null });
+    const { client, requests } = clientAnswering(removed);
+
+    const result = await farm.removeRunner(RUNNER_ID, client);
+
+    expect(requests[0]?.method).toBe("DELETE");
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/farm/runners/${RUNNER_ID}`);
+    expect(result).toEqual(removed);
+  });
+
+  it("rejects with the state the machine is in when the service's guard refuses", async () => {
+    const { client } = clientAnswering(
+      { code: "farm_runner_not_removable", message: "Drain it first.", details: { status: "building" } },
+      409,
+    );
+
+    const refusal = await farm.removeRunner(RUNNER_ID, client).catch((error: unknown) => error);
+
+    expect(refusal).toBeInstanceOf(ApiError);
+    expect(refusal).toMatchObject({ code: "farm_runner_not_removable", details: { status: "building" } });
+  });
+});
+
+describe("farm.submitJob (#260)", () => {
+  const submission = {
+    pool: "pool-a",
+    repository: "acme-robotics/helios-firmware",
+    ref: "refs/heads/main",
+    commit: "9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80",
+  };
+
+  it("POSTs the submission as given and hands back the queued job", async () => {
+    const job = { id: "5eed0028-0000-4000-8000-000000000483", number: 483, status: "queued", pool: "pool-a" };
+    const { client, requests } = clientAnswering(job, 201);
+
+    const result = await farm.submitJob(submission, client);
+
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/farm/jobs");
+    expect(await requests[0]?.json()).toEqual(submission);
+    expect(result).toEqual(job);
+  });
+
+  it("sends a command as argv when there is one, and no `command` key when there is not", async () => {
+    const withCommand = clientAnswering({}, 201);
+    const without = clientAnswering({}, 201);
+
+    await farm.submitJob({ ...submission, command: ["sh", "-c", "make all"] }, withCommand.client);
+    await farm.submitJob(submission, without.client);
+
+    expect(await withCommand.requests[0]?.json()).toMatchObject({ command: ["sh", "-c", "make all"] });
+    expect(await without.requests[0]?.json()).not.toHaveProperty("command");
+  });
+
+  it("names no workspace, so a build can only land in the session's own", async () => {
+    const { client, requests } = clientAnswering({}, 201);
+
+    await farm.submitJob(submission, client);
+
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+  });
+
+  it("rejects with the service's code — a disabled pool, a repository it does not mirror", async () => {
+    const disabled = clientAnswering({ code: "farm_pool_disabled", message: "Off.", details: {} }, 409);
+    const unknown = clientAnswering({ code: "farm_repository_not_found", message: "No.", details: {} }, 404);
+
+    await expect(farm.submitJob(submission, disabled.client)).rejects.toMatchObject({
+      code: "farm_pool_disabled",
+    });
+    await expect(farm.submitJob(submission, unknown.client)).rejects.toMatchObject({
+      code: "farm_repository_not_found",
     });
   });
 });

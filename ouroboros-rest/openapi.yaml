@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.25"
+  version: "0.35.26"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -26930,7 +26930,7 @@ components:
         renders exactly like a fresh one, which is the thing that clearing prevents.
       additionalProperties: false
       required:
-        [id, name, arch, poolId, pool, status, desiredState, securityMode, agentVersion, hostname, lastSeenAt, enrolledAt, uptimeSeconds, telemetry, queueDepth, currentJob, capabilities]
+        [id, name, arch, poolId, pool, status, desiredState, securityMode, agentVersion, hostname, lastSeenAt, enrolledAt, uptimeSeconds, telemetry, queueDepth, currentJob, capabilities, certificate]
       properties:
         id:
           type: string
@@ -27018,6 +27018,48 @@ components:
           description: |-
             What the runner reported it can do in its `hello`, as it reported it — `docker`,
             `cpu_count`, and the executors it offers.
+        certificate:
+          oneOf:
+            - $ref: "#/components/schemas/RunnerCertificateRef"
+            - type: "null"
+          description: |-
+            The certificate it is presenting, for the details sheet
+            ([#260](https://github.com/NobuData/ouroboros/issues/260)). **Null when it holds
+            none** — a machine on the bearer fallback has none by construction (decision B3), and
+            a removal revokes the one a retired machine held.
+
+    RunnerCertificateRef:
+      type: object
+      title: RunnerCertificateRef
+      description: |-
+        The certificate a runner is presenting, as the details sheet prints it
+        ([#260](https://github.com/NobuData/ouroboros/issues/260)) — a serial and two dates.
+
+        **Live is not valid.** The certificate is the one that is neither revoked nor superseded,
+        and a machine that has been switched off for a quarter still holds one whose `notAfter`
+        has passed. A client says so; this payload does not hide it.
+
+        None of the three is a secret. A serial travels in every handshake and is recorded by the
+        `runner.enrolled` audit event; the fingerprint and the rest are on `RunnerCertificate`,
+        which a revocation answers to an `owner` or `admin`.
+      additionalProperties: false
+      required: [serial, notAfter, renewAfter]
+      properties:
+        serial:
+          type: string
+          description: |-
+            Lower-case hex.
+        notAfter:
+          type: string
+          format: date-time
+          description: |-
+            When it stops being accepted. May be in the past.
+        renewAfter:
+          type: string
+          format: date-time
+          description: |-
+            When the agent starts renewing — `notAfter` less the renewal lead, the same instant
+            the agent was handed as `renewAfter` when the certificate was issued.
 
     RunnerTelemetry:
       type: object

@@ -46,6 +46,15 @@ vi.mock("@/app/farm/pool-actions", () => ({
   updatePool: vi.fn(),
 }));
 
+// The runner menu and the submit dialog (#260) share the screen; this suite presses neither.
+vi.mock("@/app/farm/lifecycle-actions", () => ({
+  drainRunner: vi.fn(),
+  undrainRunner: vi.fn(),
+  removeRunner: vi.fn(),
+}));
+
+vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
+
 /**
  * The build farm as it is drawn (#256): mockup 08's head and stat row from the seeded farm, the
  * same page for an empty organization, the three head actions as honest *soon* controls, and the

@@ -56,7 +56,8 @@ export type AuditSubjectType =
   | "github_credential"
   | "runner"
   | "runner_pool"
-  | "enrollment_token";
+  | "enrollment_token"
+  | "build_job";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -218,6 +219,22 @@ export const RUNNER_POOL_UPDATED_EVENT = "runner.pool_updated";
 export const RUNNER_POOL_DELETED_EVENT = "runner.pool_deleted";
 
 /**
+ * A build was submitted to a pool — the answer to *who sent this to our hardware?*
+ *
+ * Written by AH.4's submission ([#252](https://github.com/NobuData/ouroboros/issues/252)) since
+ * AI.5 ([#260](https://github.com/NobuData/ouroboros/issues/260)) gave it a dialog. A
+ * submission runs a command, chosen by whoever submitted it, on a machine the workspace owns
+ * and this product does not administer; the job row says *what* ran and this says *who asked*.
+ * Its subject is the build (`build_job`), and its actor is `null` when a run submitted it
+ * rather than a person (AJ.3, [#265](https://github.com/NobuData/ouroboros/issues/265)).
+ *
+ * **In the `runner` family**, for {@link RUNNER_POOL_CREATED_EVENT}'s reason: `action like
+ * 'runner.%'` stays the one question that answers *what has happened to our build farm*. And
+ * one dot, because V022's `audit_events_action_grammar` refuses a second.
+ */
+export const RUNNER_JOB_SUBMITTED_EVENT = "runner.job_submitted";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -250,6 +267,7 @@ export const AUDIT_ACTIONS = [
   RUNNER_POOL_CREATED_EVENT,
   RUNNER_POOL_UPDATED_EVENT,
   RUNNER_POOL_DELETED_EVENT,
+  RUNNER_JOB_SUBMITTED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

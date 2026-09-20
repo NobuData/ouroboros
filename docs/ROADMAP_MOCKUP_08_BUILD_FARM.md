@@ -1102,7 +1102,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 | AI.2 | #257 | 🟢 Done | ouroboros-ui: [AI.2] Runners table (live) | Five status archetypes, telemetry cells, live refresh | mvp, build-farm, ui, design | N (after AI.1) | Y | L | ouroboros-ui |
 | AI.3 | #258 | 🟢 Done | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
 | AI.4 | #259 | 🟢 Done | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
-| AI.5 | #260 | 🟡 Open | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
+| AI.5 | #260 | 🟢 Done | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
 | AI.6 | #261 | 🟢 Done | ouroboros-ui: [AI.6] Live log card | Offset-streamed log, ANSI-safe rendering, cursor, full-log path | mvp, build-farm, ui, design | N (after AI.1, AH.5) | Y | M | ouroboros-ui |
 | AI.7 | #262 | 🟡 Open | ouroboros-ui: [AI.7] Farm states & e2e leg | Empty/no-runners guidance, read-only, themes, e2e | mvp, build-farm, ui, ci | N (after AI.1–AI.6) | Y | M | ouroboros-ui, .github |
 
@@ -1434,7 +1434,7 @@ pool-a  firmware builds · container: zephyr-sdk 0.17 · 3 runners        [enabl
 
 ### Issue AI.5 — ouroboros-ui: [AI.5] Runner actions & job submission
 
-> **GitHub issue:** #260 · **Status:** 🟡 Open · **Parent epic:** #241
+> **GitHub issue:** #260 · **Status:** 🟢 Done · **Parent epic:** #241
 
 
 - **Problem Statement:** The `⋯` menu (drain/undrain/remove) and a
@@ -1455,6 +1455,58 @@ pool-a  firmware builds · container: zephyr-sdk 0.17 · 3 runners        [enabl
 - **Parallelism/Dependencies:** Needs AI.2, AH.4.
 - **Technical Stack:** React, #46 primitives.
 - **Epic:** AI
+- **Delivered (2026-09-20):** `ouroboros-ui` 0.86.0 and `ouroboros-rest` 0.35.26.
+  [`app/farm/`](../ouroboros-ui/app/farm) gains `lifecycle.ts`, `runner-details.ts`, `submit.ts`,
+  `command-line.ts` and `queue-moves.ts` (every judgement, pure), `lifecycle-actions.ts` and
+  `submit-actions.ts` (the Server Actions), `use-lifecycle.ts`, `runner-menu.tsx`,
+  `lifecycle-dialog.tsx`, `runner-sheet.tsx`, `submit-store.tsx`, `submit-dialog.tsx`,
+  `submit-toast.tsx` and `runner-actions.css`; `app/api/farm.ts` gains `drainRunner`,
+  `undrainRunner`, `removeRunner` and `submitJob`. Decisions taken in-issue:
+  - **The issue listed `ouroboros-ui` only, and three of its claims disagreed with the service.**
+    Decided with the owner before any code: (1) *certificate serial and renewal date* was served by
+    no read, so `FarmRunner` gained a nullable **`certificate`** `{serial, notAfter, renewAfter}` —
+    the live one, `renewAfter` derived by the agent's own rule, `null` for a bearer-fallback or
+    revoked machine (additive, OpenAPI 0.35.26); (2) *all actions audited* was not true of
+    submission, so AH.4's `enqueue` now writes **`runner.job_submitted`** — one dot and the
+    `runner` family, forced by V022's grammar CHECK — recording the exact commit and **never the
+    command**; (3) the service admits a `member` to submit and the issue gates the page's control
+    to administrators, so the **page is the stricter of the two** and the service is untouched.
+    Cancel is unaudited as well; this ticket adds no cancel, so that is left for its own issue.
+  - ***Pool, repo ref, command* is five fields.** The service requires the exact 40-character
+    commit and has no ref→commit lookup, so the dialog asks for repository, ref and commit —
+    `jobs.dto.ts`'s own expansion of the phrase — rather than guessing one.
+  - **#46's Menu, Dialog, Sheet and Toast are not `app/ui` components.** The codebase's
+    equivalents were reused as they stand — `app/shell/menu.ts`'s keyboard, `ShellOverlay`, the
+    per-screen toast — and no primitive was extracted in this ticket.
+  - **A member's actions are absent, not inert** — the issue's wording, and a deliberate departure
+    from this page's usual *inert, with the reason*. **View details** stays: it is a read.
+  - **Intent and observation are two columns.** Drain/Undrain is decided on `desiredState`, Remove
+    on `status`; nothing is optimistic, and `drain requested` stands beside the pill until the
+    agent's own heartbeat agrees. Undrain asks no confirmation.
+  - **A kept default is not sent**, so the service's own fallback decides what runs; a typed
+    command is split by the service's canonical grammar and **drawn word by word** under the field.
+  - **The menu re-anchors on scroll rather than closing.** A real browser found what jsdom could
+    not: opening the menu selects and focuses the row, the table's scroller nudges to reveal it
+    ~7 ms later, and a panel that closed on *any* scroll was never seen. It now follows its trigger
+    and closes only once the trigger has left the viewport.
+  - **Two style exceptions, each pinned to one selector** in `runner-actions.css`: the panel is
+    `position: fixed` (the table's scroller clips an absolute child in both axes) and the moved
+    `q:N` chip animates once, inside `prefers-reduced-motion: no-preference`, with the accent
+    outside the guard.
+  - **Checked against a real stack** (62 headless checks, throwaway PG17 + the fake-heartbeat
+    loop): the last row's menu unclipped and hit-testable; Remove inert on `forge-02` and the
+    same `DELETE` a `409` from the service; drain → `draining` on the next heartbeat with `#479`
+    still `running`; undrain back; `drain requested` beside an offline pill; remove `forge-03` →
+    row gone, head `4 runners`, certificate revoked `runner_removed`, focus kept; the three
+    certificate states in the sheet; a refused repository under its field; submit → toast → focus
+    on the live card; `runner.job_submitted` with the commit and no command; `q:1` marked on
+    accept; the build binding the live card once `running`; a member's menus holding View details
+    alone and a direct drain a `403`; both palettes; type ×1.25 at the 125% step; no sideways
+    overflow at 600/900/1200/1440 px.
+  - **Noted, not changed:** the nine-column table is 888 px wide and its wrapper 719 px at a
+    1440 px window, so the `⋯` column is reached by scrolling the table sideways below ~1700 px.
+    That is #257's layout, the `⋯` cell is the width the inert one was, and a pinned actions
+    column is its own change.
 
 ```
 ⋯ ─▶ [Drain][Remove(guarded)][View details]      [Submit build] ─▶ pool ▾ · cmd ─▶ q:+1 ─▶ LIVE card

@@ -3444,8 +3444,21 @@ POST /api/v1/farm/jobs/:id/cancel ──▶ canceled now ──▶ job.cancel to
 
 | Route | Role | What it does |
 |---|---|---|
-| `POST /api/v1/farm/jobs` | `member`+ | Queue a build: `pool`, `repository` (`owner/name`), `ref`, the exact `commit`, and `command` as **argv** — or the pool's `default_command` (`V043`). The pool's executor, image and the command are snapshotted onto the job. `201`, already `offered` if a runner was free |
+| `POST /api/v1/farm/jobs` | `member`+ | Queue a build: `pool`, `repository` (`owner/name`), `ref`, the exact `commit`, and `command` as **argv** — or the pool's `default_command` (`V043`). The pool's executor, image and the command are snapshotted onto the job. `201`, already `offered` if a runner was free. **Audited** as `runner.job_submitted` since [#260](https://github.com/NobuData/ouroboros/issues/260) |
 | `POST /api/v1/farm/jobs/:id/cancel` | `member`+ | `canceled` at once; a runner holding it is sent `job.cancel` and its later `cancelled` finish changes nothing. A finished job is `409 farm_job_not_cancellable` |
+
+**A submission is audited, and the command is not** ([#260](https://github.com/NobuData/ouroboros/issues/260)).
+A build runs somebody's command on hardware the workspace owns, and the job row says what ran
+without saying who asked — so `enqueue` writes `runner.job_submitted` (subject `build_job`) after
+the row lands and **before dispatch is kicked**, awaited: a submission that cannot be recorded
+fails, and nothing is offered to a runner on the strength of it. The event carries the job's
+number, the pool, the repository, the ref and the **exact commit** — and has no parameter a
+command could arrive in, because a token pasted onto a command line is the likeliest secret a
+submission carries. The actor is the session's user; for `submitForRun` it is `null` and the event
+names the run instead. A refusal threw before anything was written and records nothing. The name is
+in the `runner` family with one dot because V022's `audit_events_action_grammar` refuses a second
+and `action like 'runner.%'` should stay the one question that answers *what has happened to our
+build farm*.
 
 **The state machine** (`job.states.ts`) keeps V040's seven statuses and splits `queued` by
 whether a runner holds it: *waiting* (no runner) and *accepted* (a runner has taken it and not
@@ -3584,7 +3597,7 @@ EMPTY ORG  ─▶ runnersOnline 0/0 · buildsToday 0     ← genuine zeros
 
 | Route | Role | What it does |
 |---|---|---|
-| `GET /api/v1/farm` | every member | The whole page, from four statements over one set of window boundaries. `Cache-Control: no-store` and `X-Ouro-Poll-After: 10` — the fleet's own heartbeat cadence |
+| `GET /api/v1/farm` | every member | The whole page, from four statements over one set of window boundaries. `Cache-Control: no-store` and `X-Ouro-Poll-After: 10` — the fleet's own heartbeat cadence. Each runner carries its live `certificate` — serial, `notAfter`, `renewAfter` — or `null` ([#260](https://github.com/NobuData/ouroboros/issues/260)) |
 | `GET /api/v1/farm/pools` | every member | The pools with their runner counts, for a configuration sheet that reloads after an edit |
 | `POST /api/v1/farm/pools` | `admin`+ | Create a pool. A container pool pins an image and a shell pool does not — both directions |
 | `PATCH /api/v1/farm/pools/{id}` | `admin`+ | Change one, including the card's enabled switch. A field the body does not name is left alone |
@@ -3592,6 +3605,17 @@ EMPTY ORG  ─▶ runnersOnline 0/0 · buildsToday 0     ← genuine zeros
 | `POST /api/v1/farm/runners/{id}/drain` · `/undrain` | `admin`+ | Write the intent and push the frame through AH.3's `RunnerControl`. `pushed: false` is not a failure |
 | `DELETE /api/v1/farm/runners/{id}` | `admin`+ | Retire a machine — **offline or drained only** — and revoke its certificate |
 | `GET /api/v1/farm/enroll-command?pool=` | `admin`+ | The enroll card's one-liner, with a freshly minted token. On `enrollment.controller.ts`, beside `mint` |
+
+**Each runner names the certificate it presents** ([#260](https://github.com/NobuData/ouroboros/issues/260),
+for the UI's runner details sheet). `certificate` is the **live** one — not revoked, not
+superseded, `FarmRepository.liveCertificate`'s predicate as one set statement for the fleet — as a
+serial and two dates, with `renewAfter` derived by the rule the agent itself was handed
+(`notAfter` less `RENEWAL_LEAD_MS`) rather than stored. It is `null` for a machine on the bearer
+fallback, which holds none by construction (decision B3), and on a removal's answer, which has just
+revoked it. **Live is not valid**: a machine switched off for a quarter still holds a certificate
+whose `notAfter` has passed, and the payload says so rather than hiding it. None of the three is a
+secret — a serial travels in every handshake and `runner.enrolled` has always recorded it — and the
+fingerprint and the rest stay on the `RunnerCertificate` a revocation answers to an administrator.
 
 **Every stat is a window, and the windows have edges.** They are computed once per request in
 `fleet.policy.ts` and handed to every statement, so one payload's figures are consistent with

@@ -292,7 +292,7 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
-│   ├── farm/                # mockup 08: head, stat row, runners table, enroll, pools and live log cards · #256–#261
+│   ├── farm/                # mockup 08: head, stat row, runners table and its actions, enroll, pools, submit and live log · #256–#261
 │   │   ├── view.ts          #   the computed headline, the four tiles, down-is-good, the head's actions
 │   │   ├── data.ts          #   readFarm() — the first paint's read, degraded rather than thrown
 │   │   ├── farm-poll.ts     #   the loop's reader and guard — the fleet's own ten-second cadence
@@ -304,6 +304,21 @@ ouroboros-ui/
 │   │   ├── runners-card.tsx #   the RUNNERS card: the live table, the grouping, the keyboard
 │   │   ├── runner-cells.tsx #   its cells, memoised over primitives — a poll re-renders what moved
 │   │   ├── job-sheet.tsx    #   what a current-job cell opens until the run console (#309) exists
+│   │   ├── lifecycle.ts     #   every judgement of the ⋯ menu: what it offers, to whom, and its words — pure · #260
+│   │   ├── lifecycle-actions.ts # the Server Actions: drain, undrain, the guarded remove — refusals as values
+│   │   ├── use-lifecycle.ts #   what is being asked, what is in flight, what was refused
+│   │   ├── runner-menu.tsx  #   the ⋯ and its menu: shell/menu.ts's keyboard, a panel placed against the viewport
+│   │   ├── lifecycle-dialog.tsx # the drain and remove confirmations — and where any refusal is said
+│   │   ├── runner-details.ts #  what the details sheet says: security, certificate, snapshot — pure
+│   │   ├── runner-sheet.tsx #   …and the sheet View details opens
+│   │   ├── queue-moves.ts   #   which runners' q:N just moved, and how that is said — pure
+│   │   ├── command-line.ts  #   a command between the words a person types and the argv the API takes — pure
+│   │   ├── submit.ts        #   every judgement of the submit dialog: the draft, the body, the refusals — pure
+│   │   ├── submit-actions.ts #  the Server Action: submit — three fields back, never the command
+│   │   ├── submit-store.tsx #   useSubmit() — one dialog with two doors, and the toast it leaves
+│   │   ├── submit-dialog.tsx #  pool, repository, ref, commit, command — the pool's default prefilled
+│   │   ├── submit-toast.tsx #   Queued #483 in pool-a, and the way to the live log card
+│   │   ├── runner-actions.css # the two exceptions farm.css forbids: a fixed menu panel, one animation
 │   │   ├── enroll.ts        #   every judgement of the enroll flow — the mask, the TTL, the rows · #258
 │   │   ├── enroll-actions.ts #  the Server Actions: mint (masked on the server), list, revoke
 │   │   ├── token-data.ts    #   readTokenListing() — the tokens, with pool and member names
@@ -2683,7 +2698,9 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 [`docs/mockups/08-build-farm.html`](../docs/mockups/08-build-farm.html)'s **head and stat row**,
 [the runners table](#the-runners-table) ([#257](https://github.com/NobuData/ouroboros/issues/257)),
 [the enroll card](#the-enroll-card) ([#258](https://github.com/NobuData/ouroboros/issues/258)),
-[the pools card](#the-pools-card) ([#259](https://github.com/NobuData/ouroboros/issues/259))
+[the pools card](#the-pools-card) ([#259](https://github.com/NobuData/ouroboros/issues/259)),
+[runner actions and job submission](#runner-actions-and-job-submission)
+([#260](https://github.com/NobuData/ouroboros/issues/260))
 and [the live log card](#the-live-log-card)
 ([#261](https://github.com/NobuData/ouroboros/issues/261)). The sidebar's **Build Farm** entry is
 live and leads here; the mockup's topbar is superseded by the shell, and the page adds no chrome
@@ -2799,9 +2816,9 @@ also covers a pointer, which moves no focus). Nothing is selected on arrival, an
 runner has left the fleet is dropped so the table is never unreachable.
 
 **What cannot act yet says so.** `Health history →` waits for
-[#266](https://github.com/NobuData/ouroboros/issues/266) and each row's `⋯` for
-[#260](https://github.com/NobuData/ouroboros/issues/260): both are inert *soon* controls, and neither
-navigates. The **current-job cell** opens a **job sheet** ([`job-sheet.tsx`](app/farm/job-sheet.tsx))
+[#266](https://github.com/NobuData/ouroboros/issues/266): an inert *soon* control that navigates
+nowhere. Each row's `⋯` was one too, until [#260](https://github.com/NobuData/ouroboros/issues/260)
+built [the menu it opens](#runner-actions-and-job-submission). The **current-job cell** opens a **job sheet** ([`job-sheet.tsx`](app/farm/job-sheet.tsx))
 over what the page already knows — the run console it will link to is
 [#309](https://github.com/NobuData/ouroboros/issues/309), and the payload carries no run to link to
 until [#300](https://github.com/NobuData/ouroboros/issues/300). The sheet is held by the *job*, so it
@@ -2950,6 +2967,88 @@ nothing already submitted; a saved allow-list is what the agent is handed in its
 `ack.pool.env_allowlist`, which is what the shell executor
 ([#246](https://github.com/NobuData/ouroboros/issues/246)) enforces; and an auto-scale preference
 switched on over a backed-up queue provisions, enrols and mints nothing.
+
+### Runner actions and job submission
+
+The runners table's `⋯` menu and the **Submit build** flow
+([#260](https://github.com/NobuData/ouroboros/issues/260)) — *filed together because the second is
+what makes the first worth having*. Draining is what separates a build farm from a list of servers;
+the submit dialog is the MVP's honest workload source (decision **B6**), without which the page is
+a fleet console with nothing to dispatch. The writes are AH.6's and AH.4's:
+`POST /farm/runners/{id}/drain` and `/undrain`, `DELETE /farm/runners/{id}`, `POST /farm/jobs`.
+
+```
+ forge-01  pool-a  ● building  #479 zephyr build   82%  14.2/32 GB  q:2  41d   ⋯ ─┐
+ forge-02  pool-a  ● idle · drain requested  —      3%   2.1/32 GB  q:1  41d   ⋯  │  ← q:1 just moved
+                                                                                  ▼
+                                   ┌───────────────────────────────────────────────┐
+                                   │ Drain                                         │
+                                   │ Remove                                        │
+                                   │   Blocked while building: removing a          │
+                                   │   connected machine orphans what it is        │
+                                   │   building and loses the log. Drain it first. │
+                                   │ View details                                  │
+                                   └───────────────────────────────────────────────┘
+
+ [ Submit build ]   pool ▾ · repository · ref · commit · command (pool default prefilled)
+                    Sent as  [west] [build] [-b] [helios_mainboard] [app]
+   ─▶  Queued #483 in pool-a. The live log follows it once a runner starts it.  [Go to the live log ↓] [×]
+```
+
+Every judgement is a pure function: the menu and its words in
+[`lifecycle.ts`](app/farm/lifecycle.ts), the sheet in [`runner-details.ts`](app/farm/runner-details.ts),
+the dialog in [`submit.ts`](app/farm/submit.ts) and [`command-line.ts`](app/farm/command-line.ts), the
+moved chips in [`queue-moves.ts`](app/farm/queue-moves.ts).
+
+| What it says | Where it is decided |
+|---|---|
+| **Drain or Undrain is decided on intent; Remove on observation.** A drain writes `desiredState` and the pill is `status`, the agent's own heartbeat, which follows on the next one. So a runner somebody has just drained offers Undrain at once — not a second Drain — while Remove reads what the service's guard reads. | `runnerMenu` |
+| **The click is never drawn as done.** Between the write and the heartbeat the pill still says *building*; `drain requested` stands beside it, and the row's announcement says it too. Nothing is optimistic: a write asks for a fresh page. | `intentNote` in `runners.ts`, `useLifecycle` |
+| **The current job continues, and the confirmation names it.** *forge-01 finishes #479 zephyr build and accepts nothing new… The build is not interrupted, and there is no deadline.* Undrain asks nothing — it is the safe direction. | `lifecycleNote` |
+| **Remove is blocked on a connected runner, with the explanation on the item.** Inert rather than absent, reachable by the arrow keys, described by its reason — a tooltip is an explanation a keyboard never reaches. The guard here is a courtesy over a page up to ten seconds old; the service applies it again inside the write and its `409` says the state the machine is *now* in. | `removeBlocked`, `lifecycleRefusal` |
+| **The removal names what will happen, not *are you sure*:** it leaves the fleet and its counts, its certificate is revoked so it cannot reconnect, its builds keep their history, the act is audited. Focus opens on **Cancel**. | `REMOVE_CONSEQUENCES` |
+| **Live is not valid.** The sheet shows the security mode, the agent version, and the certificate's serial, expiry and renewal date — and says *renewal is due*, *expired* or *holds no certificate* in words, because a date with no comment is arithmetic left to the operator. A toned value always has a sentence under it. | `certificateState`, `runnerFacts` |
+| **The command is argv, and the split is shown.** The API refuses a shell string, so the dialog splits by the service's own grammar — bare words, single quotes, `'\''` — and draws each word as its own chip under the field. Double quotes, `$`, a glob: refused with a sentence that names the character, never guessed at. | `parseCommandLine` |
+| **A kept default is not sent.** The pool's default command is prefilled; submitted unchanged, the body carries no `command` and the service's own fallback decides what runs. | `submissionOf` |
+| **A queue that moves is seen to move.** The chip of a runner whose `q:N` differs from the page before is marked for as long as that page is on screen — in the accent for everybody, with one pulse for a reader who has not asked for less motion — and the move is said out loud. | `queueMoves`, `RunnerQueueCell` |
+
+**The menu is placed against the viewport** ([`runner-menu.tsx`](app/farm/runner-menu.tsx)). The
+table sits in a sideways scroller, and a scroll container clips an absolutely positioned child in
+both axes, so the panel is portalled into the shell's overlay layer and placed from its trigger's
+rectangle, flipping above it when there is no room below. It **re-anchors on every scroll and
+resize and closes once its trigger has left the viewport**. It follows rather than closing outright
+because opening it *is* a scroll: the click selects and focuses the row, and the browser nudges the
+table's scroller a few milliseconds after the menu appears — a rule the jsdom suite could not have
+found and a real browser did. The keyboard is [`app/shell/menu.ts`](app/shell/menu.ts)'s, and the `⋯`
+**joined the tab order** on the commit it began to act.
+
+**Focus is never left on the page behind.** A chosen item unmounts with its menu, so the trigger
+takes focus *before* anything opens and the overlay hands it back on close. A removal takes its
+row — and that `⋯` — with it when the fresh page lands; the card catches that and moves focus to
+the table's tab stop.
+
+**One dialog, two doors, and a toast that outlives both** ([`submit-store.tsx`](app/farm/submit-store.tsx)).
+**Submit build** stands beside the head's three actions and on each pool's row — inert with the
+reason on a pool that is switched off. The toast says *queued*, which is the honest word: a queued
+build cannot be selected into the live card, and the card binds it by itself the moment it starts.
+Its action is **a button that moves focus to the live card's heading**, the way **+ Enroll runner**
+reaches the enroll card — the pane, not the window, is the scroll container — so there is still no
+link on the page. It stays until dismissed; never on a timer.
+
+**A member sees no action at all** — the issue's wording, and a deliberate departure from this
+page's usual *inert, with the reason*: Drain, Undrain and Remove are left out of a member's menus,
+and neither **Submit build** is drawn. **View details** stays, because it is a read. That is
+presentation: the lifecycle writes are `owner` or `admin` at `ouroboros-rest`. Submission is the one
+place the page is *stricter* than the service, which admits a `member` — so nobody the page shows
+the control to is refused. Every write is audited there, a submission as `runner.job_submitted`,
+which records the exact commit and **never the command**.
+
+**Two exceptions, each pinned to one selector.** [`farm.css`](app/farm/farm.css) places nothing
+against the viewport and animates nothing, and its suite holds it to both. The menu's panel has to
+break the first and the moved chip the second, so they live in
+[`runner-actions.css`](app/farm/runner-actions.css) under prefixes that are not `farm…`, and
+[`runner-actions-styles.test.ts`](__tests__/farm/runner-actions-styles.test.ts) holds each to its
+condition — the way [`log-pane.css`](app/farm/log-pane.css) does for the live card.
 
 ### The live log card
 

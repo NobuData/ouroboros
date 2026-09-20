@@ -32,6 +32,17 @@ function audit(): { service: AuditService; written: AuditRecord[] } {
 
 const ACTOR = { organizationId: FIXTURE_ORGANIZATION, actorId: "user_ken", at: FIXTURE_NOW };
 
+/** A build somebody submitted through the dialog (#260). */
+const SUBMISSION = {
+  jobId: "5eed0028-0000-4000-8000-000000000483",
+  number: 483,
+  pool: "pool-a",
+  repository: "acme-robotics/helios-firmware",
+  ref: "refs/heads/main",
+  commit: "9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80",
+  runId: null,
+};
+
 describe("the events this module writes", () => {
   it("are all in the service's own vocabulary", async () => {
     // A name written here and not in `AUDIT_ACTIONS` is an event that can be recorded and not
@@ -65,7 +76,9 @@ describe("the events this module writes", () => {
       reason: "operator",
     });
 
-    expect(written).toHaveLength(5);
+    await trail.jobSubmitted(ACTOR, SUBMISSION);
+
+    expect(written).toHaveLength(6);
     for (const event of written) expect(AUDIT_ACTIONS).toContain(event.action);
   });
 
@@ -172,6 +185,66 @@ describe("a refused enrollment", () => {
     await expect(
       trail.certificateRevoked(ACTOR, { runnerId: "r", serial: "s", reason: "operator" }),
     ).rejects.toThrow("the trail is down");
+  });
+});
+
+describe("a submitted build (#260)", () => {
+  it("is filed under the build, by whoever submitted it", async () => {
+    const { service, written } = audit();
+
+    await new FarmAudit(service).jobSubmitted(ACTOR, SUBMISSION);
+
+    expect(written[0]).toMatchObject({
+      action: "runner.job_submitted",
+      subjectType: "build_job",
+      subjectId: SUBMISSION.jobId,
+      actorId: "user_ken",
+      organizationId: FIXTURE_ORGANIZATION,
+      at: FIXTURE_NOW,
+    });
+  });
+
+  it("records what was asked to be built, down to the exact commit", async () => {
+    // *Who sent this to our hardware* is only useful beside *what did they send*: a moving ref
+    // would not answer it a week later, which is why the commit is here and not just the ref.
+    const { service, written } = audit();
+
+    await new FarmAudit(service).jobSubmitted(ACTOR, SUBMISSION);
+
+    expect(written[0]?.detail).toEqual({
+      number: 483,
+      pool: "pool-a",
+      repository: "acme-robotics/helios-firmware",
+      ref: "refs/heads/main",
+      commit: "9e7bd4034c1f1b2a6d8e0f5c7a9b3d1e2f4a6c80",
+    });
+  });
+
+  it("has no parameter a command could arrive in", async () => {
+    // A token pasted onto a command line is the likeliest secret a submission carries. The
+    // method takes no command, so none can be recorded — asserted on the keys, because the
+    // guarantee is structural and not a matter of what this one fixture happens to hold.
+    const { service, written } = audit();
+
+    await new FarmAudit(service).jobSubmitted(ACTOR, SUBMISSION);
+
+    expect(Object.keys(written[0]?.detail ?? {})).not.toContain("command");
+    for (const value of Object.values(written[0]?.detail ?? {})) {
+      expect(["string", "number", "boolean"]).toContain(typeof value);
+    }
+  });
+
+  it("names the run and no person when a run submitted it", async () => {
+    // AJ.3 (#265): the submitter is a loop run, which has no user id. `runId` says which.
+    const { service, written } = audit();
+
+    await new FarmAudit(service).jobSubmitted(
+      { ...ACTOR, actorId: null },
+      { ...SUBMISSION, runId: "7f000009-0000-4000-8000-000000000001" },
+    );
+
+    expect(written[0]?.actorId).toBeNull();
+    expect(written[0]?.detail?.runId).toBe("7f000009-0000-4000-8000-000000000001");
   });
 });
 

@@ -6,6 +6,7 @@ import {
   RUNNER_CERT_REVOKED_EVENT,
   RUNNER_DRAINED_EVENT,
   RUNNER_ENROLLED_EVENT,
+  RUNNER_JOB_SUBMITTED_EVENT,
   RUNNER_POOL_CREATED_EVENT,
   RUNNER_POOL_DELETED_EVENT,
   RUNNER_POOL_UPDATED_EVENT,
@@ -60,6 +61,10 @@ describe("the vocabulary", () => {
     // here because V040 split `status` from `desired_state` precisely so that "who drained
     // bigiron?" has an answer, and the column records that a decision was made while this
     // records who made it.
+    //
+    // The last is AI.5's ([#260](https://github.com/NobuData/ouroboros/issues/260)): a build
+    // submission runs somebody's command on the workspace's own hardware, and *who sent it*
+    // is not on the job row.
     expect([...AUDIT_ACTIONS]).toEqual([
       "provider.added",
       "provider.revealed",
@@ -85,6 +90,7 @@ describe("the vocabulary", () => {
       "runner.pool_created",
       "runner.pool_updated",
       "runner.pool_deleted",
+      "runner.job_submitted",
     ]);
   });
 
@@ -103,7 +109,8 @@ describe("the vocabulary", () => {
 
   it("files each event under a family somebody would think to filter on", () => {
     // Nine provider events, one credential-delivery event, three about the workspace's GitHub
-    // token and eleven about its build farm — its machines and the pools they run in. The
+    // token and twelve about its build farm — its machines, the pools they run in and the
+    // builds sent to them. The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -142,6 +149,7 @@ describe("the vocabulary", () => {
       RUNNER_POOL_CREATED_EVENT,
       RUNNER_POOL_UPDATED_EVENT,
       RUNNER_POOL_DELETED_EVENT,
+      RUNNER_JOB_SUBMITTED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

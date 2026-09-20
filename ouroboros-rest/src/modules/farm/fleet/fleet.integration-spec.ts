@@ -6,6 +6,7 @@ import { ApiHarness, type Person, type Workspace } from "../../../testing/harnes
 import { bodyOf } from "../../../testing/integration.fixture";
 import { TENANT_HEADER } from "../../tenancy/tenant.resolver";
 import { certificationRequest } from "../farm.fixture";
+import { RENEWAL_LEAD_MS } from "../farm.policy";
 import type {
   EnrollCommandResource,
   EnrollmentResource,
@@ -515,11 +516,41 @@ describe("the build farm page", () => {
     }
   }
 
+  /**
+   * The certificate behind every `cert_serial` in {@link FLEET} — the dev seed's five rows
+   * (`R__dev_seed_farm.sql`), so the page's `certificate` (#260) is read from what a real
+   * enrollment leaves behind rather than from an empty table.
+   *
+   * Issued at enrollment and good for ninety days, which puts `not_after` thirty days out.
+   * **`anvil-mac` gets none** — a bearer-fallback machine holds no certificate by construction
+   * — and the retired `forge-00`'s is revoked, as its removal would have left it.
+   *
+   * @param context - The workspace, with its fleet already in place.
+   */
+  async function certificates(context: Farm): Promise<void> {
+    await api.sql.query(
+      `insert into ouroboros.runner_certificates
+         (organization_id, runner_id, serial, fingerprint, issued_for, not_before, not_after,
+          issued_at, revoked, revoked_at, revocation_reason)
+       select runner.organization_id, runner.id, runner.cert_serial,
+              repeat(right(runner.cert_serial, 2), 32), 'enrollment',
+              runner.enrolled_at, runner.enrolled_at + make_interval(days => 90),
+              runner.enrolled_at,
+              runner.status = 'removed',
+              case when runner.status = 'removed' then now() end,
+              case when runner.status = 'removed' then 'runner_removed' end
+         from ouroboros.runners runner
+        where runner.organization_id = $1 and runner.cert_serial is not null`,
+      [context.workspace.id],
+    );
+  }
+
   /** The whole of mockup 08's farm. */
   async function seeded(): Promise<Farm> {
     const context = await workspace();
     await pools(context);
     await fleet(context);
+    await certificates(context);
     await today(context);
     await priorWeek(context);
     await inFlight(context);
@@ -778,10 +809,44 @@ describe("the build farm page", () => {
     });
 
     it("carries no secret of any kind", async () => {
+      // The sealed bearer token is the secret on these rows, and it is nowhere on the page.
+      //
+      // Until #260 this also asserted that `forge-01`'s serial was absent. A serial is not a
+      // secret — it travels in every handshake the machine makes and the `runner.enrolled`
+      // audit event has always recorded it — and the details sheet prints it, so it is now
+      // on the page **in exactly one place**: under the runner that presents it. What stays
+      // off the page is everything that would let somebody *be* that machine.
+      const payload = await page(await seeded());
+      const text = JSON.stringify(payload);
+
+      expect(text).not.toContain("ouro.v1");
+      expect(text).not.toMatch(/fingerprint|BEGIN CERTIFICATE|PRIVATE KEY/u);
+      expect(text.split("4a110e97")).toHaveLength(2);
+    });
+
+    it("names the certificate each machine presents, and when it renews (#260)", async () => {
+      const payload = await page(await seeded());
+      const certificate = machine(payload, "forge-01").certificate;
+
+      expect(certificate).toMatchObject({ serial: "4a110e97" });
+
+      // Enrolled sixty days ago with ninety to run: the certificate expires thirty days
+      // out, and renewal — thirty days before expiry — starts about now. Asserted as a
+      // relation between the two dates rather than against the clock, which moved while
+      // the fixture was being written.
+      const notAfter = Date.parse(certificate?.notAfter ?? "");
+      const renewAfter = Date.parse(certificate?.renewAfter ?? "");
+
+      expect(notAfter - renewAfter).toBe(RENEWAL_LEAD_MS);
+      expect(notAfter).toBeGreaterThan(Date.now());
+    });
+
+    it("says a bearer-fallback machine presents no certificate", async () => {
+      // Decision B3: `anvil-mac` holds a bearer token instead. `null`, not a record of
+      // nulls and not somebody else's serial.
       const payload = await page(await seeded());
 
-      expect(JSON.stringify(payload)).not.toContain("ouro.v1");
-      expect(JSON.stringify(payload)).not.toContain("4a110e97");
+      expect(machine(payload, "anvil-mac").certificate).toBeNull();
     });
 
     it("tells a client how long to wait, and not to cache it", async () => {
@@ -1055,6 +1120,17 @@ describe("the build farm page", () => {
       );
 
       expect(removed).toMatchObject({ status: "removed", desiredState: "removed" });
+      // The certificate it presented a moment ago is the one this request revoked, so the
+      // machine as it now stands presents none (#260).
+      expect(removed.certificate).toBeNull();
+
+      const { rows: revoked } = await api.sql.query<{ revocation_reason: string }>(
+        `select revocation_reason from ouroboros.runner_certificates
+          where runner_id = $1 and revoked`,
+        [rows[0].id],
+      );
+
+      expect(revoked).toEqual([{ revocation_reason: "runner_removed" }]);
 
       const payload = await page(context);
 

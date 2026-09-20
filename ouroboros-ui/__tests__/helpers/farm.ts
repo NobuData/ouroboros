@@ -77,6 +77,14 @@ export function farmRunner(over: Partial<FarmRunner> = {}): FarmRunner {
     queueDepth: 0,
     currentJob: null,
     capabilities: {},
+    // Issued at enrollment and good for ninety days, as the service issues them (#260): it
+    // expires on 30 October and renewal starts thirty days before — not yet due at
+    // `FARM_READ_AT`.
+    certificate: {
+      serial: "4a110e98",
+      notAfter: "2026-10-30T09:00:00.000Z",
+      renewAfter: "2026-09-30T09:00:00.000Z",
+    },
     ...over,
   };
 }
@@ -148,6 +156,11 @@ const DAY_S = 86_400;
  * **not** the table's default one — with everything the runners table (#257) prints: `forge-01`
  * building `#479` at 82%, two idle machines (the Mac on `bearer_fallback`, decision B3), `bigiron`
  * draining and finishing `#472`, and `forge-03` offline for two hours with no snapshot at all.
+ *
+ * Their certificates (#260) are the seed's three honest states beside the ordinary one: the Mac
+ * holds **none** (a bearer-fallback machine cannot), `bigiron`'s is live and **already expired**
+ * — it enrolled ninety-five days ago — and `forge-03`, which has been off, is **past the day it
+ * should have renewed**.
  */
 const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
   {
@@ -157,6 +170,11 @@ const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
     uptimeSeconds: 41 * DAY_S,
     telemetry: runnerTelemetry(82, 14.2, 32, 2),
     queueDepth: 2,
+    certificate: {
+      serial: "4a110e97",
+      notAfter: "2026-10-30T09:00:00.000Z",
+      renewAfter: "2026-09-30T09:00:00.000Z",
+    },
     currentJob: {
       id: "5eed0400-0000-4000-8000-0000000004f9",
       number: 479,
@@ -180,6 +198,7 @@ const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
     securityMode: "bearer_fallback",
     uptimeSeconds: 12 * DAY_S,
     telemetry: runnerTelemetry(6, 5, 64),
+    certificate: null,
   },
   {
     name: "bigiron",
@@ -190,6 +209,11 @@ const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
     uptimeSeconds: 3 * DAY_S,
     telemetry: runnerTelemetry(54, 88, 256, 1),
     queueDepth: 1,
+    certificate: {
+      serial: "4a110e99",
+      notAfter: "2026-09-14T09:00:00.000Z",
+      renewAfter: "2026-08-15T09:00:00.000Z",
+    },
     currentJob: {
       id: "5eed0400-0000-4000-8000-0000000004f2",
       number: 472,
@@ -206,6 +230,11 @@ const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
     lastSeenAt: "2026-09-19T12:02:00.000Z",
     uptimeSeconds: null,
     telemetry: null,
+    certificate: {
+      serial: "4a110e9a",
+      notAfter: "2026-10-10T09:00:00.000Z",
+      renewAfter: "2026-09-10T09:00:00.000Z",
+    },
   },
 ];
 

@@ -1,3 +1,4 @@
+import { FarmAudit } from "../farm.audit";
 import { FARM_DISPATCH_GATE, OPEN_GATE } from "./dispatch.gate";
 import { FarmDispatchModule } from "./dispatch.module";
 import { JobCompletions } from "./job.completions";
@@ -10,7 +11,19 @@ describe("the dispatch module", () => {
       Reflect.getMetadata("imports", FarmDispatchModule) as { name?: string }[]
     ).map((module) => module.name);
 
-    expect(imported).toEqual(["DbModule", "FarmGatewayModule"]);
+    expect(imported).toEqual(["DbModule", "AuditModule", "FarmGatewayModule"]);
+  });
+
+  it("writes to the audit trail through its own FarmAudit, without importing FarmModule", () => {
+    // #260 audits a submission. `FarmAudit` is a stateless writer over `AuditService`, so it
+    // is provided here — `fleet.module.ts`'s arrangement — and dispatch does not come to
+    // depend on the enrollment module for one class.
+    const imported = (
+      Reflect.getMetadata("imports", FarmDispatchModule) as { name?: string }[]
+    ).map((module) => module.name);
+
+    expect(Reflect.getMetadata("providers", FarmDispatchModule)).toContain(FarmAudit);
+    expect(imported).not.toContain("FarmModule");
   });
 
   it("exports the jobs service (AJ.3, AH.6), completions (#510) and the gate token (#489)", () => {

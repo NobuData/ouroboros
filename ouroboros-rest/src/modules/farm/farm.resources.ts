@@ -339,9 +339,13 @@ export function renewalResource(
 /**
  * When a runner holding a certificate that expires at a given instant should renew.
  *
+ * Exported for `fleet/fleet.resources.ts`, which prints the same instant on the details sheet
+ * (AI.5, [#260](https://github.com/NobuData/ouroboros/issues/260)): one rule, so the date an
+ * operator reads and the date the agent was told cannot differ.
+ *
  * @param notAfter - The expiry.
  * @returns The instant, ISO 8601.
  */
-function renewAfter(notAfter: Date): string {
+export function renewAfter(notAfter: Date): string {
   return new Date(notAfter.getTime() - RENEWAL_LEAD_MS).toISOString();
 }

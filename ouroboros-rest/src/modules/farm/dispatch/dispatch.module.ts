@@ -31,11 +31,18 @@
  * runners table reads `queueDepth`; `JobCompletions` for BV.1
  * ([#510](https://github.com/NobuData/ouroboros/issues/510)); and the `FARM_DISPATCH_GATE` token
  * for BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) to bind its own gate to.
+ *
+ * **`FarmAudit` is provided here, not imported with `FarmModule`** — `fleet.module.ts`'s
+ * arrangement. It is a thin writer over `AuditService` with no state of its own, so a second
+ * instance is the same trail, and taking it this way keeps dispatch from depending on the
+ * enrollment module for one class (#260's `runner.job_submitted`).
  */
 
 import { Module } from "@nestjs/common";
 
+import { AuditModule } from "../../audit/audit.module";
 import { DbModule } from "../../db/db.module";
+import { FarmAudit } from "../farm.audit";
 import { FarmGatewayModule } from "../gateway/gateway.module";
 import { FARM_DISPATCH_GATE, OPEN_GATE } from "./dispatch.gate";
 import { DispatchRepository } from "./dispatch.repository";
@@ -45,13 +52,14 @@ import { FarmJobsController } from "./jobs.controller";
 import { FarmJobsService } from "./jobs.service";
 
 @Module({
-  imports: [DbModule, FarmGatewayModule],
+  imports: [DbModule, AuditModule, FarmGatewayModule],
   controllers: [FarmJobsController],
   providers: [
     DispatchRepository,
     DispatchService,
     FarmJobsService,
     JobCompletions,
+    FarmAudit,
     // Open until BR.5 (#489) makes a workspace's pause an organization state.
     { provide: FARM_DISPATCH_GATE, useValue: OPEN_GATE },
   ],

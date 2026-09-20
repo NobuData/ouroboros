@@ -1,5 +1,7 @@
+import type { RunnerCertificate } from "../../db/schema";
 import { buildJob, runnerPool } from "../dispatch/dispatch.fixture";
-import { runner } from "../farm.fixture";
+import { FIXTURE_ORGANIZATION, FIXTURE_RUNNER, runner } from "../farm.fixture";
+import { RENEWAL_LEAD_MS } from "../farm.policy";
 import { liveBuildResource, poolResource, runnerResource } from "./fleet.resources";
 
 /**
@@ -38,6 +40,7 @@ describe("a runner", () => {
         status: "running",
         started_at: new Date("2026-09-19T11:56:19.000Z"),
       }),
+      certificate: undefined,
     });
 
     expect(resource).toMatchObject({
@@ -83,6 +86,7 @@ describe("a runner", () => {
       poolName: "pool-a",
       queueDepth: 0,
       currentJob: undefined,
+      certificate: undefined,
     });
 
     expect(resource.telemetry).toBeNull();
@@ -99,6 +103,7 @@ describe("a runner", () => {
       poolName: "pool-a",
       queueDepth: 0,
       currentJob: undefined,
+      certificate: undefined,
     });
 
     expect(resource.telemetry).toBeNull();
@@ -112,6 +117,7 @@ describe("a runner", () => {
       poolName: "pool-a",
       queueDepth: 0,
       currentJob: undefined,
+      certificate: undefined,
     });
 
     expect(resource.telemetry).toEqual({
@@ -130,6 +136,7 @@ describe("a runner", () => {
         poolName: "pool-a",
         queueDepth: 0,
         currentJob: undefined,
+        certificate: undefined,
       }).lastSeenAt,
     ).toBeNull();
   });
@@ -143,23 +150,107 @@ describe("a runner", () => {
         poolName: "pool-b",
         queueDepth: 0,
         currentJob: undefined,
+        certificate: undefined,
       }).securityMode,
     ).toBe("bearer_fallback");
   });
 
-  it("carries no certificate serial and no sealed secret", () => {
-    // Neither is on the resource at all — there is no field either could occupy, which is
-    // `farm.resources.ts`'s posture inherited.
+  it("carries no sealed secret, and no serial outside the certificate it names", () => {
+    // The sealed bearer token has no field it could occupy, which is `farm.resources.ts`'s
+    // posture inherited. The row's own `cert_serial` column is not mapped either: since #260
+    // the serial an operator reads is the **live certificate's**, under `certificate`, so a
+    // machine whose certificate was revoked cannot go on printing the serial it used to hold.
     const resource = runnerResource({
       runner: runner({ bearer_sealed: "ouro.v1.1.abc.def", security_mode: "bearer_fallback" }),
       poolName: "pool-b",
       queueDepth: 0,
       currentJob: undefined,
+      certificate: undefined,
     });
 
     expect(JSON.stringify(resource)).not.toContain("ouro.v1");
     expect(Object.keys(resource)).not.toContain("certSerial");
     expect(Object.keys(resource)).not.toContain("bearerSealed");
+  });
+
+  describe("the certificate it presents (#260)", () => {
+    /** A live certificate row — neither revoked nor superseded. */
+    function liveCertificate(overrides: Partial<RunnerCertificate> = {}): RunnerCertificate {
+      return {
+        id: "5eed002a-0000-4000-8000-000000000001",
+        organization_id: FIXTURE_ORGANIZATION,
+        runner_id: FIXTURE_RUNNER,
+        serial: "4a110e97",
+        fingerprint: "ab".repeat(32),
+        issued_for: "enrollment",
+        not_before: new Date("2026-07-01T00:00:00.000Z"),
+        not_after: new Date("2026-09-29T00:00:00.000Z"),
+        issued_at: new Date("2026-07-01T00:00:00.000Z"),
+        revoked: false,
+        revoked_at: null,
+        revoked_by: null,
+        revocation_reason: null,
+        superseded_at: null,
+        ...overrides,
+      };
+    }
+
+    /**
+     * @param certificate - What the fleet read for this runner.
+     * @returns The resource's `certificate`.
+     */
+    function certificateOf(certificate: RunnerCertificate | undefined) {
+      return runnerResource({
+        runner: runner(),
+        poolName: "pool-a",
+        queueDepth: 0,
+        currentJob: undefined,
+        certificate,
+      }).certificate;
+    }
+
+    it("is the serial and the two dates the details sheet prints, and nothing else", () => {
+      expect(certificateOf(liveCertificate())).toEqual({
+        serial: "4a110e97",
+        notAfter: "2026-09-29T00:00:00.000Z",
+        renewAfter: "2026-08-30T00:00:00.000Z",
+      });
+    });
+
+    it("derives the renewal date by the rule the agent was handed", () => {
+      // `renewAfter` is never stored. Deriving it from `RENEWAL_LEAD_MS` — rather than
+      // repeating thirty days here — is what keeps the date an operator reads and the date
+      // the agent acts on from drifting apart when the policy moves.
+      const notAfter = new Date("2027-01-15T08:30:00.000Z");
+      const reference = certificateOf(liveCertificate({ not_after: notAfter }));
+
+      expect(reference?.renewAfter).toBe(
+        new Date(notAfter.getTime() - RENEWAL_LEAD_MS).toISOString(),
+      );
+    });
+
+    it("is null for a machine that holds none, never an empty record", () => {
+      // A bearer-fallback runner has no certificate by construction (decision B3), and a
+      // removal revokes the one a retired machine held. A client asks *is there one* once.
+      expect(certificateOf(undefined)).toBeNull();
+    });
+
+    it("prints an expired certificate as it stands", () => {
+      // Live is not valid: a machine switched off for a quarter still holds a certificate
+      // whose `not_after` has passed — the seed's `bigiron` does — and hiding it would make
+      // the sheet say *no certificate* about a machine that has one and cannot use it.
+      const expired = certificateOf(
+        liveCertificate({ not_after: new Date("2026-01-01T00:00:00.000Z") }),
+      );
+
+      expect(expired?.notAfter).toBe("2026-01-01T00:00:00.000Z");
+    });
+
+    it("carries no fingerprint and no key material", () => {
+      const reference = certificateOf(liveCertificate());
+
+      expect(Object.keys(reference ?? {}).sort()).toEqual(["notAfter", "renewAfter", "serial"]);
+    });
   });
 
   it("narrows the bigint uptime without turning null into zero", () => {
@@ -170,6 +261,7 @@ describe("a runner", () => {
       poolName: "pool-a",
       queueDepth: 0,
       currentJob: undefined,
+      certificate: undefined,
     });
 
     expect(withUptime.uptimeSeconds).toBe(0);

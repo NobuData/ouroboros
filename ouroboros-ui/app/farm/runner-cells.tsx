@@ -2,18 +2,13 @@
 
 import { memo } from "react";
 
-import { Button, Chip, Meter } from "@/app/ui";
+import { Chip, Meter, cx } from "@/app/ui";
 import type { MeterTone } from "@/app/ui";
 
-import {
-  BEARER_FALLBACK_NOTE,
-  RUNNER_ACTIONS_GLYPH,
-  RUNNER_ACTIONS_SOON,
-  RUNNER_PILLS,
-  type RunnerStatus,
-  runnerActionsLabel,
-} from "./runners";
+import { BEARER_FALLBACK_NOTE, RUNNER_PILLS, type RunnerStatus } from "./runners";
 import { NOT_MEASURED } from "./view";
+
+import "./runner-actions.css";
 
 /**
  * The runners table's cells (AI.2, [#257](https://github.com/NobuData/ouroboros/issues/257)).
@@ -30,6 +25,9 @@ import { NOT_MEASURED } from "./view";
  *
  * None of them decides anything. What a status is called, when a meter warns and when a figure
  * is an em dash are all `runners.ts`'s.
+ *
+ * The row's `⋯` is a cell of its own, with state of its own — `app/farm/runner-menu.tsx`
+ * (AI.5, [#260](https://github.com/NobuData/ouroboros/issues/260)).
  */
 
 /**
@@ -92,16 +90,23 @@ export const RunnerNameCell = memo(function RunnerNameCell({
 });
 
 /**
- * The status cell — the pill, and `last seen 2h ago` beside an offline one.
+ * The status cell — the pill, `last seen 2h ago` beside an offline one, and `drain requested`
+ * beside one that has been drained and has not said so yet.
+ *
+ * The pill is **what the agent last reported** and is never moved by a click here: a drain
+ * writes intent, and the note beside the pill is how that intent is drawn until the machine's
+ * own heartbeat agrees (#260, `runners.ts`'s `intentNote`).
  *
  * @param props.status What the fleet last observed.
  * @param props.lastSeen How stale the row is, or `null` for a row that is not offline.
+ * @param props.intent What was asked of it and is not yet observed, or `null`.
  * @returns The cell.
  */
 export const RunnerStatusCell = memo(function RunnerStatusCell({
   status,
   lastSeen,
-}: Readonly<{ status: RunnerStatus; lastSeen: string | null }>) {
+  intent,
+}: Readonly<{ status: RunnerStatus; lastSeen: string | null; intent: string | null }>) {
   const pill = RUNNER_PILLS[status];
 
   return (
@@ -109,6 +114,7 @@ export const RunnerStatusCell = memo(function RunnerStatusCell({
       <Chip dot={pill.dot} tone={pill.tone}>
         {pill.label}
       </Chip>
+      {intent !== null && <span className="farm-runners__intent">{intent}</span>}
       {lastSeen !== null && <span className="farm-runners__seen">{lastSeen}</span>}
     </span>
   );
@@ -189,27 +195,31 @@ export const RunnerCpuCell = memo(function RunnerCpuCell({
 });
 
 /**
- * The row's `⋯` — an honest *soon*: the menu it opens is AI.5 (#260).
+ * The queue cell — `q:2`, marked while it has just moved (AI.5,
+ * [#260](https://github.com/NobuData/ouroboros/issues/260)).
  *
- * Inert, named for its machine, and **out of the tab order** (`app/ui/table.tsx`: a control in a
- * grid cell leaves the page one stop per table). A control that cannot act for anybody is no
- * loss to a keyboard; the menu's own keyboard path arrives with the menu.
+ * *Submitting updates the affected runner rows' queue depth visibly.* The figure follows the
+ * page by itself; `moved` is what makes the change **seen**: the chip takes the accent for as
+ * long as the page that moved it is on screen, and — for a reader who has not asked for less
+ * motion — pulses once as it arrives (`app/farm/runner-actions.css`). It is an attribute on an
+ * element that stays put, not a remount, so a poll still replaces nothing in the row.
  *
- * @param props.name The runner's name.
+ * What moved is `app/farm/queue-moves.ts`'s, and it is said out loud by the card's status
+ * region — the tint alone would be a signal only a sighted reader gets.
+ *
+ * @param props.text `q:2`.
+ * @param props.moved Whether the depth differs from the page before this one.
  * @returns The cell.
  */
-export const RunnerActionsCell = memo(function RunnerActionsCell({
-  name,
-}: Readonly<{ name: string }>) {
+export const RunnerQueueCell = memo(function RunnerQueueCell({
+  text,
+  moved,
+}: Readonly<{ text: string; moved: boolean }>) {
   return (
-    <Button
-      aria-label={runnerActionsLabel(name)}
-      reason={RUNNER_ACTIONS_SOON}
-      size="sm"
-      tabIndex={-1}
-      tone="ghost"
-    >
-      {RUNNER_ACTIONS_GLYPH}
-    </Button>
+    // Two literals rather than one string: the farm's style suite reads this file for the
+    // `farm…` classes it renders, and only sees a literal made of nothing else.
+    <span className={cx("farm-runners__queue", "queue-move")} data-moved={moved || undefined}>
+      {text}
+    </span>
   );
 });

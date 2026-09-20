@@ -88,6 +88,7 @@ function harness(shape: Shape = {}): Harness {
     runners: jest.fn(() => Promise.resolve([])),
     queueDepths: jest.fn(() => Promise.resolve(new Map<string, number>())),
     currentJobs: jest.fn(() => Promise.resolve(new Map())),
+    liveCertificates: jest.fn(() => Promise.resolve(new Map())),
     poolById: jest.fn(() => Promise.resolve(runnerPool())),
   } as unknown as FleetRepository;
 
@@ -289,6 +290,19 @@ describe("what a removal does besides removing", () => {
     await context.service.remove(TENANT, ACTOR, row.id);
 
     expect(context.revoked).toEqual([{ runnerId: row.id, reason: "runner_removed" }]);
+  });
+
+  it("answers the retired machine with no certificate, because it has just revoked it", async () => {
+    // #260 put the live certificate on the resource. A removal's answer is the machine as it
+    // now stands, and a client that read a serial there would draw a revoked certificate as
+    // the one the machine presents.
+    const row = runnerRow({ status: "offline" });
+    const context = harness({ row, removed: runnerRow({ ...row, status: "removed" }) });
+
+    const removed = await context.service.remove(TENANT, ACTOR, row.id);
+
+    expect(removed.status).toBe("removed");
+    expect(removed.certificate).toBeNull();
   });
 
   it("records retiring and revoking as two different events", async () => {

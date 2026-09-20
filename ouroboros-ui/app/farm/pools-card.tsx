@@ -24,6 +24,8 @@ import {
   nextAutoscalePref,
   poolMeta,
 } from "./pools";
+import { SUBMIT_BUILD, SUBMIT_POOL_DISABLED, submitToPoolLabel } from "./submit";
+import { useSubmit } from "./submit-store";
 
 /**
  * The build farm's POOLS card — mockup 08's, with switches that persist
@@ -94,12 +96,20 @@ const TITLE_ID = "pools-card-title";
  * long as the transition that set it, so a flip the service refused goes back on its own with
  * the reason under the row, and one it took is held by the store until the page catches up.
  *
+ * **Submit build** (AI.5, [#260](https://github.com/NobuData/ouroboros/issues/260)) is the
+ * row's door to the submit dialog, opening it on this pool (`app/farm/submit-store.tsx`). It is
+ * **absent for a member** — the issue asks that a member see no action affordances — and, for an
+ * administrator, inert with the reason on a pool that is switched off, which the service would
+ * refuse a build for. It follows the switch as drawn, so flipping a pool off disables its door
+ * in the same moment.
+ *
  * @param props.pool The pool.
  * @param props.mayAdminister Whether this reader may change it.
  * @returns The row.
  */
 function PoolRow({ pool, mayAdminister }: Readonly<{ pool: RunnerPool; mayAdminister: boolean }>) {
   const { recordWrite } = usePools();
+  const { open: openSubmit } = useSubmit();
   const [pending, startWrite] = useTransition();
   const [enabled, setEnabled] = useOptimistic(pool.enabled);
   const autoscale = autoscaleView(pool);
@@ -153,6 +163,20 @@ function PoolRow({ pool, mayAdminister }: Readonly<{ pool: RunnerPool; mayAdmini
                 — {AUTOSCALE_AFFIX}
               </div>
             </div>
+          </div>
+        )}
+
+        {mayAdminister && (
+          <div className="farm-pool__submit">
+            <Button
+              aria-label={submitToPoolLabel(pool.name)}
+              onClick={() => openSubmit(pool.name)}
+              reason={enabled ? undefined : SUBMIT_POOL_DISABLED}
+              size="sm"
+              tone="ghost"
+            >
+              {SUBMIT_BUILD}
+            </Button>
           </div>
         )}
 

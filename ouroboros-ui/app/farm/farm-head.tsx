@@ -6,6 +6,8 @@ import { ENROLL_COPY_ID, ENROLL_MEMBER_REASON, ENROLL_POOL_FIELD_ID } from "./en
 import { useFarm } from "./farm-store";
 import { usePools } from "./pool-store";
 import { POOLS_UNREAD } from "./pools";
+import { SUBMIT_BUILD, SUBMIT_NO_POOLS, SUBMIT_UNREAD } from "./submit";
+import { useSubmit } from "./submit-store";
 import { FARM_ACTIONS, FARM_EYEBROW, FARM_SUBLINE, SOON_MARK, farmHeadline } from "./view";
 
 /**
@@ -34,13 +36,22 @@ import { FARM_ACTIONS, FARM_EYEBROW, FARM_SUBLINE, SOON_MARK, farmHeadline } fro
  * one mechanism that scrolls it natively. For a reader who may not mint it is the same control,
  * inert, with the reason.
  *
- * @param props.mayAdminister Whether this reader may mint an enrollment token —
- *   `app/api/membership.ts`'s `mayAdminister`, decided once by the route.
+ * **Submit build** (AI.5, [#260](https://github.com/NobuData/ouroboros/issues/260)) stands
+ * beside the mockup's three — the issue's *head-adjacent* door to the submit dialog, the other
+ * being each pool's row (`app/farm/submit-store.tsx`). Unlike **+ Enroll runner** it is
+ * **absent, not inert, for a member**: the issue asks that a member session see no action
+ * affordances at all. For an administrator with no pool to submit to it is inert and says why.
+ *
+ * @param props.mayAdminister Whether this reader may mint an enrollment token and submit a
+ *   build — `app/api/membership.ts`'s `mayAdminister`, decided once by the route.
  * @returns The head.
  */
 export function FarmHead({ mayAdminister = false }: Readonly<{ mayAdminister?: boolean }>) {
   const { page } = useFarm();
   const { pools, openSheet } = usePools();
+  const { open: openSubmit } = useSubmit();
+  const submitReason =
+    pools === null ? SUBMIT_UNREAD : pools.length === 0 ? SUBMIT_NO_POOLS : undefined;
 
   return (
     <div className="farm__head">
@@ -50,6 +61,11 @@ export function FarmHead({ mayAdminister = false }: Readonly<{ mayAdminister?: b
         <p className="farm__sub">{FARM_SUBLINE}</p>
       </div>
       <div className="farm__actions">
+        {mayAdminister && (
+          <Button onClick={() => openSubmit()} reason={submitReason} tone="ghost">
+            {SUBMIT_BUILD}
+          </Button>
+        )}
         {FARM_ACTIONS.map((action) =>
           action.id === "pools" ? (
             <Button
