@@ -29,6 +29,7 @@ import {
   rowAnnouncement,
   runnerRows,
 } from "./runners";
+import { useFarmSelection } from "./selection-store";
 import { SOON_MARK } from "./view";
 
 /**
@@ -37,8 +38,9 @@ import { SOON_MARK } from "./view";
  *
  * It reads the farm's one store (`app/farm/farm-store.tsx`), so the rows and the `4/5` tile above
  * them are one answer, and it moves with every poll. What each cell says is `runners.ts`'s; this
- * assembles the card, holds the two pieces of state a reader owns — which row is current and how
- * the fleet is grouped — and decides nothing else.
+ * assembles the card, holds the state a reader owns — how the fleet is grouped and which job
+ * sheet is open; *which row is current* is `app/farm/selection-store.tsx`'s, because the live log
+ * card (AI.6, #261) reads it too — and decides nothing else.
  *
  * ### The row is a persistent thing whose numbers change
  *
@@ -69,7 +71,8 @@ import { SOON_MARK } from "./view";
 export function RunnersCard() {
   const { page, dataAt } = useFarm();
   const [grouping, setGrouping] = useState<RunnerGrouping>("pool");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Held above the card since #261: the live log card follows the selected runner's build.
+  const { runnerId: selectedId, select: setSelectedId } = useFarmSelection();
   const [openJobId, setOpenJobId] = useState<string | null>(null);
 
   const rows = useMemo(() => runnerRows(page, dataAt, grouping), [page, dataAt, grouping]);

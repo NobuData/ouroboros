@@ -252,8 +252,11 @@ ouroboros-ui/
 │   │   ├── farm.ts          #   farm.page() / observe() — mockup 08 in one observation, and its cadence · #256
 │   │   │                    #   + enrollCommand() (it mints) / tokens() / revokeToken() / pools() · #258
 │   │   │                    #   + createPool() / updatePool() / deletePool() — the pool writes · #259
+│   │   │                    #   + log() — one page of a build's log, from an offset · #261
 │   │   ├── farm-page.ts     #   readFarmPage() — the same read, answered for the farm's poll
+│   │   ├── farm-log.ts      #   readFarmLog() — a log page for the live card's stream, at its own cadence
 │   │   ├── farm/route.ts    #   GET /api/farm — that poll, on this origin
+│   │   ├── farm/jobs/[id]/log/route.ts # GET /api/farm/jobs/{id}/log?after= — that stream, on this origin
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
@@ -289,7 +292,7 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
-│   ├── farm/                # mockup 08's head, stat row, runners table, enroll and pools cards · #256–#259
+│   ├── farm/                # mockup 08: head, stat row, runners table, enroll, pools and live log cards · #256–#261
 │   │   ├── view.ts          #   the computed headline, the four tiles, down-is-good, the head's actions
 │   │   ├── data.ts          #   readFarm() — the first paint's read, degraded rather than thrown
 │   │   ├── farm-poll.ts     #   the loop's reader and guard — the fleet's own ten-second cadence
@@ -316,7 +319,18 @@ ouroboros-ui/
 │   │   ├── pools-card.tsx   #   the POOLS card: composed meta, the switch, the B9 sub-toggle
 │   │   ├── pool-sheet.tsx   #   what Configure → and Pool settings open: the picker, + New pool
 │   │   ├── pool-form.tsx    #   one pool's form: executor, image, allow-list, the guarded delete
-│   │   └── farm-screen.tsx  #   the frame the rest of mockup 08 mounts in
+│   │   ├── selection-store.tsx # which runner is selected — the table writes it, the live card follows it · #261
+│   │   ├── live.ts          #   every judgement of the live log card: which build, the pill, the elapsed time
+│   │   ├── log-text.ts      #   sanitize() — escapes and controls out, carriage returns resolved — pure
+│   │   ├── log-buffer.ts    #   pages → rows: appended, bounded, a hole drawn where it happened — pure
+│   │   ├── log-poll.ts      #   the log's reader and guard — the address carries the offset
+│   │   ├── log-stream.ts    #   the offset loop: exact resume, catch-up, the jump to a long log's tail
+│   │   ├── use-log-stream.ts #  …where it meets React — one stream per mount, keyed by the build
+│   │   ├── log-pane.tsx     #   the virtualized pane: follows the tail, locks on scroll, the cursor
+│   │   ├── log-pane.css     #   …and its sheet — the page's one scroller and one animation
+│   │   ├── live-card.tsx    #   the LIVE card: the header over the pane, and the build it holds
+│   │   ├── log-sheet.tsx    #   what Full log ↗ opens until the run console (#309) exists: the whole log
+│   │   └── farm-screen.tsx  #   the frame all of mockup 08 mounts in
 │   ├── planning/            # mockup 09's frame: head, honest actions, the 7 / 5 + 12 grid · #283
 │   │   ├── view.ts          #   the verbatim head copy and what each region is headed with
 │   │   ├── data.ts          #   readPlanning() — every region's read, degraded rather than thrown
@@ -2669,8 +2683,8 @@ may press them. The intake screen's *no token* guidance (#120's amendment) links
 [`docs/mockups/08-build-farm.html`](../docs/mockups/08-build-farm.html)'s **head and stat row**,
 [the runners table](#the-runners-table) ([#257](https://github.com/NobuData/ouroboros/issues/257)),
 [the enroll card](#the-enroll-card) ([#258](https://github.com/NobuData/ouroboros/issues/258)),
-[the pools card](#the-pools-card) ([#259](https://github.com/NobuData/ouroboros/issues/259)),
-and the frame the rest of that page mounts in: the live log
+[the pools card](#the-pools-card) ([#259](https://github.com/NobuData/ouroboros/issues/259))
+and [the live log card](#the-live-log-card)
 ([#261](https://github.com/NobuData/ouroboros/issues/261)). The sidebar's **Build Farm** entry is
 live and leads here; the mockup's topbar is superseded by the shell, and the page adds no chrome
 of its own, so the header and the sidebar stay put while the pane scrolls.
@@ -2716,7 +2730,7 @@ the pools — which the route decides once through `mayAdminister` and hands dow
 
 **The page stays live, from one poll.** `GET /api/v1/farm` is the page in one observation — its
 figures are claims about each other — so [`farm-store.tsx`](app/farm/farm-store.tsx) provides it
-once per screen and the head, the stat row and every region still to come read `useFarm()`:
+once per screen and the head, the stat row and every card under them read `useFarm()`:
 exactly one request per interval however many regions subscribe. The first answer is the
 server's render ([`data.ts`](app/farm/data.ts)); from then on the browser asks
 [`/api/farm`](app/api/farm/route.ts) on [the polling pattern](#the-polling-store), at **the fleet's
@@ -2936,6 +2950,54 @@ nothing already submitted; a saved allow-list is what the agent is handed in its
 `ack.pool.env_allowlist`, which is what the shell executor
 ([#246](https://github.com/NobuData/ouroboros/issues/246)) enforces; and an auto-scale preference
 switched on over a backed-up queue provisions, enrols and mints nothing.
+
+### The live log card
+
+The `c-12` card ([#261](https://github.com/NobuData/ouroboros/issues/261)) — a build's output as
+it is printed, under a header that says only what it can stand behind.
+
+```
+┌ LIVE — forge-01 · #479 Add OTA rollback on failed checksum  (● building) 3m 41s   [Full log ↗] ┐
+│ $ west build -b helios_mainboard app -- -DCONF_FILE=prj_ota.conf                               │
+│ ccache: hit 78.4% (412/525 objects)                                                            │
+│ [4/7] Building C object zephyr/CMakeFiles/…/ota_rollback.c.obj                                 │
+│ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ [… 2,481,392 bytes elided] ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄     ← a gap looks like a gap    │
+│ [6/7] Linking zephyr.elf …▊                          ← blinks only while the log says live     │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
+  scroll up ▸ locked        back to the bottom ▸ following        live: false ▸ finished · cursor still
+  nothing running ▸ No builds running — submit one or wait for the loop.
+```
+
+**Two loops, two cadences.** The farm's page says *which* build (`live`, every ten seconds); the
+build's log says *what it printed and whether it is over*
+([`log-stream.ts`](app/farm/log-stream.ts), every two seconds while it runs). The cursor, the pill
+and the elapsed time are bound to the **log's** `live` flag — AH.5's
+([#253](https://github.com/NobuData/ouroboros/issues/253)), which is the job's state and never
+chunk recency — and never to the page's: a page up to ten seconds old still naming a build is not
+evidence that it is running.
+
+| What it does | Where it is decided |
+|---|---|
+| **Which build.** The reader's selection in the runners table wins — a selected runner that is building puts its build on the card; otherwise the page's newest running build takes it *if it started after the one held*; otherwise **the card holds what it has**. A build that ends therefore stays on the card, truthfully finished, until a newer one starts — which is the only way the terminal state is ever seen. A workspace switch lets go of it | `bindJob` in [`live.ts`](app/farm/live.ts), `useBoundJob` in [`live-card.tsx`](app/farm/live-card.tsx) |
+| **Offsets resume exactly.** The stream asks [`/api/farm/jobs/{id}/log?after=`](app/api/farm/jobs/%5Bid%5D/log/route.ts) from the last page's `nextOffset`; the offset moves **only when a page is folded**, and a page that does not start exactly where the last one ended — or belongs to another job — is dropped. Nothing is drawn twice and nothing is skipped, by construction. The interval, the hidden tab and the overtaken-answer check are [the polling loop](#the-polling-store)'s, reused | `createLogStream` |
+| **Catching up does not wait.** While a page ends short of the stored log the next is asked for at once; and a first page that leaves more than 512 KiB unread **jumps to the tail** — the line it lands in is left out, and a note says earlier output exists. `Full log ↗` never jumps | `createLogStream`, `appendPage`'s `skipping` |
+| **Appended, never rebuilt, and bounded.** A page adds rows and may extend the one line still being written; every row keeps its key, so React mounts the new rows and changes one text node. At most 5,000 rows are held (100,000 in the sheet) and a line over 2,000 characters is broken, never inside an escape sequence | [`log-buffer.ts`](app/farm/log-buffer.ts) |
+| **ANSI-safe.** CSI, OSC/DCS/SOS/PM/APC strings (payload included), two-character escapes, an escape cut short by a page boundary, C0 controls but tab, `DEL` and C1 are removed; `\r` rewrites the line as a terminal would; markup is text. The raw open line is kept so a sequence split between two pages is completed rather than half-printed | [`log-text.ts`](app/farm/log-text.ts) |
+| **A gap looks like a gap.** AH.5 reports holes as data, by byte position; each becomes a row of its own kind **where it happened** — mid-line if that is where the bytes went — in the warning ink between dashed rules. Byte positions are mapped to characters by UTF-8 weight. What was elided after the stored log's end is one marker under the text | `appendPage`, `textIndexes`, `tailLabel` |
+| **Scroll lock.** At the bottom the pane follows, placed before paint so new output never appears below the fold. Scrolling up locks it: nothing moves the reader again — not new output, and not old rows leaving the head (the scroller is moved back by exactly the height that left). A scroll is honoured even before the browser has reported it: a page landing mid-gesture pins nothing. Returning to the bottom resumes | [`log-pane.tsx`](app/farm/log-pane.tsx) |
+| **A bounded DOM.** One row is one line high, so which rows are in view is arithmetic: only those and thirty either side are rendered, in a sizer as tall as all of them. The component publishes three unitless numbers; [`log-pane.css`](app/farm/log-pane.css) turns them into rem and ch, and the one length read back is a measured row | `LogPane` |
+| **The cursor blinks only while `live: true`** — not before the first page has said so, and not after: a finished build keeps its block, still. The blink is inside the reduced-motion guard | `LogPane`, `.log-pane__cursor--live` |
+| **The header claims what the log can support.** The log says *that* a build is over, not how or when: the pill swaps to a neutral **finished**, and the elapsed time stops only at an end the card **witnessed** (heard running within twelve seconds of being heard finished). A build that ended while the tab was hidden draws `—` — it did not run until the tab came back | `livePill`, `liveElapsed`, `LogView.endedAt` |
+| **`Full log ↗` does not dead-end.** Its destination is the run console ([#309](https://github.com/NobuData/ouroboros/issues/309), linked by [#265](https://github.com/NobuData/ouroboros/issues/265)), which does not exist; until it does it opens a sheet holding the build's facts and its **whole log**, paged from `after=0`, in the same pane. The sheet stays on the build it was opened for | [`log-sheet.tsx`](app/farm/log-sheet.tsx) |
+
+The pane's sheet is its own because it keeps different agreements: `farm.css` promises that
+nothing on the page scrolls or animates by itself, and the issue asks the pane for exactly those
+two exceptions — *it scrolls inside its own wrapper, never the content pane*, and *a cursor that
+blinks only while live* — so they are made in one place, where
+[`log-pane-styles.test.ts`](__tests__/farm/log-pane-styles.test.ts) holds each to its condition.
+The table's selection moved to [`selection-store.tsx`](app/farm/selection-store.tsx) on the commit
+that gave it a second reader, and the shell's overlay took a `wide` measure for a sheet whose
+lines do not wrap.
 
 ## Planning
 

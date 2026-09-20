@@ -119,6 +119,25 @@ describe("an overlay that is open", () => {
     expect(screen.getByRole("dialog")).toHaveAccessibleName("Search");
   });
 
+  it("takes the reading measure unless it is asked for the wide one", () => {
+    shell();
+
+    const { rerender } = render(
+      <ShellOverlay open onClose={vi.fn()} label="Search">
+        <p>palette</p>
+      </ShellOverlay>,
+    );
+    expect(screen.getByRole("dialog")).not.toHaveClass("shell-overlay__panel--wide");
+
+    // A sheet whose content does not wrap — a build log (#261).
+    rerender(
+      <ShellOverlay open onClose={vi.fn()} label="Search" wide>
+        <p>palette</p>
+      </ShellOverlay>,
+    );
+    expect(screen.getByRole("dialog")).toHaveClass("shell-overlay__panel", "shell-overlay__panel--wide");
+  });
+
   it("holds the pane still while it is up", () => {
     const pane = shell();
 

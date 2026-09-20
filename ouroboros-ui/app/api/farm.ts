@@ -10,8 +10,9 @@
  * [#258](https://github.com/NobuData/ouroboros/issues/258)) added its three — the minting read of
  * the install command, the token list and the revoke — and the pools' own listing, for naming a
  * token's pool. The pools card (AI.4, [#259](https://github.com/NobuData/ouroboros/issues/259))
- * added the three pool writes — create, change and delete. The lifecycle writes (AI.5, #260) add
- * theirs as they arrive.
+ * added the three pool writes — create, change and delete. The live log card (AI.6,
+ * [#261](https://github.com/NobuData/ouroboros/issues/261)) added AH.5's offset read of one
+ * build's log. The lifecycle writes (AI.5, #260) add theirs as they arrive.
  *
  * ### `null` is not `0`, and this module keeps it that way
  *
@@ -70,6 +71,14 @@ export type EnrollCommand = components["schemas"]["EnrollCommand"];
 /** One enrollment token, **masked** — there is no operation that answers one un-masked (AI.3). */
 export type EnrollmentToken = components["schemas"]["EnrollmentToken"];
 
+/**
+ * One page of a build's log (AI.6), as AH.5 serves it
+ * ([#253](https://github.com/NobuData/ouroboros/issues/253)): the text from `offset` up to
+ * `nextOffset`, where the stored log ends, whether it can still grow, and the holes in it — as
+ * data, by position, never as text in the stream.
+ */
+export type BuildLog = components["schemas"]["BuildLog"];
+
 /** One read of the page, and the cadence the service asked for beside it. */
 export interface FarmObservation {
   /** The page, as served. */
@@ -109,6 +118,38 @@ export const farm = {
     const result = await client.GET("/api/v1/farm", { signal });
 
     return { page: unwrap(result), pollAfterSeconds: readPollAfter(result.response.headers) };
+  },
+
+  /**
+   * Read one page of a build's log, from an offset
+   * (AI.6, [#261](https://github.com/NobuData/ouroboros/issues/261)).
+   *
+   * Successive pages concatenate to exactly the stored log — ask for the next with `after` set to
+   * the last page's `nextOffset` — and **`live` is the job's state, never chunk recency**, which
+   * is what the card's cursor is bound to. The cadence (`X-Ouro-Poll-After`: two seconds while
+   * the build runs, fifteen after) is in the body too, as `pollAfter`, so no header is read here.
+   *
+   * @param id The build job.
+   * @param after Where to read from — the `nextOffset` last reached, or `0`.
+   * @param client The client to read through. A route handler answering a poll passes
+   *   `anonymousApi()`, for the reason {@link farm.observe} gives.
+   * @param signal A way to give up on the read — a poll's deadline.
+   * @returns The page, as served.
+   * @throws {ApiError} `404 farm_job_not_found` — another workspace's job is the same answer —
+   *   or `422 farm_log_offset_out_of_range` for an `after` past the end of the log.
+   */
+  async log(
+    id: string,
+    after: number,
+    client: ApiClient = api(),
+    signal?: AbortSignal,
+  ): Promise<BuildLog> {
+    return unwrap(
+      await client.GET("/api/v1/farm/jobs/{id}/log", {
+        params: { path: { id }, query: { after } },
+        signal,
+      }),
+    );
   },
 
   /**
