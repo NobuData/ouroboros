@@ -104,7 +104,7 @@ function Shape({ card }: Readonly<{ card: SkeletonCard }>) {
 }
 
 /**
- * A stat tile: the caption, the figure, the line under it — `.dash-stat`'s three children.
+ * A stat tile: the caption, the figure, the line under it — `.ou-stat`'s three children.
  *
  * @returns The bars.
  */

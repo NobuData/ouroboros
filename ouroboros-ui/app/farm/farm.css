@@ -1,0 +1,133 @@
+/*
+ * The build farm (#256) — mockup 08's page frame, head and grid.
+ *
+ * The mockup is docs/mockups/08-build-farm.html over docs/mockups/assets/ouroboros.css. What is
+ * taken from it is the anatomy the design system requires of every module page
+ * (docs/DESIGN_SYSTEM_APP_SHELL.md § 2): page head, then the twelve-column card grid, at the
+ * pane's own measure. What is not taken from it is the topbar — this page renders inside the app
+ * shell (#41) and starts at its page head, and it adds no fixed or sticky chrome of its own, so
+ * the header and the sidebar stay put while the pane scrolls.
+ *
+ * The buttons, the eyebrow, the banner's box, the meter and — since this page became its second
+ * caller — the stat tile are the primitives in `app/ui/`. What stays here is what belongs to
+ * this page: the gutter rhythm, the head, the grid and its breakpoints, and the mark an unbuilt
+ * action carries.
+ *
+ * Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a token
+ * from app/tokens.css, which is what makes both palettes one sheet, and every length that should
+ * follow the reader's font-size preference is rem, which is what makes the 125% step correct.
+ * Media-query widths are the exception, for the reason app/shell/shell.css sets out.
+ *
+ * The mockup's token names are its own; each maps onto the #16 sheet's: --border → --line,
+ * --mut → --ink-mut, --faint → --ink-faint.
+ */
+
+/* ---------- the page frame ---------- */
+
+/*
+ * The pane is the scroll container and already centres the measure (app/shell/shell.css), so
+ * this contributes the gutter rhythm and nothing else.
+ */
+.farm {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.farm__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+/*
+ * The floor keeps the computed headline from being squeezed into a word a line beside three
+ * actions: below it, the actions drop under the headings instead.
+ */
+.farm__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+/*
+ * Three short sentences. `balance` keeps a wrap between sentences from stranding one word, which
+ * is what a headline whose length changes with the fleet would otherwise do at 125%.
+ */
+.farm__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+  /* The counts are live: tabular digits keep `9 runners.` → `10 runners.` from jittering. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* The mockup's measure: one long sentence, kept to two lines on a laptop. */
+.farm__sub {
+  max-width: 64ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.farm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/*
+ * The mark an unbuilt action carries in its text — the sidebar's *soon* rows, on a button, and
+ * the planning head's treatment of the same thing. An inert button is already drawn in the faint
+ * ink on either tone (`app/ui/ui.css`), so one rule reads on the ghosts and on the primary.
+ */
+.farm__soon {
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* ---------- the stale-data banner ---------- */
+
+/* Inside the frame, above the head: it lines up with the head by construction. */
+.farm-stale {
+  margin-bottom: var(--sp-8);
+}
+
+/* ---------- the grid ---------- */
+
+.farm__grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+.farm-col--3 {
+  grid-column: span 3;
+}
+
+/*
+ * The mockup's two steps, at its own widths (1100px and 640px). The stat row halves before it
+ * stacks, so a narrow pane shows two readable tiles rather than four crushed ones.
+ */
+@media (max-width: 68.75rem) {
+  .farm-col--3 {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 40rem) {
+  .farm__grid > * {
+    grid-column: span 12;
+  }
+
+  .farm {
+    padding-inline: var(--sp-6);
+  }
+}

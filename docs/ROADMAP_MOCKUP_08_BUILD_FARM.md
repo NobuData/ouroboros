@@ -1098,7 +1098,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AI.1 | #256 | 🟡 Open | ouroboros-ui: [AI.1] Build Farm route, head & stat row | `/build-farm` frame, live stats, honest head actions | mvp, build-farm, ui, design | N (after #41, AH.6, BA-D.5) | Y | S | ouroboros-ui |
+| AI.1 | #256 | 🟢 Done | ouroboros-ui: [AI.1] Build Farm route, head & stat row | `/build-farm` frame, live stats, honest head actions | mvp, build-farm, ui, design | N (after #41, AH.6, BA-D.5) | Y | S | ouroboros-ui |
 | AI.2 | #257 | 🟡 Open | ouroboros-ui: [AI.2] Runners table (live) | Five status archetypes, telemetry cells, live refresh | mvp, build-farm, ui, design | N (after AI.1) | Y | L | ouroboros-ui |
 | AI.3 | #258 | 🟡 Open | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
 | AI.4 | #259 | 🟡 Open | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
@@ -1108,7 +1108,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue AI.1 — ouroboros-ui: [AI.1] Build Farm route, head & stat row
 
-> **GitHub issue:** #256 · **Status:** 🟡 Open · **Parent epic:** #241
+> **GitHub issue:** #256 · **Status:** 🟢 Done · **Parent epic:** #241
 
 
 - **Problem Statement:** The frame: headline composed from live counts
@@ -1131,6 +1131,47 @@ the #16 tokens (both themes; the mockup is dark-only).
 [Build Farm] 5 runners. 2 pools. 78% cache hits.   [✦ Analyzer·soon][Pool settings][+ Enroll]
 (4/5 online · forge-03 2h)(23 · 19/3/1)(4m12s ▼38s)(78% ▓▓▓ · ccache · per-runner)
 ```
+
+- **Delivered (2026-09-19):** `ouroboros-ui` 0.81.0 — `app/(app)/build-farm/page.tsx` and
+  [`app/farm/`](../ouroboros-ui/app/farm) (`view.ts`, `data.ts`, `farm-poll.ts`, `farm-store.tsx`,
+  `farm-head.tsx`, `farm-stat-row.tsx`, `farm-banner.tsx`, `farm-screen.tsx`, `farm.css`),
+  `app/api/farm.ts` with the poll's reader and route handler (`app/api/farm-page.ts`,
+  `app/api/farm/route.ts`), and the sidebar's **Build Farm** entry turned from *soon* into a link
+  (`BUILD_FARM_PATH`). Decisions taken in-issue:
+  - **The #49 placeholder needed no deletion** — it was never built; the route replaces the *soon*
+    row directly.
+  - **The headline degrades clause by clause**: `1 runner.` in the singular, *No runners yet.* /
+    *No pools yet.* rather than a bare zero, and *No cache data today.* rather than `0%` (B5: a
+    missing summary is *not measured*). The runner count is `stats.runnersOnline.total`, the first
+    tile's denominator, so the heading and the `4/5` under it cannot disagree. With nothing read at
+    all it is *Runners. Pools. Cache hits.* — nothing claimed — and the banner says why, once.
+  - **`null` is not `0`, to the glass**: `0/0` and `0` are genuine counts; the average and the cache
+    rate are em dashes over nothing, the cache tile then draws **no meter** (an empty bar is a
+    picture of `0%`), and the delta line is **absent** when `deltaVsLastWeek` is null. A real
+    comparison that came out level reads *Level with last week* — never `▼ 0s`.
+  - **Down is good**: `▼` takes the tile's `up` (good-news) tone and `▲` its `down` tone.
+  - **The cache label is rendered from the payload**, which composes it from B5, so #264 is no edit
+    in the UI.
+  - **The split line always prints its three parts** once there is a build; `canceled` — counted by
+    AH.6 and absent from the mockup — joins it only when non-zero, so the seeded day reads exactly as
+    the mockup does and the line still adds up.
+  - **All three head actions are honest *soon* controls**: inert, marked, tooltip naming the issue —
+    **✦ Build Analyzer** → #516 (the amendment on #256 makes it a link to `/analyzer` on the commit
+    that builds that route; #516 is still open, so it navigates nowhere), **Pool settings** → #259,
+    **+ Enroll runner** → #258. Both of the latter depend on this issue and do not exist yet. No role
+    is decided on the page for that reason; **BA-D.5 is still unfiled**, and the admin gate arrives
+    with the flows it guards, through the existing `requireWorkspace` + `mayAdminister`.
+  - **One poll per screen, at the fleet's cadence**: the page is one observation, so
+    `farm-store.tsx` provides it once and every region — this issue's two and AI.2–AI.6's — reads
+    `useFarm()`. AH.6's `X-Ouro-Poll-After: 10` is carried through `farm.observe()` →
+    `readFarmPage()` → `/api/farm`, so the interval stays the server's. A failed refresh keeps the
+    last page under the DASH-I.7 banner, whose retry is the poll asking now.
+  - **The StatCard moved to `app/ui`** (`stat-card.tsx`, `.ou-stat`): this row is its second caller,
+    which is the threshold `dashboard.css` states for a rule to become the design system's. It gained
+    the two shapes mockup 08 adds — a quieter suffix on the figure (`/5`) and a slot for the meter —
+    and the dashboard's `StatCard` is now a placement over it.
+  - The e2e `shell-nav` roster gains **Build Farm**; the full farm leg is AI.7 (#262). A loading
+    skeleton is left to AI.7's states with it.
 
 ### Issue AI.2 — ouroboros-ui: [AI.2] Runners table (live)
 

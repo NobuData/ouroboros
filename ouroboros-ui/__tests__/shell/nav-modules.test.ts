@@ -14,6 +14,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  BUILD_FARM_PATH,
   DASHBOARD_PATH,
   ISSUES_PATH,
   MODELS_PATH,
@@ -119,15 +120,16 @@ describe("the seeded entries", () => {
     }
   });
 
-  it("has exactly six built destinations today: the dashboard, Issues, Workflows, Models, Planning and Settings", () => {
+  it("has exactly seven built destinations today: the dashboard, Issues, Workflows, Models, Build Farm, Planning and Settings", () => {
     // A live entry is a promise that a page is behind it, so this list may only grow on the
     // commit that builds one — a live entry without a page would ship a 404 in the product's
     // primary navigation. Models joined it with #200 (`app/(app)/models/(routing)/page.tsx`),
     // Issues with #115 (`app/(app)/issues/page.tsx`), Workflows with #147
     // (`app/(app)/workflows/page.tsx`) and Settings with #141 — whose
     // `app/(app)/settings/page.tsx` redirects to the section's one built tab, Ticket sources,
-    // until #491 builds the hub — and Planning with #283 (`app/(app)/planning/page.tsx`); the other
-    // five wait for #49 or for their own roadmap issue.
+    // until #491 builds the hub — Planning with #283 (`app/(app)/planning/page.tsx`) and Build
+    // Farm with #256 (`app/(app)/build-farm/page.tsx`); the other four wait for #49 or for their
+    // own roadmap issue.
     // Asserted against the constants rather than the strings, so an entry and every redirect
     // to it stay the same fact (#45 moved the dashboard off `/`).
     expect(
@@ -139,6 +141,7 @@ describe("the seeded entries", () => {
       ISSUES_PATH,
       WORKFLOWS_PATH,
       MODELS_PATH,
+      BUILD_FARM_PATH,
       PLANNING_PATH,
       SETTINGS_PATH,
     ]);

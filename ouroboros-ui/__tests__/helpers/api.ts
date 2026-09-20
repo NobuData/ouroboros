@@ -20,6 +20,11 @@ export interface StubAnswer {
   readonly body: unknown;
   /** The status. Defaults to `200`. */
   readonly status?: number;
+  /**
+   * Headers to answer with beside `Content-Type` — a cadence hint, for the reads that carry
+   * one (#256). Defaults to none.
+   */
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 /** A stub client, and the requests made through it in order. */
@@ -46,11 +51,11 @@ export function stubClient(answer: (request: Request) => StubAnswer): StubClient
     baseUrl: STUB_BASE_URL,
     fetch: (request) => {
       requests.push(request);
-      const { body, status = 200 } = answer(request);
+      const { body, status = 200, headers = {} } = answer(request);
       return Promise.resolve(
         new Response(JSON.stringify(body), {
           status,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...headers },
         }),
       );
     },

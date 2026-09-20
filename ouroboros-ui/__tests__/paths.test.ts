@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BUILD_FARM_PATH,
   DASHBOARD_PATH,
   DASHBOARD_QUEUE_HASH,
   ISSUES_PATH,
@@ -50,6 +51,12 @@ describe("the paths themselves", () => {
     // The sidebar's **Planning** entry goes here, and lights on everything beneath it.
     expect(PLANNING_PATH).toBe("/planning");
     expect(PLANNING_PATH.startsWith(`${MODELS_PATH}/`)).toBe(false);
+  });
+
+  it("give the build farm a segment of its own, outside every other section (#256)", () => {
+    // The sidebar's **Build Farm** entry goes here, and lights on everything beneath it.
+    expect(BUILD_FARM_PATH).toBe("/build-farm");
+    expect(BUILD_FARM_PATH.startsWith(`${MODELS_PATH}/`)).toBe(false);
   });
 
   it("put the providers page under the Models section", () => {

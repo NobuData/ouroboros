@@ -13,8 +13,9 @@
  * `app/ui/` — one definition for the whole product rather than one per screen, which is
  * what #46 exists to establish. What stays here is what belongs to *this page and no
  * other*: the gutter rhythm, the page head, the twelve-column grid and its two
- * breakpoints, and the two compositions the dashboard builds out of primitives — the stat
- * tile inside a card, and the system card's description list.
+ * breakpoints, and the composition the dashboard builds out of primitives — the system card's
+ * description list. (The stat tile was the other until #256 gave the build farm the same row;
+ * it is `app/ui/stat-card.tsx` now, by the rule in the next paragraph.)
  *
  * The line is worth stating because it is the one that will be pushed on: a rule belongs
  * here if moving this page to another layout would take it along, and belongs in `ui.css`
@@ -167,67 +168,10 @@
 /* ---------- stat tiles ---------- */
 
 /*
- * A caption, a figure and a line about the figure, inside a card. The card is the primitive
- * (app/ui/card.tsx); this is what the dashboard puts in one, and it stays here because a
- * stat tile is a composition of this screen rather than a shape of the design system.
+ * The tile itself — caption, figure, the line about the figure — is the design system's since
+ * #256 gave the build farm the same row: `app/ui/stat-card.tsx` over `.ou-stat` in `ui.css`.
+ * What stays this page's is where a tile sits, which is `.dash-col--3` above.
  */
-.dash-stat {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.dash-stat__label {
-  color: var(--ink-faint);
-  font-family: var(--f-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: var(--tr-wider);
-  text-transform: uppercase;
-}
-
-.dash-stat__value {
-  font-family: var(--f-disp);
-  font-size: var(--t-3xl);
-  font-weight: 600;
-  line-height: var(--lh-tight);
-  /* One column of digits that does not reflow as a count changes. */
-  font-variant-numeric: tabular-nums;
-}
-
-/*
- * The mockup accents exactly one figure of the four — `Loops live`, the only one of them
- * that is in the present tense. It is the accent rather than a second ink because the
- * accent is what this product reserves for live things, and both palettes publish its
- * contrast against `--surface`.
- */
-.dash-stat__value--accent {
-  color: var(--accent);
-}
-
-.dash-stat__delta {
-  color: var(--ink-mut);
-  font-size: var(--t-xs);
-  line-height: var(--lh-body);
-}
-
-/*
- * The mockup's `.delta.up` and `.delta.down`, which name **goodness rather than
- * direction** — mockup 15 draws a falling cycle time as `up`, because a loop that got
- * faster is good news. The direction is carried by the arrow in the text, so a reader who
- * cannot separate the two hues still has a glyph that points.
- */
-.dash-stat__delta--up {
-  color: var(--ok);
-}
-
-.dash-stat__delta--down {
-  color: var(--err);
-}
-
-/* The caption of a figure that could not be read, rather than of one that is zero. */
-.dash-stat__delta--failed {
-  color: var(--err);
-}
 
 /* ---------- the active loops table ---------- */
 
@@ -763,19 +707,19 @@
   width: 55%;
 }
 
-/* The stat tile's figure — `.dash-stat__value`'s `--t-3xl` line, in a bar. */
+/* The stat tile's figure — `.ou-stat__value`'s `--t-3xl` line, in a bar. */
 .dash-skeleton__bar--tall {
   height: var(--sp-11);
   width: 40%;
 }
 
-/* Its caption — `.dash-stat__label`'s `--t-2xs`. */
+/* Its caption — `.ou-stat__label`'s `--t-2xs`. */
 .dash-skeleton__bar--caption {
   height: var(--sp-6);
   width: 45%;
 }
 
-/* Its delta line — `.dash-stat__delta`'s `--t-xs`. */
+/* Its delta line — `.ou-stat__delta`'s `--t-xs`. */
 .dash-skeleton__bar--line {
   height: var(--sp-6);
   width: 70%;
