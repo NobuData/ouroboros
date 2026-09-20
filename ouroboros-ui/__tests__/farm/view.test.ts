@@ -106,13 +106,15 @@ describe("the head's actions", () => {
     ]);
   });
 
-  it("name the issue that builds what the unbuilt two open, so the tooltip answers when", () => {
+  it("name the issue that builds what the unbuilt one opens, so the tooltip answers when", () => {
     const notes = Object.fromEntries(FARM_ACTIONS.map(({ id, soonNote }) => [id, soonNote]));
 
     expect(notes.analyzer).toContain("#516");
-    expect(notes.pools).toContain("#259");
     expect(notes.analyzer).toMatch(/arrives? with/);
-    expect(notes.pools).toMatch(/arrives? with/);
+  });
+
+  it("stop calling Pool settings soon on the commit that builds the pools sheet (#259)", () => {
+    expect(FARM_ACTIONS.find(({ id }) => id === "pools")?.soonNote).toBeNull();
   });
 
   it("stop calling + Enroll runner soon on the commit that builds the enroll card (#258)", () => {

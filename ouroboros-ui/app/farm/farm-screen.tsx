@@ -5,6 +5,8 @@ import { FarmHead } from "./farm-head";
 import type { FarmPollOptions } from "./farm-poll";
 import { FarmStatRow } from "./farm-stat-row";
 import { FarmProvider } from "./farm-store";
+import { PoolProvider } from "./pool-store";
+import { PoolsCard } from "./pools-card";
 import { RunnersCard } from "./runners-card";
 
 import "./farm.css";
@@ -25,16 +27,19 @@ import "./farm.css";
  * the stat row and the runners table (AI.2, [#257](https://github.com/NobuData/ouroboros/issues/257))
  * all read it (`app/farm/farm-store.tsx`) — which is what keeps `4/5` and the table it counts on
  * one answer. The enroll card (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258))
- * sits beside the table in the mockup's four columns and reads the same store for its pools. The
- * regions still to come — the pools card (AI.4, #259) and the live log (AI.6, #261) — mount in
- * {@link FarmScreen}'s grid beside and beneath them.
+ * sits beside the table in the mockup's four columns and reads the same store for its pools, and
+ * the pools card (AI.4, [#259](https://github.com/NobuData/ouroboros/issues/259)) sits under it in
+ * the same column — the mockup's `c-4 col`. The pools and their one configuration sheet are
+ * provided here too (`app/farm/pool-store.tsx`), because the sheet has two doors: the card's
+ * `Configure →` and the head's **Pool settings**. The region still to come — the live log
+ * (AI.6, #261) — mounts in {@link FarmScreen}'s grid beneath them.
  *
  * ### One role decision, made by the route
  *
- * Everything on the page may be read by every member. What a role changes is the enroll flow —
- * minting a token is `owner` or `admin` — so the route hands down one boolean
- * ({@link FarmReader}) and the head's **+ Enroll runner** and the card both draw from it. The
- * gate that **enforces** is the service's.
+ * Everything on the page may be read by every member. What a role changes is what may be
+ * written — minting a token and changing a pool are `owner` or `admin` — so the route hands down
+ * one boolean ({@link FarmReader}) and the head's **+ Enroll runner**, the enroll card and the
+ * pools card all draw from it. The gate that **enforces** is the service's.
  *
  * The banner sits above the head rather than in the grid, for the dashboard's reason: it is a
  * fact about the whole page, and a reader handed old data should be told before they read it.
@@ -53,15 +58,20 @@ export function FarmScreen({
 }: Readonly<{ readings: FarmReadings; reader: FarmReader; poll?: FarmPollOptions }>) {
   return (
     <FarmProvider initial={readings.page} poll={poll} readAt={readings.readAt}>
-      <main className="farm">
-        <FarmBanner />
-        <FarmHead mayAdminister={reader.mayAdminister} />
-        <div className="farm__grid">
-          <FarmStatRow />
-          <RunnersCard />
-          <EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />
-        </div>
-      </main>
+      <PoolProvider>
+        <main className="farm">
+          <FarmBanner />
+          <FarmHead mayAdminister={reader.mayAdminister} />
+          <div className="farm__grid">
+            <FarmStatRow />
+            <RunnersCard />
+            <div className="farm-col--4 farm__side">
+              <EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />
+              <PoolsCard mayAdminister={reader.mayAdminister} />
+            </div>
+          </div>
+        </main>
+      </PoolProvider>
     </FarmProvider>
   );
 }
@@ -69,9 +79,9 @@ export function FarmScreen({
 /** Who is reading the farm, as far as the page needs to know. */
 export interface FarmReader {
   /**
-   * Whether this reader may mint and revoke enrollment tokens — `app/api/membership.ts`'s
-   * `mayAdminister`, decided once by the route. A boolean rather than a role, so there is one
-   * place deciding what a role may do.
+   * Whether this reader may mint and revoke enrollment tokens and change pools —
+   * `app/api/membership.ts`'s `mayAdminister`, decided once by the route. A boolean rather than a
+   * role, so there is one place deciding what a role may do.
    */
   readonly mayAdminister: boolean;
   /** The active workspace's slug — the enroll command's `--tenant`. */

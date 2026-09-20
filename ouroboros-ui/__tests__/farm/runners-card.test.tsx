@@ -41,6 +41,13 @@ vi.mock("@/app/farm/enroll-actions", () => ({
   revokeEnrollmentToken: vi.fn(),
 }));
 
+// The pools card (#259) writes through Server Actions too; this suite presses none of them.
+vi.mock("@/app/farm/pool-actions", () => ({
+  createPool: vi.fn(),
+  deletePool: vi.fn(),
+  updatePool: vi.fn(),
+}));
+
 /**
  * The runners table as it is drawn (#257): mockup 08's `RUNNERS` card from the seeded farm, row
  * for row; the dimmed offline row and its em dashes; null telemetry; the bearer-fallback affix;

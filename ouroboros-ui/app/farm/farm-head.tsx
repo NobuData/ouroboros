@@ -4,6 +4,8 @@ import { Button, Eyebrow } from "@/app/ui";
 
 import { ENROLL_COPY_ID, ENROLL_MEMBER_REASON, ENROLL_POOL_FIELD_ID } from "./enroll";
 import { useFarm } from "./farm-store";
+import { usePools } from "./pool-store";
+import { POOLS_UNREAD } from "./pools";
 import { FARM_ACTIONS, FARM_EYEBROW, FARM_SUBLINE, SOON_MARK, farmHeadline } from "./view";
 
 /**
@@ -15,10 +17,15 @@ import { FARM_ACTIONS, FARM_EYEBROW, FARM_SUBLINE, SOON_MARK, farmHeadline } fro
  * how it degrades is `farmHeadline`'s (`app/farm/view.ts`). That is the one reason this is a
  * Client Component — it decides nothing itself.
  *
- * **The actions are honest.** Two of the three have nothing to open yet, so each is an inert
- * button carrying a *soon* mark, and its tooltip names the issue that builds its destination
- * (`FARM_ACTIONS`). **✦ Build Analyzer** in particular is a link to a page that does not exist
- * in the mockup; here it navigates nowhere.
+ * **The actions are honest.** One of the three has nothing to open yet, so it is an inert button
+ * carrying a *soon* mark, and its tooltip names the issue that builds its destination
+ * (`FARM_ACTIONS`). **✦ Build Analyzer** is a link to a page that does not exist in the mockup;
+ * here it navigates nowhere.
+ *
+ * **Pool settings acts** (AI.4, [#259](https://github.com/NobuData/ouroboros/issues/259)): it
+ * opens the pool configuration sheet — the one the pools card's `Configure →` opens, held by
+ * `app/farm/pool-store.tsx` so the two doors lead to one room. Every member may open it; with no
+ * page read there are no pools to configure, and it says so instead.
  *
  * **+ Enroll runner acts** (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258)): it
  * moves focus to the enroll card's first control, which scrolls the card into the pane's view on
@@ -33,6 +40,7 @@ import { FARM_ACTIONS, FARM_EYEBROW, FARM_SUBLINE, SOON_MARK, farmHeadline } fro
  */
 export function FarmHead({ mayAdminister = false }: Readonly<{ mayAdminister?: boolean }>) {
   const { page } = useFarm();
+  const { pools, openSheet } = usePools();
 
   return (
     <div className="farm__head">
@@ -43,7 +51,16 @@ export function FarmHead({ mayAdminister = false }: Readonly<{ mayAdminister?: b
       </div>
       <div className="farm__actions">
         {FARM_ACTIONS.map((action) =>
-          action.soonNote === null ? (
+          action.id === "pools" ? (
+            <Button
+              key={action.id}
+              onClick={openSheet}
+              reason={pools === null ? POOLS_UNREAD : undefined}
+              tone={action.tone}
+            >
+              {action.label}
+            </Button>
+          ) : action.soonNote === null ? (
             <Button
               key={action.id}
               onClick={focusEnrollCard}
@@ -54,7 +71,7 @@ export function FarmHead({ mayAdminister = false }: Readonly<{ mayAdminister?: b
             </Button>
           ) : (
             <Button key={action.id} reason={action.soonNote} tone={action.tone}>
-              {/* The space keeps the accessible name words apart — "Pool settings soon". */}
+              {/* The space keeps the accessible name words apart — "✦ Build Analyzer soon". */}
               {action.label}{" "}
               <span className="farm__soon">{SOON_MARK}</span>
             </Button>

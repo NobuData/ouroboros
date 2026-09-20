@@ -71,6 +71,12 @@ export interface FarmView {
   readonly retrying: boolean;
   /** Ask now. A second press while one is in flight does nothing. */
   readonly retry: () => void;
+  /**
+   * Ask now **because something was just written** (AI.4, #259). Unlike {@link FarmView.retry} it
+   * is not a control's press and has no *in flight* to report: it supersedes whatever ask is in
+   * the air (`app/poll.ts`), so the next page to land is one read after the write.
+   */
+  readonly refresh: () => void;
 }
 
 /** What is read outside a provider: nothing is known, and asking does nothing. */
@@ -80,6 +86,7 @@ const NO_FARM: FarmView = Object.freeze({
   dataAt: null,
   retrying: false,
   retry: () => {},
+  refresh: () => {},
 });
 
 /**
@@ -178,9 +185,11 @@ export function FarmProvider({ initial, readAt, children, poll }: FarmProviderPr
     store.refresh();
   }, [asked, snapshot, store]);
 
+  const refresh = useCallback(() => store.refresh(), [store]);
+
   const view = useMemo<FarmView>(
-    () => ({ ...farmReading(initial, readAt, snapshot), retrying, retry }),
-    [initial, readAt, snapshot, retrying, retry],
+    () => ({ ...farmReading(initial, readAt, snapshot), retrying, retry, refresh }),
+    [initial, readAt, snapshot, retrying, retry, refresh],
   );
 
   return <FarmContext.Provider value={view}>{children}</FarmContext.Provider>;

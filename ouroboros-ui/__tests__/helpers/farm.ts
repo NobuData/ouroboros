@@ -74,7 +74,8 @@ export function farmRunner(over: Partial<FarmRunner> = {}): FarmRunner {
 }
 
 /**
- * One pool, seed-shaped — `pool-a`, the container world.
+ * One pool, seed-shaped — `pool-a`, the container world, exactly as `R__dev_seed_farm.sql` stores
+ * it: the pinned Zephyr SDK image, its allow-list, and an auto-scale preference that is off.
  *
  * @param over Fields to replace.
  * @returns The pool.
@@ -85,13 +86,14 @@ export function runnerPool(over: Partial<RunnerPool> = {}): RunnerPool {
     name: "pool-a",
     description: "firmware builds",
     executor: "container",
-    image: "ghcr.io/zephyrproject-rtos/ci:v0.27.4",
+    image: "ghcr.io/acme-robotics/zephyr-sdk:0.17",
     enabled: true,
     maxConcurrency: 2,
-    envAllowlist: [],
-    tags: [],
-    defaultCommand: null,
-    autoscalePref: {},
+    envAllowlist: ["CCACHE_DIR", "WEST_TOPDIR", "ZEPHYR_BASE"],
+    tags: ["firmware", "zephyr"],
+    defaultCommand: "west build -b helios_mainboard app",
+    // Stored and inert (decision B9) — and what draws the card's auto-scale sub-toggle.
+    autoscalePref: { enabled: false, queue_threshold: 5 },
     runners: 3,
     ...over,
   };
@@ -223,7 +225,11 @@ export function seededFarm(over: Partial<FarmPage> = {}): FarmPage {
         description: "HIL & macOS jobs",
         executor: "shell",
         image: null,
-        tags: ["hil"],
+        maxConcurrency: 1,
+        envAllowlist: ["DEVELOPER_DIR", "HIL_RIG_ID"],
+        tags: ["hil", "macos"],
+        defaultCommand: null,
+        autoscalePref: {},
         runners: 2,
       }),
     ],

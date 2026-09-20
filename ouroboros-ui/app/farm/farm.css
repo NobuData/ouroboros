@@ -131,6 +131,17 @@
 }
 
 /*
+ * The mockup's `c-4 col`: the right-hand column is a stack — the enroll card (#258) over the pools
+ * card (#259) — so the two share four columns rather than each taking a grid row of its own. The
+ * gap is the grid's, so the stack and the row it sits in keep one rhythm.
+ */
+.farm__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/*
  * The mockup's two steps, at its own widths (1100px and 640px). The stat row halves before it
  * stacks, so a narrow pane shows two readable tiles rather than four crushed ones.
  */
@@ -553,4 +564,149 @@
 .farm-tokens__readonly-head {
   color: var(--ink-dim);
   font-weight: 600;
+}
+
+/* ---------- the pools card (#259) ---------- */
+
+/* The rows are a list: reset to the mockup's `.pool-row` stack. */
+.farm-pools__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The mockup's `.pool-row`: the pool on the left, its switch at the top right. */
+.farm-pool {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  padding: var(--sp-6) 0;
+}
+
+.farm-pool:first-child {
+  padding-top: 0;
+}
+
+.farm-pool:last-child {
+  padding-bottom: 0;
+}
+
+.farm-pool + .farm-pool {
+  border-top: 1px solid var(--line);
+}
+
+/* `min-width: 0` so a long description wraps inside the row instead of pushing the switch out. */
+.farm-pool__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.farm-pool__name {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+/* The composed line — description · image · live count. */
+.farm-pool__meta {
+  margin-top: var(--sp-1);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The mockup's `.subtoggle`: a well holding the auto-scale switch and what it says. */
+.farm-pool__subtoggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  margin-top: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.farm-pool__scale {
+  color: var(--ink-dim);
+}
+
+.farm-pool__keep {
+  color: var(--ink-faint);
+}
+
+/*
+ * Decision B9's affix — `arrives with cloud runners (v2)`. Text on the card in the muted ink, a
+ * step stronger than the line above it: it is the part that stops a stored preference reading as
+ * active behaviour, so it is never a tooltip and never the faintest thing in the well.
+ */
+.farm-pool__affix {
+  color: var(--ink-mut);
+  font-style: italic;
+}
+
+.farm-pool__failure {
+  margin: var(--sp-4) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the pool configuration sheet (#259) ---------- */
+
+/* The form's column: the fields, then what went wrong, then the actions. */
+.farm-pool-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+.farm-pool-form__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* Delete on the left, save on the right — and they wrap rather than crowd on a narrow sheet. */
+.farm-pool-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-5);
+}
+
+/* The confirmation takes the actions' place, in the error hue's own well. */
+.farm-pool-form__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-6);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-sm);
+  background: var(--err-tint);
+}
+
+.farm-pool-form__question {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* What the last write did. The region is always mounted; empty, it takes no room. */
+.farm-pool-form__notice {
+  margin: 0;
+  color: var(--ok);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.farm-pool-form__notice:empty {
+  display: none;
 }

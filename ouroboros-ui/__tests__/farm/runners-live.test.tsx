@@ -32,6 +32,13 @@ vi.mock("@/app/farm/enroll-actions", () => ({
   revokeEnrollmentToken: vi.fn(),
 }));
 
+// The pools card (#259) writes through Server Actions too; this suite presses none of them.
+vi.mock("@/app/farm/pool-actions", () => ({
+  createPool: vi.fn(),
+  deletePool: vi.fn(),
+  updatePool: vi.fn(),
+}));
+
 // The real meter, counted: which CPU cells React rendered is how the memo is observed.
 vi.mock("@/app/ui/meter", async (original) => {
   const actual = await original<typeof import("@/app/ui/meter")>();

@@ -9,8 +9,9 @@
  * table (AI.2, #257) reads that payload and nothing else. The enroll flow (AI.3,
  * [#258](https://github.com/NobuData/ouroboros/issues/258)) added its three — the minting read of
  * the install command, the token list and the revoke — and the pools' own listing, for naming a
- * token's pool. The pools card (AI.4, #259) and the lifecycle writes (AI.5, #260) add theirs as
- * they arrive.
+ * token's pool. The pools card (AI.4, [#259](https://github.com/NobuData/ouroboros/issues/259))
+ * added the three pool writes — create, change and delete. The lifecycle writes (AI.5, #260) add
+ * theirs as they arrive.
  *
  * ### `null` is not `0`, and this module keeps it that way
  *
@@ -50,6 +51,15 @@ export type FarmRunner = components["schemas"]["FarmRunner"];
 
 /** One pool, with its metadata and how many runners it holds (AI.4). */
 export type RunnerPool = components["schemas"]["RunnerPool"];
+
+/** A new pool — `name` and `executor`, and whatever else should not take the column's default. */
+export type RunnerPoolCreate = components["schemas"]["CreateRunnerPoolRequest"];
+
+/**
+ * A change to a pool. **A field it does not name is left alone, and `null` is a value** — *there
+ * is none* — which is the distinction that matters for `image`.
+ */
+export type RunnerPoolChange = components["schemas"]["UpdateRunnerPoolRequest"];
 
 /**
  * The enroll card's one-liner and the parts it was built from (AI.3). **`command` carries a live
@@ -160,5 +170,54 @@ export const farm = {
    */
   async pools(client: ApiClient = api()): Promise<RunnerPool[]> {
     return unwrap(await client.GET("/api/v1/farm/pools"));
+  },
+
+  /**
+   * Create a pool (AI.4, [#259](https://github.com/NobuData/ouroboros/issues/259)).
+   *
+   * @param pool The pool. A container pool must pin an image and a shell pool must not.
+   * @param client The client to call through.
+   * @returns The pool as stored, holding no runners yet.
+   * @throws {ApiError} `403 forbidden` for anybody but an `owner` or `admin`,
+   *   `409 farm_pool_name_taken`, or `422` — `validation_failed` naming the field, or
+   *   `farm_pool_image_mismatch`.
+   */
+  async createPool(pool: RunnerPoolCreate, client: ApiClient = api()): Promise<RunnerPool> {
+    return unwrap(await client.POST("/api/v1/farm/pools", { body: pool }));
+  },
+
+  /**
+   * Change a pool — the card's two switches and the sheet's save. What already ran is not
+   * rewritten: the executor and image are snapshotted onto every build at submission.
+   *
+   * @param id The pool.
+   * @param change The fields to change, and only those.
+   * @param client The client to call through.
+   * @returns The pool as it now stands, with its runner count.
+   * @throws {ApiError} `403 forbidden`, `404 farm_pool_not_found`, `409 farm_pool_name_taken`,
+   *   or `422` — `validation_failed`, or `farm_pool_image_mismatch` against the merged pool.
+   */
+  async updatePool(
+    id: string,
+    change: RunnerPoolChange,
+    client: ApiClient = api(),
+  ): Promise<RunnerPool> {
+    return unwrap(
+      await client.PATCH("/api/v1/farm/pools/{id}", { params: { path: { id } }, body: change }),
+    );
+  },
+
+  /**
+   * Delete a pool that nothing points at.
+   *
+   * @param id The pool.
+   * @param client The client to call through.
+   * @returns When it is gone.
+   * @throws {ApiError} `403 forbidden`, `404 farm_pool_not_found`, or `409 farm_pool_in_use` —
+   *   runners (retired ones included) or builds still name it, and `details` carries both counts.
+   */
+  async deletePool(id: string, client: ApiClient = api()): Promise<void> {
+    // A `204`: there is no body to unwrap, and a refusal is thrown by the client's middleware.
+    await client.DELETE("/api/v1/farm/pools/{id}", { params: { path: { id } } });
   },
 };

@@ -58,6 +58,13 @@ vi.mock("@/app/farm/enroll-actions", () => ({
   revokeEnrollmentToken: (id: string) => actions.revokeEnrollmentToken(id),
 }));
 
+// The pools card (#259) writes through Server Actions too; this suite presses none of them.
+vi.mock("@/app/farm/pool-actions", () => ({
+  createPool: vi.fn(),
+  deletePool: vi.fn(),
+  updatePool: vi.fn(),
+}));
+
 /**
  * The enroll card on the farm screen (#258), end to end through the browser's half: what it shows
  * before anything is minted, that **Copy command** mints and the value reaches the clipboard and
@@ -147,9 +154,11 @@ describe("at rest, for an administrator", () => {
     expect(command()).toContain("--pool pool-b");
   });
 
-  it("sits beside the runners table in the mockup's four columns", () => {
-    expect(card()).toHaveClass("farm-col--4");
-    expect(card().parentElement).toHaveClass("farm__grid");
+  it("sits beside the runners table in the mockup's four columns — a column it shares with the pools card (#259)", () => {
+    const column = card().parentElement;
+
+    expect(column).toHaveClass("farm-col--4", "farm__side");
+    expect(column?.parentElement).toHaveClass("farm__grid");
   });
 });
 

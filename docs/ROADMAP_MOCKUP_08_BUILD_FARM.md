@@ -1101,7 +1101,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 | AI.1 | #256 | 🟢 Done | ouroboros-ui: [AI.1] Build Farm route, head & stat row | `/build-farm` frame, live stats, honest head actions | mvp, build-farm, ui, design | N (after #41, AH.6, BA-D.5) | Y | S | ouroboros-ui |
 | AI.2 | #257 | 🟢 Done | ouroboros-ui: [AI.2] Runners table (live) | Five status archetypes, telemetry cells, live refresh | mvp, build-farm, ui, design | N (after AI.1) | Y | L | ouroboros-ui |
 | AI.3 | #258 | 🟢 Done | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
-| AI.4 | #259 | 🟡 Open | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
+| AI.4 | #259 | 🟢 Done | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
 | AI.5 | #260 | 🟡 Open | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
 | AI.6 | #261 | 🟡 Open | ouroboros-ui: [AI.6] Live log card | Offset-streamed log, ANSI-safe rendering, cursor, full-log path | mvp, build-farm, ui, design | N (after AI.1, AH.5) | Y | M | ouroboros-ui |
 | AI.7 | #262 | 🟡 Open | ouroboros-ui: [AI.7] Farm states & e2e leg | Empty/no-runners guidance, read-only, themes, e2e | mvp, build-farm, ui, ci | N (after AI.1–AI.6) | Y | M | ouroboros-ui, .github |
@@ -1339,7 +1339,7 @@ forge-03 linux/arm64 [pool-a] (●offline · last seen 2h)  —  —  —  q:0  
 
 ### Issue AI.4 — ouroboros-ui: [AI.4] Pools card & configuration
 
-> **GitHub issue:** #259 · **Status:** 🟡 Open · **Parent epic:** #241
+> **GitHub issue:** #259 · **Status:** 🟢 Done · **Parent epic:** #241
 
 
 - **Problem Statement:** Pools carry the executor policy (B4) and the
@@ -1363,6 +1363,74 @@ forge-03 linux/arm64 [pool-a] (●offline · last seen 2h)  —  —  —  q:0  
 pool-a  firmware builds · container: zephyr-sdk 0.17 · 3 runners        [enabled ✓]
   [ ] Auto-scale to cloud when queue > 5 — arrives with cloud runners (v2)
 ```
+
+- **Delivered (2026-09-20):** `ouroboros-ui` 0.84.0 — [`app/farm/`](../ouroboros-ui/app/farm)
+  gains `pools.ts` (every judgement, pure), `pool-actions.ts` (the Server Actions),
+  `pool-store.tsx`, `pools-card.tsx` (mounted under the enroll card in the mockup's `c-4 col`,
+  now `farm__side`), `pool-sheet.tsx` and `pool-form.tsx`; `app/api/farm.ts` gains `createPool()`,
+  `updatePool()` and `deletePool()`, and `farm-store.tsx` a `refresh()`. No API or schema change —
+  every write is AH.6's (#254). Decisions taken in-issue:
+  - **The meta line is the mockup's wording** (decided with the owner). The issue's acceptance
+    criterion names the mockup — `firmware builds · zephyr-sdk 0.17 image · 3 runners`,
+    `HIL & macOS jobs · 2 runners` — and its own diagram words it differently
+    (`· container: zephyr-sdk 0.17 ·`, `· shell ·`). The mockup won: a container pool says its image
+    as `<name> <tag> image` (last path segment of `ghcr.io/acme-robotics/zephyr-sdk:0.17`; the tag
+    looked for there only, so a registry port is not one; a digest dropped, for AJ.5), and a shell
+    pool has no executor part. Composed from the description, the image and the **live** count —
+    never a stored string — so it moves with every poll.
+  - **The auto-scale sub-toggle is drawn only where a `queue_threshold` is stored** (decided with
+    the owner). Mockup and diagram draw it under `pool-a` alone, and the seed explains why:
+    `pool-a` stores `{enabled: false, queue_threshold: 5}` and `pool-b` stores `{}`. The sentence is
+    *when queue > N*, so a pool with no `N` has none to compose and **no default is invented**; a
+    press sends the whole stored preference back with `enabled` flipped, so the threshold and any
+    `max_runners` survive. Setting a first preference on a pool is an API write until AJ.1 (#263)
+    owns the rest.
+  - **The affix is text, in the switch's description too.** `— arrives with cloud runners (v2)` is
+    a line in the well, in the muted ink (a step stronger than *keep builds on-prem* above it), and
+    the switch's `aria-describedby` — so it is read with the control and never found by hovering.
+    It stays whichever way the switch stands: stored is still not active.
+  - **One sheet, a picker inside it, two doors** (decided with the owner). `Configure →` sits on the
+    card rather than on a row and the scope includes create, so the sheet carries a select — every
+    pool, then `+ New pool` — over a form remounted per pool. **Pool settings** in the head (AI.1's
+    *soon* named this issue) opens the same sheet, for every member.
+  - **A save names only what differs.** AH.6's audit row lists the columns that moved, so a save
+    naming all six fields would record a rename as a change to the allow-list. An executor flip to
+    `shell` sends `image: null` beside it — the pair the service checks against the merged row —
+    and the image field is drawn for a container pool only, keeping what was typed across a flip
+    and back. With nothing changed **Save** is inert and says so.
+  - **The form's bounds restate `fleet.dto.ts`'s**, plus one guard of its own: a pasted
+    `NAME=value` in the allow-list is refused, because the list names what a build *may* carry.
+  - **Delete is guarded twice.** A pool with runners draws `Delete — blocked: 3 runners`, inert,
+    with the reason; an empty one asks first (**Keep it** takes focus). The service counts more —
+    retired machines and builds — and its `409 farm_pool_in_use` is said with its own counts.
+    Both refusals offer what the reader usually meant: disable the pool.
+  - **A write is seen before the page catches up** — not in the issue, and what makes the switches
+    believable. The pools are the farm page's one observation, up to ten seconds old; a switch
+    that snapped back until the next poll would read as a failed write. Each switch moves when
+    pressed, the write's **answer** stands in for the page's copy, and the store asks for a fresh
+    page at once — which supersedes any ask in the air, so the first page confirmed after a write
+    was read after it, and wins. A refused flip goes back on its own with the reason under the row.
+  - **Focus is never left on the page behind** — found in a real browser, not in jsdom. Asking
+    before a delete, and a create or delete remounting the form, each unmount the control that was
+    pressed; the browser then hands focus to `<body>`, outside the dialog, where Escape closes
+    nothing. Focus is rescued to **Keep it**, back to **Delete**, or to the picker — and only ever
+    rescued: a reader typing in a field is left where they are.
+  - **Member read-only**: every switch in its real position, `aria-disabled`, with the reason; the
+    sheet opens with genuinely `disabled` fields, inert **Save**/**Delete** and no `+ New pool`.
+    Presentation only — the gates that decide, and the audit, are the service's.
+  - **Verified through AH.4's harness** (`dispatch.integration-spec.ts`, four cases sending the
+    sheet's own bodies): an executor edit to `shell` gets the **next** build offered to the
+    docker-less runner that was refused the one before, which keeps its `container` snapshot and
+    still waits; the reverse flip makes the next build need a daemon; a saved allow-list is the
+    agent's next `ack.pool.env_allowlist` (what AG.4 enforces); and an auto-scale preference
+    switched on with `queue_threshold: 1` over three queued builds leaves no runner, no token and
+    no placement — inert.
+  - **Checked against a real stack** (36 headless checks): the seeded lines verbatim; both
+    switches persisting across a reload with the threshold kept; the affix visible and no `title`
+    anywhere; create → executor and allow-list edits → delete of a `pool-c` round-tripping through
+    REST; a taken name refused under its field; a member session inert throughout; both palettes;
+    no sideways overflow at 600/900/1200/1440 px, nor with the sheet open at 600; type ×1.25 at the
+    125% step.
 
 ### Issue AI.5 — ouroboros-ui: [AI.5] Runner actions & job submission
 
