@@ -1,4 +1,5 @@
 import type { FarmPage, FarmRunner, FarmStats, RunnerPool } from "@/app/api/farm";
+import type { components } from "@/app/api/schema";
 import type { FarmReadings } from "@/app/farm/data";
 
 /**
@@ -94,13 +95,106 @@ export function runnerPool(over: Partial<RunnerPool> = {}): RunnerPool {
   };
 }
 
-/** The seeded fleet's five machines: name, pool and status — the archetypes mockup 08 draws. */
-const SEEDED_RUNNERS: readonly (readonly [string, string, FarmRunner["status"]])[] = [
-  ["forge-01", "pool-a", "building"],
-  ["forge-02", "pool-a", "online"],
-  ["anvil-mac", "pool-b", "online"],
-  ["bigiron", "pool-b", "draining"],
-  ["forge-03", "pool-a", "offline"],
+/** A runner's live snapshot, as the payload carries one. */
+type RunnerTelemetry = components["schemas"]["RunnerTelemetry"];
+
+/**
+ * A heartbeat snapshot, seed-shaped.
+ *
+ * @param cpuPct CPU, `0`–`100`.
+ * @param usedGb Memory in use, in decimal gigabytes.
+ * @param totalGb Memory installed, in decimal gigabytes.
+ * @param queueDepth What the agent said it was holding.
+ * @returns The snapshot, sampled seven seconds before {@link FARM_READ_AT}.
+ */
+export function runnerTelemetry(
+  cpuPct: number | null,
+  usedGb: number | null,
+  totalGb: number | null,
+  queueDepth: number | null = 0,
+): RunnerTelemetry {
+  return {
+    cpuPct,
+    ramUsedBytes: usedGb === null ? null : usedGb * 1e9,
+    ramTotalBytes: totalGb === null ? null : totalGb * 1e9,
+    queueDepth,
+    sampledAt: "2026-09-19T14:01:53.000Z",
+  };
+}
+
+/** The pools' ids, by name. */
+const POOL_IDS: Readonly<Record<string, string>> = {
+  "pool-a": "5eed0400-0000-4000-8000-0000000000b1",
+  "pool-b": "5eed0400-0000-4000-8000-0000000000b2",
+};
+
+/** Seconds in a day, for the seeded uptimes. */
+const DAY_S = 86_400;
+
+/**
+ * The seeded fleet's five machines, in the seed's own order — which is mockup 08's row order and
+ * **not** the table's default one — with everything the runners table (#257) prints: `forge-01`
+ * building `#479` at 82%, two idle machines (the Mac on `bearer_fallback`, decision B3), `bigiron`
+ * draining and finishing `#472`, and `forge-03` offline for two hours with no snapshot at all.
+ */
+const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
+  {
+    name: "forge-01",
+    pool: "pool-a",
+    status: "building",
+    uptimeSeconds: 41 * DAY_S,
+    telemetry: runnerTelemetry(82, 14.2, 32, 2),
+    queueDepth: 2,
+    currentJob: {
+      id: "5eed0400-0000-4000-8000-0000000004f9",
+      number: 479,
+      label: "zephyr build",
+      title: "Add OTA rollback on failed checksum",
+      startedAt: "2026-09-19T13:58:19.000Z",
+    },
+  },
+  {
+    name: "forge-02",
+    pool: "pool-a",
+    status: "online",
+    uptimeSeconds: 41 * DAY_S,
+    telemetry: runnerTelemetry(3, 2.1, 32),
+  },
+  {
+    name: "anvil-mac",
+    arch: "darwin/arm64",
+    pool: "pool-b",
+    status: "online",
+    securityMode: "bearer_fallback",
+    uptimeSeconds: 12 * DAY_S,
+    telemetry: runnerTelemetry(6, 5, 64),
+  },
+  {
+    name: "bigiron",
+    arch: "linux/x86_64",
+    pool: "pool-b",
+    status: "draining",
+    desiredState: "draining",
+    uptimeSeconds: 3 * DAY_S,
+    telemetry: runnerTelemetry(54, 88, 256, 1),
+    queueDepth: 1,
+    currentJob: {
+      id: "5eed0400-0000-4000-8000-0000000004f2",
+      number: 472,
+      label: "HIL test rig",
+      title: "Overnight HIL sweep on rig-02",
+      startedAt: "2026-09-19T09:42:00.000Z",
+    },
+  },
+  {
+    name: "forge-03",
+    pool: "pool-a",
+    status: "offline",
+    agentVersion: "0.9.2",
+    lastSeenAt: "2026-09-19T12:02:00.000Z",
+    uptimeSeconds: null,
+    telemetry: null,
+  },
 ];
 
 /**
@@ -112,8 +206,12 @@ const SEEDED_RUNNERS: readonly (readonly [string, string, FarmRunner["status"]])
 export function seededFarm(over: Partial<FarmPage> = {}): FarmPage {
   return {
     stats: farmStats(),
-    runners: SEEDED_RUNNERS.map(([name, pool, status], index) =>
-      farmRunner({ id: `5eed0400-0000-4000-8000-0000000000a${String(index + 1)}`, name, pool, status }),
+    runners: SEEDED_RUNNERS.map((runner, index) =>
+      farmRunner({
+        id: `5eed0400-0000-4000-8000-0000000000a${String(index + 1)}`,
+        poolId: POOL_IDS[runner.pool ?? "pool-a"],
+        ...runner,
+      }),
     ),
     pools: [
       runnerPool(),

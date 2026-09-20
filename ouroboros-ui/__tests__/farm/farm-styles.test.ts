@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * The properties of `app/farm/farm.css` that are agreements with something outside it (#256). The
+ * The properties of `app/farm/farm.css` that are agreements with something outside it (#256, and
+ * the runners table's, #257). The
  * generic rules — no colour literal outside the token sheet, no px type — are
  * `__tests__/styles.test.ts`'s and stylelint's; what is here is that the sheet and the components
  * name the same classes, that every length scales and every hue is a token (which is what *both
@@ -97,6 +98,61 @@ describe("the grid", () => {
   it("halves the stat row before it stacks, at the mockup's two widths", () => {
     expect(CODE).toMatch(/@media \(max-width: 68\.75rem\)\s*\{\s*\.farm-col--3\s*\{\s*grid-column:\s*span 6;/);
     expect(CODE).toMatch(/@media \(max-width: 40rem\)\s*\{\s*\.farm__grid > \*\s*\{\s*grid-column:\s*span 12;/);
+  });
+});
+
+describe("the runners table (#257)", () => {
+  it("takes the mockup's eight columns, and the full row once the pane narrows", () => {
+    expect(rule("\\.farm-col--8")).toMatch(/grid-column:\s*span 8/);
+    expect(CODE).toMatch(/@media \(max-width: 68\.75rem\)\s*\{[^@]*\.farm-col--8\s*\{\s*grid-column:\s*span 12;/);
+  });
+
+  it("lets the card shrink under its table, so the table scrolls in its wrapper and the pane does not", () => {
+    // A grid item's automatic minimum is its content's width: without this, nine nowrap columns
+    // hold the track open and the content pane scrolls sideways.
+    expect(rule("\\.farm-col--8")).toMatch(/min-width:\s*0/);
+  });
+
+  it("leaves the table, its wrapper and its rows to the design system", () => {
+    expect(CODE).not.toMatch(/\.ou-/);
+    expect(COMPONENT).toContain("<Table");
+  });
+
+  it("never wraps a cell, so a figure that grows a digit cannot change a row's height", () => {
+    expect(rule("(?<!,\\s*)\\.farm-runners")).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it("keeps a live percentage from jittering: a fixed measure and tabular digits", () => {
+    expect(rule("\\.farm-runners__cpu-pct")).toMatch(/width:\s*[\d.]+rem/);
+    expect(rule("\\.farm-runners__cpu-pct")).toMatch(/font-variant-numeric:\s*tabular-nums/);
+  });
+
+  it("dims the offline row by ink — a token in both palettes — and never by opacity", () => {
+    expect(rule("\\.farm-runners__row--dim td")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.farm-runners__row--dim \\.farm-runners__name")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(CODE).not.toMatch(/opacity/);
+  });
+
+  it("draws the security affix in the warning ink, not a faint one nobody would see", () => {
+    expect(rule("\\.farm-runners__shield")).toMatch(/color:\s*var\(--warn\)/);
+  });
+
+  it("sizes the affix's icon in rem, so it follows the 125% step with the name beside it", () => {
+    expect(rule("\\.farm-runners__shield-icon")).toMatch(/width:\s*var\(--sp-\d+\)/);
+    expect(rule("\\.farm-runners__shield-icon")).toMatch(/height:\s*var\(--sp-\d+\)/);
+    expect(COMPONENT).not.toMatch(/<svg[^>]*\b(width|height)=/);
+  });
+
+  it("draws the grouping control's on-state off aria-pressed, in the accent triple", () => {
+    const pressed = rule('\\.farm-runners__group\\[aria-pressed="true"\\]');
+
+    expect(pressed).toMatch(/border-color:\s*var\(--accent-line\)/);
+    expect(pressed).toMatch(/background:\s*var\(--accent-tint\)/);
+    expect(pressed).toMatch(/color:\s*var\(--accent\)/);
+  });
+
+  it("animates nothing itself — the one moving part is the design system's meter", () => {
+    expect(CODE).not.toMatch(/transition|animation/);
   });
 });
 

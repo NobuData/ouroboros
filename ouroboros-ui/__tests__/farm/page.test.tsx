@@ -76,6 +76,7 @@ describe("the build farm route", () => {
 
     render(await Page());
 
-    expect(screen.getByRole("status")).toHaveTextContent("Choose a workspace.");
+    // By its class: the runners card (#257) holds a polite region of its own.
+    expect(document.querySelector(".ou-retry")).toHaveTextContent("Choose a workspace.");
   });
 });

@@ -433,6 +433,32 @@ describe("the meter", () => {
   });
 });
 
+describe("the table's scroll wrapper (#257)", () => {
+  it("contains what is positioned inside it, so hidden text in a far column cannot widen the page", () => {
+    // `.sr-only` is absolutely positioned; a scroll container clips such a box only when it is
+    // also the box's containing block.
+    const wrapper = /(?<![\w-])\.ou-table-scroll\s*\{([^}]*)\}/.exec(CODE);
+
+    expect(wrapper?.[1]).toMatch(/position:\s*relative/);
+    expect(wrapper?.[1]).toMatch(/overflow-x:\s*auto/);
+  });
+});
+
+describe("the meter over live data (#257)", () => {
+  it("eases its fill to a new width, only for a reader who has not asked for less motion", () => {
+    const guarded = /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.ou-meter__fill\s*\{\s*transition:\s*width [\d.]+ms/;
+
+    expect(CODE).toMatch(guarded);
+  });
+
+  it("declares no transition on the fill outside that guard", () => {
+    const plain = /(?<!\{\s*)\.ou-meter__fill\s*\{([^}]*)\}/.exec(CODE);
+
+    expect(plain?.[1]).toMatch(/width:\s*var\(--ou-meter-fill, 0%\)/);
+    expect(plain?.[1]).not.toMatch(/transition/);
+  });
+});
+
 describe("the live chip's halo", () => {
   it("moves only for a reader who has not asked for less motion", () => {
     // Everything the pulse says, the chip's own label says in words — so a reader who has

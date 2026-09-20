@@ -7,6 +7,7 @@ import {
   elapsedOfSeconds,
   latencyOfMs,
   moneyOfCents,
+  ageOfSeconds,
   relativeAgo,
 } from "@/app/format";
 
@@ -278,5 +279,26 @@ describe("relativeAgo", () => {
   it("draws a future instant as now rather than as a negative, and a bad one as itself", () => {
     expect(relativeAgo("2026-08-23T10:05:00.000Z", NOW)).toBe("0s ago");
     expect(relativeAgo("not a date", NOW)).toBe("not a date");
+  });
+});
+
+describe("ageOfSeconds", () => {
+  it("draws a span in the coarsest unit that is still honest", () => {
+    expect(ageOfSeconds(0)).toBe("0s");
+    expect(ageOfSeconds(40.9)).toBe("40s");
+    expect(ageOfSeconds(59)).toBe("59s");
+    expect(ageOfSeconds(60)).toBe("1m");
+    expect(ageOfSeconds(3599)).toBe("59m");
+    expect(ageOfSeconds(3600)).toBe("1h");
+    expect(ageOfSeconds(7_500)).toBe("2h");
+    expect(ageOfSeconds(86_399)).toBe("23h");
+    expect(ageOfSeconds(86_400)).toBe("1d");
+    expect(ageOfSeconds(41 * 86_400)).toBe("41d");
+  });
+
+  it("reads a negative span — two clocks disagreeing — and a non-number as nothing elapsed", () => {
+    expect(ageOfSeconds(-30)).toBe("0s");
+    expect(ageOfSeconds(Number.NaN)).toBe("0s");
+    expect(ageOfSeconds(Number.POSITIVE_INFINITY)).toBe("0s");
   });
 });

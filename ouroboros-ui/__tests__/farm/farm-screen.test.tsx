@@ -46,6 +46,21 @@ function tile(label: string): HTMLElement {
   return screen.getByRole("region", { name: label });
 }
 
+/**
+ * The stale-data banner.
+ *
+ * By its class rather than by `role="status"`: the runners card (#257) keeps a polite region of
+ * its own for announcing the current row, so the role alone no longer names one element.
+ *
+ * @returns The banner, or `null` while the latest read is good.
+ */
+function banner(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(".ou-retry[role='status']");
+}
+
+/** The stat row's four captions, in the mockup's order. */
+const TILES = ["Runners online", "Builds today", "Avg build time", "Cache hit rate"];
+
 beforeEach(() => {
   answer = { state: "fresh", payload: seededFarm(), etag: null, pollAfterSeconds: 10 };
 });
@@ -99,12 +114,10 @@ describe("the stat row, from the seeded farm", () => {
   });
 
   it("is four tiles, each a region named by its caption", () => {
-    expect(screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"))).toEqual([
-      "Runners online",
-      "Builds today",
-      "Avg build time",
-      "Cache hit rate",
-    ]);
+    // The fifth region on the page is the runners card (#257), named by its heading instead.
+    const labelled = screen.getAllByRole("region").filter((region) => region.hasAttribute("aria-label"));
+
+    expect(labelled.map((region) => region.getAttribute("aria-label"))).toEqual(TILES);
   });
 
   it("draws 4/5 — the 4 accented, the /5 quieter — over the offline note", () => {
@@ -147,7 +160,8 @@ describe("the stat row, from the seeded farm", () => {
 
   it("accents exactly one figure and draws exactly one meter", () => {
     expect(document.querySelectorAll(".ou-stat__value--accent")).toHaveLength(1);
-    expect(document.querySelectorAll(".ou-meter")).toHaveLength(1);
+    // Among the tiles: the runners table under them draws a CPU meter per connected machine.
+    expect(document.querySelectorAll(".ou-stat .ou-meter")).toHaveLength(1);
   });
 });
 
@@ -208,12 +222,13 @@ describe("both themes", () => {
     }
   });
 
-  it("writes no inline style but the meter's fill, so every size is the sheet's rem", () => {
+  it("writes no inline style but a meter's fill, so every size is the sheet's rem", () => {
     const { container } = render(<FarmScreen poll={QUIET} readings={farmReadings()} />);
     const styled = [...container.querySelectorAll("[style]")];
 
-    expect(styled).toHaveLength(1);
-    expect(styled[0]).toHaveClass("ou-meter__fill");
+    // The cache tile's meter, and one CPU meter for each of the four connected runners.
+    expect(styled).toHaveLength(5);
+    for (const element of styled) expect(element).toHaveClass("ou-meter__fill");
   });
 });
 
@@ -222,7 +237,12 @@ describe("the shell", () => {
     const { container } = render(<FarmScreen poll={QUIET} readings={farmReadings()} />);
 
     expect(screen.getAllByRole("main")).toHaveLength(1);
-    expect(container.querySelector("header, nav, aside")).toBeNull();
+    expect(container.querySelector("nav, aside")).toBeNull();
+    // The only `<header>` is a card's own head, inside its section — not a page banner.
+    for (const header of container.querySelectorAll("header")) {
+      expect(header).toHaveClass("ou-card__head");
+      expect(header.closest("section")).not.toBeNull();
+    }
   });
 });
 
@@ -248,20 +268,20 @@ describe("staying live", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    const banner = screen.getByRole("status");
-    expect(banner).toHaveTextContent(/Showing data from .+ — the latest refresh failed\./);
-    expect(banner).toHaveTextContent("The build farm could not be reached.");
+    const stale = banner()!;
+    expect(stale).toHaveTextContent(/Showing data from .+ — the latest refresh failed\./);
+    expect(stale).toHaveTextContent("The build farm could not be reached.");
     // The page underneath is the last good one, untouched.
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("5 runners. 2 pools. 78% cache hits.");
     expect(tile("Builds today").querySelector(".ou-stat__value")).toHaveTextContent("23");
 
     answer = { state: "fresh", payload: seededFarm(), etag: null, pollAfterSeconds: 10 };
     await act(async () => {
-      fireEvent.click(within(banner).getByRole("button", { name: RETRY_LABEL }));
+      fireEvent.click(within(stale).getByRole("button", { name: RETRY_LABEL }));
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(banner()).toBeNull();
   });
 
   it("says Retrying… while the ask it started is in the air", async () => {
@@ -290,25 +310,26 @@ describe("a page that could not be read", () => {
   });
 
   it("says why once, in the banner", () => {
-    const banner = screen.getByRole("status");
+    const unread = banner()!;
 
-    expect(banner).toHaveTextContent(FARM_UNREAD_HEADLINE);
-    expect(banner).toHaveTextContent("Choose a workspace.");
+    expect(unread).toHaveTextContent(FARM_UNREAD_HEADLINE);
+    expect(unread).toHaveTextContent("Choose a workspace.");
     expect(screen.getAllByText(/Choose a workspace\./)).toHaveLength(1);
   });
 
   it("draws the banner inside the page's frame, above the head, so it shares the head's gutters", () => {
     const frame = screen.getByRole("main");
-    const banner = screen.getByRole("status");
+    const unread = banner();
 
-    expect(frame).toContainElement(banner);
-    expect(frame.firstElementChild).toBe(banner);
+    expect(frame).toContainElement(unread);
+    expect(frame.firstElementChild).toBe(unread);
   });
 
   it("keeps the head, the actions and four named tiles holding em-dashes", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(FARM_HEADLINE_UNREAD);
-    expect(screen.getAllByRole("button", { name: new RegExp(SOON_MARK) })).toHaveLength(3);
-    expect(screen.getAllByRole("region")).toHaveLength(4);
+    // The head's three actions, and the runners card's *Health history* (#257).
+    expect(screen.getAllByRole("button", { name: new RegExp(SOON_MARK) })).toHaveLength(4);
+    expect(screen.getAllByRole("region").filter((region) => region.hasAttribute("aria-label"))).toHaveLength(4);
     expect(screen.getAllByText(NOT_READ)).toHaveLength(4);
     expect(document.querySelectorAll(".ou-stat__delta--failed")).toHaveLength(4);
     // The accent is for a figure that is reporting something.

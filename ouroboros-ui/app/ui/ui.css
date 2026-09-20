@@ -428,7 +428,16 @@
  * being a component at all.
  */
 
+/*
+ * `position: relative` makes the wrapper the containing block for anything positioned inside
+ * the table (#257). Visually hidden text is `position: absolute` (`.sr-only`, globals.css), and
+ * an absolutely positioned box is clipped only by a scroll container that is also its containing
+ * block — so without this, a hidden column heading over the last column of a table wider than
+ * its wrapper sits at its static position, *outside* the clip, and widens the document itself:
+ * the page scrolls sideways past the shell, which is the one thing the wrapper exists to stop.
+ */
 .ou-table-scroll {
+  position: relative;
   overflow-x: auto;
 }
 
@@ -604,6 +613,18 @@
   height: 100%;
   border-radius: var(--r-xs);
   background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+}
+
+/*
+ * A meter over live data moves (#257): the build farm's CPU bars are redrawn from a fresh
+ * heartbeat every ten seconds, and a fill that jumped to its new width would make a table left
+ * on a wall display twitch. The fill eases instead — inside the reduced-motion guard, and
+ * carrying nothing: the figure beside the bar has already changed, the bar only catches up.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .ou-meter__fill {
+    transition: width 400ms ease;
+  }
 }
 
 .ou-meter--ok .ou-meter__fill {

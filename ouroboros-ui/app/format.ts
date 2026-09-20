@@ -304,3 +304,35 @@ export function relativeAgo(iso: string, now: Date): string {
 
   return `${Math.floor(elapsed / DAY_MS)}d ago`;
 }
+
+/** Seconds in a minute, an hour and a day, for {@link ageOfSeconds}. */
+const MINUTE_S = 60;
+const HOUR_S = 60 * MINUTE_S;
+const DAY_S = 24 * HOUR_S;
+
+/**
+ * A span in the coarsest unit that is still honest — the mockups' `40s`, then `3m`, `2h`, `41d`.
+ *
+ * Written for the backlog's freshness tag ([#117](https://github.com/NobuData/ouroboros/issues/117),
+ * where it was `age`) and lifted here when the build farm's runners table
+ * ([#257](https://github.com/NobuData/ouroboros/issues/257)) wanted the same phrase twice over —
+ * `last seen 2h ago` and an uptime of `41d`. It is also the rule `ouroboros-rest` composes the
+ * farm's *forge-03 offline · 2h* note by, which is what keeps that tile and the row it names on
+ * one figure.
+ *
+ * Whole units, rounded down: `59s` is not yet a minute, and a figure that read `1m` over
+ * fifty-nine seconds would claim a minute nobody has seen finish.
+ *
+ * @param seconds How many seconds. A negative one — two clocks disagreeing — reads as `0s`,
+ *   which is what a stamp in the future means, and so does anything that is not a finite number.
+ * @returns `40s`, `3m`, `2h` or `5d`.
+ */
+export function ageOfSeconds(seconds: number): string {
+  const elapsed = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+
+  if (elapsed < MINUTE_S) return `${elapsed}s`;
+  if (elapsed < HOUR_S) return `${Math.floor(elapsed / MINUTE_S)}m`;
+  if (elapsed < DAY_S) return `${Math.floor(elapsed / HOUR_S)}h`;
+
+  return `${Math.floor(elapsed / DAY_S)}d`;
+}
