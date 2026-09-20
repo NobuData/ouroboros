@@ -131,6 +131,16 @@
 }
 
 /*
+ * The mockup's `c-12`: the live log card (#261), the full measure under the table. `min-width: 0`
+ * for the table's reason — a log line is one long word, and at zero it scrolls sideways inside its
+ * own pane instead of holding the track open.
+ */
+.farm-col--12 {
+  grid-column: span 12;
+  min-width: 0;
+}
+
+/*
  * The mockup's `c-4 col`: the right-hand column is a stack — the enroll card (#258) over the pools
  * card (#259) — so the two share four columns rather than each taking a grid row of its own. The
  * gap is the grid's, so the stack and the row it sits in keep one rhythm.
@@ -709,4 +719,25 @@
 
 .farm-pool-form__notice:empty {
   display: none;
+}
+
+/* ---------- the live log card (#261) ---------- */
+
+/*
+ * The mockup's `.mono.small.muted` beside the pill. Tabular digits: the time ticks once a second,
+ * and `3m 41s` → `3m 42s` must not nudge the button at the far end of the head.
+ */
+.farm-live__elapsed {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Why the latest ask failed, under the log it could not extend. */
+.farm-live__error {
+  margin: var(--sp-5) 0 0;
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
 }

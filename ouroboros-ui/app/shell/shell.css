@@ -1351,6 +1351,15 @@ a.shell-nav__item--active:hover {
   background: var(--surface);
 }
 
+/*
+ * The wide measure, for a sheet whose content is not prose: a build log's lines do not wrap
+ * (issue 261 — written without its hash for the reason the rail rule gives), and sixty columns
+ * of one is a keyhole. Still capped by the backdrop's padding on a narrow viewport.
+ */
+.shell-overlay__panel--wide {
+  width: min(72rem, 100%);
+}
+
 .shell-overlay__title {
   font-size: var(--t-xl);
 }

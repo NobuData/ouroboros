@@ -7,6 +7,8 @@ import { clientAnswering, stubClient } from "../helpers/api";
 import {
   FARM_AGENT_VERSION,
   FARM_ORIGIN,
+  LIVE_JOB_ID,
+  buildLog,
   emptyFarm,
   enrollmentToken,
   mintedCommand,
@@ -269,5 +271,61 @@ describe("farm.deletePool", () => {
 
     expect((failure as ApiError).code).toBe("farm_pool_in_use");
     expect((failure as ApiError).details).toMatchObject({ runners: 4, jobs: 31 });
+  });
+});
+
+describe("farm.log", () => {
+  it("reads one page of a job's log from an offset, and hands it back as served", async () => {
+    const page = buildLog("[6/7] Linking zephyr.elf …", { offset: 18_122 });
+    const { client, requests } = clientAnswering(page);
+
+    const read = await farm.log(LIVE_JOB_ID, 18_122, client);
+
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe(`http://rest.test:4000/api/v1/farm/jobs/${LIVE_JOB_ID}/log?after=18122`);
+    expect(read).toEqual(page);
+  });
+
+  it("asks from zero explicitly, which is how a log is read from its start", async () => {
+    const { client, requests } = clientAnswering(buildLog());
+
+    await farm.log(LIVE_JOB_ID, 0, client);
+
+    expect(new URL(requests[0]!.url).searchParams.get("after")).toBe("0");
+  });
+
+  it("keeps the live flag, the holes and the tail exactly as the service sent them", async () => {
+    const page = buildLog("a\nb\n", {
+      live: false,
+      elisions: [{ offset: 2, bytes: 2_481_392, missingChunks: 1 }],
+      tail: { bytes: 900, missingChunks: 0, capped: true },
+      pollAfter: 15,
+    });
+    const { client } = clientAnswering(page);
+
+    expect(await farm.log(LIVE_JOB_ID, 0, client)).toEqual(page);
+  });
+
+  it("hands the wire the caller's deadline", async () => {
+    const { client, requests } = clientAnswering(buildLog());
+    const deadline = new AbortController();
+
+    await farm.log(LIVE_JOB_ID, 0, client, deadline.signal);
+    deadline.abort();
+
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  it("rejects another workspace's job as not found, and an offset past the end as the 422 it is", async () => {
+    const missing = clientAnswering({ code: "farm_job_not_found", message: "No such job.", details: {} }, 404);
+    const beyond = clientAnswering(
+      { code: "farm_log_offset_out_of_range", message: "Nothing after that.", details: { end: 10 } },
+      422,
+    );
+
+    await expect(farm.log(LIVE_JOB_ID, 0, missing.client)).rejects.toMatchObject({ code: "farm_job_not_found" });
+    await expect(farm.log(LIVE_JOB_ID, 99, beyond.client)).rejects.toMatchObject({
+      code: "farm_log_offset_out_of_range",
+    });
   });
 });

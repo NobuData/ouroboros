@@ -1103,7 +1103,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 | AI.3 | #258 | 🟢 Done | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
 | AI.4 | #259 | 🟢 Done | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
 | AI.5 | #260 | 🟡 Open | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
-| AI.6 | #261 | 🟡 Open | ouroboros-ui: [AI.6] Live log card | Offset-streamed log, ANSI-safe rendering, cursor, full-log path | mvp, build-farm, ui, design | N (after AI.1, AH.5) | Y | M | ouroboros-ui |
+| AI.6 | #261 | 🟢 Done | ouroboros-ui: [AI.6] Live log card | Offset-streamed log, ANSI-safe rendering, cursor, full-log path | mvp, build-farm, ui, design | N (after AI.1, AH.5) | Y | M | ouroboros-ui |
 | AI.7 | #262 | 🟡 Open | ouroboros-ui: [AI.7] Farm states & e2e leg | Empty/no-runners guidance, read-only, themes, e2e | mvp, build-farm, ui, ci | N (after AI.1–AI.6) | Y | M | ouroboros-ui, .github |
 
 ### Issue AI.1 — ouroboros-ui: [AI.1] Build Farm route, head & stat row
@@ -1462,7 +1462,7 @@ pool-a  firmware builds · container: zephyr-sdk 0.17 · 3 runners        [enabl
 
 ### Issue AI.6 — ouroboros-ui: [AI.6] Live log card
 
-> **GitHub issue:** #261 · **Status:** 🟡 Open · **Parent epic:** #241
+> **GitHub issue:** #261 · **Status:** 🟢 Done · **Parent epic:** #241
 
 
 - **Problem Statement:** The `c-12` live card: streamed output with the
@@ -1482,6 +1482,78 @@ pool-a  firmware builds · container: zephyr-sdk 0.17 · 3 runners        [enabl
 - **Parallelism/Dependencies:** Needs AI.1, AH.5.
 - **Technical Stack:** React, virtualized log pane.
 - **Epic:** AI
+- **Delivered (2026-09-20):** `ouroboros-ui` 0.85.0 — [`app/farm/`](../ouroboros-ui/app/farm)
+  gains `live.ts` (every judgement, pure), `log-text.ts` (the sanitizer), `log-buffer.ts` (pages →
+  rows), `log-poll.ts` and `log-stream.ts` (the offset loop, over `app/poll.ts`'s),
+  `use-log-stream.ts`, `log-pane.tsx` + `log-pane.css` (the virtualized pane), `live-card.tsx`
+  (mounted in the mockup's `c-12`), `log-sheet.tsx` and `selection-store.tsx`; `app/api/farm.ts`
+  gains `log()`, read for the browser by `app/api/farm-log.ts` behind
+  `GET /api/farm/jobs/{id}/log?after=`. No API or schema change — the read is AH.5's (#253).
+  Decisions taken in-issue:
+  - **Two loops, two cadences.** The farm's page says *which* build (ten seconds); the log says
+    what it printed and whether it is over (two). The cursor, the pill and the elapsed time are
+    bound to the **log's** `live` — a page up to ten seconds old still naming a build is not
+    evidence that it runs — and the cursor does not blink before a page has said `live: true`.
+  - **The card holds a build that has ended.** *Bound to the most recent running job* and *a
+    terminal state swaps the pill and freezes the cursor* cannot both hold for a card that lets go
+    the moment `live` goes null on the page. So: the reader's selection first; else the page's
+    newest build **if it started after the one held**; else what is held. A finished build stays,
+    truthfully finished, until a newer one starts. A workspace switch lets go of it.
+  - **"Selected from the table" is the table's selection.** The runners grid already had one
+    (AI.2); it moved to `selection-store.tsx` on gaining a second reader. Selecting a runner that
+    is building puts its build on the card; the job cell still opens AI.2's job sheet.
+  - **Exact resume is by construction.** The offset moves only when a page is folded, and a page
+    that does not start where the last ended — a superseded ask's answer, another job's — is
+    dropped. While `nextOffset < end` the next page is asked for at once rather than on the timer.
+  - **A long log is joined at its tail** — not in the issue, and what makes the first paint of a
+    twenty-minute build useful: a first page leaving more than 512 KiB unread is set aside and the
+    stream jumps to the last 512 KiB, leaving out the line it lands in and saying that earlier
+    output exists. `Full log ↗` never jumps.
+  - **Bounded twice.** The buffer holds 5,000 rows (100,000 in the sheet) and breaks a line over
+    2,000 characters, never inside an escape; the pane renders the rows in view plus thirty either
+    side. Geometry is three unitless custom properties turned into rem and ch by the sheet; the one
+    length read back is a measured row, so the 125% step stays right.
+  - **Scroll lock keeps the reader's place against both movements**: new output, and old rows
+    leaving the head of the bounded buffer (the scroller is moved back by the height that left, and
+    the window is kept in reading-order coordinates so there is no frame of the wrong rows).
+  - **A scroll is honoured before the browser reports it** — found by reasoning about a real
+    browser, not in jsdom. A page can land between a wheel moving the scroller and the `scroll`
+    event that says so; pinning to the tail then would yank the reader back mid-gesture. The pane
+    remembers where it put the scroller, and one that is no longer there is left for its event.
+  - **Sanitizing is stateful across pages.** The open line is held raw, because an escape sequence
+    or a `\r\n` can be split between two pages; a closed line is stored clean. `\r` rewrites the
+    line; an unterminated OSC costs the rest of its line and no more.
+  - **A hole is placed by bytes.** AH.5's markers are stream offsets and a page is a string, so
+    positions are mapped by UTF-8 weight — with U+FFFD read as one byte or three according to which
+    accounts for the page's length — and a hole mid-line breaks the line: the text either side was
+    never one line. The tail is one marker under the text.
+  - **The header claims what the log supports.** The resource says *that* a job is over, not how
+    or when, so the pill swaps to a neutral **finished** and the elapsed time stops only at an end
+    the card **witnessed** (heard running within 12 s of heard finished); an end behind a hidden
+    tab draws `—`. A verdict and a finish time belong on the resource when the run console
+    (mockup 10) needs them.
+  - **`Full log ↗` opens the whole log**, in a sheet, from `after=0`, in the same pane — AH.5
+    defines Full log as exactly that paging. The sheet stays on the build it was opened for, reads
+    only while open, and the shell's overlay took a `wide` measure for it.
+  - **The pane has its own sheet.** `farm.css` promises the page neither scrolls nor animates by
+    itself; the pane is the issue's two exceptions, made once, where `log-pane-styles.test.ts`
+    holds the scroller to *its own wrapper* and the blink to *live, and not reduced-motion*.
+  - **Verified in a real browser** against an isolated stack (throwaway PostgreSQL 17, REST, a
+    production build of the UI, headless Chromium), with chunks appended to `#479`'s log by SQL as
+    ingest would — real ANSI colour in them: 571 animation frames sampled while streaming, every
+    one at the tail and none blank; 46 nodes in the DOM at the 5,000-row bound; a locked reader's
+    first line unmoved while 480 rows left the head; a wheel scroll mid-flood never pulled back;
+    the elision in the warning ink between dashed rules; no sideways overflow of the document at
+    1440, 900 and 600 px (the pane scrolls 42 px sideways inside itself at 600); a measured 25 px
+    row at 125%; and on `status = succeeded` the pill swapped, the cursor's computed
+    `animation-name` went to `none`, and the elapsed time held.
+  - **Found, not fixed here — the dev seed stores `#479`'s chunks out of reading order.**
+    `R__dev_seed_farm.sql` inserts the five chunks in one `insert … select` with no `order by`, and
+    V040's cap trigger assigns `byte_start` in the order rows reach it: on a fresh PostgreSQL 17,
+    `seq` 3 took offset 0, `seq` 2 took 196 and `seq` 1 took 333, so the seeded LIVE card reads
+    *Memory region… → [598/638]… → $ west build…*. The card and **Full log ↗** draw exactly what
+    AH.5 serves; the fix is `order by seed.number, seed.seq` in `ouroboros-db`, which is its own
+    change with its own probes.
 
 ```
 LIVE — forge-01 · #479 …  (●building) 3m41s              [Full log ↗]

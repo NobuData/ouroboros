@@ -273,3 +273,21 @@ describe("the pools card and its sheet (#259)", () => {
     expect(rule("\\.farm-pool-form__notice:empty")).toMatch(/display:\s*none/);
   });
 });
+
+describe("the live log card (#261)", () => {
+  it("takes the mockup's full measure, and lets a long log line scroll inside its pane", () => {
+    expect(rule("\\.farm-col--12")).toMatch(/grid-column:\s*span 12/);
+    expect(rule("\\.farm-col--12")).toMatch(/min-width:\s*0/);
+  });
+
+  it("keeps the ticking elapsed time from nudging the head: mono, tabular digits", () => {
+    expect(rule("\\.farm-live__elapsed")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.farm-live__elapsed")).toMatch(/font-variant-numeric:\s*tabular-nums/);
+  });
+
+  it("leaves the pane's scrolling and its cursor to the pane's own sheet", () => {
+    // The page-wide promises above — nothing scrolls, nothing animates — still hold of this sheet.
+    expect(CODE).not.toMatch(/\.log-pane/);
+    expect(COMPONENT).toContain('import "./log-pane.css"');
+  });
+});

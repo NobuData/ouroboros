@@ -75,6 +75,13 @@ export interface ShellOverlayProps {
    * caller renders and does by the time the effect runs.
    */
   readonly initialFocus?: React.RefObject<HTMLElement | null>;
+  /**
+   * Whether the panel takes the wide measure rather than the reading one. For a sheet whose
+   * content is wide by nature and is not prose — a build log
+   * ([#261](https://github.com/NobuData/ouroboros/issues/261)), whose lines do not wrap. Off by
+   * default: a column of sentences at that width is harder to read, not easier.
+   */
+  readonly wide?: boolean;
   /** What the panel draws. */
   readonly children: React.ReactNode;
 }
@@ -91,6 +98,7 @@ export function ShellOverlay({
   onClose,
   label,
   initialFocus,
+  wide = false,
   children,
 }: ShellOverlayProps) {
   /**
@@ -193,7 +201,7 @@ export function ShellOverlay({
     // keyboard's way out, and it is the same way out.
     <div className="shell-overlay" role="presentation" onMouseDown={onBackdropPress}>
       <div
-        className="shell-overlay__panel"
+        className={wide ? "shell-overlay__panel shell-overlay__panel--wide" : "shell-overlay__panel"}
         role="dialog"
         aria-modal="true"
         aria-label={label}

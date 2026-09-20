@@ -1,8 +1,16 @@
-import type { EnrollmentToken, FarmPage, FarmRunner, FarmStats, RunnerPool } from "@/app/api/farm";
+import type {
+  BuildLog,
+  EnrollmentToken,
+  FarmPage,
+  FarmRunner,
+  FarmStats,
+  RunnerPool,
+} from "@/app/api/farm";
 import type { components } from "@/app/api/schema";
 import type { FarmReadings } from "@/app/farm/data";
 import type { MintOutcome, TokenListing } from "@/app/farm/enroll";
 import type { FarmReader } from "@/app/farm/farm-screen";
+import type { PollAnswer } from "@/app/poll";
 
 /**
  * Build farm fixtures (#256): the development seed's fleet
@@ -392,4 +400,67 @@ export function tokenListing(
     people: { "user-ken": "Ken" },
     readAt: FARM_READ_AT,
   };
+}
+
+/* ------------------------------------------------------------------ the live log (#261) */
+
+/** The seeded live build's id — `forge-01`'s `#479`, the job the LIVE card's five chunks belong to. */
+export const LIVE_JOB_ID = "5eed0400-0000-4000-8000-0000000004f9";
+
+/**
+ * The page's `live` — mockup 08's `LIVE — forge-01 · #479 Add OTA rollback on failed checksum`,
+ * started 3m 41s before {@link FARM_READ_AT}.
+ *
+ * @param over Fields to replace.
+ * @returns The live build.
+ */
+export function liveBuild(over: Partial<NonNullable<FarmPage["live"]>> = {}): NonNullable<FarmPage["live"]> {
+  return {
+    id: LIVE_JOB_ID,
+    number: 479,
+    label: "zephyr build",
+    title: "Add OTA rollback on failed checksum",
+    runner: "forge-01",
+    runnerId: "5eed0400-0000-4000-8000-0000000000a1",
+    startedAt: "2026-09-19T13:58:19.000Z",
+    ...over,
+  };
+}
+
+/**
+ * One page of a build log, as AH.5 answers it. **The offsets are derived from the text** unless a
+ * case states them: `nextOffset` is `offset` plus the text's UTF-8 length, and `end` is
+ * `nextOffset` — a reader that is caught up.
+ *
+ * @param bytes The page's text.
+ * @param over Fields to replace.
+ * @returns The page.
+ */
+export function buildLog(bytes = "", over: Partial<BuildLog> = {}): BuildLog {
+  const offset = over.offset ?? 0;
+  const nextOffset = over.nextOffset ?? offset + new TextEncoder().encode(bytes).length;
+
+  return {
+    jobId: LIVE_JOB_ID,
+    offset,
+    nextOffset,
+    end: nextOffset,
+    bytes,
+    live: true,
+    elisions: [],
+    tail: null,
+    retained: true,
+    pollAfter: 2,
+    ...over,
+  };
+}
+
+/**
+ * A fresh poll answer carrying a page.
+ *
+ * @param page The page.
+ * @returns The answer, with the page's own cadence.
+ */
+export function logAnswer(page: BuildLog): PollAnswer<BuildLog> {
+  return { state: "fresh", payload: page, etag: null, pollAfterSeconds: page.pollAfter };
 }

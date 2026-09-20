@@ -5,9 +5,12 @@ import { FarmHead } from "./farm-head";
 import type { FarmPollOptions } from "./farm-poll";
 import { FarmStatRow } from "./farm-stat-row";
 import { FarmProvider } from "./farm-store";
+import { LiveCard } from "./live-card";
+import type { LogStreamOptions } from "./log-stream";
 import { PoolProvider } from "./pool-store";
 import { PoolsCard } from "./pools-card";
 import { RunnersCard } from "./runners-card";
+import { SelectionProvider } from "./selection-store";
 
 import "./farm.css";
 
@@ -31,8 +34,11 @@ import "./farm.css";
  * the pools card (AI.4, [#259](https://github.com/NobuData/ouroboros/issues/259)) sits under it in
  * the same column — the mockup's `c-4 col`. The pools and their one configuration sheet are
  * provided here too (`app/farm/pool-store.tsx`), because the sheet has two doors: the card's
- * `Configure →` and the head's **Pool settings**. The region still to come — the live log
- * (AI.6, #261) — mounts in {@link FarmScreen}'s grid beneath them.
+ * `Configure →` and the head's **Pool settings**. The live log card (AI.6,
+ * [#261](https://github.com/NobuData/ouroboros/issues/261)) takes the full measure beneath them —
+ * the mockup's `c-12`. It reads the store for *which* build is running and a stream of its own
+ * for what that build printed (`app/farm/log-stream.ts`), and it follows the runner selected in
+ * the table, which is why the selection is provided here too (`app/farm/selection-store.tsx`).
  *
  * ### One role decision, made by the route
  *
@@ -49,28 +55,38 @@ import "./farm.css";
  * @param props.readings What the route read for the first paint.
  * @param props.reader Who is reading — see {@link FarmReader}.
  * @param props.poll Test seams for the poll; the route passes none.
+ * @param props.log Test seams for the live card's log streams; the route passes none.
  * @returns The screen.
  */
 export function FarmScreen({
   readings,
   reader,
   poll,
-}: Readonly<{ readings: FarmReadings; reader: FarmReader; poll?: FarmPollOptions }>) {
+  log,
+}: Readonly<{
+  readings: FarmReadings;
+  reader: FarmReader;
+  poll?: FarmPollOptions;
+  log?: LogStreamOptions;
+}>) {
   return (
     <FarmProvider initial={readings.page} poll={poll} readAt={readings.readAt}>
       <PoolProvider>
-        <main className="farm">
-          <FarmBanner />
-          <FarmHead mayAdminister={reader.mayAdminister} />
-          <div className="farm__grid">
-            <FarmStatRow />
-            <RunnersCard />
-            <div className="farm-col--4 farm__side">
-              <EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />
-              <PoolsCard mayAdminister={reader.mayAdminister} />
+        <SelectionProvider>
+          <main className="farm">
+            <FarmBanner />
+            <FarmHead mayAdminister={reader.mayAdminister} />
+            <div className="farm__grid">
+              <FarmStatRow />
+              <RunnersCard />
+              <div className="farm-col--4 farm__side">
+                <EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />
+                <PoolsCard mayAdminister={reader.mayAdminister} />
+              </div>
+              <LiveCard log={log} />
             </div>
-          </div>
-        </main>
+          </main>
+        </SelectionProvider>
       </PoolProvider>
     </FarmProvider>
   );
