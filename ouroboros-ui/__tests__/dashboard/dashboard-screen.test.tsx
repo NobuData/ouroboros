@@ -272,7 +272,7 @@ describe("the stat row, on seeded data", () => {
   it("accents the one figure the mockup accents", () => {
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    const accented = container.querySelectorAll(".dash-stat__value--accent");
+    const accented = container.querySelectorAll(".ou-stat__value--accent");
     expect(accented).toHaveLength(1);
     expect(accented[0]).toHaveTextContent("3");
   });
@@ -280,9 +280,9 @@ describe("the stat row, on seeded data", () => {
   it("colours the merged delta by its sign, and marks it in shape as well as in hue", () => {
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    const up = container.querySelector(".dash-stat__delta--up");
+    const up = container.querySelector(".ou-stat__delta--up");
     expect(up).toHaveTextContent("▲ 8 vs last week");
-    expect(container.querySelectorAll(".dash-stat__delta--down")).toHaveLength(0);
+    expect(container.querySelectorAll(".ou-stat__delta--down")).toHaveLength(0);
   });
 
   it("turns that colour over for a week that merged less than the last", () => {
@@ -290,9 +290,9 @@ describe("the stat row, on seeded data", () => {
       <DashboardScreen readings={readings({ aggregate: read(fewerMerges()) })} />,
     );
 
-    const down = container.querySelector(".dash-stat__delta--down");
+    const down = container.querySelector(".ou-stat__delta--down");
     expect(down).toHaveTextContent("▼ 8 vs last week");
-    expect(container.querySelectorAll(".dash-stat__delta--up")).toHaveLength(0);
+    expect(container.querySelectorAll(".ou-stat__delta--up")).toHaveLength(0);
   });
 
   it("leaves a level week uncoloured, rather than calling it good news", () => {
@@ -300,8 +300,8 @@ describe("the stat row, on seeded data", () => {
       <DashboardScreen readings={readings({ aggregate: read(levelWeek()) })} />,
     );
 
-    expect(container.querySelectorAll(".dash-stat__delta--up")).toHaveLength(0);
-    expect(container.querySelectorAll(".dash-stat__delta--down")).toHaveLength(0);
+    expect(container.querySelectorAll(".ou-stat__delta--up")).toHaveLength(0);
+    expect(container.querySelectorAll(".ou-stat__delta--down")).toHaveLength(0);
     expect(screen.getByText("Level with last week")).toBeInTheDocument();
   });
 
@@ -339,8 +339,8 @@ describe("the stat row, on seeded data", () => {
       expect(within(card).getByText(NO_VALUE)).toBeInTheDocument();
       expect(within(card).getByText(NOT_READ)).toBeInTheDocument();
     }
-    expect(container.querySelectorAll(".dash-stat__delta--failed")).toHaveLength(4);
-    expect(container.querySelectorAll(".dash-stat__value--accent")).toHaveLength(0);
+    expect(container.querySelectorAll(".ou-stat__delta--failed")).toHaveLength(4);
+    expect(container.querySelectorAll(".ou-stat__value--accent")).toHaveLength(0);
   });
 });
 

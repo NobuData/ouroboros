@@ -618,6 +618,91 @@
   background: var(--err);
 }
 
+/* ============================================================ stat tile */
+
+/*
+ * The mockups' `.stat`: a caption, a figure and a line about the figure, inside a card. The
+ * card is the primitive (app/ui/card.tsx); this is what `app/ui/stat-card.tsx` puts in one.
+ *
+ * It was the dashboard's own composition (#81) and lived in `app/dashboard/dashboard.css` until
+ * the build farm's stat row (#256) drew the same tile — the threshold for a rule to move here
+ * is a second screen that would otherwise write it again. How wide a tile is stays the page's:
+ * the grid it sits in is the dashboard's or the farm's, and the primitive takes a placement
+ * class rather than naming a column span.
+ */
+.ou-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.ou-stat__label {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+.ou-stat__value {
+  font-family: var(--f-disp);
+  font-size: var(--t-3xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  /* One column of digits that does not reflow as a count changes. */
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The mockups accent exactly one figure of a row — `Loops live`, `Runners online` — the one
+ * that is in the present tense. It is the accent rather than a second ink because the accent is
+ * what this product reserves for live things, and both palettes publish its contrast against
+ * `--surface`.
+ */
+.ou-stat__value--accent {
+  color: var(--accent);
+}
+
+/*
+ * Mockup 08's `4/5`: the `/5` is the same figure said more quietly — smaller, and in the faint
+ * ink whether or not the figure is accented, which is why the colour is set here rather than
+ * inherited.
+ */
+.ou-stat__suffix {
+  color: var(--ink-faint);
+  font-size: var(--t-xl);
+}
+
+/* Mockup 08's `.stat .meter`: the bar sits a little below the figure it is a picture of. */
+.ou-stat .ou-meter {
+  margin-top: var(--sp-2);
+}
+
+.ou-stat__delta {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The mockup's `.delta.up` and `.delta.down`, which name **goodness rather than direction** —
+ * mockup 15 draws a falling cycle time as `up`, and mockup 08 a falling build time, because a
+ * loop that got faster is good news. The direction is carried by the arrow in the text, so a
+ * reader who cannot separate the two hues still has a glyph that points.
+ */
+.ou-stat__delta--up {
+  color: var(--ok);
+}
+
+.ou-stat__delta--down {
+  color: var(--err);
+}
+
+/* The caption of a figure that could not be read, rather than of one that is zero. */
+.ou-stat__delta--failed {
+  color: var(--err);
+}
+
 /* ============================================================ fields */
 
 /*

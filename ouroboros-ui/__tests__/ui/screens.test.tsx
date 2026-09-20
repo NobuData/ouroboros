@@ -44,9 +44,9 @@ type LoginScreenState = Parameters<typeof LoginScreen>[0]["state"];
  *    primitives it is built from.
  *
  * What is deliberately *not* asserted is that every element on these screens is a
- * primitive. A screen composes: the login screen's workspace rows and monogram, the
- * dashboard's stat tile and system list are compositions built *from* primitives and out of
- * this directory's reach. The line is the one `app/ui/index.ts` states — a primitive names
+ * primitive. A screen composes: the login screen's workspace rows and monogram and the
+ * dashboard's system list are compositions built *from* primitives and out of this directory's
+ * reach. (The stat tile was one until a second screen drew it — #256 — and is a primitive now.) The line is the one `app/ui/index.ts` states — a primitive names
  * no domain concept.
  */
 
@@ -79,6 +79,8 @@ const RETIRED = [
   "dash-pill",
   "dash-empty",
   "dash__eyebrow",
+  // The stat tile, since #256 gave the build farm the same row: `app/ui/stat-card.tsx`.
+  "dash-stat",
 ];
 
 describe("the sign-in screen", () => {
@@ -185,6 +187,8 @@ describe("the dashboard", () => {
     // The page's one control that changes something (#83) is the primitives' switch, the
     // same one the login screen's workspace rows are turned on with.
     expect(container.querySelectorAll(".ou-switch")).toHaveLength(1);
+    // The four stat tiles are the primitives' since #256, when the build farm drew the same row.
+    expect(container.querySelectorAll(".ou-stat")).toHaveLength(4);
   });
 
   it("draws both of its tables out of them too, rather than out of two of its own", () => {

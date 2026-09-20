@@ -119,6 +119,32 @@ describe("the type scale", () => {
   });
 });
 
+describe("the stat tile's tones", () => {
+  it("defines a class for every tone the tile can be given", () => {
+    // `StatCard` names these as class suffixes, so a tone with no rule behind it is a delta
+    // that silently draws muted — a down week rendering as a neutral one — rather than a
+    // build error.
+    for (const tone of ["up", "down", "failed"]) {
+      expect(CODE).toMatch(new RegExp(`\\.ou-stat__delta--${tone}\\s*\\{[^}]*color:`));
+    }
+  });
+
+  it("takes each of them from the palette's own status tokens", () => {
+    // Both palettes publish contrast for these against `--surface`; a hand-picked green
+    // would be legible in one theme and not the other.
+    expect(CODE).toMatch(/\.ou-stat__delta--up\s*\{[^}]*color:\s*var\(--ok\)/);
+    expect(CODE).toMatch(/\.ou-stat__delta--down\s*\{[^}]*color:\s*var\(--err\)/);
+    expect(CODE).toMatch(/\.ou-stat__value--accent\s*\{[^}]*color:\s*var\(--accent\)/);
+  });
+
+  it("draws a figure's suffix quieter than the figure, and never in the accent (#256)", () => {
+    // Mockup 08's `4/5`: the `/5` is the same figure said more quietly. The colour is set on
+    // the suffix itself, because inheriting would hand it the accent of the `4` beside it.
+    expect(CODE).toMatch(/\.ou-stat__suffix\s*\{[^}]*color:\s*var\(--ink-faint\)/);
+    expect(CODE).toMatch(/\.ou-stat__suffix\s*\{[^}]*font-size:\s*var\(--t-xl\)/);
+  });
+});
+
 describe("the chip's tones", () => {
   it("gives each one its own rule, so a state cannot fall back to another's colour", () => {
     for (const tone of ["accent", "ok", "warn", "err", "model"]) {

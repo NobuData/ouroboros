@@ -59,22 +59,14 @@ describe("the page head", () => {
   });
 });
 
-describe("the stat row's tones", () => {
-  it("defines a class for every tone the tile can be given", () => {
-    // `StatCard` names these as class suffixes, so a tone with no rule behind it is a delta
-    // that silently draws muted — a down week rendering as a neutral one — rather than a
-    // build error.
-    for (const tone of ["up", "down", "failed"]) {
-      expect(CODE).toMatch(new RegExp(`\\.dash-stat__delta--${tone}\\s*\\{[^}]*color:`));
-    }
-  });
-
-  it("takes each of them from the palette's own status tokens", () => {
-    // Both palettes publish contrast for these against `--surface`; a hand-picked green
-    // would be legible in one theme and not the other.
-    expect(CODE).toMatch(/\.dash-stat__delta--up\s*\{[^}]*color:\s*var\(--ok\)/);
-    expect(CODE).toMatch(/\.dash-stat__delta--down\s*\{[^}]*color:\s*var\(--err\)/);
-    expect(CODE).toMatch(/\.dash-stat__value--accent\s*\{[^}]*color:\s*var\(--accent\)/);
+describe("the stat row", () => {
+  it("leaves the tile to the design system, and keeps only where a tile sits", () => {
+    // #256 gave the build farm the same row, which is the threshold this sheet states for a
+    // rule to move to `ui.css` — so the tile's rules (and the suite that holds its tones to the
+    // status tokens) are `__tests__/ui/ui-styles.test.ts`'s now. A `.dash-stat` reappearing here
+    // would be the design system forking again.
+    expect(CODE).not.toMatch(/\.dash-stat/);
+    expect(CODE).toMatch(/\.dash-col--3\s*\{[^}]*grid-column:\s*span 3/);
   });
 });
 

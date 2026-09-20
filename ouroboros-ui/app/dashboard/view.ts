@@ -35,6 +35,7 @@ import {
   elapsedOfSeconds,
   moneyOfCents,
 } from "@/app/format";
+import type { StatTone } from "@/app/ui/stat-card";
 
 /**
  * One read that was attempted: what it returned, or why it did not.
@@ -306,24 +307,13 @@ export const STATE_LABEL: Record<SystemState, string> = {
 /* ------------------------------------------------------------------ the stat row */
 
 /**
- * How the line under a figure is drawn.
+ * How the line under a figure is drawn — the stat tile's own vocabulary
+ * (`app/ui/stat-card.tsx`), under the name this module's cards have always used for it.
  *
- * It is a *tone* rather than a colour, because the sheet decides the colour and this
- * decides what the line is saying. The two directional ones are the mockups' own `up` and
- * `down` classes, and those name **goodness rather than direction** — mockup 15 draws
- * *"▼ 2m faster"* as `up`, because a cycle time that fell is good news. What is drawn on
- * this screen happens to agree in both directions, and the distinction is worth keeping in
- * the name so that the next card to use it does not read `up` as *the number went up*.
+ * The two directional tones name **goodness rather than direction**; the primitive's note says
+ * why, and what is drawn on this screen happens to agree in both directions.
  */
-export type DeltaTone =
-  /** The default: a line describing what the figure is made of. */
-  | "muted"
-  /** Good news — the mockups' `--ok`. */
-  | "up"
-  /** Bad news — the mockups' `--err`. */
-  | "down"
-  /** Not news at all: the reason the figure could not be read. */
-  | "failed";
+export type DeltaTone = StatTone;
 
 /** One card in the stat row: a caption, a figure, and a line under it. */
 export interface Stat {

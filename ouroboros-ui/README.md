@@ -249,6 +249,9 @@ ouroboros-ui/
 │   │   ├── sources.ts       #   sources.* — /api/v1/sources, the catalog, test, sync, status
 │   │   ├── workflows.ts     #   workflows.list() / read() / create() / saveDraft() / publish() / dryRun()
 │   │   ├── planning.ts      #   planning.roadmap() / createEpic() — mockup 09's roadmap head and New roadmap
+│   │   ├── farm.ts          #   farm.page() / observe() — mockup 08 in one observation, and its cadence · #256
+│   │   ├── farm-page.ts     #   readFarmPage() — the same read, answered for the farm's poll
+│   │   ├── farm/route.ts    #   GET /api/farm — that poll, on this origin
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
@@ -257,6 +260,7 @@ ouroboros-ui/
 │   │   ├── chip.tsx         #   Chip (status · model) + EffortChip
 │   │   ├── badge.tsx        #   Tag (metadata) + Badge (a count)
 │   │   ├── table.tsx        #   Table, inside its own scroll container
+│   │   ├── stat-card.tsx    #   StatCard — caption, figure, the line under it · #81, shared since #256
 │   │   ├── field.tsx        #   TextField · TextAreaField · SelectField · Toggle
 │   │   ├── schema-form.tsx  #   SchemaFields — a form drawn from a provider's declared fields
 │   │   ├── empty-state.tsx  #   EmptyState — a surface that is not ready
@@ -283,6 +287,15 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
+│   ├── farm/                # mockup 08's head and stat row, kept live · #256
+│   │   ├── view.ts          #   the computed headline, the four tiles, down-is-good, the soon actions
+│   │   ├── data.ts          #   readFarm() — the first paint's read, degraded rather than thrown
+│   │   ├── farm-poll.ts     #   the loop's reader and guard — the fleet's own ten-second cadence
+│   │   ├── farm-store.tsx   #   the provider at the screen, and useFarm() — one poll, every region
+│   │   ├── farm-head.tsx    #   the live h1 and the three honest actions
+│   │   ├── farm-stat-row.tsx #  four shared StatCards, one with a meter
+│   │   ├── farm-banner.tsx  #   the DASH-I.7 banner: stale or unread, and the retry
+│   │   └── farm-screen.tsx  #   the frame the rest of mockup 08 mounts in
 │   ├── planning/            # mockup 09's frame: head, honest actions, the 7 / 5 + 12 grid · #283
 │   │   ├── view.ts          #   the verbatim head copy and what each region is headed with
 │   │   ├── data.ts          #   readPlanning() — every region's read, degraded rather than thrown
@@ -782,8 +795,9 @@ where a signed-in request with a chosen workspace lands. It renders **inside** t
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
 (design system § 2). Its cards, actions, status chips and empty states are
 [UI primitives](#ui-primitives); [`app/dashboard/`](app/dashboard) owns the page head, the
-twelve-column grid, and the compositions built on top — the stat tile, the system list and
-the pulse card's captioned meters.
+twelve-column grid, and the compositions built on top — the system list and the pulse card's
+captioned meters. (The stat tile was one of them until the [build farm](#build-farm) drew the
+same row; it is the [`StatCard` primitive](#ui-primitives) now.)
 
 ```
 MISSION CONTROL
@@ -2626,6 +2640,78 @@ under thirty seconds ago; *Pause* and *Resume* are the one `PATCH` of `status`. 
 every row and every control, each inert with its reason in the tooltip; `owner` and `admin`
 may press them. The intake screen's *no token* guidance (#120's amendment) links here.
 
+## Build farm
+
+`/build-farm` ([#256](https://github.com/NobuData/ouroboros/issues/256)) is
+[`docs/mockups/08-build-farm.html`](../docs/mockups/08-build-farm.html)'s **head and stat row**,
+and the frame the rest of that page mounts in: the runners table
+([#257](https://github.com/NobuData/ouroboros/issues/257)), the enroll card
+([#258](https://github.com/NobuData/ouroboros/issues/258)), the pools card
+([#259](https://github.com/NobuData/ouroboros/issues/259)) and the live log
+([#261](https://github.com/NobuData/ouroboros/issues/261)). The sidebar's **Build Farm** entry is
+live and leads here; the mockup's topbar is superseded by the shell, and the page adds no chrome
+of its own, so the header and the sidebar stay put while the pane scrolls.
+
+```
+BUILD FARM
+5 runners. 2 pools. 78% cache hits.      [✦ Build Analyzer SOON] [Pool settings SOON] [+ Enroll runner SOON]
+The Ouroboros server dispatches builds to your own machines over an outbound-only agent
+connection — your hardware, your network, no inbound ports.
+┌ RUNNERS ONLINE ──┐ ┌ BUILDS TODAY ────┐ ┌ AVG BUILD TIME ──┐ ┌ CACHE HIT RATE ──────┐
+│ 4/5              │ │ 23               │ │ 4m 12s           │ │ 78%  ▓▓▓▓▓▓▓▓░░      │
+│ forge-03 offline │ │ 19 clean · 3 re- │ │ ▼ 38s vs last    │ │ ccache · per-runner  │
+│ · 2h             │ │ tried · 1 failed │ │ week   (= good)  │ │                      │
+└──────────────────┘ └──────────────────┘ └──────────────────┘ └──────────────────────┘
+  empty org ▸ No runners yet. No pools yet. No cache data today. ▸ 0/0 · 0 · — · —
+```
+
+Every judgement is a pure function in [`app/farm/view.ts`](app/farm/view.ts), so each acceptance
+criterion is a unit test on a small value.
+
+| What it says | Where it is decided |
+|---|---|
+| **The `h1` is three live values in a sentence**, and it degrades clause by clause: `1 runner.` not `1 runners.`, *No runners yet.* / *No pools yet.* rather than a bare `0`, and *No cache data today.* rather than `0%`. The runner count is `stats.runnersOnline.total` — the first tile's denominator — so the heading and the `4/5` under it cannot disagree | `farmHeadline` |
+| **`null` is not `0`.** A count of nothing is a genuine zero (`0/0`, `0`); an *average* of nothing is an em dash — never `0m 00s`, never `0%` — and the cache tile then draws **no meter**, because an empty bar is a picture of `0%` | `buildTimeStat`, `cacheStat` |
+| **Down is good.** `▼ 38s vs last week` takes the tile's `up` tone (which names *goodness*, not direction) and `▲` takes `down`. With no prior week the line is **absent** — not `▼ 0s`, which would claim a comparison nobody made — and a real comparison that came out level says so in words | `buildTimeDelta` |
+| **The cache label is the payload's**, composed by the service from decision **B5**: `ccache · per-runner` until AJ.2 ([#264](https://github.com/NobuData/ouroboros/issues/264)) makes the mockup's *shared per pool* true. The percentage is honest either way; the label is what could lie, so it has one author | `cacheStat` |
+| **The split is always printed** once there is a build to split (`5 clean · 0 retried · 0 failed` is a good day said out loud); a cancelled build joins the line only when there is one, so the seeded day reads as the mockup does and the line still adds up | `buildsStat` |
+| **The offline note is the service's**, re-aged on every poll by the clock that also decided *offline* | `runnersStat` |
+
+**The three actions are honest.** None has anything to open yet, so each is an inert button
+carrying a *soon* mark whose tooltip names the issue it waits for: **✦ Build Analyzer** →
+[#516](https://github.com/NobuData/ouroboros/issues/516) (mockup 18 — the mockup links it to a page
+that does not exist; here it navigates nowhere, and becomes a link to `/analyzer` on the commit that
+builds that route), **Pool settings** → [#259](https://github.com/NobuData/ouroboros/issues/259),
+**+ Enroll runner** → [#258](https://github.com/NobuData/ouroboros/issues/258). No role is decided on
+this page for the same reason — a control that acts for nobody has no *for whom*; every member,
+a `viewer` included, may look.
+
+**The page stays live, from one poll.** `GET /api/v1/farm` is the page in one observation — its
+figures are claims about each other — so [`farm-store.tsx`](app/farm/farm-store.tsx) provides it
+once per screen and the head, the stat row and every region still to come read `useFarm()`:
+exactly one request per interval however many regions subscribe. The first answer is the
+server's render ([`data.ts`](app/farm/data.ts)); from then on the browser asks
+[`/api/farm`](app/api/farm/route.ts) on [the polling pattern](#the-polling-store), at **the fleet's
+own cadence** — the service's `X-Ouro-Poll-After: 10` travels through
+[`farm.observe()`](app/api/farm.ts) and [`readFarmPage()`](app/api/farm-page.ts) intact, so the
+interval is one variable on the server. A hidden tab polls not at all, and a workspace switch asks
+at once.
+
+**A failed refresh keeps the page.** The last good page stays on screen under one banner
+([`farm-banner.tsx`](app/farm/farm-banner.tsx), the design system's `RetryBanner`): *Showing data
+from 14:02 — the latest refresh failed.*, the service's reason once, and a retry that is **the poll
+asking now** and says *Retrying…* while it does. The next answer that works clears it without a
+press. A first paint that could not be read draws the head, the actions and four named tiles
+holding em dashes under the same banner — a page reporting a failure, not a page that lost its
+shape.
+
+**The stat tile is shared.** The row is four [`StatCard`](#ui-primitives)s — the dashboard's tile,
+moved to `app/ui` on the commit that made this its second caller — so the two rows cannot drift.
+[`farm.css`](app/farm/farm.css) holds only what is this page's: the head, the twelve-column grid
+(the stat row halves below `68.75rem` and stacks below `40rem`), and the *soon* mark. Every colour
+is a token and every length a rem, which is what makes both palettes and the 125% font-scale step
+correct from one sheet.
+
 ## Planning
 
 `/planning` ([#283](https://github.com/NobuData/ouroboros/issues/283)) is
@@ -3946,6 +4032,7 @@ import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 | `Tag` / `Badge` | Metadata with no state; and a count attached to something else | `.tag` / `.nav-badge` |
 | `Table` | Columns and rows, inside their own horizontal scroll container; rows selectable one at a time, or checkable any number at a time | `.tbl` |
 | `Meter` | A proportion drawn as a bar — a stage, a rate, a budget | `.meter` |
+| `StatCard` | A caption, a figure and a line about the figure, in a card — with an optional quieter suffix on the figure (`4/5`) and a slot for a meter. The dashboard's composition ([#81](https://github.com/NobuData/ouroboros/issues/81)) until the build farm drew the same row ([#256](https://github.com/NobuData/ouroboros/issues/256)) | `.stat` |
 | `TextField` / `SelectField` / `Toggle` | A labelled field, a native select, and a switch | `.field` / `.input` / `.switch` |
 | `EmptyState` | A surface that is not ready, labelled rather than blank | — |
 | `SchemaFields` / `SchemaField` | A column of fields drawn from a list the renderer did not write — the schema-driven form (#231, shared with #150) | — |
@@ -3993,8 +4080,11 @@ asserts that it is the only one there.
 
 **A primitive names no domain concept.** That is the line between this directory and a
 screen's own components: there is no `<WorkspaceCard>` here and there should not be. The
-login screen's workspace rows and the dashboard's stat tile are compositions built *from*
-these, in their own directories, with their own sheets.
+login screen's workspace rows and the dashboard's system list are compositions built *from*
+these, in their own directories, with their own sheets. **A composition becomes a primitive when
+a second screen draws it** — which is how `StatCard` got here: it names no domain concept, and
+the build farm ([#256](https://github.com/NobuData/ouroboros/issues/256)) needed the dashboard's
+tile exactly.
 
 ### What the tests can prove
 
@@ -4278,6 +4368,7 @@ caps, the strip and the states [#232](https://github.com/NobuData/ouroboros/issu
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 ticket sources [#141](https://github.com/NobuData/ouroboros/issues/141) ·
 planning [#283](https://github.com/NobuData/ouroboros/issues/283) ·
+build farm [#256](https://github.com/NobuData/ouroboros/issues/256) ·
 workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
 the React Flow canvas [#148](https://github.com/NobuData/ouroboros/issues/148) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).

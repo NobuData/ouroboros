@@ -19,8 +19,10 @@
  *
  * A primitive is a shape the design system names, used by more than one screen, that
  * decides nothing about the product. What does *not* belong here is a screen's own
- * composition — the dashboard's stat tile, the login screen's workspace row — which is
- * built *from* these in the screen's own directory. The rule that keeps the line visible:
+ * composition — the dashboard's system list, the login screen's workspace row — which is
+ * built *from* these in the screen's own directory. The stat tile was one of those until the
+ * build farm ([#256](https://github.com/NobuData/ouroboros/issues/256)) drew the dashboard's
+ * row a second time, which is the threshold: `StatCard` is here now. The rule that keeps the line visible:
  * a primitive names no domain concept. There is no `<WorkspaceCard>` in this directory and
  * there should not be.
  *
@@ -87,6 +89,7 @@ export {
   type SchemaFieldsProps,
   type SchemaWidget,
 } from "./schema-form";
+export { StatCard, type StatCardProps, type StatTone } from "./stat-card";
 export { StickyBar, type StickyBarProps, type StickyBarTone } from "./sticky-bar";
 export {
   Table,

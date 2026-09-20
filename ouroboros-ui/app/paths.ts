@@ -128,6 +128,16 @@ export const REGISTRY_PATH = `${MODELS_PATH}/registry`;
 export const PLANNING_PATH = "/planning";
 
 /**
+ * The build farm ([#256](https://github.com/NobuData/ouroboros/issues/256)) — mockup 08.
+ *
+ * Written down here for the reason every route in this file is: the sidebar's registry entry
+ * (`app/shell/nav-modules.ts`) names it as the **Build Farm** destination and `isActiveRoute` in
+ * `app/shell/nav.ts` matches the URL against it, so the entry and the route cannot come to
+ * disagree. This retires the `/build-farm` placeholder #49 held for it.
+ */
+export const BUILD_FARM_PATH = "/build-farm";
+
+/**
  * The workflow studio ([#147](https://github.com/NobuData/ouroboros/issues/147)) — mockup 04.
  *
  * Written down here for the reason every other route in this file is: three modules have to
