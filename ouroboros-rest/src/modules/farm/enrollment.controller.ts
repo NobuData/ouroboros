@@ -1,10 +1,11 @@
 /**
  * `/api/v1/farm` — the operator's surface: mint a token, list them, revoke one, read the CA,
- * and cut a machine off.
+ * render the enroll command, and cut a machine off.
  *
- * AH.2 ([#250](https://github.com/NobuData/ouroboros/issues/250)). Mockup 08's enroll card
+ * AH.2 ([#250](https://github.com/NobuData/ouroboros/issues/250)) and AH.6
+ * ([#254](https://github.com/NobuData/ouroboros/issues/254)). Mockup 08's enroll card
  * and its token-management panel (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258))
- * are what these five routes are for.
+ * are what these six routes are for.
  *
  * **The workspace is the session's, never the request's** — the same sentence every
  * controller in this service opens with, because it is the same property: no `{orgId}` in the
@@ -30,9 +31,26 @@
  * The mask hides the value; the *list* still says how many machines a workspace is about to
  * admit and when the window closes, which is operational detail about the fleet rather than
  * about the product.
+ *
+ * ---------------------------------------------------------------------------
+ * **AH.6's enroll command lives here rather than in `fleet/`**, and that is a deliberate
+ * placement. It mints a token, and minting goes through `EnrollmentService` — which
+ * `FarmModule` does not export, on purpose: the only surface for minting a credential should
+ * be a route with the role gate in front of it, and a module that exported that service would
+ * be inviting a second caller past it. The card is this controller's subject anyway.
  */
 
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from "@nestjs/common";
 
 import { Session } from "@thallesp/nestjs-better-auth";
 
@@ -43,8 +61,10 @@ import { CurrentTenant } from "../tenancy/tenant.decorators";
 import { EnrollmentService } from "./enrollment.service";
 import { RegistrationService } from "./registration.service";
 import { MintEnrollmentTokenDto } from "./farm.dto";
+import { EnrollCommandQuery } from "./fleet/fleet.dto";
 import type {
   AuthorityResource,
+  EnrollCommandResource,
   EnrollmentTokenResource,
   MintedTokenResource,
   RunnerCertificateResource,
@@ -155,5 +175,30 @@ export class EnrollmentController {
     @Param("runnerId", ParseUUIDPipe) runnerId: string,
   ): Promise<RunnerCertificateResource> {
     return this.registration.revokeCertificate(tenant.id, principal.user.id, runnerId);
+  }
+
+  /**
+   * The enroll card's one-liner, with a freshly minted token.
+   *
+   * **A `GET` that mints**, which the issue specifies and `enrollment.service.ts` argues for
+   * at length — the short version is that `GET /farm/authority` above already creates
+   * something when a workspace has never had it, for the same reason: opening the card *is*
+   * the request. `no-store` is set because the response carries a live credential and a
+   * shared cache holding one would be the actual hazard here, rather than the verb.
+   *
+   * @param tenant - The workspace. Its slug is what the command's `--tenant` carries.
+   * @param principal - Who asked; the token is attributed to them.
+   * @param query - The pool the machine will join.
+   * @returns The command, its parts, and the masked token it carries.
+   */
+  @Get("enroll-command")
+  @Roles(...ADMINISTRATORS)
+  @Header("Cache-Control", "no-store")
+  enrollCommand(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+    @Query() query: EnrollCommandQuery,
+  ): Promise<EnrollCommandResource> {
+    return this.enrollment.enrollCommand(tenant, principal.user.id, query.pool);
   }
 }

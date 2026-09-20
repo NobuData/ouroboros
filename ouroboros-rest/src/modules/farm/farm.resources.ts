@@ -17,10 +17,17 @@
  * because a mapper remembered to omit a field.
  *
  * {@link mintedTokenResource} is the exception and takes the plaintext explicitly, as a second
- * argument, because the mint response is the one place in the product where the value is
- * returned. Making it a separate function with a separate name is the point: `grep
- * mintedTokenResource` finds every place a full enrollment token can reach a response, and
- * there is one.
+ * argument, because the mint response is one of the two places in the product where the value
+ * is returned. Making it a separate function with a separate name is the point: `grep
+ * mintedTokenResource` finds every place a full enrollment token can reach a response through
+ * this file.
+ *
+ * **The second place is `enroll.command.ts`**, added by AH.6
+ * ([#254](https://github.com/NobuData/ouroboros/issues/254)): the enroll card's one-liner
+ * carries a live token inside a string, because a command with a masked token enrols nothing.
+ * `renderEnrollCommand` is that function and takes the value as its own named parameter for
+ * exactly this reason, so the pair of greps is complete. This paragraph exists because a
+ * greppable claim that has quietly stopped being true is worse than no claim at all.
  *
  * ---------------------------------------------------------------------------
  * **Nothing here maps a CA private key, and nothing here could.** There is no field on any
@@ -79,14 +86,17 @@ export function enrollmentTokenResource(row: EnrollmentToken): EnrollmentTokenRe
   };
 }
 
-/** The mint response — the one resource in this product that carries a live secret. */
+/** The mint response — one of the two resources in this product that carry a live secret. */
 export interface MintedTokenResource extends EnrollmentTokenResource {
   /**
    * The whole `orb_enroll_…` value.
    *
-   * **Returned here and nowhere else, ever.** After this response the plaintext exists only
-   * in whatever the operator pasted it into; this service holds an envelope it opens to
-   * compare against and never to show.
+   * **Returned here and, since AH.6, inside {@link EnrollCommandResource.command} — nowhere
+   * else.** Both are responses to a request that asked for a credential, from an
+   * administrator, and after either one the plaintext exists only in whatever the operator
+   * pasted it into: this service holds an envelope it opens to compare against and never to
+   * show. Every *other* read of a token is masked, and `enrollmentTokenResource` is why that
+   * is structural rather than remembered.
    */
   readonly token: string;
 }
@@ -101,6 +111,33 @@ export interface MintedTokenResource extends EnrollmentTokenResource {
  */
 export function mintedTokenResource(row: EnrollmentToken, value: string): MintedTokenResource {
   return { ...enrollmentTokenResource(row), token: value };
+}
+
+/**
+ * The enroll card's one-liner, and the parts it was built from.
+ *
+ * The parts are returned beside the command so AI.3
+ * ([#258](https://github.com/NobuData/ouroboros/issues/258)) can render the card's prose —
+ * *"Run this on any machine that can reach `ouroboros.acme.dev:443`"* — without parsing the
+ * command back apart, and so a person can see which release they are about to install.
+ */
+export interface EnrollCommandResource {
+  /**
+   * The whole command, ready to paste.
+   *
+   * **Carries a live enrollment token.** See this file's header, and `enroll.command.ts`.
+   */
+  readonly command: string;
+  /** The https origin the command installs from — this deployment's own. */
+  readonly origin: string;
+  /** The agent release it pins. */
+  readonly version: string;
+  /** The workspace it enrols into, as `--tenant` names it. */
+  readonly tenant: string;
+  /** The pool it joins. */
+  readonly pool: string;
+  /** The token the command carries, masked — for a card that lists what it has minted. */
+  readonly token: EnrollmentTokenResource;
 }
 
 /** The public half of a workspace's farm CA. */

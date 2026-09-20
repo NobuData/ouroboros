@@ -16,5 +16,11 @@ import { InstallerService } from "./installer.service";
 @Module({
   controllers: [InstallScriptController, RunnerReleaseController],
   providers: [InstallerService],
+  // Exported for AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)) and nothing
+  // else: the enroll card renders a command that has to name this deployment's origin and the
+  // release it would install, and those are the two facts this service already resolves for
+  // `GET /install.sh`. A second resolution of them would be a card whose one-liner pinned a
+  // version the installer route does not serve.
+  exports: [InstallerService],
 })
 export class FarmInstallerModule {}

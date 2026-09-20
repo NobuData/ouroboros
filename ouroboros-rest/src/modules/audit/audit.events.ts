@@ -38,6 +38,12 @@
  * from the day it exists. A runner's `subjectId` is its row id; an enrollment token's is its
  * row id too — never its value, which by then exists only as an envelope.
  *
+ * `runner_pool` joined with AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)),
+ * which owns mockup 08's POOLS card. A pool is not a credential, and it is audited for the
+ * neighbouring reason: it decides what a build runs *under* — the executor, the pinned image
+ * and the environment a job may carry onto a machine this product does not administer. An
+ * `env_allowlist` widened by one name is a change somebody has to be able to find later.
+ *
  * `github_credential` joined with K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)):
  * a workspace's GitHub token is a credential like a provider's, and decision **AD.4**'s rule
  * is that credential operations are audited from the day they exist rather than from the day
@@ -45,7 +51,12 @@
  * workspace, so the credential has no identity of its own to name.
  */
 export type AuditSubjectType =
-  "provider_connection" | "run" | "github_credential" | "runner" | "enrollment_token";
+  | "provider_connection"
+  | "run"
+  | "github_credential"
+  | "runner"
+  | "runner_pool"
+  | "enrollment_token";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -170,6 +181,43 @@ export const RUNNER_CERT_REVOKED_EVENT = "runner.cert_revoked";
 export const RUNNER_REMOVED_EVENT = "runner.removed";
 
 /**
+ * A runner was withdrawn from dispatch — and the answer to *who drained bigiron?*
+ *
+ * Written by AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)). V040 splits
+ * `runners.status` from `runners.desired_state` so that an operator's decision cannot be
+ * overwritten by a measurement, and its own comment names the question that split exists to
+ * make answerable. The column says a decision was made; this says who made it.
+ */
+export const RUNNER_DRAINED_EVENT = "runner.drained";
+
+/** A drained runner was returned to dispatch. The other half of {@link RUNNER_DRAINED_EVENT}. */
+export const RUNNER_UNDRAINED_EVENT = "runner.undrained";
+
+/**
+ * A pool was created, changed or deleted — mockup 08's POOLS card (AH.6,
+ * [#254](https://github.com/NobuData/ouroboros/issues/254)).
+ *
+ * Three names rather than one `pool.changed`, because the three are different events to
+ * whoever is reading the trail after something went wrong: a pool that was *switched off* took
+ * no new work from that moment, a pool whose *image* changed builds different artefacts from
+ * that moment, and a pool that was *deleted* had nothing pointing at it. `runner.pool_updated`
+ * carries the field names that changed — never their values, which for `env_allowlist` would
+ * be the shape of a workspace's secrets.
+ *
+ * **In the `runner` family, not a `pool` one of their own.** A pool is how the fleet is
+ * configured, and `action like 'runner.%'` should stay the one question that answers *what
+ * has happened to our build farm* — a second family would make it two questions, and the
+ * second one is the one somebody forgets to ask.
+ */
+export const RUNNER_POOL_CREATED_EVENT = "runner.pool_created";
+
+/** A pool's configuration changed, including its enabled switch. */
+export const RUNNER_POOL_UPDATED_EVENT = "runner.pool_updated";
+
+/** A pool was deleted — only ever one nothing pointed at. */
+export const RUNNER_POOL_DELETED_EVENT = "runner.pool_deleted";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -197,6 +245,11 @@ export const AUDIT_ACTIONS = [
   RUNNER_CERT_RENEWED_EVENT,
   RUNNER_CERT_REVOKED_EVENT,
   RUNNER_REMOVED_EVENT,
+  RUNNER_DRAINED_EVENT,
+  RUNNER_UNDRAINED_EVENT,
+  RUNNER_POOL_CREATED_EVENT,
+  RUNNER_POOL_UPDATED_EVENT,
+  RUNNER_POOL_DELETED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

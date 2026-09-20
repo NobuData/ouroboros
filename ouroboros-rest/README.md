@@ -3559,6 +3559,94 @@ the policy per class through the `FARM_LOG_RETENTION` token, and its defaults re
 or a reconnect to another replica, a gap in flight is recorded as lost chunks rather than waited
 for.
 
+## The farm page
+
+> **Issue:** [#254](https://github.com/NobuData/ouroboros/issues/254) — *[AH.6] Farm read APIs &
+> stats* · epic [#240](https://github.com/NobuData/ouroboros/issues/240) · decisions **B5**,
+> **B9** · [`docs/mockups/08-build-farm.html`](../docs/mockups/08-build-farm.html)
+
+Mockup 08's read surfaces and the lifecycle actions behind its `⋯` menu.
+`src/modules/farm/fleet/` is the module; AI.1–AI.5 (#256–#260) are its clients.
+
+```
+GET /api/v1/farm ─▶ { stats:   { runnersOnline 4/5 · "forge-03 offline · 2h"
+                                 buildsToday   23 = 19 clean · 3 retried · 1 failed
+                                 avgBuildTime  252 s · Δ −38 s vs last week
+                                 cacheHitRate  78% · "ccache · per-runner" },
+                      runners: [ …telemetry, security_mode, q:N, current job… ],
+                      pools:   [ …executor, image, counts, autoscale_pref (inert)… ],
+                      live:    { #479 on forge-01 } }
+
+EMPTY ORG  ─▶ runnersOnline 0/0 · buildsToday 0     ← genuine zeros
+              avgBuildTime null · cacheHitRate null ← nothing to average (NOT 0m00s / 0%)
+              deltaVsLastWeek absent                ← no prior window (NOT ▼0s)
+```
+
+| Route | Role | What it does |
+|---|---|---|
+| `GET /api/v1/farm` | every member | The whole page, from four statements over one set of window boundaries. `Cache-Control: no-store` and `X-Ouro-Poll-After: 10` — the fleet's own heartbeat cadence |
+| `GET /api/v1/farm/pools` | every member | The pools with their runner counts, for a configuration sheet that reloads after an edit |
+| `POST /api/v1/farm/pools` | `admin`+ | Create a pool. A container pool pins an image and a shell pool does not — both directions |
+| `PATCH /api/v1/farm/pools/{id}` | `admin`+ | Change one, including the card's enabled switch. A field the body does not name is left alone |
+| `DELETE /api/v1/farm/pools/{id}` | `admin`+ | Delete one nothing points at. `farm_pool_in_use` names the counts and offers disabling instead |
+| `POST /api/v1/farm/runners/{id}/drain` · `/undrain` | `admin`+ | Write the intent and push the frame through AH.3's `RunnerControl`. `pushed: false` is not a failure |
+| `DELETE /api/v1/farm/runners/{id}` | `admin`+ | Retire a machine — **offline or drained only** — and revoke its certificate |
+| `GET /api/v1/farm/enroll-command?pool=` | `admin`+ | The enroll card's one-liner, with a freshly minted token. On `enrollment.controller.ts`, beside `mint` |
+
+**Every stat is a window, and the windows have edges.** They are computed once per request in
+`fleet.policy.ts` and handed to every statement, so one payload's figures are consistent with
+each other. *Today* is a **calendar** day in **UTC** — the same zone `dashboard/windows.ts`
+takes, through the same `startOfDay`, so a workspace reading *builds today* on two pages is
+told about one day — and the payload publishes the `since` instant and the `timeZone` rather
+than leaving *today* a word. *Last week* is the **seven whole days before today**, stepped back
+from the day boundary rather than from `now`: a rolling `now − 7d` would overlap today by
+however far into it the request landed, and the delta would shrink towards zero as the day went
+on.
+
+**`null` is not `0`, and `fleet.stats.ts` is where the difference is decided.** A count of
+nothing is zero — an empty workspace has zero runners online out of zero. An *average* of
+nothing is `null`: `0m 00s` is not a fast farm and `0%` is not a cache that missed. A delta
+needs both windows, so `deltaVsLastWeek` is absent when either is empty rather than claiming a
+comparison nobody made. AI.1 renders each of them as the mockup's em-dash. This is also why
+`fleet.repository.ts` returns **sums and counts separately** and never
+`coalesce(avg(…), 0)` — the zero the database would helpfully supply is the exact value the
+issue refuses.
+
+**The cache label says what is true.** The mockup reads `ccache · shared per pool`; decision
+**B5** scopes the MVP's caches to one per runner, so this service emits `ccache · per-runner`
+until AJ.2 ([#264](https://github.com/NobuData/ouroboros/issues/264)) makes sharing real. The
+number is honest either way — a weighted Σ hits ÷ Σ objects is the same arithmetic whoever the
+cache belonged to — so the label is the only part that could lie, and it is **composed** from
+`CACHE_SHARING` rather than written out. `grep CACHE_SHARING` is the whole of AJ.2's edit.
+
+**Observation and intent stay two columns.** Drain writes `desired_state` and pushes a frame;
+the **pill** is `status`, and only the agent's own heartbeat writes it. So a drained machine and
+a dead one are distinguishable, and *who drained bigiron?* is answered by
+`runner.drained` in the trail. Removal is the one action that writes both, because
+`runners_removed_is_intended` requires it — and it is **guarded**: a runner may be retired when
+it is `offline` or `draining` and not otherwise, because removing one mid-build strands that
+build. The guard is checked for a readable error **and applied again in the `update`'s `where`**,
+since a machine can heartbeat its way back to `online` in between.
+
+**`autoscale_pref` is stored, inert and returned unchanged** (decision **B9**). It is validated
+against V040's closed shape so AJ.1 ([#263](https://github.com/NobuData/ouroboros/issues/263))
+can activate it without first discovering what accumulated in the column, and nothing between
+the request and the response looks inside it.
+
+**The enroll command is real.** It renders this deployment's **own** origin — the mockup's
+`get.ouroboros.dev` is design shorthand, and a self-hosted tenant installs from itself — a
+**pinned** release (`?version=`, so two machines enrolled a month apart are one build), and a
+**freshly minted token**, because a masked one enrols nothing. Every value is single-quoted:
+the destination is a shell, and `?` is a glob character. It is a `GET` that mints, which the
+issue specifies and `GET /api/v1/farm/authority` already precedents — opening the card *is* the
+request — and it answers `no-store` behind a session and `ADMINISTRATORS`.
+
+**Known limits.** The runners list is ordered by name, not by the mockup's status grouping:
+the grouping is a presentation choice AI.2 makes from the `status` it is given, and an API that
+sorted by it would change row order as machines came and went. `buildsToday` carries a
+`canceled` count the mockup does not show, so the four terminal states partition the day
+exactly; the seeded day has none, so the card still reads `19 clean · 3 retried · 1 failed`.
+
 ## The runner installer
 
 > **Issue:** [#248](https://github.com/NobuData/ouroboros/issues/248) — *[AG.6] Packaging, install
@@ -4577,6 +4665,9 @@ ouroboros-rest/
 │       │   ├── gateway/    # wss://…/api/v1/farm/agent — sessions, presence, resume  · #251
 │       │   │               #   transport.ts — the upgrade's identity; agent.connection.ts —
 │       │   │               #   one session's protocol; gateway.repository.ts — the ledger
+│       │   ├── fleet/      # GET /farm — the page, its stats and the ⋯ menu          · #254
+│       │   │               #   fleet.stats.ts — where null stops being zero
+│       │   │               #   fleet.policy.ts — the day boundary, last week, B5's label
 │       │   └── installer/  # /install.sh · /runner/<version>/<file> — the agent's installer · #248
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
@@ -4708,6 +4799,7 @@ the ticket-source SPI, registry and sync loop [#139](https://github.com/NobuData
 the build farm's enrollment API and runner CA [#250](https://github.com/NobuData/ouroboros/issues/250) ·
 the runner installer, served from this deployment [#248](https://github.com/NobuData/ouroboros/issues/248) ·
 the farm schema it writes [#249](https://github.com/NobuData/ouroboros/issues/249) ·
+the farm page, its stats and lifecycle actions [#254](https://github.com/NobuData/ouroboros/issues/254) ·
 the canonical ticket model it writes [#138](https://github.com/NobuData/ouroboros/issues/138) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·

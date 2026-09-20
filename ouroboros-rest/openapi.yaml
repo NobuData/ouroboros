@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.35.23"
+  version: "0.35.24"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -14663,6 +14663,198 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/farm:
+    get:
+      tags: [farm]
+      summary: The build farm page — stat row, runners, pools and the live build
+      description: |-
+        Everything mockup 08 reads ([#254](https://github.com/NobuData/ouroboros/issues/254)), in
+        one observation: the four stat cards, the runners table with live telemetry and
+        security-mode flags, the pools with their metadata and runner counts, and a reference to
+        the build the LIVE card is showing.
+
+        **One payload rather than four endpoints**, because the figures are claims about each
+        other: `runnersOnline` counts the rows in `runners`, a pool's `runners` partitions the
+        same set, and a runner's `queueDepth` is the queue the live build came out of. Fetched
+        separately those could disagree, on a farm that moves every ten seconds.
+
+        **Every window has stated edges.** `buildsToday` carries the `since` instant it was
+        counted from and the `timeZone` that boundary was taken in (UTC), so *today* is a window
+        a client can check rather than a word. `avgBuildTime` compares today against the **seven
+        whole days before today** — adjacent and disjoint, so today's builds are never on both
+        sides of their own comparison.
+
+        **`null` is not `0`, and the distinction is load-bearing.** A count of nothing is zero: an
+        empty workspace reads `0/0` runners and `0` builds. An *average* of nothing is `null`:
+        `avgBuildTime.seconds` and `cacheHitRate.pct` are null when there is nothing to average,
+        because `0m 00s` is not a fast farm and `0%` is not a cache that missed. `deltaVsLastWeek`
+        is null when either window is empty, because a delta of zero claims a comparison nobody
+        made. Clients render these as the mockup's em-dash.
+
+        Not cached, and it carries `X-Ouro-Poll-After` — the fleet's own ten-second heartbeat
+        cadence. Every member may read it; the lifecycle and pool writes are `admin` and above.
+      operationId: getFarm
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The page.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: |-
+                `no-store` — every figure here is a claim about the present.
+            X-Ouro-Poll-After:
+              schema:
+                type: integer
+                minimum: 1
+              description: |-
+                Seconds to wait before asking again. The server owns the cadence.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FarmPage"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the workspace this request names is not one this session is a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/enroll-command:
+    get:
+      tags: [farm]
+      summary: The enroll-runner one-liner, with a freshly minted token
+      description: |-
+        The command mockup 08's ENROLL A RUNNER card prints
+        ([#254](https://github.com/NobuData/ouroboros/issues/254)), rendered ready to paste:
+
+        ```
+        curl -fsSL 'https://<this deployment>/install.sh?version=0.7.0' | sh -s -- \
+          --tenant 'acme-robotics' \
+          --pool 'pool-a' \
+          --token 'orb_enroll_…'
+        ```
+
+        **Three things about it are real.** The origin is **this deployment's own** — the mockup's
+        `get.ouroboros.dev` is design shorthand, and a self-hosted deployment installs its runners
+        from itself rather than trusting a public host with a binary that will run on its build
+        machines. The version is **pinned** (AG.6,
+        [#248](https://github.com/NobuData/ouroboros/issues/248)), so two machines enrolled a month
+        apart from one pasted command are the same build. And the token is **freshly minted and
+        live**, because a command carrying a masked token enrols nothing.
+
+        **It mints, and it is reached by a `GET`** — the same shape as `GET /api/v1/farm/authority`
+        above, which creates this workspace's CA if it has never had one: opening the card is the
+        request. The response is `no-store`, the route is `owner`/`admin`, and what it mints is an
+        ordinary single-use token with the default TTL that can be revoked from the token panel or
+        left to expire.
+
+        `owner` or `admin`.
+      operationId: getFarmEnrollCommand
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: pool
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+            pattern: "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+          description: |-
+            The pool the enrolled machine joins — the command's `--pool`.
+      responses:
+        "200":
+          description: |-
+            The command, the parts it was built from, and the masked token it carries.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: |-
+                `no-store` — the body carries a live credential.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollCommand"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — rendering an enroll command mints a credential, and is `owner` or
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_pool_not_found` — this workspace has no pool of that name; nothing was minted.
+            `farm_enroll_command_unavailable` — this deployment does not know the https address
+            runner machines reach it at (`OURO_FARM_PUBLIC_URL`), or serves no runner release, so
+            a command would download nothing. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `pool` is missing or is not a lower-case slug.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/farm/authority:
     get:
       tags: [farm]
@@ -15047,6 +15239,578 @@ paths:
         "422":
           description: |-
             `validation_failed` — the id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/pools:
+    get:
+      tags: [farm]
+      summary: The workspace's runner pools, with their runner counts
+      description: |-
+        The same pools `GET /api/v1/farm` carries, on their own
+        ([#254](https://github.com/NobuData/ouroboros/issues/254)) — for AI.4's
+        ([#259](https://github.com/NobuData/ouroboros/issues/259)) configuration sheet, which
+        reloads them after an edit and has no use for the fleet and the stat row beside them.
+
+        `runners` **excludes retired machines**, which is what makes the card's *3 runners* the
+        count of what is actually there. Every member may read it.
+      operationId: listRunnerPools
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The pools, by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RunnerPool"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the workspace this request names is not one this session is a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [farm]
+      summary: Create a runner pool — an execution world builds can be sent to
+      description: |-
+        Create a pool ([#254](https://github.com/NobuData/ouroboros/issues/254), decision B4). A
+        pool is an *execution world* rather than a label over a machine: it owns the executor,
+        the pinned image for a container pool, the environment a job may carry onto hardware this
+        product does not administer, and how much one runner of it may run at once.
+
+        **A container pool must pin an image and a shell pool must not** — both directions, which
+        is V040's own CHECK. Half of it prevents a pool that cannot run anything; the other half
+        prevents a pinned image on the card that nothing will ever pull.
+
+        `autoscalePref` is **stored and inert** (decision B9): it is validated, persisted and
+        returned unchanged, and nothing acts on it until AJ.1
+        ([#263](https://github.com/NobuData/ouroboros/issues/263)) makes cloud runners real.
+
+        `owner` or `admin`.
+      operationId: createRunnerPool
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRunnerPoolRequest"
+      responses:
+        "201":
+          description: |-
+            The pool, with a runner count of zero — nothing has joined it yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerPool"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — creating a pool is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the workspace this request names is not one this session is a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_pool_name_taken` — this workspace already has a pool of that name. Names are
+            unique per workspace because `--pool` and a build submission select by one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is not a pool; `details` names the field.
+            `farm_pool_image_mismatch` — a container pool named no image, or a shell pool named
+            one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/pools/{id}:
+    patch:
+      tags: [farm]
+      summary: Change a runner pool, including the pools card's enabled switch
+      description: |-
+        Change a pool ([#254](https://github.com/NobuData/ouroboros/issues/254)). A field the
+        body does not name is **left alone**; `null` is a value and means *there is none*, which
+        is the distinction that matters for `image` and `defaultCommand`.
+
+        **Editing a pool never rewrites what already ran.** V040 snapshots the executor, the image
+        and the command onto every build at submission, so a pool moved from `zephyr-sdk:0.16` to
+        `0.17` leaves last week's builds recording what they were actually built with.
+
+        `enabled: false` is the card's switch: the pool accepts no new work and keeps everything
+        it is already running. It is operator intent, not a health signal, and not a delete.
+
+        `owner` or `admin`.
+      operationId: updateRunnerPool
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |-
+            The pool.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRunnerPoolRequest"
+      responses:
+        "200":
+          description: |-
+            The pool as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerPool"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — changing a pool is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_pool_not_found` — this workspace has no such pool. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_pool_name_taken` — the new name belongs to another pool of this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is not a pool change; `details` names the field.
+            `farm_pool_image_mismatch` — the merged pool would be a container pool with no image,
+            or a shell pool with one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [farm]
+      summary: Delete a runner pool — only one that nothing points at
+      description: |-
+        Delete a pool ([#254](https://github.com/NobuData/ouroboros/issues/254)).
+
+        **Refused while any runner or build still names it**, with the counts in the error, and
+        retired runners count too: V040's foreign keys are `on delete no action` and refuse the
+        delete whatever this service believes. The refusal offers the thing the caller usually
+        meant — `PATCH` with `enabled: false`, which stops new work and keeps the history.
+
+        `owner` or `admin`.
+      operationId: deleteRunnerPool
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |-
+            The pool.
+      responses:
+        "204":
+          description: |-
+            Deleted. There is no resource left to describe.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — deleting a pool is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_pool_not_found` — this workspace has no such pool. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_pool_in_use` — runners or builds still name this pool. `details` carries both
+            counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/runners/{id}/drain:
+    post:
+      tags: [farm]
+      summary: Withdraw a runner from dispatch — it finishes what it is running
+      description: |-
+        Drain a runner ([#254](https://github.com/NobuData/ouroboros/issues/254)): it declines new
+        offers and finishes the build it is holding. Mockup 08's `bigiron` is a drained machine
+        still showing `#472 HIL test rig · finishing`. There is **no deadline** — drain means
+        *stop taking work*, and stopping a build in progress is what
+        `POST /api/v1/farm/jobs/{id}/cancel` is for.
+
+        **The pill does not change in this response.** V040 keeps observation and intent in two
+        columns on purpose: `desiredState` is what this request wrote, and `status` is what the
+        agent's own heartbeat reports — it will read `draining` on the next one. A service that
+        wrote both would make *drain this runner* and *this runner stopped answering* the same
+        write, and then *who drained bigiron?* would have no answer.
+
+        `pushed` says whether the frame reached a session in **this process**. `false` is not a
+        failure: the intent is in the database, and a runner connected to another replica, or not
+        connected at all, is told at its next heartbeat or hello.
+
+        `owner` or `admin`.
+      operationId: drainRunner
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |-
+            The runner.
+      responses:
+        "200":
+          description: |-
+            The runner, and whether the frame reached a live session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerLifecycle"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — draining a runner is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_runner_not_found` — this workspace has no such runner. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_runner_removed` — this runner has been retired from the fleet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/runners/{id}/undrain:
+    post:
+      tags: [farm]
+      summary: Return a drained runner to dispatch
+      description: |-
+        The other half of the drain switch ([#254](https://github.com/NobuData/ouroboros/issues/254)):
+        `desiredState` returns to `active` and the runner accepts offers again. As with drain,
+        the pill follows from the agent's own heartbeat rather than from this write.
+
+        `owner` or `admin`.
+      operationId: undrainRunner
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |-
+            The runner.
+      responses:
+        "200":
+          description: |-
+            The runner, and whether the frame reached a live session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerLifecycle"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — undraining a runner is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_runner_not_found` — this workspace has no such runner. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_runner_removed` — this runner has been retired from the fleet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/farm/runners/{id}:
+    delete:
+      tags: [farm]
+      summary: Retire a runner — guarded to machines that are offline or drained
+      description: |-
+        Remove a runner from the fleet ([#254](https://github.com/NobuData/ouroboros/issues/254)).
+
+        **Guarded.** Only a runner whose observed status is `offline` or `draining` may be
+        retired. Removing a machine that is `online` or `building` would strand whatever it is
+        holding: the row would read `removed`, dispatch would stop offering to it, and the agent
+        would go on compiling something nobody was waiting for. The guard is applied again inside
+        the write, so a runner that heartbeated its way back to `online` in between is refused
+        with the state it is *now* in.
+
+        **It revokes that machine's certificate** (`runner_removed`), so it cannot reconnect. Two
+        audit events are written, and they are deliberately different names: retiring a machine
+        and suspecting one are different acts, and only the second is an incident.
+
+        **The row survives.** Its builds reference it, and *what has this runner built* is a
+        question the history answers from those rows. What changes is that the machine leaves the
+        fleet: it is absent from `GET /api/v1/farm` and from every count on it.
+
+        `owner` or `admin`.
+      operationId: removeRunner
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |-
+            The runner.
+      responses:
+        "200":
+          description: |-
+            The runner, `removed` — a body rather than a `204`, so a client can see the state it
+            is now in without a second request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FarmRunner"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — retiring a runner is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_runner_not_found` — this workspace has no such runner. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `farm_runner_not_removable` — the runner is still connected. `details.status` names
+            the state it is in; drain it and let it finish, or wait until it goes offline.
+            `farm_runner_removed` — it has already been retired.
           content:
             application/json:
               schema:
@@ -25962,6 +26726,666 @@ components:
         command: [west, build, -b, helios_mainboard, app]
         title: Add OTA rollback on failed checksum
         label: zephyr build
+
+    FarmPage:
+      type: object
+      title: FarmPage
+      description: |-
+        Everything mockup 08 reads ([#254](https://github.com/NobuData/ouroboros/issues/254)), as
+        one observation over one set of window boundaries.
+      additionalProperties: false
+      required: [stats, runners, pools, live]
+      properties:
+        stats:
+          $ref: "#/components/schemas/FarmStats"
+        runners:
+          type: array
+          items:
+            $ref: "#/components/schemas/FarmRunner"
+          description: |-
+            The fleet, by name. **Retired machines are absent** — they keep their rows because
+            their builds reference them, and they are in no count of the fleet.
+        pools:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunnerPool"
+        live:
+          oneOf:
+            - $ref: "#/components/schemas/FarmLiveBuild"
+            - type: "null"
+          description: |-
+            The build the LIVE card shows — the one that started most recently — or null when
+            nothing is running.
+
+    FarmStats:
+      type: object
+      title: FarmStats
+      description: |-
+        The four stat cards. `null` means *not measured* everywhere it appears here, and is never
+        interchangeable with `0` — see `avgBuildTime.seconds` and `cacheHitRate.pct`.
+      additionalProperties: false
+      required: [runnersOnline, buildsToday, avgBuildTime, cacheHitRate]
+      properties:
+        runnersOnline:
+          type: object
+          additionalProperties: false
+          required: [online, total, note, offline]
+          description: |-
+            Mockup 08's `4/5`, and the line under it.
+          properties:
+            online:
+              type: integer
+              minimum: 0
+              description: |-
+                Connected: `online`, `building` or `draining`. A drained machine is still
+                connected, still finishing a build, and still counted.
+            total:
+              type: integer
+              minimum: 0
+              description: |-
+                The fleet, excluding retired machines. `0` for a workspace that has enrolled
+                nothing — a genuine count, not an absence.
+            note:
+              type: [string, "null"]
+              description: |-
+                `forge-03 offline · 2h` — the offline runner seen most recently, and how long
+                ago. Null when nothing is offline.
+            offline:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [name, lastSeenAt]
+                  properties:
+                    name:
+                      type: string
+                    lastSeenAt:
+                      type: [string, "null"]
+                      format: date-time
+                      description: |-
+                        Null for a machine that enrolled and never connected.
+                - type: "null"
+              description: |-
+                The runner `note` names, as data — so a page left open can re-render *2h* as
+                *3h* rather than going stale.
+        buildsToday:
+          type: object
+          additionalProperties: false
+          required: [total, clean, retried, failed, canceled, since, timeZone]
+          description: |-
+            Today's builds, partitioned by outcome. `total` is the four counts summed, so the
+            numbers add up by construction rather than by coincidence.
+          properties:
+            total:
+              type: integer
+              minimum: 0
+            clean:
+              type: integer
+              minimum: 0
+              description: |-
+                `succeeded` — the mockup's *19 clean*.
+            retried:
+              type: integer
+              minimum: 0
+              description: |-
+                Attempts replaced after an infrastructure failure. Each has a successor among the
+                clean ones, so a retry is counted once as the attempt that failed and once as the
+                build that worked — never twice as either.
+            failed:
+              type: integer
+              minimum: 0
+              description: |-
+                It ran and exited non-zero.
+            canceled:
+              type: integer
+              minimum: 0
+              description: |-
+                Somebody stopped it. Not on the mockup, and counted anyway: V040 partitions the
+                day by four terminal states, and three counts that did not add up to the total
+                would be a partition with a hole in it.
+            since:
+              type: string
+              format: date-time
+              description: |-
+                Where the day starts — so *today* is a stated window rather than a word.
+            timeZone:
+              type: string
+              description: |-
+                The zone that boundary was taken in. `UTC`, which is also the zone the dashboard's
+                *since this morning* uses, so the two pages mean one day.
+        avgBuildTime:
+          type: object
+          additionalProperties: false
+          required: [seconds, builds, priorSeconds, priorBuilds, deltaVsLastWeek]
+          description: |-
+            The mean build time today, and the week it is compared against. Taken over builds
+            that ran to an outcome; a cancelled build is not a build time.
+          properties:
+            seconds:
+              type: [integer, "null"]
+              minimum: 0
+              description: |-
+                The mean, in seconds — `252` is the mockup's `4m 12s`. **Null over no builds**:
+                an average of nothing is not `0m 00s`.
+            builds:
+              type: integer
+              minimum: 0
+            priorSeconds:
+              type: [integer, "null"]
+              minimum: 0
+              description: |-
+                The same mean over the seven whole days before today, or null if it holds no
+                builds.
+            priorBuilds:
+              type: integer
+              minimum: 0
+            deltaVsLastWeek:
+              type: [integer, "null"]
+              description: |-
+                Today's mean less the prior week's, in seconds — `-38` is the mockup's `▼ 38s`,
+                and negative is faster. **Null, not zero, when either window is empty**: a farm
+                switched on this morning has nothing to compare against, and `▼ 0s` would claim
+                a comparison nobody made.
+        cacheHitRate:
+          type: object
+          additionalProperties: false
+          required: [pct, hits, objects, label]
+          description: |-
+            The day's cache hit rate, **weighted by objects** — Σ hits ÷ Σ objects, not a mean of
+            per-build rates, so a twelve-object build does not get the same say as a
+            five-hundred-object one.
+          properties:
+            pct:
+              type: [integer, "null"]
+              minimum: 0
+              maximum: 100
+              description: |-
+                **Null when no build today reported a cache.** Decision B5: a missing summary
+                means *not measured*, and rendering it as `0%` would be the product claiming a
+                cache miss it never had.
+            hits:
+              type: integer
+              minimum: 0
+            objects:
+              type: integer
+              minimum: 0
+              description: |-
+                Σ (hits + misses) — what the compiler asked the cache about.
+            label:
+              type: string
+              description: |-
+                `ccache · per-runner`. **Composed from decision B5, never written out.** Mockup 08
+                reads *shared per pool*; the MVP's caches are one per runner, and that becomes
+                true with AJ.2 ([#264](https://github.com/NobuData/ouroboros/issues/264)) and not
+                before. The number is honest either way — the label is the part that could lie.
+
+    FarmRunner:
+      type: object
+      title: FarmRunner
+      description: |-
+        One machine in the fleet, as mockup 08's runners table draws it
+        ([#254](https://github.com/NobuData/ouroboros/issues/254)).
+
+        **`null` is the table's em-dash.** An offline runner carries no telemetry and no uptime,
+        because V040 clears both when the presence sweep flips it — a two-hour-old snapshot
+        renders exactly like a fresh one, which is the thing that clearing prevents.
+      additionalProperties: false
+      required:
+        [id, name, arch, poolId, pool, status, desiredState, securityMode, agentVersion, hostname, lastSeenAt, enrolledAt, uptimeSeconds, telemetry, queueDepth, currentJob, capabilities]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: |-
+            `forge-01`, `anvil-mac` — unique per workspace, and how the install command names one.
+        arch:
+          type: string
+          enum: [linux/arm64, linux/x86_64, darwin/arm64]
+        poolId:
+          type: string
+          format: uuid
+        pool:
+          type: string
+          description: |-
+            The pool's name — the mockup's tag.
+        status:
+          type: string
+          enum: [online, building, draining, offline, removed]
+          description: |-
+            What the fleet last **observed** — the pill. Written by heartbeats and the presence
+            sweep, never by an operator directly.
+        desiredState:
+          type: string
+          enum: [active, draining, removed]
+          description: |-
+            What an operator **intended**. A separate column from `status` so that a drained
+            machine and a dead one can be told apart, and so *who drained this?* has an answer.
+        securityMode:
+          type: string
+          enum: [mtls, bearer_fallback]
+          description: |-
+            Decision B3. Published so a connection that fell back to a bearer token renders as
+            **visibly degraded** — a green shield over the weaker mode is what this field exists
+            to prevent.
+        agentVersion:
+          type: [string, "null"]
+          description: |-
+            The agent build that last connected. Null until one has.
+        hostname:
+          type: [string, "null"]
+          description: |-
+            What the machine called itself. Recognition, never identity.
+        lastSeenAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            When the last heartbeat arrived. Null for a machine that has never connected —
+            enrolment is not a sighting.
+        enrolledAt:
+          type: string
+          format: date-time
+        uptimeSeconds:
+          type: [integer, "null"]
+          minimum: 0
+          description: |-
+            Uptime as the agent last reported it. **Null with no live report** — the mockup's `—`.
+        telemetry:
+          oneOf:
+            - $ref: "#/components/schemas/RunnerTelemetry"
+            - type: "null"
+          description: |-
+            The live snapshot behind the CPU meter, the RAM column and the queue chip. **Null**
+            for a runner the fleet cannot vouch for, rather than a record of nulls: the offline
+            row prints one `—` per cell because there is no snapshot at all.
+        queueDepth:
+          type: integer
+          minimum: 0
+          description: |-
+            The mockup's `q:2` — the **control plane's** count of builds assigned to this machine
+            and not started, not the agent's `telemetry.queueDepth`. The two agree while it is
+            connected; when it is not, this is still true and the telemetry is gone.
+        currentJob:
+          oneOf:
+            - $ref: "#/components/schemas/RunnerJobRef"
+            - type: "null"
+          description: |-
+            The build it is running, or null. `running` only — an offered job has been sent to a
+            machine that has not accepted it.
+        capabilities:
+          type: object
+          additionalProperties: true
+          description: |-
+            What the runner reported it can do in its `hello`, as it reported it — `docker`,
+            `cpu_count`, and the executors it offers.
+
+    RunnerTelemetry:
+      type: object
+      title: RunnerTelemetry
+      description: |-
+        A runner's live heartbeat snapshot (decision B7). A field the agent did not send is null.
+      additionalProperties: false
+      required: [cpuPct, ramUsedBytes, ramTotalBytes, queueDepth, sampledAt]
+      properties:
+        cpuPct:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 100
+        ramUsedBytes:
+          type: [number, "null"]
+          minimum: 0
+        ramTotalBytes:
+          type: [number, "null"]
+          minimum: 0
+        queueDepth:
+          type: [number, "null"]
+          minimum: 0
+          description: |-
+            What the agent last said it was holding.
+        sampledAt:
+          type: [string, "null"]
+          description: |-
+            When the agent sampled it.
+
+    RunnerJobRef:
+      type: object
+      title: RunnerJobRef
+      description: |-
+        The build a runner is working on, as the *Current job* cell prints it.
+      additionalProperties: false
+      required: [id, number, label, title, startedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+          description: |-
+            The job's public name — mockup 08's `#479`.
+        label:
+          type: string
+          description: |-
+            The short label beside the number — *zephyr build*, *HIL test rig*.
+        title:
+          type: string
+        startedAt:
+          type: [string, "null"]
+          format: date-time
+
+    FarmLiveBuild:
+      type: object
+      title: FarmLiveBuild
+      description: |-
+        The build the LIVE card shows — the running build that started most recently, which is
+        the one somebody is waiting on rather than the long sweep the runners table already
+        carries.
+      additionalProperties: false
+      required: [id, number, label, title, runner, runnerId, startedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+        label:
+          type: string
+        title:
+          type: string
+        runner:
+          type: [string, "null"]
+          description: |-
+            The runner holding it, by name — the card's *forge-01*.
+        runnerId:
+          type: [string, "null"]
+          format: uuid
+        startedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            The card's elapsed timer counts from here.
+
+    RunnerPool:
+      type: object
+      title: RunnerPool
+      description: |-
+        One execution world builds can be dispatched to
+        ([#254](https://github.com/NobuData/ouroboros/issues/254), decision B4) — mockup 08's
+        POOLS card is two of these.
+      additionalProperties: false
+      required:
+        [id, name, description, executor, image, enabled, maxConcurrency, envAllowlist, tags, defaultCommand, autoscalePref, runners]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: |-
+            Slug-shaped, unique per workspace: it travels on a command line as `--pool`.
+        description:
+          type: [string, "null"]
+          description: |-
+            The first part of the card's meta line — *firmware builds*, *HIL & macOS jobs*.
+        executor:
+          type: string
+          enum: [container, shell]
+          description: |-
+            Decision B4. Snapshotted onto every build, so editing a pool does not rewrite the
+            past.
+        image:
+          type: [string, "null"]
+          description: |-
+            The pinned image, for a container pool and only for one.
+        enabled:
+          type: boolean
+          description: |-
+            The card's switch. A disabled pool accepts no new work and keeps everything it is
+            already running. Operator intent, not a health signal and not a delete.
+        maxConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 64
+          description: |-
+            How many builds one runner of this pool may run at once — per runner, not per pool.
+        envAllowlist:
+          type: array
+          items:
+            type: string
+          description: |-
+            Variable names a submission may carry into a build. An allow-list, because the
+            machines this reaches are the customer's.
+        tags:
+          type: array
+          items:
+            type: string
+          description: |-
+            Queryable pool tags, e.g. `["hil"]`.
+        defaultCommand:
+          type: [string, "null"]
+          description: |-
+            What a submission that names no command falls back to, as the canonical rendering of
+            an argv.
+        autoscalePref:
+          type: object
+          additionalProperties: false
+          description: |-
+            The mockup's *"Auto-scale to cloud when queue > 5"* — **stored, inert, and returned
+            exactly as stored** (decision B9). Nothing in this release reads inside it; AI.4
+            ([#259](https://github.com/NobuData/ouroboros/issues/259)) labels it as arriving with
+            cloud runners rather than hiding it, and AJ.1
+            ([#263](https://github.com/NobuData/ouroboros/issues/263)) is what activates it.
+          properties:
+            enabled:
+              type: boolean
+            queue_threshold:
+              type: number
+              minimum: 1
+            max_runners:
+              type: number
+              minimum: 1
+        runners:
+          type: integer
+          minimum: 0
+          description: |-
+            How many runners are in it, **excluding retired machines** — the meta line's
+            *3 runners*.
+
+    CreateRunnerPoolRequest:
+      type: object
+      title: CreateRunnerPoolRequest
+      description: |-
+        A new pool. `name` and `executor` are required; everything else takes V040's column
+        default.
+      additionalProperties: false
+      required: [name, executor]
+      properties:
+        name:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+        description:
+          type: [string, "null"]
+          maxLength: 200
+        executor:
+          type: string
+          enum: [container, shell]
+        image:
+          type: [string, "null"]
+          maxLength: 512
+          description: |-
+            Required for a container pool, and refused for a shell one.
+        envAllowlist:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            maxLength: 256
+          description: |-
+            Distinct, non-empty variable names.
+        maxConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 64
+        enabled:
+          type: boolean
+        tags:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9_-]{0,31}$"
+        defaultCommand:
+          type: [array, "null"]
+          maxItems: 256
+          items:
+            type: string
+            maxLength: 4096
+          description: |-
+            argv, never a shell string — the same bound a build submission's command carries.
+        autoscalePref:
+          type: object
+          additionalProperties: false
+          description: |-
+            Stored and inert (decision B9). Validated so that AJ.1 can activate the preference
+            without first discovering what shapes accumulated while nobody was looking.
+          properties:
+            enabled:
+              type: boolean
+            queue_threshold:
+              type: number
+              minimum: 1
+            max_runners:
+              type: number
+              minimum: 1
+      example:
+        name: pool-c
+        description: nightly macOS builds
+        executor: shell
+        maxConcurrency: 1
+        tags: [macos]
+
+    UpdateRunnerPoolRequest:
+      type: object
+      title: UpdateRunnerPoolRequest
+      description: |-
+        A change to a pool. Every field is optional; one the body does not name is left alone,
+        and `null` means *there is none*.
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+        description:
+          type: [string, "null"]
+          maxLength: 200
+        executor:
+          type: string
+          enum: [container, shell]
+          description: |-
+            What the pool's **next** builds run under. Earlier builds keep the executor they
+            recorded.
+        image:
+          type: [string, "null"]
+          maxLength: 512
+        envAllowlist:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            maxLength: 256
+        maxConcurrency:
+          type: integer
+          minimum: 1
+          maximum: 64
+        enabled:
+          type: boolean
+          description: |-
+            The pools card's switch.
+        tags:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9_-]{0,31}$"
+        defaultCommand:
+          type: [array, "null"]
+          maxItems: 256
+          items:
+            type: string
+            maxLength: 4096
+        autoscalePref:
+          type: object
+          additionalProperties: false
+          properties:
+            enabled:
+              type: boolean
+            queue_threshold:
+              type: number
+              minimum: 1
+            max_runners:
+              type: number
+              minimum: 1
+      example:
+        enabled: false
+
+    RunnerLifecycle:
+      type: object
+      title: RunnerLifecycle
+      description: |-
+        What a drain or an undrain did ([#254](https://github.com/NobuData/ouroboros/issues/254)).
+      additionalProperties: false
+      required: [runner, pushed]
+      properties:
+        runner:
+          $ref: "#/components/schemas/FarmRunner"
+        pushed:
+          type: boolean
+          description: |-
+            Whether the frame reached a session in the process that answered. **`false` is not a
+            failure**: the intent is written first and the push is an optimisation of it, so a
+            runner connected to another replica — or not connected at all — is told at its next
+            heartbeat or hello. A client can say *asked* rather than *done* while it is false.
+
+    EnrollCommand:
+      type: object
+      title: EnrollCommand
+      description: |-
+        The enroll card's one-liner and the parts it was built from
+        ([#254](https://github.com/NobuData/ouroboros/issues/254)).
+      additionalProperties: false
+      required: [command, origin, version, tenant, pool, token]
+      properties:
+        command:
+          type: string
+          description: |-
+            The whole command, ready to paste, wrapped across four lines. **It carries a live
+            enrollment token** — this and the mint response are the only two places in this API
+            where a token value is returned. Every value in it is single-quoted, because its
+            destination is a shell and `?` is a glob character.
+        origin:
+          type: string
+          format: uri
+          description: |-
+            The https origin the command installs from — this deployment's own.
+        version:
+          type: string
+          description: |-
+            The agent release it pins, so two machines enrolled a month apart from one pasted
+            command are the same build.
+        tenant:
+          type: string
+          description: |-
+            The workspace, as `--tenant` names it.
+        pool:
+          type: string
+        token:
+          $ref: "#/components/schemas/EnrollmentToken"
+          description: |-
+            The token the command carries, **masked** — for a card that also lists what it has
+            minted. The value itself is only in `command`.
 
     BuildJob:
       type: object
