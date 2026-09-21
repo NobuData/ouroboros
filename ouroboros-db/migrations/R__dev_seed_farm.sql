@@ -73,12 +73,18 @@
 -- **Coordinated with DASH-F.5 (#68), and with nothing else by accident.**
 -- ---------------------------------------------------------------------------
 --
--- `build_jobs.number` is the farm's own sequence, `#435`–`#482`. One number in it is
+-- `build_jobs.number` is the farm's own sequence, `#435`–`#483`. One number in it is
 -- deliberately shared: **`#479`**, the live build on `forge-01`, is the same story as the
 -- dashboard seed's run `#479` — same title, same repository — because both seeds are drawn from
--- one universe (the coordination #328 extends). The two are *not* linked, and `run_id` is null
--- on every row here: decision **B6** makes loop attribution AJ.3's (#265), and a seeded
--- loop-linked job would be a state the product cannot yet reach.
+-- one universe (the coordination #328 extends). Those two are *not* linked, and `run_id` is
+-- null on every row here but one: decision **B6** makes loop attribution AJ.3's (#265), and a
+-- seeded dispatched job carrying a loop would be a state the product cannot yet reach.
+--
+-- The one exception is `#483`, added by #302 (AO.5): the job `#482` has **reserved** on
+-- `forge-02`, which is the other half of `runs.reserved_build_job_id` (V047, #300) and the row
+-- mockup 10's *forge-02 reserved* is drawn from. A reservation is not a dispatch, so B6 is
+-- untouched by it; see that statement's own header, which is also where `forge-02`'s queue
+-- depth moving from `q:0` to `q:1` is argued.
 --
 -- ---------------------------------------------------------------------------
 -- **Today is relative to today, not to the day this was typed.**
@@ -122,7 +128,7 @@
 --   | `runners` (6)               | `5eed0025…` | the runner's ordinal                     |
 --   | `enrollment_tokens` (2)     | `5eed0026…` | the token's ordinal                      |
 --   | `runner_pool_windows` (1)   | `5eed0027…` | 1                                        |
---   | `build_jobs` (48)           | `5eed0028…` | the job number                           |
+--   | `build_jobs` (49)           | `5eed0028…` | the job number                           |
 --   | `build_log_chunks` (5)      | `5eed0029…` | the job number, then the chunk's `seq`   |
 --   | `runner_certificates` (5)   | `5eed002a…` | the runner's ordinal                     |
 --
@@ -228,7 +234,7 @@ select ('5eed0025-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
           '{"cpu_pct": 82, "ram_used_bytes": 14200000000, "ram_total_bytes": 32000000000, "queue_depth": 2}'),
          (2, 'forge-02', 'pool-a', 'linux/arm64', 'online', 'active', 7,
           '1.0.0', '{"docker": true, "cpu_count": 8}', 'mtls', '4a110e98', null, 60, 3542400,
-          '{"cpu_pct": 3, "ram_used_bytes": 2100000000, "ram_total_bytes": 32000000000, "queue_depth": 0}'),
+          '{"cpu_pct": 3, "ram_used_bytes": 2100000000, "ram_total_bytes": 32000000000, "queue_depth": 1}'),
          (3, 'anvil-mac', 'pool-b', 'darwin/arm64', 'online', 'active', 5,
           '1.0.0', '{"docker": false, "cpu_count": 12}', 'bearer_fallback', null,
           'ouro.v1.1.ZmFybS1zZWVkLW5vbmNlLTM.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1iZWFyZXItc2VjcmV0',
@@ -510,8 +516,8 @@ on conflict do nothing;
 --
 -- `#480` and `#481` are queued **on** `forge-01` and `#482` on `bigiron`, which is where the
 -- runners table's `q:2` and `q:1` come from and what each runner's `queue_depth` telemetry
--- agrees with. Nothing waits on `forge-02`, `anvil-mac` or `forge-03`, so their chips read
--- `q:0` without a row saying so.
+-- agrees with. Nothing waits on `anvil-mac` or `forge-03`, so their chips read `q:0` without
+-- a row saying so. `forge-02` reads `q:1`, and the row behind it is the statement below.
 --
 -- None of these has a `finished_at`, which is what keeps them out of `23 builds today` and out
 -- of the average; a count that forgot to require a terminal status would read 28.
@@ -562,6 +568,64 @@ select ('5eed0028-0000-4000-8000-' || lpad(seed.number::text, 12, '0'))::uuid,
   join ouroboros.github_orgs  gh   on gh.organization_id = org."id" and gh.login = 'acme-robotics'
   join ouroboros.github_repos repo on repo.org_id = gh.id and repo.name = seed.repo_name
  where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The one job a loop is holding — `#482`'s reservation on `forge-02` (#302, AO.5).
+--
+-- Mockup 10's Resources card draws a fourth row under the token and cost meters:
+-- *Build farm · ● forge-02 reserved*, with the dot grey rather than lit. That is a runner
+-- **held** and not yet building, which is the only shape that makes the sentence true — a
+-- run whose `Build farm` stage is still `pending` has nothing running on the farm, and a
+-- reservation it could not name would leave the card printing a runner out of nowhere.
+--
+-- So it is a real `build_jobs` row: `queued`, on `forge-02`, on the loop's own branch, of
+-- the newest commit `#482` has made. `runs.reserved_build_job_id` points at it from the
+-- other side — R__dev_seed_run_console.sql writes that half, since it sorts after this
+-- file — and the card resolves the name through the job's runner rather than storing it.
+-- Decision **R8**, in the direction V047 wrote it (#300).
+--
+-- **It is the one seeded job with a `run_id`**, which amends AH.1's (#249) *"no seeded job
+-- is attributed to a loop run"*. That sentence was true while nothing in this database had
+-- a run to be attributed to; `build_jobs_run_fk` is decision **B6**'s half of the same link
+-- and was always going to be filled by the first run that reserved anything. AJ.3 (#265) is
+-- still what fills it for a *dispatched* build; this is a reservation, and tests/seed.sql
+-- asserts the exception is exactly one row.
+--
+-- **`forge-02` therefore reads `q:1` and not `q:0`.** Mockup 08 draws it idle with an empty
+-- queue, and that is the one number in this file the run console moves: the two pages
+-- disagree about the same runner, and a fixture can only be one of them. The runner's
+-- `queue_depth` telemetry above is moved with it, because a heartbeat that disagreed with
+-- the rows behind it would be a worse fixture than either page.
+--
+-- `git_ref` is the loop's branch and `commit_sha` opens with `7f03b8d` — the abbreviation
+-- `run_commits` carries for the same commit — so the reservation names what it would build
+-- rather than a sha nothing else in the database has heard of. `queued_at` is `475` seconds
+-- into the run, the instant its second attempt opened, because that is when the loop asked —
+-- anchored to `runs.started_at` rather than to this migration's own `now()`, for the reason
+-- R__dev_seed_run_console.sql's header gives: two seeds are two transactions, and a
+-- reservation that drifted outside the run would be a reservation made before the loop.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, runner_id, run_id, github_repo_id, git_ref,
+   commit_sha, label, title, executor, image, command, status, queued_at)
+select ('5eed0028-0000-4000-8000-' || lpad('483', 12, '0'))::uuid,
+       org."id", 483, pool.id, runner.id, run.id, repo.id,
+       'refs/heads/loop/482-canbus-flake',
+       '7f03b8d' || substr(md5('ouroboros-run-482'), 1, 33),
+       'zephyr build', 'Fix flaky CAN-bus telemetry test',
+       'container', 'ghcr.io/acme-robotics/zephyr-sdk:0.17',
+       'west build -b helios_mainboard app', 'queued',
+       run.started_at + make_interval(secs => 475)
+  from ouroboros.organization org
+  join ouroboros.runner_pools pool  on pool.organization_id = org."id" and pool.name = 'pool-a'
+  join ouroboros.runners      runner on runner.organization_id = org."id"
+                                    and runner.name = 'forge-02'
+  join ouroboros.github_orgs  gh    on gh.organization_id = org."id" and gh.login = 'acme-robotics'
+  join ouroboros.github_repos repo  on repo.org_id = gh.id and repo.name = 'helios-firmware'
+  join ouroboros.runs         run   on run.organization_id = org."id" and run.issue_number = 482
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------

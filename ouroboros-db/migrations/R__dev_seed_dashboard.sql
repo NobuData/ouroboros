@@ -471,6 +471,16 @@ on conflict do nothing;
 -- Resources meter divides into. Stages that are not model work — `queued`, `build`,
 -- `review` — carry neither, because a node with no `limits` object has nothing to snapshot.
 --
+-- **Where the `implement` attempts end and begin is the transcript's, since #302 (AO.5).**
+-- Attempt 1 fails at `now() - 300` and attempt 2 opens at `now() - 285`, which leaves the
+-- gate's own entry — `14:07:48`, `now() - 292` in R__dev_seed_run_console.sql — in the gap
+-- between them rather than inside the attempt it ended. The earlier numbers put the
+-- boundary at `now() - 240`, which drew a gate returning from a stage that had not stopped
+-- and a second attempt whose first model paragraph predated its own start. Neither number
+-- is rendered anywhere: mockup 10's stepper captions a duration for `Queued`, `Analyze` and
+-- `Plan` and prints `attempt 2/3` for this one, so the only thing these two instants have
+-- to do is agree with the transcript, and now they do.
+--
 -- Ids are `5eed000c…` and the issue number, position and attempt: six digits, three and
 -- three, so a stage row is identifiable on sight and a second application computes the
 -- same uuid.
@@ -494,7 +504,7 @@ select ('5eed000c-0000-4000-8000-' || lpad(seed.issue_number::text, 6, '0')
          (482, 'queued',    'Queued',       1, 1, 'succeeded',  760,  756, null,   null),
          (482, 'analyze',   'Analyze',      2, 1, 'succeeded',  756,  684,    3, 400000),
          (482, 'plan',      'Plan',         3, 1, 'succeeded',  684,  559,    3, 400000),
-         (482, 'implement', 'Implementing', 4, 1, 'failed',     559,  240,    3, 400000),
+         (482, 'implement', 'Implementing', 4, 1, 'failed',     559,  300,    3, 400000),
          (482, 'build',     'Build farm',   5, 1, 'pending',   null, null, null,   null),
          (482, 'review',    'Self-review',  6, 1, 'pending',   null, null, null,   null),
 
@@ -544,7 +554,7 @@ insert into ouroboros.run_stages (id, run_id, stage_key, stage_label, position, 
 select ('5eed000c-0000-4000-8000-' || lpad('482', 6, '0')
                                    || lpad('4', 3, '0') || lpad('2', 3, '0'))::uuid,
        run.id, 'implement', 'Implementing', 4, 2,
-       'active', now() - make_interval(secs => 240), 3, 400000,
+       'active', now() - make_interval(secs => 285), 3, 400000,
        'checks-green', 'gate', 'failed_tests'
   from ouroboros.organization org
   join ouroboros.runs run on run.organization_id = org."id" and run.issue_number = 482
@@ -633,7 +643,7 @@ select ('5eed000a-0000-4000-8000-' || lpad(seed.issue_number::text, 12, '0'))::u
 on conflict (id) do nothing;
 
 -- ---------------------------------------------------------------------------
--- Token spend · today — twelve events, four providers, 4.2M tokens, $18.60.
+-- Token spend · today — twelve events here, four providers, 4.2M tokens, $18.60.
 --
 -- The stat renders `4.2M` over `≈ $18.60 across 4 providers`, and every part of that is an
 -- aggregate over `token_usage_daily` for the current UTC day (V010 fixes the day to UTC so
@@ -670,12 +680,23 @@ on conflict (id) do nothing;
 -- prices them differently (V010).
 --
 -- **`run_id` follows the model.** An event is attributed to a run when the run was
--- performed with that event's model and there is exactly one such run: the two Claude
--- events land on the two live Claude runs, the Copilot one on `#471`, and two of the
--- Ollama ones on the live `#476` and the closed `#468`. The rest are null, which is the
--- ordinary case V010 made the column nullable for — planning, triage, and the chat
--- surfaces of mockups 19 and 20 spend tokens no run caused. `cursor` has no run at all,
--- which is what unattributed spend looks like.
+-- performed with that event's model and there is exactly one such run: the Sonnet event
+-- lands on the live `#479`, the Copilot one on `#471`, and two of the Ollama ones on the
+-- live `#476` and the closed `#468`. The rest are null, which is the ordinary case V010
+-- made the column nullable for — planning, triage, and the chat surfaces of mockups 19
+-- and 20 spend tokens no run caused. `cursor` has no run at all, which is what
+-- unattributed spend looks like.
+--
+-- **The `claude-fable-5` event is 688 000 tokens and belongs to no run, which is #302's
+-- (AO.5) doing.** It was 900 000 and was attributed to `#482`, from before that run had a
+-- Resources card to answer for. Mockup 10 prints `212k / 400k budget` and `$1.14 / $2.50
+-- cap` for it, and under decision **R8** those are a `sum` over this table rather than a
+-- counter — so `#482`'s spend is four rows of its own in
+-- R__dev_seed_run_console.sql, one per model stage, totalling exactly 212 000 tokens and
+-- 114 cents. This row keeps the rest: 900 000 − 212 000 and 540 − 114, so the day still
+-- holds 4.2M tokens and $18.60 across four providers and neither figure was moved to make
+-- room for the other. A number that appears on two pages is computed twice from one
+-- ledger, which is the whole of the rule this file is written under.
 --
 -- `occurred_at` is spread across the part of today that has already happened: the day's
 -- UTC midnight plus `n/13` of the time since. Every event is therefore inside the current
@@ -689,7 +710,7 @@ select ('5eed000b-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
        seed.tokens_total / 5 * 4, seed.tokens_total / 5, seed.cost_cents,
        utc_day.day_start + (now() - utc_day.day_start) * (seed.n::double precision / 13)
   from (values
-         ( 1, 'anthropic', 'claude-fable-5',       900000, 540.0000,  482),
+         ( 1, 'anthropic', 'claude-fable-5',       688000, 426.0000, null),
          ( 2, 'anthropic', 'claude-sonnet-5',      620000, 372.0000,  479),
          ( 3, 'anthropic', 'claude-haiku-4-5',     380000, 228.0000, null),
          ( 4, 'copilot',   'copilot/gpt-5-codex',  500000, 250.0000,  471),

@@ -102,9 +102,11 @@
 -- moves a figure mockup 02 and mockup 07 already render. Two rules keep that from happening,
 -- and both are asserted in tests/seed.sql:
 --
---   1. **Nothing here lands on today.** Mockup 02's *Token spend · today* card is exactly
---      #68's twelve events; every row below is placed strictly before today's UTC midnight,
---      in the same window #221 uses and with the same first-of-the-month branch.
+--   1. **Nothing here lands on today.** Mockup 02's *Token spend · today* card is #68's
+--      twelve events and #302's four, and nothing else; every row below is placed strictly
+--      before today's UTC midnight, in the same window #221 uses and with the same
+--      first-of-the-month branch. A row of this file inside the day would also join mockup
+--      06's matrix *and* that card, which is the one overlap neither page could absorb.
 --
 --   2. **The month meters do not move**, because #221 was reduced by exactly what this file
 --      adds. Its header carries the arithmetic; the short form is that routed spend of
