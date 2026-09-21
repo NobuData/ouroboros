@@ -356,7 +356,15 @@ describe("TABLE_COLUMNS", () => {
     // third time running, and for a reason particular to these two: a file's counts are
     // *replaced* by each report, so the shape a writer reaches for has to be the upsert rather
     // than an insert, and `RunFilesTable`'s own comment is where that is written down.
-    expect(TABLE_NAMES).toHaveLength(59);
+    //
+    // The sixtieth to sixty-second are V048's, mirrored by AO.4 (#301): `guardrail_evaluations`
+    // — the card's verdicts, with evidence that carries a place and a rule and never the matched
+    // value — `v_run_guardrails_latest`, the latest-per-check read the card actually makes, and
+    // `run_controls`, decision R6's durable queue. Here before a reader for the fourth time
+    // running, and this time the mirror carries a rule as well as a shape: `GuardrailEvidence`
+    // is the one typed jsonb interface in the file, because that column's keys are closed by
+    // CHECK rather than left open by convention.
+    expect(TABLE_NAMES).toHaveLength(62);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -538,7 +546,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(7);
+    expect(READ_ONLY_VIEWS).toHaveLength(8);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {
