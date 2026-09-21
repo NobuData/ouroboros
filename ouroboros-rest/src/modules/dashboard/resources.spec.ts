@@ -36,6 +36,8 @@ const LIVE: Run = {
   event_cap: 20000,
   event_byte_cap: "33554432",
   events_elided_at: null,
+  merge_strategy: "squash",
+  reserved_build_job_id: null,
 };
 
 /** Its counterpart on the completions card — the same table, the other half of decision F2. */
