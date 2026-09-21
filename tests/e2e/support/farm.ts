@@ -11,8 +11,8 @@
  *
  * ## Two workspaces, and why the leg needs both
  *
- * **`acme-robotics` is the mockup.** Its five runners, two pools, forty-eight builds and one
- * streamed log are the seed's, so parity, the member's page and the shell's promises are asserted
+ * **`acme-robotics` is the mockup.** Its five runners, two pools, forty-nine builds (the
+ * forty-ninth being run `#482`'s reservation, added by #302) and one streamed log are the seed's, so parity, the member's page and the shell's promises are asserted
  * there. But nothing can *enrol* there: the seed gives the workspace a farm CA whose key is a
  * placeholder envelope on purpose (`R__dev_seed_farm.sql` § *Neither the CA key nor the
  * certificate is real* — a genuine key in a migration is a private key in every clone), so a
@@ -87,7 +87,13 @@ export const SEEDED_STATS = [
  */
 export const SEEDED_RUNNERS = [
   { name: "forge-01", pool: "pool-a", status: "building", job: "#479", cpu: "82%", queue: "q:2" },
-  { name: "forge-02", pool: "pool-a", status: "idle", job: null, cpu: "3%", queue: "q:0" },
+  // `q:1` and not the mockup's `q:0`: since #302 the console seed gives run `#482` a
+  // **reservation** on this runner — `#483`, queued on the loop's branch and never dispatched —
+  // which is the row mockup 10's *forge-02 reserved* is drawn from. It is queued, so it counts
+  // against the queue depth; it was never offered, so the runner is still `idle` with no current
+  // job. Mockup 08 draws the same runner at `q:0`, and the two pages disagree: see the AO.5
+  // section of docs/ROADMAP_MOCKUP_10_RUN_CONSOLE.md for why the fixture follows mockup 10 here.
+  { name: "forge-02", pool: "pool-a", status: "idle", job: null, cpu: "3%", queue: "q:1" },
   { name: "forge-03", pool: "pool-a", status: "offline", job: null, cpu: "—", queue: "q:0" },
   { name: "anvil-mac", pool: "pool-b", status: "idle", job: null, cpu: "6%", queue: "q:0" },
   { name: "bigiron", pool: "pool-b", status: "draining", job: "#472", cpu: "54%", queue: "q:1" },

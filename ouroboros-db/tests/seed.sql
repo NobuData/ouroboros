@@ -47,8 +47,9 @@
 -- #582, with mockup 03's backlog — nine mirrored issues and the estimates behind
 -- their chips — by #103, and with mockup 09's planning page — the canonical backlog, the
 -- roadmap lanes and the OTA draft batch — by #275, and with mockup 08's build farm — two
--- pools, six runners of which one is removed, forty-eight builds and the live log's chunks —
--- by #249.
+-- pools, six runners of which one is removed, forty-nine builds and the live log's chunks —
+-- by #249 and #302, and with mockup 10's run console — one run in detail, transcript and all
+-- four cards — by #302.
 
 \set ON_ERROR_STOP on
 
@@ -630,12 +631,20 @@ select pg_temp.must_hold(
 -- reads the view rather than the table and gets the same answer from any connection.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select sum(day.tokens_total) = 4200000 and count(*) = 4 and sum(day.events) = 12
+  (select sum(day.tokens_total) = 4200000 and count(*) = 4 and sum(day.events) = 16
      from ouroboros.token_usage_daily day
      join ouroboros.organization org on org."id" = day.organization_id
     where org."slug" = 'acme-robotics'
       and day.day = (now() at time zone 'utc')::date),
-  'today holds 4.2M tokens across four providers, in twelve events — Token spend · today');
+  'today holds 4.2M tokens across four providers, in sixteen events — Token spend · today');
+
+-- **Sixteen and not twelve, and 4.2M all the same** (#302). The card prints a token total, a
+-- cost and a provider count; it does not print how many calls those took. AO.5 needed `#482`'s
+-- own spend to be four rows of its own — mockup 10's Resources card is a `sum` over them —
+-- so R__dev_seed_dashboard.sql's one 900 000-token `claude-fable-5` event gave up 212 000 of
+-- them and its attribution, and R__dev_seed_run_console.sql wrote them back as four. The
+-- three figures above are what the mockup fixes and they are exactly where they were; the
+-- event count is this seed's own bookkeeping, and it moved.
 
 -- `≈ $18.60`, and the `≈` itself: the priced events total 1 860 cents, and the three
 -- unpriced ones (local inference on the workstation) are why the figure is a lower bound.
@@ -659,11 +668,22 @@ select pg_temp.must_hold(
 -- Attribution follows the model, and the events no run caused are the ordinary case V010
 -- made `run_id` nullable for.
 select pg_temp.must_hold(
-  (select count(*) filter (where usage.run_id is not null) = 5
-      and count(*) filter (where usage.run_id is null)     = 7
+  (select count(*) filter (where usage.run_id is not null) = 4
+      and count(*) filter (where usage.run_id is null)     = 8
      from ouroboros.token_usage usage
     where usage.id::text like '5eed000b%'),
-  'five usage events are attributed to a run and seven are not');
+  'four of the dashboard''s usage events are attributed to a run and eight are not');
+
+-- The fifth was the `claude-fable-5` one, and #302 took its attribution rather than its
+-- tokens: `#482`'s spend has to total the 212k mockup 10's meter divides into 400k, and a
+-- 900 000-token event is not that. It is four rows of `5eed002e…` now, asserted below with
+-- the rest of the console's card.
+select pg_temp.must_hold(
+  (select count(*) = 4 and sum(usage.tokens_in + usage.tokens_out) = 212000
+      and sum(usage.cost_cents) = 114
+     from ouroboros.token_usage usage
+    where usage.id::text like '5eed002e%'),
+  'and the fifth became four rows of #482''s own, totalling 212k tokens and $1.14');
 
 -- ---------------------------------------------------------------------------
 -- Auto-merge when checks pass — the page's only write.
@@ -930,7 +950,8 @@ select pg_temp.must_hold(
 --
 -- A card's *This month* figure is calendar-month spend over `token_usage`, summed for the
 -- connection's kind, and it is **two seeds added together**: #68's twelve events of today
--- and this seed's eleven from earlier in the month. The query below is the one V017's
+-- (beside #302's four, which came out of one of them) and this seed's eleven from earlier in
+-- the month. The query below is the one V017's
 -- header documents, so what is asserted is the meter itself rather than a restatement of
 -- the seed.
 --
@@ -1018,8 +1039,8 @@ select pg_temp.must_hold(
   'the local providers hold unpriced rows and zero-priced rows at once — the two are not the same state');
 
 -- **Nothing this seed wrote lands on today**, which is what keeps mockup 02's *Token spend
--- · today* card exactly #68's twelve events. The dashboard section above asserts that
--- number; this asserts the rule that protects it.
+-- · today* card #68's twelve events and #302's four and nothing besides. The dashboard
+-- section above asserts the totals; this asserts the rule that protects them.
 select pg_temp.must_hold(
   (select count(*) = 11 from ouroboros.token_usage usage
     where usage.id::text like '5eed000e%'
@@ -1436,15 +1457,18 @@ select pg_temp.must_hold(
       and usage.run_id is null),
   'all 370 routed calls fall before today and inside thirty days, each with a kind and a latency');
 
--- The rows the other two seeds wrote are the em-dash fixture from the other side: they are
+-- The rows the other three seeds wrote are the em-dash fixture from the other side: they are
 -- spend, and they are not *routed* spend, so they contribute to the card and to no matrix row.
+-- Twelve from the dashboard, eleven from the providers seed, and since #302 four more —
+-- `#482`'s own, which mockup 10's Resources card sums and mockup 06's matrix must not: a
+-- kind on them would join a p50 and a $/run that neither page asked this seed to move.
 select pg_temp.must_hold(
-  (select count(*) = 23 from ouroboros.token_usage usage
+  (select count(*) = 27 from ouroboros.token_usage usage
      join ouroboros.organization org on org."id" = usage.organization_id
     where org."slug" = 'acme-robotics'
       and usage.task_kind is null
       and usage.latency_ms is null),
-  'the twenty-three earlier usage events carry no task kind and no latency, and no matrix row counts them');
+  'the twenty-seven unrouted usage events carry no task kind and no latency, and no matrix row counts them');
 
 -- ---------------------------------------------------------------------------
 -- The empty workspace, again — this time as AA.6's routing-guidance fixture, and as the
@@ -3360,10 +3384,10 @@ select pg_temp.must_hold(
   'Builds today reads 23, and 19 clean · 3 retried · 1 failed partitions it');
 
 select pg_temp.must_hold(
-  (select count(*) = 28 from ouroboros.build_jobs j
+  (select count(*) = 29 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics' and j.queued_at >= date_trunc('day', now())),
-  'and the two running and three queued jobs are the near miss: counted by queued_at it reads 28');
+  'and the two running, three queued and one reserved job are the near miss: counted by queued_at it reads 29');
 
 select pg_temp.must_hold(
   (select count(*) = 43 from ouroboros.build_jobs j
@@ -3456,12 +3480,25 @@ select pg_temp.must_hold(
     where o."slug" = 'acme-robotics' and j.status = 'running'),
   'two builds are running — forge-01''s #479 and the sweep a draining bigiron is finishing');
 
--- --- run_id is null on every row, which is decision B6 in the data ---------------
+-- --- run_id is null on every dispatched row, which is decision B6 in the data ------
+--
+-- Amended by #302, and narrowed rather than dropped. AH.1's sentence was *no seeded job is
+-- attributed to a loop run*, which held while nothing in this database had a run to be
+-- attributed to. `#483` now does: it is `#482`'s **reservation** on `forge-02`, the row
+-- mockup 10's *forge-02 reserved* is drawn from and the other half of
+-- `runs.reserved_build_job_id`. A reservation is not a dispatch, so AJ.3 (#265) is still
+-- what fills `run_id` in for a build that actually ran — which is why this asserts the
+-- exception is exactly one row, queued, and the one the run points back at.
 select pg_temp.must_hold(
-  (select count(*) = 0 from ouroboros.build_jobs j
+  (select count(*) = 1 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
-    where o."slug" = 'acme-robotics' and j.run_id is not null),
-  'no seeded job is attributed to a loop run: AJ.3 (#265) is what fills run_id in (B6)');
+    where o."slug" = 'acme-robotics' and j.run_id is not null)
+   and (select j.number = 483 and j.status = 'queued' and j.finished_at is null
+           and r.issue_number = 482 and r.reserved_build_job_id = j.id
+          from ouroboros.build_jobs j
+          join ouroboros.runs r on r.id = j.run_id
+         where j.run_id is not null),
+  'one seeded job is attributed to a loop run — #482''s reservation, and it points back (B6)');
 
 -- --- the live log, and the row it has to agree with ------------------------------
 select pg_temp.must_hold(
@@ -3524,10 +3561,10 @@ select pg_temp.must_hold(
 
 -- --- the whole seed belongs to one workspace, and the others are empty ------------
 select pg_temp.must_hold(
-  (select count(*) = 48 from ouroboros.build_jobs j
+  (select count(*) = 49 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics'),
-  'forty-eight build jobs in all — twenty last week, twenty-three today, five in flight');
+  'forty-nine build jobs in all — twenty last week, twenty-three today, five in flight and one reserved');
 
 select pg_temp.must_hold(
   (select not exists (select 1 from ouroboros.runner_pools p
@@ -3543,6 +3580,383 @@ select pg_temp.must_hold(
                         join ouroboros.organization o on o."id" = t.organization_id
                        where o."slug" in ('kensuenobu', 'acme-labs'))),
   'the personal workspace has no pool, runner, job or token — AI.7''s (#262) guidance path');
+
+-- ===========================================================================
+-- R__dev_seed_run_console.sql — mockup 10's run console (#302, AO.5)
+-- ===========================================================================
+--
+-- The eleventh seed, and the one that is a *page* rather than a table: everything below is
+-- read off docs/mockups/10-run-detail.html, and the acceptance criterion it answers is
+-- *the console renders the mockup from seeds alone, with no simulator running*. So each
+-- assertion asks for a figure the way the card that draws it would have to — a `sum` where
+-- the card sums, a `count` where it counts, a division where it draws a meter — because a
+-- fixture asserted against the numbers it stored proves only that it stored them.
+--
+-- Three of the run's facts were already here before this seed: `loop_seq`, the stage history
+-- and the composed warn note are #68's and #298's, asserted in the dashboard section above.
+-- This section is the rest of the page, and the coherence between the two.
+
+-- --- the page head ------------------------------------------------------------------
+--
+-- `Run Console · Loop #1847`, `standard-fix v14`, `claude-fable-5`, `elapsed 12m 40s`,
+-- `branch loop/482-canbus-flake`. The version tag is two columns composed and not a string:
+-- `workflow_tag` carries the slug and `workflow_version_pin` the number, so a run cannot
+-- print a version its pin disagrees with.
+select pg_temp.must_hold(
+  (select run.loop_seq = 1847
+      and run.branch_name = 'loop/482-canbus-flake'
+      and run.workflow_tag = 'standard-fix'
+      and run.workflow_version_pin = 14
+      and run.model = 'claude-fable-5'
+      and run.merge_strategy = 'squash'
+      and run.status = 'coding'
+     from ouroboros.runs run
+    where run.id::text like '5eed0009%' and run.issue_number = 482),
+  'the console head reads Loop #1847 · standard-fix v14 · claude-fable-5 on branch loop/482-canbus-flake');
+
+-- `elapsed 12m 40s` and the Resources card's `Wall clock 12m 40s` are one number, computed
+-- from one timestamp — and it is a number that grows, which is what makes it the one figure
+-- on the page nothing can assert as an equality. What *is* fixed is the arithmetic the seed
+-- laid down: the run opens at the instant its first stage does, and its 760 seconds are the
+-- span of the stage timeline drawn over it. That holds at any age, which is the property
+-- `recompute-stable relative to now()` actually names.
+select pg_temp.must_hold(
+  (select run.finished_at is null
+      and queued.started_at = run.started_at
+      and review.finished_at is null
+      and now() - run.started_at >= interval '12 minutes 40 seconds'
+     from ouroboros.runs run
+     join ouroboros.run_stages queued
+       on queued.run_id = run.id and queued.stage_key = 'queued'
+     join ouroboros.run_stages review
+       on review.run_id = run.id and review.stage_key = 'review'
+    where run.id::text like '5eed0009%' and run.issue_number = 482),
+  'the run opens with its first stage, has not finished, and is at least the mockup''s 12m 40s in');
+
+-- And the transcript spans the 10m 08s the mockup's own timestamps do — `14:02:11` to
+-- `14:12:19` — inside a run that had been going for 12m 40s when the page was drawn. Both
+-- are differences between two seeded instants, so both are the same at any wall-clock time.
+select pg_temp.must_hold(
+  (select max(event.ts) - min(event.ts) = interval '10 minutes 8 seconds'
+      and min(event.ts) - run.started_at = interval '2 minutes 11 seconds'
+     from ouroboros.run_events event
+     join ouroboros.runs run on run.id = event.run_id
+    where event.id::text like '5eed002b%'
+    group by run.started_at),
+  'the transcript opens 2m 11s into the run and spans 10m 08s — mockup 10''s own clock, as arithmetic');
+
+-- --- decision R4: the watermark, on the run and on every line of the export -----------
+select pg_temp.must_hold(
+  (select run.simulated from ouroboros.runs run
+    where run.id::text like '5eed0009%' and run.issue_number = 482)
+   and (select bool_and(event.simulated) from ouroboros.run_events event
+         where event.id::text like '5eed002b%'),
+  'the seeded run and every entry of its transcript carry the simulated watermark (R4)');
+
+-- The acceptance criterion says the *export* carries it, so the export is what is read —
+-- `run_events_jsonl` is AP.2's `Raw JSONL ↗` button, one row to one line.
+select pg_temp.must_hold(
+  (select count(*) = 9 from ouroboros.run_events_jsonl line
+     join ouroboros.runs run on run.id = line.run_id
+    where run.id::text like '5eed0009%' and run.issue_number = 482
+      and line.line like '%"simulated": true%'),
+  'and the JSONL export watermarks all nine of its lines');
+
+-- --- the transcript, as the card draws it ---------------------------------------------
+--
+-- Nine entries, numbered densely from 1 by the database, and — this is the part a seed can
+-- get wrong without failing anything — numbered in the order of their own clocks. The
+-- `order by` in that statement is what makes the two agree; without it PostgreSQL is free to
+-- hand the rows to the allocator in any order, and the card would draw the gate before the
+-- test run it followed.
+select pg_temp.must_hold(
+  (select array_agg(event.seq order by event.seq) = array[1, 2, 3, 4, 5, 6, 7, 8, 9]
+      and array_agg(event.seq order by event.ts)  = array[1, 2, 3, 4, 5, 6, 7, 8, 9]
+     from ouroboros.run_events event
+    where event.id::text like '5eed002b%')
+   and (select run.event_seq = 9 from ouroboros.runs run
+         where run.id::text like '5eed0009%' and run.issue_number = 482),
+  'the transcript is nine entries, densely numbered in clock order, and the run''s counter agrees');
+
+-- The nine shapes, in order: the plan note, `read_file`, a model paragraph, `edit_file` with
+-- its diff, `run_tests` with its warn result, the gate's return, a second model paragraph, a
+-- second `edit_file`, and the live one. Asserted as the whole sequence rather than nine
+-- separate rows, because it is the *sequence* the card is.
+select pg_temp.must_hold(
+  (select array_agg(event.actor || coalesce(':' || event.tool_tag, '') order by event.seq)
+            = array['plan', 'tool:read_file', 'model', 'tool:edit_file', 'tool:run_tests',
+                    'gate', 'model', 'tool:edit_file', 'tool:run_tests']
+     from ouroboros.run_events event
+    where event.id::text like '5eed002b%'),
+  'the nine entries are the nine shapes mockup 10 draws, in its order');
+
+-- Vocabulary coverage, from the seed's side: the transcript exercises four of the six actor
+-- chips and all three tool tags the console knows how to render. `user` and `system` are the
+-- two it does not — a steer that has been echoed back, and the cap's elision marker — and
+-- neither belongs on a page that draws neither.
+select pg_temp.must_hold(
+  (select array_agg(distinct event.actor order by event.actor)
+            = array['gate', 'model', 'plan', 'tool']
+     from ouroboros.run_events event
+    where event.id::text like '5eed002b%')
+   and (select array_agg(distinct event.tool_tag order by event.tool_tag)
+                 filter (where event.tool_tag is not null)
+            = array['edit_file', 'read_file', 'run_tests']
+          from ouroboros.run_events event
+         where event.id::text like '5eed002b%'),
+  'the seeded transcript covers four actor chips and all three tool tags the console renders');
+
+-- Decision R4's provenance: a model entry names the model and the attempt it reasoned in,
+-- and the model it names is the one the head's pill prints.
+select pg_temp.must_hold(
+  (select count(*) = 2
+      and bool_and(event.model_id = run.model)
+      and array_agg(event.attempt order by event.seq) = array[1, 2]
+     from ouroboros.run_events event
+     join ouroboros.runs run on run.id = event.run_id
+    where event.id::text like '5eed002b%' and event.actor = 'model'),
+  'both model paragraphs name claude-fable-5 and the attempt they reasoned in — one per attempt');
+
+-- The two diff payloads, with the hunk counts and kinds the mockup prints. The text carries
+-- no `−` or `+`: the marker is what `kind` means, so storing it too would be the same fact
+-- in two places and the renderer's job done twice.
+select pg_temp.must_hold(
+  (select jsonb_array_length(event.payload -> 'hunks') = 8
+      and (select array_agg(hunk ->> 'kind')
+             from jsonb_array_elements(event.payload -> 'hunks') hunk)
+          = array['ctx', 'del', 'del', 'del', 'add', 'add', 'add', 'add']
+     from ouroboros.run_events event
+    where event.id::text like '5eed002b%' and event.seq = 4)
+   and (select jsonb_array_length(event.payload -> 'hunks') = 5
+           and (select array_agg(hunk ->> 'kind')
+                  from jsonb_array_elements(event.payload -> 'hunks') hunk)
+               = array['del', 'del', 'add', 'add', 'add']
+          from ouroboros.run_events event
+         where event.id::text like '5eed002b%' and event.seq = 8),
+  'both edit_file entries carry their diff, typed — eight hunks then five, in the mockup''s order');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.run_events event,
+          lateral jsonb_array_elements(event.payload -> 'hunks') hunk
+    where event.id::text like '5eed002b%'
+      and (hunk ->> 'text') ~ '^[-+−]'),
+  'and no hunk text carries the marker its kind already is');
+
+-- The live entry: `running… 47/63 cases` over a meter at 74%. One fact — a fraction — and
+-- the percentage is the division, which is why 74 appears nowhere in this database.
+select pg_temp.must_hold(
+  (select event.payload -> 'progress' ->> 'done' = '47'
+      and event.payload -> 'progress' ->> 'total' = '63'
+      and event.payload ->> 'state' = 'running'
+      and floor(100.0 * (event.payload -> 'progress' ->> 'done')::numeric
+                      / (event.payload -> 'progress' ->> 'total')::numeric) = 74
+     from ouroboros.run_events event
+    where event.id::text like '5eed002b%' and event.seq = 9),
+  'the live entry is at 47 of 63 cases, and the meter''s 74% is that division and not a column');
+
+-- --- the transcript agrees with the stage history it was written against ---------------
+--
+-- Every entry falls inside the run, and every entry that names a stage falls inside *that
+-- stage's* own window. This is the assertion the attempt boundaries in
+-- R__dev_seed_dashboard.sql were moved to satisfy (#302): with the earlier numbers the gate
+-- fired inside the attempt it ended and attempt 2's first paragraph predated its own start.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.run_events event
+     join ouroboros.runs run on run.id = event.run_id
+    where event.id::text like '5eed002b%'
+      and not (event.ts between run.started_at and now()))
+   and (select count(*) = 0
+          from ouroboros.run_events event
+          join ouroboros.run_stages stage
+            on stage.run_id = event.run_id
+           and stage.stage_key = event.stage_key
+           and stage.attempt = event.attempt
+         where event.id::text like '5eed002b%'
+           and not (event.ts between stage.started_at
+                                 and coalesce(stage.finished_at, now()))),
+  'every transcript entry falls inside the run, and inside the stage attempt it names');
+
+-- The gate is the one entry that names a node with no stage row — `checks-green`, the node
+-- `run_stages.returned_from_stage_key` names — and it falls in the gap between the attempt
+-- it ended and the attempt it opened. That gap is the whole of what the stepper's `↺` means.
+select pg_temp.must_hold(
+  (select gate.ts > failed.finished_at and gate.ts < active.started_at
+     from ouroboros.run_events gate
+     join ouroboros.run_stages failed
+       on failed.run_id = gate.run_id and failed.stage_key = 'implement'
+      and failed.attempt = 1
+     join ouroboros.run_stages active
+       on active.run_id = gate.run_id and active.stage_key = 'implement'
+      and active.attempt = 2
+    where gate.id::text like '5eed002b%' and gate.actor = 'gate')
+   and (select active.returned_from_stage_key = gate.stage_key
+          from ouroboros.run_events gate
+          join ouroboros.run_stages active
+            on active.run_id = gate.run_id and active.stage_key = 'implement'
+           and active.attempt = 2
+         where gate.id::text like '5eed002b%' and gate.actor = 'gate'),
+  'the gate entry falls between the two attempts and names the node the retry says it returned from');
+
+-- --- Changes so far --------------------------------------------------------------------
+--
+-- `3 files`, and the three counts. The tag is a `count` and the file rows are the columns;
+-- no total of them is stored anywhere, which is decision R8 and the reason the card cannot
+-- drift from the rows under it.
+select pg_temp.must_hold(
+  (select count(*) = 3 and sum(file.additions) = 68 and sum(file.deletions) = 15
+     from ouroboros.run_files file
+    where file.id::text like '5eed002c%')
+   and (select count(*) = 3 from ouroboros.run_files file
+         where file.id::text like '5eed002c%'
+           and (file.path, file.additions, file.deletions, file.status) in (
+                 ('drivers/can/telemetry_buf.c',        38, 12, 'modified'),
+                 ('drivers/can/isr_fastpath.c',          9,  3, 'modified'),
+                 ('tests/telemetry/test_frame_order.c', 21,  0, 'added'))),
+  'the Changes card is three files at +38 −12, +9 −3 and +21 −0, counted and summed from the rows');
+
+-- Every file the change-set names is a file the transcript was seen editing, and the other
+-- way is deliberately *not* asserted: the test file was added by a tool call the mockup's
+-- nine entries do not include, which is what a transcript being a window rather than a
+-- ledger looks like.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.run_files file
+    where file.id::text like '5eed002c%'
+      and exists (select 1 from ouroboros.run_events event
+                   where event.id::text like '5eed002b%'
+                     and event.tool_tag = 'edit_file'
+                     and event.body = file.path)),
+  'the two files the transcript edits are two of the three the Changes card lists');
+
+-- The two commits, in the card's order, inside the transcript rather than beside it.
+select pg_temp.must_hold(
+  (select array_agg(c.sha order by c.seq) = array['a41c9e2', '7f03b8d']
+      and array_agg(c.message order by c.seq)
+            = array['can: replace telemetry k_fifo with k_msgq + frame seq',
+                    'can: assign frame seq in ISR before enqueue']
+     from ouroboros.run_commits c
+    where c.id::text like '5eed002d%')
+   and (select bool_and(c.committed_at between run.started_at and now())
+          from ouroboros.run_commits c
+          join ouroboros.runs run on run.id = c.run_id
+         where c.id::text like '5eed002d%'),
+  'the card draws a41c9e2 then 7f03b8d, and both were committed inside the run');
+
+-- --- Resources: two meters, four numbers, and none of them stored twice ----------------
+--
+-- `212k / 400k budget`. The numerator is a `sum` over `token_usage` for this run and the
+-- denominator is the budget V045 pinned onto the run's model stages from the DSL — so the
+-- meter is a division between two systems and a counter on `runs` would be a third answer.
+select pg_temp.must_hold(
+  (select sum(usage.tokens_in + usage.tokens_out) = 212000
+      and sum(usage.cost_cents) = 114
+     from ouroboros.token_usage usage
+     join ouroboros.runs run on run.id = usage.run_id
+    where run.id::text like '5eed0009%' and run.issue_number = 482)
+   and (select count(distinct stage.token_budget) = 1 and max(stage.token_budget) = 400000
+          from ouroboros.run_stages stage
+          join ouroboros.runs run on run.id = stage.run_id
+         where run.id::text like '5eed0009%' and run.issue_number = 482
+           and stage.token_budget is not null),
+  'the token meter is 212k summed from the ledger over the 400k pinned on the run''s model stages');
+
+-- `$1.14 / $2.50 cap`. The cap is the route's — `implement-primary`, the only route mockup 06
+-- gives one — read through the task kind the run's stage is, and it is not copied here.
+select pg_temp.must_hold(
+  (select route.max_cost_cents_per_run = 250
+     from ouroboros.routes route
+     join ouroboros.task_kinds kind on kind.id = route.task_kind_id
+     join ouroboros.organization org on org."id" = route.organization_id
+    where org."slug" = 'acme-robotics' and kind.name = 'implement'),
+  'and the cost meter''s $2.50 cap is the implement route''s, where #192 put it');
+
+-- The two meter widths the mockup draws, as the divisions they are: 212/400 is 53% and
+-- 114/250 is 46%, and neither percentage is stored anywhere.
+select pg_temp.must_hold(
+  (select round(100.0 * sum(usage.tokens_in + usage.tokens_out) / 400000) = 53
+      and round(100.0 * sum(usage.cost_cents) / 250) = 46
+     from ouroboros.token_usage usage
+     join ouroboros.runs run on run.id = usage.run_id
+    where run.id::text like '5eed0009%' and run.issue_number = 482),
+  'the two meters read 53% and 46% — both computed, neither stored');
+
+-- `forge-02 reserved`. The card names a runner and the run points at a *job*, so the name is
+-- resolved through the job the way the console must resolve it.
+select pg_temp.must_hold(
+  (select runner.name = 'forge-02' and job.status = 'queued'
+      and job.git_ref = 'refs/heads/' || run.branch_name
+     from ouroboros.runs run
+     join ouroboros.build_jobs job on job.id = run.reserved_build_job_id
+     join ouroboros.runners runner on runner.id = job.runner_id
+    where run.id::text like '5eed0009%' and run.issue_number = 482),
+  'the Resources card''s "forge-02 reserved" is a held job on the loop''s own branch, named through its runner');
+
+-- Every usage row of this run falls inside the current UTC day *and* inside the run, which is
+-- the pair a seed relative to `now()` has to keep at once: `token_usage_daily` fixes the day
+-- to UTC, and a run that started 12m 40s ago started yesterday at 00:05.
+select pg_temp.must_hold(
+  (select count(*) = 4
+     from ouroboros.token_usage usage
+     join ouroboros.runs run on run.id = usage.run_id
+    where usage.id::text like '5eed002e%'
+      and usage.occurred_at <= now()
+      and usage.occurred_at >= greatest(run.started_at,
+                                        date_trunc('day', now() at time zone 'utc')
+                                          at time zone 'utc')),
+  'all four of #482''s usage rows fall inside the current UTC day and inside the run, at any hour');
+
+-- --- Guardrails ------------------------------------------------------------------------
+--
+-- Four rows through the view the card reads, three `pass` and the `○` that is not one.
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.v_run_guardrails_latest latest
+     join ouroboros.runs run on run.id = latest.run_id
+    where run.id::text like '5eed0009%' and run.issue_number = 482
+      and (latest."check", latest.verdict) in (
+            ('allowed_paths',   'pass'),
+            ('ci_config',       'pass'),
+            ('secrets',         'pass'),
+            ('review_required', 'not_applicable'))),
+  'the Guardrails card is three passes and a not_applicable — the ○ that is a third answer, not a pass');
+
+-- The footer reads *Policy: standard-fix v14 · tenant acme-robotics*, and the `14` in it is
+-- the evaluation's own `policy_ref` rather than the run's pin read at render time — the two
+-- agree here, which is the ordinary case, and the column exists for the day they do not.
+select pg_temp.must_hold(
+  (select bool_and(latest.policy_ref = run.workflow_version_pin)
+      and count(*) = 4
+     from ouroboros.v_run_guardrails_latest latest
+     join ouroboros.runs run on run.id = latest.run_id
+    where run.id::text like '5eed0009%' and run.issue_number = 482)
+   and (select latest.ruleset_version = 'v3'
+          from ouroboros.v_run_guardrails_latest latest
+          join ouroboros.runs run on run.id = latest.run_id
+         where run.id::text like '5eed0009%' and run.issue_number = 482
+           and latest."check" = 'secrets'),
+  'every verdict is answerable for standard-fix v14, and the secrets scan records ruleset v3');
+
+-- Decision R5, from the seed's side: no verdict this seed wrote carries evidence at all. A
+-- clean run has nothing to show, and the constraint that makes *showing* safe is asserted
+-- against fixtures built to violate it in tests/constraints.sql.
+select pg_temp.must_hold(
+  (select bool_and(guard.evidence is null) from ouroboros.guardrail_evaluations guard
+    where guard.id::text like '5eed002f%'),
+  'and none of them carries evidence, because a pass has nothing to show (R5)');
+
+-- --- the seed belongs to the one run, and the other workspaces have no console ----------
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.run_events event
+     join ouroboros.runs run on run.id = event.run_id
+    where run.issue_number <> 482)
+   and (select count(*) = 0 from ouroboros.run_files file
+          join ouroboros.runs run on run.id = file.run_id
+         where run.issue_number <> 482)
+   and (select count(*) = 0 from ouroboros.guardrail_evaluations guard
+          join ouroboros.runs run on run.id = guard.run_id
+         where run.issue_number <> 482)
+   and (select count(*) = 0 from ouroboros.run_controls),
+  'only #482 has a console, and nothing has been asked of any loop — the control queue is empty');
 
 \o
 \echo 'seed.sql: all assertions passed'

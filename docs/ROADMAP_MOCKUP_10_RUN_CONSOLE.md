@@ -221,7 +221,7 @@ Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`
 | AO.2 | #299 | 🟢 Done | ouroboros-db: [AO.2] Run event store | Append-only typed `run_events` with caps + JSONL projection shape | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
 | AO.3 | #300 | 🟢 Done | ouroboros-db: [AO.3] Changes, resources & farm-link schema | `run_files`, `run_commits`, resource snapshots, reservation refs | mvp, runs, db | N (after AO.1) | Y | S | ouroboros-db |
 | AO.4 | #301 | 🟢 Done | ouroboros-db: [AO.4] Guardrail evaluations & control queue schema | Verdict rows with evidence; durable `run_controls` (R5/R6) | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
-| AO.5 | #302 | 🟡 Open | ouroboros-db: [AO.5] Console dev seeds — mockup-10 parity + ci probes | The #482 run mid-flight, full transcript, cards; constraint probes | mvp, runs, db, ci | N (after AO.2–AO.4, #24) | Y | M | ouroboros-db, .github |
+| AO.5 | #302 | 🟢 Done | ouroboros-db: [AO.5] Console dev seeds — mockup-10 parity + ci probes | The #482 run mid-flight, full transcript, cards; constraint probes | mvp, runs, db, ci | N (after AO.2–AO.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue AO.1 — ouroboros-db: [AO.1] Stage history & attempts schema
 
@@ -344,7 +344,7 @@ run_controls: {kind: steer, payload: "prefer a fix inside the ISR…", state: pe
 
 ### Issue AO.5 — ouroboros-db: [AO.5] Console dev seeds — mockup-10 parity + ci probes
 
-> **GitHub issue:** #302 · **Status:** 🟡 Open · **Parent epic:** #294
+> **GitHub issue:** #302 · **Status:** 🟢 Done · **Parent epic:** #294
 
 - **Problem Statement:** Design review needs the exact mid-flight state of
   `#482` — transcript, timeline, cards — without running the simulator.
@@ -369,6 +369,46 @@ run_controls: {kind: steer, payload: "prefer a fix inside the ISR…", state: pe
 seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript entries · 3 files/2 commits
       212k/400k · $1.14/$2.50 · forge-02 · guardrails 3✓ 1○ · simulated watermark
 ```
+
+> **Delivered as `R__dev_seed_run_console.sql`, and three things it had to coordinate.**
+> The scope above says *coordinated with DASH-F.5 and AH.1*, and coordination turned out to
+> mean three edits to seeds those issues already shipped. Each is commented where it happens
+> and each is recorded here, because two of them are places where **two mockups disagree about
+> the same row** and a fixture can only be one of them.
+>
+> 1. **`#482` keeps six stages, not eight.** The stepper on mockup 10 draws eight nodes —
+>    Queued, Analyze, Plan, Implement, Build, Test, Review, Open PR — and the scope bullet
+>    above lists all eight. Mockup 02 draws the same run as `Implementing · 4/6`, and DASH-F.5
+>    seeded `standard-fix` as six stages to match it, which `tests/seed.sql` asserts against
+>    `runs_with_stage` for all fifty-three runs (the amendment on #64). Adding `test` and
+>    `open-pr` would have made the dashboard row read `4/8`. **Mockup 02 wins**: the stage
+>    history is untouched, and mockup 10's stepper renders the six stages the pinned workflow
+>    actually has. Reconciling the two pages is a workflow-definition question rather than a
+>    seed one, and it belongs wherever `standard-fix`'s node list is next revisited.
+> 2. **`forge-02` moves from `q:0` to `q:1`.** Mockup 10's Resources card says *forge-02
+>    reserved*; mockup 08 draws `forge-02` idle with an empty queue and no current job. A
+>    reservation `runs.reserved_build_job_id` can point at is a `build_jobs` row, and any
+>    non-terminal one on that runner is counted by the queue depth its own heartbeat reports.
+>    **Mockup 10 wins here**, because the alternative — pointing the reservation at a job that
+>    had already finished — would have made the card true by means of a row that is not a
+>    reservation. `#483` is queued on `forge-02`, on the loop's branch, and the runner's
+>    `queue_depth` telemetry moves with it. It is also the first seeded job with a `run_id`,
+>    which narrows AH.1's *"no seeded job is attributed to a loop run"* (decision **B6**) to
+>    dispatched jobs — a reservation is not a dispatch, and AJ.3 (#265) still owns the rest.
+> 3. **`#482`'s token spend was re-split, and the day's total did not move.** DASH-F.5's
+>    ledger attributed 900 000 tokens and $5.40 to this run, from before it had a Resources
+>    card; mockup 10 says `212k` and `$1.14`, and mockup 02 says the day is `4.2M ≈ $18.60
+>    across 4 providers`. The `claude-fable-5` event keeps the remainder (688 000 tokens,
+>    $4.26) and gives up its attribution, and the run's four rows carry the rest — so both
+>    pages are right and neither number was invented to make the other work.
+>
+> **The probes are eleven**, in `tests/verify-constraint-probes.sh`, and the five aimed at
+> vocabularies are **widenings rather than drops**. That is the distinction AO.5 adds to a file
+> that had only ever dropped rules: a `must_reject` aimed at a word still outside a set keeps
+> passing when the set *grows*, so a sixth control state or a fifth guardrail check ships with
+> nothing drawing it. `tests/constraints.sql` reads each accepted set out of `pg_constraint`
+> and requires a fixture to have written every value of it, which turns the ticket that widens
+> a vocabulary red instead of the report that renders a blank cell.
 
 ---
 
@@ -1036,8 +1076,13 @@ AO.4's tables: `guardrail_evaluations`, whose `evidence` is closed by CHECK to a
 field a matched value could be placed in and whose every string is refused an unbroken
 twenty-character alphanumeric run (decision **R5**), and `run_controls`, whose state machine,
 terminal immutability, TTL and audit row are all the database's rather than a service's
-(decision **R6**). Only **#302** ([AO.5] the console seeds) is left in epic AO. Next is **#303**
-([AP.1] the ingestion contract), which
+(decision **R6**) — and **#302** ([AO.5] the console seeds), which makes `#482` render the
+mockup from a fresh compose stack with no simulator running: the nine-entry transcript
+watermarked `simulated` by the same trigger a driver would raise it with (decision **R4**),
+the Changes and Resources cards summed rather than stored (**R8**), the `forge-02`
+reservation, the four guardrail verdicts, and eleven `ci/db` probes that hold the run
+console's six vocabularies to *covered* rather than merely *closed*. **Epic AO is complete.**
+Next is **#303** ([AP.1] the ingestion contract), which
 is the piece with reach beyond this roadmap: it is the one door every executor,
 simulated or real, reports through, and #91's unbuilt scope is delivered inside it.
 The MVP closes at **#314**, the e2e leg that drives a live simulated run.

@@ -68,6 +68,7 @@ ROUTING_SEED="$MODULE_DIR/migrations/R__dev_seed_routing.sql"
 AUDIT_SEED="$MODULE_DIR/migrations/R__dev_seed_audit.sql"
 FARM_SEED="$MODULE_DIR/migrations/R__dev_seed_farm.sql"
 SOURCES_SEED="$MODULE_DIR/migrations/R__dev_seed_sources.sql"
+RUN_CONSOLE_SEED="$MODULE_DIR/migrations/R__dev_seed_run_console.sql"
 PLANNING_SEED="$MODULE_DIR/migrations/R__dev_seed_ticket_planning.sql"
 WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
@@ -104,6 +105,7 @@ ROUTING_BODY="$work/seed-body-routing.sql"
 AUDIT_BODY="$work/seed-body-audit.sql"
 FARM_BODY="$work/seed-body-farm.sql"
 SOURCES_BODY="$work/seed-body-sources.sql"
+RUN_CONSOLE_BODY="$work/seed-body-run-console.sql"
 PLANNING_BODY="$work/seed-body-ticket-planning.sql"
 WORKFLOWS_BODY="$work/seed-body-workflows.sql"
 seed_body "$SEED" "$BODY"
@@ -114,6 +116,7 @@ seed_body "$ROUTING_SEED" "$ROUTING_BODY"
 seed_body "$AUDIT_SEED" "$AUDIT_BODY"
 seed_body "$FARM_SEED" "$FARM_BODY"
 seed_body "$SOURCES_SEED" "$SOURCES_BODY"
+seed_body "$RUN_CONSOLE_SEED" "$RUN_CONSOLE_BODY"
 seed_body "$PLANNING_SEED" "$PLANNING_BODY"
 seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
 
@@ -140,14 +143,15 @@ check_exists "$ROUTING_SEED" 'migrations/R__dev_seed_routing.sql exists'
 check_exists "$AUDIT_SEED" 'migrations/R__dev_seed_audit.sql exists'
 check_exists "$FARM_SEED" 'migrations/R__dev_seed_farm.sql exists'
 check_exists "$SOURCES_SEED" 'migrations/R__dev_seed_sources.sql exists'
+check_exists "$RUN_CONSOLE_SEED" 'migrations/R__dev_seed_run_console.sql exists'
 check_exists "$PLANNING_SEED" 'migrations/R__dev_seed_ticket_planning.sql exists'
 check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
-                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED" "$PLANNING_SEED" \
-                 "$WORKFLOWS_SEED"; do
+                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
+                 "$PLANNING_SEED" "$WORKFLOWS_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -179,6 +183,8 @@ farm_description=$(basename -- "$FARM_SEED" .sql)
 farm_description=${farm_description#R__}
 sources_description=$(basename -- "$SOURCES_SEED" .sql)
 sources_description=${sources_description#R__}
+run_console_description=$(basename -- "$RUN_CONSOLE_SEED" .sql)
+run_console_description=${run_console_description#R__}
 planning_description=$(basename -- "$PLANNING_SEED" .sql)
 planning_description=${planning_description#R__}
 workflows_description=$(basename -- "$WORKFLOWS_SEED" .sql)
@@ -208,15 +214,23 @@ workflows_description=${workflows_description#R__}
 # statements depend on *each other* in file order, which is the ordering a single file gets
 # for free and its header explains.
 #
+# The run-console seed (#302) **must** sort after three of them, and does: it finds the
+# workspace by slug in the first, the run `#482` by issue number in the dashboard seed, and the
+# build job it points `runs.reserved_build_job_id` at by number in the farm seed. On a database
+# migrated from empty, `dev_seed_run_console` sorting before any of the three would leave the
+# console's every join finding nothing — and Flyway re-applies a repeatable migration only when
+# its checksum changes, so the second `migrate` would not put it right. `run_console` rather
+# than `console` is what puts it after `routing`, and the whole order is asserted below.
+#
 # The farm seed (#249) sorts fourth and only needs to sort after the first: every row it writes
 # finds the workspace by slug, a person by email and a repository by name, and V040's tables are
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" "$planning_description" "$workflows_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$sources_description" "$planning_description" "$workflows_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$planning_description" "$workflows_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$planning_description" "$workflows_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the ten seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the eleven seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -235,8 +249,8 @@ check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s' "$base_description" "$aud
 # inserts alone. What makes such an update idempotent is asserted where it lives, in that
 # seed's own section below.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
-                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$SOURCES_SEED" "$PLANNING_SEED" \
-                 "$WORKFLOWS_SEED"; do
+                 "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
+                 "$PLANNING_SEED" "$WORKFLOWS_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -245,6 +259,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$INTAKE_SEED" ] && body=$INTAKE_BODY
   [ "$seed_file" = "$PROVIDERS_SEED" ] && body=$PROVIDERS_BODY
   [ "$seed_file" = "$ROUTING_SEED" ] && body=$ROUTING_BODY
+  [ "$seed_file" = "$RUN_CONSOLE_SEED" ] && body=$RUN_CONSOLE_BODY
   [ "$seed_file" = "$SOURCES_SEED" ] && body=$SOURCES_BODY
   [ "$seed_file" = "$PLANNING_SEED" ] && body=$PLANNING_BODY
   [ "$seed_file" = "$WORKFLOWS_SEED" ] && body=$WORKFLOWS_BODY
@@ -273,7 +288,20 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
     "$name does not touch Flyway's history table"
 
   # A seed is where a credential is most tempting to put and least likely to be noticed.
+  #
+  # The run-console seed is the one file that must contain the letters `secret`, and it is
+  # worth being exact about rather than exempting: `guardrail_evaluations."check"` has a value
+  # spelled `secrets` — the card's third row, *Secrets scan clean* — so the word is a
+  # vocabulary term the schema closed and not a value anybody wrote. The rule is therefore
+  # tightened for that file instead of dropped: every occurrence must be the check name, so a
+  # `secret_key` or an `api_secret` added later still fails here.
   for secret in secret api_key; do
+    if [ "$seed_file" = "$RUN_CONSOLE_SEED" ] && [ "$secret" = secret ]; then
+      check_equals "$(grep -Eoc "'secrets'" "$body" || true)" \
+                   "$(grep -Eoc 'secret' "$body" || true)" \
+                   "$name says secret only as the guardrail check named 'secrets'"
+      continue
+    fi
     check_absent "$body" "$secret" "$name writes no $secret"
   done
 done
@@ -866,11 +894,21 @@ check_absent "$FARM_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
 check_contains "$FARM_BODY" "date_trunc\('day', now\(\)\)" \
   'and today is anchored to the current UTC day rather than to a fixed offset from it'
 
-# **`run_id` is decision B6, and the seed is where it is observable.** MVP builds belong to no
-# loop, so no statement here may write the column at all — not null, not a value. AJ.3 (#265)
-# is what fills it in.
-check_absent "$FARM_BODY" 'run_id' \
-  'the farm seed never writes run_id — loop attribution is AJ.3 s (#265), per decision B6'
+# **`run_id` is decision B6, and the seed is where it is observable.** A *dispatched* MVP build
+# belongs to no loop, so no statement here may attribute one — AJ.3 (#265) is what fills the
+# column in for a build that actually ran.
+#
+# Narrowed by #302 rather than dropped. `#483` is `#482`'s **reservation** on `forge-02`, the
+# row mockup 10's *forge-02 reserved* is drawn from and the other half of
+# `runs.reserved_build_job_id` (V047), and a reservation is not a dispatch. So the rule is now
+# that exactly one statement writes the column, and the check counts rather than forbids: a
+# second job quietly acquiring a loop still fails here, which is the regression the original
+# line was protecting against. What the row *is* — queued, on the branch, pointed back at from
+# the run — is asserted in tests/seed.sql, where the rows can be read.
+check_equals 1 "$(grep -Ec 'run_id' "$FARM_BODY" || true)" \
+  'exactly one line of the farm seed names run_id — a second job acquiring a loop fails here (B6)'
+check_contains "$FARM_BODY" 'runner_id, run_id, github_repo_id' \
+  'and it is the reservation statement s column list, so the one exception is the one row'
 
 # The figures the page prints are aggregates over these rows, so none of them may appear as a
 # literal in a statement. `23`, `78`, `4m 12s` and `38` are computed in tests/seed.sql; a
@@ -923,6 +961,63 @@ for state in 'bearer_fallback' 'removed'; do
 done
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_run_console.sql — mockup 10's run console (#302)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_run_console.sql — the run console\n'
+
+# Five prefixes, one per table, so a transcript entry, a changed file, a commit, a usage row
+# and a verdict are told apart on sight in a log or a URL.
+for prefix in '5eed002b' '5eed002c' '5eed002d' '5eed002e' '5eed002f'; do
+  check_contains "$RUN_CONSOLE_BODY" "'$prefix-0000-4000-8000-'" \
+    "the run-console seed builds its ids from the $prefix… prefix"
+done
+
+# **The watermark is written before the transcript, and that ordering is a rule rather than a
+# habit** (decision R4). `runs_simulated_is_fixed()` refuses to move `runs.simulated` once the
+# run has written an entry, so a later edit that moved the update below the insert would not
+# merely seed a transcript without a watermark — it would fail the migration. Asserted here so
+# the reason is recorded where the edit would be made, rather than only in the error.
+simulated_line=$(grep -n '^       simulated            = true,$' "$RUN_CONSOLE_BODY" | cut -d: -f1 | head -1)
+transcript_line=$(grep -n '^insert into ouroboros\.run_events' "$RUN_CONSOLE_BODY" | cut -d: -f1 | head -1)
+check_matches "$simulated_line" '^[0-9]+$' 'the run-console seed sets runs.simulated (R4)'
+check_equals 'before' \
+  "$([ -n "$simulated_line" ] && [ -n "$transcript_line" ] && [ "$simulated_line" -lt "$transcript_line" ] && echo before || echo after)" \
+  'and sets it before the first transcript entry, which is the only order the schema allows'
+
+# **The trigger side-effect guard**, for R__dev_seed_farm.sql's log-chunk reason: the transcript
+# insert fires a `before` trigger that moves `runs.event_seq` and `runs.event_bytes`, and a
+# `before` trigger runs whether or not `on conflict` then discards the row. Without the guard a
+# second `migrate` would leave the run claiming a transcript twice the length of the one it has.
+check_contains "$RUN_CONSOLE_BODY" 'not exists \(select 1 from ouroboros\.run_events existing' \
+  'the transcript insert is guarded by not exists, so re-applying it does not double the run s counters'
+
+# **The order the entries are inserted in is load-bearing** (#262's lesson, one table over): the
+# trigger numbers rows as they reach it, so an unordered insert would give the mockup's nine
+# instants sequence numbers that disagree with their own clocks.
+check_contains "$RUN_CONSOLE_BODY" '^ order by entry\.seq$' \
+  'and it orders its entries, because the database numbers them in the order they arrive'
+
+# Every instant is an offset into the run rather than an offset from this migration's `now()`,
+# which is what makes the page's own arithmetic exact rather than approximately right — two
+# seeds are two transactions, and their `now()`s differ by however long the run between them
+# took. A literal date would be worse again: right on the day it was typed and wrong after.
+check_absent "$RUN_CONSOLE_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the run-console seed carries no literal date'
+check_absent "$RUN_CONSOLE_BODY" 'now\(\) - make_interval' \
+  'and no instant is measured back from this migration s own now()'
+check_contains "$RUN_CONSOLE_BODY" 'run\.started_at \+ make_interval' \
+  'every instant is an offset into the run, so the transcript spans the same 10m 08s at any hour'
+
+# The figures the page prints are divisions, so none of them may appear as a literal: `212k`
+# is a sum of four rows, `$1.14` a sum of four amounts, and `53%`, `46%` and `74%` are what the
+# three meters compute from those and from the policies the other seeds already wrote.
+for computed in '212000' '400000' '250' "'74'"; do
+  check_absent "$RUN_CONSOLE_BODY" "$computed" \
+    "the run-console seed stores no $computed — the meters divide what the rows and the policies hold"
+done
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -939,6 +1034,7 @@ check_contains "$README" 'R__dev_seed_sources\.sql' 'README.md documents the sou
 check_contains "$README" 'R__dev_seed_ticket_planning\.sql' 'README.md documents the planning seed'
 check_contains "$README" 'R__dev_seed_workflows\.sql' 'README.md documents the workflows seed'
 check_contains "$README" 'R__dev_seed_farm\.sql' 'README.md documents the farm seed'
+check_contains "$README" 'R__dev_seed_run_console\.sql' 'README.md documents the run-console seed'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'

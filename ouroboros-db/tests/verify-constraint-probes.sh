@@ -247,6 +247,62 @@
 # than the vocabulary*, because `ticket_drafts_push_state_coherent`'s `else false` still refuses
 # a fourth state; the marker requires the vocabulary's name, which is the point.
 #
+# #302 (AO.5) adds the **run console**'s. Its argument is the one this whole file exists for,
+# turned around: the four run-console tables already carry several hundred assertions, and a
+# suite that large is exactly where a probe can go quietly vacuous. Every mutation below is a
+# rule mockup 10 is drawn on, and each fails differently if it goes —
+#
+#   AO.5 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   event seq density per run                    rewrite run_events_append()'s density test
+#   actor vocabulary coverage                    widen run_events_actor by one word
+#   tool_tag belongs to the TOOL chip            drop run_events_tool_tag_is_a_tool
+#   verdict vocabulary coverage                  widen guardrail_evaluations_verdict
+#   check vocabulary coverage                    widen guardrail_evaluations_check
+#   control kind vocabulary coverage             widen run_controls_kind
+#   control state vocabulary coverage            widen run_controls_state
+#   evidence holds no secrets                    drop guardrail_evaluations_evidence_no_opaque_token
+#     (and the key set under it)                 drop guardrail_evaluations_evidence_closed_keys
+#   (run_id, stage_key, attempt) uniqueness      drop run_stages_run_stage_attempt_key
+#   run_files upsert non-accumulation            drop run_files_run_path_key
+#
+# **The five vocabulary mutations are widenings, not drops**, and that is the whole of what
+# distinguishes them from the probes above. Dropping `run_controls_kind` is caught by the
+# `must_reject` that already asks for a fifth button to be refused; *adding* `nudge` to it is
+# caught by nothing in this repository before #302, because a rejection aimed at a word still
+# outside the set keeps passing and no fixture was ever required to write the new one. That is
+# the regression that ships a control the console has no button for — so the marker for each of
+# these is AO.5's coverage assertion, which reads the accepted set out of `pg_constraint` and
+# requires the fixture to have written every value of it.
+#
+# The density mutation is a **function rewrite** for the reason `route_chain_intact()`'s two
+# are: `run_events_append()` carries the cap, the watermark, the allocator and the density test
+# in one function, so dropping it would falsify all four and the first assertion to notice would
+# be whichever came first in the file. The rewrite swaps `new.seq <> stored_seq + 1` for `false`
+# and leaves the rest as V046 wrote it, so the probe answers for density alone — and it reads
+# the current definition from the catalogue and raises if that expression is not in it, rather
+# than silently mutating nothing.
+#
+# Two of the eleven have a marker that is not their own assertion's accepted-row message, and
+# both are the stronger red rather than a compromise:
+#
+#   * **The attempt key** is caught by `run_stages_one_active_idx` — the second attempt this
+#     probe re-inserts is `active`, and the run already has an active stage — so the marker is
+#     `must_reject`'s *wrong-rule-fired* message, as the estimate key's and the bundled price's
+#     above are. The rule beside it is the weaker one: it refuses a duplicate *active* attempt
+#     and would accept a duplicate finished one, which is `attempt 2/3` counting a row twice.
+#   * **The change-set key** is caught by the upsert it exists for, several assertions before
+#     the refusal: without it `on conflict (run_id, path) do update` has no arbiter and
+#     PostgreSQL refuses the statement outright. That is the non-accumulation rule failing at
+#     the point it is used rather than at the point it is described, which is the better place
+#     to hear about it — a report that could no longer replace would make every figure on the
+#     Changes card climb for ever.
+#
+# The five vocabulary widenings each add a word **no fixture in constraints.sql already plants**
+# — `executor`, `sbom_scan`, `inconclusive`, `nudge`, `in_flight` — deliberately, so that the
+# existing `must_reject`s stay green and the coverage assertion is demonstrably the only thing
+# standing between a widened vocabulary and a console that draws nothing for it.
+#
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
 #   ouroboros-db/tests/verify-constraint-probes.sh --runner docker
@@ -403,7 +459,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -1117,6 +1173,94 @@ expect_red 'the bytes elided before a chunk may be negative' \
 expect_red "a running job's log may be swept" \
   'a running job.s log is never swept .*build_jobs_log_swept_when_finished did not fire' \
   'alter table ouroboros.build_jobs drop constraint build_jobs_log_swept_when_finished;'
+
+# ---------------------------------------------------------------------------
+# The run console's rules (#302: seq density, six vocabularies, the evidence rule, the
+# attempt key and the change-set key).
+#
+# Each fails quietly if lost. A transcript with a gap in it is a cursor that skips entries and
+# a reader who never learns what was skipped; a vocabulary that grew without a fixture is a
+# value the console draws nothing for; evidence that may hold a matched value is a credential
+# copied out of a diff into a table somebody screenshots; a stage that may record one attempt
+# twice makes `attempt 2/3` a guess; and a change-set that may hold one path twice makes every
+# figure on the Changes card climb for ever.
+# ---------------------------------------------------------------------------
+
+# A function rewrite, for `route_chain_intact()`'s reason — see the header. It raises rather
+# than mutating nothing if V046's density test is no longer spelt the way it aims at.
+seq_density_rewrite="
+do \$probe\$
+declare
+  body text := pg_get_functiondef('ouroboros.run_events_append()'::regprocedure);
+begin
+  if position('elsif new.seq <> stored_seq + 1 then' in body) = 0 then
+    raise exception 'run_events_append() no longer carries the density test this probe aims at';
+  end if;
+  execute replace(body,
+                  'elsif new.seq <> stored_seq + 1 then',
+                  'elsif false then');
+end
+\$probe\$;"
+
+expect_red "a transcript may skip a sequence number" \
+  'a sequence number that does not continue the transcript is refused' \
+  "$seq_density_rewrite"
+
+expect_red 'the transcript may grow a seventh actor chip' \
+  'every actor chip the transcript may carry is a chip something has written' \
+  "alter table ouroboros.run_events drop constraint run_events_actor,
+   add constraint run_events_actor
+     check (actor in ('plan', 'tool', 'model', 'gate', 'user', 'system', 'executor'));"
+
+expect_red 'a tool tag may belong to any chip' \
+  'the tool tag belongs to the TOOL chip .*run_events_tool_tag_is_a_tool did not fire' \
+  'alter table ouroboros.run_events drop constraint run_events_tool_tag_is_a_tool;'
+
+expect_red 'the Guardrails card may grow a fifth check' \
+  'every guardrail check the schema accepts is one the card has a row for' \
+  "alter table ouroboros.guardrail_evaluations drop constraint guardrail_evaluations_check,
+   add constraint guardrail_evaluations_check
+     check (\"check\" in ('allowed_paths', 'ci_config', 'secrets', 'review_required',
+                        'sbom_scan'));"
+
+expect_red 'a guardrail may answer with a fifth verdict' \
+  'every verdict it accepts is one the card has a mark for' \
+  "alter table ouroboros.guardrail_evaluations drop constraint guardrail_evaluations_verdict,
+   add constraint guardrail_evaluations_verdict
+     check (verdict in ('pass', 'fail', 'not_applicable', 'pending', 'inconclusive'));"
+
+expect_red 'the control queue may grow a fifth button' \
+  'every control kind the queue accepts is one this fixture submits' \
+  "alter table ouroboros.run_controls drop constraint run_controls_kind,
+   add constraint run_controls_kind
+     check (kind in ('pause', 'resume', 'abort', 'steer', 'nudge'));"
+
+expect_red 'a control may rest in a sixth state' \
+  'every state it may rest in is one this fixture reaches' \
+  "alter table ouroboros.run_controls drop constraint run_controls_state,
+   add constraint run_controls_state
+     check (state in ('pending', 'delivered', 'acked', 'expired', 'rejected', 'in_flight'));"
+
+# Decision R5's two layers, probed separately: the key set is what leaves a writer no field to
+# put a value in, and the opaque-token rule is what covers the one key whose job is prose.
+expect_red 'evidence may carry an unbroken credential' \
+  'a credential planted in evidence.path is refused' \
+  'alter table ouroboros.guardrail_evaluations
+     drop constraint guardrail_evaluations_evidence_no_opaque_token;'
+
+expect_red 'evidence may carry a key nobody closed' \
+  'evidence cannot carry a "value" .*guardrail_evaluations_evidence_closed_keys did not fire' \
+  'alter table ouroboros.guardrail_evaluations
+     drop constraint guardrail_evaluations_evidence_closed_keys;'
+
+expect_red 'a stage may record the same attempt twice' \
+  'a stage cannot record the same attempt twice \(rejected by run_stages_one_active_idx' \
+  'alter table ouroboros.run_stages drop constraint run_stages_run_stage_attempt_key;'
+
+expect_red "a run's change-set may hold one path twice" \
+  'there is no unique or exclusion constraint matching the ON CONFLICT specification' \
+  'alter table ouroboros.run_files drop constraint run_files_run_path_key;'
+
 
 printf '\n'
 if check_summary; then

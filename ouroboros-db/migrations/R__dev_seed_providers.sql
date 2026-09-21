@@ -52,7 +52,7 @@
 -- *zero-priced* have to stay tellable apart.
 --
 -- **Nothing here lands on today**, and that is a rule rather than an accident: mockup 02's
--- *Token spend · today* card is exactly #68's twelve events, and a row of this file inside
+-- *Token spend · today* card is #68's twelve events and #302's four, and a row of this file inside
 -- the current UTC day would change a number that seed's own assertions pin. So every event
 -- below is placed in `[window_start, today 00:00 UTC)` — see the insert for how the window
 -- is chosen, including on the first of a month, when *earlier this month* is an empty
@@ -270,7 +270,8 @@ on conflict do nothing;
 -- provider groups by the `provider` column, which both files spell the same way.
 --
 -- **The window.** Every event is placed strictly before today's UTC midnight, because
--- mockup 02's *today* card is #68's twelve events and nothing else: `occurred_at` is
+-- mockup 02's *today* card is #68's twelve events and #302's four and nothing else:
+-- `occurred_at` is
 -- `start + (today 00:00 − start) × n/12`, so eleven ordinals land inside the window and
 -- none on its far edge. `start` is the later of the month's first instant and thirteen days
 -- ago — except on the first of a month, when *earlier this month* is empty and the window

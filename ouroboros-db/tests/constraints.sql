@@ -15815,6 +15815,241 @@ select pg_temp.must_hold(
   'deleting a workspace takes its runs, every verdict written about them, every control submitted against them and the audit trail of both');
 
 -- ===========================================================================
+-- AO.5 — the run console's vocabularies, covered rather than merely closed (#302)
+-- ===========================================================================
+--
+-- The four sections above each assert that a closed vocabulary **refuses** a word outside it:
+-- a seventh actor chip, a fifth guardrail check, a fifth verdict. That is half of what a
+-- vocabulary needs asserted, and it is the half that cannot go quietly wrong — a `must_reject`
+-- that stopped firing fails loudly the moment the constraint moves.
+--
+-- The other half can. Nothing above notices a vocabulary that **grows**. A sixth control state
+-- added in a migration, or a `licence_scan` check added to the guardrail set, changes what the
+-- database accepts, changes what every renderer has to draw, and leaves every assertion in this
+-- file green — because a `must_reject` aimed at a word that is *still* outside the set keeps
+-- passing, and no fixture anywhere was ever required to exercise the new one. The ticket that
+-- added the value ships without the chip, the pill or the icon that draws it, and the first
+-- report is a blank cell in production.
+--
+-- So this section asks each vocabulary the other question: **is every value in it a value
+-- something has actually written?** It reads the accepted set out of the constraint's own
+-- definition in `pg_constraint` — not out of a list retyped here, which would rot into a
+-- description of the schema as it was — and requires the fixture below to have covered it
+-- exactly. Adding a value turns this red for the ticket that added it; removing one turns it
+-- red too, because the insert that exercised it is refused several lines earlier.
+--
+-- The six vocabularies are AO.5's scope: the transcript's `actor` and the `tool_tag` that
+-- belongs to one of its chips, the Guardrails card's `check` and `verdict`, and the control
+-- queue's `kind` and `state`.
+--
+-- `tool_tag` is the one of the six with **no** CHECK to read — V046 holds it to a slug shape
+-- rather than to a list, deliberately, because the set of tools an executor can call is the
+-- executor's business and not the schema's. Its coverage is therefore the console's own three,
+-- asserted as the three, which is what makes a fourth tool arriving in a seed or a fixture a
+-- thing somebody has to look at rather than a chip that renders blank.
+
+-- The accepted set, read out of the constraint rather than retyped. A vocabulary CHECK renders
+-- as `col = ANY (ARRAY['a'::text, 'b'::text])`, so the quoted literals in its definition are
+-- the vocabulary; a constraint of any other shape yields something that will not match a
+-- fixture, which is a red probe rather than a silent pass.
+create function pg_temp.vocabulary(relation regclass, constraint_name text)
+returns text[]
+language sql
+stable
+as $vocab$
+  select array(
+    select distinct literal
+      from pg_constraint constraint_row
+      cross join lateral regexp_matches(pg_get_constraintdef(constraint_row.oid),
+                                        $re$'([^']*)'$re$, 'g') as captured
+      cross join lateral unnest(captured) as literal
+     where constraint_row.conrelid = relation
+       and constraint_row.conname  = constraint_name
+     order by literal);
+$vocab$;
+
+-- The helper is asserted before it is trusted, and deliberately **without naming any of the
+-- six sets below**: a sanity check that retyped one of them would be the hardcoded roster this
+-- section exists to avoid, and would go red for the ticket that widened it before the coverage
+-- assertion — the one with the useful message — ever ran.
+--
+-- What is asserted is the shape of its answers. A list constraint yields several words; a name
+-- that is not a constraint, and a constraint that is not a list, both yield the empty array —
+-- which matters, because an assertion comparing the empty array against an empty fixture would
+-- pass while covering nothing at all.
+select pg_temp.must_hold(
+  array_length(pg_temp.vocabulary('ouroboros.run_events', 'run_events_actor'), 1) >= 2
+   and pg_temp.vocabulary('ouroboros.run_events', 'no_such_constraint') = array[]::text[]
+   and pg_temp.vocabulary('ouroboros.run_events', 'run_events_says_something') = array[]::text[],
+  'the vocabulary helper reads a closed set out of the catalogue, and answers empty both for a name that is not a constraint and for a constraint that is not a list');
+
+-- Its own fixtures: one workspace, one run, and enough rows to write every value of every
+-- vocabulary above at least once.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-vocab', 'Vocab Works', 'vocab-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a9000000-0000-0000-0000-00000000000a', 'Ken S', 'ken@vocab-works.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a9100000-0000-0000-0000-00000000000a', 'org-vocab', 'vocab-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a91f0000-0000-0000-0000-00000000000a', 'a9100000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a9200000-0000-0000-0000-000000000482', 'org-vocab',
+          'a91f0000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, now() - interval '13 minutes');
+
+-- --- the transcript's six chips, and the three tags one of them carries ----------------
+--
+-- Six entries, one per actor. `model` carries the provenance V046 requires of it and `tool`
+-- carries a tag, because neither chip is representable without them — which is the point: a
+-- vocabulary value that could only be written by relaxing another rule is not covered.
+insert into ouroboros.run_events (run_id, actor, stage_key, attempt, tool_tag, model_id, body)
+  values ('a9200000-0000-0000-0000-000000000482', 'plan',   'plan',      1, null,        null,
+          'Root cause: test asserts on frame order'),
+         ('a9200000-0000-0000-0000-000000000482', 'tool',   'implement', 1, 'read_file', null,
+          'drivers/can/telemetry_buf.c'),
+         ('a9200000-0000-0000-0000-000000000482', 'model',  'implement', 1, null, 'claude-fable-5',
+          'The buffer uses a bare k_fifo'),
+         ('a9200000-0000-0000-0000-000000000482', 'tool',   'implement', 1, 'edit_file', null,
+          'drivers/can/telemetry_buf.c'),
+         ('a9200000-0000-0000-0000-000000000482', 'tool',   'implement', 1, 'run_tests', null,
+          'twister -T tests/telemetry'),
+         ('a9200000-0000-0000-0000-000000000482', 'gate',   'checks-green', 1, null, null,
+          'test flake reproduced — returning to implement (attempt 2)'),
+         ('a9200000-0000-0000-0000-000000000482', 'user',   null, null, null, null,
+          'prefer a fix inside the ISR'),
+         ('a9200000-0000-0000-0000-000000000482', 'system', null, null, null, null,
+          'executor reconnected');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.run_events', 'run_events_actor')
+    = (select array_agg(distinct actor order by actor) from ouroboros.run_events
+        where run_id = 'a9200000-0000-0000-0000-000000000482'),
+  'every actor chip the transcript may carry is a chip something has written — a seventh would turn this red for the ticket that added it');
+
+select pg_temp.must_hold(
+  (select array_agg(distinct tool_tag order by tool_tag) from ouroboros.run_events
+    where run_id = 'a9200000-0000-0000-0000-000000000482' and tool_tag is not null)
+    = array['edit_file', 'read_file', 'run_tests'],
+  'and the three tool tags mockup 10 draws are covered — the column is a shape, not a list, so this is the whole of what holds a fourth to review');
+
+-- --- the Guardrails card's two vocabularies -------------------------------------------
+--
+-- Four rows cover both at once, which is not a coincidence: the card is four checks and it
+-- draws a different answer against each, so a fixture that covers one vocabulary covers the
+-- other if and only if the card is drawable. `pending` carries no evidence, which
+-- `guardrail_evaluations_pending_has_no_evidence` requires and none of these has anyway.
+insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, policy_ref)
+  values ('a9200000-0000-0000-0000-000000000482', 'allowed_paths',   'pass',           14),
+         ('a9200000-0000-0000-0000-000000000482', 'ci_config',       'fail',           14),
+         ('a9200000-0000-0000-0000-000000000482', 'secrets',         'pending',        14),
+         ('a9200000-0000-0000-0000-000000000482', 'review_required', 'not_applicable', 14);
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.guardrail_evaluations', 'guardrail_evaluations_check')
+    = (select array_agg(distinct "check" order by "check") from ouroboros.guardrail_evaluations
+        where run_id = 'a9200000-0000-0000-0000-000000000482'),
+  'every guardrail check the schema accepts is one the card has a row for — a fifth would turn this red rather than render nowhere');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.guardrail_evaluations', 'guardrail_evaluations_verdict')
+    = (select array_agg(distinct verdict order by verdict) from ouroboros.guardrail_evaluations
+        where run_id = 'a9200000-0000-0000-0000-000000000482'),
+  'and every verdict it accepts is one the card has a mark for — pass, fail, not_applicable and pending, and nothing else');
+
+-- --- the control queue's two vocabularies ---------------------------------------------
+--
+-- Five rows: four kinds and five states, paired so that each row is a control somebody could
+-- actually have submitted. The clocks are the states' own — `delivered` has been delivered,
+-- `acked` has been both, `rejected` never was — which is `run_controls_delivery_clock` and
+-- `run_controls_ack_clock` being satisfied by coverage rather than worked around.
+insert into ouroboros.run_controls
+    (run_id, kind, payload, state, delivered_at, acked_at, requested_at, expires_at, ack_detail)
+  values ('a9200000-0000-0000-0000-000000000482', 'pause',  null, 'pending',
+          null, null, now() - interval '30 seconds', now() + interval '5 minutes', null),
+         ('a9200000-0000-0000-0000-000000000482', 'resume', null, 'delivered',
+          now() - interval '10 seconds', null, now() - interval '25 seconds',
+          now() + interval '5 minutes', null),
+         ('a9200000-0000-0000-0000-000000000482', 'abort',  null, 'acked',
+          now() - interval '10 seconds', now() - interval '5 seconds',
+          now() - interval '20 seconds', now() + interval '5 minutes', 'aborted at the gate'),
+         ('a9200000-0000-0000-0000-000000000482', 'steer',
+          'prefer a fix inside the ISR; do not touch the test timeouts', 'expired',
+          null, null, now() - interval '10 minutes', now() - interval '5 minutes', null),
+         ('a9200000-0000-0000-0000-000000000482', 'pause',  null, 'rejected',
+          null, null, now() - interval '15 seconds', now() + interval '5 minutes',
+          'the run had already finished');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.run_controls', 'run_controls_kind')
+    = (select array_agg(distinct kind order by kind) from ouroboros.run_controls
+        where run_id = 'a9200000-0000-0000-0000-000000000482'),
+  'every control kind the queue accepts is one this fixture submits — pause, resume, abort and steer, and nothing a button cannot press');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.run_controls', 'run_controls_state')
+    = (select array_agg(distinct state order by state) from ouroboros.run_controls
+        where run_id = 'a9200000-0000-0000-0000-000000000482'),
+  'and every state it may rest in is one this fixture reaches — a sixth would be a state the console has no sentence for');
+
+-- The other half of each pair, which the sections above assert for four of the six. These two
+-- are the control queue's, and they had no `must_reject` of their own until now: the kind and
+-- the state are what AP.4 dispatches and reports on, and a word outside either would be a
+-- control nothing delivers and a row nothing sweeps.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, expires_at)
+    values ('a9200000-0000-0000-0000-000000000482', 'nudge', now() + interval '5 minutes')$$,
+  'run_controls.kind rejects a fifth button', 'run_controls_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, state, expires_at)
+    values ('a9200000-0000-0000-0000-000000000482', 'pause', 'in_flight',
+            now() + interval '5 minutes')$$,
+  'and run_controls.state rejects a sixth resting place', 'run_controls_state');
+
+-- --- the transcript's sequence is dense per run, which is AP.2's paging contract --------
+--
+-- Asserted here as a property of *every* run in the database rather than of the fixture the
+-- V046 section built, because the guarantee AP.2 pages by is not "the fixture is dense" — it
+-- is that no run anywhere holds a gap. A seed, a migration back-fill or a batch insert that
+-- numbered its own rows would satisfy the unique key and break the cursor, and nothing else
+-- in this file would notice.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from (select run_id, count(*) as entries, min(seq) as lowest, max(seq) as highest
+             from ouroboros.run_events
+            group by run_id) per_run
+    where per_run.lowest <> 1 or per_run.highest <> per_run.entries),
+  'every run''s transcript is numbered densely from 1 — a gap anywhere is a cursor that silently skips entries');
+
+-- --- and the run's own counter is the transcript's length --------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.runs run
+     left join (select run_id, count(*) as entries from ouroboros.run_events group by run_id)
+            as per_run on per_run.run_id = run.id
+    where run.event_seq <> coalesce(per_run.entries, 0)),
+  'and runs.event_seq is that length for every run, so a re-applied seed or a double-counted batch shows up here');
+
+-- --- teardown ----------------------------------------------------------------------------
+delete from ouroboros.organization where "id" = 'org-vocab';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where id::text like 'a9200000-%')
+   and (select count(*) = 0 from ouroboros.run_events where run_id::text like 'a9200000-%')
+   and (select count(*) = 0 from ouroboros.run_controls where run_id::text like 'a9200000-%')
+   and (select count(*) = 0 from ouroboros.guardrail_evaluations where run_id::text like 'a9200000-%'),
+  'and the coverage fixture leaves nothing behind for the sections after it to count');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

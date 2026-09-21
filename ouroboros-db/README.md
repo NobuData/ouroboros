@@ -868,7 +868,7 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **ten migrations**, because they answer ten questions and change on different
+It is **eleven migrations**, because they answer eleven questions and change on different
 days:
 
 | File | Holds | Issue |
@@ -881,13 +881,15 @@ days:
 | [`R__dev_seed_audit.sql`](migrations/R__dev_seed_audit.sql) | *Who touched the keys* — the credential trail mockup 07's **Audit log** sheet opens, including a failed rotation and a lease grant with no actor | [#225](https://github.com/NobuData/ouroboros/issues/225) |
 | [`R__dev_seed_sources.sql`](migrations/R__dev_seed_sources.sql) | *Where the work comes from* — the two trackers `acme-robotics` ingests from: a `github` source over its four enabled repositories, and a `jira` source with no repository in it at all, both connected (sealed development credentials, `active`) since [#275](https://github.com/NobuData/ouroboros/issues/275) | [#138](https://github.com/NobuData/ouroboros/issues/138), [#275](https://github.com/NobuData/ouroboros/issues/275) |
 | [`R__dev_seed_ticket_planning.sql`](migrations/R__dev_seed_ticket_planning.sql) | *The work and the plan over it* — mockup 09's planning page: a canonical backlog of fifty-two GitHub tickets whose aggregates are the *Tracker Sync* and *Backlog Health* cards, the five gantt lanes with months relative to `now()`, and the six-draft OTA batch sized through `issue_estimates.draft_id` | [#275](https://github.com/NobuData/ouroboros/issues/275) |
-| [`R__dev_seed_farm.sql`](migrations/R__dev_seed_farm.sql) | *The machines that build it* — mockup 08's build farm: two pools with their executor configuration, six runners of which one is `removed` and one fell back to a bearer token, forty-eight builds whose aggregates are the whole stat row (`23` today, `19 clean · 3 retried · 1 failed`, `4m 12s ▼ 38s`, `78%`), and the five chunks of the LIVE card's log. **Dev-only matters more here than anywhere else in the directory: a `runners` row claims a machine somewhere is heartbeating** | [#249](https://github.com/NobuData/ouroboros/issues/249) |
+| [`R__dev_seed_farm.sql`](migrations/R__dev_seed_farm.sql) | *The machines that build it* — mockup 08's build farm: two pools with their executor configuration, six runners of which one is `removed` and one fell back to a bearer token, forty-nine builds — the forty-ninth being run `#482`'s `forge-02` reservation, added by [#302](https://github.com/NobuData/ouroboros/issues/302) — whose aggregates are the whole stat row (`23` today, `19 clean · 3 retried · 1 failed`, `4m 12s ▼ 38s`, `78%`), and the five chunks of the LIVE card's log. **Dev-only matters more here than anywhere else in the directory: a `runners` row claims a machine somewhere is heartbeating** | [#249](https://github.com/NobuData/ouroboros/issues/249) |
 | [`R__dev_seed_workflows.sql`](migrations/R__dev_seed_workflows.sql) | *What it does with it* — mockup 04's studio: the rail's five workflows, `standard-fix`'s twelve-node canvas at v14 with the fourteen versions that number implies, the draft the page head's *Last edited 2h ago* is read from, and the paused `hotfix-p0` behind the rail's err-dot | [#136](https://github.com/NobuData/ouroboros/issues/136) |
+| [`R__dev_seed_run_console.sql`](migrations/R__dev_seed_run_console.sql) | *One run, in detail* — mockup 10 for `#482`, caught mid-flight at 12m 40s: the nine-entry transcript with both diff payloads, the gate's return and the live `47/63`, all watermarked `simulated` (decision **R4**); three changed files and two commits under the squash snapshot; the four `token_usage` rows the `212k / 400k` and `$1.14 / $2.50` meters divide; the `forge-02` reservation; and the four guardrail verdicts. Every instant is an offset from `runs.started_at`, so the page's own arithmetic is exact at any hour | [#302](https://github.com/NobuData/ouroboros/issues/302) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
 > their *descriptions*, and every row the later seeds write finds its parent by natural key —
 > so `dev_seed_audit`, `dev_seed_dashboard`, `dev_seed_farm`, `dev_seed_intake`,
-> `dev_seed_providers`, `dev_seed_routing`, `dev_seed_sources`, `dev_seed_ticket_planning` and
+> `dev_seed_providers`, `dev_seed_routing`, `dev_seed_run_console`, `dev_seed_sources`,
+> `dev_seed_ticket_planning` and
 > `dev_seed_workflows` all have to sort after `dev_seed`, `dev_seed_routing` after `dev_seed_providers` besides,
 > since every alias binds to a connection by kind and name, and `dev_seed_ticket_planning`
 > after `dev_seed_sources`, since every ticket hangs off the GitHub source — which is why it
@@ -997,13 +999,15 @@ it belongs to `acme-robotics`, and it is drawn from three tables:
 | `token_usage` | 11 | The month's spend behind the meters, *earlier this month* |
 
 > **The meters are three seeds added together.** A card's *This month* figure is calendar-
-> month spend over `token_usage`; the dashboard seed writes twelve events dated *today* and
+> month spend over `token_usage`; the dashboard seed writes twelve events dated *today* (and
+> the run-console seed four more, which came out of one of those twelve — see #302) and
 > the routing seed writes the month's routed calls. So the providers seed writes the
 > remainder — `$379.15` of Anthropic, `$62.30` of Cursor, `$68.80` of Copilot and 1.0M
 > unpriced Ollama tokens — and the three together are the mockup's `$412.80`, `$64.10`,
 > `$76.00` and *2.1M tokens on-box*. Nothing the providers seed
-> writes lands on *today*, which is what keeps mockup 02's *Token spend · today* card
-> exactly the dashboard seed's twelve events; `tests/seed.sql` asserts both totals and the
+> writes lands on *today*, which is what keeps mockup 02's *Token spend · today* card the
+> dashboard seed's twelve events and the run-console seed's four; `tests/seed.sql` asserts
+> both totals and the
 > rule that keeps them apart. On the first of a month there is no *earlier this month*: the
 > rows fall on the last day of the previous one and the meters read the day's spend alone,
 > which is the one day in thirty the cards are not the mockup's figures — asserted as such
@@ -1317,7 +1321,7 @@ as the shell suites share [`../scripts/lib/checks.sh`](../scripts/lib/checks.sh)
 every uniqueness rule, check constraint, cascade, trigger and index the migrations claim
 — because `validate` compares checksums rather than behaviour, and a `unique` on the
 wrong columns passes it. [`tests/seed.sql`](tests/seed.sql) asserts the opposite side:
-what the eight `R__dev_seed*.sql` migrations actually put in a development database, one
+what the eleven `R__dev_seed*.sql` migrations actually put in a development database, one
 assertion per row — the workspaces, mockup 02's dashboard number for number, mockup 03's
 backlog and the estimates behind its chips, mockup 07's five provider cards with the
 meters their two seeds add up to, and mockup 04's studio: the canvas against the mockup's
@@ -1909,6 +1913,7 @@ ouroboros-db/
 │   ├── R__dev_seed_intake.sql        # mockup 03's backlog and its estimates, dev only — #103 (sorts after the above)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
 │   ├── R__dev_seed_routing.sql       # mockup 06 as rows, and mockup 21's registry over them, dev only — #192, #582 (sorts after the above)
+│   ├── R__dev_seed_run_console.sql   # mockup 10 — run #482 mid-flight, transcript and cards, dev only — #302 (sorts after dashboard and farm)
 │   ├── R__dev_seed_sources.sql       # the two trackers acme-robotics ingests from, dev only — #138 (sorts after the above)
 │   ├── R__dev_seed_ticket_planning.sql # mockup 09 — backlog, roadmap lanes, OTA batch, dev only — #275 (sorts after sources)
 │   ├── R__dev_seed_workflows.sql     # mockup 04's studio — five workflows, standard-fix at v14, dev only — #136 (sorts after the above)
