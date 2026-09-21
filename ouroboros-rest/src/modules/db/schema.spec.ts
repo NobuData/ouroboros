@@ -27,7 +27,9 @@ import {
   type NewGithubOrg,
   type NewRun,
   type NewTenantDomain,
+  type Run,
   type RunStatus,
+  type RunWithStage,
 } from "./schema";
 
 /**
@@ -336,7 +338,13 @@ describe("TABLE_COLUMNS", () => {
     // it in `seq` order and whose read API pages it by offset. The rest of V040,
     // `runner_pool_windows`, is still not here: dispatch (AH.4, #252) reads it in one raw
     // eligibility statement and nothing writes it, so the pool windows' own ticket mirrors it.
-    expect(TABLE_NAMES).toHaveLength(52);
+    //
+    // The fifty-third to fifty-fifth are V045's, mirrored by AO.1 (#298): `run_stages` — the
+    // stage timeline per attempt — and the two views the stage meter is derived through,
+    // `run_stage_current` and `runs_with_stage`. They are here before a reader for the drift
+    // check's sake rather than in spite of it: `runs` grew three columns in the same migration,
+    // and the list above is what catches a mirror that stopped matching the migrations.
+    expect(TABLE_NAMES).toHaveLength(55);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -518,7 +526,21 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(4);
+    expect(READ_ONLY_VIEWS).toHaveLength(6);
+  });
+
+  it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {
+    // V045's amendment on #64 is `selectFrom("runs")` becoming `selectFrom("runs_with_stage")`
+    // in the four reads that render a stage meter. That is only a one-word change while the
+    // two rows are interchangeable, and a column added to `runs` without being carried into
+    // the view would break it silently — the read would compile and answer without the
+    // column. Assigning each to the other's type is what fails the compile if they drift.
+    const fromTable: Run = {} as RunWithStage;
+    const fromView: RunWithStage = {} as Run;
+
+    // The values are casts, so the only thing worth asserting at run time is that the test
+    // exercised both directions rather than being optimised away by a reader.
+    expect(fromTable).toEqual(fromView);
   });
 
   it("mirrors, for each view, the table a write to it belongs in", () => {

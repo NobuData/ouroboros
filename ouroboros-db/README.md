@@ -621,6 +621,25 @@
 > sweep's tombstone — logs are removed whole, and only a finished job's
 > (`build_jobs_log_swept_when_finished`).
 
+> `V045` ([#298](https://github.com/NobuData/ouroboros/issues/298)) opens the **Run Console**
+> domain with `run_stages` — one row per stage × attempt — and the three facts mockup 10's page
+> head is rendered from: `runs.loop_seq`, `branch_name` and `workflow_version_pin`. Three of the
+> stepper's facts are history rather than state, and `runs`' current-stage columns can hold none
+> of them: a duration needs two timestamps, `attempt 2/3` needs a row that knows attempt 1
+> happened and a snapshot of what the pinned workflow allowed, and the warn note
+> — *"attempt 1 failed tests — loop returned from gate ↺"* — is the record of a gate sending the
+> loop backwards. Roadmap decision **R1** says that note must be composed from the transition and
+> never typed, so `note` is `generated always … stored` over three structured columns held to the
+> workflow DSL's own vocabulary: **PostgreSQL refuses any statement that supplies one**, from any
+> client in any role, which is `V018`'s answer to the same problem at `escalation_rules.display`.
+> `loop_seq` — the `Loop #1847` counter — is allocated per workspace under a transaction-scoped
+> advisory lock, so two runs starting in the same millisecond serialise rather than collide on
+> `runs_organization_loop_seq_key`; a rolled-back transaction still takes its number with it,
+> which is the one gap a display counter can afford. `V008`'s three stage columns are **kept**:
+> `runs_with_stage` answers them from stage history where a run has any and from those columns
+> where it has none, so a dashboard read moves onto the derivation one at a time and their
+> removal is a later migration.
+
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
 > migration *below* its current version — which `validate` rejects, and `migrate`
@@ -839,6 +858,7 @@ is brought up.
 |---|---|---|
 | `runs` | 53 | 3 live (`#482` coding · `#479` building · `#476` in review), 50 closed — of which the four newest are the *Recently closed* card, `#474 → PR #512` … `#465 → PR #504` |
 | `queue_items` | 12 | *Queued issues* `12`, `est. 9h 40m`, and the five the *Up next in queue* card draws — `#485` M, `#486` L, `#488` XS, `#490` XL, `#491` S |
+| `run_stages` | 20 | the three live loops' stage timelines ([#298](https://github.com/NobuData/ouroboros/issues/298)) — `#482` on `Implementing` attempt 2 of 3 with attempt 1 failed and the gate-return note composed from the transition, which is mockup 10's stepper. The fifty closed runs keep `V008`'s columns and no history, so both sides of the `runs_with_stage` fallback are exercised by one database |
 | `token_usage` | 12 | *Token spend · today* — `4.2M` tokens, `≈ $18.60 across 4 providers`; the `≈` is the three unpriced local-inference events |
 | `workspace_settings` | 1 | *Auto-merge when checks pass*, on |
 
@@ -1809,6 +1829,7 @@ ouroboros-db/
 │   ├── V042__farm_gateway.sql              # runner_terminal_frames — the exactly-once ledger — and runners.hostname — #251
 │   ├── V043__farm_dispatch.sql             # runner_pools.default_command — what a submission falls back to — #252
 │   ├── V044__farm_log_ingest.sql           # where a build log's holes are, and the retention tombstone — #253
+│   ├── V045__run_stage_history.sql         # run_stages per stage × attempt, the generated note, runs.loop_seq — #298
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -1865,7 +1886,8 @@ outside this module alters it.
 | `github_orgs` | `V003`, re-parented `V006` | GitHub orgs an organization has enabled | `login` unique *per organization*, stored lower-cased; `enabled` defaults false |
 | `github_repos` | `V003`, cursor added `V014` | Repos within an org, and — since `V014` — when their issues were last polled | `name` unique per org, stored lower-cased; `enabled` defaults false; `issues_sync_cursor` is non-blank and cannot precede the `issues_synced_at` of the sync that produced it |
 | `user_preferences` | `V007` | Per-person product preferences — today the font scale | One row per person, absent while every setting is at its default; `font_scale` is one of § 4's five steps; cascades from `"user"` |
-| `runs` | `V008` | One run of the loop against one issue — the dashboard read-model | `status` is one of `coding\|building\|review\|merged\|needs_human\|failed`, and a terminal status carries `finished_at` exactly when it is terminal; the run's repository must belong to the run's organization |
+| `runs` | `V008` | One run of the loop against one issue — the dashboard read-model | `status` is one of `coding\|building\|review\|merged\|needs_human\|failed`, and a terminal status carries `finished_at` exactly when it is terminal; the run's repository must belong to the run's organization. `loop_seq` (`V045`, [#298](https://github.com/NobuData/ouroboros/issues/298)) is the `Loop #1847` counter — unique per workspace and allocated by `runs_allocate_loop_seq()` under an advisory lock when an insert supplies none — beside `branch_name` and `workflow_version_pin`, the version half of the pin whose slug half is `workflow_tag` |
+| `run_stages` | `V045` | One run of one workflow stage, one row per attempt ([#298](https://github.com/NobuData/ouroboros/issues/298), AO.1) — mockup 10's stage timeline, and the history `runs`' current-stage columns cannot hold | `(run_id, stage_key, attempt)` unique, so a retry is a new row and attempt 1 stays answerable; `status` is one of `pending\|active\|succeeded\|failed\|skipped` and `run_stages_clock` makes the timestamps agree with it, so a duration exists for exactly the rows the stepper prints one for and **no column stores one**; at most one stage per run is `active`; an attempt above 1 needs its predecessor to exist and to have ended (`run_stages_attempt_sequence`); `max_attempts` and `token_budget` are snapshots of the DSL's `limits` at pin time, bounded by the DSL's own ranges; and `note` is `generated always … stored` over `attempt` and three transition columns, so **no writer can supply one** (decision **R1**) |
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
 | `token_usage` | `V010`, routing attribution `V020` | What the loop has spent — one append-only event per provider call, not one total per organization. Since `V020` it is also what mockup 06's routing matrix is computed from: `task_kind` says which routed kind of work a call served and `latency_ms` how long it took, so `$/run avg` and `p50 latency` are aggregates here rather than numbers stored on a route (decision **M7**) | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization. `task_kind` is shaped as `task_kinds.name` is but is deliberately **not** a foreign key (decision **F8**, as `runs.workflow_tag`): a ledger row records what happened, and retiring a kind must neither block, delete nor rewrite the history routed under it. `latency_ms` is non-negative, and **both are nullable, which is the point** — null is *not routed* and *not timed*, so an aggregate over none of either is null and the matrix renders the em-dash `M7` requires instead of a fabricated `$0.00` and `0.0s`; zero is permitted on `latency_ms` because a local daemon on loopback really answers inside a millisecond |
 | `workspace_settings` | `V011`, `V041` | Org-scoped typed product settings — the auto-merge switch, and since [#250](https://github.com/NobuData/ouroboros/issues/250) the `runner_bearer_fallback` switch that decides whether a machine may enrol in the farm without a client certificate (default **false**, so a deployment that never considers the question never has the weaker path) | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
@@ -1990,7 +2012,7 @@ SQL. `V014`'s `labels` predates them and answers the same problem with `jsonb_pa
 it is not rewritten to use them, because a versioned migration that has been applied is
 never edited.
 
-Three **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
+Five **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
 UTC day and provider — the read behind mockup 02's *Token spend · today*. It is a plain
 view rather than a materialized one on purpose: a stored total drifts the moment an event
 is corrected or back-filled. Its `cost_cents` propagates null rather than coalescing to
@@ -2019,6 +2041,17 @@ count: the `USED BY` column is `count(*)` over this view and the `0 routes` row 
 join from `model_aliases`. Read it through **`alias_reference_guard(organization_id,
 alias_id)`** from inside the transaction that deletes or renames — selecting from the view
 directly takes no lock and its answer can go stale before the next statement runs.
+
+**`run_stage_current`** and **`runs_with_stage`** (`V045`) are the derivation behind the stage
+meter. The first answers *where is this run* for every run that has stage history: the active
+stage if there is one — `run_stages_one_active_idx` says there is at most one — else the stage
+it got furthest into, else the one it is about to enter, with `stage_index` (distinct stages
+entered) and `stage_total` (distinct stages materialised) computed beside it. The second is
+every column of `runs` with those three coalesced over `V008`'s columns, so a dashboard read
+moves onto the derivation by changing one word and answers identically for a run with no
+history. That is the amendment filed on [#64](https://github.com/NobuData/ouroboros/issues/64),
+and it is why `runs.stage_label`, `stage_index` and `stage_total` are still there: removing
+them in the same migration that replaced them would have left mockup 02 in mid-air.
 
 `V001`'s `tenants`, `V002`'s `users`, `user_identities` and `tenant_members` are **gone**:
 `V006` ([#708](https://github.com/NobuData/ouroboros/issues/708)) moved their rows into

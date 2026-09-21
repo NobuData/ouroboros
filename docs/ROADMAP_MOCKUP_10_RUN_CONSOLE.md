@@ -217,7 +217,7 @@ Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AO.1 | #298 | 🟡 Open | ouroboros-db: [AO.1] Stage history & attempts schema | `run_stages` per stage×attempt; DASH-F.1 extension (R1) | mvp, runs, db | N (after DASH-F.1) | Y | M | ouroboros-db |
+| AO.1 | #298 | 🟢 Done | ouroboros-db: [AO.1] Stage history & attempts schema | `run_stages` per stage×attempt; DASH-F.1 extension (R1) | mvp, runs, db | N (after DASH-F.1) | Y | M | ouroboros-db |
 | AO.2 | #299 | 🟡 Open | ouroboros-db: [AO.2] Run event store | Append-only typed `run_events` with caps + JSONL projection shape | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
 | AO.3 | #300 | 🟡 Open | ouroboros-db: [AO.3] Changes, resources & farm-link schema | `run_files`, `run_commits`, resource snapshots, reservation refs | mvp, runs, db | N (after AO.1) | Y | S | ouroboros-db |
 | AO.4 | #301 | 🟡 Open | ouroboros-db: [AO.4] Guardrail evaluations & control queue schema | Verdict rows with evidence; durable `run_controls` (R5/R6) | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
@@ -225,7 +225,7 @@ Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`
 
 ### Issue AO.1 — ouroboros-db: [AO.1] Stage history & attempts schema
 
-> **GitHub issue:** #298 · **Status:** 🟡 Open · **Parent epic:** #294
+> **GitHub issue:** #298 · **Status:** 🟢 Done · **Parent epic:** #294
 
 - **Problem Statement:** The stepper needs per-stage truth (durations,
   attempts, gate-return notes) that DASH-F.1's current-stage columns cannot
@@ -916,7 +916,7 @@ Amendment comments posted at filing:
 | Issue | Amendment |
 |---|---|
 | #91 (DASH-J.3) | Ingestion scope absorbed by **#303** (decision R2); disposition — close as superseded, or retain as the dashboard-side verification ticket |
-| #64 (DASH-F.1) | Stage reads move to `run_stages` (**#298**); legacy columns retained through the migration, removal deferred |
+| #64 (DASH-F.1) | Stage reads move to `run_stages` (**#298**); legacy columns retained through the migration, removal deferred — **the schema half is delivered by AO.1 (#298)**: `ouroboros.runs_with_stage` is `runs` with the three stage columns answered from history where a run has any, so the four DASH reads (`dashboard.activeRuns`, `dashboard.recentRuns`, `runs.list`, `runs.find`) move onto it by changing one word, and `tests/seed.sql` asserts the derived meter equals the stored one for all fifty-three seeded runs |
 | #82 (DASH-I.3) | Active-loop rows now target the real console route (**#309**) |
 | #257 (AI.2) | Farm current-job cells link to **#309**; the reservation link is rendered by **#313**, omitted when absent |
 | #253 (AH.5) | Pattern-reuse note — the offset-fetch log pattern carries the run transcript (**#304**), caps/elision follow AG.5 |
@@ -1025,8 +1025,9 @@ roadmap is unfiled** (BA-C.3/BA-D.5 gate role visibility on #309/#310), and the
 **app-shell roadmap is unfiled** (CP.2 registry, CQ.1/CQ.2 type scale). AR.4 (#318)
 additionally waits on the **mockup-19 ChatOps roadmap**, also unfiled.
 
-Once those are in place, begin with **#298** ([AO.1] stage history) — it blocks every
-other issue in the roadmap — and then **#303** ([AP.1] the ingestion contract), which
+**#298** ([AO.1] stage history) is **done** — `run_stages`, the `runs` columns the console's
+page head reads, and the two views the stage meter is derived through. Next is **#303**
+([AP.1] the ingestion contract), which
 is the piece with reach beyond this roadmap: it is the one door every executor,
 simulated or real, reports through, and #91's unbuilt scope is delivered inside it.
 The MVP closes at **#314**, the e2e leg that drives a live simulated run.
