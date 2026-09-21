@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**248 of 454 ordered issues are closed** — P0 through P9 are complete, and P10 is under way.
+**249 of 454 ordered issues are closed** — P0 through P9 are complete, and P10 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9 | **245** |
-| 🟡 **In progress** | P10 | **3** of 17 |
+| 🟡 **In progress** | P10 | **4** of 17 |
 | — **Not started** | P11–P17 | 0 of 192 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -113,7 +113,7 @@ position is not forced by dependencies, one of these decided it.
 | **P7** | Workflow authoring (visual + code) | ✅ 43/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | ✅ 17/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | ✅ 20/20 | 20 | 70 | Mockup 08 |
-| **P10** | Run console & ingestion contract | 🟡 3/17 | 17 | 55 | Mockup 10 |
+| **P10** | Run console & ingestion contract | 🟡 4/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | — 0/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | — 0/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | — 0/32 | 32 | 109 | Mockups 15, 18 |
@@ -121,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **248/454** | **454** | **1,404** | |
+| | **Total** | **249/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1452,7 +1452,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **17 issues** · 55 complexity points · order **#246–#262** · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_10_RUN_CONSOLE.md` (Epics AO–AQ)
-> **Status:** 🟡 **In progress** — 3 of 17 issues closed
+> **Status:** 🟡 **In progress** — 4 of 17 issues closed
 
 **Goal.** Define the run ingestion contract (stage transitions, attempts, transcript events, file/commit reports, token accounting, farm reservations), evaluate guardrails against the pinned workflow, and build mockup 10 with the stage stepper, transcript and steering input — driven by a scripted simulated-run driver.
 
@@ -1467,7 +1467,7 @@ the blockquote above that records what it did and what it did differently.
 | 246 | **AO.1** | ✅ [#298](https://github.com/NobuData/ouroboros/issues/298) | Stage history & attempts schema | ouroboros-db | M | F.1 |
 | 247 | **AO.2** | ✅ [#299](https://github.com/NobuData/ouroboros/issues/299) | Run event store | ouroboros-db | M | AO.1 |
 | 248 | **AO.3** | ✅ [#300](https://github.com/NobuData/ouroboros/issues/300) | Changes, resources & farm-link schema | ouroboros-db | S | AO.1 |
-| 249 | **AO.4** | [#301](https://github.com/NobuData/ouroboros/issues/301) | Guardrail evaluations & control queue schema | ouroboros-db | M | AO.1 |
+| 249 | **AO.4** | ✅ [#301](https://github.com/NobuData/ouroboros/issues/301) | Guardrail evaluations & control queue schema | ouroboros-db | M | AO.1 |
 | 250 | **AO.5** | [#302](https://github.com/NobuData/ouroboros/issues/302) | Console dev seeds — mockup-10 parity + ci probes | ouroboros-db, .github | M | 3.6, AO.2, AO.4 |
 | 251 | **AP.1** | [#303](https://github.com/NobuData/ouroboros/issues/303) | Run ingestion contract & API | ouroboros-rest | L | 6.2, AO.2 |
 | 252 | **AP.3** | [#305](https://github.com/NobuData/ouroboros/issues/305) | Guardrail evaluation service | ouroboros-rest | L | P.2, AO.4 |

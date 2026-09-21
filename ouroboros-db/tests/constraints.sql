@@ -14459,11 +14459,16 @@ select pg_temp.must_hold(
      from pg_proc
     where proname = 'run_events_append'
       and pronamespace = 'ouroboros'::regnamespace)
-   -- And it is the only one, so "the schema has one definer function" stays a fact somebody
-   -- has to change this assertion to stop being true.
-   and (select count(*) = 1 from pg_proc
+   -- And the schema's definer functions are these two and no others, which is the fact
+   -- somebody has to edit this line to stop being true. #299 wrote it as *one*; #301 added
+   -- `run_controls_audit()`, for the same reason and with the same posture — asserted in that
+   -- migration's own section — and amended this assertion rather than deleting it, because a
+   -- list is only a backstop while it is closed.
+   and (select array_agg(proname::text order by proname) = array['run_controls_audit',
+                                                                 'run_events_append']
+          from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append is the schema''s one security-definer function — search_path pinned with pg_temp last, execute revoked from public, and nothing else running as the owner');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it and #301''s control audit are the only two functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -15000,6 +15005,814 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.run_commits where run_id::text like 'a7100000-%')
    and (select count(*) = 0 from ouroboros.build_jobs where id::text like 'a7400000-%'),
   'deleting a workspace takes its runs, every file of every change-set, every commit and the farm rows the reservation pointed at');
+
+-- ===========================================================================
+-- V048 — guardrail evaluations and the control queue (#301, AO.4)
+-- ===========================================================================
+--
+-- Two tables, and every assertion below is one of the issue's acceptance criteria or the
+-- failure mode a criterion is written against.
+--
+--   * **Evidence cannot hold secret material** (decision **R5**). The closed key set refuses
+--     the field a writer would reach for, and a credential planted in each of the five keys
+--     that *are* allowed is refused as well — which is the half that matters, because a
+--     closed key set with a free-text field in it is not closed.
+--   * **The four mockup verdicts are representable**, `not_applicable` among them.
+--   * **The latest-per-check view returns exactly one row per check** under repeated
+--     re-evaluation, and the history behind it is still there.
+--   * **Illegal control transitions are refused by the database** (decision **R6**), terminal
+--     states are terminal, and what was *asked* cannot be rewritten at all.
+--   * **Expiry is sweep-able without touching the heap**, and an expired control is a
+--     different row from a rejected one.
+--   * **A duplicate submission under the same idempotency key is a no-op.**
+--   * **An audit row exists for every control write**, and no audit body contains the steer
+--     text.
+--
+-- Its own fixtures: one workspace, one repo, the console's own run `#482` pinned to
+-- `standard-fix v14`, a second run to cascade, and two people — one of whom leaves, because
+-- `on delete set null` on a terminal control is the case a blanket append-only rule would have
+-- broken.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-guard', 'Guard Works', 'guard-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a8000000-0000-0000-0000-00000000000a', 'Ken S',      'ken@guard-works.dev',  true),
+  ('a8000000-0000-0000-0000-00000000000b', 'Leaver',     'leaver@guard-works.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a8100000-0000-0000-0000-00000000000a', 'org-guard', 'guard-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a81f0000-0000-0000-0000-00000000000a', 'a8100000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at,
+     branch_name, workflow_version_pin)
+  values ('a8200000-0000-0000-0000-000000000482', 'org-guard',
+          'a81f0000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, now() - interval '13 minutes',
+          'loop/482-canbus-flake', 14),
+         ('a8200000-0000-0000-0000-000000000483', 'org-guard',
+          'a81f0000-0000-0000-0000-00000000000a', 483,
+          'Bump the vendored Zephyr SDK', 'deps-refresh', 'claude-fable-5',
+          'coding', 'Queued', 0, 6, now() - interval '3 minutes',
+          null, 2);
+
+-- --- the card, in full -------------------------------------------------------------
+--
+-- Acceptance criterion: the four mockup verdicts are representable, `not_applicable` for the
+-- review-required row included. Three passes and the `○` — which is the row that would have
+-- been impossible if the vocabulary had been a boolean.
+insert into ouroboros.guardrail_evaluations
+    (run_id, "check", verdict, ruleset_version, policy_ref, evaluated_at, change_set_seq)
+  values ('a8200000-0000-0000-0000-000000000482', 'allowed_paths',   'pass',
+          null, 14, now() - interval '20 seconds', 3),
+         ('a8200000-0000-0000-0000-000000000482', 'ci_config',       'pass',
+          null, 14, now() - interval '20 seconds', 3),
+         ('a8200000-0000-0000-0000-000000000482', 'secrets',         'pass',
+          'v3', 14, now() - interval '20 seconds', 3),
+         ('a8200000-0000-0000-0000-000000000482', 'review_required', 'not_applicable',
+          null, 14, now() - interval '20 seconds', null);
+
+select pg_temp.must_hold(
+  (select array_agg("check" || ' ' || verdict order by "check")
+            = array['allowed_paths pass',
+                    'ci_config pass',
+                    'review_required not_applicable',
+                    'secrets pass']
+     from ouroboros.v_run_guardrails_latest
+    where run_id = 'a8200000-0000-0000-0000-000000000482'),
+  'mockup 10''s Guardrails card is representable in full — three passes and the not_applicable the review-required row draws as ○');
+
+-- And its footer, which is a composition rather than a column: the slug is the run's, the
+-- version is the evaluation's own, and nothing stores `standard-fix v14` as a string.
+select pg_temp.must_hold(
+  (select distinct run.workflow_tag || ' v' || latest.policy_ref = 'standard-fix v14'
+     from ouroboros.v_run_guardrails_latest latest
+     join ouroboros.runs run on run.id = latest.run_id
+    where latest.run_id = 'a8200000-0000-0000-0000-000000000482'),
+  'the card''s "Policy: standard-fix v14" footer is composed from the run''s slug and the evaluation''s own policy_ref, so neither is a second copy of the rendered string');
+
+-- --- evidence carries a place and a rule -------------------------------------------
+--
+-- What a `fail` looks like when it is useful: the file, the line, the rule that fired and a
+-- sentence. Every key of the closed set at once, so the accepting half of the rule is asserted
+-- against the same shape the refusing half is.
+insert into ouroboros.guardrail_evaluations
+    (run_id, "check", verdict, evidence, ruleset_version, policy_ref, evaluated_at, change_set_seq)
+  values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+          '{"path": "drivers/can/telemetry_buf.c",
+            "line": 214,
+            "rule_id": "aws-access-key-id",
+            "glob": "drivers/can/**",
+            "detail": "a key-shaped literal was added in this hunk"}'::jsonb,
+          'v3', 14, now() - interval '9 minutes', 1);
+
+select pg_temp.must_hold(
+  (select evidence ->> 'path' = 'drivers/can/telemetry_buf.c'
+      and evidence ->> 'line' = '214'
+      and evidence ->> 'rule_id' = 'aws-access-key-id'
+     from ouroboros.guardrail_evaluations
+    where run_id = 'a8200000-0000-0000-0000-000000000482'
+      and "check" = 'secrets' and verdict = 'fail'),
+  'a failing verdict carries the location and the rule that fired — drivers/can/telemetry_buf.c:214, rule aws-access-key-id — which is the difference between a verdict somebody can act on and one they cannot');
+
+-- The path is held to the same grammar `run_files.path` is (V047), because the two columns
+-- name the same files and evidence that spelled one differently would be evidence nobody could
+-- join.
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'allowed_paths', 'fail',
+            '{"path": "/drivers/can/telemetry_buf.c"}'::jsonb)$$,
+  'evidence names a repository-relative path, as the change-set does',
+  'guardrail_evaluations_evidence_path_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'allowed_paths', 'fail',
+            '{"path": "app/../drivers/can/telemetry_buf.c"}'::jsonb)$$,
+  'and one without a .. segment, since a rule written for drivers/ is not one anybody wrote for app/../drivers/',
+  'guardrail_evaluations_evidence_path_shape');
+
+-- --- decision R5: there is no field a secret value could be placed in ---------------
+--
+-- Acceptance criterion, first half. Every key below is one somebody would plausibly reach for
+-- while holding a matched string, and the closed key set is what makes each of them a refusal
+-- rather than a column nobody noticed.
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"rule_id": "aws-access-key-id", "value": "AKIAIOSFODNN7EXAMPLE"}'::jsonb)$$,
+  'evidence cannot carry a "value" (#301, decision R5)',
+  'guardrail_evaluations_evidence_closed_keys');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"match": "AKIAIOSFODNN7EXAMPLE"}'::jsonb)$$,
+  'nor a "match"', 'guardrail_evaluations_evidence_closed_keys');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"matched_text": "AKIAIOSFODNN7EXAMPLE"}'::jsonb)$$,
+  'nor a "matched_text"', 'guardrail_evaluations_evidence_closed_keys');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"secret": "AKIAIOSFODNN7EXAMPLE"}'::jsonb)$$,
+  'nor a "secret"', 'guardrail_evaluations_evidence_closed_keys');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"token": "forge_16C7e42F292c6912E7710c838347Ae178B4a"}'::jsonb)$$,
+  'nor a "token"', 'guardrail_evaluations_evidence_closed_keys');
+
+-- Nor a bare string where an object was expected, which is the shape a reader could not
+-- enumerate the keys of — V022's argument at `audit_events.detail`.
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '"AKIAIOSFODNN7EXAMPLE"'::jsonb)$$,
+  'and evidence is an object, so a reader can enumerate its keys rather than discovering a writer stored a bare string',
+  'guardrail_evaluations_evidence_is_object');
+
+-- --- the half that matters: a credential planted in an *allowed* key ----------------
+--
+-- Acceptance criterion, second half, and the one the whole design turns on: a closed key set
+-- with a free-text field in it is not closed. One assertion per allowed key.
+--
+-- `line` is refused because it is a number, which is the cheapest of the five and the only one
+-- that needs no argument at all.
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"line": "AKIAIOSFODNN7EXAMPLE"}'::jsonb)$$,
+  'a credential planted in evidence.line is refused — a line number is a number, which is a place a secret cannot go',
+  'guardrail_evaluations_evidence_types');
+
+-- The other four are refused by the opaque-token rule: a place and a rule are broken up by
+-- slashes, dots, hyphens, underscores and spaces, and a credential is not.
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"path": "AKIAIOSFODNN7EXAMPLE"}'::jsonb)$$,
+  'a credential planted in evidence.path is refused, although it is a syntactically valid relative path',
+  'guardrail_evaluations_evidence_no_opaque_token');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"glob": "AKIAIOSFODNN7EXAMPLE"}'::jsonb)$$,
+  'a credential planted in evidence.glob is refused',
+  'guardrail_evaluations_evidence_no_opaque_token');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"detail": "matched AKIAIOSFODNN7EXAMPLE in the hunk"}'::jsonb)$$,
+  'a credential planted mid-sentence in evidence.detail is refused — the key whose job is prose is the one a closed key set alone would not have covered',
+  'guardrail_evaluations_evidence_no_opaque_token');
+
+-- Lower-cased, so that the rule_id grammar is not what does the refusing and the opaque-token
+-- rule is asserted on its own.
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"rule_id": "akiaiosfodnn7example"}'::jsonb)$$,
+  'a credential planted in evidence.rule_id is refused even folded to the grammar rule ids are written in',
+  'guardrail_evaluations_evidence_no_opaque_token');
+
+-- Three more formats, in `detail`, because the claim is that the rule holds for a credential
+-- nobody here has heard of: a forge token, a chat platform's bot token and a base64 blob are
+-- all refused by a constraint that names none of them.
+--
+-- Each of the three is invented rather than copied — a fixture that carried a *real* credential
+-- shape closely enough would be a fixture a secret scanner stops the push over, which is the
+-- same lesson this section is about one level up.
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"detail": "found forge_16C7e42F292c6912E7710c838347Ae178B4a on this line"}'::jsonb)$$,
+  'and so is a forge access token', 'guardrail_evaluations_evidence_no_opaque_token');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"detail": "chatbot-2317483920-2317483921-Xd8Ff92kLm0PqRsTuVwXyZaB"}'::jsonb)$$,
+  'and a chat platform''s bot token, hyphenated prefix and all',
+  'guardrail_evaluations_evidence_no_opaque_token');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"detail": "c2VjcmV0LXZhbHVlLWhlcmUtdGhhdC1pcy1sb25n"}'::jsonb)$$,
+  'and a base64 blob — by a constraint that names none of the three, which is what makes it hold for the fourth',
+  'guardrail_evaluations_evidence_no_opaque_token');
+
+-- The rule is about evidence, not about length: the sentences and paths evidence is actually
+-- made of pass it, which is what keeps it from being a constraint somebody works around.
+insert into ouroboros.guardrail_evaluations
+    (run_id, "check", verdict, evidence, policy_ref, evaluated_at, change_set_seq)
+  values ('a8200000-0000-0000-0000-000000000482', 'allowed_paths', 'fail',
+          '{"path": "tests/telemetry/test_frame_order_regression_fixture.c",
+            "glob": "drivers/can/**",
+            "rule_id": "outside-allowed-paths",
+            "detail": "the stage permits drivers/can only, and this file is under tests/"}'::jsonb,
+          14, now() - interval '8 minutes', 1);
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.guardrail_evaluations
+    where run_id = 'a8200000-0000-0000-0000-000000000482'
+      and "check" = 'allowed_paths' and verdict = 'fail'),
+  'a long snake_case path, a glob, a hyphenated rule id and a whole sentence are all accepted — the opaque-token rule describes evidence rather than length');
+
+-- --- the other shapes ---------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict)
+    values ('a8200000-0000-0000-0000-000000000482', 'licence_scan', 'pass')$$,
+  'the card has a sentence for four checks and none for a fifth', 'guardrail_evaluations_check');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'probably_fine')$$,
+  'and four verdicts', 'guardrail_evaluations_verdict');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'pending',
+            '{"path": "drivers/can/telemetry_buf.c"}'::jsonb)$$,
+  'a check that has not answered has nothing to show, so the card cannot draw last time''s offending path under this time''s spinner',
+  'guardrail_evaluations_pending_has_no_evidence');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+            '{"line": 0}'::jsonb)$$,
+  'and a line number counts from 1', 'guardrail_evaluations_evidence_line_positive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, policy_ref)
+    values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'pass', 0)$$,
+  'the policy reference is a published version, numbered from 1 as workflow_versions numbers them',
+  'guardrail_evaluations_policy_ref_positive');
+
+-- --- re-evaluation: the card is four rows and the history is all of them --------------
+--
+-- Acceptance criterion. The secrets check has already failed once above; report the change-set
+-- again and again, and the card must still be four rows showing the latest of each — while the
+-- sequence fail → fixed → pass stays recoverable, which is the sequence somebody asks about.
+insert into ouroboros.guardrail_evaluations
+    (run_id, "check", verdict, evidence, ruleset_version, policy_ref, evaluated_at, change_set_seq)
+  values ('a8200000-0000-0000-0000-000000000482', 'secrets', 'fail',
+          '{"path": "drivers/can/telemetry_buf.c", "line": 214, "rule_id": "aws-access-key-id"}'::jsonb,
+          'v3', 14, now() - interval '7 minutes', 2),
+         ('a8200000-0000-0000-0000-000000000482', 'secrets', 'pass',
+          null, 'v3', 14, now() - interval '5 minutes', 3),
+         ('a8200000-0000-0000-0000-000000000482', 'allowed_paths', 'pass',
+          null, null, 14, now() - interval '4 minutes', 3),
+         ('a8200000-0000-0000-0000-000000000482', 'ci_config', 'pass',
+          null, null, 14, now() - interval '4 minutes', 3);
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.v_run_guardrails_latest
+    where run_id = 'a8200000-0000-0000-0000-000000000482')
+   and (select array_agg("check" || ' ' || verdict order by "check")
+          = array['allowed_paths pass',
+                  'ci_config pass',
+                  'review_required not_applicable',
+                  'secrets pass']
+          from ouroboros.v_run_guardrails_latest
+         where run_id = 'a8200000-0000-0000-0000-000000000482'),
+  'the latest-per-check view returns exactly one row per check under repeated re-evaluation, and it is the latest one');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.guardrail_evaluations
+    where run_id = 'a8200000-0000-0000-0000-000000000482' and "check" = 'secrets')
+   and (select array_agg(verdict order by evaluated_at)
+          = array['fail', 'fail', 'pass', 'pass']
+          from ouroboros.guardrail_evaluations
+         where run_id = 'a8200000-0000-0000-0000-000000000482' and "check" = 'secrets'),
+  'and the history is all of it — fail → fixed → pass is still recoverable behind the four rows the card draws');
+
+-- The view's own read, and why the index carries the tie-breakers it does: a DISTINCT ON that
+-- had to sort would be reading every evaluation of a run to answer a question about its last
+-- four.
+--
+-- `enable_bitmapscan` goes off beside `enable_seqscan` for the second of the two, and only
+-- there: a bitmap scan reaches the same index and throws the *order* away, so the plan sorts
+-- afterwards. On a fixture of a dozen rows that is the cheaper plan and the planner is right
+-- to choose it; what is being asserted is that an ordered path exists at all, which is what a
+-- production-sized table would take.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.v_run_guardrails_latest
+     where run_id = 'a8200000-0000-0000-0000-000000000482'$$,
+  'guardrail_evaluations_run_check_latest_idx');
+
+set local enable_bitmapscan = off;
+
+select pg_temp.must_not_plan(
+  $$select * from ouroboros.v_run_guardrails_latest
+     where run_id = 'a8200000-0000-0000-0000-000000000482'$$,
+  'Sort',
+  'the latest-per-check view walks its index in order instead of sorting a run''s whole evaluation history');
+
+set local enable_bitmapscan = on;
+set local enable_seqscan = on;
+
+-- --- the evaluations are a record, so the application cannot revise one ---------------
+select pg_temp.must_hold(
+  (select has_table_privilege('ouroboros_app', 'ouroboros.guardrail_evaluations', 'select')
+      and has_table_privilege('ouroboros_app', 'ouroboros.guardrail_evaluations', 'insert')
+      and not has_table_privilege('ouroboros_app', 'ouroboros.guardrail_evaluations', 'update')
+      and not has_table_privilege('ouroboros_app', 'ouroboros.guardrail_evaluations', 'delete')),
+  'the application role may record a verdict and read one, and may not revise or remove one — a re-evaluation is a new row, which is what makes the card''s "latest" mean anything');
+
+select pg_temp.must_hold(
+  (select has_table_privilege('ouroboros_app', 'ouroboros.v_run_guardrails_latest', 'select')),
+  'and it can read the card''s view');
+
+-- ===========================================================================
+-- run_controls — decision R6's durable queue
+-- ===========================================================================
+--
+-- The mockup's three buttons, as rows. Every assertion is either the state machine the
+-- database is now responsible for or one of the criteria the machine exists to satisfy.
+
+insert into ouroboros.run_controls
+    (id, run_id, kind, state, requested_by, requested_at, expires_at, idempotency_key)
+  values ('a8300000-0000-0000-0000-00000000000a', 'a8200000-0000-0000-0000-000000000482',
+          'pause', 'pending', 'a8000000-0000-0000-0000-00000000000a',
+          now() - interval '30 seconds', now() + interval '5 minutes', 'pause-482-1');
+
+insert into ouroboros.run_controls
+    (id, run_id, kind, payload, state, requested_by, requested_at, expires_at, idempotency_key)
+  values ('a8300000-0000-0000-0000-00000000000b', 'a8200000-0000-0000-0000-000000000482',
+          'steer', 'prefer a fix inside the ISR; do not touch the test timeouts',
+          'pending', 'a8000000-0000-0000-0000-00000000000a',
+          now() - interval '20 seconds', now() + interval '5 minutes', 'steer-482-1');
+
+-- --- a duplicate submission is a no-op -----------------------------------------------
+--
+-- Acceptance criterion. Two presses of *Pause loop*, or the retry of a request whose response
+-- was lost, are one control. The write is the one a caller makes.
+insert into ouroboros.run_controls
+    (run_id, kind, state, requested_by, expires_at, idempotency_key)
+  values ('a8200000-0000-0000-0000-000000000482', 'pause', 'pending',
+          'a8000000-0000-0000-0000-00000000000a', now() + interval '5 minutes', 'pause-482-1')
+  on conflict (run_id, idempotency_key) do nothing;
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.run_controls
+    where run_id = 'a8200000-0000-0000-0000-000000000482' and idempotency_key = 'pause-482-1'),
+  'a duplicate submission under the same idempotency key is a no-op rather than a second pause');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, expires_at, idempotency_key)
+    values ('a8200000-0000-0000-0000-000000000482', 'pause',
+            now() + interval '5 minutes', 'pause-482-1')$$,
+  'and without the conflict clause it is a refusal rather than a duplicate',
+  'run_controls_run_idempotency_key');
+
+-- The key is scoped to the run, so two loops of one workspace share no namespace.
+insert into ouroboros.run_controls (run_id, kind, expires_at, idempotency_key)
+  values ('a8200000-0000-0000-0000-000000000483', 'pause',
+          now() + interval '5 minutes', 'pause-482-1');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.run_controls where idempotency_key = 'pause-482-1'),
+  'the idempotency key names a submission against one run, so two runs can each carry the same key');
+
+-- --- the payload belongs to one kind --------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, payload, expires_at)
+    values ('a8200000-0000-0000-0000-000000000482', 'pause',
+            'a sentence nothing will ever read', now() + interval '5 minutes')$$,
+  'a pause carries no steering text', 'run_controls_payload_belongs_to_steer');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, expires_at)
+    values ('a8200000-0000-0000-0000-000000000482', 'steer', now() + interval '5 minutes')$$,
+  'and a steer with nothing in it is the button that did nothing', 'run_controls_payload_belongs_to_steer');
+
+-- --- the TTL is a rule about the row, not a convention ---------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, expires_at)
+    values ('a8200000-0000-0000-0000-000000000482', 'abort', now() - interval '1 minute')$$,
+  'a TTL that has already elapsed is not a TTL', 'run_controls_expires_after_request');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind) values
+    ('a8200000-0000-0000-0000-000000000482', 'abort')$$,
+  'and a control with no expiry at all would sit pending for ever, invisible to the sweep that exists for it');
+
+-- --- the clocks agree with the state ----------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, state, expires_at)
+    values ('a8200000-0000-0000-0000-000000000482', 'abort', 'delivered',
+            now() + interval '5 minutes')$$,
+  'a delivered control has been delivered at some instant', 'run_controls_delivery_clock');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, state, delivered_at, expires_at)
+    values ('a8200000-0000-0000-0000-000000000482', 'abort', 'pending', now(),
+            now() + interval '5 minutes')$$,
+  'and a pending one has not', 'run_controls_delivery_clock');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, state, delivered_at, expires_at)
+    values ('a8200000-0000-0000-0000-000000000482', 'abort', 'acked', now(),
+            now() + interval '5 minutes')$$,
+  'an acked control was acked at some instant', 'run_controls_ack_clock');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls
+        (run_id, kind, state, delivered_at, requested_at, expires_at)
+    values ('a8200000-0000-0000-0000-000000000482', 'abort', 'delivered',
+            now() - interval '1 hour', now(), now() + interval '5 minutes')$$,
+  'and nothing is delivered before it was asked for — three instants from three machines, so the skew is refused rather than discovered as a negative duration on the card',
+  'run_controls_clock_order');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, state, ack_detail, expires_at)
+    values ('a8200000-0000-0000-0000-000000000482', 'abort', 'pending',
+            'paused at the top of the loop', now() + interval '5 minutes')$$,
+  'an outcome''s sentence belongs to an outcome, so a pending control cannot have answered',
+  'run_controls_ack_detail_belongs_to_outcome');
+
+-- --- the machine, forwards --------------------------------------------------------------
+--
+-- pending → delivered → acked, with the effect detail the console renders beside
+-- *acknowledged*.
+update ouroboros.run_controls
+   set state = 'delivered', delivered_at = now() - interval '15 seconds'
+ where id = 'a8300000-0000-0000-0000-00000000000a';
+
+update ouroboros.run_controls
+   set state = 'acked', acked_at = now() - interval '10 seconds',
+       ack_detail = 'paused at the top of the loop'
+ where id = 'a8300000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select state = 'acked' and ack_detail = 'paused at the top of the loop'
+     from ouroboros.run_controls where id = 'a8300000-0000-0000-0000-00000000000a'),
+  'a control walks pending → delivered → acked and ends carrying what the executor did about it');
+
+-- The steer takes the other ending the diagram draws from `delivered`.
+update ouroboros.run_controls
+   set state = 'delivered', delivered_at = now() - interval '12 seconds'
+ where id = 'a8300000-0000-0000-0000-00000000000b';
+
+update ouroboros.run_controls
+   set state = 'acked', acked_at = now() - interval '8 seconds',
+       ack_detail = 'steering applied to attempt 2'
+ where id = 'a8300000-0000-0000-0000-00000000000b';
+
+-- --- the machine, everywhere else ---------------------------------------------------------
+--
+-- Acceptance criterion: an illegal transition is refused by the database. `acked → pending` is
+-- the issue's own example; the rest are every other edge the diagram does not draw.
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set state = 'pending', acked_at = null, ack_detail = null
+     where id = 'a8300000-0000-0000-0000-00000000000a'$$,
+  'an acked control cannot go back to pending', 'run_controls_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set ack_detail = 'something else'
+     where id = 'a8300000-0000-0000-0000-00000000000a'$$,
+  'and an acked control cannot be revised at all — a terminal state is terminal',
+  'run_controls_transition');
+
+insert into ouroboros.run_controls
+    (id, run_id, kind, state, requested_by, expires_at, idempotency_key)
+  values ('a8300000-0000-0000-0000-00000000000c', 'a8200000-0000-0000-0000-000000000482',
+          'abort', 'pending', 'a8000000-0000-0000-0000-00000000000a',
+          now() + interval '5 minutes', 'abort-482-1');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set state = 'acked', acked_at = now()
+     where id = 'a8300000-0000-0000-0000-00000000000c'$$,
+  'a pending control cannot be acked without having been delivered', 'run_controls_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set kind = 'pause'
+     where id = 'a8300000-0000-0000-0000-00000000000c'$$,
+  'and what was asked cannot be rewritten — a queue whose entries can be edited in flight is a queue where "abort" was once "pause" and nobody can tell',
+  'run_controls_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set expires_at = now() + interval '1 day'
+     where id = 'a8300000-0000-0000-0000-00000000000c'$$,
+  'nor can its TTL be extended after the fact', 'run_controls_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set idempotency_key = 'abort-482-2'
+     where id = 'a8300000-0000-0000-0000-00000000000c'$$,
+  'nor its idempotency key, which would make a retry a second control', 'run_controls_transition');
+
+-- The two refusals the diagram *does* draw from `pending`, and the third it draws from
+-- `delivered`.
+update ouroboros.run_controls
+   set state = 'rejected', ack_detail = 'the run had already finished'
+ where id = 'a8300000-0000-0000-0000-00000000000c';
+
+select pg_temp.must_hold(
+  (select state = 'rejected' and delivered_at is null and acked_at is null
+     from ouroboros.run_controls where id = 'a8300000-0000-0000-0000-00000000000c'),
+  'a control the service refuses is rejected without ever having been delivered, and says why');
+
+-- --- expiry: sweep-able, and distinguishable from a rejection -----------------------------
+--
+-- Acceptance criterion, both halves. Two controls left to elapse — one never fetched and one
+-- delivered and never answered — because the state diagram draws the edge from both.
+insert into ouroboros.run_controls
+    (id, run_id, kind, state, requested_at, delivered_at, expires_at, idempotency_key)
+  values ('a8300000-0000-0000-0000-00000000000d', 'a8200000-0000-0000-0000-000000000482',
+          'pause', 'pending', now() - interval '10 minutes', null,
+          now() - interval '5 minutes', 'pause-482-stale'),
+         ('a8300000-0000-0000-0000-00000000000e', 'a8200000-0000-0000-0000-000000000482',
+          'abort', 'delivered', now() - interval '10 minutes', now() - interval '9 minutes',
+          now() - interval '5 minutes', 'abort-482-stale');
+
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.run_controls
+     where state in ('pending', 'delivered') and expires_at <= now()$$,
+  'run_controls_expiry_idx');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.run_controls
+     where state in ('pending', 'delivered') and expires_at <= now()$$,
+  'Index Only Scan');
+
+set local enable_seqscan = on;
+
+-- The sweep itself: one statement, no scheduler, and it touches only what has elapsed.
+update ouroboros.run_controls
+   set state = 'expired'
+ where state in ('pending', 'delivered')
+   and expires_at <= now();
+
+select pg_temp.must_hold(
+  (select array_agg(state order by id)
+            = array['expired', 'expired']
+     from ouroboros.run_controls
+    where id in ('a8300000-0000-0000-0000-00000000000d',
+                 'a8300000-0000-0000-0000-00000000000e')),
+  'the TTL sweep moves both an undelivered and an unanswered control to expired, which is the edge the diagram draws from each');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.run_controls
+    where run_id = 'a8200000-0000-0000-0000-000000000482' and state = 'rejected')
+   and (select count(*) = 2 from ouroboros.run_controls
+         where run_id = 'a8200000-0000-0000-0000-000000000482' and state = 'expired')
+   and (select delivered_at is null
+          from ouroboros.run_controls where id = 'a8300000-0000-0000-0000-00000000000d')
+   and (select delivered_at is not null
+          from ouroboros.run_controls where id = 'a8300000-0000-0000-0000-00000000000e'),
+  'an expired control is a different row from a rejected one — the console can say "no response" and "refused" and mean both');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set state = 'delivered', delivered_at = now()
+     where id = 'a8300000-0000-0000-0000-00000000000d'$$,
+  'and an expired control stays expired — the executor that answers late answers nothing',
+  'run_controls_transition');
+
+-- --- the audit trail --------------------------------------------------------------------
+--
+-- Acceptance criterion, both halves: a row for every control write, and no steer text in any
+-- body. The events above are eleven — five requests, three deliveries, two acks, one rejection
+-- and two expiries — and the assertion counts them per control rather than in total, because a
+-- total is the number a missing event hides inside.
+select pg_temp.must_hold(
+  (select array_agg(action order by action)
+            = array['run_control.acked', 'run_control.delivered', 'run_control.requested']
+     from ouroboros.audit_events
+    where subject_type = 'run_control'
+      and subject_id = 'a8300000-0000-0000-0000-00000000000b'),
+  'every write of a control leaves an audit event — requested, delivered and acked for the steer, in AD.4''s shape');
+
+select pg_temp.must_hold(
+  (select count(*) = (select count(*) from ouroboros.run_controls
+                       where run_id = 'a8200000-0000-0000-0000-000000000482')
+     from ouroboros.audit_events
+    where subject_type = 'run_control'
+      and action = 'run_control.requested'
+      and detail ->> 'run_id' = 'a8200000-0000-0000-0000-000000000482'),
+  'and every control of the run has exactly one requested event — counted per control, because a total is the number a missing event hides inside');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.audit_events
+    where subject_type = 'run_control'
+      and subject_id = 'a8300000-0000-0000-0000-00000000000d'
+      and action = 'run_control.expired'),
+  'the sweep is audited too — it is a write, and a rule the schema keeps cannot be forgotten by whoever writes the sweep');
+
+select pg_temp.must_hold(
+  (select actor_id = 'a8000000-0000-0000-0000-00000000000a'
+     from ouroboros.audit_events
+    where subject_id = 'a8300000-0000-0000-0000-00000000000b'
+      and action = 'run_control.requested')
+   and (select actor_id is null
+          from ouroboros.audit_events
+         where subject_id = 'a8300000-0000-0000-0000-00000000000b'
+           and action = 'run_control.acked'),
+  'the requester is the actor of the request and nobody is the actor of the ack — an ack is not a thing a person did, and naming them would be inventing an actor');
+
+select pg_temp.must_hold(
+  (select detail ->> 'kind' = 'steer'
+      and detail ->> 'has_payload' = 'true'
+      and detail ->> 'state' = 'pending'
+     from ouroboros.audit_events
+    where subject_id = 'a8300000-0000-0000-0000-00000000000b'
+      and action = 'run_control.requested'),
+  'the body records that a steer carried text — has_payload, a boolean');
+
+select pg_temp.must_hold(
+  (select bool_and(detail::text not like '%prefer a fix inside the ISR%')
+     from ouroboros.audit_events where subject_type = 'run_control')
+   and (select bool_and(array(select jsonb_object_keys(detail))
+                          <@ array['run_id', 'kind', 'state', 'has_payload'])
+          from ouroboros.audit_events where subject_type = 'run_control'),
+  'and no audit body contains the steering text — not because it is redacted on the way past, but because the object has four fields and none of them is a string a writer could put it in');
+
+-- The definer posture, from the catalogue — the second function in this schema to run as its
+-- owner, and held to everything V046's is: `search_path` pinned with `pg_temp` last, and not
+-- callable by anybody who does not need to call it. The V046 section asserts that these two are
+-- the whole list.
+select pg_temp.must_hold(
+  (select prosecdef
+      and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+      and not has_function_privilege('public', oid, 'execute')
+     from pg_proc
+    where proname = 'run_controls_audit'
+      and pronamespace = 'ouroboros'::regnamespace),
+  'the control audit runs as its owner — which it has to, since the application role holds no grant on runs and a skipped audit row would be the one somebody needed — with its search_path pinned and execute revoked from public');
+
+-- `ack_detail` is left out of the body for the same reason, and that absence is asserted rather
+-- than assumed: it is the executor's own sentence and the one place a well-meaning writer could
+-- echo the steering back.
+select pg_temp.must_hold(
+  (select bool_and(detail ? 'ack_detail' = false)
+     from ouroboros.audit_events where subject_type = 'run_control'),
+  'the executor''s own sentence is not in the audit body either — the one place a well-meaning writer could echo the steering back');
+
+-- An update that moves nothing is not an event. A second sweep is the ordinary way that
+-- happens, and it finds nothing to do because its predicate names the two non-terminal states;
+-- a writer that re-asserted a state a row already holds is the other way, and the trigger's
+-- first line is what keeps that out of the trail.
+insert into ouroboros.run_controls
+    (id, run_id, kind, requested_at, expires_at, idempotency_key)
+  values ('a8300000-0000-0000-0000-00000000000f', 'a8200000-0000-0000-0000-000000000482',
+          'resume', now() - interval '30 seconds',
+          now() + interval '5 minutes', 'resume-482-1');
+
+update ouroboros.run_controls
+   set state = 'delivered', delivered_at = now() - interval '20 seconds'
+ where id = 'a8300000-0000-0000-0000-00000000000f';
+
+update ouroboros.run_controls set state = 'delivered'
+ where id = 'a8300000-0000-0000-0000-00000000000f';
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.audit_events
+    where subject_id = 'a8300000-0000-0000-0000-00000000000f'
+      and action = 'run_control.delivered'),
+  're-asserting a state a control already holds writes no second event — a transition that moved nothing is not one');
+
+update ouroboros.run_controls
+   set state = 'expired'
+ where state in ('pending', 'delivered')
+   and expires_at <= now();
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.audit_events
+    where subject_id = 'a8300000-0000-0000-0000-00000000000d'
+      and action = 'run_control.expired'),
+  'and a second sweep finds nothing to do, because its predicate names the two states a sweep can find work in');
+
+-- --- who asked can be forgotten -------------------------------------------------------------
+--
+-- V022's exception, and the case a blanket "terminal is terminal" would have broken: most
+-- controls are terminal by the time anybody leaves, and a person who once paused a loop has to
+-- be removable.
+delete from ouroboros."user" where "id" = 'a8000000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 6 from ouroboros.run_controls
+    where run_id = 'a8200000-0000-0000-0000-000000000482')
+   and (select count(*) = 0 from ouroboros.run_controls
+         where run_id = 'a8200000-0000-0000-0000-000000000482'
+           and requested_by is not null)
+   and (select state = 'acked' and ack_detail = 'paused at the top of the loop'
+          from ouroboros.run_controls where id = 'a8300000-0000-0000-0000-00000000000a'),
+  'deleting the person who asked erases the attribution and leaves every control standing, terminal ones included — what was asked cannot be rewritten; who asked can be forgotten');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls
+       set requested_by = 'a8000000-0000-0000-0000-00000000000b'
+     where id = 'a8300000-0000-0000-0000-00000000000c'$$,
+  'and the exception is erasure only — an attribution cannot be written back on', 'run_controls_transition');
+
+-- --- the application role's posture -----------------------------------------------------------
+select pg_temp.must_hold(
+  (select has_table_privilege('ouroboros_app', 'ouroboros.run_controls', 'select')
+      and has_table_privilege('ouroboros_app', 'ouroboros.run_controls', 'insert')
+      and has_table_privilege('ouroboros_app', 'ouroboros.run_controls', 'update')
+      and not has_table_privilege('ouroboros_app', 'ouroboros.run_controls', 'delete')),
+  'the application role may submit a control, read one and move it along, and may not remove one — a control that was aborted and then deleted is an abort nobody can find');
+
+-- The transition rule is about the row rather than about the role, which is what makes the
+-- `update` grant above safe: the same refusal holds inside `set role`, and holds for the owner
+-- and for a superuser too.
+set local role ouroboros_app;
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set state = 'pending', acked_at = null, ack_detail = null
+     where id = 'a8300000-0000-0000-0000-00000000000a'$$,
+  'and the state machine binds the application role as it binds the owner — it is a rule about the row, not about who is asking',
+  'run_controls_transition');
+
+reset role;
+
+-- --- the reads, and the indexes under them -------------------------------------------------
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.run_controls
+     where run_id = 'a8200000-0000-0000-0000-000000000482'
+     order by requested_at desc, id desc$$,
+  'run_controls_run_requested_at_idx');
+
+set local enable_seqscan = on;
+
+-- --- the cascades ---------------------------------------------------------------------------
+delete from ouroboros.runs where id = 'a8200000-0000-0000-0000-000000000483';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.run_controls
+    where run_id = 'a8200000-0000-0000-0000-000000000483'),
+  'deleting a run takes its controls with it — a control for a run that no longer exists is not a control');
+
+delete from ouroboros.organization where "id" = 'org-guard';
+
+-- Named by their own id prefix rather than counted globally: a later section's fixtures may
+-- still hold runs of their own.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where id::text like 'a8200000-%')
+   and (select count(*) = 0 from ouroboros.guardrail_evaluations where run_id::text like 'a8200000-%')
+   and (select count(*) = 0 from ouroboros.run_controls where run_id::text like 'a8200000-%')
+   and (select count(*) = 0 from ouroboros.audit_events where organization_id = 'org-guard'),
+  'deleting a workspace takes its runs, every verdict written about them, every control submitted against them and the audit trail of both');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

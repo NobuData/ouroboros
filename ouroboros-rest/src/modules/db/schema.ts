@@ -1390,6 +1390,260 @@ export interface RunCommitsTable {
 }
 
 /**
+ * `guardrail_evaluations.check` — which of the card's four rows a verdict is (V048, decision
+ * **R5**).
+ *
+ * The vocabulary mockup 10's **Guardrails** card draws a sentence for, and `guardrail_evaluations_check`
+ * is what keeps it closed: the card has a line for each of these and none for a fifth.
+ */
+export type GuardrailCheck = "allowed_paths" | "ci_config" | "secrets" | "review_required";
+
+/** The four, in the order the card draws them and the CHECK declares them. */
+export const GUARDRAIL_CHECKS = [
+  "allowed_paths",
+  "ci_config",
+  "secrets",
+  "review_required",
+] as const satisfies readonly GuardrailCheck[];
+
+/**
+ * `guardrail_evaluations.verdict` — what a check decided (V048).
+ *
+ * `not_applicable` is the mockup's `○` — *Human review not required (auto-merge eligible)* —
+ * and is a **third** answer rather than a pass, because *this did not apply to you* and *you
+ * were checked and were fine* are different things to tell somebody. `pending` is a check that
+ * has been scheduled and has not answered, which is what the card draws while a change-set is
+ * being evaluated.
+ */
+export type GuardrailVerdict = "pass" | "fail" | "not_applicable" | "pending";
+
+/** The four, in the order the CHECK declares them. */
+export const GUARDRAIL_VERDICTS = [
+  "pass",
+  "fail",
+  "not_applicable",
+  "pending",
+] as const satisfies readonly GuardrailVerdict[];
+
+/**
+ * `guardrail_evaluations.evidence` — where, and by which rule. **Never what.**
+ *
+ * The one jsonb column in this mirror that is typed rather than `unknown`, and the reason is
+ * the reverse of every other one's: this column's shape is not a convention the database
+ * leaves open, it is a **closed key set enforced by CHECK** (decision **R5**). There is no
+ * `value`, no `match` and no `matched_text`, because a field a secret could be placed in is a
+ * field a secret will one day be placed in — and each key that *is* here is typed and shaped,
+ * so a credential cannot wear one of their names either.
+ *
+ * Widening this interface without widening
+ * `guardrail_evaluations_evidence_closed_keys` produces a type that compiles and a row
+ * PostgreSQL refuses, which is the drift this file exists to prevent — and here the refusal is
+ * the point rather than the accident.
+ */
+export interface GuardrailEvidence {
+  /** The offending file, repository-relative — the same grammar {@link RunFilesTable.path} is held to. */
+  path?: string;
+  /** The line within it, from 1. A number, which is a place a secret cannot go. */
+  line?: number;
+  /** The rule that fired, from the ruleset's own vocabulary — `aws-access-key-id`. */
+  rule_id?: string;
+  /** The allowed-path pattern that decided it — `drivers/can/**`. */
+  glob?: string;
+  /** The sentence a person reads. Bounded, because evidence is a pointer and not a report. */
+  detail?: string;
+}
+
+/**
+ * `ouroboros.guardrail_evaluations` — the Guardrails card's verdicts, with evidence (V048,
+ * [#301](https://github.com/NobuData/ouroboros/issues/301), AO.4, decision **R5**).
+ *
+ * **History, not state.** A run reports its change-set many times and each report re-runs the
+ * four checks, so rows accumulate and {@link RunGuardrailsLatestView} is what the card reads.
+ * The table is append-only to this service by grant — a re-evaluation is a new row, which is
+ * what makes *latest* mean anything and what keeps *fail → fixed → pass* recoverable — so
+ * there is no `Updateable` counterpart to {@link NewGuardrailEvaluation}.
+ *
+ * `check` is the database's own spelling of a reserved word. Kysely quotes identifiers, so it
+ * needs no special handling here; it is named `check` because the issue, the API and the card
+ * all say the word out loud.
+ */
+export interface GuardrailEvaluationsTable {
+  id: Generated<string>;
+  /** The run these checks judged, and the whole of this row's tenancy. Cascades. */
+  run_id: string;
+  check: GuardrailCheck;
+  verdict: GuardrailVerdict;
+  /** Where and by which rule — never what. See {@link GuardrailEvidence}. */
+  evidence: GuardrailEvidence | null;
+  /**
+   * The version of the ruleset that produced this verdict — `v3` for the secrets ruleset.
+   *
+   * What makes a re-run comparable: the same diff under a newer ruleset is the explanation for
+   * a verdict that changed while the code did not. Null where the check has no ruleset of its
+   * own, which {@link GuardrailEvaluationsTable.policy_ref} already versions.
+   */
+  ruleset_version: string | null;
+  /**
+   * The pinned workflow version the policy was read from — the `14` of *standard-fix v14*.
+   *
+   * A deliberate second copy of {@link RunsTable.workflow_version_pin}: a verdict is
+   * answerable for the policy **it applied**, and reading the run's pin at render time would
+   * answer a question about the run when the question was about the evaluation. The slug half
+   * stays on `runs.workflow_tag`, so the card's footer is composed from the two.
+   */
+  policy_ref: number | null;
+  /** When the checks ran, and what the card's *latest* is the max of. */
+  evaluated_at: Generated<Date>;
+  /**
+   * Which report of the change-set was judged.
+   *
+   * Null when the evaluation was not of a numbered report — `review_required` is a policy
+   * question that can be answered before a run has changed a file.
+   */
+  change_set_seq: number | null;
+}
+
+/**
+ * `ouroboros.v_run_guardrails_latest` — the latest verdict per check per run (V048).
+ *
+ * A **view**, and the Guardrails card's read: exactly four rows for a fully evaluated run
+ * however many times its change-set was reported. The rows it passes over stay in
+ * {@link GuardrailEvaluationsTable}, which is the point of the pair.
+ *
+ * Read-only, so every column is a plain type rather than {@link Generated}.
+ */
+export interface RunGuardrailsLatestView {
+  id: string;
+  run_id: string;
+  check: GuardrailCheck;
+  verdict: GuardrailVerdict;
+  evidence: GuardrailEvidence | null;
+  ruleset_version: string | null;
+  policy_ref: number | null;
+  evaluated_at: Date;
+  change_set_seq: number | null;
+}
+
+/**
+ * `run_controls.kind` — which control was asked for (V048, decision **R6**).
+ *
+ * The page head's toggle and red button, and the box under the transcript. AP.4
+ * ([#306](https://github.com/NobuData/ouroboros/issues/306)) gates `abort` behind a typed
+ * confirmation; the row is the record of the decision rather than of the dialog.
+ */
+export type RunControlKind = "pause" | "resume" | "abort" | "steer";
+
+/** The four, in the order the CHECK declares them. */
+export const RUN_CONTROL_KINDS = [
+  "pause",
+  "resume",
+  "abort",
+  "steer",
+] as const satisfies readonly RunControlKind[];
+
+/**
+ * `run_controls.state` — where a control has got to (V048, decision **R6**).
+ *
+ * What lets the console say *acknowledged*, *sent* and *no response* and mean all three
+ * instead of rendering them as one success. The machine is forward-only and its terminal
+ * states are immutable, enforced by `run_controls_transition()` rather than by this service:
+ *
+ * ```
+ * pending   → delivered | expired | rejected
+ * delivered → acked     | expired
+ * ```
+ */
+export type RunControlState = "pending" | "delivered" | "acked" | "expired" | "rejected";
+
+/** The five, in the order the CHECK declares them. */
+export const RUN_CONTROL_STATES = [
+  "pending",
+  "delivered",
+  "acked",
+  "expired",
+  "rejected",
+] as const satisfies readonly RunControlState[];
+
+/**
+ * `ouroboros.run_controls` — the durable, ack-tracked control queue (V048,
+ * [#301](https://github.com/NobuData/ouroboros/issues/301), AO.4, decision **R6**).
+ *
+ * *Abort* is needed exactly when an executor is wedged, which is when a synchronous RPC fails
+ * — so a control is a row rather than a call. **A duplicate submission is a no-op**: a writer
+ * supplies an idempotency key and conflicts on it, so two presses of *Pause loop*, or the
+ * retry of a request whose response was lost, are one control.
+ *
+ * ```ts
+ * await db
+ *   .insertInto("run_controls")
+ *   .values(submitted)
+ *   .onConflict((oc) => oc.columns(["run_id", "idempotency_key"]).doNothing())
+ *   .execute();
+ * ```
+ *
+ * **Every write of this table lands in `audit_events`,** written by the database rather than
+ * by `AuditService` — see the migration's header for why that amends V022's rule — and the
+ * body cannot contain {@link RunControlsTable.payload}, because it has four fields and none of
+ * them is a string the steer text could be put in.
+ *
+ * An `update` is how a control moves along and is the only reason this table has one. What it
+ * may move is `state`, `delivered_at`, `acked_at` and `ack_detail`; everything that describes
+ * what was *asked* is fixed at insert, and a terminal row refuses every update at all.
+ */
+export interface RunControlsTable {
+  id: Generated<string>;
+  /** The run being controlled, and the whole of this row's tenancy. Cascades. */
+  run_id: string;
+  kind: RunControlKind;
+  /**
+   * The steering text, and null for every other kind — held to that by
+   * `run_controls_payload_belongs_to_steer`.
+   *
+   * Structurally absent from the audit body: what is recorded there is `has_payload`, a
+   * boolean.
+   */
+  payload: string | null;
+  /** Where the control has got to. Every row starts at `pending`. */
+  state: Generated<RunControlState>;
+  /**
+   * Who asked — `"user".id`, `on delete set null`.
+   *
+   * Null for a control nobody asked for, and set-null rather than cascade because removing a
+   * person must not remove the record of the run they aborted.
+   */
+  requested_by: string | null;
+  requested_at: Generated<Date>;
+  /** When the control reached the executor. Set for `delivered` and `acked`, null for `pending` and `rejected`. */
+  delivered_at: Date | null;
+  /** When the executor answered. Set for exactly the `acked` rows. */
+  acked_at: Date | null;
+  /**
+   * The TTL, set at insert.
+   *
+   * Required — and deliberately not defaulted in the database: how long a control is worth
+   * delivering is this service's policy and differs by kind, but a control with no expiry
+   * could sit `pending` for ever and be invisible to the sweep, which is the failure the TTL
+   * exists for.
+   */
+  expires_at: Date;
+  /**
+   * What the ack said — *"steering applied to attempt 2"* — or why the control was refused.
+   *
+   * The executor's own sentence, and therefore the one field of this row the audit body
+   * deliberately does not carry.
+   */
+  ack_detail: string | null;
+  /**
+   * The caller's name for this submission.
+   *
+   * `Generated` because the database supplies a fresh uuid when a writer does not: *"I did not
+   * say this was a retry"* is a key that collides with nothing, where a null would be a key
+   * that guarantees nothing at all.
+   */
+  idempotency_key: Generated<string>;
+}
+
+/**
  * `queue_items.effort` — the five size chips mockup 02 renders (V009, decision F9).
  *
  * Stored lower-case, which is the class name the UI stamps, and held to these five by
@@ -3593,6 +3847,13 @@ export interface WorkspaceSettingsEffectiveView {
  * {@link RunWithStage} and {@link Run} are the same shape, which `schema.spec.ts` asserts at
  * the type level so the move stays a one-word change. Writes still go to `runs`.
  *
+ * **`v_run_guardrails_latest` (V048, [#301](https://github.com/NobuData/ouroboros/issues/301))
+ * is the eighth**, and it is here for the reason this list exists rather than in spite of it:
+ * it is a `DISTINCT ON` over `guardrail_evaluations`, so PostgreSQL would refuse a write
+ * through it — and a writer that reached for it would be trying to *replace* a verdict, which
+ * is the one thing that table is shaped to prevent. A re-evaluation is a new row in
+ * `guardrail_evaluations`, which {@link Database} also declares.
+ *
  * `schema.spec.ts` holds this list to the view interfaces above; `db.integration-spec.ts`
  * compares their columns against `information_schema` exactly as it does a table's, because a
  * view that lost a column breaks a query the same way a table that lost one does.
@@ -3605,6 +3866,7 @@ export const READ_ONLY_VIEWS = [
   "run_stage_current",
   "runs_with_stage",
   "run_events_jsonl",
+  "v_run_guardrails_latest",
 ] as const;
 
 /**
@@ -4000,6 +4262,8 @@ export interface Database {
   run_events: RunEventsTable;
   run_files: RunFilesTable;
   run_commits: RunCommitsTable;
+  guardrail_evaluations: GuardrailEvaluationsTable;
+  run_controls: RunControlsTable;
   queue_items: QueueItemsTable;
   token_usage: TokenUsageTable;
   workspace_settings: WorkspaceSettingsTable;
@@ -4044,6 +4308,7 @@ export interface Database {
   run_stage_current: RunStageCurrentView;
   runs_with_stage: RunsWithStageView;
   run_events_jsonl: RunEventsJsonlView;
+  v_run_guardrails_latest: RunGuardrailsLatestView;
 }
 
 /**
@@ -4198,6 +4463,31 @@ export const TABLE_COLUMNS = {
     "created_at",
   ],
   run_commits: ["id", "run_id", "sha", "message", "seq", "committed_at", "reported_at"],
+  guardrail_evaluations: [
+    "id",
+    "run_id",
+    "check",
+    "verdict",
+    "evidence",
+    "ruleset_version",
+    "policy_ref",
+    "evaluated_at",
+    "change_set_seq",
+  ],
+  run_controls: [
+    "id",
+    "run_id",
+    "kind",
+    "payload",
+    "state",
+    "requested_by",
+    "requested_at",
+    "delivered_at",
+    "acked_at",
+    "expires_at",
+    "ack_detail",
+    "idempotency_key",
+  ],
   queue_items: [
     "id",
     "organization_id",
@@ -4730,6 +5020,17 @@ export const TABLE_COLUMNS = {
     "reserved_build_job_id",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
+  v_run_guardrails_latest: [
+    "id",
+    "run_id",
+    "check",
+    "verdict",
+    "evidence",
+    "ruleset_version",
+    "policy_ref",
+    "evaluated_at",
+    "change_set_seq",
+  ],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
 
 /** Every table name, for a caller that wants to iterate them. */
@@ -4834,6 +5135,34 @@ export type NewRunFile = Insertable<RunFilesTable>;
 export type RunCommit = Selectable<RunCommitsTable>;
 /** The columns an `insert` into `ouroboros.run_commits` may carry. */
 export type NewRunCommit = Insertable<RunCommitsTable>;
+
+/** A guardrail verdict, as a `select` returns it. */
+export type GuardrailEvaluation = Selectable<GuardrailEvaluationsTable>;
+/**
+ * The columns an `insert` into `ouroboros.guardrail_evaluations` may carry.
+ *
+ * There is no `Updateable` counterpart, and that is not merely a convention this service
+ * keeps: the application role holds `select` and `insert` on the table and nothing else, so a
+ * revision is refused by grant. A re-evaluation is a new row, which is what makes
+ * {@link RunGuardrailsLatest}'s *latest* mean anything.
+ */
+export type NewGuardrailEvaluation = Insertable<GuardrailEvaluationsTable>;
+
+/** One row of the Guardrails card — a check's latest verdict, as `v_run_guardrails_latest` derives it. */
+export type RunGuardrailsLatest = Selectable<RunGuardrailsLatestView>;
+
+/** A control, as a `select` returns it. */
+export type RunControl = Selectable<RunControlsTable>;
+/**
+ * The columns an `insert` into `ouroboros.run_controls` may carry — the submission, which
+ * conflicts on `(run_id, idempotency_key)` so a duplicate is a no-op.
+ *
+ * Unlike the two `New…` shapes above it, this one has a write path after it: a control moves
+ * through its states by `update`. What may move is `state`, `delivered_at`, `acked_at` and
+ * `ack_detail`, and the database is what says so — everything describing what was *asked* is
+ * fixed at insert, and a terminal row refuses every update.
+ */
+export type NewRunControl = Insertable<RunControlsTable>;
 
 /** A row of `ouroboros.queue_items`, as a `select` returns it. */
 export type QueueItem = Selectable<QueueItemsTable>;
