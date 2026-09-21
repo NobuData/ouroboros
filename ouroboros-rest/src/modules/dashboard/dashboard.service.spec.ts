@@ -95,6 +95,8 @@ const RUN: Run = {
   event_cap: 20000,
   event_byte_cap: "33554432",
   events_elided_at: null,
+  merge_strategy: "squash",
+  reserved_build_job_id: null,
 };
 
 const QUEUED: QueueItem = {

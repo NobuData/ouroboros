@@ -14481,6 +14481,527 @@ select pg_temp.must_hold(
   'deleting a workspace takes its runs and every entry of every transcript with them');
 
 -- ===========================================================================
+-- V047 — the Changes card's tables, the merge snapshot and the farm link (#300)
+-- ===========================================================================
+--
+-- Mockup 10's right-hand column, and the asymmetry the issue is about: the *Changes so far*
+-- card gets two tables of its own, and the *Resources* card gets one foreign key and nothing
+-- else, because every number it renders is already owned by a system that can be read
+-- (decision **R8**).
+--
+-- Everything below is written against the card the mockup actually draws — three files at
+-- `+38 −12`, `+9 −3` and `+21 −0`, two commits, `will squash on merge`, and `forge-02
+-- reserved` — so a rule is asserted against the rows it exists for rather than against a
+-- fixture invented for the rule.
+--
+-- Its own fixtures, and a farm under them: the reservation is a foreign key onto `build_jobs`,
+-- and a link nothing is linked to is a link nobody has watched work. Two workspaces, because
+-- the composite reference's whole claim is that a run cannot reserve another workspace's
+-- build.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-changes',  'Change Works', 'change-works', now()),
+  ('org-changes2', 'Change Two',   'change-two',   now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a7000000-0000-0000-0000-00000000000a', 'org-changes',  'change-works', true),
+  ('a7000000-0000-0000-0000-00000000000b', 'org-changes2', 'change-two',   true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a70f0000-0000-0000-0000-00000000000a', 'a7000000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a70f0000-0000-0000-0000-00000000000b', 'a7000000-0000-0000-0000-00000000000b',
+   'other-firmware',  true, 'main');
+
+-- `#482` is the console's own run, pinned to `standard-fix v14` — whose terminal node is
+-- `open_pr_automerge` with `merge_method: "squash"`, which is where the card's tag comes from.
+-- `#483` is pinned to a workflow that ends in `needs_review`: no pull request, so no strategy
+-- to snapshot and no tag to render. Both cases are the point of the column being nullable.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at,
+     branch_name, merge_strategy)
+  values ('a7100000-0000-0000-0000-000000000482', 'org-changes',
+          'a70f0000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, now() - interval '13 minutes',
+          'loop/482-canbus-flake', 'squash'),
+         ('a7100000-0000-0000-0000-000000000483', 'org-changes',
+          'a70f0000-0000-0000-0000-00000000000a', 483,
+          'Bump the vendored Zephyr SDK', 'deps-refresh', 'claude-fable-5',
+          'coding', 'Queued', 0, 6, now() - interval '3 minutes',
+          null, null),
+         ('a7100000-0000-0000-0000-000000000484', 'org-changes2',
+          'a70f0000-0000-0000-0000-00000000000b', 484,
+          'A run of another workspace', 'standard-fix', 'claude-fable-5',
+          'coding', 'Queued', 0, 6, now() - interval '2 minutes',
+          null, null);
+
+-- The farm the reservation points into. One pool, one runner called `forge-02` — the name the
+-- Resources card prints — and one queued job on it, in each workspace.
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('a7200000-0000-0000-0000-00000000000a', 'org-changes',  'pool-a', 'container', 'img:0.17', '["firmware"]'),
+  ('a7200000-0000-0000-0000-00000000000b', 'org-changes2', 'pool-a', 'container', 'img:0.17', '[]');
+
+insert into ouroboros.runners
+    (id, organization_id, pool_id, name, arch, status, desired_state, last_seen_at,
+     security_mode, cert_serial, telemetry, enrolled_at)
+  values ('a7300000-0000-0000-0000-00000000000a', 'org-changes',
+          'a7200000-0000-0000-0000-00000000000a', 'forge-02', 'linux/arm64',
+          'online', 'active', now() - interval '5 seconds', 'mtls', '4a730001',
+          '{"queue_depth": 1}', now() - interval '30 days'),
+         ('a7300000-0000-0000-0000-00000000000b', 'org-changes2',
+          'a7200000-0000-0000-0000-00000000000b', 'forge-02', 'linux/arm64',
+          'online', 'active', now() - interval '5 seconds', 'mtls', '4a730002',
+          '{}', now() - interval '30 days');
+
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, runner_id, github_repo_id, git_ref,
+     label, title, executor, image, command, status, queued_at)
+  values ('a7400000-0000-0000-0000-00000000000a', 'org-changes', 921,
+          'a7200000-0000-0000-0000-00000000000a', 'a7300000-0000-0000-0000-00000000000a',
+          'a70f0000-0000-0000-0000-00000000000a', 'refs/heads/loop/482-canbus-flake',
+          'zephyr build', 'Fix flaky CAN-bus telemetry test', 'container', 'img:0.17',
+          'west build', 'queued', now() - interval '40 seconds'),
+         ('a7400000-0000-0000-0000-00000000000b', 'org-changes2', 922,
+          'a7200000-0000-0000-0000-00000000000b', 'a7300000-0000-0000-0000-00000000000b',
+          'a70f0000-0000-0000-0000-00000000000b', 'refs/heads/main',
+          'zephyr build', 'Another workspace''s build', 'container', 'img:0.17',
+          'west build', 'queued', now() - interval '40 seconds');
+
+-- --- the card, in full -----------------------------------------------------------
+--
+-- Acceptance criterion: the mockup's card contents are representable. Three files with their
+-- counts, two commits, the squash tag, the `forge-02` reservation. The statement below is the
+-- **upsert** this migration's header specifies, not a plain insert, because the write path the
+-- criterion is about is the one an executor repeats.
+insert into ouroboros.run_files
+    (run_id, path, additions, deletions, status, last_reported_at)
+  values ('a7100000-0000-0000-0000-000000000482', 'drivers/can/telemetry_buf.c',
+          38, 12, 'modified', now() - interval '20 seconds'),
+         ('a7100000-0000-0000-0000-000000000482', 'drivers/can/isr_fastpath.c',
+          9, 3, 'modified', now() - interval '20 seconds'),
+         ('a7100000-0000-0000-0000-000000000482', 'tests/telemetry/test_frame_order.c',
+          21, 0, 'added', now() - interval '20 seconds')
+  on conflict (run_id, path) do update
+     set additions        = excluded.additions,
+         deletions        = excluded.deletions,
+         status           = excluded.status,
+         last_reported_at = excluded.last_reported_at;
+
+insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+  values ('a7100000-0000-0000-0000-000000000482', 'a41c9e2',
+          'can: replace telemetry k_fifo with k_msgq + frame seq', 2,
+          now() - interval '3 minutes'),
+         ('a7100000-0000-0000-0000-000000000482', '7f03b8d',
+          'can: assign frame seq in ISR before enqueue', 1,
+          now() - interval '6 minutes')
+  on conflict do nothing;
+
+update ouroboros.runs
+   set reserved_build_job_id = 'a7400000-0000-0000-0000-00000000000a'
+ where id = 'a7100000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.run_files
+    where run_id = 'a7100000-0000-0000-0000-000000000482')
+   and (select array_agg(path || ' +' || additions || ' -' || deletions order by path)
+          = array['drivers/can/isr_fastpath.c +9 -3',
+                  'drivers/can/telemetry_buf.c +38 -12',
+                  'tests/telemetry/test_frame_order.c +21 -0']
+          from ouroboros.run_files
+         where run_id = 'a7100000-0000-0000-0000-000000000482')
+   and (select array_agg(sha || ' ' || message order by seq)
+          = array['7f03b8d can: assign frame seq in ISR before enqueue',
+                  'a41c9e2 can: replace telemetry k_fifo with k_msgq + frame seq']
+          from ouroboros.run_commits
+         where run_id = 'a7100000-0000-0000-0000-000000000482')
+   and (select merge_strategy = 'squash' from ouroboros.runs
+         where id = 'a7100000-0000-0000-0000-000000000482'),
+  'mockup 10''s Changes card is representable in full — three files with their counts, two commits in the order it draws them, and the will-squash-on-merge tag');
+
+-- And the fourth of its contents, which is a join rather than a column: the Resources card's
+-- farm row is the reserved job's runner, named.
+select pg_temp.must_hold(
+  (select runner.name = 'forge-02'
+     from ouroboros.runs run
+     join ouroboros.build_jobs job on job.id = run.reserved_build_job_id
+     join ouroboros.runners runner on runner.id = job.runner_id
+    where run.id = 'a7100000-0000-0000-0000-000000000482'),
+  'the Resources card''s "forge-02 reserved" reads through the reservation to the farm''s own rows, rather than from a name copied onto the run');
+
+-- --- the card's totals are arithmetic, not columns ---------------------------------
+--
+-- `3 files`, and the `+68 −15` a reader adds up. Both are computed here from the same three
+-- rows, which is the whole of decision R8's claim about this card.
+select pg_temp.must_hold(
+  (select count(*) = 3 and sum(additions) = 68 and sum(deletions) = 15
+     from ouroboros.run_files
+    where run_id = 'a7100000-0000-0000-0000-000000000482'),
+  'the card''s "3 files" and its totals are count() and sum() over run_files, computed at read time');
+
+-- --- a report replaces, and never accumulates --------------------------------------
+--
+-- Acceptance criterion, and the failure mode the whole table is shaped against: an executor
+-- reports the change-set again, unchanged. The counts must be what they were. Run twice, so
+-- that a `+ excluded` upsert would read 114/36 rather than merely 76/24 — a doubling is the
+-- kind of number somebody explains away, and a tripling is not.
+insert into ouroboros.run_files
+    (run_id, path, additions, deletions, status, last_reported_at)
+  values ('a7100000-0000-0000-0000-000000000482', 'drivers/can/telemetry_buf.c',
+          38, 12, 'modified', now() - interval '10 seconds')
+  on conflict (run_id, path) do update
+     set additions        = excluded.additions,
+         deletions        = excluded.deletions,
+         status           = excluded.status,
+         last_reported_at = excluded.last_reported_at;
+
+insert into ouroboros.run_files
+    (run_id, path, additions, deletions, status, last_reported_at)
+  values ('a7100000-0000-0000-0000-000000000482', 'drivers/can/telemetry_buf.c',
+          38, 12, 'modified', now() - interval '5 seconds')
+  on conflict (run_id, path) do update
+     set additions        = excluded.additions,
+         deletions        = excluded.deletions,
+         status           = excluded.status,
+         last_reported_at = excluded.last_reported_at;
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.run_files
+    where run_id = 'a7100000-0000-0000-0000-000000000482'
+      and path = 'drivers/can/telemetry_buf.c')
+   and (select additions = 38 and deletions = 12 from ouroboros.run_files
+         where run_id = 'a7100000-0000-0000-0000-000000000482'
+           and path = 'drivers/can/telemetry_buf.c')
+   and (select count(*) = 3 and sum(additions) = 68 and sum(deletions) = 15
+          from ouroboros.run_files
+         where run_id = 'a7100000-0000-0000-0000-000000000482'),
+  'reporting the same file three times leaves one row carrying +38 -12 — the counts state where the file stands and do not accumulate across reports');
+
+-- The other half of "cumulative": the file keeps growing and the row says where it now is.
+insert into ouroboros.run_files
+    (run_id, path, additions, deletions, status, last_reported_at)
+  values ('a7100000-0000-0000-0000-000000000482', 'drivers/can/telemetry_buf.c',
+          41, 14, 'modified', now())
+  on conflict (run_id, path) do update
+     set additions        = excluded.additions,
+         deletions        = excluded.deletions,
+         status           = excluded.status,
+         last_reported_at = excluded.last_reported_at;
+
+select pg_temp.must_hold(
+  (select additions = 41 and deletions = 14 from ouroboros.run_files
+    where run_id = 'a7100000-0000-0000-0000-000000000482'
+      and path = 'drivers/can/telemetry_buf.c'),
+  'and a later report replaces the counts with the file''s new state');
+
+-- Restored, so the rest of this section reads the card the mockup draws.
+update ouroboros.run_files set additions = 38, deletions = 12
+ where run_id = 'a7100000-0000-0000-0000-000000000482'
+   and path = 'drivers/can/telemetry_buf.c';
+
+-- The key under the upsert. Without it the replacement above would be a second row rather
+-- than a refusal, and the card would print the same file twice.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_files (run_id, path, additions, deletions, status)
+    values ('a7100000-0000-0000-0000-000000000482', 'drivers/can/telemetry_buf.c',
+            1, 1, 'modified')$$,
+  'a file appears once in a run''s change-set', 'run_files_run_path_key');
+
+-- Two runs may of course change the same file, which is what makes the key a pair.
+insert into ouroboros.run_files (run_id, path, additions, deletions, status)
+  values ('a7100000-0000-0000-0000-000000000483', 'drivers/can/telemetry_buf.c',
+          2, 0, 'modified');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.run_files
+    where path = 'drivers/can/telemetry_buf.c'),
+  'and two runs may each carry their own row for the same path, because the key is the pair');
+
+-- --- re-reporting a commit is a no-op -----------------------------------------------
+--
+-- Acceptance criterion. A commit is immutable, so the redelivered report writes nothing —
+-- and the statement is the untargeted `on conflict do nothing` this migration's header
+-- specifies, because the row collides on both of the table's unique keys and a target names
+-- only one of them.
+insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+  values ('a7100000-0000-0000-0000-000000000482', 'a41c9e2',
+          'can: replace telemetry k_fifo with k_msgq + frame seq', 2,
+          now() - interval '3 minutes'),
+         ('a7100000-0000-0000-0000-000000000482', '7f03b8d',
+          'can: assign frame seq in ISR before enqueue', 1,
+          now() - interval '6 minutes')
+  on conflict do nothing;
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.run_commits
+    where run_id = 'a7100000-0000-0000-0000-000000000482'),
+  'a redelivered commit report adds nothing — the card still draws two commits');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+    values ('a7100000-0000-0000-0000-000000000482', 'a41c9e2',
+            'a different message for the same commit', 9, now())$$,
+  'one row per commit per run', 'run_commits_run_sha_key');
+
+-- And the position is a commit's own: a second commit cannot take one that is taken, so
+-- "ordered" is a property of the rows rather than of whoever selects them.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+    values ('a7100000-0000-0000-0000-000000000482', 'bb17c04',
+            'can: a third commit claiming a taken position', 2, now())$$,
+  'two commits cannot claim one position in a run''s list', 'run_commits_run_seq_key');
+
+-- --- the shapes a report is held to --------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+    values ('a7100000-0000-0000-0000-000000000482', 'A41C9E2',
+            'can: the same commit, shouted', 3, now())$$,
+  'a sha is lower-case hex, so one commit cannot become two rows by case',
+  'run_commits_sha_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+    values ('a7100000-0000-0000-0000-000000000482', 'a41c9',
+            'can: an abbreviation git would not print', 3, now())$$,
+  'a sha is at least the seven characters the card prints', 'run_commits_sha_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+    values ('a7100000-0000-0000-0000-000000000482', 'bb17c04', '   ', 3, now())$$,
+  'a commit says something — the card captions its sha with it',
+  'run_commits_message_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+    values ('a7100000-0000-0000-0000-000000000482', 'bb17c04', 'can: nowhere', 0, now())$$,
+  'a commit''s position counts from 1', 'run_commits_seq_positive');
+
+-- A whole forty-character sha is as welcome as the abbreviation, and renders as the same
+-- seven-character chip — which is why the column stores what was reported rather than
+-- truncating it.
+insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+  values ('a7100000-0000-0000-0000-000000000483',
+          'bb17c04ff2e1a0d4c5b6e7f8091a2b3c4d5e6f70',
+          'deps: bump the vendored Zephyr SDK to 0.17.2', 1, now());
+
+select pg_temp.must_hold(
+  (select length(sha) = 40 and left(sha, 7) = 'bb17c04' from ouroboros.run_commits
+    where run_id = 'a7100000-0000-0000-0000-000000000483'),
+  'a whole sha is stored whole, and the chip is its first seven characters');
+
+-- --- a path is a path in the repository ------------------------------------------------
+--
+-- The last two matter past tidiness: AO.4 (#301) matches the pinned workflow's allowed-path
+-- rules against this column, and a rule written for `drivers/` is not a rule anybody wrote
+-- for `/drivers/` or for `app/../drivers/`.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_files (run_id, path, additions, deletions, status)
+    values ('a7100000-0000-0000-0000-000000000483', '   ', 1, 0, 'modified')$$,
+  'a path is a path or nothing, never whitespace', 'run_files_path_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_files (run_id, path, additions, deletions, status)
+    values ('a7100000-0000-0000-0000-000000000483', ' drivers/can/x.c', 1, 0, 'modified')$$,
+  'a path carries no surrounding whitespace, so two spellings cannot be two rows',
+  'run_files_path_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_files (run_id, path, additions, deletions, status)
+    values ('a7100000-0000-0000-0000-000000000483', '/etc/shadow', 1, 0, 'modified')$$,
+  'a reported path is relative to the repository root', 'run_files_path_is_relative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_files (run_id, path, additions, deletions, status)
+    values ('a7100000-0000-0000-0000-000000000483', 'app/../../etc/shadow', 1, 0, 'modified')$$,
+  'a reported path climbs out of nothing — an allowed-path rule cannot be written against a segment that moves',
+  'run_files_path_is_relative');
+
+-- --- the counts and the words agree ------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.run_files set additions = -1
+    where run_id = 'a7100000-0000-0000-0000-000000000482'
+      and path = 'drivers/can/isr_fastpath.c'$$,
+  'a diff does not add a negative number of lines', 'run_files_counts_non_negative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_files set status = 'touched'
+    where run_id = 'a7100000-0000-0000-0000-000000000482'
+      and path = 'drivers/can/isr_fastpath.c'$$,
+  'run_files.status is one of git''s four words', 'run_files_status');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_files set status = 'added'
+    where run_id = 'a7100000-0000-0000-0000-000000000482'
+      and path = 'drivers/can/telemetry_buf.c'$$,
+  'a file that did not exist before this run has no lines to have removed',
+  'run_files_added_removes_nothing');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_files set status = 'deleted'
+    where run_id = 'a7100000-0000-0000-0000-000000000482'
+      and path = 'tests/telemetry/test_frame_order.c'$$,
+  'a file that does not exist after this run has no lines to have added',
+  'run_files_deleted_adds_nothing');
+
+-- A rename is the one status that legitimately carries both, which is why the two rules above
+-- name the two statuses they name and not "a status that is not modified".
+insert into ouroboros.run_files (run_id, path, additions, deletions, status)
+  values ('a7100000-0000-0000-0000-000000000483', 'drivers/can/frame_seq.c',
+          7, 4, 'renamed');
+
+select pg_temp.must_hold(
+  (select additions = 7 and deletions = 4 from ouroboros.run_files
+    where run_id = 'a7100000-0000-0000-0000-000000000483'
+      and path = 'drivers/can/frame_seq.c'),
+  'a renamed file may carry both counts — a rename that also edits is one report, not two');
+
+-- --- the merge-strategy snapshot -----------------------------------------------------------
+--
+-- The tag's word, in the DSL's own vocabulary (§4.5). Null is a pinned workflow that opens no
+-- pull request — `back_to_queue`, `needs_review` — and the card then renders no tag rather
+-- than a default one, which is the same honesty the em-dash rule states everywhere else.
+select pg_temp.must_hold(
+  (select merge_strategy is null from ouroboros.runs
+    where id = 'a7100000-0000-0000-0000-000000000483'),
+  'a run whose pinned workflow opens no pull request carries no merge strategy, and the card draws no tag');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set merge_strategy = 'fast-forward'
+    where id = 'a7100000-0000-0000-0000-000000000483'$$,
+  'the merge strategy is one of the DSL''s three merge methods', 'runs_merge_strategy');
+
+-- --- the reservation is the farm's, and it is this workspace's --------------------------
+--
+-- Acceptance criterion: nullable, and its absence is an omitted row rather than a placeholder.
+select pg_temp.must_hold(
+  (select reserved_build_job_id is null from ouroboros.runs
+    where id = 'a7100000-0000-0000-0000-000000000483'),
+  'a run that has reserved nothing carries null — the schema does not force a fake reservation');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set reserved_build_job_id = 'a7400000-0000-0000-0000-00000000000b'
+    where id = 'a7100000-0000-0000-0000-000000000482'$$,
+  'a run cannot reserve another workspace''s build job — the reference carries organization_id',
+  'runs_reserved_build_job_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs
+       set reserved_build_job_id = 'a7400000-0000-0000-0000-0000000000ff'
+     where id = 'a7100000-0000-0000-0000-000000000482'$$,
+  'and it cannot reserve a build job that does not exist', 'runs_reserved_build_job_fk');
+
+-- Deleting the job **releases** the reservation rather than deleting the run, which is what
+-- `on delete set null (reserved_build_job_id)` buys and what an unqualified SET NULL could not
+-- have done: it would have tried to null organization_id too, and the delete would have failed.
+delete from ouroboros.build_jobs where id = 'a7400000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runs
+    where id = 'a7100000-0000-0000-0000-000000000482')
+   and (select reserved_build_job_id is null and organization_id = 'org-changes'
+          from ouroboros.runs where id = 'a7100000-0000-0000-0000-000000000482'),
+  'deleting a reserved build job releases the reservation and leaves the run — and its workspace — alone');
+
+select pg_temp.must_hold(
+  (select pg_get_indexdef(oid)
+            like '%(reserved_build_job_id, organization_id) WHERE (reserved_build_job_id IS NOT NULL)'
+     from pg_class where relname = 'runs_reserved_build_job_idx'),
+  'the release above goes through a partial index rather than a scan of every run in the installation');
+
+-- --- no stored aggregate went in with them -------------------------------------------------
+--
+-- Acceptance criterion, and decision **R8** asked of the catalogue rather than of a reviewer.
+-- Every name below is a counter somebody could reasonably add and nobody should: the first
+-- four are `sum()`, `sum()`, `count()` and `count()` over the two tables above, and the rest
+-- belong to `token_usage` (#66), to a route's cost cap (#194), to the stage's DSL budget
+-- (`run_stages.token_budget`) and to the stage clock. A second copy of any of them is a number
+-- that will one day disagree with the first, and then somebody has to work out which is lying.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros'
+      and table_name = 'runs'
+      and column_name in ('total_additions', 'total_deletions', 'file_count', 'files_changed',
+                          'commit_count', 'change_count',
+                          'tokens_used', 'total_tokens', 'token_budget',
+                          'cost_cents', 'total_cost_cents', 'cost_cap_cents',
+                          'wall_clock_seconds', 'elapsed_seconds', 'duration_seconds',
+                          'reserved_runner_name')),
+  'runs carries no stored aggregate for the Changes or Resources cards (#300, decision R8) — every one of them is computed from the system that owns it');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros'
+      and table_name in ('run_files', 'run_commits')
+      and column_name in ('total_additions', 'total_deletions', 'file_count', 'commit_count')),
+  'and neither do the two tables themselves — a per-row copy of a total is the same mistake one table further in');
+
+-- --- the two reads, and the indexes under them -----------------------------------------------
+--
+-- Not a plan assertion over a handful of fixture rows: the catalogue is asked whether the
+-- unique keys the card reads through exist, with those columns in that order. Both lead with
+-- `run_id`, so both are also the index the `runs` cascade deletes through — which is why
+-- neither table has a second index on `run_id` alone.
+select pg_temp.must_hold(
+  (select pg_get_indexdef(oid) like '%(run_id, path)'
+     from pg_class where relname = 'run_files_run_path_key')
+   and (select pg_get_indexdef(oid) like '%(run_id, seq)'
+          from pg_class where relname = 'run_commits_run_seq_key')
+   and (select pg_get_indexdef(oid) like '%(run_id, sha)'
+          from pg_class where relname = 'run_commits_run_sha_key'),
+  'the Changes card''s two reads are its tables'' own unique keys — (run_id, path) and (run_id, seq) — and a commit''s identity is the third');
+
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.run_files
+     where run_id = 'a7100000-0000-0000-0000-000000000482'
+     order by path$$,
+  'run_files_run_path_key');
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.run_commits
+     where run_id = 'a7100000-0000-0000-0000-000000000482'
+     order by seq$$,
+  'run_commits_run_seq_key');
+
+set local enable_seqscan = on;
+
+-- --- the dashboard amendment still holds ------------------------------------------------------
+--
+-- V045's view is `runs` with the stage meter resolved, and a read moves onto it by changing one
+-- word only while the two have the same columns. Two were added to `runs` here, so the view was
+-- replaced to carry them; the V045 section above asserts the column lists are equal, and this is
+-- the pair of values behind that.
+select pg_temp.must_hold(
+  (select merge_strategy = 'squash' and reserved_build_job_id is null
+     from ouroboros.runs_with_stage
+    where id = 'a7100000-0000-0000-0000-000000000482'),
+  'runs_with_stage carries the merge snapshot and the farm link too, so the console reads one relation rather than two');
+
+-- --- the cascades -------------------------------------------------------------------------------
+delete from ouroboros.runs where id = 'a7100000-0000-0000-0000-000000000483';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.run_files
+    where run_id = 'a7100000-0000-0000-0000-000000000483')
+   and (select count(*) = 0 from ouroboros.run_commits
+          where run_id = 'a7100000-0000-0000-0000-000000000483'),
+  'deleting a run takes its change-set and its commits with it — a diff of work nobody can reach is not a diff');
+
+delete from ouroboros.organization where "id" in ('org-changes', 'org-changes2');
+
+-- Named by their own id prefix rather than counted globally: a later section's fixtures may
+-- still hold runs of their own, and an assertion that counted those would report this cascade
+-- broken for somebody else's rows.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where id::text like 'a7100000-%')
+   and (select count(*) = 0 from ouroboros.run_files where run_id::text like 'a7100000-%')
+   and (select count(*) = 0 from ouroboros.run_commits where run_id::text like 'a7100000-%')
+   and (select count(*) = 0 from ouroboros.build_jobs where id::text like 'a7400000-%'),
+  'deleting a workspace takes its runs, every file of every change-set, every commit and the farm rows the reservation pointed at');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

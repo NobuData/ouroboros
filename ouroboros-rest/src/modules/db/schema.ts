@@ -882,6 +882,26 @@ export interface RunsTable {
    * that said everything it said. The trigger's.
    */
   events_elided_at: ColumnType<Date | null, never, never>;
+  /**
+   * How the pinned workflow says this run's pull request will land (V047,
+   * [#300](https://github.com/NobuData/ouroboros/issues/300)).
+   *
+   * The DSL's `open_pr_automerge` `options.merge_method`, snapshotted at pin time — the source
+   * of mockup 10's *will squash on merge* tag. A snapshot rather than a join for decision
+   * **F8**'s reason: the workflow can be republished, renamed or deleted, and a closed run must
+   * still answer for what it ran under. Null when the pinned terminal opens no pull request, and
+   * the card then renders no tag rather than a default one.
+   */
+  merge_strategy: RunMergeStrategy | null;
+  /**
+   * The build job this run holds on the farm (V047, decision **R8**) — what the Resources card
+   * renders as *"forge-02 reserved"*, by way of {@link BuildJobsTable.runner_id}.
+   *
+   * Nullable, and its absence is an omitted row rather than a placeholder. Constrained with
+   * `organization_id`, so a run can only ever reserve a build job of its own workspace, and
+   * released — not cascaded — when the job is deleted.
+   */
+  reserved_build_job_id: string | null;
 }
 
 /**
@@ -1084,6 +1104,8 @@ export interface RunsWithStageView {
   event_cap: number;
   event_byte_cap: string;
   events_elided_at: Date | null;
+  merge_strategy: RunMergeStrategy | null;
+  reserved_build_job_id: string | null;
 }
 
 /**
@@ -1243,6 +1265,128 @@ export interface RunEventsJsonlView {
   seq: number;
   /** The JSONL line, without its newline — the caller joins them. */
   line: string;
+}
+
+/**
+ * `runs.merge_strategy` — how a run's pull request will land (V047,
+ * [#300](https://github.com/NobuData/ouroboros/issues/300)).
+ *
+ * The workflow DSL's `merge_method` (`docs/WORKFLOW_DSL.md` §4.5), which is the vocabulary
+ * because it is the one the pinned document wrote it in. The `runs_merge_strategy` CHECK.
+ */
+export type RunMergeStrategy = "squash" | "merge" | "rebase";
+
+/** The three, in the order the CHECK declares them — what a DTO validates against. */
+export const RUN_MERGE_STRATEGIES = [
+  "squash",
+  "merge",
+  "rebase",
+] as const satisfies readonly RunMergeStrategy[];
+
+/**
+ * `run_files.status` — what happened to a file of the change-set (V047).
+ *
+ * Git's own four words, and the `run_files_status` CHECK. Two of them are constrained against
+ * the counts beside them: an `added` file has no deletions and a `deleted` one no additions,
+ * because a file that did not exist before this run has no lines to have removed and one that
+ * does not exist after it has none to have added.
+ */
+export type RunFileStatus = "added" | "modified" | "deleted" | "renamed";
+
+/** The four, in the order the CHECK declares them. */
+export const RUN_FILE_STATUSES = [
+  "added",
+  "modified",
+  "deleted",
+  "renamed",
+] as const satisfies readonly RunFileStatus[];
+
+/**
+ * `ouroboros.run_files` — where each file of a run's change-set stands, now (V047,
+ * [#300](https://github.com/NobuData/ouroboros/issues/300), AO.3).
+ *
+ * Mockup 10's *Changes so far* card, file rows. **The counts are cumulative and a report
+ * replaces them**: an executor states where a file stands against the run's base, not the
+ * delta since it last spoke, so a write is an upsert on `(run_id, path)` —
+ *
+ * ```ts
+ * await db
+ *   .insertInto("run_files")
+ *   .values(reported)
+ *   .onConflict((oc) =>
+ *     oc.columns(["run_id", "path"]).doUpdateSet((eb) => ({
+ *       additions: eb.ref("excluded.additions"),
+ *       deletions: eb.ref("excluded.deletions"),
+ *       status: eb.ref("excluded.status"),
+ *       last_reported_at: eb.ref("excluded.last_reported_at"),
+ *     })),
+ *   )
+ *   .execute();
+ * ```
+ *
+ * — and never an addition, because a delta added to a cumulative row is a count that climbs
+ * forever. The card's `3 files` and its totals are `count()` and `sum()` over these rows;
+ * **no aggregate of them is stored** (decision **R8**).
+ */
+export interface RunFilesTable {
+  id: Generated<string>;
+  /** The run whose change-set this is, and the whole of this row's tenancy. Cascades. */
+  run_id: string;
+  /**
+   * The repository-relative path, as the executor reports it —
+   * `drivers/can/telemetry_buf.c`.
+   *
+   * Held relative and segment-clean by `run_files_path_is_relative`, because AO.4's
+   * allowed-path rules are matched against this column and a rule written for `drivers/` is not
+   * one anybody wrote for `/drivers/` or `app/../drivers/`.
+   */
+  path: string;
+  /** Lines gained against the run's base — the `+38`. Cumulative: replaced, never added to. */
+  additions: Generated<number>;
+  /** Lines lost against the run's base — the `−12`. Cumulative, as `additions` is. */
+  deletions: Generated<number>;
+  status: RunFileStatus;
+  /**
+   * When the executor measured this row.
+   *
+   * There is no `updated_at` beside it: a report is the only thing that writes this table, so
+   * the row's clock and the report's are one instant named once.
+   */
+  last_reported_at: Generated<Date>;
+  /** When this file first entered the run's change-set. */
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.run_commits` — the commits a run has made, in the order its card draws them
+ * (V047, [#300](https://github.com/NobuData/ouroboros/issues/300), AO.3).
+ *
+ * A commit is immutable, so a **redelivered report is a no-op** rather than an update. The
+ * table carries two unique keys — `(run_id, sha)`, the commit's identity, and `(run_id, seq)`,
+ * its place in the list — so the write is an *untargeted* `onConflict(oc => oc.doNothing())`,
+ * which covers both. A target names one key and the other then raises instead of doing nothing.
+ */
+export interface RunCommitsTable {
+  id: Generated<string>;
+  run_id: string;
+  /**
+   * The commit's name as reported — an abbreviation or the whole forty characters, both of
+   * which name the same commit and render as the same seven-character chip. Lower-case hex.
+   */
+  sha: string;
+  /** What the commit says. The card prints the first line; the column keeps what was reported. */
+  message: string;
+  /**
+   * Where this commit sits in the run's list, from 1.
+   *
+   * The writer's order rather than the clock's: a rebase rewrites commit times, and a list that
+   * reordered itself when the loop rebased would disagree with the branch it describes.
+   */
+  seq: number;
+  /** When the commit was made, by git's clock. May disagree with {@link RunCommitsTable.seq}. */
+  committed_at: Date;
+  /** When the report carrying it landed — the gap from `committed_at` is ingestion lag. */
+  reported_at: Generated<Date>;
 }
 
 /**
@@ -3854,6 +3998,8 @@ export interface Database {
   runs: RunsTable;
   run_stages: RunStagesTable;
   run_events: RunEventsTable;
+  run_files: RunFilesTable;
+  run_commits: RunCommitsTable;
   queue_items: QueueItemsTable;
   token_usage: TokenUsageTable;
   workspace_settings: WorkspaceSettingsTable;
@@ -4000,6 +4146,8 @@ export const TABLE_COLUMNS = {
     "event_cap",
     "event_byte_cap",
     "events_elided_at",
+    "merge_strategy",
+    "reserved_build_job_id",
   ],
   run_stages: [
     "id",
@@ -4039,6 +4187,17 @@ export const TABLE_COLUMNS = {
     "elided_to",
     "received_at",
   ],
+  run_files: [
+    "id",
+    "run_id",
+    "path",
+    "additions",
+    "deletions",
+    "status",
+    "last_reported_at",
+    "created_at",
+  ],
+  run_commits: ["id", "run_id", "sha", "message", "seq", "committed_at", "reported_at"],
   queue_items: [
     "id",
     "organization_id",
@@ -4567,6 +4726,8 @@ export const TABLE_COLUMNS = {
     "event_cap",
     "event_byte_cap",
     "events_elided_at",
+    "merge_strategy",
+    "reserved_build_job_id",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
@@ -4660,6 +4821,19 @@ export type NewRunEvent = Insertable<RunEventsTable>;
 
 /** One JSONL line of a run's transcript, as `ouroboros.run_events_jsonl` projects it. */
 export type RunEventJsonlLine = Selectable<RunEventsJsonlView>;
+
+/** A row of `ouroboros.run_files`, as a `select` returns it. */
+export type RunFile = Selectable<RunFilesTable>;
+/**
+ * The columns an `insert` into `ouroboros.run_files` may carry — the same columns an upsert's
+ * `do update` sets, because a report replaces a file's counts rather than adding to them.
+ */
+export type NewRunFile = Insertable<RunFilesTable>;
+
+/** A row of `ouroboros.run_commits`, as a `select` returns it. */
+export type RunCommit = Selectable<RunCommitsTable>;
+/** The columns an `insert` into `ouroboros.run_commits` may carry. */
+export type NewRunCommit = Insertable<RunCommitsTable>;
 
 /** A row of `ouroboros.queue_items`, as a `select` returns it. */
 export type QueueItem = Selectable<QueueItemsTable>;

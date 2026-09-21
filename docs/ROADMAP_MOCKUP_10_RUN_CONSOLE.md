@@ -219,7 +219,7 @@ Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AO.1 | #298 | 🟢 Done | ouroboros-db: [AO.1] Stage history & attempts schema | `run_stages` per stage×attempt; DASH-F.1 extension (R1) | mvp, runs, db | N (after DASH-F.1) | Y | M | ouroboros-db |
 | AO.2 | #299 | 🟢 Done | ouroboros-db: [AO.2] Run event store | Append-only typed `run_events` with caps + JSONL projection shape | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
-| AO.3 | #300 | 🟡 Open | ouroboros-db: [AO.3] Changes, resources & farm-link schema | `run_files`, `run_commits`, resource snapshots, reservation refs | mvp, runs, db | N (after AO.1) | Y | S | ouroboros-db |
+| AO.3 | #300 | 🟢 Done | ouroboros-db: [AO.3] Changes, resources & farm-link schema | `run_files`, `run_commits`, resource snapshots, reservation refs | mvp, runs, db | N (after AO.1) | Y | S | ouroboros-db |
 | AO.4 | #301 | 🟡 Open | ouroboros-db: [AO.4] Guardrail evaluations & control queue schema | Verdict rows with evidence; durable `run_controls` (R5/R6) | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
 | AO.5 | #302 | 🟡 Open | ouroboros-db: [AO.5] Console dev seeds — mockup-10 parity + ci probes | The #482 run mid-flight, full transcript, cards; constraint probes | mvp, runs, db, ci | N (after AO.2–AO.4, #24) | Y | M | ouroboros-db, .github |
 
@@ -291,7 +291,7 @@ run_events(seq↑): {ts, actor: tool, tool_tag: edit_file, payload: {file, hunks
 
 ### Issue AO.3 — ouroboros-db: [AO.3] Changes, resources & farm-link schema
 
-> **GitHub issue:** #300 · **Status:** 🟡 Open · **Parent epic:** #294
+> **GitHub issue:** #300 · **Status:** 🟢 Done · **Parent epic:** #294
 
 - **Problem Statement:** The right column's Changes and Resources cards need
   their own truth: cumulative file stats, commits, resource snapshots, and
@@ -918,7 +918,7 @@ Amendment comments posted at filing:
 | #91 (DASH-J.3) | Ingestion scope absorbed by **#303** (decision R2); disposition — close as superseded, or retain as the dashboard-side verification ticket |
 | #64 (DASH-F.1) | Stage reads move to `run_stages` (**#298**); legacy columns retained through the migration, removal deferred — **the schema half is delivered by AO.1 (#298)**: `ouroboros.runs_with_stage` is `runs` with the three stage columns answered from history where a run has any, so the four DASH reads (`dashboard.activeRuns`, `dashboard.recentRuns`, `runs.list`, `runs.find`) move onto it by changing one word, and `tests/seed.sql` asserts the derived meter equals the stored one for all fifty-three seeded runs |
 | #82 (DASH-I.3) | Active-loop rows now target the real console route (**#309**) |
-| #257 (AI.2) | Farm current-job cells link to **#309**; the reservation link is rendered by **#313**, omitted when absent |
+| #257 (AI.2) | Farm current-job cells link to **#309**; the reservation link is rendered by **#313**, omitted when absent — **the schema half is delivered by AO.3 (#300)**: `runs.reserved_build_job_id` is a nullable composite reference onto `build_jobs (id, organization_id)`, so the *forge-02 reserved* row is a join through the farm's own rows and its absence is an omitted row rather than a placeholder |
 | #253 (AH.5) | Pattern-reuse note — the offset-fetch log pattern carries the run transcript (**#304**), caps/elision follow AG.5 — **the store half is delivered by AO.2 (#299)**, with the one departure the medium forces: a log can be clamped mid-line, but half an event is not an event, so an entry past `runs.event_cap`/`event_byte_cap` is refused **whole** and the figures live in a `system` elision-marker *row* of the transcript rather than on the parent as `build_jobs.log_dropped_bytes` does |
 | #133 (WF-P.2) | Stage permissions become *evaluated* in **#305**; DSL limits snapshot onto stage rows in **#298**; enforcement stays deferred to **#315** |
 | #589 (CH.6) | The **resolution-snapshot contract** is the stored truth behind the stage model pill and the transcript's routing hops (**#304**, **#312**): `GET /api/v1/registry/resolutions/latest` reads it and `routing/snapshot.ts` is what the executor writes; every dropped hop keeps Z.1's code and sentence, `alias_disabled` included |
@@ -1025,10 +1025,12 @@ roadmap is unfiled** (BA-C.3/BA-D.5 gate role visibility on #309/#310), and the
 **app-shell roadmap is unfiled** (CP.2 registry, CQ.1/CQ.2 type scale). AR.4 (#318)
 additionally waits on the **mockup-19 ChatOps roadmap**, also unfiled.
 
-**#298** ([AO.1] stage history) and **#299** ([AO.2] the run event store) are **done** —
-`run_stages`, the `runs` columns the console's page head reads, the two views the stage meter is
-derived through, and `run_events`: the typed, capped, append-only transcript with its JSONL
-projection specified to the byte. Next is **#303**
+**#298** ([AO.1] stage history), **#299** ([AO.2] the run event store) and **#300**
+([AO.3] changes, resources and the farm link) are **done** — `run_stages`, the `runs` columns the
+console's page head reads, the two views the stage meter is derived through, `run_events` (the
+typed, capped, append-only transcript with its JSONL projection specified to the byte), and the
+Changes card's two tables beside the merge snapshot and the farm reservation, with the Resources
+card's numbers deliberately left in the systems that own them (decision **R8**). Next is **#303**
 ([AP.1] the ingestion contract), which
 is the piece with reach beyond this roadmap: it is the one door every executor,
 simulated or real, reports through, and #91's unbuilt scope is delivered inside it.

@@ -350,7 +350,13 @@ describe("TABLE_COLUMNS", () => {
     // 10's *Raw JSONL* button streams. Here before a reader for the same reason: `runs` grew six
     // more columns in the same migration, three of them the cap's running totals, and a mirror
     // that missed those would type-check a write the database refuses.
-    expect(TABLE_NAMES).toHaveLength(57);
+    //
+    // The fifty-eighth and fifty-ninth are V047's, mirrored by AO.3 (#300): `run_files` — the
+    // change-set as cumulative, upserted rows — and `run_commits`. Here before a reader for the
+    // third time running, and for a reason particular to these two: a file's counts are
+    // *replaced* by each report, so the shape a writer reaches for has to be the upsert rather
+    // than an insert, and `RunFilesTable`'s own comment is where that is written down.
+    expect(TABLE_NAMES).toHaveLength(59);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
