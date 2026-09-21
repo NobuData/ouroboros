@@ -1,9 +1,9 @@
 "use client";
 
-import { useId, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useId, useOptimistic, useRef, useState, useTransition } from "react";
 
 import type { RunnerPool, RunnerPoolChange } from "@/app/api/farm";
-import { Button, Card, CardHead, EmptyState, Toggle } from "@/app/ui";
+import { Button, Card, CardHead, EmptyState, Eyebrow, Toggle } from "@/app/ui";
 
 import { updatePool } from "./pool-actions";
 import { PoolSheet } from "./pool-sheet";
@@ -24,8 +24,10 @@ import {
   nextAutoscalePref,
   poolMeta,
 } from "./pools";
+import { CREATE_POOL, STEP_ONE, isPromoted, stepEyebrow } from "./states";
 import { SUBMIT_BUILD, SUBMIT_POOL_DISABLED, submitToPoolLabel } from "./submit";
 import { useSubmit } from "./submit-store";
+import { useFirstRun } from "./use-first-run";
 
 /**
  * The build farm's POOLS card — mockup 08's, with switches that persist
@@ -43,6 +45,19 @@ import { useSubmit } from "./submit-store";
  *   too, never a tooltip somebody has to hover to find. AJ.1 (#263) removes the affix.
  * - **`Configure →`** opens the configuration sheet, as the head's **Pool settings** does.
  *
+ * ### With no pool yet, it says how to make one
+ *
+ * A workspace's first pool comes before its first runner — a token always names the pool a runner
+ * joins — so an empty card is a **Create a pool** control, not a sentence pointing at another one
+ * (AI.7, [#262](https://github.com/NobuData/ouroboros/issues/262)). It opens the configuration
+ * sheet, which opens on its blank form when there is no pool to configure. During that first run
+ * the card is **Step one** and takes the promoted border (`stepEyebrow` in `app/farm/states.ts`),
+ * and the grid puts it first (`app/farm/farm-grid.tsx`).
+ *
+ * **The control unmounts when the first pool lands**, which would leave the sheet's closing focus
+ * with nowhere to return to; the card catches that and hands focus to `Configure →`, so a
+ * keyboard reader is not dropped on `<body>`.
+ *
  * ### A reader who may not write
  *
  * Sees every switch in its real position, marked and explained (design system § 3.3, § 3.5), and
@@ -54,24 +69,62 @@ import { useSubmit } from "./submit-store";
  * @returns The card, for the farm's right-hand column.
  */
 export function PoolsCard({ mayAdminister }: Readonly<{ mayAdminister: boolean }>) {
-  const { pools, openSheet } = usePools();
+  const { pools, openSheet, sheetOpen } = usePools();
+  const firstRun = useFirstRun();
+  const step = mayAdminister ? stepEyebrow(firstRun, "pools") : null;
+  const configure = useRef<HTMLSpanElement>(null);
+  const wasOpen = useRef(false);
+
+  // The sheet hands focus back to whatever opened it, and **Create a pool** is gone by then if
+  // the pool was created. Rescue only: a reader whose focus is anywhere real is left there.
+  useEffect(() => {
+    if (sheetOpen) {
+      wasOpen.current = true;
+      return;
+    }
+    if (!wasOpen.current) return;
+
+    wasOpen.current = false;
+    if (document.activeElement !== document.body) return;
+
+    configure.current?.querySelector<HTMLElement>("button")?.focus();
+  }, [sheetOpen]);
 
   return (
-    <Card aria-labelledby={TITLE_ID} as="section">
+    <Card
+      aria-labelledby={TITLE_ID}
+      as="section"
+      className={mayAdminister && isPromoted(firstRun, "pools") ? "farm-promoted" : undefined}
+    >
+      {step !== null && <Eyebrow tone={step === STEP_ONE ? "accent" : "quiet"}>{step}</Eyebrow>}
       <CardHead
         title={POOLS_TITLE}
         titleId={TITLE_ID}
         trailing={
-          <Button onClick={openSheet} reason={pools === null ? POOLS_UNREAD : undefined} size="sm" tone="ghost">
-            {CONFIGURE}
-          </Button>
+          // `display: contents`: somewhere for the focus rescue to look, and no box on screen.
+          <span className="farm-pools__configure" ref={configure}>
+            <Button
+              onClick={openSheet}
+              reason={pools === null ? POOLS_UNREAD : undefined}
+              size="sm"
+              tone="ghost"
+            >
+              {CONFIGURE}
+            </Button>
+          </span>
         }
       />
 
       {pools === null ? (
         <EmptyState title={POOLS_UNREAD} />
       ) : pools.length === 0 ? (
-        <EmptyState note={mayAdminister ? NO_POOLS_NOTE : NO_POOLS_MEMBER_NOTE} title={NO_POOLS_TITLE} />
+        <EmptyState note={mayAdminister ? NO_POOLS_NOTE : NO_POOLS_MEMBER_NOTE} title={NO_POOLS_TITLE}>
+          {mayAdminister && (
+            <Button onClick={openSheet} size="sm" tone="primary">
+              {CREATE_POOL}
+            </Button>
+          )}
+        </EmptyState>
       ) : (
         <ul className="farm-pools__list">
           {pools.map((pool) => (

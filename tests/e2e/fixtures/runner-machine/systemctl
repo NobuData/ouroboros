@@ -1,0 +1,131 @@
+#!/bin/sh
+#
+# systemctl — the part of systemd `install.sh` uses, for a machine that has no systemd (#262).
+#
+# `ouroboros-runner/install.sh` ends by writing `/etc/systemd/system/ouroboros-runner.service`
+# and running `daemon-reload`, `enable` and `restart`. On a real build machine that is systemd's
+# job. In the compose stack's build machine it is this file's, and the rule it is written to is
+# **start what the unit says, and nothing the unit does not say**: the command line is read out
+# of the unit's own `ExecStart=`, so what runs is what `install.sh` decided should run — the
+# state directory, `--server-ca` if there is one, every flag — and a change to the installer's
+# unit is a change to what this starts, with no second copy here to forget.
+#
+# What it honours:    ExecStart=, and a `User=` that is the user already running this.
+# What it does not:   Restart=, the start limit, KillMode, cgroups, dependencies, the journal.
+#                     An agent that exits stays exited; its output is in $LOG. Those are
+#                     systemd's behaviours, tested where systemd is; this stack needs an agent
+#                     that starts when installed and dies when the machine does.
+#
+# Verbs:  daemon-reload · enable · disable [--now] · reset-failed   accepted, nothing to do
+#         start · restart · stop · is-active · status               act on the one unit
+# Anything else is an error rather than a silent success: a script that starts depending on a
+# verb this does not have should find out here, not in a suite that goes green around it.
+
+set -eu
+
+UNIT_DIR=/etc/systemd/system
+RUN_DIR=/run/systemctl-shim
+LOG=/var/log/ouroboros-runner.log
+STOP_GRACE_S=30
+
+# unit_file NAME — the path of a unit, given with or without `.service`.
+unit_file() {
+  printf '%s/%s.service\n' "$UNIT_DIR" "${1%.service}"
+}
+
+# pid_file NAME — where the running unit's process id is kept.
+pid_file() {
+  printf '%s/%s.pid\n' "$RUN_DIR" "${1%.service}"
+}
+
+# running NAME — whether the unit's process is alive.
+running() {
+  file=$(pid_file "$1")
+  [ -f "$file" ] && kill -0 "$(cat "$file")" 2>/dev/null
+}
+
+# stop NAME — SIGTERM, which the agent answers with a `bye` and a clean exit, then SIGKILL after
+# the unit's own TimeoutStopSec. A unit that is not running is already stopped.
+stop() {
+  running "$1" || { rm -f "$(pid_file "$1")"; return 0; }
+
+  pid=$(cat "$(pid_file "$1")")
+  kill -TERM "$pid" 2>/dev/null || true
+
+  waited=0
+  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$STOP_GRACE_S" ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  kill -KILL "$pid" 2>/dev/null || true
+  rm -f "$(pid_file "$1")"
+}
+
+# start NAME — run the unit's ExecStart detached from whoever called this, so it outlives the
+# `docker compose exec` that installed it.
+start() {
+  unit=$(unit_file "$1")
+  [ -f "$unit" ] || { printf 'systemctl (shim): no such unit: %s\n' "$unit" >&2; exit 5; }
+
+  running "$1" && return 0
+
+  exec_start=$(sed -n 's/^ExecStart=//p' "$unit" | head -n 1)
+  [ -n "$exec_start" ] || { printf 'systemctl (shim): %s has no ExecStart=\n' "$unit" >&2; exit 1; }
+
+  user=$(sed -n 's/^User=//p' "$unit" | head -n 1)
+  if [ -n "$user" ] && [ "$user" != "$(id -un)" ]; then
+    printf 'systemctl (shim): %s asks for User=%s; this shim only runs a unit as %s\n' \
+      "$unit" "$user" "$(id -un)" >&2
+    exit 1
+  fi
+
+  mkdir -p "$RUN_DIR"
+
+  # `setsid` gives the agent its own session, so the exec's hang-up does not reach it. The
+  # word-splitting of $exec_start is systemd's own for a line with no quoting, which is the
+  # only kind install.sh writes (it refuses paths with spaces or quotes).
+  # shellcheck disable=SC2086
+  setsid $exec_start >>"$LOG" 2>&1 </dev/null &
+  printf '%s\n' "$!" >"$(pid_file "$1")"
+}
+
+[ $# -ge 1 ] || { printf 'systemctl (shim): a verb is required\n' >&2; exit 1; }
+
+verb=$1
+shift
+
+case $verb in
+  daemon-reload | reset-failed) exit 0 ;;
+  enable) exit 0 ;;
+  disable)
+    # `disable --now` is `disable` and `stop`.
+    now=false
+    for argument in "$@"; do
+      case $argument in
+        --now) now=true ;;
+        *) name=$argument ;;
+      esac
+    done
+    [ "$now" = true ] && stop "${name:?systemctl (shim): disable --now needs a unit}"
+    exit 0
+    ;;
+  start) start "${1:?systemctl (shim): start needs a unit}" ;;
+  stop) stop "${1:?systemctl (shim): stop needs a unit}" ;;
+  restart)
+    stop "${1:?systemctl (shim): restart needs a unit}"
+    start "$1"
+    ;;
+  is-active | status)
+    if running "${1:?systemctl (shim): $verb needs a unit}"; then
+      printf 'active\n'
+    else
+      printf 'inactive\n'
+      exit 3
+    fi
+    ;;
+  *)
+    printf 'systemctl (shim): %s is not a verb this shim has — see its header\n' "$verb" >&2
+    exit 1
+    ;;
+esac

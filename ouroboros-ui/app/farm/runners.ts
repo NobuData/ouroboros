@@ -93,11 +93,11 @@ export function runnerActionsLabel(name: string): string {
 /** What the grouping control is called. */
 export const GROUP_BY_STATUS = "Group by status";
 
-/** What the card says over a fleet with nobody in it. */
+/**
+ * What the card says over a fleet with nobody in it. What stands under it is the first-run
+ * guidance's (`app/farm/states.ts`, AI.7, #262) — how to enroll one, in order.
+ */
 export const NO_RUNNERS_TITLE = "No runners enrolled yet.";
-
-/** And the line under it. How to enroll one is the enroll card's (AI.3, #258). */
-export const NO_RUNNERS_NOTE = "A runner appears here as soon as its agent has enrolled.";
 
 /** What the card says when the page could not be read. The *why* is the banner's, once. */
 export const RUNNERS_UNREAD_TITLE = "The fleet could not be read.";

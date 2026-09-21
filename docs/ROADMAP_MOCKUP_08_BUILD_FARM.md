@@ -244,6 +244,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 | AG.4 | #246 | 🟢 Done | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
 | AG.5 | #247 | 🟢 Done | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
 | AG.6 | #248 | 🟢 Done | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
+| AG.7 | #991 | 🟡 Open | ouroboros-runner: [AG.7] Source checkout — run a submitted build on a real runner | Check out the offered commit before the command runs; clone base setting; un-parks AI.7's build test | mvp, build-farm, rest | N (after AG.4, AH.4) | Y | M | ouroboros-runner, ouroboros-rest, tests/e2e |
 
 ### Issue AG.1 — ouroboros-runner: [AG.1] Module scaffold & agent protocol spec
 
@@ -587,6 +588,38 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 
 ---
 
+### Issue AG.7 — ouroboros-runner: [AG.7] Source checkout — run a submitted build on a real runner
+
+> **GitHub issue:** #991 · **Status:** 🟡 Open · **Parent epic:** #239
+
+
+- **Problem Statement:** A real runner cannot run a build. Every `job.offer` names a
+  `repository` (`build_jobs.github_repo_id` is `not null`), and the agent declines any offer
+  that does — AG.4 left source checkout out by design and AH.4 recorded it as a known limit, but
+  nothing was ever filed. AI.7 (#262) found it as the one thing between the farm and its MVP
+  gate: the *submit → dispatch → live log → terminal state → stats* leg needs an agent that
+  executes a job, so that test shipped parked.
+- **Solution/Scope:** Agent: check out `repository.url` at `repository.commit` into the job's
+  workspace before the command runs, verified `HEAD == commit`, for both executors; failures
+  are `errored` / `workspace.checkout_failed`; a `git` capability in `hello`. Control plane: a
+  validated clone-base setting beside `OURO_GITHUB_API_BASE_URL` (the URL is hard-wired to
+  `github.com` today). Credentials for private repositories are an undecided design question —
+  a `docs/SECURITY_MODEL.md` section first; public/anonymous clone may ship alone if that is
+  written down. e2e: a git fixture in `docker-compose.e2e.yml`, and **un-park #262's build
+  test**.
+- **Acceptance Criteria:** A build submitted through the UI to a real runner checks out the
+  pinned commit and runs; a moved ref does not change what is built; a checkout failure never
+  runs the command in an empty tree; no credential reaches a log, a workspace or a job's
+  environment; `specs/farm.spec.ts`'s build test runs with no `fixme`, its failure-mode pair
+  scores, the log leg fails if streaming is faked, and the stats move on the terminal state.
+- **Parallelism/Dependencies:** Needs AG.4, AH.4. Un-parks AI.7's remaining criteria.
+- **Technical Stack:** Go (`os/exec` git), NestJS config, a compose git fixture.
+- **Epic:** AG
+
+```
+job.offer {repository} ─▶ checkout @ commit ─▶ command ─▶ log.chunk … ─▶ job.finish
+```
+
 ## Epic AH (#240) — Farm Control Plane (`ouroboros-rest` + `ouroboros-db`)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
@@ -894,7 +927,8 @@ runner lost ─▶ requeue(once) ─▶ retried │ failed    drain: finish curr
   Verified by 20 fake-agent integration cases (the dispatch matrix, retry, lost runners, cancel,
   concurrency, isolation), seven mutation spot checks that each turned it red, and the Go agent's cancel tests under
   `-race`. **Known limit:** today's agent still declines any offer naming a repository (source
-  checkout is unassigned), so real runners queue submitted builds rather than run them.
+  checkout was unassigned — it is now **AG.7, #991**, filed by AI.7), so real runners queue
+  submitted builds rather than run them.
 
 ### Issue AH.5 — ouroboros-rest: [AH.5] Log ingest & retrieval
 
@@ -1104,7 +1138,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 | AI.4 | #259 | 🟢 Done | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
 | AI.5 | #260 | 🟢 Done | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
 | AI.6 | #261 | 🟢 Done | ouroboros-ui: [AI.6] Live log card | Offset-streamed log, ANSI-safe rendering, cursor, full-log path | mvp, build-farm, ui, design | N (after AI.1, AH.5) | Y | M | ouroboros-ui |
-| AI.7 | #262 | 🟡 Open | ouroboros-ui: [AI.7] Farm states & e2e leg | Empty/no-runners guidance, read-only, themes, e2e | mvp, build-farm, ui, ci | N (after AI.1–AI.6) | Y | M | ouroboros-ui, .github |
+| AI.7 | #262 | 🟢 Done | ouroboros-ui: [AI.7] Farm states & e2e leg | Empty/no-runners guidance, read-only, themes, e2e | mvp, build-farm, ui, ci | N (after AI.1–AI.6) | Y | M | ouroboros-ui, .github |
 
 ### Issue AI.1 — ouroboros-ui: [AI.1] Build Farm route, head & stat row
 
@@ -1615,7 +1649,7 @@ $ west build -b helios_mainboard app …
 
 ### Issue AI.7 — ouroboros-ui: [AI.7] Farm states & e2e leg
 
-> **GitHub issue:** #262 · **Status:** 🟡 Open · **Parent epic:** #241
+> **GitHub issue:** #262 · **Status:** 🟢 Done · **Parent epic:** #241
 
 
 - **Problem Statement:** Fresh orgs have no runners; members are read-only;
@@ -1630,12 +1664,74 @@ $ west build -b helios_mainboard app …
 - **Acceptance Criteria:** All states themed; e2e green from cold compose
   (runner container included); each leg fails meaningfully when its layer
   breaks; ≤ 3 min added.
+- **Delivered:** the states in `ouroboros-ui`, a build machine in the compose stack, and leg 16 of
+  `tests/e2e` — with **one test parked**, which is the honest summary of where the farm's MVP is.
+  - **The states are one module's judgements** (`app/farm/states.ts`, framework-free). A workspace
+    with nothing enrolled is a *first run*: `no-pools`, then `no-runners`. The runners card's seat
+    is numbered steps rather than an empty table; the grid moves the right-hand column *ahead* of
+    the table **in the document, not with CSS `order`** (the design system asks for a logical tab
+    order), and the card where step one happens carries a **Step one** eyebrow and the promoted
+    border — the pools card while there is no pool, the enroll card after. **Create a pool** opens
+    the pool sheet on its blank form; **Go to the enroll command** moves focus to the selector. A
+    member is told who can act, in a sentence. The **read-only note** names the reader's role
+    under the head and says what each region does about it; the **offline-heavy strip** draws when
+    half the fleet or more is away (`4/5` draws none, `0/1` says *The only runner is offline.*) in
+    a polite region that is always mounted; the **skeleton** (`loading.tsx`) reserves the page's
+    own geometry with static bars, since `farm.css` promises no animation. The error banner was
+    AI.1's and needed nothing.
+  - **Found by the e2e leg's screenshot, invisible to jsdom:** Chromium does not renumber a flex
+    `<ol>` whose first item was removed, so creating the first pool left the remaining steps
+    reading `2.` and `3.`. The list is keyed by the state.
+  - **A machine, not a mock** (#55's amendment). `docker-compose.yml`'s new `runner` profile is
+    three services: `farm-gateway` — `docs/SECURITY_MODEL.md` § 7.6's proxy, terminating TLS and
+    **forwarding the client certificate**, with a CA generated at first start and never committed;
+    `runner-release` — `make release` over this checkout, into the volume `rest` serves; and
+    `runner` — a **bare Debian machine with no agent on it** and a forty-line `systemctl` shim,
+    because `install.sh` always installs a unit and a container has no systemd. The page's copied
+    command is pasted into it **verbatim**, so a row appearing certifies the installer, the
+    release's SHA-256, the token, the farm CA, the gateway and the mTLS handshake at once.
+    `docker-compose.e2e.yml` adds the three to `full`, so no script in `tests/e2e` had to change.
+  - **Three divergences from the issue's words, each forced by the codebase.**
+    **(1) The chain runs in a workspace it creates**, because the seed's farm CA is a placeholder
+    on purpose (AH.2) and a real enrolment there asks the vault to open a sentence. That workspace
+    is also the issue's *fresh organization*, so the states and the chain are one traversal — and
+    the leg is green on a second run against the same volume.
+    **(2) The seed holds still without a setting.** A seeded runner has no agent, so on a running
+    stack the presence sweep made mockup 08's `4/5` a `0/5` half a minute after boot, and the
+    dispatcher retried its running builds five minutes later. No cadence line can slow the sweep
+    without defeating the kill assertion, so `R__dev_seed_farm.sql` dates its live runners' last
+    heartbeat **a day ahead**, which no sweep reaches — which also fixes design review on any dev
+    stack. The same file now orders its log-chunk insert, closing AI.6's finding (`#479` read
+    backwards).
+    **(3) Revocation comes first.** An agent refuses to enrol into a machine that already holds a
+    runner before it presents any token, so only on the *bare* machine can a refusal be the
+    control plane's.
+  - **Parked: submit → dispatch → live log → terminal state → stats.** `job.offer` always names a
+    repository and the agent declines every offer that does. The issue's own words are that the
+    log leg must fail *if streaming is faked*, so nothing fakes it: the test is written with
+    `test.fixme`, its failure-mode pair reports `--`, and **AG.7 (#991)** carries the criteria —
+    the log leg, the stats update, and the dispatcher and log-ingest spot checks. The *seeded* log
+    is asserted in reading order meanwhile, which is the offset fetch and the renderer.
+  - **Each leg seen to fail.** Registered pairs: `db` (parity) and `farm-gateway` (the pasted
+    command cannot fetch the installer, and says so in curl's words). By hand, each stubbed in
+    `ouroboros-rest` and rebuilt: the presence sweep flipping nobody → the row still `idle` a
+    minute after the kill; the forwarded certificate ignored → the machine enrols, its row appears
+    `offline · never seen` and never comes online, and the gateway logs § 7.6's refusal; a revoked
+    token accepted → it installs a runner. The last needed **two** stubs — the spend statement's
+    `where not revoked` refuses what the service's check lets through — which is defence in depth,
+    recorded as such. `verify-failure-modes.sh` carries all of it.
+  - **Runtime:** the farm leg is about eighty seconds, most of it the product's own clock — a
+    heartbeat waited on twice and the presence threshold once — inside its three-minute allowance.
+  - **Not fixed here, and worth knowing:** the nightly e2e job was already red on `main`. This
+    change repairs the part the farm epic caused (AI.1 moved the stat tile to `app/ui`, and three
+    legs still selected `.dash-stat__*`); the code-editor and planning legs have drifted from
+    their pages for reasons of their own and are left to their roadmaps.
 - **Parallelism/Dependencies:** Needs AI.1–AI.6, AH.1 seeds; amends #56.
 - **Technical Stack:** React, Playwright, compose runner container.
 - **Epic:** AI
 
 ```
-e2e: enroll ✓ · presence ✓ · build+log stream ✓ · drain ✓ · stats ✓ · read-only ✓ · themes ✓
+e2e: enroll ✓ · presence ✓ · drain ✓ · revoke ✓ · read-only ✓ · themes ✓ · build+log+stats ⏸ AG.7 (#991)
 ```
 
 ---
@@ -1825,6 +1921,9 @@ Ordered checklist (⊕ = parallelizable within its phase):
 
 Filed as **#239–#242** (epic parents) and **#243–#267** (25 work issues).
 
+**#991** (AG.7, agent source checkout) was filed later, on 2026-09-20, by AI.7 (#262) — the one
+work issue the farm's MVP gate found missing.
+
 Plus **8 amendments** — comments posted and the `build-farm` label applied on
 2026-08-09; no new work created:
 
@@ -1833,9 +1932,9 @@ Plus **8 amendments** — comments posted and the `build-farm` label applied on
 | #8 | New `ouroboros-runner/` Go module joins the monorepo layout and language conventions (AG.1, #243) |
 | #11 | Fifth path-filtered workflow `ci/runner` — lint, test, cross-compile matrix (#243), plus the release job (#248) |
 | #12 | Architecture doc gains a component that runs on customer hardware, an outbound-only transport, a second protocol surface, and a farm CA |
-| #55 | Dev compose gains a runner profile; #262's e2e needs a containerized real runner |
+| #55 | Dev compose gains a runner profile; #262's e2e needs a containerized real runner — **delivered by AI.7 (#262)**: `--profile runner` is a TLS gateway, this checkout's agent release and a bare build machine |
 | #49 | `/build-farm` placeholder superseded and retired by AI.1 (#256) |
-| #56 | The e2e suite gains the farm leg AI.7 (#262) — the first leg crossing a language and network boundary |
+| #56 | The e2e suite gains the farm leg AI.7 (#262) — the first leg crossing a language and network boundary — **delivered**, as leg 16, with its build test parked on AG.7 (#991) |
 | #178 | Code-view C7's blocker clears: real pool status becomes available (#254/#251); no scope change, recorded for revisit |
 | #226 | `SECURITY_MODEL.md` gains a farm-CA section — key custody, enrollment chain, revocation, the TLS pass-through requirement, and the visible bearer fallback |
 

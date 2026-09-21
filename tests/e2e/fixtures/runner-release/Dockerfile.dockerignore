@@ -1,0 +1,10 @@
+# What the release build must not be handed (BuildKit reads `<Dockerfile>.dockerignore` from
+# beside the Dockerfile, since this one lives outside its context).
+#
+# `dist/` above all: `make release` empties only the directory of the version it is building, so
+# a developer's own older release would be copied into the image and served beside the new one.
+bin/
+dist/
+coverage.out
+coverage.html
+*.test

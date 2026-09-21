@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Role } from "@/app/api/membership";
 import { COPY_COMMAND, MANAGE_TOKENS, MEMBER_NOTE } from "@/app/farm/enroll";
+import { CREATE_POOL, FIRST_RUN_STEPS_LABEL, farmReadOnlyNote } from "@/app/farm/states";
 
-import { failedFarmReadings, farmReadings } from "../helpers/farm";
+import { emptyFarm, failedFarmReadings, farmReadings } from "../helpers/farm";
 import { membership, sessionUser } from "../helpers/login";
 
 /**
@@ -117,6 +118,37 @@ describe("the build farm route", () => {
     expect(screen.queryByRole("button", { name: COPY_COMMAND })).toBeNull();
     expect(screen.queryByRole("button", { name: MANAGE_TOKENS })).toBeNull();
     expect(screen.getByRole("button", { name: "+ Enroll runner" })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it.each<[Role]>([["member"], ["viewer"]])("tells a %s their role, under the head (#262)", async (role) => {
+    requireWorkspace.mockResolvedValue(access([role]));
+
+    render(await Page());
+
+    expect(document.querySelector(".farm-readonly")).toHaveTextContent(farmReadOnlyNote(role).head);
+  });
+
+  it("names the strongest role a reader holds, and draws no note for one who may administer (#262)", async () => {
+    requireWorkspace.mockResolvedValue(access(["viewer", "member"]));
+    const member = render(await Page());
+
+    expect(document.querySelector(".farm-readonly")).toHaveTextContent(farmReadOnlyNote("member").head);
+    member.unmount();
+
+    requireWorkspace.mockResolvedValue(access(["member", "admin"]));
+    render(await Page());
+
+    expect(document.querySelector(".farm-readonly")).toBeNull();
+  });
+
+  it("lands a new workspace's owner on the first run, not on an empty table (#262)", async () => {
+    readFarm.mockResolvedValue(farmReadings(emptyFarm()));
+
+    render(await Page());
+
+    expect(document.querySelector(".farm__grid")).toHaveClass("farm__grid--first-run");
+    expect(screen.getByRole("list", { name: FIRST_RUN_STEPS_LABEL })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: CREATE_POOL })).toHaveLength(2);
   });
 
   it("names the workspace's own slug in the command, which is what --tenant takes", async () => {

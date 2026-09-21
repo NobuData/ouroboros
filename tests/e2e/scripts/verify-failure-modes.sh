@@ -54,6 +54,14 @@
 #                                 stopped the card says so and no batch is made (#288)
 #   tracker-  planning.spec.ts    the push really reaches a tracker, and the chain really
 #   stub                          reads one back — it stubs neither (#288)
+#   db        farm.spec.ts        mockup 08's stat row, table, pools and live log are read out
+#                                 of the farm tables rather than drawn from the mockup (#262)
+#   farm-     farm.spec.ts        the enrolment really goes through the TLS gateway to the
+#   gateway                       control plane: with it stopped the pasted command cannot
+#                                 even download the installer, and says so (#262)
+#   farm-     farm.spec.ts        PARKED — the build → live log → stats test, which waits on
+#   gateway   (the build test)    agent source checkout; registered so that the day it runs,
+#                                 this script starts checking it (#262)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -197,6 +205,70 @@
 # one would quietly go green, which is exactly the regression it is registered to catch. The
 # marker is the sentence `support/planning.ts` raises when the tracker is not answering.
 #
+# ## The farm pairs, the parked one, and the three breakages done by hand (#262)
+#
+# The farm leg is the first whose subject crosses a language and a network boundary: a Go agent
+# on a build machine, enrolled by a command copied out of the browser, through a TLS gateway, to
+# the control plane. Two of its layers are containers and are registered here.
+#
+# `db` is the parity pair every mockup leg has, for the usual reason and with the usual marker.
+#
+# `farm-gateway` is the pair the ticket means by *the enrolment leg fails if the CA, the token or
+# the handshake breaks*. With the gateway stopped its name leaves the compose network's DNS, so
+# the pasted `curl … | sh` cannot fetch the installer — and the chain test, which required the
+# control plane's own refusal of a revoked token at that step, prints the transcript it got
+# instead. The marker is curl's. Parity, the states, the member and the shell stay green: none of
+# them needs a machine, which is what makes the red about the gateway and not about the page.
+#
+# **The build test is parked**, and it is the README's rule in action (§ *Adding a leg*: *a pair
+# whose leg is parked is registered anyway*). `job.offer` always names a repository
+# (`ouroboros-rest`'s `dispatch/offer.ts`) and today's agent declines every offer that does
+# (`ouroboros-runner`'s `agent/jobs.go` — source checkout is unassigned work), so a build
+# submitted to a real runner waits instead of running and the test carries `test.fixme` with
+# that reason. Its pair names the test with `--grep`, finds that it executed nothing, and reports
+# `--` — and starts scoring it, with nobody having to remember, on the commit that removes the
+# `fixme`. The ticket's other two hand breakages — *the dispatcher* and *the log ingest* — are
+# owed with it, because both are only observable through a build that runs.
+#
+# The three breakages inside `rest` that **can** be seen today were done by hand at the ticket —
+# each stubbed in `ouroboros-rest`, the image rebuilt, the leg re-run — and are recorded here
+# rather than automated, for the reason the routing block above gives: automating it means
+# shipping a switch that makes the service lie. What each stub took down:
+#
+#   the presence sweep flipping nobody (gateway.repository.ts's `sweepOffline`)
+#                            -> only the chain test, at *the row should flip to offline because
+#                               nothing is heartbeating*: a minute after the machine was killed
+#                               the row still read `idle`, with its last telemetry on it — which
+#                               is the ticket's *presence is real, not a remembered field*, seen
+#                               to be an assertion
+#   the client certificate never read from the header (client.certificate.ts's `fromHeader`)
+#                            -> only the chain test, at the row coming online: the install and
+#                               the enrolment both succeeded — enrolment presents a token, not a
+#                               certificate — so the row *appeared*, as `offline · never seen`,
+#                               and never read `idle`, because the agent was refused at the
+#                               gateway (`farm_client_certificate_required`, with the gateway's
+#                               own log line naming § 7.6). mTLS-as-decoration is the failure the
+#                               security model warns is silent, and this is the leg that hears it
+#   a revoked token still accepted (registration.service.ts's `revoked` check **and** the
+#   `where revoked = false` on farm.repository.ts's atomic spend)
+#                            -> only the chain test, at its first paste: the command whose token
+#                               had been revoked in *Manage tokens* installed a runner
+#
+# The third is two stubs, and the first attempt at it is worth writing down. With the service's
+# check alone removed, **the leg stayed green** — the refusal still came back, because the
+# statement that spends a token is `update … where not revoked and uses < max_uses`, and a
+# revoked token that reaches it spends nothing. That is defence in depth working, not an
+# assertion failing to assert; it took removing both layers to let a revoked token through.
+#
+# One thing about the machine these were done on, because it sent the first check the wrong
+# way: the first stub left the leg green too, for a reason that was not the product's. A second
+# `ouroboros-rest` — a development server on the host, from another session — was connected to
+# the compose database's published port and running its own, unstubbed presence sweep over the
+# same rows.
+# A control plane's housekeeping is unscoped by design, so **two of them on one database are
+# one fleet with two sweepers**. Nothing in CI can produce that; on a laptop, publish the
+# database on a port nothing else knows (`OURO_DB_PORT`) before trusting a spot check.
+#
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
 # `rest` strands the UI container in a namespace that no longer exists and the recovery is
@@ -269,7 +341,8 @@ if [ "$BRING_UP" -eq 1 ]; then
   wait_healthy
 fi
 
-# parked SPEC SERVICE — report a pair whose leg did not run, and score it as neither.
+# parked SPEC SERVICE [TITLE] — report a pair whose leg (or whose one named test) did not run,
+# and score it as neither.
 #
 # A spec every one of whose tests carries `test.fixme` exits zero having executed nothing,
 # which is indistinguishable from a green run by exit status alone and is the opposite of
@@ -277,12 +350,20 @@ fi
 # as a failure would turn the nightly job red for a decision somebody made on purpose and
 # wrote down. So it is reported and not counted, in the words a reader of the log needs.
 parked() {
+  if [ -n "${3:-}" ]; then
+    # A pair about one test (#262): the spec around it ran and is scored by its own pairs.
+    printf '  --    %s ran nothing for "%s" with %s stopped: that test is parked\n' "$1" "$3" "$2"
+    printf '        (test.fixme), so this pair asserts nothing yet. Its reason is in the spec.\n'
+    return 0
+  fi
   printf '  --    %s ran nothing with %s stopped: every test in it is parked, so this\n' "$1" "$2"
   printf '        pair asserts nothing yet. See tests/e2e/support/session.ts on parking.\n'
 }
 
-# expect_red SERVICE SPEC MARKER — stop SERVICE, run SPEC, require it to fail, require the
-# output to match MARKER, then bring SERVICE back.
+# expect_red SERVICE SPEC MARKER [TITLE] — stop SERVICE, run SPEC, require it to fail, require
+# the output to match MARKER, then bring SERVICE back. With TITLE, only the tests whose title
+# matches it are run (`--grep`) — for a pair that is about one test of a leg, which today is the
+# farm leg's parked build test (#262).
 #
 # MARKER is what makes this "meaningfully": a leg that fails with a timeout and no
 # explanation is a leg somebody will mark flaky and retry. It is the text a person reading
@@ -293,19 +374,24 @@ expect_red() {
   service=$1
   spec=$2
   marker=$3
-  log="$LOG_DIR/$service-$spec.log"
+  title=${4:-}
+  log="$LOG_DIR/$service-$spec${title:+-grep}.log"
 
-  printf '\n--- %s stopped → specs/%s must fail\n' "$service" "$spec"
+  printf '\n--- %s stopped → specs/%s%s must fail\n' "$service" "$spec" "${title:+ (\"$title\")}"
   compose stop "$service" >/dev/null 2>&1
 
   status=0
-  (cd "$E2E_DIR" && yarn playwright test "specs/$spec" --reporter=list) >"$log" 2>&1 || status=$?
+  if [ -n "$title" ]; then
+    (cd "$E2E_DIR" && yarn playwright test "specs/$spec" --grep "$title" --reporter=list) >"$log" 2>&1 || status=$?
+  else
+    (cd "$E2E_DIR" && yarn playwright test "specs/$spec" --reporter=list) >"$log" 2>&1 || status=$?
+  fi
 
   # A run that executed at least one test says so; a wholly parked spec never prints it.
   # Checked before the exit status is judged, because both cases exit zero and only this
   # tells them apart.
   if [ "$status" -eq 0 ] && ! grep -Eq '[0-9]+ passed' "$log"; then
-    parked "specs/$spec" "$service"
+    parked "specs/$spec" "$service" "$title"
     compose start "$service" >/dev/null 2>&1
     wait_healthy
     return 0
@@ -477,6 +563,22 @@ expect_red engine planning.spec.ts "engine is not available"
 # …and against the tracker. See the header: this pair is a claim about the leg rather than
 # about the deployment — that the chain really pushes to a tracker and really reads one back.
 expect_red tracker-stub planning.spec.ts "sandbox tracker is not answering"
+
+# The farm leg (#262), against the layer its parity comes out of. `4/5`, `19 clean · 3 retried ·
+# 1 failed`, `4m 12s` and `78%` are four aggregates over `runners` and `build_jobs`, the table is
+# the fleet, and the LIVE card is `build_log_chunks` read by offset — so a page that still drew
+# mockup 08 with the database stopped would be a page drawing the artwork. `db` rather than
+# `rest` for the reason every pair above uses it, and the leg breaks at its first step for the
+# reason the dashboard's does: a session is a row.
+expect_red db farm.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# …and against the gateway. See the header: only the chain test goes red, at its first paste,
+# and the marker is what curl says when the host it was told to install from is not there —
+# unresolvable on a compose network whose container stopped, refused on one that kept the name.
+expect_red farm-gateway farm.spec.ts "Could not resolve host|Failed to connect to farm-gateway|curl: \((6|7)\)"
+
+# …and the parked build test, by name. Reported `--` until agent source checkout lands.
+expect_red farm-gateway farm.spec.ts "the log streamed" "streams a real build"
 
 printf '\n'
 if check_summary; then

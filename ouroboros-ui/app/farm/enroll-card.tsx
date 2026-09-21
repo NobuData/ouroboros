@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 
-import { Button, Card, CardHead, SelectField } from "@/app/ui";
+import { Button, Card, CardHead, Eyebrow, SelectField } from "@/app/ui";
+import { cx } from "@/app/ui/class-names";
 
 import {
   COMMAND_LABEL,
@@ -35,7 +36,10 @@ import {
 import { mintEnrollCommand, readEnrollmentTokens, revokeEnrollmentToken } from "./enroll-actions";
 import { copyWhenReady } from "./clipboard";
 import { useFarm } from "./farm-store";
+import { usePools } from "./pool-store";
+import { STEP_ONE, isPromoted, stepEyebrow } from "./states";
 import { TokenSheet } from "./token-sheet";
+import { useFirstRun } from "./use-first-run";
 
 /**
  * The build farm's ENROLL A RUNNER card — mockup 08's, with a command that actually enrols
@@ -71,6 +75,16 @@ import { TokenSheet } from "./token-sheet";
  * sheet. The host is not named for them, because the read that knows it is one they may not
  * make. That is *presentation*; the gate that decides is the service's.
  *
+ * ### During a first run it is where the page starts
+ *
+ * A workspace with nothing enrolled is told to begin here (AI.7,
+ * [#262](https://github.com/NobuData/ouroboros/issues/262)): the grid moves this column ahead of
+ * the table (`app/farm/farm-grid.tsx`), and the card carries the step it is — **Step one**, in the
+ * accent with the promoted border, or a quiet **Step two** while there is no pool to enrol into
+ * (`stepEyebrow` in `app/farm/states.ts`). Only for a reader who can take the step: a member is
+ * told who can, by the table's seat, and a card marked *Step one* that offers them nothing would
+ * contradict it.
+ *
  * @param props.mayAdminister Whether this reader may mint — `mayAdminister`, from the route.
  * @param props.tenant The workspace's slug — the command's `--tenant`.
  * @returns The card, for the farm's right-hand column (`farm__side`).
@@ -89,8 +103,14 @@ export function EnrollCard({
   const [listing, setListing] = useState<TokenListing | null>(null);
   const [copying, startCopy] = useTransition();
   const [, startRead] = useTransition();
+  const firstRun = useFirstRun();
+  const step = mayAdminister ? stepEyebrow(firstRun, "enroll") : null;
 
-  const pools = page?.pools ?? [];
+  // The pool store's list where there is one (`app/farm/pool-store.tsx`): it holds a pool created
+  // a moment ago before the page catches up, so a first pool is selectable here on the commit that
+  // makes this card step one (AI.7, #262). Rendered alone, the page's own.
+  const { pools: held } = usePools();
+  const pools = held ?? page?.pools ?? [];
   // A choice outlives the pool it names when the pool is deleted; the first pool stands in.
   const pool = pools.find((held) => held.name === chosen)?.name ?? pools[0]?.name ?? null;
   // What was minted is about the pool it was minted for: another pool is back to the shape.
@@ -159,7 +179,12 @@ export function EnrollCard({
   }
 
   return (
-    <Card aria-labelledby={TITLE_ID} as="section" className="farm-enroll">
+    <Card
+      aria-labelledby={TITLE_ID}
+      as="section"
+      className={cx("farm-enroll", mayAdminister && isPromoted(firstRun, "enroll") && "farm-promoted")}
+    >
+      {step !== null && <Eyebrow tone={step === STEP_ONE ? "accent" : "quiet"}>{step}</Eyebrow>}
       <CardHead title={ENROLL_TITLE} titleId={TITLE_ID} />
 
       <p className="farm-enroll__lead">

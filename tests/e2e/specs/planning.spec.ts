@@ -969,5 +969,5 @@ async function queuedIssues(page: Page): Promise<number> {
 
   await expect(tile).toBeVisible();
 
-  return Number(await tile.locator(".dash-stat__value").innerText());
+  return Number(await tile.locator(".ou-stat__value").innerText());
 }

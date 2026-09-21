@@ -291,3 +291,77 @@ describe("the live log card (#261)", () => {
     expect(COMPONENT).toContain('import "./log-pane.css"');
   });
 });
+
+describe("the first run (#262)", () => {
+  it("gives the promoted column five of the twelve and the table's seat seven", () => {
+    expect(rule("\\.farm__grid--first-run > \\.farm__side")).toMatch(/grid-column:\s*span 5/);
+    expect(rule("\\.farm__grid--first-run > \\.farm-col--8")).toMatch(/grid-column:\s*span 7/);
+  });
+
+  it("stacks both at the mockup's first width, where the modifier would otherwise outrank the page's own step", () => {
+    const narrow = /@media \(max-width: 68\.75rem\)\s*\{\s*\.farm__grid--first-run > \.farm__side\s*\{\s*grid-column:\s*span 12;\s*\}\s*\.farm__grid--first-run > \.farm-col--8\s*\{\s*grid-column:\s*span 12;/;
+
+    expect(CODE).toMatch(narrow);
+  });
+
+  it("reorders nothing in the sheet — the order is the document's, so the tab order follows it", () => {
+    expect(CODE).not.toMatch(/(^|[\s;{])order:/);
+    expect(CODE).not.toMatch(/flex-direction:\s*(row|column)-reverse/);
+  });
+
+  it("promotes step one's card in the accent line, with enough weight to outrank the card's own border", () => {
+    expect(rule("\\.farm__grid \\.farm-promoted")).toMatch(/border-color:\s*var\(--accent-line\)/);
+  });
+
+  it("reads the seat's steps from the left, at a measure, inside a panel that centres its text", () => {
+    const steps = rule("\\.farm-first-run");
+
+    expect(steps).toMatch(/text-align:\s*left/);
+    expect(steps).toMatch(/max-width:\s*[\d.]+ch/);
+    expect(rule("\\.farm-first-run__title")).toMatch(/color:\s*var\(--ink\)/);
+  });
+});
+
+describe("the read-only note and the offline-heavy strip (#262)", () => {
+  it("sets the note at a prose measure, in the quiet ink, with the role a step darker", () => {
+    expect(rule("\\.farm-readonly")).toMatch(/max-width:\s*[\d.]+ch/);
+    expect(rule("\\.farm-readonly")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.farm-readonly__head")).toMatch(/color:\s*var\(--ink-dim\)/);
+  });
+
+  it("draws the strip in the warning triple, with the state in the warn ink", () => {
+    const strip = rule("\\.farm-fleet");
+
+    expect(strip).toMatch(/border:\s*1px solid var\(--warn-line\)/);
+    expect(strip).toMatch(/background:\s*var\(--warn-tint\)/);
+    expect(rule("\\.farm-fleet__headline")).toMatch(/color:\s*var\(--warn\)/);
+  });
+
+  it("gives the strip's empty live region no room", () => {
+    expect(rule("\\.farm-fleet-seat:empty")).toMatch(/display:\s*none/);
+  });
+});
+
+describe("the loading skeleton (#262)", () => {
+  it("draws every bar on a token surface, so both palettes are one sheet", () => {
+    expect(rule("\\.farm-skeleton__bar")).toMatch(/background:\s*var\(--raised\)/);
+    expect(rule("\\.farm-skeleton__cell")).toMatch(/background:\s*var\(--raised\)/);
+    expect(rule("\\.farm-skeleton__block")).toMatch(/background:\s*var\(--inset\)/);
+  });
+
+  it("lets a bar shrink to a narrow card: a flex item with its measure as the basis, in a flex line", () => {
+    expect(rule("\\.farm-skeleton__line")).toMatch(/display:\s*flex/);
+    expect(rule("\\.farm-skeleton__bar")).toMatch(/flex:\s*0 1 [\d.]+rem/);
+    expect(rule("\\.farm-skeleton__bar")).toMatch(/min-width:\s*0/);
+  });
+
+  it("gives the stat tile's figure and the headline the height of the type they stand in for", () => {
+    expect(rule("\\.farm-skeleton__bar--figure")).toMatch(/height:\s*var\(--sp-11\)/);
+    expect(rule("\\.farm-skeleton__bar--title")).toMatch(/height:\s*var\(--sp-11\)/);
+  });
+
+  it("rules its rows off with the hairline the table and the pools list draw", () => {
+    expect(rule("\\.farm-skeleton__row")).toMatch(/border-bottom:\s*1px solid var\(--line\)/);
+    expect(rule("\\.farm-skeleton__row:last-child")).toMatch(/border-bottom:\s*0/);
+  });
+});

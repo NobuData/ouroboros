@@ -189,6 +189,25 @@ on conflict do nothing;
 -- `forge-00` is the sixth. It is `removed` on both sides — observed and intended — and it is
 -- here for two reasons: it owns two of last week's builds, which is why a removal keeps the row
 -- rather than deleting it, and it is the near miss every count of the fleet has to exclude.
+--
+-- **The four live runners' last heartbeat is dated a day AHEAD, on purpose** (#262). A seeded
+-- runner has no agent behind it, so on a stack where `ouroboros-rest` is running nothing ever
+-- heartbeats for it — and the presence sweep (AH.3, #251) is right to call a live runner silent
+-- for thirty-two seconds `offline`. With `last_seen_at` a few seconds *behind* `now()`, that is
+-- what happened to this whole fixture half a minute after any stack came up: mockup 08's `4/5`
+-- became `0/5`, every meter an em-dash, and five minutes later the dispatcher retried `#472` and
+-- `#479` as builds whose runner was lost. Correct behaviour, and fatal to the one thing this
+-- seed is for — design review of the mockup's fleet, and the e2e parity leg that photographs it.
+--
+-- There is deliberately no setting that slows that sweep, because the same e2e leg kills a real
+-- runner and requires its row to flip *within the threshold*; the sweep has to run at the
+-- product's own cadence. So the fixture moves instead: a heartbeat stamped tomorrow is one no
+-- sweep reaches (`last_seen_at < cutoff` is false for a day), a runner never swept is never
+-- `lost`, and nothing reads a live runner's stamp but the details sheet, where a stamp in the
+-- future reads `0s ago` (`ageOfSeconds` in ouroboros-ui) — which is what a live runner says.
+-- `forge-03` and `forge-00` keep their real ages: `offline · 2h` is computed from one, and the
+-- sweep never looks at a runner that is already `offline` or `removed`. A stack kept up past a
+-- day decays as before, and says so by decaying.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.runners
   (id, organization_id, pool_id, name, arch, status, desired_state, last_seen_at,
@@ -196,7 +215,10 @@ insert into ouroboros.runners
    enrolled_by, uptime_seconds, telemetry)
 select ('5eed0025-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
        org."id", pool.id, seed.name, seed.arch, seed.status, seed.desired_state,
-       now() - make_interval(secs => seed.last_seen_secs_ago),
+       case when seed.status in ('online', 'building', 'draining')
+            then now() + make_interval(days => 1)
+            else now() - make_interval(secs => seed.last_seen_secs_ago)
+       end,
        seed.agent_version, seed.capabilities::jsonb, seed.security_mode, seed.cert_serial,
        seed.bearer_sealed, now() - make_interval(days => seed.enrolled_days_ago), person."id",
        seed.uptime_seconds, seed.telemetry::jsonb
@@ -556,6 +578,13 @@ on conflict do nothing;
 -- `on conflict`: the trigger fires **before** the conflict is detected, so a second application
 -- would add every chunk's bytes to the job's total again before PostgreSQL discarded the row.
 -- The guard is what makes `migrate` twice leave the counters where the first pass left them.
+--
+-- **The `order by` is load-bearing** (#262, found by AI.6, #261). Because the trigger assigns
+-- `byte_start` in the order rows *reach* it, and a multi-row `insert … select` over a join
+-- promises no order, PostgreSQL 17 handed it `#479`'s chunks as 3, 2, 1 — `seq` 3 took offset 0
+-- — and the LIVE card, which reads by offset, printed the memory map before the command that
+-- produced it. Ordered, the offsets follow `seq`, which is what ingest guarantees for a real
+-- build and therefore what a fixture of one has to look like.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.build_log_chunks (id, job_id, seq, content)
 select ('5eed0029-0000-4000-8000-' || lpad(seed.number::text, 9, '0')
@@ -574,6 +603,7 @@ select ('5eed0029-0000-4000-8000-' || lpad(seed.number::text, 9, '0')
  where ${ouro_dev_seed}
    and not exists (select 1 from ouroboros.build_log_chunks existing
                     where existing.job_id = job.id and existing.seq = seed.seq)
+ order by seed.number, seed.seq
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------

@@ -84,28 +84,81 @@ const HEALTHY_TIMEOUT_MS = 30_000;
 /** How often its health is read while waiting. */
 const HEALTHY_POLL_MS = 250;
 
+/** What one `docker compose …` call did — see {@link composeOutcome}. */
+export interface ComposeOutcome {
+  /** The exit status. `0` is success; anything else is the command's own. */
+  readonly status: number;
+  /** What it wrote to standard output — what a caller parses. */
+  readonly stdout: string;
+  /** Everything it wrote, standard output then standard error — what a person reads. */
+  readonly output: string;
+}
+
+/**
+ * Run `docker compose …` at the repository root, and report how it ended instead of throwing.
+ *
+ * For the one caller whose *subject* is a command that fails: `support/farm-runner.ts`
+ * ([#262](https://github.com/NobuData/ouroboros/issues/262)) pastes an enroll command whose
+ * token was revoked into the stack's build machine, and what the installer said on its way out
+ * is the assertion. Everything else wants {@link compose}.
+ *
+ * @param args - What to pass after the composed file and profile flags.
+ * @returns The status and the transcript.
+ * @throws {Error} Only when the command could not be run at all — no `docker`, or a timeout —
+ *   which is a broken machine rather than an answer.
+ */
+export async function composeOutcome(...args: readonly string[]): Promise<ComposeOutcome> {
+  try {
+    const { stdout, stderr } = await run("docker", [...COMPOSE_ARGS, ...args], {
+      cwd: ROOT,
+      timeout: COMPOSE_TIMEOUT_MS,
+    });
+
+    return { status: 0, stdout, output: `${stdout}${stderr}` };
+  } catch (reason) {
+    const failure = reason as { code?: unknown; stdout?: unknown; stderr?: unknown };
+
+    // `execFile` rejects with the exit status in `code` when the command ran and failed, and
+    // with a string (`ENOENT`, `ETIMEDOUT`) or nothing when it never really ran.
+    if (typeof failure.code === "number") {
+      const stdout = typeof failure.stdout === "string" ? failure.stdout : "";
+      const stderr = typeof failure.stderr === "string" ? failure.stderr : "";
+
+      return { status: failure.code, stdout, output: `${stdout}${stderr}` };
+    }
+
+    throw new Error(
+      `docker compose ${args.join(" ")} could not be run. This leg drives the compose stack ` +
+        `directly (see support/compose.ts); it needs the stack this checkout brought up. ` +
+        String(reason),
+    );
+  }
+}
+
 /**
  * Run `docker compose …` at the repository root.
+ *
+ * Exported for exactly one other module, `support/farm-runner.ts`, which drives the stack's
+ * build machine and keeps this module's discipline in its own signatures: it names one service
+ * and offers no way to name another. A spec never imports this.
  *
  * @param args - What to pass after the composed file and profile flags.
  * @returns The command's standard output.
  * @throws {Error} With the command and everything it wrote, because the interesting failure
  *   here is *docker said something* and a bare exit code names none of it.
  */
-async function compose(...args: readonly string[]): Promise<string> {
-  try {
-    const { stdout } = await run("docker", [...COMPOSE_ARGS, ...args], {
-      cwd: ROOT,
-      timeout: COMPOSE_TIMEOUT_MS,
-    });
+export async function compose(...args: readonly string[]): Promise<string> {
+  const outcome = await composeOutcome(...args);
 
-    return stdout;
-  } catch (reason) {
+  if (outcome.status !== 0) {
     throw new Error(
-      `docker compose ${args.join(" ")} failed. This leg drives the compose stack directly ` +
-        `(see support/compose.ts); it needs the stack this checkout brought up. ${String(reason)}`,
+      `docker compose ${args.join(" ")} failed with status ${outcome.status.toString()}. This ` +
+        `leg drives the compose stack directly (see support/compose.ts); it needs the stack ` +
+        `this checkout brought up. ${outcome.output}`,
     );
   }
+
+  return outcome.stdout;
 }
 
 /**

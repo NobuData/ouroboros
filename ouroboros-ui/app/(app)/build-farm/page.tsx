@@ -1,5 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister } from "@/app/api/membership";
+import { mayAdminister, primaryRole } from "@/app/api/membership";
 import { readFarm } from "@/app/farm/data";
 import { FarmScreen } from "@/app/farm/farm-screen";
 
@@ -22,7 +22,12 @@ import { FarmScreen } from "@/app/farm/farm-screen";
  * [#258](https://github.com/NobuData/ouroboros/issues/258)): minting an enrollment token is
  * `owner` or `admin`, so whether this reader may is answered once, here, through the existing
  * `mayAdminister`, and the screen is handed a boolean rather than a role — with the workspace's
- * slug, which is the enroll command's `--tenant`. The gate that **enforces** is the service's.
+ * slug, which is the enroll command's `--tenant`. The role travels beside the boolean since AI.7
+ * ([#262](https://github.com/NobuData/ouroboros/issues/262)), and decides nothing: it is what the
+ * read-only note names. The gate that **enforces** is the service's.
+ *
+ * While this read is in flight the segment draws `loading.tsx` beside this file — the page's own
+ * geometry, so nothing moves when the cards land.
  *
  * The read here is the first paint's. From then on the browser keeps the page fresh on the
  * fleet's own cadence (`app/farm/farm-store.tsx`), so this is a Server Component handing one
@@ -37,6 +42,7 @@ export default async function Page() {
     <FarmScreen
       reader={{
         mayAdminister: mayAdminister(access.membership.roles),
+        role: primaryRole(access.membership.roles),
         tenant: access.membership.slug,
       }}
       readings={await readFarm(access)}

@@ -45,8 +45,13 @@ export const CONFIGURE = "Configure →";
 /** What the card says over a workspace with no pools. */
 export const NO_POOLS_TITLE = "No pools yet.";
 
-/** Where a first pool comes from, for a reader who may create one. */
-export const NO_POOLS_NOTE = "Create one under Configure — a runner always enrols into a pool.";
+/**
+ * Why a first pool matters, for a reader who may create one. The way to make it is the control
+ * under this line (`CREATE_POOL` in `app/farm/states.ts`, AI.7, #262), so the sentence no longer
+ * has to point at another one.
+ */
+export const NO_POOLS_NOTE =
+  "A runner always enrols into a pool, so the first pool comes before the first runner.";
 
 /** The same, for a reader who may not. */
 export const NO_POOLS_MEMBER_NOTE = "An owner or an admin creates the first one.";
