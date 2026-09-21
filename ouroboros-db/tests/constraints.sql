@@ -13678,6 +13678,809 @@ select pg_temp.must_hold(
   'deleting a workspace takes its runs and every stage of every one of them');
 
 -- ===========================================================================
+-- V046 — run_events, the transcript as a flight recorder (#299)
+-- ===========================================================================
+--
+-- Mockup 10's *Agent transcript* card, and the three things the roadmap says it must be:
+-- typed (decision R3), never a fabrication (R4), and bounded without lying about it (the
+-- AG.5 pattern of #247). Every assertion below is written against the nine entries the
+-- mockup actually draws — a plan note, `read_file`, a model paragraph, `edit_file` with its
+-- diff hunks, `run_tests` with its command and its warn result, the gate's return line, a
+-- second model paragraph, a second `edit_file`, and the live `running… 47/63 cases` — so a
+-- rule is asserted against the rows it exists for rather than against a fixture invented
+-- for the rule.
+--
+-- The timestamps are the mockup's, on a fixed date. That matters more here than anywhere
+-- else in this file: the JSONL projection is specified byte for byte, and bytes computed
+-- from `now()` are not bytes anybody can write a fixture for.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-events', 'Event Works', 'event-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a6000000-0000-0000-0000-00000000000a', 'org-events', 'event-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a6ff0000-0000-0000-0000-00000000000a', 'a6000000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+-- Three runs: the mockup's, which is **simulated** so R4's watermark is on every line of the
+-- projection; a real one, for the direction the watermark may still be raised in and for the
+-- event cap; and a third for the byte cap, which has to be a different run because a cap, once
+-- reached, is never un-reached.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at, branch_name,
+     workflow_version_pin, simulated)
+  values ('a6100000-0000-0000-0000-000000000482', 'org-events',
+          'a6ff0000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, timestamptz '2026-08-08 14:00:00+00',
+          'loop/482-canbus-flake', 14, true),
+         ('a6100000-0000-0000-0000-000000000483', 'org-events',
+          'a6ff0000-0000-0000-0000-00000000000a', 483,
+          'A run nobody simulated', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, timestamptz '2026-08-08 15:00:00+00',
+          null, null, false),
+         ('a6100000-0000-0000-0000-000000000484', 'org-events',
+          'a6ff0000-0000-0000-0000-00000000000a', 484,
+          'A run with very little to say', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, timestamptz '2026-08-08 16:00:00+00',
+          null, null, false),
+         ('a6100000-0000-0000-0000-000000000485', 'org-events',
+          'a6ff0000-0000-0000-0000-00000000000a', 485,
+          'A run the application role reports', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, timestamptz '2026-08-08 17:00:00+00',
+          null, null, true);
+
+-- --- the defaults a run gets, and the floors a test needs --------------------------
+select pg_temp.must_hold(
+  (select event_cap = 20000 and event_byte_cap = 33554432
+      and event_seq = 0 and event_bytes = 0 and events_elided_at is null
+     from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000482'),
+  'a run arrives with both caps, an empty transcript and no elision — the accounting starts at zero rather than at null');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set event_cap = 0
+    where id = 'a6100000-0000-0000-0000-000000000483'$$,
+  'a cap of zero is not a cap, it is a switch that turns the transcript off',
+  'runs_event_cap_range');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set event_byte_cap = 255
+    where id = 'a6100000-0000-0000-0000-000000000483'$$,
+  'the byte cap has a floor, low enough that a test can watch it work and not lower',
+  'runs_event_byte_cap_range');
+
+-- --- mockup 10's transcript, in full ----------------------------------------------
+--
+-- Acceptance criterion: every entry type round-trips. One insert, so it is also the batch
+-- the density assertions below are made against.
+insert into ouroboros.run_events
+    (run_id, ts, actor, stage_key, attempt, tool_tag, model_id, body, payload)
+  values
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:02:11+00',
+     'plan', 'plan', 1, null, null,
+     'Root cause: test asserts on frame order; CAN driver ISR can reorder under load.',
+     null),
+
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:03:26+00',
+     'tool', 'implement', 1, 'read_file', null,
+     'drivers/can/telemetry_buf.c',
+     '{"file": "drivers/can/telemetry_buf.c"}'),
+
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:04:02+00',
+     'model', 'implement', 1, null, 'claude-fable-5',
+     'The buffer uses a bare k_fifo shared between the RX ISR and the telemetry thread. k_fifo gives no ordering guarantee once the ISR preempts a partially completed put — that matches the flake signature.',
+     null),
+
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:04:40+00',
+     'tool', 'implement', 1, 'edit_file', null,
+     'drivers/can/telemetry_buf.c',
+     '{"file": "drivers/can/telemetry_buf.c",
+        "hunks": [{"kind": "ctx", "text": "  /* telemetry frame path */"},
+                  {"kind": "del", "text": "− static struct k_fifo tel_fifo;"},
+                  {"kind": "add", "text": "+ K_MSGQ_DEFINE(tel_msgq, sizeof(struct tel_frame), CONFIG_TEL_QUEUE_DEPTH, 4);"}]}'),
+
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:05:12+00',
+     'tool', 'implement', 1, 'run_tests', null,
+     'twister -T tests/telemetry',
+     '{"command": "twister -T tests/telemetry",
+        "outcome": "warn",
+        "result": {"passed": 2, "flaked": 1, "failed": 0},
+        "detail": "2 passed, 1 flaked → retrying under load profile"}'),
+
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:07:48+00',
+     'gate', 'checks-green', 1, null, null,
+     'test flake reproduced — returning to implement (attempt 2) ↺',
+     '{"outcome": "warn", "returned_to": "implement", "attempt": 2}'),
+
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:08:15+00',
+     'model', 'implement', 2, null, 'claude-fable-5',
+     'The reorder window is in the ISR fast path; sequence numbers must be assigned before the enqueue, not after.',
+     null),
+
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:09:30+00',
+     'tool', 'implement', 2, 'edit_file', null,
+     'drivers/can/isr_fastpath.c',
+     '{"file": "drivers/can/isr_fastpath.c",
+        "hunks": [{"kind": "del", "text": "− k_msgq_put(&tel_msgq, &frame, K_NO_WAIT);"},
+                  {"kind": "add", "text": "+ frame.seq = atomic_inc(&tel_seq);"}]}'),
+
+    ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:12:19+00',
+     'tool', 'implement', 2, 'run_tests', null,
+     'running… 47/63 cases',
+     '{"live": true, "progress": {"done": 47, "total": 63}}');
+
+select pg_temp.must_hold(
+  (select count(*) = 9 from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000482')
+   -- The PLAN note, the two model paragraphs, the gate's return line.
+   and (select body = 'Root cause: test asserts on frame order; CAN driver ISR can reorder under load.'
+          from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000482' and actor = 'plan')
+   and (select count(*) = 2 from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000482'
+           and actor = 'model' and model_id = 'claude-fable-5')
+   and (select body like 'test flake reproduced%' from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000482' and actor = 'gate')
+   -- `read_file`'s path, `run_tests`' command and its warn result, and the live fraction.
+   and (select body = 'drivers/can/telemetry_buf.c' from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000482' and tool_tag = 'read_file')
+   and (select payload -> 'result' = '{"passed": 2, "flaked": 1, "failed": 0}'::jsonb
+          from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000482'
+           and tool_tag = 'run_tests' and attempt = 1)
+   and (select payload -> 'progress' = '{"done": 47, "total": 63}'::jsonb
+          from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000482'
+           and tool_tag = 'run_tests' and attempt = 2),
+  'every entry type mockup 10 draws round-trips — the plan note, the model paragraphs with their model id, the gate''s return line, a read_file path, a run_tests command with its result, and the live progress fraction');
+
+-- The diff block, which is the entry type a text log cannot hold at all: three hunks in the
+-- order the code view renders them, each with the kind that decides its line treatment.
+select pg_temp.must_hold(
+  (select array_agg(hunk ->> 'kind' order by ordinality) = array['ctx', 'del', 'add']
+     from ouroboros.run_events,
+          jsonb_array_elements(payload -> 'hunks') with ordinality as hunks(hunk, ordinality)
+    where run_id = 'a6100000-0000-0000-0000-000000000482'
+      and tool_tag = 'edit_file' and attempt = 1)
+   and (select (payload -> 'hunks' -> 1 ->> 'text') = '− static struct k_fifo tel_fifo;'
+          from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000482'
+           and tool_tag = 'edit_file' and attempt = 1),
+  'an edit_file entry round-trips its diff hunks — kinds in the order the block renders them, and each line''s text exactly as it was reported');
+
+-- --- the hunks are typed ----------------------------------------------------------
+--
+-- Decision R3. The console has three line treatments, so a fourth kind is a diff line that
+-- renders as nothing, and a hunk with no text is a line with nothing in it.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, tool_tag, stage_key, attempt, payload)
+    values ('a6100000-0000-0000-0000-000000000482', 'tool', 'edit_file', 'implement', 2,
+            '{"hunks": [{"kind": "moved", "text": "x"}]}')$$,
+  'a diff hunk is one of the three kinds the console can draw',
+  'run_events_payload_hunks_typed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, tool_tag, stage_key, attempt, payload)
+    values ('a6100000-0000-0000-0000-000000000482', 'tool', 'edit_file', 'implement', 2,
+            '{"hunks": [{"kind": "add"}]}')$$,
+  'a diff hunk carries the text of its line',
+  'run_events_payload_hunks_typed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, tool_tag, stage_key, attempt, payload)
+    values ('a6100000-0000-0000-0000-000000000482', 'tool', 'edit_file', 'implement', 2,
+            '{"hunks": {"kind": "add", "text": "x"}}')$$,
+  'a single hunk object cannot stand in for the array — jsonpath is lax and would unwrap it, so the type is asserted beside the path',
+  'run_events_payload_hunks_typed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, body, payload)
+    values ('a6100000-0000-0000-0000-000000000482', 'system', 'a bare string', '"nope"')$$,
+  'a payload is an object, so every reader can enumerate its keys',
+  'run_events_payload_is_an_object');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor) values
+      ('a6100000-0000-0000-0000-000000000482', 'system')$$,
+  'an entry says something — a row with neither a body nor a payload is a position in the transcript with nothing at it',
+  'run_events_says_something');
+
+-- --- seq is dense, and the database owns it --------------------------------------
+--
+-- Acceptance criterion: `seq` density is enforced per run and holds under concurrent batch
+-- inserts. The nine entries above went in as **one statement**, which is the batch half: a
+-- multi-row insert numbers its rows 1…9 in the order it presents them, so the offset cursor
+-- AP.2 pages by is exact rather than approximately increasing.
+select pg_temp.must_hold(
+  (select array_agg(seq order by seq) = array[1, 2, 3, 4, 5, 6, 7, 8, 9]
+     from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000482')
+   and (select array_agg(seq order by ts) = array[1, 2, 3, 4, 5, 6, 7, 8, 9]
+          from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000482')
+   and (select event_seq = 9 from ouroboros.runs
+         where id = 'a6100000-0000-0000-0000-000000000482'),
+  'a batch insert numbers its entries densely from 1 in the order it presents them, and the run''s own counter agrees with the rows');
+
+-- The mechanism under *concurrent*, which is the half one session cannot demonstrate by
+-- racing itself: the totals are read `for update`, so two writers that would each have
+-- computed the same next number wait for one another instead. It is asserted from the
+-- function's own definition, because the alternative is either a second backend — the shape
+-- `tests/verify-alias-reference-guard.sh` exists for, and a separate script — or a `pg_locks`
+-- lookup that would pass whether or not the function took the lock: a foreign key into `runs`
+-- already leaves a `RowShareLock` on it, so finding one proves nothing.
+--
+-- What matters is *where* the lock is, not that the word appears: reading the totals without
+-- it and updating them after would serialise the writes and still hand both writers the same
+-- number, so the regex ties `for update` to the read of the run it belongs to.
+select pg_temp.must_hold(
+  (select pg_get_functiondef(oid) ~ 'where run\.id = new\.run_id\s+for update'
+     from pg_proc
+    where proname = 'run_events_append'
+      and pronamespace = 'ouroboros'::regnamespace),
+  'the append reads the run''s counters for update, so two concurrent writers serialise rather than both allocating the same seq');
+
+-- And the backstop under that lock, which is the one thing that turns a lock somehow not
+-- taken into a refused insert rather than two entries called `seq 10`. Asserted from the
+-- catalogue rather than by attempting a duplicate: the allocator refuses a supplied number
+-- that does not continue the stream (below) long before the key can see it, so the key is
+-- unreachable while the allocator is working — which is exactly what a backstop is.
+select pg_temp.must_hold(
+  (select pg_get_indexdef(oid) like '%UNIQUE%(run_id, seq)'
+     from pg_class where relname = 'run_events_run_seq_key'),
+  'a sequence number belongs to one entry of one run, by a unique key — the backstop under the lock, and what makes a redelivered batch a collision rather than a duplicated transcript');
+
+-- A supplied `seq` that continues the stream is kept; one that does not is refused rather
+-- than quietly re-based, for V040's reason at `build_log_chunks.byte_start`.
+insert into ouroboros.run_events (run_id, seq, ts, actor, body)
+  values ('a6100000-0000-0000-0000-000000000482', 10,
+          timestamptz '2026-08-08 14:13:00+00', 'user', 'prefer a fix inside the ISR');
+
+select pg_temp.must_hold(
+  (select actor = 'user' from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000482' and seq = 10),
+  'a supplied sequence number that continues the transcript is kept');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, seq, actor, body)
+    values ('a6100000-0000-0000-0000-000000000482', 40, 'system', 'a number out of nowhere')$$,
+  'a sequence number that does not continue the transcript is refused — a cursor addressed by an offset the store does not own is a reader that silently skips entries',
+  'run_events_seq_dense');
+
+-- `run_events_seq_positive` and `run_events_run_seq_key` are the two rules the allocator
+-- stands in front of: a supplied `0` is refused by the density check above before either can
+-- see it, and nothing else can supply a number at all. They are asserted from the catalogue
+-- rather than attempted, because a rule that cannot be reached cannot be demonstrated — and
+-- they are still written, because the allocator is a function and a function can be changed.
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_constraint
+    where conrelid = 'ouroboros.run_events'::regclass
+      and conname = 'run_events_seq_positive'
+      and pg_get_constraintdef(oid) = 'CHECK ((seq >= 1))'),
+  'the transcript counts from 1 — there is no entry zero for a cursor to start before');
+
+-- --- decision R4: the watermark is not the client's to lower -----------------------
+--
+-- Acceptance criterion: `simulated` is set from the ingesting principal, not
+-- client-asserted-only. The principal is what opened the run, so the run carries it and the
+-- append raises the entry to it — every one of the nine above asked for nothing and got the
+-- flag anyway.
+select pg_temp.must_hold(
+  (select count(*) = 10 from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000482' and simulated),
+  'every entry of a simulated run is watermarked, and none of them asked to be');
+
+insert into ouroboros.run_events (run_id, ts, actor, body, simulated)
+  values ('a6100000-0000-0000-0000-000000000482', timestamptz '2026-08-08 14:14:00+00',
+          'system', 'an entry that claims to be real', false);
+
+select pg_temp.must_hold(
+  (select simulated from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000482' and seq = 11),
+  'a client cannot report an unwatermarked entry into a simulated run — the flag is raised from the run, whatever the row asked for');
+
+-- The other direction is allowed, because it is a confession rather than a claim: an
+-- otherwise real run may still mark one entry as synthesised.
+insert into ouroboros.run_events (run_id, ts, actor, body, simulated)
+  values ('a6100000-0000-0000-0000-000000000483', timestamptz '2026-08-08 15:01:00+00',
+          'system', 'this entry was synthesised', true),
+         ('a6100000-0000-0000-0000-000000000483', timestamptz '2026-08-08 15:02:00+00',
+          'plan', 'and this one was not', false);
+
+select pg_temp.must_hold(
+  (select simulated from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000483' and seq = 1)
+   and (select not simulated from ouroboros.run_events
+          where run_id = 'a6100000-0000-0000-0000-000000000483' and seq = 2),
+  'a real run may still flag one entry as synthesised, because raising the watermark is a confession rather than a claim');
+
+-- And a run cannot relabel a transcript it has already written. Both directions, because the
+-- flag is inherited at write time: lowered, the page stops watermarking rows that still carry
+-- it; raised, it watermarks rows that do not.
+select pg_temp.must_reject(
+  $$update ouroboros.runs set simulated = false
+    where id = 'a6100000-0000-0000-0000-000000000482'$$,
+  'a run that has written a transcript cannot be declared real — every entry already written carries the watermark',
+  'runs_simulated_is_fixed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set simulated = true
+    where id = 'a6100000-0000-0000-0000-000000000483'$$,
+  'and cannot be declared simulated either, which would watermark two entries that were reported as real',
+  'runs_simulated_is_fixed');
+
+-- Before the first entry, either direction is fine: that is where the ingestion contract sets
+-- the flag from the principal that opened the run, and nothing is claiming anything yet.
+update ouroboros.runs set simulated = true
+ where id = 'a6100000-0000-0000-0000-000000000484';
+update ouroboros.runs set simulated = false
+ where id = 'a6100000-0000-0000-0000-000000000484';
+
+select pg_temp.must_hold(
+  (select not simulated from ouroboros.runs
+    where id = 'a6100000-0000-0000-0000-000000000484'),
+  'a run that has said nothing can still be marked and unmarked — the watermark is decided before the transcript begins and fixed from its first entry');
+
+-- Provenance, as a constraint. The violet chip says *this model said this*, so an entry that
+-- could not say which model, on which stage and attempt, cannot exist.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, stage_key, attempt, body)
+    values ('a6100000-0000-0000-0000-000000000482', 'model', 'implement', 2,
+            'a paragraph no model is named for')$$,
+  'a model entry names the model — decision R4 is what stops the transcript fabricating reasoning',
+  'run_events_model_provenance');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, model_id, body)
+    values ('a6100000-0000-0000-0000-000000000482', 'model', 'claude-fable-5',
+            'a paragraph from nowhere in the run')$$,
+  'and names the stage and attempt it happened on, which is the rest of the provenance R4 asks for',
+  'run_events_model_provenance');
+
+-- --- the typed columns, and what belongs to which chip ----------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, body)
+    values ('a6100000-0000-0000-0000-000000000482', 'orchestrator', 'a seventh chip')$$,
+  'run_events.actor rejects a word outside the six chips the transcript draws',
+  'run_events_actor');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events
+      (run_id, actor, tool_tag, stage_key, attempt, model_id, body)
+    values ('a6100000-0000-0000-0000-000000000482', 'model', 'read_file', 'implement', 2,
+            'claude-fable-5', 'a model with a tool tag')$$,
+  'the tool tag belongs to the TOOL chip — anywhere else it is a chip with nothing to draw it',
+  'run_events_tool_tag_is_a_tool');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, tool_tag, body)
+    values ('a6100000-0000-0000-0000-000000000482', 'tool', 'Read File', 'a title, not a tag')$$,
+  'a tool tag is a tag — the shape the mockup prints, not a sentence',
+  'run_events_tool_tag_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, stage_key, body)
+    values ('a6100000-0000-0000-0000-000000000482', 'system', 'implement', 'half a reference')$$,
+  'a stage reference is the pair — an entry that names a stage without an attempt cannot be found by the stepper''s filter',
+  'run_events_stage_ref_complete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, stage_key, attempt, body)
+    values ('a6100000-0000-0000-0000-000000000482', 'system', 'Implement Stage', 1, 'a title')$$,
+  'a stage key is a DSL node id — the same slug V045 holds run_stages to',
+  'run_events_stage_key_slug');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, body)
+    values ('a6100000-0000-0000-0000-000000000482', 'system', '   ')$$,
+  'an entry''s body says something or is absent, never whitespace',
+  'run_events_body_present');
+
+-- The stage reference is deliberately **not** a foreign key: a report can reach the
+-- transcript before the stage transition that created the row it names, and the run it
+-- belongs to may outlive the workflow that named the node.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from information_schema.table_constraints c
+     join information_schema.key_column_usage k
+       on k.constraint_name = c.constraint_name and k.constraint_schema = c.constraint_schema
+    where c.table_schema = 'ouroboros' and c.table_name = 'run_events'
+      and c.constraint_type = 'FOREIGN KEY' and k.column_name = 'stage_key'),
+  'stage_key is not a foreign key — a report can arrive before the stage transition that created the row it names, and a closed run must still render under a workflow that has since been renamed');
+
+-- --- append-only ------------------------------------------------------------------
+--
+-- The half a grant cannot enforce, and V022's answer: the development stack connects as the
+-- database owner and a superuser bypasses every grant, so the refusal is a trigger and is
+-- true for every role including this one. `restrict_violation` (23001) rather than a
+-- constraint name, because a trigger has none.
+select pg_temp.must_raise(
+  $$update ouroboros.run_events set body = 'something else'
+     where run_id = 'a6100000-0000-0000-0000-000000000482' and seq = 1$$,
+  '23001',
+  'a transcript entry cannot be revised, by any role including the owner of this database');
+
+select pg_temp.must_raise(
+  $$update ouroboros.run_events set payload = '{}'::jsonb
+     where run_id = 'a6100000-0000-0000-0000-000000000482'$$,
+  '23001',
+  'and not in bulk either — the refusal is per row, so a sweeping update refuses on the first of them');
+
+select pg_temp.must_raise(
+  $$update ouroboros.run_events set model_id = 'claude-opus-5'
+     where run_id = 'a6100000-0000-0000-0000-000000000482' and actor = 'model'$$,
+  '23001',
+  'a model paragraph cannot be re-attributed after the fact, which is the edit decision R4 exists to prevent');
+
+select pg_temp.must_raise(
+  $$update ouroboros.run_events set ts = timestamptz '2026-08-08 09:00:00+00'
+     where run_id = 'a6100000-0000-0000-0000-000000000482' and seq = 6$$,
+  '23001',
+  'and the clock on an entry cannot be moved, which would reorder the gate''s line against the attempt it returned from');
+
+-- An entry is an entry, and an entry has no updated_at to move.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'run_events'
+      and column_name = 'updated_at'),
+  'there is no updated_at on an append-only table, so nothing can quietly rewrite an entry');
+
+-- The grant half, and the acceptance criterion in one assertion: the application role reads
+-- and appends, and cannot revise or remove.
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.run_events', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.run_events', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.run_events', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.run_events', 'delete')
+   -- Including one column at a time, which is the grant a widening would most plausibly
+   -- arrive as.
+   and not has_column_privilege('ouroboros_app', 'ouroboros.run_events', 'body', 'update')
+   and not has_column_privilege('ouroboros_app', 'ouroboros.run_events',
+                                'elided_events', 'update')
+   and has_table_privilege('ouroboros_app', 'ouroboros.run_events_jsonl', 'select'),
+  'the application role may read the transcript, append to it and read its JSONL projection, and may not update or delete an entry — not even one column of one');
+
+-- --- the caps, and the hole that says where it is ---------------------------------
+--
+-- Acceptance criterion: breaching the cap inserts an elision marker recording the dropped
+-- count, with no silent loss. The cap is lowered rather than reached honestly, for V040's
+-- reason — a cap nothing exceeds and a cap that does not exist look identical.
+update ouroboros.runs set event_cap = 3
+ where id = 'a6100000-0000-0000-0000-000000000483';
+
+insert into ouroboros.run_events (run_id, ts, actor, body) values
+  ('a6100000-0000-0000-0000-000000000483', timestamptz '2026-08-08 15:03:00+00',
+   'plan', 'the third entry, which fits'),
+  ('a6100000-0000-0000-0000-000000000483', timestamptz '2026-08-08 15:22:07+00',
+   'plan', 'the fourth, which does not'),
+  ('a6100000-0000-0000-0000-000000000483', timestamptz '2026-08-08 15:31:40+00',
+   'plan', 'nor the fifth');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000483'),
+  'a run at its event cap stores its allowance and one more row — the allowance is the events, and the extra row is the database''s account of what it refused');
+
+select pg_temp.must_hold(
+  (select seq = 4 and actor = 'system' and elided_events = 2
+      and elided_bytes = octet_length('the fourth, which does not')
+                       + octet_length('nor the fifth')
+      and elided_from = timestamptz '2026-08-08 15:22:07+00'
+      and elided_to   = timestamptz '2026-08-08 15:31:40+00'
+      and payload = '{"kind": "elision", "reason": "per_run_event_cap",
+                      "cap_bytes": 33554432, "cap_events": 3}'::jsonb
+     from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000483' and elided_events is not null),
+  'the elision marker records how many entries were refused, how many bytes they weighed, the span they covered and which cap refused them — the hole the console draws rather than a transcript that stops mid-run');
+
+select pg_temp.must_hold(
+  (select events_elided_at is not null from ouroboros.runs
+    where id = 'a6100000-0000-0000-0000-000000000483'),
+  'and the run says its transcript was cut short, so *was this complete?* is answerable without reaching for the marker');
+
+-- One marker per run. Every further refusal is folded into the one that is already there,
+-- which is what keeps a capped run's transcript from growing a row per dropped event.
+insert into ouroboros.run_events (run_id, ts, actor, body)
+  values ('a6100000-0000-0000-0000-000000000483', timestamptz '2026-08-08 15:40:00+00',
+          'plan', 'nor the sixth');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000483')
+   and (select elided_events = 3 and elided_to = timestamptz '2026-08-08 15:40:00+00'
+          from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000483'
+           and elided_events is not null)
+   and (select event_seq = 4 from ouroboros.runs
+         where id = 'a6100000-0000-0000-0000-000000000483'),
+  'a further refusal is folded into the marker already there — the count and the end of the span move, and the transcript does not grow a row per dropped entry');
+
+select pg_temp.must_hold(
+  (select pg_get_indexdef(oid) like '%(run_id) WHERE (elided_events IS NOT NULL)'
+     from pg_class where relname = 'run_events_one_elision_idx'),
+  'one elision marker per run, by a partial unique index — two markers would be two accounts of one hole, and the console would draw a transcript interrupted twice');
+
+-- Nobody but the cap writes one. A marker somebody else can write is the product describing
+-- a hole that was never there.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events
+      (run_id, actor, payload, elided_events, elided_bytes, elided_from, elided_to)
+    values ('a6100000-0000-0000-0000-000000000482', 'system', '{"kind": "elision"}',
+            9000, 9000000, now(), now())$$,
+  'an elision marker is the database''s account of its own refusal, and no caller may write one',
+  'run_events_elision_is_the_database_s');
+
+-- One figure of the four is refused by the same rule, because the rule is *any* of them and
+-- not all of them — which is what makes `run_events_elision_complete` unreachable from a
+-- caller and therefore a backstop under the trigger's own writes rather than a rule anybody
+-- can be shown breaking. Asserted from the catalogue for that reason.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_events (run_id, actor, body, elided_events)
+    values ('a6100000-0000-0000-0000-000000000482', 'system', 'half a marker', 4)$$,
+  'one figure of a marker is as refused as all four — the rule is that a caller writes none of them',
+  'run_events_elision_is_the_database_s');
+
+select pg_temp.must_hold(
+  (select pg_get_constraintdef(oid)
+            = 'CHECK ((num_nonnulls(elided_events, elided_bytes, elided_from, elided_to) = ANY (ARRAY[0, 4])))'
+     from pg_constraint
+    where conrelid = 'ouroboros.run_events'::regclass
+      and conname = 'run_events_elision_complete'),
+  'and a marker is whole or absent — three of four figures would be a hole with no span, which is the backstop under what the cap itself writes');
+
+-- The marker's figures are the one thing on this table that moves, and they only grow.
+select pg_temp.must_raise(
+  $$update ouroboros.run_events set elided_events = 1
+     where run_id = 'a6100000-0000-0000-0000-000000000483'
+       and elided_events is not null$$,
+  '23001',
+  'the account of what was refused cannot be talked down — the one update this table permits is that account growing');
+
+select pg_temp.must_raise(
+  $$update ouroboros.run_events set elided_events = elided_events + 1, body = 'and a lie'
+     where run_id = 'a6100000-0000-0000-0000-000000000483'
+       and elided_events is not null$$,
+  '23001',
+  'and an entry cannot be edited under cover of the marker growing — the exception is the figures and nothing beside them');
+
+-- The byte half of the cap, and the reason it is terminal. A run stopped by bytes must not
+-- admit the next entry small enough to fit, or the marker would be describing a span of time
+-- with entries still inside it.
+update ouroboros.runs set event_byte_cap = 256
+ where id = 'a6100000-0000-0000-0000-000000000484';
+
+insert into ouroboros.run_events (run_id, ts, actor, body) values
+  ('a6100000-0000-0000-0000-000000000484', timestamptz '2026-08-08 16:01:00+00',
+   'plan', repeat('a', 100)),
+  ('a6100000-0000-0000-0000-000000000484', timestamptz '2026-08-08 16:02:00+00',
+   'plan', repeat('b', 200)),
+  ('a6100000-0000-0000-0000-000000000484', timestamptz '2026-08-08 16:03:00+00',
+   'plan', 'tiny');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000484')
+   and (select seq = 2 and elided_events = 2 and elided_bytes = 204
+           and payload ->> 'reason' = 'per_run_byte_cap'
+          from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000484'
+           and elided_events is not null)
+   -- And the meter still says what the *stored* transcript weighs, not what the cap is: the
+   -- marker is the database's row and takes no allowance.
+   and (select event_bytes = 100 and event_seq = 2 from ouroboros.runs
+         where id = 'a6100000-0000-0000-0000-000000000484'),
+  'the byte cap refuses an entry whole — half an event is not an event — and it is terminal, so the small entry after the big one is elided too rather than landing on the far side of the hole');
+
+-- What the cap counts is what the projection emits, measured by one function so the meter and
+-- the export cannot disagree.
+select pg_temp.must_hold(
+  (select event_bytes = (select sum(ouroboros.run_event_bytes(body, payload))
+                           from ouroboros.run_events
+                          where run_id = 'a6100000-0000-0000-0000-000000000482'
+                            and elided_events is null)
+     from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000482'),
+  'a run''s byte total is the sum of what run_event_bytes() says its stored entries weigh — one measure, so the Resources meter and the cap cannot disagree about how much a run said');
+
+-- --- the reads -------------------------------------------------------------------
+--
+-- The cursor: one run's entries after an offset, in order. Served by the unique key asserted
+-- above, which leads with `run_id` and is therefore also the index the `runs` cascade deletes
+-- through — which is why no second index on `run_id` alone is created.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.run_events
+     where run_id = 'a6100000-0000-0000-0000-000000000482' and seq > 5
+     order by seq$$,
+  'run_events_run_seq_key');
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.run_events
+     where run_id = 'a6100000-0000-0000-0000-000000000482'
+       and stage_key = 'implement' and attempt = 2$$,
+  'run_events_run_stage_attempt_idx');
+
+set local enable_seqscan = on;
+
+-- The BRIN index is asserted from the catalogue rather than from a plan: BRIN is chosen for a
+-- table large enough that a bitmap scan beats a sequential one, and these fixtures are nine
+-- rows. What can be checked here is that the index exists and is the access method the scope
+-- names — a btree quietly put in its place would cost what BRIN was chosen to save.
+select pg_temp.must_hold(
+  (select access.amname = 'brin' and pg_get_indexdef(index.oid) like '%(ts)'
+     from pg_class index
+     join pg_am access on access.oid = index.relam
+    where index.relname = 'run_events_ts_brin_idx'),
+  'the transcript''s time index is BRIN on ts — an append-only table is stored in very nearly ts order, which is the one condition that makes a few pages of summary the right structure');
+
+-- The stepper's transcript filter, which is what clicking a node of mockup 10's timeline
+-- asks for: what did Implement say on its second attempt?
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000482'
+      and stage_key = 'implement' and attempt = 2),
+  'the transcript can be asked what one stage said on one attempt — the model paragraph, the edit and the live test run of Implement''s second try');
+
+-- --- the JSONL projection, byte for byte ------------------------------------------
+--
+-- Acceptance criterion: the projection fixture matches the documented JSONL shape byte for
+-- byte. The shape is specified in V046's header; `lib/run-events-jsonl.sql` is the bytes it
+-- specifies, for exactly the transcript above; and AP.2's export (#304) is compared against
+-- the same lines when it lands.
+--
+-- The rules are asserted twice on purpose. Once as properties — field order, absent nulls,
+-- the timestamp format, the watermark on every line — so a reader can see what the contract
+-- *says*; and once as the fixture, so a change that kept every property and moved a byte is
+-- still caught.
+\ir lib/run-events-jsonl.sql
+
+select pg_temp.must_hold(
+  (select count(*) = 11 from pg_temp.run_events_jsonl_golden),
+  'the JSONL fixture covers every entry of the transcript above, including the steering line and the one that claimed to be real');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from (select seq, line from ouroboros.run_events_jsonl
+            where run_id = 'a6100000-0000-0000-0000-000000000482') projected
+     full join pg_temp.run_events_jsonl_golden golden using (seq)
+    where projected.line is distinct from golden.line),
+  'the JSONL projection of mockup 10''s transcript is the documented shape byte for byte — one row, one line, no line missing and none added');
+
+select pg_temp.must_hold(
+  (select bool_and(line like '{"seq": %')
+      -- `jsonb` would have sorted the keys and put `actor` first, which is why the line is
+      -- composed as `json` text.
+      and bool_and(line not like '%": null%')
+      and bool_and(line like '%"simulated": %')
+      and bool_and(line ~ '"ts": "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"')
+      -- The export is one run's transcript, so the run is the file's identity rather than a
+      -- field repeated on every line — and `run_id` is a column of the view instead.
+      and bool_and(line not like '%run_id%')
+     from ouroboros.run_events_jsonl where run_id::text like 'a6100000-%'),
+  'every JSONL line opens with seq, omits its null fields, carries decision R4''s watermark, renders its timestamp as UTC ISO 8601 with milliseconds, and does not repeat the run id it is already filed under');
+
+select pg_temp.must_hold(
+  (select line = '{"seq": 4, "ts": "2026-08-08T15:22:07.000Z", "actor": "system", "simulated": false, "payload": {"kind": "elision", "reason": "per_run_event_cap", "cap_bytes": 33554432, "cap_events": 3}, "elided_events": 3, "elided_bytes": 52, "elided_from": "2026-08-08T15:22:07.000Z", "elided_to": "2026-08-08T15:40:00.000Z"}'
+     from ouroboros.run_events_jsonl
+    where run_id = 'a6100000-0000-0000-0000-000000000483' and seq = 4),
+  'the hole exports as a line of its own, with the figures in it — an export whose reader can see where the transcript stops, and when, is the whole point of a marker');
+
+-- The rendering does not depend on the session, which is what makes a byte-for-byte fixture
+-- reproducible on somebody else's laptop.
+set local timezone = 'Pacific/Auckland';
+set local datestyle = 'German, DMY';
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from (select seq, line from ouroboros.run_events_jsonl
+            where run_id = 'a6100000-0000-0000-0000-000000000482') projected
+     full join pg_temp.run_events_jsonl_golden golden using (seq)
+    where projected.line is distinct from golden.line),
+  'and the same rows export the same bytes under another TimeZone and another DateStyle — the projection renders from its pattern rather than from the session');
+
+reset timezone;
+reset datestyle;
+
+-- --- and all of it, as the role a deployment actually connects as -------------------
+--
+-- Every assertion above ran as the owner of this database, which is the role the compose stack
+-- and CI connect as and is also the one role none of the grants apply to. The acceptance
+-- criterion is about the *application* role, so this is the same posture asked of
+-- `ouroboros_app` directly: it may append, the cap still works for it, and it cannot revise or
+-- remove what it appended.
+--
+-- Which is also what makes `run_events_append()` being `security definer` load-bearing rather
+-- than decorative. Every write inside it — the run's counters, and the marker's own figures —
+-- is a write this role holds no privilege for, and all of them happen on its insert. As a
+-- plain `security invoker` function the first statement of an append is
+-- *permission denied for table runs*, and nothing below would reach its assertion.
+--
+-- `set role` needs the right to become that role, and this file already has it wherever it is
+-- meant to run: `ouroboros_app` is created by `V022`, and PostgreSQL 16 onwards gives the
+-- creator of a role `SET` on it — so the role that applied the migrations can do this, as can
+-- a superuser, which is what CI and the compose stack connect as. A *permission denied to set
+-- role* here means the suite is being run as somebody who did not migrate this database.
+update ouroboros.runs set event_cap = 2
+ where id = 'a6100000-0000-0000-0000-000000000485';
+
+set local role ouroboros_app;
+
+insert into ouroboros.run_events (run_id, ts, actor, body, simulated) values
+  ('a6100000-0000-0000-0000-000000000485', timestamptz '2026-08-08 17:01:00+00',
+   'plan', 'the application role appends', false),
+  ('a6100000-0000-0000-0000-000000000485', timestamptz '2026-08-08 17:02:00+00',
+   'plan', 'and again', false),
+  ('a6100000-0000-0000-0000-000000000485', timestamptz '2026-08-08 17:03:00+00',
+   'plan', 'and is capped like anybody else', false),
+  ('a6100000-0000-0000-0000-000000000485', timestamptz '2026-08-08 17:04:00+00',
+   'plan', 'and folded like anybody else', false);
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s — a set role that silently did nothing would make every one of them a statement about the owner');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000485')
+   and (select elided_events = 2 and simulated from ouroboros.run_events
+         where run_id = 'a6100000-0000-0000-0000-000000000485'
+           and elided_events is not null),
+  'the application role can append, the cap refuses and folds for it exactly as it does for the owner, and decision R4''s watermark is raised on its entries from a run it holds no privilege to read');
+
+select pg_temp.must_raise(
+  $$update ouroboros.run_events set body = 'edited by the application'
+     where run_id = 'a6100000-0000-0000-0000-000000000485' and seq = 1$$,
+  '42501',
+  'and it cannot revise an entry — refused by the grant, before the trigger is ever reached');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.run_events
+     where run_id = 'a6100000-0000-0000-0000-000000000485' and seq = 1$$,
+  '42501',
+  'nor remove one, which is the half of append-only no trigger can enforce without making a run undeletable');
+
+reset role;
+
+select pg_temp.must_hold(
+  (select current_user <> 'ouroboros_app'),
+  'and the role is given back, so nothing after this section is asserted under it by accident');
+
+-- The definer posture itself, from the catalogue: the one function in this schema that runs as
+-- its owner, with its search_path pinned and `pg_temp` last, and not callable by anybody who
+-- does not need to call it. All three are what make the paragraph above safe rather than merely
+-- convenient.
+select pg_temp.must_hold(
+  (select prosecdef
+      and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+      and not has_function_privilege('public', oid, 'execute')
+     from pg_proc
+    where proname = 'run_events_append'
+      and pronamespace = 'ouroboros'::regnamespace)
+   -- And it is the only one, so "the schema has one definer function" stays a fact somebody
+   -- has to change this assertion to stop being true.
+   and (select count(*) = 1 from pg_proc
+         where pronamespace = 'ouroboros'::regnamespace and prosecdef),
+  'the transcript''s append is the schema''s one security-definer function — search_path pinned with pg_temp last, execute revoked from public, and nothing else running as the owner');
+
+-- --- the cascades ----------------------------------------------------------------
+delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.run_events
+    where run_id = 'a6100000-0000-0000-0000-000000000484'),
+  'deleting a run takes its whole transcript with it — and the append-only trigger does not stand in the way, because a flight recorder nobody can reach is not a record and refusing this would make a workspace undeletable');
+
+delete from ouroboros.organization where "id" = 'org-events';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where id::text like 'a6100000-%')
+   and (select count(*) = 0 from ouroboros.run_events where run_id::text like 'a6100000-%'),
+  'deleting a workspace takes its runs and every entry of every transcript with them');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

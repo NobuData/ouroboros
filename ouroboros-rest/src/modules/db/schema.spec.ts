@@ -344,7 +344,13 @@ describe("TABLE_COLUMNS", () => {
     // `run_stage_current` and `runs_with_stage`. They are here before a reader for the drift
     // check's sake rather than in spite of it: `runs` grew three columns in the same migration,
     // and the list above is what catches a mirror that stopped matching the migrations.
-    expect(TABLE_NAMES).toHaveLength(55);
+    //
+    // The fifty-sixth and fifty-seventh are V046's, mirrored by AO.2 (#299): `run_events` — the
+    // agent transcript, typed and append-only — and `run_events_jsonl`, the projection mockup
+    // 10's *Raw JSONL* button streams. Here before a reader for the same reason: `runs` grew six
+    // more columns in the same migration, three of them the cap's running totals, and a mirror
+    // that missed those would type-check a write the database refuses.
+    expect(TABLE_NAMES).toHaveLength(57);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -526,7 +532,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(6);
+    expect(READ_ONLY_VIEWS).toHaveLength(7);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {
@@ -543,6 +549,55 @@ describe("TABLE_COLUMNS", () => {
     expect(fromTable).toEqual(fromView);
   });
 
+  it("mirrors the transcript as append-only, rather than pretending its account of itself is writable", () => {
+    // V046 (#299, AO.2) refuses every UPDATE on `run_events` for every role including the
+    // owner, and the four `elided_*` columns are refused on INSERT as well: they are the cap's
+    // account of what it dropped, and a marker a caller could write is the product describing a
+    // hole that was never there. The mirror says so with `never` in both write positions, so
+    // the assertion is the compile error below rather than a runtime check.
+    for (const column of ["elided_events", "elided_bytes", "elided_from", "elided_to"] as const) {
+      expect(TABLE_COLUMNS.run_events).toContain(column);
+    }
+
+    const written: Insertable<Database["run_events"]> = {
+      run_id: "5eed0009-0000-4000-8000-000000000482",
+      actor: "system",
+      body: "a hole somebody invented",
+      // @ts-expect-error - the four elided_* columns are written by the cap trigger and
+      // refused from any caller. Every other column on this object is legal, so the error is
+      // this one.
+      elided_events: 9000,
+    };
+
+    expect(written.actor).toBe("system");
+  });
+
+  it("keeps the transcript's running totals out of a writer's reach", () => {
+    // `runs.event_seq`, `event_bytes` and `events_elided_at` are the cap trigger's own
+    // accounting — the sequence it hands out, the bytes it has admitted, and when it first
+    // refused one. A statement that set any of them would be telling the store how much of
+    // itself it had used, so all three are `never` in both write positions while `event_cap`
+    // and `event_byte_cap`, which are configuration rather than observation, are not.
+    const configured: Insertable<Database["runs"]> = {
+      organization_id: "acme",
+      github_repo_id: "5eed0003-0000-4000-8000-000000000001",
+      issue_number: 482,
+      issue_title: "Fix flaky CAN-bus telemetry test",
+      workflow_tag: "standard-fix",
+      model: "claude-fable-5",
+      stage_label: "Implementing",
+      stage_index: 4,
+      stage_total: 8,
+      event_cap: 500,
+      simulated: true,
+      // @ts-expect-error - the totals are the trigger's. Every other column on this object is
+      // legal, so the error is this one.
+      event_seq: 12,
+    };
+
+    expect(configured.event_cap).toBe(500);
+  });
+
   it("mirrors, for each view, the table a write to it belongs in", () => {
     // The rule `READ_ONLY_VIEWS` states, as an assertion about the mirror rather than about a
     // caller: refusing a write is only useful if the mirror also declares somewhere for that
@@ -551,6 +606,10 @@ describe("TABLE_COLUMNS", () => {
     expect(TABLE_NAMES).toContain("workspace_settings");
     expect(TABLE_NAMES).toContain("ticket_sources");
     expect(TABLE_NAMES).toContain("planning_epics");
+    // V046's projection (#299) is the one view here whose base table this service will be the
+    // *only* writer of: AP.1's ingestion appends to `run_events` and AP.2's export reads the
+    // lines out of it.
+    expect(TABLE_NAMES).toContain("run_events");
   });
 
   it("keeps the sealed credential off the view a read path selects", () => {

@@ -31,8 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**239 of 454 ordered issues are closed** — P0 through P6 are complete, and P7, P8, P9 and P10
-are under way.
+**247 of 454 ordered issues are closed** — P0 through P9 are complete, and P10 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,11 +39,8 @@ and are accounted for in the counts below, not in the tables.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6 | **165** |
-| 🟡 **In progress** | P7 | **42** of 43 |
-| 🟡 **In progress** | P8 | **16** of 17 |
-| 🟡 **In progress** | P9 | **18** of 20 |
-| 🟡 **In progress** | P10 | **1** of 17 |
+| ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9 | **245** |
+| 🟡 **In progress** | P10 | **2** of 17 |
 | — **Not started** | P11–P17 | 0 of 192 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -114,10 +110,10 @@ position is not forced by dependencies, one of these decided it.
 | **P4** | Dashboard — first real screen | ✅ **25/25** | 25 | 60 | Mockup 02 |
 | **P5** | Model plane — vault, providers, registry, routing | ✅ 50/50 | 50 | 153 | Mockups 06, 07, 21 |
 | **P6** | Issue intake & estimation | ✅ 23/23 | 23 | 68 | Mockup 03 |
-| **P7** | Workflow authoring (visual + code) | 🟡 42/43 | 43 | 137 | Mockups 04, 05 |
-| **P8** | Planning & batch work creation | 🟡 16/17 | 17 | 52 | Mockup 09 |
-| **P9** | Build farm & runner agent | 🟡 13/20 | 20 | 70 | Mockup 08 |
-| **P10** | Run console & ingestion contract | 🟡 1/17 | 17 | 55 | Mockup 10 |
+| **P7** | Workflow authoring (visual + code) | ✅ 43/43 | 43 | 137 | Mockups 04, 05 |
+| **P8** | Planning & batch work creation | ✅ 17/17 | 17 | 52 | Mockup 09 |
+| **P9** | Build farm & runner agent | ✅ 20/20 | 20 | 70 | Mockup 08 |
+| **P10** | Run console & ingestion contract | 🟡 2/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | — 0/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | — 0/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | — 0/32 | 32 | 109 | Mockups 15, 18 |
@@ -125,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **164/454** | **454** | **1,404** | |
+| | **Total** | **247/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1325,7 +1321,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **43 issues** · 137 complexity points · order **#166–#208** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md`, `ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`, + the held-back registry tail
-> **Status:** 🟡 **In progress** — 36 of 43 issues closed
+> **Status:** ✅ **Complete** — 43 of 43 issues closed
 
 **Goal.** Define the workflow domain and its immutable versioning, the DSL JSON Schema shared by REST and engine, the pluggable `TicketSourceProvider` SPI, validation/triggers/dry-run, the authoring studio (mockup 04), and the code projection with proven round-trip (mockup 05).
 
@@ -1385,7 +1381,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **17 issues** · 52 complexity points · order **#209–#225** · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_09_PLANNING.md` (Epics AK–AM)
-> **Status:** 🟡 **In progress** — 16 of 17 issues closed
+> **Status:** ✅ **Complete** — 17 of 17 issues closed
 
 **Goal.** Make drafts real entities, generate batches with the planner v0 (ids, titles, `blocks` dependencies, workflow-tag suggestions), size them through the P6 estimator, push them to GitHub with real dependencies and epics, and render the gantt roadmap.
 
@@ -1419,7 +1415,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **20 issues** · 70 complexity points · order **#226–#245** · 9 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_08_BUILD_FARM.md` (Epics AG–AI)
-> **Status:** 🟡 **In progress** — 18 of 20 issues closed
+> **Status:** ✅ **Complete** — 20 of 20 issues closed
 
 **Goal.** Ship the `ouroboros-runner` agent (static Go binary, three platforms), token-scoped enrollment with mTLS identity and outbound-only connections, live heartbeat telemetry, dispatchable builds, pools, and streaming logs.
 
@@ -1443,20 +1439,20 @@ the blockquote above that records what it did and what it did differently.
 | 235 | **AH.5** | ✅ [#253](https://github.com/NobuData/ouroboros/issues/253) | Log ingest & retrieval | ouroboros-rest | M | AH.3 |
 | 236 | **AG.5** | ✅ [#247](https://github.com/NobuData/ouroboros/issues/247) | Log shipping & ccache stats | ouroboros-runner | M | AG.4 |
 | 237 | **AH.6** | ✅ [#254](https://github.com/NobuData/ouroboros/issues/254) | Farm read APIs & stats | ouroboros-rest | M | AH.4 |
-| 238 | **AH.7** | [#255](https://github.com/NobuData/ouroboros/issues/255) | Farm integration tests (fake agent) | ouroboros-rest | M | AH.4, AH.6 |
+| 238 | **AH.7** | ✅ [#255](https://github.com/NobuData/ouroboros/issues/255) | Farm integration tests (fake agent) | ouroboros-rest | M | AH.4, AH.6 |
 | 239 | **AI.1** | ✅ [#256](https://github.com/NobuData/ouroboros/issues/256) | Build Farm route, head & stat row | ouroboros-ui | S | 5.3, D.5, AH.6 |
 | 240 | **AI.2** | ✅ [#257](https://github.com/NobuData/ouroboros/issues/257) | Runners table (live) | ouroboros-ui | L | AI.1 |
 | 241 | **AI.3** | ✅ [#258](https://github.com/NobuData/ouroboros/issues/258) | Enroll-runner card & token flow | ouroboros-ui | M | AH.2, AI.1 |
 | 242 | **AI.4** | ✅ [#259](https://github.com/NobuData/ouroboros/issues/259) | Pools card & configuration | ouroboros-ui | M | AH.6, AI.1 |
 | 243 | **AI.6** | ✅ [#261](https://github.com/NobuData/ouroboros/issues/261) | Live log card | ouroboros-ui | M | AH.5, AI.1 |
 | 244 | **AI.5** | ✅ [#260](https://github.com/NobuData/ouroboros/issues/260) | Runner actions & job submission | ouroboros-ui | M | AH.4, AI.2 |
-| 245 | **AI.7** | [#262](https://github.com/NobuData/ouroboros/issues/262) | Farm states & e2e leg | ouroboros-ui, .github | M | AI.1, AI.6 |
+| 245 | **AI.7** | ✅ [#262](https://github.com/NobuData/ouroboros/issues/262) | Farm states & e2e leg | ouroboros-ui, .github | M | AI.1, AI.6 |
 
 ## P10 — Run Console — Observability Over the Loop
 
 > **17 issues** · 55 complexity points · order **#246–#262** · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_10_RUN_CONSOLE.md` (Epics AO–AQ)
-> **Status:** 🟡 **In progress** — 1 of 17 issues closed
+> **Status:** 🟡 **In progress** — 2 of 17 issues closed
 
 **Goal.** Define the run ingestion contract (stage transitions, attempts, transcript events, file/commit reports, token accounting, farm reservations), evaluate guardrails against the pinned workflow, and build mockup 10 with the stage stepper, transcript and steering input — driven by a scripted simulated-run driver.
 
@@ -1469,7 +1465,7 @@ the blockquote above that records what it did and what it did differently.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 246 | **AO.1** | ✅ [#298](https://github.com/NobuData/ouroboros/issues/298) | Stage history & attempts schema | ouroboros-db | M | F.1 |
-| 247 | **AO.2** | [#299](https://github.com/NobuData/ouroboros/issues/299) | Run event store | ouroboros-db | M | AO.1 |
+| 247 | **AO.2** | ✅ [#299](https://github.com/NobuData/ouroboros/issues/299) | Run event store | ouroboros-db | M | AO.1 |
 | 248 | **AO.3** | [#300](https://github.com/NobuData/ouroboros/issues/300) | Changes, resources & farm-link schema | ouroboros-db | S | AO.1 |
 | 249 | **AO.4** | [#301](https://github.com/NobuData/ouroboros/issues/301) | Guardrail evaluations & control queue schema | ouroboros-db | M | AO.1 |
 | 250 | **AO.5** | [#302](https://github.com/NobuData/ouroboros/issues/302) | Console dev seeds — mockup-10 parity + ci probes | ouroboros-db, .github | M | 3.6, AO.2, AO.4 |

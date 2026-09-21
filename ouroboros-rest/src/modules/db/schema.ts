@@ -840,6 +840,48 @@ export interface RunsTable {
    * to pin, and a later publish does not move it.
    */
   workflow_version_pin: number | null;
+  /**
+   * Whether this run is driven by a simulator rather than by an executor (V046,
+   * [#299](https://github.com/NobuData/ouroboros/issues/299), decision **R4**).
+   *
+   * The source of truth every {@link RunEventsTable.simulated} inherits from. Set here from
+   * the principal that opened the run — which is what makes the transcript's watermark a fact
+   * about the writer rather than a field in a report — and **fixed once the run has written
+   * anything**: `runs_simulated_is_fixed()` refuses a change after the first entry, because an
+   * entry keeps the flag the run had when it landed and moving the run's afterwards would
+   * leave an export whose header disagreed with its lines.
+   */
+  simulated: Generated<boolean>;
+  /**
+   * The highest transcript sequence number handed out for this run (V046).
+   *
+   * The database's, entirely: `run_events_append()` reads it, allocates the next number from
+   * it and writes it back, so nothing here may set it. Because the sequence is dense it is
+   * also the number of rows the transcript holds.
+   */
+  event_seq: ColumnType<number, never, never>;
+  /**
+   * How many bytes of `body` and `payload` the stored transcript holds (V046). The trigger's.
+   *
+   * A `string`, as every `bigint` in this mirror is: `pg` hands back `int8` as text rather
+   * than risk a value past `Number.MAX_SAFE_INTEGER` arriving as a rounded float.
+   */
+  event_bytes: ColumnType<string, never, never>;
+  /**
+   * How many transcript entries this run may store (V046).
+   *
+   * Per run because a long loop legitimately says more than a one-stage fix, and settable —
+   * unlike the two totals above — because it is a configuration rather than an observation.
+   */
+  event_cap: Generated<number>;
+  /** How many bytes of `body` and `payload` the transcript may store (V046). A `bigint`. */
+  event_byte_cap: Generated<string>;
+  /**
+   * When either cap first refused an entry of this run's transcript (V046) — the answer to
+   * *"was this transcript cut short?"* without reaching for the elision marker. Null on a run
+   * that said everything it said. The trigger's.
+   */
+  events_elided_at: ColumnType<Date | null, never, never>;
 }
 
 /**
@@ -1036,6 +1078,171 @@ export interface RunsWithStageView {
   loop_seq: number;
   branch_name: string | null;
   workflow_version_pin: number | null;
+  simulated: boolean;
+  event_seq: number;
+  event_bytes: string;
+  event_cap: number;
+  event_byte_cap: string;
+  events_elided_at: Date | null;
+}
+
+/**
+ * `run_events.actor` — the chip mockup 10's transcript draws (V046,
+ * [#299](https://github.com/NobuData/ouroboros/issues/299), decision **R3**).
+ *
+ * The `run_events_actor` CHECK, and the console's six treatments: `plan` is the PLAN note,
+ * `tool` is a TOOL row with its tag, `model` is the violet reasoning paragraph, `gate` is the
+ * warn line a loop edge writes, `user` is a person steering, and `system` is the store
+ * speaking for itself — which today is the elision marker and nothing else.
+ */
+export type RunEventActor = "plan" | "tool" | "model" | "gate" | "user" | "system";
+
+/** The six, in the order the CHECK declares them — what a DTO validates against. */
+export const RUN_EVENT_ACTORS = [
+  "plan",
+  "tool",
+  "model",
+  "gate",
+  "user",
+  "system",
+] as const satisfies readonly RunEventActor[];
+
+/**
+ * `run_events.payload.hunks[].kind` — a diff line's treatment (V046, decision **R3**).
+ *
+ * Three, because the code view has three line treatments: context, deleted, added. Held by
+ * `run_events_payload_hunks_typed`, which is a jsonpath rather than a CHECK expression because
+ * a CHECK cannot hold a subquery — so widening this union is a migration that edits that path
+ * as well.
+ */
+export type RunEventHunkKind = "ctx" | "del" | "add";
+
+/** The three, in the order the console draws them. */
+export const RUN_EVENT_HUNK_KINDS = [
+  "ctx",
+  "del",
+  "add",
+] as const satisfies readonly RunEventHunkKind[];
+
+/**
+ * `ouroboros.run_events` — mockup 10's agent transcript, as typed append-only rows (V046,
+ * [#299](https://github.com/NobuData/ouroboros/issues/299), AO.2).
+ *
+ * The product's flight recorder: the artifact somebody reads when a run goes wrong at 3 a.m.,
+ * and what every other card on the run page summarises. Three things about it are structural
+ * rather than conventional, and all three show up in this interface.
+ *
+ * **Append-only.** `run_events_refuse_update()` refuses every UPDATE for every role including
+ * the owner, so nothing here is writable after the insert — which is why the four `elided_*`
+ * columns are `never` in both write positions rather than merely discouraged by a comment. The
+ * one update the table permits is the cap's own, and the cap is not this service.
+ *
+ * **The database owns `seq`.** `run_events_append()` allocates it densely from
+ * {@link RunsTable.event_seq}; a supplied value is accepted only if it continues the stream, so
+ * it is `Generated` rather than required.
+ *
+ * **Decision R4.** {@link RunEventsTable.simulated} is raised to the run's own on insert, so a
+ * value passed here can only ever be raised and never lowered, and a `model` entry that does
+ * not name its model, stage and attempt is refused outright.
+ */
+export interface RunEventsTable {
+  id: Generated<string>;
+  /**
+   * The run this is the transcript of, and the whole of this row's tenancy — V029's and V045's
+   * choice, since an entry has no meaning apart from its run. ON DELETE CASCADE.
+   */
+  run_id: string;
+  /**
+   * The transcript's order, dense from 1 — the offset cursor `?after=` pages by.
+   *
+   * `Generated`: the database assigns it, and a supplied value that does not continue the
+   * stream is refused rather than quietly re-based, because a cursor addressed by an offset
+   * the store does not own is a reader that silently skips entries.
+   */
+  seq: Generated<number>;
+  /**
+   * When the entry happened — the `14:04:40` the transcript prints — as against
+   * {@link RunEventsTable.received_at}, which is when it landed. The transcript is ordered by
+   * `seq` rather than by this, so a clock that steps backwards cannot reorder a diff after the
+   * edit that produced it.
+   */
+  ts: Generated<Date>;
+  actor: RunEventActor;
+  /**
+   * The DSL node id this entry happened under, paired with {@link RunEventsTable.attempt}:
+   * both set or both absent. Deliberately not a foreign key — a report can arrive before the
+   * stage transition that created the row it names.
+   */
+  stage_key: string | null;
+  attempt: number | null;
+  /** The tag beside the TOOL chip — `read_file`, `edit_file`, `run_tests`. Only on `actor: tool`. */
+  tool_tag: string | null;
+  /**
+   * The model this entry came from — `claude-fable-5`, the word the violet chip prints.
+   * Required on a `model` entry (decision **R4**) and permitted elsewhere.
+   */
+  model_id: string | null;
+  /** What the entry says. Unbounded in length; the run's byte cap is what bounds the transcript. */
+  body: string | null;
+  /**
+   * Everything about the entry that is not a sentence: a diff's
+   * `{file, hunks: [{kind, text}]}`, a test result, a progress fraction.
+   *
+   * `unknown` for the reason every other jsonb column in this mirror is: the shape varies by
+   * entry type, and a type that claimed one would be claiming more than the column enforces.
+   * What *is* enforced is {@link RunEventHunkKind} — a `hunks` key is held to the three kinds
+   * the console can draw.
+   */
+  payload: unknown;
+  /**
+   * Decision **R4**'s watermark, per entry — the UI's overlay and the JSONL's field, read from
+   * one column so the page and the export cannot disagree.
+   *
+   * `Generated` because the value written is not necessarily the value passed:
+   * `run_events_append()` raises it to {@link RunsTable.simulated}, so a client cannot report
+   * an unwatermarked entry into a simulated run. Raising it on an otherwise real run is
+   * allowed, because that direction is a confession rather than a claim.
+   */
+  simulated: Generated<boolean>;
+  /**
+   * On the cap's elision marker, how many entries the transcript refused — and null on every
+   * entry a run reported.
+   *
+   * `never` in both write positions: the four `elided_*` columns are the database's account of
+   * its own refusal, and `run_events_append()` rejects an insert that carries any of them. A
+   * marker somebody else could write is the product describing a hole that was never there.
+   */
+  elided_events: ColumnType<number | null, never, never>;
+  /** On the marker, how many bytes those entries weighed. A `bigint`, so a `string`. */
+  elided_bytes: ColumnType<string | null, never, never>;
+  /** On the marker, the `ts` of the first entry the cap refused — the start of the hole. */
+  elided_from: ColumnType<Date | null, never, never>;
+  /** On the marker, the `ts` of the most recent one. The one figure on this table that moves. */
+  elided_to: ColumnType<Date | null, never, never>;
+  /** When the entry landed here, as against `ts`, which is when it happened. */
+  received_at: ColumnType<Date, Date | undefined, never>;
+}
+
+/**
+ * `ouroboros.run_events_jsonl` — one run's transcript as JSONL lines (V046).
+ *
+ * A **view**, and the shape mockup 10's **Raw JSONL ↗** streams: one row of
+ * {@link RunEventsTable} to one line, in the field order `V046__run_event_store.sql`'s header
+ * specifies, with null fields absent, UTC ISO 8601 timestamps and `payload` passed through in
+ * `jsonb`'s canonical rendering.
+ *
+ * `run_id` and `seq` are columns rather than fields of the line, because the export is one
+ * run's transcript: the run is the file's identity, and these two are what the export filters
+ * and resumes on. Deliberately unordered — a caller orders by `seq`.
+ *
+ * The bytes are pinned by `ouroboros-db/tests/lib/run-events-jsonl.sql`, so a change to the
+ * projection is a change to a fixture somebody has to read rather than a diff nobody notices.
+ */
+export interface RunEventsJsonlView {
+  run_id: string;
+  seq: number;
+  /** The JSONL line, without its newline — the caller joins them. */
+  line: string;
 }
 
 /**
@@ -3253,6 +3460,7 @@ export const READ_ONLY_VIEWS = [
   "planning_epic_progress",
   "run_stage_current",
   "runs_with_stage",
+  "run_events_jsonl",
 ] as const;
 
 /**
@@ -3645,6 +3853,7 @@ export interface Database {
   user_preferences: UserPreferencesTable;
   runs: RunsTable;
   run_stages: RunStagesTable;
+  run_events: RunEventsTable;
   queue_items: QueueItemsTable;
   token_usage: TokenUsageTable;
   workspace_settings: WorkspaceSettingsTable;
@@ -3688,6 +3897,7 @@ export interface Database {
   alias_references: AliasReferencesView;
   run_stage_current: RunStageCurrentView;
   runs_with_stage: RunsWithStageView;
+  run_events_jsonl: RunEventsJsonlView;
 }
 
 /**
@@ -3784,6 +3994,12 @@ export const TABLE_COLUMNS = {
     "loop_seq",
     "branch_name",
     "workflow_version_pin",
+    "simulated",
+    "event_seq",
+    "event_bytes",
+    "event_cap",
+    "event_byte_cap",
+    "events_elided_at",
   ],
   run_stages: [
     "id",
@@ -3803,6 +4019,25 @@ export const TABLE_COLUMNS = {
     "note",
     "created_at",
     "updated_at",
+  ],
+  run_events: [
+    "id",
+    "run_id",
+    "seq",
+    "ts",
+    "actor",
+    "stage_key",
+    "attempt",
+    "tool_tag",
+    "model_id",
+    "body",
+    "payload",
+    "simulated",
+    "elided_events",
+    "elided_bytes",
+    "elided_from",
+    "elided_to",
+    "received_at",
   ],
   queue_items: [
     "id",
@@ -4326,7 +4561,14 @@ export const TABLE_COLUMNS = {
     "loop_seq",
     "branch_name",
     "workflow_version_pin",
+    "simulated",
+    "event_seq",
+    "event_bytes",
+    "event_cap",
+    "event_byte_cap",
+    "events_elided_at",
   ],
+  run_events_jsonl: ["run_id", "seq", "line"],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
 
 /** Every table name, for a caller that wants to iterate them. */
@@ -4407,6 +4649,17 @@ export type RunStageCurrent = Selectable<RunStageCurrentView>;
 
 /** A row of `ouroboros.runs_with_stage` — a run with its stage meter resolved. */
 export type RunWithStage = Selectable<RunsWithStageView>;
+
+/** A row of `ouroboros.run_events`, as a `select` returns it. */
+export type RunEvent = Selectable<RunEventsTable>;
+/**
+ * The columns an `insert` into `ouroboros.run_events` may carry — none of the four `elided_*`
+ * among them, because the cap writes those and refuses an insert that carries any.
+ */
+export type NewRunEvent = Insertable<RunEventsTable>;
+
+/** One JSONL line of a run's transcript, as `ouroboros.run_events_jsonl` projects it. */
+export type RunEventJsonlLine = Selectable<RunEventsJsonlView>;
 
 /** A row of `ouroboros.queue_items`, as a `select` returns it. */
 export type QueueItem = Selectable<QueueItemsTable>;

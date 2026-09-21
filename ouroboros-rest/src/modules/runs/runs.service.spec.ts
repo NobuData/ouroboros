@@ -34,6 +34,12 @@ function row(over: Partial<Run> = {}): Run {
     loop_seq: 1847,
     branch_name: "loop/482-canbus-flake",
     workflow_version_pin: 14,
+    simulated: false,
+    event_seq: 9,
+    event_bytes: "862",
+    event_cap: 20000,
+    event_byte_cap: "33554432",
+    events_elided_at: null,
     ...over,
   };
 }
