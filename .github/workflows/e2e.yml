@@ -130,15 +130,18 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+      # Both files, as scripts/run.sh composes them: the farm leg's gateway, release and build
+      # machine (#262) are in `full` only under the e2e override, so the base file alone would
+      # leave out the three services whose logs a red farm leg most needs.
       - name: What each service reported
         if: failure()
         run: |
-          docker compose --profile full ps
-          docker compose --profile full logs --tail 200
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full ps --all
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full logs --tail 200
 
       - name: Tear the stack down
         if: always()
-        run: docker compose --profile full down -v --remove-orphans
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full down -v --remove-orphans
 
   failure-modes:
     name: e2e/failure-modes
@@ -191,4 +194,4 @@ jobs:
 
       - name: Tear the stack down
         if: always()
-        run: docker compose --profile full down -v --remove-orphans
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full down -v --remove-orphans

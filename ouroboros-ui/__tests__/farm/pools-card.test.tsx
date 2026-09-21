@@ -19,6 +19,7 @@ import {
   SHEET_TITLE,
   WRITE_FAILED,
 } from "@/app/farm/pools";
+import { CREATE_POOL } from "@/app/farm/states";
 import type { PollAnswer } from "@/app/poll";
 
 import {
@@ -411,7 +412,7 @@ describe("a reader who may not write", () => {
 });
 
 describe("a workspace with no pools, and a page that could not be read", () => {
-  it("says so, and tells an administrator where the first one comes from", () => {
+  it("says so, and tells an administrator why the first one comes first", () => {
     render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings(emptyFarm())} />);
 
     expect(card()).toHaveTextContent(NO_POOLS_TITLE);
@@ -419,10 +420,28 @@ describe("a workspace with no pools, and a page that could not be read", () => {
     expect(within(card()).queryByRole("list")).toBeNull();
   });
 
-  it("tells a member who creates one", () => {
+  it("gives an administrator the way to make it — Create a pool opens the sheet's blank form (#262)", () => {
+    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings(emptyFarm())} />);
+
+    const create = within(card()).getByRole("button", { name: CREATE_POOL });
+
+    expect(create).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(create);
+
+    expect(screen.getByRole("dialog", { name: SHEET_TITLE })).toBeInTheDocument();
+  });
+
+  it("tells a member who creates one, and offers them no control that would", () => {
     render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings(emptyFarm())} />);
 
     expect(card()).toHaveTextContent(NO_POOLS_MEMBER_NOTE);
+    expect(within(card()).queryByRole("button", { name: CREATE_POOL })).toBeNull();
+  });
+
+  it("offers no Create a pool once there is one — the sheet's + New pool is the way to the next", () => {
+    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
+
+    expect(within(card()).queryByRole("button", { name: CREATE_POOL })).toBeNull();
   });
 
   it("claims no pools over a page that could not be read, and opens nothing", () => {
@@ -430,6 +449,7 @@ describe("a workspace with no pools, and a page that could not be read", () => {
 
     expect(card()).toHaveTextContent(POOLS_UNREAD);
     expect(card()).not.toHaveTextContent(NO_POOLS_TITLE);
+    expect(within(card()).queryByRole("button", { name: CREATE_POOL })).toBeNull();
 
     const configure = within(card()).getByRole("button", { name: CONFIGURE });
 

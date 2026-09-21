@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and ten amended in since:
+deployment. Five legs from the issue, and eleven amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -33,6 +33,7 @@ deployment. Five legs from the issue, and ten amended in since:
 | 13 | [`specs/code-editor.spec.ts`](specs/code-editor.spec.ts) | Mockup 05's editor as a browser draws it: the seeded file in CodeMirror with every syntax colour, the current line and the glow caret on each palette's own token and none of CodeMirror's defaults; a member served the read-only variant; a long line scrolling the editor and not the pane; keystrokes that cost a fraction of a frame — with the editor diffed in both palettes; and V.8's cross-editor round-trip — the file at parity with U.1's golden listing, a token budget typed in code that *Implement*'s inspector shows and a stage nudged on the canvas that the file's layout block moves, in one test; an unknown alias typed in code refused at **Publish** by its finding, marked back on *Implement*'s lines, repaired and published as the next version in both editors; a member served no **Publish** and the service's `403`; the workbench diffed in both palettes; and the shell at 125% |
 | 14 | [`specs/registry.spec.ts`](specs/registry.spec.ts) | Mockup 21's promises composed: an alias created, tuned and **rebound in the inspector, with the routing matrix on another page redrawing its resolution line**; a delete refused by the service's `409` to a page drawn before the route existed; an import landing a row; an orphan's **Fix in Providers →**; a switch-off that drops a hop in the next simulation; a raw model id refused at **Publish**; and a member served every control inert — with the page diffed in both palettes |
 | 15 | [`specs/planning.spec.ts`](specs/planning.spec.ts) | Mockup 09's four cards and its gantt against the planning seed, in both palettes — and the longest chain in the product, in one traversal: an outline planned by the engine into sized drafts, one deselected, pushed to a **sandbox tracker** with one creation refused mid-batch, the issues *and their native dependencies and epic parent* read back **through the tracker's own API**, ordinary sync adopting each of them as exactly one canonical ticket, a **Resume push** that leaves the tracker holding the intended issues and not one more, and the small ones landing on the **dashboard's** queue card; plus a bar moved and an epic round-tripped, the *Blocked* meter shifting because the push wired real dependencies, and a member who may draft and may not push |
+| 16 | [`specs/farm.spec.ts`](specs/farm.spec.ts) | Mockup 08 against the farm seed in both palettes — and **the first chain that leaves the stack's language and its network**: a fresh workspace walked from *no pools* to *no runners, enrol first* to a live row by **pasting the page's copied command, verbatim, into a bare machine**, where a real Go agent installs itself over TLS, enrols with a single-use token against a farm CA made a second earlier, and connects out over mTLS through a certificate-forwarding gateway; a token revoked in the browser **refused by the control plane in its own words**; a drain that round-trips on the agent's heartbeat; and the machine killed with `SIGKILL`, its row flipping to `offline` *because nothing is heartbeating* — plus a stale-data banner over a refused poll, a member served everything and offered nothing, and the shell at 125%. The build → live log → stats test is written and **parked** on [#991](https://github.com/NobuData/ouroboros/issues/991) |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -232,6 +233,53 @@ API. What can be put back is put back — the tracker is reset, the workspace's 
 removed, the lane it moved is moved back and the epic it edited is restored —
 and `support/planning.ts` carries the table of what is not and why.
 
+Leg 16 is [#262](https://github.com/NobuData/ouroboros/issues/262)'s — AI.7, mockup 08's MVP gate —
+and it is different in kind from the fifteen before it. They certify a UI against services in the
+same compose stack, written in the same language. This one certifies a chain that crosses a
+**language boundary and a network boundary**: `ouroboros-runner` is a Go binary that speaks
+`https://` and `wss://` and nothing else, runs on a machine nobody here administers, and is tested
+in its own module against an in-process fake farm — exactly as `ouroboros-rest` tests its gateway
+against a fake agent. Nothing but this leg has both halves be real at once.
+
+So the stack has a **machine**. `docker-compose.yml` grew a `runner` profile for it (#55's
+amendment), and `docker-compose.e2e.yml` puts its three services in `full` as well, which is why no
+script here had to change:
+
+| service | what it is |
+|---|---|
+| [`farm-gateway`](fixtures/farm-gateway/nginx.conf) | `docs/SECURITY_MODEL.md` § 7.6's proxy: TLS in front of `rest`, asking for the runner's client certificate and **forwarding it**, with a CA made when it first starts and never committed |
+| [`runner-release`](fixtures/runner-release/Dockerfile) | `make release` over this checkout's `ouroboros-runner`, copied into the volume `rest` serves as `OURO_FARM_RELEASES_DIR` — so the agent under test is today's |
+| [`runner`](fixtures/runner-machine/Dockerfile) | a **bare Debian machine with no agent on it**: `curl`, a trust store holding the gateway's CA, and a forty-line [`systemctl` shim](fixtures/runner-machine/systemctl), because `install.sh` always installs a systemd unit and a container has no systemd |
+
+Its sharpest assertions are the three the ticket names, and each is a claim about something no
+module's own suite can see. **The row appears because a pasted line worked**: the clipboard's
+contents go into the machine *verbatim* (`support/farm-runner.ts`), so for a row to come online the
+installer has to be served with this deployment's address in it, the binary has to match its
+SHA-256, the token has to open in the vault, the CA has to sign a CSR, the gateway has to forward
+the certificate and the control plane has to accept it. **A revoked token is refused in the
+service's own words** — `farm_enrollment_refused`, in the installer's transcript — rather than by a
+list that stopped drawing a row. **Presence is real**: the machine is killed with `SIGKILL`, so the
+agent says no goodbye, and the row must flip, dim and trade its telemetry for em-dashes because the
+presence sweep noticed — nothing in this suite writes that status.
+
+Two things about it are decisions rather than accidents, and the spec's header argues both. **The
+chain runs in a workspace it creates**, because the seeded workspace's farm CA is a placeholder on
+purpose and nothing can enrol there — which also makes the chain the ticket's *fresh organization*,
+walked through its states by their own buttons, and makes this leg **green on a second run against
+the same volume**, unlike legs 11 and 15. And **the seed holds still without a setting**: the
+presence sweep would call the seed's un-heartbeated fleet `offline` half a minute after the stack
+came up, no cadence line can slow it without defeating the kill assertion, so
+`R__dev_seed_farm.sql` dates its live runners' last heartbeat a day *ahead* instead — that file and
+`docker-compose.e2e.yml` both say why.
+
+**One test is parked.** *Submit a build → dispatch → live log streams → terminal state → stats
+update* cannot run on a real agent yet: `job.offer` always names a repository and today's agent
+declines every offer that does (source checkout was never assigned; it is
+[#991](https://github.com/NobuData/ouroboros/issues/991)). The ticket's own words are that the log
+leg must fail *if streaming is faked*, so nothing here fakes it: the test is written down with
+`test.fixme` and its reason, its failure-mode pair is registered as parked (§ *Adding a leg*), and
+the **seeded** log is asserted in reading order by the parity group in the meantime.
+
 ## Stack
 
 [Playwright](https://playwright.dev) on Node 24, Chromium only, over the stack
@@ -371,7 +419,7 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9, 10, 11, 12 and 15's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15 and 16's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
@@ -383,6 +431,8 @@ tests/e2e/
 │   ├── registry.ts             # what mockup 21 renders, and putting back every alias, route, switch and draft leg 14 writes
 │   ├── planning.ts             # what mockup 09 renders, the sandbox tracker as a client, and what leg 15 can put back
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
+│   ├── farm.ts                 # what mockup 08 renders, the fresh workspace the real chain runs in, and what leg 16 leaves
+│   ├── farm-runner.ts          # the build machine's three verbs: a fresh one, a pasted line, a pulled plug (leg 16)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -396,7 +446,10 @@ tests/e2e/
 │   └── api.ts                  # scripted requests and their failure messages
 ├── fixtures/
 │   ├── provider-stub/          # the provider leg 10 connects to, and really stops
-│   └── tracker-stub/           # the sandbox tracker leg 15 pushes to, and reads back
+│   ├── tracker-stub/           # the sandbox tracker leg 15 pushes to, and reads back
+│   ├── farm-gateway/           # TLS in front of rest, forwarding the runner's client certificate (leg 16)
+│   ├── runner-release/         # this checkout's agent release, for rest to serve (leg 16)
+│   └── runner-machine/         # the bare machine the copied enroll command is pasted into (leg 16)
 └── scripts/
     ├── run.sh                  # stack up (with the e2e compose override) → suite → down
     ├── verify-failure-modes.sh # #56 acceptance criterion 2
@@ -472,6 +525,13 @@ this pair lost two of the five cards it was meant to be comparing. Giving the wi
 page's own height makes the pane not scroll, and the leg asserts that it does not, so a page
 that outgrows the window turns red rather than being quietly cropped.
 
+Leg 16's pair is the whole page through a 1920 × 1700 window, asserted not to scroll, and masks the
+three things the seed wrote relative to the moment it migrated: the LIVE card's elapsed time, and the
+two places `forge-03`'s age is printed (`offline · 2h` on the first tile, *last seen 2h ago* on its
+row). The words around them are asserted as text, as patterns, for the same reason. What the pair
+*does* photograph is the point of it — all five status archetypes on one table, which is only still
+true on a running stack because the seed's live heartbeats are dated ahead.
+
 Leg 12's pair is of the **canvas region alone** rather than the page —
 `studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
 1920 × 1400 window the leg asserts the canvas fits whole. The studio's head says *Last edited 2h
@@ -518,10 +578,10 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10, 11, 12, 13, 14 and 15's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+Legs 6, 9, 10, 11, 12, 13, 14, 15 and 16's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
 --update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
 `specs/issues.spec.ts`, `specs/studio.spec.ts`, `specs/code-editor.spec.ts`,
-`specs/registry.spec.ts` or `specs/planning.spec.ts` — at step 2. The precondition is the same,
+`specs/registry.spec.ts`, `specs/planning.spec.ts` or `specs/farm.spec.ts` — at step 2. The precondition is the same,
 and it is the same seed.
 
 **Leg 15's pair has one more precondition, and it is the same volume rule its whole file lives
@@ -586,6 +646,13 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
    once this leg is in, the leg is what has to become cheaper. Its chain is a single `slow()`
    test, which raises that test's own timeout and leaves the suite's number alone.
 
+   Leg 16's stated allowance is **three minutes** too, and it spends about half of it: the chain
+   is one `slow()` test of roughly a minute, most of which is the product's own clock — a
+   ten-second heartbeat waited on twice, and the thirty-two-second presence threshold waited on
+   once. None of those can be hurried without ceasing to be what is under test, which is why the
+   chain is a single traversal rather than four tests that would each pay for an enrolment.
+   Building the agent release and the machine's image is `run.sh`'s time, not the suite's.
+
    Leg 8 is the exception that proves the rule and is allowed to be one for a stated
    reason: its runtime *is* an acceptance criterion of a different issue, so it has a
    config, a budget and a CI step of its own rather than three minutes of #56's ten (§ *The
@@ -634,3 +701,8 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#279](https://github.com/NobuData/ouroboros/issues/279) — the push service leg 15 drives into the sandbox tracker
 - [#280](https://github.com/NobuData/ouroboros/issues/280) — the planning API the chain is pressed through
 - [#112](https://github.com/NobuData/ouroboros/issues/112) — the queue write leg 15's small tickets land in, again
+- [#262](https://github.com/NobuData/ouroboros/issues/262) — leg 16, the build farm, and the mockup 08 roadmap's MVP gate
+- [#249](https://github.com/NobuData/ouroboros/issues/249) — the farm seed leg 16 asserts against
+- [#248](https://github.com/NobuData/ouroboros/issues/248) — the installer and release leg 16 pastes and downloads
+- [#251](https://github.com/NobuData/ouroboros/issues/251) — the agent gateway and the presence sweep leg 16 holds to their word
+- [#991](https://github.com/NobuData/ouroboros/issues/991) — agent source checkout, which un-parks leg 16's build test

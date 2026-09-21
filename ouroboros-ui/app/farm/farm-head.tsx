@@ -2,7 +2,8 @@
 
 import { Button, Eyebrow } from "@/app/ui";
 
-import { ENROLL_COPY_ID, ENROLL_MEMBER_REASON, ENROLL_POOL_FIELD_ID } from "./enroll";
+import { ENROLL_MEMBER_REASON } from "./enroll";
+import { focusEnrollCard } from "./enroll-focus";
 import { useFarm } from "./farm-store";
 import { usePools } from "./pool-store";
 import { POOLS_UNREAD } from "./pools";
@@ -30,8 +31,9 @@ import { FARM_ACTIONS, FARM_EYEBROW, FARM_SUBLINE, SOON_MARK, farmHeadline } fro
  * page read there are no pools to configure, and it says so instead.
  *
  * **+ Enroll runner acts** (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258)): it
- * moves focus to the enroll card's first control, which scrolls the card into the pane's view on
- * the narrow layouts where it sits under the table. A button that moves focus rather than a
+ * moves focus to the enroll card's first control (`app/farm/enroll-focus.ts`), which scrolls the
+ * card into the pane's view on the narrow layouts where it sits under the table — the door the
+ * first-run guidance (AI.7, #262) takes too. A button that moves focus rather than a
  * fragment link, because the pane — not the window — is the scroll container and focus is the
  * one mechanism that scrolls it natively. For a reader who may not mint it is the same control,
  * inert, with the reason.
@@ -96,15 +98,4 @@ export function FarmHead({ mayAdminister = false }: Readonly<{ mayAdminister?: b
       </div>
     </div>
   );
-}
-
-/**
- * Move the reader to the enroll card: its pool selector, or — in a workspace with no pools, where
- * there is no selector — its copy control, which is where the reason is said.
- */
-function focusEnrollCard(): void {
-  const target =
-    document.getElementById(ENROLL_POOL_FIELD_ID) ?? document.getElementById(ENROLL_COPY_ID);
-
-  target?.focus();
 }

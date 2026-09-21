@@ -18,6 +18,7 @@ import {
   RUNNER_COLUMNS,
   runnerActionsLabel,
 } from "@/app/farm/runners";
+import { FIRST_RUN_STEPS_LABEL } from "@/app/farm/states";
 import { NOT_MEASURED, SOON_MARK } from "@/app/farm/view";
 import type { PollAnswer } from "@/app/poll";
 
@@ -606,6 +607,23 @@ describe("the other states", () => {
 
     expect(within(card()).getByText(NO_RUNNERS_TITLE)).toBeInTheDocument();
     expect(within(card()).queryByRole("grid")).toBeNull();
+  });
+
+  it("seats the first run's steps where the table would be, rather than a bare sentence (#262)", () => {
+    draw(emptyFarm());
+
+    const steps = within(card()).getByRole("list", { name: FIRST_RUN_STEPS_LABEL });
+
+    expect(within(steps).getAllByRole("listitem").length).toBeGreaterThan(1);
+    // The card keeps its head and its tools: it is still the runners card, with nothing in it yet.
+    expect(within(card()).getByRole("button", { name: GROUP_BY_STATUS })).toBeInTheDocument();
+  });
+
+  it("offers no steps over a page that could not be read — nobody counted that fleet", () => {
+    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={failedFarmReadings()} />);
+
+    expect(within(card()).queryByRole("list", { name: FIRST_RUN_STEPS_LABEL })).toBeNull();
+    expect(within(card()).queryByText(NO_RUNNERS_TITLE)).toBeNull();
   });
 
   it("says what could not be read, and leaves the why to the banner", () => {

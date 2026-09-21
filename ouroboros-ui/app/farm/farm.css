@@ -100,6 +100,55 @@
   margin-bottom: var(--sp-8);
 }
 
+/* ---------- the read-only note and the offline-heavy strip (#262) ---------- */
+
+/*
+ * The role, explained once under the head, for a reader who may look and not change — the
+ * providers page's treatment of the same sentence. A measure, because it is prose; the quiet ink,
+ * because it is a fact about the reader and not about the fleet.
+ */
+.farm-readonly {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-9);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.farm-readonly__head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/*
+ * The strip's seat is a live region that is always mounted, so it exists before it has something
+ * to say; empty, it takes no room — the enroll toast's arrangement.
+ */
+.farm-fleet-seat:empty {
+  display: none;
+}
+
+/*
+ * *Much of the fleet is down*, in the warning triple — the stale-data banner's hues, because it is
+ * the same kind of sentence: nothing has failed, and the reader should know before they read on.
+ * The headline carries the state in the warn ink and in words; the hue is never the only signal.
+ */
+.farm-fleet {
+  margin: 0 0 var(--sp-8);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.farm-fleet__headline {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 /* ---------- the grid ---------- */
 
 .farm__grid {
@@ -177,6 +226,76 @@
   .farm {
     padding-inline: var(--sp-6);
   }
+}
+
+/* ---------- the first run (#262) ---------- */
+
+/*
+ * A workspace with nothing enrolled: the grid has put the right-hand column ahead of the runners
+ * card (in the DOM — `app/farm/farm-grid.tsx` — so the tab order follows), and here it takes five
+ * columns to the seat's seven. The command is one long line and the seat is a short list, so the
+ * mockup's 8/4 would give the room to the card with the least to say.
+ */
+.farm__grid--first-run > .farm__side {
+  grid-column: span 5;
+}
+
+.farm__grid--first-run > .farm-col--8 {
+  grid-column: span 7;
+}
+
+@media (max-width: 68.75rem) {
+  .farm__grid--first-run > .farm__side {
+    grid-column: span 12;
+  }
+
+  .farm__grid--first-run > .farm-col--8 {
+    grid-column: span 12;
+  }
+}
+
+/*
+ * The card a first run starts at — the one carrying *Step one*. The accent line is the token
+ * sheet's published border for the accent triple in both palettes; the eyebrow above the card's
+ * head says the same in words, so the hue is not the only signal. Two classes, so it outranks the
+ * card's own border whichever sheet loads last.
+ */
+.farm__grid .farm-promoted {
+  border-color: var(--accent-line);
+}
+
+/*
+ * The seat's steps: a numbered list inside the design system's empty state. The panel centres
+ * its text; a list of sentences reads from the left, at a measure.
+ */
+.farm-first-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 52ch;
+  margin: var(--sp-4) 0;
+  padding-left: var(--sp-8);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  text-align: left;
+}
+
+.farm-first-run__step::marker {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+}
+
+/* The imperative, on a line of its own over the sentence that explains it. */
+.farm-first-run__title {
+  display: block;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.farm-first-run__body {
+  display: block;
 }
 
 /* ---------- the runners table (#257) ---------- */
@@ -776,6 +895,11 @@
 
 /* ---------- the pools card (#259) ---------- */
 
+/* Somewhere for the card's focus rescue to look (#262), and no box on screen. */
+.farm-pools__configure {
+  display: contents;
+}
+
 /* The rows are a list: reset to the mockup's `.pool-row` stack. */
 .farm-pools__list {
   margin: 0;
@@ -938,4 +1062,110 @@
   color: var(--warn);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+/* ---------- the loading skeleton (#262) ---------- */
+
+/*
+ * What `app/farm/farm-skeleton.tsx` draws while the first read is in flight. **Every shape is a
+ * region's own geometry, not a generic bar** (DASH-I.7, #86): a skeleton whose job is to stop the
+ * page jumping has to stand in for what is coming — the stat tile's tall figure, the table's ruled
+ * rows, the command block — so each rule mirrors the rule it stands in for. The frame, the head
+ * and the grid are the page's own classes above; only what goes inside a card is here.
+ *
+ * The bars do not pulse: nothing on this sheet animates. They are hidden from the accessibility
+ * tree by the `aria-hidden` on the grid, and the `<main>` says *loading* once.
+ */
+.farm-skeleton {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/*
+ * A bar's line. A flex row, so the bar inside it — a flex item whose basis is its measure —
+ * shrinks to a narrow card instead of holding it open. This sheet writes no percentages.
+ */
+.farm-skeleton__line {
+  display: flex;
+}
+
+.farm-skeleton__bar {
+  flex: 0 1 8rem;
+  min-width: 0;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The headline — `.farm__title`'s `--t-2xl` line, and about as long as the seeded sentence. */
+.farm-skeleton__bar--title {
+  flex-basis: 26rem;
+  height: var(--sp-11);
+  margin: var(--sp-2) 0;
+}
+
+/* The stat tile's caption, its tall figure, and the line under it. */
+.farm-skeleton__bar--caption {
+  flex-basis: 6rem;
+}
+
+.farm-skeleton__bar--figure {
+  flex-basis: 5rem;
+  height: var(--sp-11);
+}
+
+.farm-skeleton__bar--line {
+  flex-basis: 12rem;
+}
+
+/* A card head, at the head's own height and bottom margin, so a body starts where it will. */
+.farm-skeleton__bar--head {
+  flex-basis: 9rem;
+  height: var(--sp-7);
+  margin-bottom: var(--sp-7);
+}
+
+/* A block of lines nobody can read yet: the enroll card's command, the live card's log pane. */
+.farm-skeleton__block {
+  display: block;
+  height: 7rem;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+/* Ruled rows — the runners table's and the pools list's rhythm. */
+.farm-skeleton__rows {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.farm-skeleton__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.farm-skeleton__row:last-child {
+  border-bottom: 0;
+}
+
+.farm-skeleton__cell {
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.farm-skeleton__cell--grow {
+  flex: 0 1 16rem;
+  min-width: 0;
+}
+
+.farm-skeleton__cell--mark {
+  flex: 0 0 var(--sp-11);
 }

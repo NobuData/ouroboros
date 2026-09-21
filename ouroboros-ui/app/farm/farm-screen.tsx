@@ -1,8 +1,13 @@
+import type { Role } from "@/app/api/membership";
+
 import type { FarmReadings } from "./data";
 import { EnrollCard } from "./enroll-card";
 import { FarmBanner } from "./farm-banner";
+import { FarmFleetWarning } from "./farm-fleet-warning";
+import { FarmGrid } from "./farm-grid";
 import { FarmHead } from "./farm-head";
 import type { FarmPollOptions } from "./farm-poll";
+import { FarmReadOnlyNote } from "./farm-readonly-note";
 import { FarmStatRow } from "./farm-stat-row";
 import { FarmProvider } from "./farm-store";
 import { LiveCard } from "./live-card";
@@ -57,6 +62,22 @@ import "./farm.css";
  * administrators, so the page is the stricter of the two. The gate that **enforces** is the
  * service's.
  *
+ * **And the role is said, not left to be inferred** (AI.7,
+ * [#262](https://github.com/NobuData/ouroboros/issues/262)): a reader who may not write is given
+ * one note under the head naming their role and the rule each region keeps
+ * (`app/farm/farm-readonly-note.tsx`), so a menu with one entry and a card with no copy control
+ * read as a decision rather than as something missing.
+ *
+ * ### The states the mockup does not draw (AI.7, #262)
+ *
+ * Mockup 08 is the populated page. What stands in for it is designed too: a workspace with nothing
+ * enrolled is a **first run** — the grid puts step one first (`app/farm/farm-grid.tsx`) and the
+ * table's seat says what to do (`app/farm/farm-first-run.tsx`); a fleet with half its machines
+ * away says so in a strip above the grid rather than leaving it to dimmed rows
+ * (`app/farm/farm-fleet-warning.tsx`); and while the first read is in flight the route draws the
+ * page's own geometry (`app/farm/farm-skeleton.tsx`). Every judgement behind them is
+ * `app/farm/states.ts`'s.
+ *
  * The banner sits above the head rather than in the grid, for the dashboard's reason: it is a
  * fact about the whole page, and a reader handed old data should be told before they read it.
  * It is **inside the frame**, so it takes the page's gutters and lines up with the head under it
@@ -87,16 +108,17 @@ export function FarmScreen({
             <main className="farm">
               <FarmBanner />
               <FarmHead mayAdminister={reader.mayAdminister} />
+              {/* The role, explained once, under the head — for a reader who may not write. */}
+              {!reader.mayAdminister && <FarmReadOnlyNote role={reader.role} />}
+              <FarmFleetWarning />
               <SubmitToast />
-              <div className="farm__grid">
-                <FarmStatRow />
-                <RunnersCard mayAdminister={reader.mayAdminister} />
-                <div className="farm-col--4 farm__side">
-                  <EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />
-                  <PoolsCard mayAdminister={reader.mayAdminister} />
-                </div>
-                <LiveCard log={log} />
-              </div>
+              <FarmGrid
+                enroll={<EnrollCard mayAdminister={reader.mayAdminister} tenant={reader.tenant} />}
+                live={<LiveCard log={log} />}
+                pools={<PoolsCard mayAdminister={reader.mayAdminister} />}
+                runners={<RunnersCard mayAdminister={reader.mayAdminister} />}
+                stats={<FarmStatRow />}
+              />
               <SubmitDialog />
             </main>
           </SubmitProvider>
@@ -115,6 +137,11 @@ export interface FarmReader {
    * role, so there is one place deciding what a role may do.
    */
   readonly mayAdminister: boolean;
+  /**
+   * The reader's strongest role — `app/api/membership.ts`'s `primaryRole`. It decides nothing:
+   * it is what the read-only note **names**, so a member is told they are one.
+   */
+  readonly role: Role;
   /** The active workspace's slug — the enroll command's `--tenant`. */
   readonly tenant: string;
 }

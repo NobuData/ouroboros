@@ -6,6 +6,7 @@ import type { FarmPage } from "@/app/api/farm";
 
 import { Button, Card, CardHead, Chip, type Column, EmptyState, Table, Tag } from "@/app/ui";
 
+import { FarmFirstRun } from "./farm-first-run";
 import { useFarm } from "./farm-store";
 import { JobSheet } from "./job-sheet";
 import type { RunnerMenuAction } from "./lifecycle";
@@ -24,8 +25,6 @@ import {
   GROUP_BY_STATUS,
   HEALTH_HISTORY,
   HEALTH_HISTORY_SOON,
-  NO_RUNNERS_NOTE,
-  NO_RUNNERS_TITLE,
   RUNNERS_CAPTION,
   RUNNERS_TITLE,
   RUNNERS_UNREAD_TITLE,
@@ -37,6 +36,7 @@ import {
   runnerRows,
 } from "./runners";
 import { useFarmSelection } from "./selection-store";
+import { useFirstRun } from "./use-first-run";
 import { useLifecycle } from "./use-lifecycle";
 import { SOON_MARK } from "./view";
 
@@ -88,6 +88,14 @@ import { SOON_MARK } from "./view";
  * page is on screen, and the move is announced (`app/farm/queue-moves.ts`) — what makes a
  * submitted build visible on the rows it lands on.
  *
+ * ### An empty fleet is a first run, not an empty table
+ *
+ * A workspace with nothing enrolled is shown what to do about it
+ * (`app/farm/farm-first-run.tsx`, AI.7, [#262](https://github.com/NobuData/ouroboros/issues/262)):
+ * this page is the first thing a new tenant sees, and its whole point is that somebody has to go
+ * and install something on a machine. A page that could not be **read** is a different state and
+ * keeps its own seat — the banner says why, once.
+ *
  * ### What cannot act yet says so
  *
  * `Health history →` is AJ.4 (#266): an inert *soon* control whose tooltip names the issue, and
@@ -106,6 +114,7 @@ export function RunnersCard({ mayAdminister = false }: Readonly<{ mayAdminister?
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const lifecycle = useLifecycle();
+  const firstRun = useFirstRun();
   const moves = useQueueMoves(page);
   const scope = useRef<HTMLDivElement>(null);
 
@@ -190,12 +199,13 @@ export function RunnersCard({ mayAdminister = false }: Readonly<{ mayAdminister?
         }
       />
 
-      {rows.length === 0 ? (
-        <EmptyState
-          fill
-          note={page === null ? undefined : NO_RUNNERS_NOTE}
-          title={page === null ? RUNNERS_UNREAD_TITLE : NO_RUNNERS_TITLE}
-        />
+      {page === null ? (
+        <EmptyState fill title={RUNNERS_UNREAD_TITLE} />
+      ) : rows.length === 0 ? (
+        // A fleet of none is a first run: guidance that starts somebody enrolling, not a table
+        // with nothing in it (AI.7, #262). `firstRun` is never `null` over an empty fleet; the
+        // fallback is the type's.
+        <FarmFirstRun mayAdminister={mayAdminister} state={firstRun ?? "no-runners"} />
       ) : (
         // `display: contents`: somewhere for the focus rescue to look, and no box on screen.
         <div className="farm-runners__scope" ref={scope}>

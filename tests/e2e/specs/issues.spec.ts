@@ -745,8 +745,8 @@ test.describe("a selection becomes queued work, and the dashboard says so", () =
 
     const tile = page.getByRole("region", { name: DASHBOARD_AFTER_QUEUE.tile.label });
 
-    await expect(tile.locator(".dash-stat__value")).toHaveText(DASHBOARD_AFTER_QUEUE.tile.value);
-    await expect(tile.locator(".dash-stat__delta")).toHaveText(DASHBOARD_AFTER_QUEUE.tile.detail);
+    await expect(tile.locator(".ou-stat__value")).toHaveText(DASHBOARD_AFTER_QUEUE.tile.value);
+    await expect(tile.locator(".ou-stat__delta")).toHaveText(DASHBOARD_AFTER_QUEUE.tile.detail);
 
     // The card: its footer counts what it is not showing, one more than the seed's, and the
     // five rows it does show are still the seed's five — the new item joined the tail, which

@@ -257,6 +257,37 @@ in the stack depends on it — point an Ollama connection's **Host** field at
 does the rest. Models live in a named volume, so `down` keeps them and `down -v` reclaims
 them.
 
+### A build machine
+
+The Build Farm page's **Copy command** is meant to be pasted into a machine, and the stack has
+one, behind a profile of its own ([#262](https://github.com/NobuData/ouroboros/issues/262)):
+
+```bash
+docker compose --profile full --profile runner up --build   # …plus a gateway, a release and a machine
+docker compose exec runner sh                               # a bare Debian shell — paste the command here
+docker compose kill runner                                  # pull the plug: the row goes offline ~35 s later
+```
+
+Three services. `farm-gateway` terminates TLS in front of `rest` and forwards the runner's
+client certificate — the agent speaks `https://` and `wss://` only, and
+[`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) § 7.6 says why a proxy that does not forward
+one turns mTLS into decoration. `runner-release` builds this checkout's agent
+(`ouroboros-runner`'s own `make release`) into the volume `rest` serves installers from.
+`runner` is the machine: no agent on it until the pasted command installs one, a trust store
+holding the gateway's CA, and a small `systemctl` shim standing in for the systemd a container
+does not have. The command the page mints names `https://farm-gateway`, which resolves only
+inside the compose network — it is honest about who it is for.
+
+Enrol into a workspace **other than `acme-robotics`**: the seeded workspace's farm CA is a
+placeholder on purpose (a real key in a migration would be a private key in every clone), so
+the first real enrolment there fails in the vault. Any workspace you create, and your personal
+one, gets a real CA the first time a machine enrols. A build submitted to a real runner waits
+rather than runs until agent source checkout lands
+([#991](https://github.com/NobuData/ouroboros/issues/991)).
+
+It is **not** part of `--profile full`, for the Ollama profile's reason: the release build
+pulls the Go toolchain image, which only somebody working on the farm should wait for.
+
 Where there is no checkout to run those from — a deployment, a pipeline elsewhere —
 there is the published migration image, which carries the same migrations and the same
 configuration and takes the same `OURO_*` variables:

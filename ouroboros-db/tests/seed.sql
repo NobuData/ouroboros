@@ -3143,6 +3143,23 @@ select pg_temp.must_hold(
     where o."slug" = 'acme-robotics' and r.name = 'forge-03'),
   'forge-03 was last seen two hours ago, which is what "offline · 2h" is computed from');
 
+-- #262: a seeded runner has no agent heartbeating for it, so on a running stack the presence
+-- sweep would call all four live ones offline half a minute after boot. Their stamp is a day
+-- ahead, which no sweep reaches; the two the sweep never looks at keep their real ages.
+select pg_temp.must_hold(
+  (select count(*) = 4 and bool_and(r.last_seen_at > now() + interval '23 hours')
+     from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics' and r.status in ('online', 'building', 'draining')),
+  'the four live runners'' last heartbeat is dated a day ahead, so a presence sweep leaves the fixture alone');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and bool_and(r.last_seen_at < now())
+     from ouroboros.runners r
+     join ouroboros.organization o on o."id" = r.organization_id
+    where o."slug" = 'acme-robotics' and r.status in ('offline', 'removed')),
+  'and the offline and the removed runner keep a last heartbeat in the past, which is what their ages are read from');
+
 select pg_temp.must_hold(
   (select telemetry = '{}'::jsonb and uptime_seconds is null
      from ouroboros.runners r
@@ -3401,6 +3418,19 @@ select pg_temp.must_hold(
       where o."slug" = 'acme-robotics'
       group by j.id, j.log_bytes, j.log_dropped_bytes, j.log_truncated_at) totals),
   'each logged job''s running total is the sum of its own chunks, and no seeded log was truncated');
+
+-- #262: the trigger assigns byte_start in the order rows reach it, so the seed's insert is
+-- ordered. Unordered, PostgreSQL 17 stored #479 as 3, 2, 1 and the LIVE card read backwards.
+select pg_temp.must_hold(
+  (select bool_and(in_order) from (
+     select c.byte_start = coalesce(sum(octet_length(c.content)) over (
+              partition by c.job_id order by c.seq
+              rows between unbounded preceding and 1 preceding), 0) as in_order
+       from ouroboros.build_log_chunks c
+       join ouroboros.build_jobs j on j.id = c.job_id
+       join ouroboros.organization o on o."id" = j.organization_id
+      where o."slug" = 'acme-robotics') offsets),
+  'every seeded chunk starts where the chunks before it in seq order end, so a log reads in the order it was printed');
 
 -- --- the pool-assignment window (#514) -------------------------------------------
 select pg_temp.must_hold(

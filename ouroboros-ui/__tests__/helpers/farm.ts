@@ -326,10 +326,18 @@ export function failedFarmReadings(reason = "The farm is unavailable."): FarmRea
 /* ------------------------------------------------------------------ the enroll flow (#258) */
 
 /** A reader who may look and not mint — a `member`, or a `viewer`. */
-export const MEMBER_READER: FarmReader = { mayAdminister: false, tenant: "acme-robotics" };
+export const MEMBER_READER: FarmReader = {
+  mayAdminister: false,
+  role: "member",
+  tenant: "acme-robotics",
+};
 
 /** A reader who may mint and revoke — an `owner` or an `admin`. */
-export const ADMIN_READER: FarmReader = { mayAdminister: true, tenant: "acme-robotics" };
+export const ADMIN_READER: FarmReader = {
+  mayAdminister: true,
+  role: "owner",
+  tenant: "acme-robotics",
+};
 
 /**
  * A token value no fixture renders: the string the *no full token in the DOM* cases search the

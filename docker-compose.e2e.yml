@@ -184,6 +184,37 @@
 # than the UI*, so the suite has to be able to ask the tracker. It is published on 127.0.0.1
 # only, as every other port in the base file is.
 #
+# ---------------------------------------------------------------------------
+# The three services this file *moves*, and the leg they exist for (issue #262, AI.7).
+# ---------------------------------------------------------------------------
+#
+# The farm leg certifies a chain no other leg has: a **Go binary** enrols itself with a token
+# copied out of the browser, opens an outbound mTLS socket, and shows up as a row. Nothing short
+# of a real agent on a real machine tests that, so the stack needs a machine — and the base file
+# already has one, the `runner` profile (#55's amendment): `farm-gateway`, `runner-release` and
+# `runner`. They are the developer's as much as this suite's, which is why they are defined
+# there and not here.
+#
+# What this file does is put them **in `full` as well**. Compose merges a `profiles:` list by
+# appending, so each of the three is in `runner` *and* `full` under this override, and the one
+# flag every script in tests/e2e already passes — `--profile full` — brings the machine up with
+# the rest of the stack. `scripts/run.sh`, both verify-* scripts and `support/compose.ts`
+# compose the same pair of files with the same profile and did not have to change.
+#
+# `rest` additionally waits for the release to be copied in. On a developer's stack that
+# ordering does not matter — the release directory is read per request, and the page says *no
+# release to install* until there is one — but the suite runs the moment the stack is healthy,
+# and *healthy* has to include *there is an agent to install*.
+#
+# **No cadence line goes with them, and that is the finding of this leg.** The three sweep
+# settings above hold a *seed* still. The farm's own sweep — presence, every five seconds, a
+# runner silent for thirty-two is `offline` — is the thing the leg's sharpest assertion is
+# *about*: kill the machine, and the row must flip because nothing is heartbeating, not because
+# somebody remembered to update a status. So it runs at the product's own cadence, and the seed
+# is what moved instead: `R__dev_seed_farm.sql` dates its live runners' last heartbeat a day
+# *ahead*, which no sweep reaches, so mockup 08's `4/5` is still `4/5` when the parity group
+# photographs it. That file argues it; there is no setting because there is nothing to set.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -194,6 +225,24 @@ services:
       OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: "86400"
       OURO_ESTIMATION_STALE_SECONDS: "86400"
       OURO_GITHUB_API_BASE_URL: "http://tracker-stub:8080"
+    depends_on:
+      # Appended to the base file's three. See the header: healthy must include *there is a
+      # release to install*.
+      runner-release:
+        condition: service_completed_successfully
+
+  # The `runner` profile's three, moved into `full` too. Nothing else about them is restated.
+  farm-gateway:
+    profiles:
+      - full
+
+  runner-release:
+    profiles:
+      - full
+
+  runner:
+    profiles:
+      - full
 
   provider-stub:
     build:

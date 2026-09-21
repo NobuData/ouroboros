@@ -200,13 +200,13 @@ test.describe("the dashboard renders the seeded workspace", () => {
     for (const stat of SEEDED_STATS) {
       const tile = statTile(page, stat.label);
 
-      await expect(tile.locator(".dash-stat__value"), stat.label).toHaveText(stat.value);
-      await expect(tile.locator(".dash-stat__delta"), stat.label).toHaveText(stat.detail);
+      await expect(tile.locator(".ou-stat__value"), stat.label).toHaveText(stat.value);
+      await expect(tile.locator(".ou-stat__delta"), stat.label).toHaveText(stat.detail);
     }
 
     // Four tiles and no more: a fifth would be a figure nobody has agreed on, and the row is
     // built from a fixed list precisely so a refused aggregate keeps its shape.
-    await expect(dashboard(page).locator(".dash-stat")).toHaveCount(SEEDED_STATS.length);
+    await expect(dashboard(page).locator(".ou-stat")).toHaveCount(SEEDED_STATS.length);
   });
 
   test("the active-loops table draws the three runs in lifecycle order", async ({ page }) => {
@@ -396,8 +396,8 @@ test.describe("the dashboard tells the truth about an empty workspace", () => {
     for (const stat of EMPTY_STATES.stats) {
       const tile = statTile(page, stat.label);
 
-      await expect(tile.locator(".dash-stat__value"), stat.label).toHaveText(stat.value);
-      await expect(tile.locator(".dash-stat__delta"), stat.label).toHaveText(stat.detail);
+      await expect(tile.locator(".ou-stat__value"), stat.label).toHaveText(stat.value);
+      await expect(tile.locator(".ou-stat__delta"), stat.label).toHaveText(stat.detail);
     }
   });
 
@@ -519,7 +519,7 @@ test.describe("the shell holds the dashboard", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
     // And the page is still the dashboard rather than a shell around a broken render.
-    await expect(statTile(page, "Loops live").locator(".dash-stat__value")).toHaveText("3");
+    await expect(statTile(page, "Loops live").locator(".ou-stat__value")).toHaveText("3");
   });
 
   // The scale is a row keyed on the person and outlives this context. Restored in teardown so
