@@ -6,6 +6,8 @@
 -- in. This file puts the **dashboard** in it — what the loop has been doing, what it will
 -- do next, what it has spent doing so, and what the workspace has told it it may do
 -- unattended — across the four read-model tables V008–V011 created and nothing writes yet.
+-- Since #298 it also puts the three live loops' **stage history** in it, so that V045's
+-- derived stage meter has rows to be verified against — see the block that supplies them.
 --
 -- The honesty rule of this roadmap is that **no number exists outside the seeds**. Every
 -- figure [`docs/mockups/02-dashboard.html`](../../docs/mockups/02-dashboard.html) renders
@@ -77,7 +79,8 @@
 -- **Ids.** `5eed…`, as everywhere: an id beginning `5eed` came from a seed. These are
 -- computed rather than written out — `5eed0009-0000-4000-8000-` and the twelve-digit issue
 -- number for a run, `5eed000a…` for a queue item, `5eed000b…` and an ordinal for a usage
--- event — because there are seventy-seven of them and a list that long is a list
+-- event, `5eed000c…` and an issue-position-attempt triple for a stage — because there are
+-- ninety-seven of them and a list that long is a list
 -- nobody proof-reads. They are as deterministic as literals are: the same input file
 -- yields the same uuid on every machine and every pass, which is the property the
 -- convention is actually for. `gen_random_uuid()` appears nowhere, and tests/seed.test.sh
@@ -88,6 +91,7 @@
 --   | `runs` (53)                             | `5eed0009…` | issue number    |
 --   | `queue_items` (12)                      | `5eed000a…` | issue number    |
 --   | `token_usage` (12)                      | `5eed000b…` | ordinal 1–12    |
+--   | `run_stages` (20)                       | `5eed000c…` | issue + position + attempt |
 --   | `workspace_settings` (1)                | —           | keyed by org id |
 --
 -- ---------------------------------------------------------------------------
@@ -123,6 +127,7 @@
 -- ---------------------------------------------------------------------------
 --
 -- Filed as issue #68 (F.5). Needs #64, #65, #66, #67; extends #23. Feeds #70, #76, #88.
+-- Extended with `runs.loop_seq` and the three live loops' `run_stages` history by #298 (AO.1).
 
 -- ---------------------------------------------------------------------------
 -- Active loops — the three non-terminal runs, and the *Loops live* stat.
@@ -145,13 +150,20 @@
 -- `coding`, one `building` and one `review`. The issue's scope settles it in favour of the
 -- table — those three statuses, in that order — and the roadmap says the same: the
 -- mockup's own `building` row is the third live loop. *Loops live* is `3` either way.
+--
+-- **The loop numbers are written rather than allocated (#298).** V045 allocates
+-- `runs.loop_seq` per workspace when an insert does not supply one, which would number
+-- these 1 to 53 in whatever order the four statements below ran. Mockup 10's page head
+-- reads `Run Console · Loop #1847` for `#482`, so every run here takes
+-- `1365 + issue_number` instead: `#482` is `Loop #1847` in every database, the numbers
+-- ascend with the issues, and the fifty-three are distinct because the issue numbers are.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title,
-                            workflow_tag, model, status,
+                            loop_seq, workflow_tag, model, status,
                             stage_label, stage_index, stage_total, started_at)
 select ('5eed0009-0000-4000-8000-' || lpad(seed.issue_number::text, 12, '0'))::uuid,
        org."id", repo.id, seed.issue_number, seed.issue_title,
-       seed.workflow_tag, seed.model, seed.status,
+       1365 + seed.issue_number, seed.workflow_tag, seed.model, seed.status,
        seed.stage_label, seed.stage_index, seed.stage_total,
        now() - make_interval(secs => seed.elapsed_seconds)
   from (values
@@ -196,12 +208,12 @@ on conflict do nothing;
 -- the way in.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title,
-                            workflow_tag, model, status,
+                            loop_seq, workflow_tag, model, status,
                             stage_label, stage_index, stage_total,
                             started_at, finished_at, pr_number, checks_passed, checks_total)
 select ('5eed0009-0000-4000-8000-' || lpad(seed.issue_number::text, 12, '0'))::uuid,
        org."id", repo.id, seed.issue_number, seed.issue_title,
-       seed.workflow_tag, seed.model, seed.status,
+       1365 + seed.issue_number, seed.workflow_tag, seed.model, seed.status,
        seed.stage_label, seed.stage_index, seed.stage_total,
        now() - make_interval(secs => seed.closed_seconds_ago + seed.cycle_seconds),
        now() - make_interval(secs => seed.closed_seconds_ago),
@@ -255,12 +267,12 @@ on conflict do nothing;
 -- that stopped for a human carries `13/14`, the shape that put `#465` in the same state.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title,
-                            workflow_tag, model, status,
+                            loop_seq, workflow_tag, model, status,
                             stage_label, stage_index, stage_total,
                             started_at, finished_at, pr_number, checks_passed, checks_total)
 select ('5eed0009-0000-4000-8000-' || lpad(seed.issue_number::text, 12, '0'))::uuid,
        org."id", repo.id, seed.issue_number, seed.issue_title,
-       seed.workflow_tag, seed.model, seed.status,
+       1365 + seed.issue_number, seed.workflow_tag, seed.model, seed.status,
        case seed.status when 'merged' then 'Merged' else 'Awaiting human' end,
        case seed.status when 'merged' then 6 else 5 end,
        6,
@@ -355,12 +367,12 @@ on conflict do nothing;
 -- nothing averages these, so the spread only has to be plausible.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title,
-                            workflow_tag, model, status,
+                            loop_seq, workflow_tag, model, status,
                             stage_label, stage_index, stage_total,
                             started_at, finished_at, pr_number, checks_passed, checks_total)
 select ('5eed0009-0000-4000-8000-' || lpad(seed.issue_number::text, 12, '0'))::uuid,
        org."id", repo.id, seed.issue_number, seed.issue_title,
-       seed.workflow_tag, seed.model, seed.status,
+       1365 + seed.issue_number, seed.workflow_tag, seed.model, seed.status,
        case seed.status when 'merged'      then 'Merged'
                         when 'needs_human' then 'Awaiting human'
                         else 'Build farm' end,
@@ -421,6 +433,123 @@ select ('5eed0009-0000-4000-8000-' || lpad(seed.issue_number::text, 12, '0'))::u
   join ouroboros.github_orgs  gh   on gh.organization_id = org."id" and gh.login = 'acme-robotics'
   join ouroboros.github_repos repo on repo.org_id = gh.id and repo.name = seed.repo_name
  where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- Stage history for the three live loops (#298).
+--
+-- V045 made the stage meter derivable: `runs_with_stage` answers `stage_label`,
+-- `stage_index` and `stage_total` from `run_stages` for a run that has any, and from
+-- V008's columns for a run that has none. This block is what puts the three live loops on
+-- the first side of that, so the amendment filed on #64 has rows to be verified against —
+-- tests/seed.sql asserts that the derived meter and the stored one agree, run for run, for
+-- all fifty-three.
+--
+-- **Only the three live ones.** The fifty closed runs keep the legacy columns and no stage
+-- history, which is deliberate rather than unfinished: it is what leaves both paths of the
+-- amendment exercised by the same database, and a fourteen-day history re-stated six rows
+-- at a time would be three hundred rows nothing renders.
+--
+-- **The stage lists are the workflows', and the meters are mockup 02's.** `standard-fix`
+-- and `deps-refresh` walk six stages, `feature-loop` seven, and each run's current stage
+-- sits at the index the card prints — `Implementing · 4/6`, `Build farm · 5/7`,
+-- `Self-review · 6/6`. `stage_index` counts the stages a run has *entered*, so the three
+-- agree with V008's columns by construction and not by coincidence.
+--
+-- **#482 is the console's run, at the stage mockup 10 draws it.** Its `implement` stage
+-- carries a failed attempt 1 and an active attempt 2 out of 3, and the second attempt
+-- names the transition that created it — `checks-green`, a `gate`, `failed_tests` — from
+-- which `run_stages.note` composes *"attempt 1 failed tests — loop returned from gate ↺"*.
+-- The note is a generated column, so this seed cannot write that sentence and does not try
+-- to: it writes the transition, and PostgreSQL writes the sentence. Decision **R1**, as a
+-- row. Its first three durations are mockup 10's own — `0m 04s`, `1m 12s`, `2m 05s` — and
+-- they fit inside the `12m 40s` elapsed the run already carries, because both are measured
+-- back from the same `now()`.
+--
+-- The limits are `standard-fix v14`'s: three attempts (the DSL's `max_retries: 2` plus the
+-- first try) and a 400 000-token budget per model stage, which is the `400k` the console's
+-- Resources meter divides into. Stages that are not model work — `queued`, `build`,
+-- `review` — carry neither, because a node with no `limits` object has nothing to snapshot.
+--
+-- Ids are `5eed000c…` and the issue number, position and attempt: six digits, three and
+-- three, so a stage row is identifiable on sight and a second application computes the
+-- same uuid.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.run_stages (id, run_id, stage_key, stage_label, position, attempt,
+                                  status, started_at, finished_at, max_attempts, token_budget)
+select ('5eed000c-0000-4000-8000-' || lpad(seed.issue_number::text, 6, '0')
+                                   || lpad(seed.stage_position::text, 3, '0')
+                                   || lpad(seed.attempt::text, 3, '0'))::uuid,
+       run.id, seed.stage_key, seed.stage_label, seed.stage_position, seed.attempt,
+       seed.status,
+       case when seed.started_ago is null then null
+            else now() - make_interval(secs => seed.started_ago) end,
+       case when seed.finished_ago is null then null
+            else now() - make_interval(secs => seed.finished_ago) end,
+       seed.max_attempts, seed.token_budget
+  from (values
+         -- #482 — standard-fix, `Implementing · 4/6`, elapsed 12m 40s. Mockup 10's own
+         -- timeline, and the first three durations are its captions: 0m 04s, 1m 12s, 2m 05s.
+         -- Attempt 2 of `implement` is the next statement's, because it names a transition.
+         (482, 'queued',    'Queued',       1, 1, 'succeeded',  760,  756, null,   null),
+         (482, 'analyze',   'Analyze',      2, 1, 'succeeded',  756,  684,    3, 400000),
+         (482, 'plan',      'Plan',         3, 1, 'succeeded',  684,  559,    3, 400000),
+         (482, 'implement', 'Implementing', 4, 1, 'failed',     559,  240,    3, 400000),
+         (482, 'build',     'Build farm',   5, 1, 'pending',   null, null, null,   null),
+         (482, 'review',    'Self-review',  6, 1, 'pending',   null, null, null,   null),
+
+         -- #479 — feature-loop, `Build farm · 5/7`, elapsed 38m 05s. Seven stages, and the
+         -- build is the one running.
+         (479, 'queued',    'Queued',       1, 1, 'succeeded', 2285, 2280, null,   null),
+         (479, 'analyze',   'Analyze',      2, 1, 'succeeded', 2280, 2160,    3, 400000),
+         (479, 'plan',      'Plan',         3, 1, 'succeeded', 2160, 1920,    3, 400000),
+         (479, 'implement', 'Implementing', 4, 1, 'succeeded', 1920,  420,    3, 400000),
+         (479, 'build',     'Build farm',   5, 1, 'active',     420, null, null,   null),
+         (479, 'test',      'Tests',        6, 1, 'pending',   null, null, null,   null),
+         (479, 'review',    'Self-review',  7, 1, 'pending',   null, null, null,   null),
+
+         -- #476 — deps-refresh, `Self-review · 6/6`, elapsed 7m 12s. Every stage but the
+         -- last is done, which is what a run in `review` is.
+         (476, 'queued',    'Queued',       1, 1, 'succeeded',  432,  429, null,   null),
+         (476, 'analyze',   'Analyze',      2, 1, 'succeeded',  429,  396,    3, 400000),
+         (476, 'plan',      'Plan',         3, 1, 'succeeded',  396,  348,    3, 400000),
+         (476, 'implement', 'Implementing', 4, 1, 'succeeded',  348,  150,    3, 400000),
+         (476, 'build',     'Build farm',   5, 1, 'succeeded',  150,   40, null,   null),
+         (476, 'review',    'Self-review',  6, 1, 'active',      40, null, null,   null)
+       ) as seed (issue_number, stage_key, stage_label, stage_position, attempt, status,
+                  started_ago, finished_ago, max_attempts, token_budget)
+  join ouroboros.organization org on org."slug" = 'acme-robotics'
+  join ouroboros.runs         run on run.organization_id = org."id"
+                                 and run.issue_number = seed.issue_number
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The one row that names a transition: #482's second attempt at `implement` (#298).
+--
+-- A statement of its own because it is a different kind of row and because it must land
+-- after the attempt it follows — `run_stages_attempt_sequence` refuses an attempt 2 whose
+-- attempt 1 does not exist and has not ended, which is exactly the claim the stepper's
+-- `attempt 2/3` chip makes.
+--
+-- What it writes is the **transition**, never the sentence: the gate the loop came back from
+-- (`checks-green`), what kind of node that is (`gate`) and how attempt 1 ended
+-- (`failed_tests`). `run_stages.note` is `generated always … stored`, so PostgreSQL composes
+-- *"attempt 1 failed tests — loop returned from gate ↺"* and refuses any statement — this one
+-- included — that tries to supply it. Decision **R1**, as a row.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.run_stages (id, run_id, stage_key, stage_label, position, attempt,
+                                  status, started_at, max_attempts, token_budget,
+                                  returned_from_stage_key, returned_from_kind, return_reason)
+select ('5eed000c-0000-4000-8000-' || lpad('482', 6, '0')
+                                   || lpad('4', 3, '0') || lpad('2', 3, '0'))::uuid,
+       run.id, 'implement', 'Implementing', 4, 2,
+       'active', now() - make_interval(secs => 240), 3, 400000,
+       'checks-green', 'gate', 'failed_tests'
+  from ouroboros.organization org
+  join ouroboros.runs run on run.organization_id = org."id" and run.issue_number = 482
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------

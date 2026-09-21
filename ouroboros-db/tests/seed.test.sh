@@ -316,24 +316,29 @@ check_absent "$BODY" 'ouroboros-dev-password' \
 
 printf '\nR__dev_seed_dashboard.sql — the dashboard\n'
 
-# Ids are computed rather than written out — there are seventy-seven of them and a list of
-# seventy-seven literals is a list nobody proof-reads — so what this asserts is that every
-# one is still built from a `5eed…` prefix and a value the file names. Three prefixes, one
-# per table, which is what lets a run, a queue item and a usage event be told apart on
-# sight in a log or a URL. `gen_random_uuid` is refused for both seeds by the loop above,
-# which is the other half of the same property.
-for prefix in '5eed0009' '5eed000a' '5eed000b'; do
+# Ids are computed rather than written out — there are ninety-seven of them and a list of
+# ninety-seven literals is a list nobody proof-reads — so what this asserts is that every
+# one is still built from a `5eed…` prefix and a value the file names. Four prefixes, one
+# per table, which is what lets a run, a queue item, a usage event and a stage of a run be
+# told apart on sight in a log or a URL. `gen_random_uuid` is refused for both seeds by the
+# loop above, which is the other half of the same property.
+for prefix in '5eed0009' '5eed000a' '5eed000b' '5eed000c'; do
   check_contains "$DASHBOARD_BODY" "'$prefix-0000-4000-8000-'" \
     "the dashboard seed builds its ids from the $prefix… prefix"
 done
 
-# Every row this seed writes belongs to one of the four tables the read-model is, and to
-# no other. A seed that grew an insert into `organization` or `github_repos` would be
-# writing the other seed's rows from the wrong file, and the two would then have to agree.
+# Every row this seed writes belongs to one of the five tables the read-model is — the four
+# of #64–#67 and the stage history #298 added beside them — and to no other. A seed that
+# grew an insert into `organization` or `github_repos` would be writing the other seed's
+# rows from the wrong file, and the two would then have to agree.
+#
+# `LC_ALL=C sort`, like the later seeds' checks: the C collation puts `run_stages` before
+# `runs`, and a locale that folds the underscore away puts it after — so an unqualified
+# `sort` here would pass on one machine and fail on the next.
 dashboard_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$DASHBOARD_BODY" |
-  sed 's/^insert into ouroboros\.//' | sort -u | tr '\n' ' ')
-check_equals 'queue_items runs token_usage workspace_settings ' "$dashboard_tables" \
-  'the dashboard seed writes the four read-model tables and nothing else'
+  sed 's/^insert into ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'queue_items run_stages runs token_usage workspace_settings ' "$dashboard_tables" \
+  'the dashboard seed writes the five read-model tables and nothing else'
 
 # The parents are found by natural key, never by naming an id a second time — which is
 # what makes the seed converge on a database somebody has edited instead of failing on a

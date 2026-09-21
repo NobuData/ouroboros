@@ -810,6 +810,232 @@ export interface RunsTable {
   checks_total: number | null;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * The `Loop #1847` counter mockup 10's page head prints (V045,
+   * [#298](https://github.com/NobuData/ouroboros/issues/298)).
+   *
+   * A **per-workspace** display sequence, unique within one. `Generated`, not a plain
+   * `number`: `runs_allocate_loop_seq()` assigns the workspace's highest plus one to an
+   * insert that omits it — under an advisory lock, so two runs starting in the same
+   * millisecond serialise rather than collide — and an insert that supplies one keeps it,
+   * which is how the development seed renders `#482` as `Loop #1847` in every database.
+   *
+   * Gapless in the ordinary case and not promised to be: a transaction that allocates a
+   * number and rolls back takes that number with it.
+   */
+  loop_seq: Generated<number>;
+  /**
+   * The branch the loop is working on — `loop/482-canbus-flake` (V045).
+   *
+   * Null until the run has one: a run still queued has no branch, and the console head
+   * renders no chip for it.
+   */
+  branch_name: string | null;
+  /**
+   * The published workflow version this run was pinned to — the `14` of `standard-fix v14`
+   * (V045).
+   *
+   * The slug half is {@link RunsTable.workflow_tag}; the DSL defines a pin as that pair, and
+   * `queue_items` stores the same pair (V032). Null when the workflow had nothing published
+   * to pin, and a later publish does not move it.
+   */
+  workflow_version_pin: number | null;
+}
+
+/**
+ * `run_stages.status` — where one attempt at one stage is (V045,
+ * [#298](https://github.com/NobuData/ouroboros/issues/298)).
+ *
+ * The `run_stages_status` CHECK. Three of the five are the stepper's node treatments —
+ * `succeeded` is `✓` with a duration, `active` is `●`, `pending` is `○`. `failed` is an
+ * attempt that ended badly, usually superseded by the next attempt of the same stage; and
+ * `skipped` is a stage the path went around.
+ */
+export type RunStageStatus = "pending" | "active" | "succeeded" | "failed" | "skipped";
+
+/** The five, in the order the CHECK declares them — what a DTO validates against. */
+export const RUN_STAGE_STATUSES = [
+  "pending",
+  "active",
+  "succeeded",
+  "failed",
+  "skipped",
+] as const satisfies readonly RunStageStatus[];
+
+/**
+ * `run_stages.return_reason` — how the previous attempt ended (V045).
+ *
+ * Closed, and closed for a reason a widening has to respect: `run_stages.note` maps each word
+ * to a phrase, so a word the migration's `case` has no phrase for composes a note that is
+ * null. Adding one is a migration that edits the generated column, this union, and the array
+ * below — in that order.
+ */
+export type RunStageReturnReason =
+  | "failed_tests"
+  | "failed_build"
+  | "failed_checks"
+  | "failed_review"
+  | "gate_rejected"
+  | "budget_exhausted"
+  | "timed_out"
+  | "errored";
+
+/** The eight, in the order the CHECK declares them. */
+export const RUN_STAGE_RETURN_REASONS = [
+  "failed_tests",
+  "failed_build",
+  "failed_checks",
+  "failed_review",
+  "gate_rejected",
+  "budget_exhausted",
+  "timed_out",
+  "errored",
+] as const satisfies readonly RunStageReturnReason[];
+
+/**
+ * `run_stages.returned_from_kind` — what kind of node a loop edge left from (V045).
+ *
+ * The workflow DSL's node `type` with `flow` resolved into the two words §4.4 gives it, because
+ * *gate* is the word the canvas prints, the code view prints and the stepper's note prints.
+ */
+export type RunStageReturnKind = "trigger" | "llm" | "infra" | "gate" | "decision" | "term";
+
+/** The six, in the order the CHECK declares them. */
+export const RUN_STAGE_RETURN_KINDS = [
+  "trigger",
+  "llm",
+  "infra",
+  "gate",
+  "decision",
+  "term",
+] as const satisfies readonly RunStageReturnKind[];
+
+/**
+ * `ouroboros.run_stages` — one run of one workflow stage, one row per attempt (V045,
+ * [#298](https://github.com/NobuData/ouroboros/issues/298), AO.1).
+ *
+ * The stage timeline mockup 10 draws, and the history `runs`' three current-stage columns
+ * cannot hold: durations need two timestamps, `attempt 2/3` needs a row that knows attempt 1
+ * happened, and the warn note is the record of a transition.
+ *
+ * **Decision R1 is structural here.** {@link RunStagesTable.note} is
+ * `generated always … stored` over {@link RunStagesTable.attempt} and the three transition
+ * columns, so PostgreSQL refuses any statement that supplies one — which is why its
+ * `ColumnType` is read-only in both write positions rather than merely discouraged by a
+ * comment.
+ */
+export interface RunStagesTable {
+  id: Generated<string>;
+  /**
+   * The run this is the history of, and the whole of this row's tenancy — V029's choice, since
+   * a stage has no meaning apart from its run and every read enters through one.
+   */
+  run_id: string;
+  /**
+   * The pinned workflow's DSL node id — `implement`, `checks-green`, `open-pr`.
+   *
+   * Held to the node-id slug shape and deliberately not a foreign key: a closed run must still
+   * render its timeline under a workflow that has since been renamed or deleted (decision F8).
+   */
+  stage_key: string;
+  /** The node title as the pinned version had it — a snapshot, so an old run reads as it read. */
+  stage_label: string;
+  /** Order within the pinned workflow, from 1. What orders the stepper. */
+  position: number;
+  /** Which try this is, from 1 — the `2` of `attempt 2/3`. */
+  attempt: Generated<number>;
+  status: Generated<RunStageStatus>;
+  /** When this attempt began. Half of the computed duration; no column stores the answer. */
+  started_at: Date | null;
+  /** When this attempt ended. Null while it has not — `run_stages_clock`. */
+  finished_at: Date | null;
+  /**
+   * The `/3` of `attempt 2/3` — the DSL's `limits.max_retries` **plus one**, snapshotted at
+   * pin time. Null for a node that carries no `limits` object, which is every node that is
+   * not an `llm`.
+   */
+  max_attempts: number | null;
+  /** The stage's `limits.token_budget` at pin time — the `400k` of the Resources meter. */
+  token_budget: number | null;
+  /** The DSL node id a loop edge brought the run back from. One of three that arrive together. */
+  returned_from_stage_key: string | null;
+  returned_from_kind: RunStageReturnKind | null;
+  return_reason: RunStageReturnReason | null;
+  /**
+   * The stepper's warn note — *"attempt 1 failed tests — loop returned from gate ↺"*.
+   *
+   * `ColumnType<string | null, never, never>` because the column is `generated always … stored`:
+   * this service reads it and may never write it, in any role. Decision **R1** — a note that is
+   * copy drifts from the run it describes; this one cannot. Null when there was no transition.
+   */
+  note: ColumnType<string | null, never, never>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.run_stage_current` — where each run with stage history is, derived (V045).
+ *
+ * A **view**, one row per run that has any stages. The active stage if there is one —
+ * `run_stages_one_active_idx` says there is at most one — else the stage the run got furthest
+ * into, else the one it is about to enter. `stage_index` counts the distinct stages entered,
+ * so three attempts at `implement` advance it once; `stage_total` counts the distinct stages
+ * the run materialised.
+ */
+export interface RunStageCurrentView {
+  run_id: string;
+  /** `run_stages.id` of the row this answer came from. */
+  run_stage_id: string;
+  stage_key: string;
+  stage_label: string;
+  position: number;
+  attempt: number;
+  max_attempts: number | null;
+  token_budget: number | null;
+  status: RunStageStatus;
+  note: string | null;
+  started_at: Date | null;
+  finished_at: Date | null;
+  /** Distinct stages this run has entered — the `4` of `4/8`, and `0` before it enters one. */
+  stage_index: number;
+  /** Distinct stages this run materialised — the `8` of `4/8`. */
+  stage_total: number;
+}
+
+/**
+ * `ouroboros.runs_with_stage` — `runs`, with the stage meter resolved from history (V045).
+ *
+ * A **view**, and the amendment filed on [#64](https://github.com/NobuData/ouroboros/issues/64):
+ * every column {@link RunsTable} has, with `stage_label`, `stage_index` and `stage_total`
+ * answered from {@link RunStageCurrentView} where a run has stage history and from V008's
+ * columns where it has none. A read moves onto it by changing one word and answers identically
+ * for every run written before V045, which is what keeps mockup 02 rendering while those
+ * columns are still there. Their removal is a later migration.
+ *
+ * Read-only, so every column is a plain type rather than {@link Generated} or {@link Stamped}.
+ */
+export interface RunsWithStageView {
+  id: string;
+  organization_id: string;
+  github_repo_id: string;
+  issue_number: number;
+  issue_title: string;
+  workflow_tag: string;
+  model: string;
+  status: RunStatus;
+  stage_label: string;
+  stage_index: number;
+  stage_total: number;
+  started_at: Date;
+  finished_at: Date | null;
+  pr_number: number | null;
+  checks_passed: number | null;
+  checks_total: number | null;
+  created_at: Date;
+  updated_at: Date;
+  loop_seq: number;
+  branch_name: string | null;
+  workflow_version_pin: number | null;
 }
 
 /**
@@ -3009,6 +3235,13 @@ export interface WorkspaceSettingsEffectiveView {
  * ticket source whose sealed credential column the statement had no way to reach. Writes go
  * to `ticket_sources`, which {@link Database} also declares.
  *
+ * **`runs_with_stage` (V045, [#298](https://github.com/NobuData/ouroboros/issues/298)) is the
+ * one entry here a caller is meant to reach for by name.** It is `runs` with the stage meter
+ * resolved from stage history, and the amendment on
+ * [#64](https://github.com/NobuData/ouroboros/issues/64) is the four run reads moving onto it;
+ * {@link RunWithStage} and {@link Run} are the same shape, which `schema.spec.ts` asserts at
+ * the type level so the move stays a one-word change. Writes still go to `runs`.
+ *
  * `schema.spec.ts` holds this list to the view interfaces above; `db.integration-spec.ts`
  * compares their columns against `information_schema` exactly as it does a table's, because a
  * view that lost a column breaks a query the same way a table that lost one does.
@@ -3018,6 +3251,8 @@ export const READ_ONLY_VIEWS = [
   "workspace_settings_effective",
   "ticket_sources_public",
   "planning_epic_progress",
+  "run_stage_current",
+  "runs_with_stage",
 ] as const;
 
 /**
@@ -3409,6 +3644,7 @@ export interface Database {
   issue_estimates: IssueEstimatesTable;
   user_preferences: UserPreferencesTable;
   runs: RunsTable;
+  run_stages: RunStagesTable;
   queue_items: QueueItemsTable;
   token_usage: TokenUsageTable;
   workspace_settings: WorkspaceSettingsTable;
@@ -3450,6 +3686,8 @@ export interface Database {
   planning_epic_progress: PlanningEpicProgressView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
   alias_references: AliasReferencesView;
+  run_stage_current: RunStageCurrentView;
+  runs_with_stage: RunsWithStageView;
 }
 
 /**
@@ -3541,6 +3779,28 @@ export const TABLE_COLUMNS = {
     "pr_number",
     "checks_passed",
     "checks_total",
+    "created_at",
+    "updated_at",
+    "loop_seq",
+    "branch_name",
+    "workflow_version_pin",
+  ],
+  run_stages: [
+    "id",
+    "run_id",
+    "stage_key",
+    "stage_label",
+    "position",
+    "attempt",
+    "status",
+    "started_at",
+    "finished_at",
+    "max_attempts",
+    "token_budget",
+    "returned_from_stage_key",
+    "returned_from_kind",
+    "return_reason",
+    "note",
     "created_at",
     "updated_at",
   ],
@@ -4028,6 +4288,45 @@ export const TABLE_COLUMNS = {
     "ref_label",
     "blocking",
   ],
+  run_stage_current: [
+    "run_id",
+    "run_stage_id",
+    "stage_key",
+    "stage_label",
+    "position",
+    "attempt",
+    "max_attempts",
+    "token_budget",
+    "status",
+    "note",
+    "started_at",
+    "finished_at",
+    "stage_index",
+    "stage_total",
+  ],
+  runs_with_stage: [
+    "id",
+    "organization_id",
+    "github_repo_id",
+    "issue_number",
+    "issue_title",
+    "workflow_tag",
+    "model",
+    "status",
+    "stage_label",
+    "stage_index",
+    "stage_total",
+    "started_at",
+    "finished_at",
+    "pr_number",
+    "checks_passed",
+    "checks_total",
+    "created_at",
+    "updated_at",
+    "loop_seq",
+    "branch_name",
+    "workflow_version_pin",
+  ],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
 
 /** Every table name, for a caller that wants to iterate them. */
@@ -4097,6 +4396,17 @@ export type NewUserPreferences = Insertable<UserPreferencesTable>;
 export type Run = Selectable<RunsTable>;
 /** The columns an `insert` into `ouroboros.runs` may carry. */
 export type NewRun = Insertable<RunsTable>;
+
+/** A row of `ouroboros.run_stages`, as a `select` returns it. */
+export type RunStage = Selectable<RunStagesTable>;
+/** The columns an `insert` into `ouroboros.run_stages` may carry — `note` is not among them. */
+export type NewRunStage = Insertable<RunStagesTable>;
+
+/** A run's current stage, as `ouroboros.run_stage_current` derives it. */
+export type RunStageCurrent = Selectable<RunStageCurrentView>;
+
+/** A row of `ouroboros.runs_with_stage` — a run with its stage meter resolved. */
+export type RunWithStage = Selectable<RunsWithStageView>;
 
 /** A row of `ouroboros.queue_items`, as a `select` returns it. */
 export type QueueItem = Selectable<QueueItemsTable>;

@@ -498,6 +498,87 @@ select pg_temp.must_hold(
   'the dashboard seed created fifty-three runs and no fifty-fourth');
 
 -- ---------------------------------------------------------------------------
+-- The loop numbers, and the stage history behind the meter (#298).
+--
+-- V045 gave a run three facts the Run Console's page head is rendered from and made the
+-- stage meter derivable from history rather than stored on the run. Both halves are
+-- asserted here, because both are things only a seeded database can show: that the seed
+-- writes the numbers mockup 10 prints, and that the derived meter and V008's columns agree
+-- for every run in the workspace — which is the amendment on #64 verified against these
+-- seeds rather than promised.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 53 and count(distinct loop_seq) = 53
+      and bool_and(loop_seq = 1365 + issue_number)
+     from ouroboros.runs run
+    where run.id::text like '5eed0009%')
+   and (select loop_seq = 1847 from ouroboros.runs
+         where id::text like '5eed0009%' and issue_number = 482),
+  'every seeded run carries a distinct loop number, and #482 is Loop #1847 — the number mockup 10''s page head prints');
+
+select pg_temp.must_hold(
+  (select count(*) = 20 from ouroboros.run_stages stage
+    where stage.id::text like '5eed000c%'),
+  'the dashboard seed created twenty stage rows and no twenty-first');
+
+-- The three live loops, and only they, have history. The fifty closed runs keep V008's
+-- columns and nothing else, which is what leaves both sides of the amendment exercised by
+-- one database.
+select pg_temp.must_hold(
+  (select count(*) = 3 from (
+     select distinct run.issue_number
+       from ouroboros.run_stages stage
+       join ouroboros.runs run on run.id = stage.run_id
+      where stage.id::text like '5eed000c%') live)
+   and (select count(*) = 0
+          from ouroboros.run_stages stage
+          join ouroboros.runs run on run.id = stage.run_id
+         where stage.id::text like '5eed000c%' and run.finished_at is not null),
+  'the three live loops carry stage history and the fifty closed runs do not');
+
+-- The acceptance criterion the amendment is answerable to: the dashboard's stage display
+-- is the same after it. `runs_with_stage` is what a DASH read moves onto, and for every one
+-- of the fifty-three it answers exactly what `runs` answers today — derived for the three
+-- that have history, fallen back for the fifty that do not.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.runs_with_stage staged
+     join ouroboros.runs plain on plain.id = staged.id
+    where plain.id::text like '5eed0009%'
+      and (staged.stage_label, staged.stage_index, staged.stage_total)
+          is distinct from (plain.stage_label, plain.stage_index, plain.stage_total)),
+  'the derived stage meter agrees with V008''s columns for all fifty-three seeded runs — the dashboard renders identically after the amendment');
+
+-- #482's stepper, as mockup 10 draws it: three stages done, `implement` on its second of
+-- three attempts, and the warn note composed from the transition rather than written by
+-- this seed — which could not write it if it wanted to, `note` being generated always.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.run_stages stage
+     join ouroboros.runs run on run.id = stage.run_id
+    where run.id::text like '5eed0009%' and run.issue_number = 482
+      and stage.stage_key = 'implement' and stage.attempt = 1
+      and stage.status = 'failed')
+   and (select stage.max_attempts = 3 and stage.status = 'active'
+           and stage.note = 'attempt 1 failed tests — loop returned from gate ↺'
+          from ouroboros.run_stages stage
+          join ouroboros.runs run on run.id = stage.run_id
+         where run.id::text like '5eed0009%' and run.issue_number = 482
+           and stage.stage_key = 'implement' and stage.attempt = 2),
+  'run #482 is on attempt 2 of 3 at Implementing, with attempt 1 failed and the gate-return note composed from the transition');
+
+-- And the three captions mockup 10's first three nodes print, computed from the timestamps
+-- the seed wrote rather than stored anywhere.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.run_stages stage
+     join ouroboros.runs run on run.id = stage.run_id
+    where run.id::text like '5eed0009%' and run.issue_number = 482
+      and (stage.stage_key, stage.finished_at - stage.started_at) in (
+        ('queued',  interval '4 seconds'),
+        ('analyze', interval '1 minute 12 seconds'),
+        ('plan',    interval '2 minutes 5 seconds'))),
+  'the first three stages of #482 last 0m 04s, 1m 12s and 2m 05s — mockup 10''s own captions, computed from two timestamps');
+
+-- ---------------------------------------------------------------------------
 -- Up next in queue — the `c-5` card and the *Queued issues* stat.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(

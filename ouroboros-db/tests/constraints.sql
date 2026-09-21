@@ -13115,6 +13115,569 @@ select pg_temp.must_hold(
   'deleting a workspace takes its pools, runners, tokens, windows, jobs, log chunks, certificate authority, every certificate it issued and every terminal frame it recorded with it, whatever order the cascade reaches them in');
 
 -- ===========================================================================
+-- V045 — run_stages, the stage timeline as history (#298)
+-- ===========================================================================
+--
+-- Mockup 10's stepper, and the three facts V008's current-stage columns cannot hold:
+-- durations, attempts, and the gate-return note. Everything below is written against the
+-- one timeline the acceptance criteria name — `✓ Queued 0m 04s`, `✓ Analyze 1m 12s`,
+-- `✓ Plan 2m 05s`, `● Implement attempt 2/3` with a failed attempt 1 beneath it, then four
+-- pending stages — so a rule is asserted against the rows it exists for rather than against
+-- a fixture invented for the rule.
+--
+-- Its own fixtures: the V040 section deleted both of its workspaces on the way out, and
+-- `org-loop` went with the V009 section. Two workspaces again, because `loop_seq` is
+-- org-scoped and a counter that is scoped to nothing looks identical to one that is scoped
+-- to everything until a second workspace asks for its own number 1.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-stages',  'Stage Works', 'stage-works',  now()),
+  ('org-stages2', 'Stage Two',   'stage-two',    now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5000000-0000-0000-0000-00000000000a', 'org-stages',  'stage-works', true),
+  ('a5000000-0000-0000-0000-00000000000b', 'org-stages2', 'stage-two',   true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a5ff0000-0000-0000-0000-00000000000a', 'a5000000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a5ff0000-0000-0000-0000-00000000000b', 'a5000000-0000-0000-0000-00000000000b',
+   'other-firmware',  true, 'main');
+
+-- --- the loop number is allocated, per workspace, without being asked ---------
+--
+-- Acceptance criterion: `loop_seq` allocation is org-scoped, gapless-enough for display and
+-- concurrent-safe. Three runs, none of them supplying a number.
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a5100000-0000-0000-0000-000000000482', 'org-stages',
+          'a5ff0000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, now() - interval '13 minutes'),
+         ('a5100000-0000-0000-0000-000000000483', 'org-stages',
+          'a5ff0000-0000-0000-0000-00000000000a', 483,
+          'Second run of the same workspace', 'standard-fix', 'claude-fable-5',
+          'coding', 'Queued', 0, 8, now() - interval '3 minutes'),
+         ('a5100000-0000-0000-0000-000000000484', 'org-stages2',
+          'a5ff0000-0000-0000-0000-00000000000b', 484,
+          'First run of another workspace', 'standard-fix', 'claude-fable-5',
+          'coding', 'Queued', 0, 8, now() - interval '2 minutes');
+
+select pg_temp.must_hold(
+  (select loop_seq = 1 from ouroboros.runs where id = 'a5100000-0000-0000-0000-000000000482')
+   and (select loop_seq = 2 from ouroboros.runs where id = 'a5100000-0000-0000-0000-000000000483')
+   -- The other workspace starts at 1 again, which is the whole of "org-scoped": a global
+   -- sequence would have given this row 3.
+   and (select loop_seq = 1 from ouroboros.runs where id = 'a5100000-0000-0000-0000-000000000484'),
+  'runs.loop_seq is allocated per workspace and counts from 1 in each — Loop #1847 is a workspace''s number, not the installation''s');
+
+-- Concurrency is not a property a single session can demonstrate by racing itself, so what
+-- is asserted is the mechanism: the allocator takes a transaction-scoped advisory lock
+-- keyed on *this* allocator and *this* workspace, which is what makes two writers that
+-- would have computed the same number wait for each other instead. Nothing else in this
+-- schema takes an advisory lock, so the lock found here is the one the function took.
+select pg_temp.must_hold(
+  (select count(*) = 2
+     from pg_locks
+    where locktype = 'advisory'
+      and pid = pg_backend_pid()
+      and classid = hashtext('ouroboros.runs.loop_seq')::oid
+      and objid in (hashtext('org-stages')::oid, hashtext('org-stages2')::oid)),
+  'allocating a loop number holds a transaction-scoped advisory lock on the workspace, so two concurrent inserts serialise rather than collide');
+
+-- And the backstop under the lock: the number is unique per workspace however it was
+-- arrived at. This is what turns a lock that was somehow not taken into a refused insert
+-- rather than two runs called `Loop #1847`.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model,
+       status, stage_label, stage_index, stage_total, loop_seq)
+    values ('org-stages', 'a5ff0000-0000-0000-0000-00000000000a', 902, 'Duplicate number',
+            'standard-fix', 'claude-fable-5', 'coding', 'Queued', 0, 8, 1)$$,
+  'a loop number is unique within its workspace', 'runs_organization_loop_seq_key');
+
+-- An insert that supplies its own number keeps it, and the allocator continues from there —
+-- which is what lets the development seed render mockup 10's `Loop #1847` in every database
+-- without the next run being numbered 2.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model,
+     status, stage_label, stage_index, stage_total, loop_seq)
+  values ('a5100000-0000-0000-0000-000000001847', 'org-stages',
+          'a5ff0000-0000-0000-0000-00000000000a', 485, 'Numbered by hand',
+          'standard-fix', 'claude-fable-5', 'coding', 'Queued', 0, 8, 1847);
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model,
+     status, stage_label, stage_index, stage_total)
+  values ('a5100000-0000-0000-0000-000000001848', 'org-stages',
+          'a5ff0000-0000-0000-0000-00000000000a', 486, 'Numbered by the allocator',
+          'standard-fix', 'claude-fable-5', 'coding', 'Queued', 0, 8);
+
+select pg_temp.must_hold(
+  (select loop_seq = 1847 from ouroboros.runs where id = 'a5100000-0000-0000-0000-000000001847')
+   and (select loop_seq = 1848 from ouroboros.runs
+         where id = 'a5100000-0000-0000-0000-000000001848'),
+  'a supplied loop number is kept and the next allocation continues from it');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set loop_seq = 0
+    where id = 'a5100000-0000-0000-0000-000000001848'$$,
+  'a loop number counts from 1 — there is no Loop #0', 'runs_loop_seq_positive');
+
+-- --- the branch and the pinned version ----------------------------------------
+--
+-- The other two facts the console's page head is rendered from. Both nullable, because a run
+-- that has not created a branch has none and a workflow with nothing published has no
+-- version to pin.
+update ouroboros.runs
+   set branch_name = 'loop/482-canbus-flake', workflow_version_pin = 14
+ where id = 'a5100000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select branch_name = 'loop/482-canbus-flake' and workflow_version_pin = 14
+     from ouroboros.runs where id = 'a5100000-0000-0000-0000-000000000482')
+   and (select branch_name is null and workflow_version_pin is null
+          from ouroboros.runs where id = 'a5100000-0000-0000-0000-000000000483'),
+  'a run carries its branch and the version it was pinned to, and a run with neither carries null rather than a blank');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set branch_name = '   '
+    where id = 'a5100000-0000-0000-0000-000000000483'$$,
+  'runs.branch_name is a branch or nothing, never whitespace', 'runs_branch_name_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set workflow_version_pin = 0
+    where id = 'a5100000-0000-0000-0000-000000000483'$$,
+  'a pinned workflow version is numbered from 1, as workflow_versions numbers them',
+  'runs_workflow_version_pin_positive');
+
+-- --- the mockup's timeline, in full -------------------------------------------
+--
+-- Acceptance criterion, and the shape the whole table exists for: three succeeded stages, an
+-- `Implement` stage with a failed attempt 1 *and* an active attempt 2, four pending stages,
+-- `max_attempts` 3. The durations are the mockup's, to the second.
+insert into ouroboros.run_stages
+    (run_id, stage_key, stage_label, "position", attempt, status, started_at, finished_at,
+     max_attempts, token_budget, returned_from_stage_key, returned_from_kind, return_reason)
+  values
+    ('a5100000-0000-0000-0000-000000000482', 'queued', 'Queued', 1, 1, 'succeeded',
+     now() - interval '13 minutes', now() - interval '12 minutes 56 seconds',
+     null, null, null, null, null),
+    ('a5100000-0000-0000-0000-000000000482', 'analyze', 'Analyze', 2, 1, 'succeeded',
+     now() - interval '12 minutes 56 seconds', now() - interval '11 minutes 44 seconds',
+     3, 400000, null, null, null),
+    ('a5100000-0000-0000-0000-000000000482', 'plan', 'Plan', 3, 1, 'succeeded',
+     now() - interval '11 minutes 44 seconds', now() - interval '9 minutes 39 seconds',
+     3, 400000, null, null, null),
+    ('a5100000-0000-0000-0000-000000000482', 'implement', 'Implement', 4, 1, 'failed',
+     now() - interval '9 minutes 39 seconds', now() - interval '4 minutes',
+     3, 400000, null, null, null),
+    ('a5100000-0000-0000-0000-000000000482', 'implement', 'Implement', 4, 2, 'active',
+     now() - interval '4 minutes', null,
+     3, 400000, 'checks-green', 'gate', 'failed_tests'),
+    ('a5100000-0000-0000-0000-000000000482', 'build',   'Build',   5, 1, 'pending',
+     null, null, null, null, null, null, null),
+    ('a5100000-0000-0000-0000-000000000482', 'test',    'Test',    6, 1, 'pending',
+     null, null, null, null, null, null, null),
+    ('a5100000-0000-0000-0000-000000000482', 'review',  'Review',  7, 1, 'pending',
+     null, null, null, null, null, null, null),
+    ('a5100000-0000-0000-0000-000000000482', 'open-pr', 'Open PR', 8, 1, 'pending',
+     null, null, null, null, null, null, null);
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.run_stages
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and status = 'succeeded')
+   and (select count(*) = 4 from ouroboros.run_stages
+         where run_id = 'a5100000-0000-0000-0000-000000000482' and status = 'pending')
+   and (select count(*) = 1 from ouroboros.run_stages
+         where run_id = 'a5100000-0000-0000-0000-000000000482'
+           and stage_key = 'implement' and attempt = 1 and status = 'failed')
+   and (select max_attempts = 3 and status = 'active' from ouroboros.run_stages
+         where run_id = 'a5100000-0000-0000-0000-000000000482'
+           and stage_key = 'implement' and attempt = 2),
+  'mockup 10''s timeline is representable in full — three succeeded stages, Implement with a failed attempt 1 and an active attempt 2 out of 3, and four pending stages');
+
+-- --- durations are computed, and there is nothing to compute them from twice ---
+--
+-- Acceptance criterion, in both halves. The arithmetic first: the three captions the mockup
+-- prints, from the timestamps alone.
+select pg_temp.must_hold(
+  (select finished_at - started_at = interval '4 seconds' from ouroboros.run_stages
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'queued')
+   and (select finished_at - started_at = interval '1 minute 12 seconds'
+          from ouroboros.run_stages
+         where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'analyze')
+   and (select finished_at - started_at = interval '2 minutes 5 seconds'
+          from ouroboros.run_stages
+         where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'plan'),
+  'the stepper''s durations are finished_at − started_at — 0m 04s, 1m 12s, 2m 05s, exactly as mockup 10 prints them');
+
+-- And the half that keeps it that way: there is no column for a duration to be stored in, so
+-- there is no second copy of the fact to drift from the first.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'run_stages'
+      and (column_name like '%duration%' or column_name like '%elapsed%'
+           or column_name like '%seconds%')),
+  'run_stages holds no duration column — the stepper''s captions are arithmetic over two timestamps and cannot disagree with them');
+
+-- --- one row per stage per attempt ---------------------------------------------
+--
+-- Acceptance criterion: `(run_id, stage_key, attempt)` uniqueness is enforced.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_stages
+      (run_id, stage_key, stage_label, "position", attempt, status, started_at, max_attempts)
+    values ('a5100000-0000-0000-0000-000000000482', 'implement', 'Implement', 4, 2,
+            'active', now(), 3)$$,
+  'a stage cannot record the same attempt twice', 'run_stages_run_stage_attempt_key');
+
+-- The same stage key under a different run is a different row, which is what makes the key
+-- the *run's* history rather than the workflow's.
+insert into ouroboros.run_stages
+    (run_id, stage_key, stage_label, "position", attempt, status, started_at)
+  values ('a5100000-0000-0000-0000-000000000483', 'implement', 'Implement', 4, 1,
+          'active', now() - interval '2 minutes');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.run_stages
+    where stage_key = 'implement' and attempt = 1),
+  'two runs may each be on attempt 1 of the same stage — the key is per run');
+
+-- --- the note is composed, and nothing may write one ---------------------------
+--
+-- Acceptance criterion: `note` is populated only by transition records, and no write path
+-- accepts free-form note text from a client. There is no write path that could: the column
+-- is `generated always … stored`, and PostgreSQL refuses the statement outright with
+-- `428C9` rather than with a constraint violation — which is a stronger answer than a CHECK,
+-- because it holds for every role including the owner and cannot be satisfied by writing
+-- something that merely *looks* composed.
+select pg_temp.must_hold(
+  (select note = 'attempt 1 failed tests — loop returned from gate ↺'
+     from ouroboros.run_stages
+    where run_id = 'a5100000-0000-0000-0000-000000000482'
+      and stage_key = 'implement' and attempt = 2),
+  'the stepper''s warn note is composed from the transition that created the row, word for word as mockup 10 prints it');
+
+select pg_temp.must_raise(
+  $$insert into ouroboros.run_stages
+      (run_id, stage_key, stage_label, "position", attempt, status, note)
+    values ('a5100000-0000-0000-0000-000000000483', 'typed', 'Typed', 9, 1, 'pending',
+            'whatever I would like it to say')$$,
+  '428C9',
+  'no insert may supply a note — the column is generated always, so free-form note text is refused by PostgreSQL rather than by a service');
+
+select pg_temp.must_raise(
+  $$update ouroboros.run_stages set note = 'rewritten afterwards'
+    where run_id = 'a5100000-0000-0000-0000-000000000482'
+      and stage_key = 'implement' and attempt = 2$$,
+  '428C9',
+  'no update may rewrite a note either');
+
+-- A row with no transition to describe carries no note, rather than an empty string that a
+-- renderer would have to test for.
+select pg_temp.must_hold(
+  (select count(*) = 8 from ouroboros.run_stages
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and note is null),
+  'a stage nothing returned the loop to carries no note at all');
+
+-- Every word of the reason vocabulary composes a whole sentence. A word the `case` had no
+-- phrase for would compose `null`, which is the one way a generated column can produce a
+-- note that says nothing while looking like it was populated.
+insert into ouroboros.run_stages
+    (run_id, stage_key, stage_label, "position", attempt, status, started_at, finished_at)
+  select 'a5100000-0000-0000-0000-000000000484',
+         replace(reason.word, '_', '-'), initcap(reason.word),
+         reason.ordinality::integer, 1, 'failed',
+         now() - interval '2 minutes', now() - interval '1 minute'
+    from unnest(array['failed_tests', 'failed_build', 'failed_checks', 'failed_review',
+                      'gate_rejected', 'budget_exhausted', 'timed_out', 'errored'])
+         with ordinality as reason(word, ordinality);
+
+insert into ouroboros.run_stages
+    (run_id, stage_key, stage_label, "position", attempt, status, started_at, finished_at,
+     returned_from_stage_key, returned_from_kind, return_reason)
+  select 'a5100000-0000-0000-0000-000000000484',
+         replace(reason.word, '_', '-'), initcap(reason.word),
+         reason.ordinality::integer, 2, 'succeeded',
+         now() - interval '1 minute', now(), 'checks-green', 'gate', reason.word
+    from unnest(array['failed_tests', 'failed_build', 'failed_checks', 'failed_review',
+                      'gate_rejected', 'budget_exhausted', 'timed_out', 'errored'])
+         with ordinality as reason(word, ordinality);
+
+select pg_temp.must_hold(
+  (select count(*) = 8 from ouroboros.run_stages
+    where run_id = 'a5100000-0000-0000-0000-000000000484'
+      and note like 'attempt 1 %' and note like '% — loop returned from gate ↺'),
+  'every return reason the vocabulary allows composes a whole sentence — none of them leaves the note null');
+
+delete from ouroboros.run_stages where run_id = 'a5100000-0000-0000-0000-000000000484';
+
+-- The three transition columns arrive together, and only on a retry.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_stages
+      (run_id, stage_key, stage_label, "position", attempt, status, return_reason)
+    values ('a5100000-0000-0000-0000-000000000483', 'halfway', 'Halfway', 9, 1,
+            'pending', 'failed_tests')$$,
+  'a return reason with no node to name is refused — the note reads all three columns',
+  'run_stages_return_complete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_stages
+      (run_id, stage_key, stage_label, "position", attempt, status,
+       returned_from_stage_key, returned_from_kind, return_reason)
+    values ('a5100000-0000-0000-0000-000000000483', 'firsttry', 'First try', 9, 1,
+            'pending', 'checks-green', 'gate', 'failed_tests')$$,
+  'a first attempt cannot have been returned to — there is no attempt 0 for a gate to have failed',
+  'run_stages_return_is_a_retry');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set return_reason = 'ran out of patience'
+    where run_id = 'a5100000-0000-0000-0000-000000000482'
+      and stage_key = 'implement' and attempt = 2$$,
+  'the reason vocabulary is closed', 'run_stages_return_reason');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set returned_from_kind = 'flow'
+    where run_id = 'a5100000-0000-0000-0000-000000000482'
+      and stage_key = 'implement' and attempt = 2$$,
+  'the node-kind vocabulary is the DSL''s, with flow resolved into gate and decision',
+  'run_stages_returned_from_kind');
+
+-- --- the vocabularies and the clock --------------------------------------------
+-- Aimed at a succeeded stage rather than a pending one: an unknown word falls through
+-- run_stages_clock's `else`, which a row with both timestamps satisfies — so the assertion
+-- is about the vocabulary rather than about whichever constraint PostgreSQL happens to
+-- evaluate first.
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set status = 'queued'
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'plan'$$,
+  'run_stages.status rejects a value outside the five the stepper draws', 'run_stages_status');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set started_at = now()
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'build'$$,
+  'a pending stage has not begun, so it carries no start time', 'run_stages_clock');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set finished_at = now()
+    where run_id = 'a5100000-0000-0000-0000-000000000482'
+      and stage_key = 'implement' and attempt = 2$$,
+  'an active stage has not ended, so it carries no finish time', 'run_stages_clock');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set finished_at = null
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'plan'$$,
+  'a succeeded stage has both timestamps — which is what makes its duration computable',
+  'run_stages_clock');
+
+-- `skipped` is the one status with no clock at all: the path went around the stage, so there
+-- is no start and therefore no duration to render. It may record when that was decided.
+insert into ouroboros.run_stages
+    (run_id, stage_key, stage_label, "position", attempt, status, finished_at)
+  values ('a5100000-0000-0000-0000-000000000483', 'skipme', 'Skip me', 9, 1,
+          'skipped', now());
+
+select pg_temp.must_hold(
+  (select started_at is null and finished_at is not null from ouroboros.run_stages
+    where run_id = 'a5100000-0000-0000-0000-000000000483' and stage_key = 'skipme'),
+  'a skipped stage may record when the path went around it and can never carry a duration');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set started_at = now() - interval '1 minute'
+    where run_id = 'a5100000-0000-0000-0000-000000000483' and stage_key = 'skipme'$$,
+  'a skipped stage never ran, so it has no start time', 'run_stages_clock');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set finished_at = started_at - interval '1 second'
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'plan'$$,
+  'a stage cannot finish before it started', 'run_stages_finished_after_started');
+
+-- --- the attempt chip's arithmetic ---------------------------------------------
+-- Narrowing the allowance rather than raising the attempt, because raising it would be
+-- refused first by the sequence trigger below — which is a different rule, and the one this
+-- assertion would then be silently testing instead.
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set max_attempts = 1
+    where run_id = 'a5100000-0000-0000-0000-000000000482'
+      and stage_key = 'implement' and attempt = 2$$,
+  'attempt 2 of a one-attempt allowance is not a chip a stepper can draw',
+  'run_stages_attempt_within_max');
+
+-- The DSL's own bounds, mirrored: `limits.max_retries` is 0–10, so a total allowance is
+-- 1–11, and `limits.token_budget` is 1 000–10 000 000.
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set max_attempts = 12
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'build'$$,
+  'a snapshot of limits.max_retries cannot exceed the DSL''s ten retries',
+  'run_stages_max_attempts_range');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set token_budget = 999
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'build'$$,
+  'a snapshot of limits.token_budget cannot fall below the DSL''s floor',
+  'run_stages_token_budget_range');
+
+-- --- an attempt follows an attempt that ended -----------------------------------
+--
+-- `attempt 2/3` is a claim about attempt 1 — that it happened, and that it is over. Neither
+-- fact is in this row, which is why the rule is a trigger.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_stages
+      (run_id, stage_key, stage_label, "position", attempt, status, started_at)
+    values ('a5100000-0000-0000-0000-000000000483', 'lonely', 'Lonely', 9, 2,
+            'active', now())$$,
+  'attempt 2 of a stage that has no attempt 1 is refused — the chip would be counting a try that never happened',
+  'run_stages_attempt_sequence');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_stages
+      (run_id, stage_key, stage_label, "position", attempt, status, started_at)
+    values ('a5100000-0000-0000-0000-000000000483', 'implement', 'Implement', 4, 2,
+            'active', now())$$,
+  'a retry cannot begin while the attempt before it is still running',
+  'run_stages_attempt_sequence');
+
+-- --- one stage is active at a time ---------------------------------------------
+--
+-- The loop walks its graph and the DSL has no fork-join, so two `●` nodes are a writer's
+-- mistake. This is what lets run_stage_current name *the* current stage.
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set status = 'active', started_at = now()
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'build'$$,
+  'a run has at most one active stage', 'run_stages_one_active_idx');
+
+-- --- a stage key is a DSL node id ------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set stage_key = 'Implement Stage'
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'build'$$,
+  'a stage key is a DSL node id — a slug, not a title', 'run_stages_stage_key_slug');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_stages set stage_label = '   '
+    where run_id = 'a5100000-0000-0000-0000-000000000482' and stage_key = 'build'$$,
+  'a stage label says something — the stepper captions its node with it',
+  'run_stages_stage_label_present');
+
+-- --- the index the stepper reads through -----------------------------------------
+--
+-- Not a plan assertion over a handful of fixture rows: the catalogue is asked whether the
+-- index the scope names exists, with those columns in that order. `run_id` leads it, so it
+-- is also the index the `runs` cascade deletes through — which is why there is no second one
+-- on `run_id` alone.
+select pg_temp.must_hold(
+  (select pg_get_indexdef(oid) like '%(run_id, "position", attempt)'
+     from pg_class where relname = 'run_stages_run_position_attempt_idx'),
+  'run_stages is indexed on (run_id, position, attempt) — the stepper''s own order, and the index the runs cascade deletes through');
+
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.run_stages
+     where run_id = 'a5100000-0000-0000-0000-000000000482'
+     order by "position", attempt$$,
+  'run_stages_run_position_attempt_idx');
+
+set local enable_seqscan = on;
+
+-- --- where a run is, derived ------------------------------------------------------
+--
+-- The active stage, with the meter computed beside it. `stage_index` counts the distinct
+-- stages entered, so three attempts at `implement` advance it once; `stage_total` counts the
+-- distinct stages the run materialised.
+select pg_temp.must_hold(
+  (select stage_label = 'Implement' and attempt = 2 and max_attempts = 3
+      and status = 'active' and stage_index = 4 and stage_total = 8
+      and note = 'attempt 1 failed tests — loop returned from gate ↺'
+     from ouroboros.run_stage_current
+    where run_id = 'a5100000-0000-0000-0000-000000000482'),
+  'run_stage_current answers Implement · attempt 2/3 · 4/8 with the gate-return note — mockup 10''s stepper head, derived rather than stored');
+
+-- A run whose stages are all pending is `0/n` captioned by the stage it is about to enter,
+-- which is the shape V008's `runs_stage_index_in_range` allows for and the one a naive
+-- "newest row" rule would caption with the last stage the run will never reach.
+insert into ouroboros.run_stages (run_id, stage_key, stage_label, "position", attempt, status)
+  values ('a5100000-0000-0000-0000-000000001848', 'queued',  'Queued',  1, 1, 'pending'),
+         ('a5100000-0000-0000-0000-000000001848', 'analyze', 'Analyze', 2, 1, 'pending'),
+         ('a5100000-0000-0000-0000-000000001848', 'open-pr', 'Open PR', 3, 1, 'pending');
+
+select pg_temp.must_hold(
+  (select stage_label = 'Queued' and stage_index = 0 and stage_total = 3
+     from ouroboros.run_stage_current
+    where run_id = 'a5100000-0000-0000-0000-000000001848'),
+  'a run that has entered no stage reads 0/3, captioned by the stage it is about to enter');
+
+-- A run that has stopped rests at the stage it got furthest into, not at the pending one
+-- after it.
+insert into ouroboros.run_stages
+    (run_id, stage_key, stage_label, "position", attempt, status, started_at, finished_at)
+  values ('a5100000-0000-0000-0000-000000001847', 'queued', 'Queued', 1, 1, 'succeeded',
+          now() - interval '5 minutes', now() - interval '4 minutes'),
+         ('a5100000-0000-0000-0000-000000001847', 'analyze', 'Analyze', 2, 1, 'failed',
+          now() - interval '4 minutes', now() - interval '3 minutes');
+
+insert into ouroboros.run_stages (run_id, stage_key, stage_label, "position", attempt, status)
+  values ('a5100000-0000-0000-0000-000000001847', 'plan', 'Plan', 3, 1, 'pending');
+
+select pg_temp.must_hold(
+  (select stage_label = 'Analyze' and stage_index = 2 and stage_total = 3
+     from ouroboros.run_stage_current
+    where run_id = 'a5100000-0000-0000-0000-000000001847'),
+  'a run that has stopped rests at the stage it got furthest into, not at the pending stage after it');
+
+-- --- the dashboard amendment -------------------------------------------------------
+--
+-- Acceptance criterion: the dashboard's existing stage display renders identically after the
+-- amendment. `runs_with_stage` is every column `runs` has, so a read moves by changing one
+-- word — and for a run with no stage history it answers exactly what `runs` answers, which
+-- is what keeps mockup 02 rendering while the legacy columns are still there to fall back
+-- to. Asserted over every run this section has created, rather than over a chosen one.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.runs_with_stage staged
+     join ouroboros.runs plain on plain.id = staged.id
+     left join ouroboros.run_stages history on history.run_id = plain.id
+    where history.run_id is null
+      and (staged.stage_label, staged.stage_index, staged.stage_total)
+          is distinct from (plain.stage_label, plain.stage_index, plain.stage_total)),
+  'runs_with_stage answers exactly what runs answers for every run with no stage history — the dashboard is never mid-air');
+
+select pg_temp.must_hold(
+  (select count(*) = (select count(*) from ouroboros.runs) from ouroboros.runs_with_stage)
+   and (select array_agg(column_name::text order by column_name)
+          from information_schema.columns
+         where table_schema = 'ouroboros' and table_name = 'runs_with_stage')
+       = (select array_agg(column_name::text order by column_name)
+            from information_schema.columns
+           where table_schema = 'ouroboros' and table_name = 'runs'),
+  'runs_with_stage has one row and one column per row and column of runs — a read moves onto it by changing one word');
+
+select pg_temp.must_hold(
+  (select stage_label = 'Implement' and stage_index = 4 and stage_total = 8
+     from ouroboros.runs_with_stage where id = 'a5100000-0000-0000-0000-000000000482'),
+  'and a run with stage history has its meter answered from that history instead');
+
+-- --- the cascades --------------------------------------------------------------------
+delete from ouroboros.runs where id = 'a5100000-0000-0000-0000-000000000483';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.run_stages
+    where run_id = 'a5100000-0000-0000-0000-000000000483'),
+  'deleting a run takes its whole timeline with it — a stage history nobody can reach is not history');
+
+delete from ouroboros.organization where "id" in ('org-stages', 'org-stages2');
+
+-- Named by their own id prefix rather than counted globally: a later section's fixtures may
+-- still hold runs of their own, and an assertion that counted those would report this
+-- cascade broken for somebody else's rows.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where id::text like 'a5100000-%')
+   and (select count(*) = 0 from ouroboros.run_stages where run_id::text like 'a5100000-%'),
+  'deleting a workspace takes its runs and every stage of every one of them');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

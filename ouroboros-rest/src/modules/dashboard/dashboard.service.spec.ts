@@ -86,6 +86,9 @@ const RUN: Run = {
   checks_total: null,
   created_at: new Date("2026-08-13T14:25:01.000Z"),
   updated_at: new Date("2026-08-13T14:37:00.000Z"),
+  loop_seq: 1847,
+  branch_name: "loop/482-canbus-flake",
+  workflow_version_pin: 14,
 };
 
 const QUEUED: QueueItem = {
