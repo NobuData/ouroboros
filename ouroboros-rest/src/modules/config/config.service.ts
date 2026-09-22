@@ -69,6 +69,17 @@ export class AppConfigService {
     return this.config.getOrThrow<string>("engineSharedSecret");
   }
 
+  /**
+   * The second value `X-Ouro-Internal-Key` may carry — `OURO_RUN_SIMULATOR_SECRET`.
+   *
+   * `undefined` when unset, which is *this deployment runs no simulator*: every run opened
+   * through the ingestion contract is then a real one. `get` rather than `getOrThrow` for
+   * that reason — an absent simulator is a configuration, not a failure.
+   */
+  get runSimulatorSecret(): string | undefined {
+    return this.config.get<string>("runSimulatorSecret");
+  }
+
   /** BetterAuth's signing and encryption key — `BETTER_AUTH_SECRET`. */
   get betterAuthSecret(): string {
     return this.config.getOrThrow<string>("betterAuthSecret");
@@ -349,6 +360,7 @@ export class AppConfigService {
       uiUrl: this.uiUrl,
       engineUrl: this.engineUrl,
       engineSharedSecret: this.engineSharedSecret,
+      runSimulatorSecret: this.runSimulatorSecret,
       betterAuthSecret: this.betterAuthSecret,
       betterAuthUrl: this.betterAuthUrl,
       githubClientId: this.githubClientId,

@@ -461,6 +461,21 @@ export interface Configuration {
   /** Value sent as `X-Ouro-Internal-Key`. From `OURO_ENGINE_SHARED_SECRET`. */
   readonly engineSharedSecret: string;
   /**
+   * The second value `X-Ouro-Internal-Key` may carry, and the one that makes a run
+   * *simulated*. From `OURO_RUN_SIMULATOR_SECRET`, absent when unset.
+   *
+   * AP.1 ([#303](https://github.com/NobuData/ouroboros/issues/303)), decision **R4**: a run's
+   * `simulated` watermark follows the **principal**, and a body field claiming it would be a
+   * client claiming it. The internal channel has exactly one thing a caller proves — which
+   * secret it holds — so a second secret is the only honest way to have a second principal.
+   *
+   * Optional, and its absence is *this deployment runs no simulator*: every run opened
+   * through the ingestion contract is then a real one. Setting it to the same value as
+   * `OURO_ENGINE_SHARED_SECRET` is refused, because two principals that present the same
+   * proof are one principal.
+   */
+  readonly runSimulatorSecret?: string;
+  /**
    * BetterAuth's signing and encryption key. From `BETTER_AUTH_SECRET`.
    *
    * Unprefixed because it is BetterAuth's own canonical name, which the library reads
@@ -773,6 +788,7 @@ export const VARIABLES = {
   uiUrl: "OURO_UI_URL",
   engineUrl: "OURO_ENGINE_URL",
   engineSharedSecret: "OURO_ENGINE_SHARED_SECRET",
+  runSimulatorSecret: "OURO_RUN_SIMULATOR_SECRET",
   betterAuthSecret: "BETTER_AUTH_SECRET",
   betterAuthUrl: "BETTER_AUTH_URL",
   githubClientId: "OURO_GITHUB_CLIENT_ID",
@@ -1071,7 +1087,7 @@ function cadenceSeconds(minimum: number, fallback: number, maximum: number) {
  * carries plenty that has nothing to do with this service — which is zod's default for an
  * object schema and is stated here because it is a decision rather than an accident.
  */
-const environmentSchema = z.object({
+const environmentShape = z.object({
   PORT: port,
 
   NODE_ENV: z
@@ -1101,6 +1117,8 @@ const environmentSchema = z.object({
     ),
 
   OURO_ENGINE_SHARED_SECRET: secret,
+
+  OURO_RUN_SIMULATOR_SECRET: secret.optional(),
 
   // BetterAuth's two canonical variables (roadmap decision A9). They are validated by the
   // same rules as their OURO_ counterparts rather than by the library's own defaults,
@@ -1359,6 +1377,34 @@ const environmentSchema = z.object({
 });
 
 /**
+ * The shape, plus the one rule that is about two variables at once.
+ *
+ * A separate constant rather than a `.refine()` written onto the object literal above, for a
+ * reason that is about diffs rather than about zod: chaining onto that literal re-indents
+ * every one of its three hundred lines, so the change that added this rule would have read
+ * as a rewrite of the whole schema.
+ *
+ * The rule is about **identity**, not about a value. AP.1's `simulated` watermark follows
+ * the principal, and a principal on the internal channel *is* the secret it presents — so
+ * two principals holding one secret are one principal, and a deployment that set both
+ * variables to the same string would be one where every simulated run is indistinguishable
+ * from a real one while appearing to be configured for both. Refused at boot, where it is
+ * visible, rather than at the first run that quietly wears the wrong watermark.
+ *
+ * `undefined !== <secret>` holds, so a deployment that sets no simulator secret passes this
+ * without a special case.
+ */
+const environmentSchema = environmentShape.refine(
+  (values) => values.OURO_RUN_SIMULATOR_SECRET !== values.OURO_ENGINE_SHARED_SECRET,
+  {
+    path: [VARIABLES.runSimulatorSecret],
+    error:
+      "expected a different value from OURO_ENGINE_SHARED_SECRET — two principals cannot " +
+      "share one secret",
+  },
+);
+
+/**
  * Drop the variables that are set but empty, so they read as unset.
  *
  * `BETTER_AUTH_SECRET=` in an env file is an unfilled line rather than a deliberate
@@ -1435,6 +1481,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     uiUrl: values.OURO_UI_URL,
     engineUrl: values.OURO_ENGINE_URL,
     engineSharedSecret: values.OURO_ENGINE_SHARED_SECRET,
+    runSimulatorSecret: values.OURO_RUN_SIMULATOR_SECRET,
     betterAuthSecret: values.BETTER_AUTH_SECRET,
     betterAuthUrl: values.BETTER_AUTH_URL,
     githubClientId: values.OURO_GITHUB_CLIENT_ID,

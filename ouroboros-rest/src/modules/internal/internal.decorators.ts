@@ -21,8 +21,19 @@
  * the process, and this one is ours to name.
  */
 
-import { SetMetadata, type CustomDecorator, type ExecutionContext } from "@nestjs/common";
+import {
+  createParamDecorator,
+  SetMetadata,
+  type CustomDecorator,
+  type ExecutionContext,
+} from "@nestjs/common";
 import type { Reflector } from "@nestjs/core";
+
+import {
+  INTERNAL_PRINCIPAL_PROPERTY,
+  type InternalPrincipal,
+  type PrincipalCarrier,
+} from "./internal.principal";
 
 /** The metadata key {@link InternalOnly} sets. */
 export const INTERNAL_ONLY = "ouroboros:internal:only";
@@ -56,3 +67,34 @@ export function isInternalOnly(reflector: Reflector, context: ExecutionContext):
     ]) === true
   );
 }
+
+/**
+ * Read the principal `InternalKeyGuard` proved, in a handler's signature.
+ *
+ * AP.1 ([#303](https://github.com/NobuData/ouroboros/issues/303)): a run's `simulated`
+ * watermark follows the caller, and the caller is whatever secret they presented. The guard
+ * records that on the request; this is how a handler asks for it, rather than reaching for
+ * `request[INTERNAL_PRINCIPAL_PROPERTY]` and having to know the property's name.
+ *
+ * **It throws when there is nothing to read**, and that is the point rather than an
+ * oversight. The only requests carrying a principal are the ones the guard admitted, so an
+ * absent value means the handler is on a route that is not `@InternalOnly()` — a route
+ * anybody can reach, asking who authenticated. Defaulting to `"executor"` there would hand
+ * an unauthenticated caller the ability to open real runs; refusing turns the mistake into a
+ * failure at the first request instead of a watermark that is quietly always false.
+ */
+export const CallingPrincipal = createParamDecorator(
+  (_data: unknown, context: ExecutionContext): InternalPrincipal => {
+    const request = context.switchToHttp().getRequest<PrincipalCarrier>();
+    const principal = request[INTERNAL_PRINCIPAL_PROPERTY];
+
+    if (principal === undefined) {
+      throw new Error(
+        "@CallingPrincipal() was read on a route InternalKeyGuard did not admit. " +
+          "Add @InternalOnly() to the controller, or stop asking who called.",
+      );
+    }
+
+    return principal;
+  },
+);

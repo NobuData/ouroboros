@@ -21,6 +21,7 @@ import { FarmGatewayModule } from "../farm/gateway/gateway.module";
 import { FarmFleetModule } from "../farm/fleet/fleet.module";
 import { FarmLogsModule } from "../farm/logs/logs.module";
 import { FarmInstallerModule } from "../farm/installer/installer.module";
+import { IngestModule } from "../ingest/ingest.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
@@ -401,6 +402,15 @@ export class AppModule {
         // `admin` and above, on the routes themselves.
         FarmFleetModule,
         InternalModule,
+        // AP.1 ([#303](https://github.com/NobuData/ouroboros/issues/303)) — the run ingestion
+        // contract: the six `/internal/runs` routes every executor reports through, the
+        // simulated driver (AP.5) today and real execution (AR.1) tomorrow. After
+        // `InternalModule`, which registers the `APP_GUARD` these routes are protected by —
+        // Nest runs global guards in the order their modules are initialised, and a module
+        // listed before it would have its `@InternalOnly()` routes reached by the guard just
+        // the same, but listing it after keeps the reading order the same as the protection
+        // order.
+        IngestModule,
       ],
     };
   }

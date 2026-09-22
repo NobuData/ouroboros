@@ -467,6 +467,48 @@ describe("the secrets", () => {
   });
 });
 
+// AP.1 ([#303](https://github.com/NobuData/ouroboros/issues/303)), decision **R4**. The
+// variable is optional and its *absence* is a configuration rather than a failure — a
+// deployment that runs no simulator opens only real runs — so the only rule it has is the one
+// that is about identity rather than about a value.
+describe("OURO_RUN_SIMULATOR_SECRET", () => {
+  it("is absent by default, which is a deployment that runs no simulator", () => {
+    expect(loadConfiguration(testEnvironment()).runSimulatorSecret).toBeUndefined();
+  });
+
+  it("is read when it is set", () => {
+    const secret = "y".repeat(MINIMUM_SECRET_LENGTH);
+
+    expect(
+      loadConfiguration(testEnvironment({ OURO_RUN_SIMULATOR_SECRET: secret })).runSimulatorSecret,
+    ).toBe(secret);
+  });
+
+  it("is held to the same length floor as every other secret", () => {
+    expect(failureFor(testEnvironment({ OURO_RUN_SIMULATOR_SECRET: "hunter2" }))).toContain(
+      `${VARIABLES.runSimulatorSecret}: expected at least ${MINIMUM_SECRET_LENGTH} characters`,
+    );
+  });
+
+  it("refuses to equal the engine's secret, because that is one principal wearing two hats", () => {
+    // A run's `simulated` watermark follows the principal, and a principal on this channel
+    // *is* the secret it presents. A deployment that set both to the same string would be one
+    // where every simulated run is indistinguishable from a real one while appearing to be
+    // configured for both — refused at boot, where it is visible, rather than at the first run.
+    const shared = "z".repeat(MINIMUM_SECRET_LENGTH);
+    const message = failureFor(
+      testEnvironment({
+        OURO_ENGINE_SHARED_SECRET: shared,
+        OURO_RUN_SIMULATOR_SECRET: shared,
+      }),
+    );
+
+    expect(message).toContain(VARIABLES.runSimulatorSecret);
+    expect(message).toContain("two principals cannot share one secret");
+    expect(message).not.toContain(shared);
+  });
+});
+
 // #222's "boot fails cleanly and legibly on a missing or malformed master key". The
 // variable is validated by a rule the other secrets do not get, and the reason is the
 // consequence of being wrong: a signing key that is not what the operator meant produces

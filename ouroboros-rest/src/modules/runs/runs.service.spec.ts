@@ -42,6 +42,8 @@ function row(over: Partial<Run> = {}): Run {
     events_elided_at: null,
     merge_strategy: "squash",
     reserved_build_job_id: null,
+    event_hint: 0,
+    change_set_seq: 0,
     ...over,
   };
 }

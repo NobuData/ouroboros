@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.35.30",
+    "version": "0.35.31",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built and what is specified.** The lease is implemented. The proxy is\n*specified* by this document and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers\n`501` with `code: \"invocation_not_implemented\"`, deliberately rather than `404`, so an\nexecutor being written against this contract can tell *the path is right and the other\nhalf is not built yet* from *I have the URL wrong*. The contract exists first because\nAF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an\nexecutor **against** it — a decision recorded afterwards is a description of whatever\ngot built.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -33,6 +33,10 @@
     {
       "name": "invocation",
       "description": "**The proxy — specified here, implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)).**\n\nThe worker sends the call it wants made and the run it is making it for; the control\nplane resolves the target, unwraps the credential inside one request scope, walks the\nresolved chain and streams back what the provider said. The key never crosses back.\n\nOne choke point rather than a policy in every worker is what makes AB.1's\n([#207](https://github.com/NobuData/ouroboros/issues/207)) semantics implementable at\nall: the per-hop error taxonomy, the floor that a chain may not degrade past, the\nper-run cost cap, and usage capture attributed to the hop that actually served the\nrequest. Each of those is a field or an event kind below, named here so that an\nexecutor which ignored one can be found to have ignored it."
+    },
+    {
+      "name": "runs",
+      "description": "**The run ingestion contract — AP.1\n([#303](https://github.com/NobuData/ouroboros/issues/303)), decision **R2**.**\n\nOne internal contract every executor reports through: stages, transcript events, file\nand commit reports, resource deltas. The simulated-run driver (AP.5,\n[#307](https://github.com/NobuData/ouroboros/issues/307)) calls it today and real\nexecution (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)) calls it\ntomorrow, and that is the point of it existing before either: the Run Console is\nend-to-end real from the start, and v2 changes who is calling and nothing else.\n\n**There is exactly one of these, deliberately.** DASH-J.3\n([#91](https://github.com/NobuData/ouroboros/issues/91)) defined an engine→read-model\ningestion bridge and left it unbuilt; its scope is delivered here. A second, richer\nbridge beside it would fork the read-model and leave two writers disagreeing about a\nrun's state.\n\n**Three rules hold across all six operations.**\n\n1. **Every write is idempotency-keyed.** Replaying a key returns the original result —\n   not an error, because an executor retries when it did not hear the answer and being\n   told *\"you already sent that\"* leaves it where it was. The same *values*, field for\n   field: the answer is stored as `jsonb`, which sorts an object's keys, so a replay's\n   field order is PostgreSQL's rather than the first answer's. A key presented with a\n   *different* body is refused with `idempotency_key_reused`.\n2. **The server owns the ordering.** Transcript entries carry the executor's own\n   monotonic `hint`; the server assigns the authoritative dense `seq` and **refuses**\n   a batch that does not continue the accepted order rather than silently reordering\n   it. Renumbering a sequence the console pages by would change a transcript under a\n   reader's cursor.\n3. **The workspace is resolved, never claimed.** No body carries an organization: a run\n   resolves one from the ticket it is opened for, and every later report resolves one\n   from the run. Likewise `simulated` — decision **R4**'s watermark follows the\n   *principal*, which on this channel is the secret the caller presented, so there is\n   no field in which it could be claimed or cleared."
     }
   ],
   "paths": {
@@ -230,9 +234,810 @@
           }
         }
       }
+    },
+    "/internal/runs": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Open a run",
+        "description": "Open a run for a canonical ticket, pinned to one published workflow version.\n\n**The workspace comes from the ticket.** The body names a ticket source and a\n`external_key`; the ticket's own workspace is what everything else is validated\nagainst — the repository must belong to it, and the workflow version must be\npublished in it. A worker naming its own workspace would be a worker choosing whose\nruns to open.\n\n**`loop_seq` is allocated by the database**, per workspace, under its own lock — the\n*Loop #1847* counter. It is in the answer because it is the number a person reads and\nthe caller cannot compute.\n\n**`simulated` is in the answer and not in the request.** It follows the principal:\na caller holding `OURO_RUN_SIMULATOR_SECRET` opens simulated runs and a caller\nholding `OURO_ENGINE_SHARED_SECRET` opens real ones. V046 freezes the flag once the\nrun has written a transcript, so there is no later moment at which it could be\ncorrected — which is why it can never be a claim.\n\n`201`, because this is the one operation on the surface that creates a resource with\nan identity.",
+        "operationId": "openRun",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenRunRequest"
+              },
+              "example": {
+                "idempotencyKey": "sim-482-open",
+                "ticket": {
+                  "source": "8f14e45f-ceea-467a-9f0a-4a1c7c3b2d55",
+                  "externalKey": "#482"
+                },
+                "repository": "5eed0003-0000-4000-8000-000000000001",
+                "workflow": {
+                  "tag": "standard-fix",
+                  "version": 14
+                },
+                "model": "claude-fable-5",
+                "branchName": "loop/482-canbus-flake",
+                "mergeStrategy": "squash"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The run, with the `loop_seq` the database allocated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOpened"
+                },
+                "example": {
+                  "id": "5eed0009-0000-4000-8000-000000000482",
+                  "loopSeq": 1847,
+                  "organizationId": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                  "issueNumber": 482,
+                  "issueTitle": "Fix flaky CAN-bus telemetry test",
+                  "workflowTag": "standard-fix",
+                  "workflowVersionPin": 14,
+                  "branchName": "loop/482-canbus-flake",
+                  "mergeStrategy": "squash",
+                  "model": "claude-fable-5",
+                  "simulated": true,
+                  "status": "coding",
+                  "startedAt": "2026-09-22T14:25:01.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal. One constant\nbody, whichever it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`ticket_not_found` — the canonical mirror holds no ticket with that key in that\nsource — or `repository_not_found`, or `workflow_pin_not_found` when no such\nversion is published in the ticket's workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "ticket_not_found",
+                  "message": "No such ticket in that source. A run is opened for a ticket the intake has mirrored.",
+                  "details": {
+                    "source": "8f14e45f-ceea-467a-9f0a-4a1c7c3b2d55",
+                    "externalKey": "#482"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`ticket_ambiguous` — that key names more than one ticket in that source —\n`ticket_not_numbered` — the source's identifiers are not numbers and\n`runs.issue_number` is — `workflow_pin_unreadable`, or `idempotency_key_reused`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "idempotency_key_reused",
+                  "message": "That idempotency key has already answered a different request. A key names one submission; use a fresh one, or re-send the submission it named.",
+                  "details": {
+                    "operation": "run.create",
+                    "idempotencyKey": "sim-482-open"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a field is missing or the wrong shape, or the body carries\none this operation does not define. `details` has one entry per field refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request body is not valid.",
+                  "details": {
+                    "model": [
+                      "model must be shorter than or equal to 200 characters"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/stage-transitions": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Move one stage attempt",
+        "description": "Move one attempt of one stage, validated against the AO.1 state machine and the\npinned workflow's attempt limits.\n\n```\n     ┌────────────────────────────────── skipped\n     │\n(absent) ─▶ pending ─▶ active ─▶ succeeded\n     │          │         └────▶ failed\n     └──────────┴─▶ active\n```\n\nA move outside that machine is `stage_transition_invalid`, and `details` carries the\nstage, the attempt, where the row stands and where the request tried to take it —\nwhich is the whole of what an executor needs to tell *\"I lost a response\"* from *\"I\nhave a bug\"*.\n\n**The label, the position and the limits come from the pin**, snapshotted onto the\nrow. An attempt past `limits.max_retries + 1` is `attempt_limit_exceeded`; a stage\nthe pinned document does not name is `stage_not_in_pin`.\n\n**There is no `note` field, and there cannot be one.** V045 makes `run_stages.note` a\ngenerated column over the attempt and the three `returnedFrom` columns, so the\nsentence *\"attempt 1 failed tests — loop returned from gate ↺\"* is **composed** by\nthe database from the recorded transition. What this operation accepts is the\ntransition; the note comes back in the answer.",
+        "operationId": "transitionRunStage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StageTransitionRequest"
+              },
+              "example": {
+                "idempotencyKey": "sim-482-implement-2-start",
+                "stageKey": "implement",
+                "status": "active",
+                "attempt": 2,
+                "at": "2026-09-22T14:32:56.000Z",
+                "returnedFrom": {
+                  "stageKey": "checks-green",
+                  "kind": "gate",
+                  "reason": "failed_tests"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Where the stage stands afterwards, with the note the database composed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageTransition"
+                },
+                "example": {
+                  "runStageId": "5eed002a-0000-4000-8000-000000000004",
+                  "stageKey": "implement",
+                  "stageLabel": "Implement",
+                  "position": 4,
+                  "attempt": 2,
+                  "maxAttempts": 3,
+                  "tokenBudget": 400000,
+                  "status": "active",
+                  "note": "attempt 1 failed tests — loop returned from gate ↺",
+                  "startedAt": "2026-09-22T14:32:56.000Z",
+                  "finishedAt": null,
+                  "returnedFrom": {
+                    "stageKey": "checks-green",
+                    "kind": "gate",
+                    "reason": "failed_tests"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`, or `workflow_pin_not_found` when the version this run pinned is\nno longer published — a run can still be *read* under a deleted workflow, because\neverything already written is a snapshot, but it cannot take a new one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "run_not_found",
+                  "message": "No such run. A report is made against the run it is about.",
+                  "details": {
+                    "run": "5eed0009-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`stage_transition_invalid` — the machine forbids the move — `attempt_limit_exceeded`,\n`stage_not_in_pin`, `stage_return_not_a_retry`, or `idempotency_key_reused`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "stage_transition_invalid",
+                  "message": "A stage attempt cannot move from pending to succeeded.",
+                  "details": {
+                    "stageKey": "implement",
+                    "attempt": 1,
+                    "from": "pending",
+                    "to": "succeeded"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, a field is the wrong shape, or the body\ncarries one this operation does not define. Sending `note` lands here, by design.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request body is not valid.",
+                  "details": {
+                    "note": [
+                      "property note should not exist"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/events": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Append a batch to the transcript",
+        "description": "Append typed transcript entries — decision **R3**'s flight recorder.\n\n**Ordering.** Every entry carries the executor's own monotonic `hint`. Within a batch\nthey must strictly increase, and the first must exceed what the run has already\naccepted; otherwise the batch is refused with `events_out_of_order` carrying both\nnumbers. Nothing is reordered and nothing is partially applied.\n\n**Sequencing is the server's.** `run_events.seq` is allocated densely by the store,\nwhich is what the console's `?after=` paging depends on, and it is returned as\n`firstSeq`/`lastSeq`. A caller-chosen sequence would have gaps wherever a cap refused\nan entry.\n\n**Caps.** A run's transcript is bounded in entries and in bytes. Past a cap an entry\nis refused **whole** — half an event is not an event — and the first refusal writes an\nelision marker that records every later one. `stored` is then lower than `submitted`\nand `elided` is `true`; once `true` it stays `true`, so a caller that sees it knows\nfurther posting is pointless rather than merely lossy.\n\n**`simulated` is not a field here either.** The store raises every entry's flag to the\nrun's own, so a simulated run cannot write an unmarked line.",
+        "operationId": "appendRunEvents",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestEventsRequest"
+              },
+              "example": {
+                "idempotencyKey": "sim-482-batch-7",
+                "events": [
+                  {
+                    "hint": 21,
+                    "actor": "gate",
+                    "ts": "2026-09-22T14:32:48.000Z",
+                    "stageKey": "checks-green",
+                    "attempt": 1,
+                    "body": "2 of 3 required checks failed — returning to Implement"
+                  },
+                  {
+                    "hint": 22,
+                    "actor": "model",
+                    "ts": "2026-09-22T14:33:02.000Z",
+                    "stageKey": "implement",
+                    "attempt": 2,
+                    "modelId": "claude-fable-5",
+                    "body": "The flake is a k_fifo ordering assumption in the ISR fast path."
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the transcript did with the batch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsAppended"
+                },
+                "example": {
+                  "submitted": 2,
+                  "stored": 2,
+                  "firstSeq": 8,
+                  "lastSeq": 9,
+                  "hint": 22,
+                  "elided": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found` — there is nothing to append to.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "run_not_found",
+                  "message": "No such run. A report is made against the run it is about.",
+                  "details": {
+                    "run": "5eed0009-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`events_out_of_order` — this batch does not continue the accepted order — or\n`idempotency_key_reused`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "events_out_of_order",
+                  "message": "This run's transcript has accepted ordering hint 22, and this batch opens at 20. Batches are not reordered: re-send from the next hint.",
+                  "details": {
+                    "accepted": 22,
+                    "offered": 20
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, the batch is empty or too large, or an\nentry is the wrong shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request body is not valid.",
+                  "details": {
+                    "events": [
+                      "events must contain at least 1 elements"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/files": {
+      "put": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Report the change-set, and trigger the guardrails",
+        "description": "Report the run's change-set **as it stands**, and judge it.\n\n**A `PUT`, and the verb is the semantics.** The reported set replaces the stored one:\na file's counts are its state against the run's base, not the delta since the last\nreport, and a file the run reverted leaves the change-set rather than lingering at\n`+0 −0`. An ingestion path that added instead of replacing would produce counts that\nclimb for ever.\n\n**Every report triggers guardrail evaluation** (AP.3,\n[#305](https://github.com/NobuData/ouroboros/issues/305)) and carries its own\n`changeSetSeq`, so re-evaluation history reads as a sequence rather than as a pile.\nA report naming **no files** is not a change-set: it allocates no number and\nschedules no checks, and `guardrailChecks` is `0`.\n\nUntil AP.3 lands, the checks are written as `pending` — V048's word for *a check that\nhas been scheduled and has not answered*. The card draws them as pending rather than\nas a pass, because *\"this has not been judged\"* and *\"this was judged and was fine\"*\nare different things to tell somebody.",
+        "operationId": "reportRunFiles",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportFilesRequest"
+              },
+              "example": {
+                "idempotencyKey": "sim-482-changeset-3",
+                "files": [
+                  {
+                    "path": "drivers/can/telemetry_buf.c",
+                    "status": "modified",
+                    "additions": 38,
+                    "deletions": 12
+                  },
+                  {
+                    "path": "tests/telemetry/test_frame_order.c",
+                    "status": "added",
+                    "additions": 21
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The report's number, the change-set totals, and the checks it scheduled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSet"
+                },
+                "example": {
+                  "changeSetSeq": 3,
+                  "files": 2,
+                  "additions": 59,
+                  "deletions": 12,
+                  "guardrailChecks": 4
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found` — there is no change-set to replace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "run_not_found",
+                  "message": "No such run. A report is made against the run it is about.",
+                  "details": {
+                    "run": "5eed0009-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`idempotency_key_reused` — that key has already answered a different report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "idempotency_key_reused",
+                  "message": "That idempotency key has already answered a different request. A key names one submission; use a fresh one, or re-send the submission it named.",
+                  "details": {
+                    "operation": "run.files",
+                    "idempotencyKey": "sim-482-changeset-3"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, a path is absolute or contains a `..`\nsegment, or an entry is the wrong shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request body is not valid.",
+                  "details": {
+                    "files": [
+                      "path must be relative and must not contain a .. segment"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/commits": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Append commits",
+        "description": "Append the commits a run has made, oldest first.\n\n**Sha-idempotent as well as key-idempotent**, and the two are different guarantees.\nThe sha key makes a re-reported commit a no-op *whatever request it arrives in*; the\nidempotency key makes a re-sent request a no-op *whatever commits it names*. An\nexecutor reporting an overlapping range under a fresh key gets the first, and the\nanswer says how much of its range was already known.\n\n**`committedAt` is git's clock and is required.** The gap between it and the moment\nthe report landed is ingestion lag, and it is legible only because nothing defaults\none to the other.",
+        "operationId": "reportRunCommits",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportCommitsRequest"
+              },
+              "example": {
+                "idempotencyKey": "sim-482-commits-2",
+                "commits": [
+                  {
+                    "sha": "a41c9e2",
+                    "message": "can: replace telemetry k_fifo with k_msgq + frame seq",
+                    "committedAt": "2026-09-22T14:30:12.000Z"
+                  },
+                  {
+                    "sha": "7f03b8d",
+                    "message": "can: assign frame seq in ISR before enqueue",
+                    "committedAt": "2026-09-22T14:34:47.000Z"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many were new, how many were already recorded, and where the sequence stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitsAppended"
+                },
+                "example": {
+                  "submitted": 2,
+                  "appended": 1,
+                  "duplicates": 1,
+                  "lastSeq": 2
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "run_not_found",
+                  "message": "No such run. A report is made against the run it is about.",
+                  "details": {
+                    "run": "5eed0009-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`idempotency_key_reused`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "idempotency_key_reused",
+                  "message": "That idempotency key has already answered a different request. A key names one submission; use a fresh one, or re-send the submission it named.",
+                  "details": {
+                    "operation": "run.commits",
+                    "idempotencyKey": "sim-482-commits-2"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, a sha is not 7 to 40 lower-case hex\ncharacters, or a message is blank.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request body is not valid.",
+                  "details": {
+                    "commits": [
+                      "sha must be 7 to 40 lower-case hex characters"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/resources": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Attribute spend, and take or release a build-farm reservation",
+        "description": "Report what a run has spent and what it holds — decision **R8**, which is explicit\nthat the console computes from the systems that already own these numbers rather than\nfrom new counters.\n\n**Spend lands in `token_usage`**, attributed to the run and to the run's workspace, so\nmockup 10's Resources card and mockup 02's daily total are sums over the same rows.\n`costCents` is a **decimal string**, because `numeric(14,4)` does not round-trip\nthrough a double and a tenth of a cent lost per call is a bill that drifts. Omitting\nit is *unpriced* — decisions **M7** and **N10**'s count-only case — and a run whose\nevery row is unpriced answers `costCents: null` rather than `\"0\"`.\n\n**The reservation has three states**, which is why `reservedBuildJob` is meaningful as\n`null`: a uuid takes a job, `null` releases the one held, and *absent* says nothing.\nAbsent has to be the quiet case, because a run posts spend far more often than it\nchanges which job it holds.\n\nBoth halves are optional. A report carrying neither is a read of the run's totals,\nwhich costs nothing to answer.",
+        "operationId": "reportRunResources",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportResourcesRequest"
+              },
+              "example": {
+                "idempotencyKey": "sim-482-spend-5",
+                "spend": {
+                  "provider": "anthropic",
+                  "model": "claude-fable-5",
+                  "tokensIn": 48120,
+                  "tokensOut": 9044,
+                  "costCents": "31.5000",
+                  "taskKind": "implement",
+                  "latencyMs": 8120
+                },
+                "reservedBuildJob": "5eed0008-0000-4000-8000-000000000483"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the run has spent in total, and what it now holds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourcesReported"
+                },
+                "example": {
+                  "tokensIn": 164000,
+                  "tokensOut": 48000,
+                  "costCents": "114.0000",
+                  "unpricedEvents": 0,
+                  "reservedBuildJobId": "5eed0008-0000-4000-8000-000000000483"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`, or `build_job_not_found` when the job named is not one of the\nrun's workspace — absent rather than forbidden, which is what V047's composite\nforeign key says too.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "build_job_not_found",
+                  "message": "No such build job in this workspace. A run reserves a job of its own workspace.",
+                  "details": {
+                    "buildJob": "5eed0008-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`idempotency_key_reused`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "idempotency_key_reused",
+                  "message": "That idempotency key has already answered a different request. A key names one submission; use a fresh one, or re-send the submission it named.",
+                  "details": {
+                    "operation": "run.resources",
+                    "idempotencyKey": "sim-482-spend-5"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, `costCents` is not a non-negative\ndecimal with at most four decimal places, or a field is the wrong shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request body is not valid.",
+                  "details": {
+                    "spend": [
+                      "costCents must be a non-negative decimal with at most four decimal places"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
+    "parameters": {
+      "RunId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The run every report but the first is addressed to — `runs.id`.\n\nValidated as a uuid by the same pipe that validates the body, so a malformed one is\n`422 validation_failed` rather than a `400`: an executor should not have to branch on\ntwo statuses for *\"your request is the wrong shape\"*.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0009-0000-4000-8000-000000000482"
+      }
+    },
     "securitySchemes": {
       "ouroInternalKey": {
         "type": "apiKey",
@@ -666,6 +1471,841 @@
               "length",
               "tool_use"
             ]
+          }
+        }
+      },
+      "IdempotencyKey": {
+        "type": "string",
+        "title": "IdempotencyKey",
+        "description": "The caller's name for one submission.\n\nRequired on every write this surface publishes, unlike a run control's, which the\ndatabase defaults: a control may legitimately be a one-off somebody pressed, and an\nexecutor's report is always a thing that can be redelivered. A report that arrived\nwithout a name is one nothing can recognise on its second delivery.",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^\\S(.*\\S)?$",
+        "examples": [
+          "sim-482-open",
+          "018f2b1c-6c4a-7b3e-9d21-4f0a5e6c7b88"
+        ]
+      },
+      "RunStageStatus": {
+        "type": "string",
+        "title": "RunStageStatus",
+        "description": "Where one attempt at one stage is — `run_stages.status` (V045).\n\nThree of the five are the stepper's node treatments: `pending` is ○, `active` is ●,\n`succeeded` is ✓. `failed` and `skipped` are the two it does not draw.",
+        "enum": [
+          "pending",
+          "active",
+          "succeeded",
+          "failed",
+          "skipped"
+        ]
+      },
+      "RunStageReturnKind": {
+        "type": "string",
+        "title": "RunStageReturnKind",
+        "description": "What kind of node a loop edge left from, in the DSL's vocabulary with `flow` resolved\ninto `gate` and `decision` (§4.4) — the word a return note prints.",
+        "enum": [
+          "trigger",
+          "llm",
+          "infra",
+          "gate",
+          "decision",
+          "term"
+        ]
+      },
+      "RunStageReturnReason": {
+        "type": "string",
+        "title": "RunStageReturnReason",
+        "description": "How the previous attempt ended — `run_stages.return_reason` (V045).\n\nClosed, and closed for a reason a widening has to respect: the generated `note`\ncolumn maps each word to a phrase, and a word with no phrase would compose a sentence\nwith a hole in it.",
+        "enum": [
+          "failed_tests",
+          "failed_build",
+          "failed_checks",
+          "failed_review",
+          "gate_rejected",
+          "budget_exhausted",
+          "timed_out",
+          "errored"
+        ]
+      },
+      "RunEventActor": {
+        "type": "string",
+        "title": "RunEventActor",
+        "description": "Who is speaking in one transcript entry — the chip mockup 10 draws (V046, decision\n**R3**).",
+        "enum": [
+          "plan",
+          "tool",
+          "model",
+          "gate",
+          "user",
+          "system"
+        ]
+      },
+      "RunFileStatus": {
+        "type": "string",
+        "title": "RunFileStatus",
+        "description": "What happened to one file of a change-set — git's own four words (V047).\n\nAn `added` file removes nothing and a `deleted` one adds nothing; the database refuses\nthe other combinations.",
+        "enum": [
+          "added",
+          "modified",
+          "deleted",
+          "renamed"
+        ]
+      },
+      "RunMergeStrategy": {
+        "type": "string",
+        "title": "RunMergeStrategy",
+        "description": "How the pinned terminal merges — the Changes card's *will squash on merge* tag. The\nmethod, not the switch: the DSL spells the switch `auto-squash` and the *auto* is the\nnode.",
+        "enum": [
+          "squash",
+          "merge",
+          "rebase"
+        ]
+      },
+      "TicketReference": {
+        "type": "object",
+        "title": "TicketReference",
+        "description": "Which canonical ticket a run is opened for — and, by resolution, which workspace.\n\nNamed by **source and display key** rather than by row id, which is the linkage AP.1\nspecifies. `external_key` is deliberately not unique across sources (V030: *\"two\nsources may hold the same key, and the acceptance criterion requires it\"*), so the\npair is what identifies one; a key matching twice inside one source is\n`ticket_ambiguous` rather than a row picked by sorting.",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "externalKey"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`ticket_sources.id` — and the row the run's workspace is resolved from."
+          },
+          "externalKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "`tickets.external_key` — the display form: `#482`, `PROJ-142`, `ENG-123`."
+          }
+        }
+      },
+      "WorkflowPin": {
+        "type": "object",
+        "title": "WorkflowPin",
+        "description": "Which workflow version a run pins — the `standard-fix v14` of the console's head,\ncomposed from the two halves rather than stored as a string.\n\nA **snapshot**, on V008's decision **F8**: the workflow can be republished, renamed or\ndeleted, and a closed run must still answer for what it actually ran under.",
+        "additionalProperties": false,
+        "required": [
+          "tag",
+          "version"
+        ],
+        "properties": {
+          "tag": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "`workflows.slug`."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "description": "`workflow_versions.version`. Required: every stage fact this contract later\nderives — the label, the position, the attempt limit, the token budget — comes\nfrom this document."
+          }
+        }
+      },
+      "OpenRunRequest": {
+        "type": "object",
+        "title": "OpenRunRequest",
+        "description": "What opening a run takes.\n\nNo `organizationId` — the workspace is the ticket's — and no `simulated`, which\nfollows the principal. Both absences are the contract rather than an oversight.",
+        "additionalProperties": false,
+        "required": [
+          "idempotencyKey",
+          "ticket",
+          "repository",
+          "workflow",
+          "model"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/TicketReference"
+          },
+          "repository": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`github_repos.id` — the repository the branch lives in. Validated against the\nticket's workspace, so a mistyped id is `repository_not_found` rather than a run\nattached to somebody else's repository."
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/WorkflowPin"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "`runs.model` — what mockup 02's row renders."
+          },
+          "branchName": {
+            "type": "string",
+            "maxLength": 255,
+            "pattern": "^\\S(.*\\S)?$",
+            "description": "The branch the loop works on. Absent until the run has one."
+          },
+          "mergeStrategy": {
+            "$ref": "#/components/schemas/RunMergeStrategy"
+          }
+        }
+      },
+      "RunOpened": {
+        "type": "object",
+        "title": "RunOpened",
+        "description": "The run that was opened.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "loopSeq",
+          "organizationId",
+          "issueNumber",
+          "issueTitle",
+          "workflowTag",
+          "workflowVersionPin",
+          "branchName",
+          "mergeStrategy",
+          "model",
+          "simulated",
+          "status",
+          "startedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`runs.id`, which every later report is addressed to."
+          },
+          "loopSeq": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The *Loop #1847* counter — allocated by the database, per workspace, under its own\nlock. In the answer because it is the number a person reads and the caller cannot\ncompute."
+          },
+          "organizationId": {
+            "type": "string",
+            "description": "The workspace the run belongs to, resolved from the ticket. Published because the\ncaller has to attribute what it does next to the same one, and deriving it a\nsecond way would be two answers to one question."
+          },
+          "issueNumber": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "`runs.issue_number`, from the ticket's own identifier."
+          },
+          "issueTitle": {
+            "type": "string",
+            "description": "`runs.issue_title`, frozen at the moment the run opened."
+          },
+          "workflowTag": {
+            "type": "string"
+          },
+          "workflowVersionPin": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "branchName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mergeStrategy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunMergeStrategy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "simulated": {
+            "type": "boolean",
+            "description": "Decision **R4**'s watermark. Echoed **because the caller did not send it**: it\nfollows the principal, so this is the service telling a simulator that its run is\nmarked as one — and telling an executor that its run is not."
+          },
+          "status": {
+            "type": "string",
+            "description": "`runs.status` at creation — `coding`, the first of V008's six."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "StageReturn": {
+        "type": "object",
+        "title": "StageReturn",
+        "description": "Where a loop edge brought a run back from — the three facts V045 composes a note out\nof.\n\nAll three or none, which is why they are one object rather than three optional fields:\ntwo of the three would be a shape the contract publishes and the database refuses.",
+        "additionalProperties": false,
+        "required": [
+          "stageKey",
+          "kind",
+          "reason"
+        ],
+        "properties": {
+          "stageKey": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+            "description": "The DSL node id the loop edge left from — `checks-green`."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RunStageReturnKind"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/RunStageReturnReason"
+          }
+        }
+      },
+      "StageTransitionRequest": {
+        "type": "object",
+        "title": "StageTransitionRequest",
+        "description": "One move of one stage attempt.\n\n**No `note`.** The sentence is composed by the database from `returnedFrom` and the\nattempt; sending one is `422`, because the column is `GENERATED ALWAYS … STORED` and\nPostgreSQL refuses any statement that supplies a value.",
+        "additionalProperties": false,
+        "required": [
+          "idempotencyKey",
+          "stageKey",
+          "status"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "stageKey": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+            "description": "The DSL node id, resolved against the run's pin for its label, position and limits."
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStageStatus"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 11,
+            "description": "The `2` of *attempt 2/3*. Absent means *the attempt that exists* — 1 for a stage\nwith no rows, the highest one otherwise — so a retry is the one case a caller has\nto name."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it happened, by the executor's clock. The server's `now()` when absent; sent\nbecause a stepper whose durations were measured from when the report *arrived*\nwould attribute network time to the stage."
+          },
+          "returnedFrom": {
+            "$ref": "#/components/schemas/StageReturn"
+          }
+        }
+      },
+      "StageTransition": {
+        "type": "object",
+        "title": "StageTransition",
+        "description": "Where the stage stands after the transition.",
+        "additionalProperties": false,
+        "required": [
+          "runStageId",
+          "stageKey",
+          "stageLabel",
+          "position",
+          "attempt",
+          "maxAttempts",
+          "tokenBudget",
+          "status",
+          "note",
+          "startedAt",
+          "finishedAt",
+          "returnedFrom"
+        ],
+        "properties": {
+          "runStageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stageKey": {
+            "type": "string"
+          },
+          "stageLabel": {
+            "type": "string",
+            "description": "The node's title as the pin had it — a snapshot, not a live read."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxAttempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The `3` of *attempt 2/3*, or `null` for a stage type carrying no limits."
+          },
+          "tokenBudget": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStageStatus"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stepper's warn note, read back from the generated column — so a caller can see\nwhat the database wrote and nothing on the service's side ever writes a sentence."
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "returnedFrom": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StageReturn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "IngestEvent": {
+        "type": "object",
+        "title": "IngestEvent",
+        "description": "One transcript entry, as an executor reports it.\n\nNo `seq` and no `simulated`: the store allocates the first densely and raises the\nsecond to the run's own.",
+        "additionalProperties": false,
+        "required": [
+          "hint",
+          "actor"
+        ],
+        "properties": {
+          "hint": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "The executor's own ordering number. Monotonic within a run, strictly increasing\nwithin a batch, checked and **not adopted**."
+          },
+          "actor": {
+            "$ref": "#/components/schemas/RunEventActor"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stageKey": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 11
+          },
+          "toolTag": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]([a-z0-9_]*[a-z0-9])?$",
+            "description": "The tool, for a `tool` entry. The store refuses it on any other actor."
+          },
+          "modelId": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Which model said it. Required on a `model` entry, together with a stage and an\nattempt — decision **R4**: the transcript never carries model output without its\nprovenance."
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The structure — diff hunks, a progress fraction, a tool result. Left open here and\nconstrained by the store, which types a `hunks` key to `{kind, text}` with `kind`\nin `ctx | del | add` and says nothing about the rest. An entry must carry a `body`\nor a `payload`; an entry that said nothing would be a line with nothing on it."
+          }
+        }
+      },
+      "IngestEventsRequest": {
+        "type": "object",
+        "title": "IngestEventsRequest",
+        "description": "One batch of transcript entries, in the executor's own order.",
+        "additionalProperties": false,
+        "required": [
+          "idempotencyKey",
+          "events"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/IngestEvent"
+            }
+          }
+        }
+      },
+      "EventsAppended": {
+        "type": "object",
+        "title": "EventsAppended",
+        "description": "What the transcript did with the batch — counts and sequence numbers, never the\nentries back. The caller sent those; what it cannot know is what the store allocated.",
+        "additionalProperties": false,
+        "required": [
+          "submitted",
+          "stored",
+          "firstSeq",
+          "lastSeq",
+          "hint",
+          "elided"
+        ],
+        "properties": {
+          "submitted": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "stored": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Lower than `submitted` when a cap refused some. An entry is refused **whole**, so\nthis is a count of entries and never of bytes."
+          },
+          "firstSeq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The first dense `seq` allocated, or `null` when nothing was stored."
+          },
+          "lastSeq": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "hint": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The ordering hint this run now stands at."
+          },
+          "elided": {
+            "type": "boolean",
+            "description": "Whether a cap has elided this transcript. Terminal: once a cap has refused an\nentry it refuses every later one, so `true` means further posting is pointless\nrather than merely lossy."
+          }
+        }
+      },
+      "IngestFile": {
+        "type": "object",
+        "title": "IngestFile",
+        "description": "One file of a change-set, as it stands **against the run's base** — not the delta\nsince the last report.",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "status"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Relative to the repository root, with no `..` segment — the allowed-paths guardrail\nmatches globs against this value, and a path that could climb out of the tree is a\npath a glob cannot reason about."
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunFileStatus"
+          },
+          "additions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000000,
+            "description": "Lines added against the base. 0 when absent, which is what a `deleted` file must have."
+          },
+          "deletions": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000000
+          }
+        }
+      },
+      "ReportFilesRequest": {
+        "type": "object",
+        "title": "ReportFilesRequest",
+        "description": "The **whole** change-set, not the delta. An empty list means the run has changed\nnothing, and triggers no evaluation.",
+        "additionalProperties": false,
+        "required": [
+          "idempotencyKey",
+          "files"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "files": {
+            "type": "array",
+            "maxItems": 2000,
+            "items": {
+              "$ref": "#/components/schemas/IngestFile"
+            }
+          }
+        }
+      },
+      "ChangeSet": {
+        "type": "object",
+        "title": "ChangeSet",
+        "description": "The change-set as it now stands, and what judging it produced.",
+        "additionalProperties": false,
+        "required": [
+          "changeSetSeq",
+          "files",
+          "additions",
+          "deletions",
+          "guardrailChecks"
+        ],
+        "properties": {
+          "changeSetSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Which report this was, from 1 — the number this report's guardrail verdicts carry.\nUnchanged, and `0` on a run that has never reported one, when the report named no\nfiles."
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "additions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deletions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "guardrailChecks": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many checks this report scheduled. `0` for a report with no files — the\nacceptance criterion *\"a run with no file changes triggers none\"* stated in the\nanswer rather than only in the table."
+          }
+        }
+      },
+      "IngestCommit": {
+        "type": "object",
+        "title": "IngestCommit",
+        "description": "One commit a run has made.",
+        "additionalProperties": false,
+        "required": [
+          "sha",
+          "message",
+          "committedAt"
+        ],
+        "properties": {
+          "sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{7,40}$",
+            "description": "The object name, abbreviated or whole — and the key a re-report collides on."
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "committedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Git's clock. Required and deliberately not defaulted to the report's arrival: the\ngap between the two is ingestion lag, and a default would close it with a fiction."
+          }
+        }
+      },
+      "ReportCommitsRequest": {
+        "type": "object",
+        "title": "ReportCommitsRequest",
+        "description": "Commits to append, oldest first.",
+        "additionalProperties": false,
+        "required": [
+          "idempotencyKey",
+          "commits"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "commits": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/IngestCommit"
+            }
+          }
+        }
+      },
+      "CommitsAppended": {
+        "type": "object",
+        "title": "CommitsAppended",
+        "description": "What the commit list did with the report.",
+        "additionalProperties": false,
+        "required": [
+          "submitted",
+          "appended",
+          "duplicates",
+          "lastSeq"
+        ],
+        "properties": {
+          "submitted": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "appended": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duplicates": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many were already recorded. Worth returning because it is a different\nguarantee from the idempotency key's: a caller re-sending an overlapping range\nsees exactly how much of it was already known."
+          },
+          "lastSeq": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "TokenSpend": {
+        "type": "object",
+        "title": "TokenSpend",
+        "description": "One attributed spend, as `token_usage` stores it.",
+        "additionalProperties": false,
+        "required": [
+          "provider",
+          "model",
+          "tokensIn",
+          "tokensOut"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The model id, not an alias — the ledger records what actually answered."
+          },
+          "tokensIn": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "tokensOut": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "costCents": {
+            "type": "string",
+            "pattern": "^\\d{1,10}(\\.\\d{1,4})?$",
+            "description": "Cents to four decimal places, as a **string**: `numeric(14,4)` does not round-trip\nthrough a double. Absent is *unpriced*, which is a first-class answer rather than a\nzero."
+          },
+          "taskKind": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "latencyMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 86400000
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ReportResourcesRequest": {
+        "type": "object",
+        "title": "ReportResourcesRequest",
+        "description": "A spend, a reservation, or both. `reservedBuildJob` has three states: a uuid takes a\njob, `null` releases the one held, and *absent* says nothing.",
+        "additionalProperties": false,
+        "required": [
+          "idempotencyKey"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/TokenSpend"
+          },
+          "reservedBuildJob": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`build_jobs.id` to hold, `null` to release. Must be a job of the run's workspace."
+          }
+        }
+      },
+      "ResourcesReported": {
+        "type": "object",
+        "title": "ResourcesReported",
+        "description": "What the run has spent in total, and what it now holds.",
+        "additionalProperties": false,
+        "required": [
+          "tokensIn",
+          "tokensOut",
+          "costCents",
+          "unpricedEvents",
+          "reservedBuildJobId"
+        ],
+        "properties": {
+          "tokensIn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokensOut": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "costCents": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cents as a decimal string, or `null` when every attributed row is unpriced — the\ncount-only case. `null` rather than `\"0\"`, which would say the run cost nothing\nabout a run whose model simply has no price in the catalog."
+          },
+          "unpricedEvents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many attributed rows carry no price — what makes the `null` above legible."
+          },
+          "reservedBuildJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       }

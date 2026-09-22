@@ -30,6 +30,23 @@
  *   * **It refuses rather than returning `false`.** A guard's `false` is a bare `403` with
  *     no envelope; every refusal in this service is a thrown `DomainError` that
  *     `error.filter.ts` renders, which is what makes the boundary answer in one shape.
+ *
+ * ---------------------------------------------------------------------------
+ * **It admits two principals, and records which one it admitted.** AP.1
+ * ([#303](https://github.com/NobuData/ouroboros/issues/303)) needs a run's `simulated`
+ * watermark to follow the caller rather than the body, and the only thing a caller proves
+ * here is which secret it holds — so `OURO_RUN_SIMULATOR_SECRET` is a second accepted value
+ * and `internal.principal.ts` is what the two mean. The guard writes the answer onto the
+ * request, where `@CallingPrincipal()` reads it; nothing about *authorisation* changes,
+ * because both principals reach every internal route.
+ *
+ * The second comparison runs **unconditionally**, over a digest like the first, and its
+ * result is combined with `||` rather than short-circuited on. A guard that skipped the
+ * simulator check once the engine check had matched would take a different amount of time
+ * for the two principals, which is a branch a caller can time — and the whole reason the
+ * comparison is over fixed-length digests is to have no such branch. When the simulator
+ * secret is unset the guard compares against a value no caller can send, so the absent
+ * principal costs the same as a present one.
  */
 
 import { Injectable, type CanActivate, type ExecutionContext, Logger } from "@nestjs/common";
@@ -40,9 +57,10 @@ import { AppConfigService } from "../config/config.service";
 import { INTERNAL_KEY_HEADER } from "../engine/engine.contract";
 import { isInternalOnly } from "./internal.decorators";
 import { internalUnauthenticated } from "./internal.errors";
+import { INTERNAL_PRINCIPAL_PROPERTY, type PrincipalCarrier } from "./internal.principal";
 
-/** The part of a request this guard reads. */
-export interface InternalRequest {
+/** The part of a request this guard reads, and the one property it writes. */
+export interface InternalRequest extends PrincipalCarrier {
   /** Headers, lower-cased by the adapter. */
   headers?: Record<string, unknown>;
   /** The path, for the log line a rejection produces. */
@@ -50,6 +68,17 @@ export interface InternalRequest {
   /** The verb, likewise. */
   method?: string;
 }
+
+/**
+ * A value no `X-Ouro-Internal-Key` can equal.
+ *
+ * What the simulator comparison runs against when `OURO_RUN_SIMULATOR_SECRET` is unset. A
+ * header value is a string; this is not one any caller can send, because a header carrying a
+ * NUL is refused by the parser long before it reaches a guard. It exists so the unset case
+ * costs one more digest and one more comparison, exactly as the set case does, instead of a
+ * branch.
+ */
+const UNMATCHABLE = "\u0000 no simulator principal is configured";
 
 /**
  * The header the shared secret travels on, lower-cased.
@@ -108,7 +137,20 @@ export class InternalKeyGuard implements CanActivate {
     // choosing which of their guesses to grade.
     const candidate = typeof offered === "string" ? offered : "";
 
-    if (timingSafeEqual(digest(candidate), digest(this.config.engineSharedSecret))) {
+    const offeredDigest = digest(candidate);
+    const isExecutor = timingSafeEqual(offeredDigest, digest(this.config.engineSharedSecret));
+    const isSimulator = timingSafeEqual(
+      offeredDigest,
+      digest(this.config.runSimulatorSecret ?? UNMATCHABLE),
+    );
+
+    if (isExecutor || isSimulator) {
+      // The executor wins a tie it cannot have: `configuration.ts` refuses a deployment
+      // whose two secrets are equal, so at most one of these is true. Stating the
+      // precedence anyway keeps this line total rather than leaving the impossible case to
+      // whichever branch happened to be written first.
+      request[INTERNAL_PRINCIPAL_PROPERTY] = isExecutor ? "executor" : "simulator";
+
       return true;
     }
 

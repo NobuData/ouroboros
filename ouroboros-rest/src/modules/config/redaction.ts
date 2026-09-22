@@ -38,6 +38,11 @@ export const REDACTED_PASSWORD = "***";
  */
 export const SECRET_VARIABLES: ReadonlySet<string> = new Set([
   VARIABLES.engineSharedSecret,
+  // The other half of the internal channel's identity
+  // ([#303](https://github.com/NobuData/ouroboros/issues/303)): whoever holds it can open runs
+  // that carry the simulated watermark, so a transcript's honesty about who wrote it is worth
+  // exactly as much as this string's secrecy.
+  VARIABLES.runSimulatorSecret,
   // BetterAuth signs sessions and encrypts stored OAuth tokens with this one
   // ([#700](https://github.com/NobuData/ouroboros/issues/700)), so it is the single most
   // valuable string this service holds after the database password.

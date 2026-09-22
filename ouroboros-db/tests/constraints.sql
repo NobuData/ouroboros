@@ -15815,6 +15815,259 @@ select pg_temp.must_hold(
   'deleting a workspace takes its runs, every verdict written about them, every control submitted against them and the audit trail of both');
 
 -- ===========================================================================
+-- V049 — the ingestion contract's memory between requests (#303, AP.1)
+-- ===========================================================================
+--
+-- One table and two counters, and every assertion below is one of the issue's acceptance
+-- criteria or the failure mode a criterion is written against.
+--
+--   * **A key answers once.** `(organization_id, operation, idempotency_key)` is unique, so a
+--     redelivered submission collides rather than writing a second time — and the collision
+--     is what the service turns into *"here is what you were told"*.
+--   * **The key is scoped to a workspace**, not to a run, because `run.create`'s key is
+--     checked before its run exists. Two workspaces numbering their submissions from one
+--     share no namespace.
+--   * **The operation is part of the key**, so an executor numbering its submissions per kind
+--     — the obvious thing to do — does not have its first event batch answered with its first
+--     stage transition's result.
+--   * **A receipt cannot be filed in the wrong ledger**: `run_in_organization()` refuses a row
+--     whose run belongs to another workspace, which matters here precisely because the key is
+--     unique per workspace.
+--   * **The response is an object**, because a replay hands the value straight back as a
+--     response body.
+--   * **The digest is a digest**, which is what stops a service that forgot to hash from
+--     writing a request body into that column.
+--   * **The two counters advance and never go backwards**, and a run that has reported nothing
+--     stands at zero — the schema half of *"a run with no file changes triggers none"*.
+--   * **`runs_with_stage` still has `runs`' columns**, which is the invariant every migration
+--     touching `runs` since V045 has had to keep.
+--
+-- Its own fixtures: one workspace, one repo, one run, and a second run to cascade through.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-ingest', 'Ingest Works', 'ingest-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('aa100000-0000-0000-0000-00000000000a', 'org-ingest', 'ingest-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('aa1f0000-0000-0000-0000-00000000000a', 'aa100000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at,
+     branch_name, workflow_version_pin)
+  values ('aa200000-0000-0000-0000-000000000482', 'org-ingest',
+          'aa1f0000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, now() - interval '13 minutes',
+          'loop/482-canbus-flake', 14),
+         ('aa200000-0000-0000-0000-000000000483', 'org-ingest',
+          'aa1f0000-0000-0000-0000-00000000000a', 483,
+          'Bump the vendored Zephyr SDK', 'deps-refresh', 'claude-fable-5',
+          'coding', 'Queued', 0, 6, now() - interval '3 minutes',
+          null, 2);
+
+-- --- a fresh run has reported nothing -------------------------------------------------
+--
+-- Both counters default to zero rather than to null, because every comparison the ingestion
+-- path makes against them is an inequality and an inequality against null is null.
+select pg_temp.must_hold(
+  (select event_hint = 0 and change_set_seq = 0 from ouroboros.runs
+    where id = 'aa200000-0000-0000-0000-000000000482'),
+  'a run that has accepted no batch and reported no change-set stands at zero on both counters, which is the schema half of "a run with no file changes triggers no evaluation"');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set event_hint = -1
+     where id = 'aa200000-0000-0000-0000-000000000482'$$,
+  'and an ordering hint cannot go below zero', 'runs_event_hint_non_negative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set change_set_seq = -1
+     where id = 'aa200000-0000-0000-0000-000000000482'$$,
+  'nor can a change-set report number', 'runs_change_set_seq_non_negative');
+
+-- --- the receipt, and the key that makes a replay possible ----------------------------
+insert into ouroboros.run_ingest_receipts
+    (id, organization_id, run_id, operation, idempotency_key, request_digest, response)
+  values ('aa300000-0000-0000-0000-00000000000a', 'org-ingest',
+          'aa200000-0000-0000-0000-000000000482', 'run.files', 'sim-482-changeset-3',
+          repeat('a', 64),
+          '{"changeSetSeq": 3, "files": 2, "additions": 59, "deletions": 12}'::jsonb);
+
+-- Acceptance criterion: replaying a write with the same idempotency key is a no-op. The write
+-- the service makes is the one below — it reads the receipt first and writes nothing — and
+-- what the database owes it is that a second insert under that key cannot land.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_ingest_receipts
+      (organization_id, run_id, operation, idempotency_key, request_digest, response)
+    values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.files',
+            'sim-482-changeset-3', repeat('b', 64), '{}'::jsonb)$$,
+  'a second receipt under one key, one operation and one workspace is refused — which is what makes a replay answerable rather than a second write',
+  'run_ingest_receipts_scope_key');
+
+-- --- the operation is part of the key --------------------------------------------------
+insert into ouroboros.run_ingest_receipts
+    (organization_id, run_id, operation, idempotency_key, request_digest, response)
+  values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.events',
+          'sim-482-changeset-3', repeat('c', 64), '{"stored": 2}'::jsonb);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.run_ingest_receipts
+    where idempotency_key = 'sim-482-changeset-3'),
+  'one key under two operations is two submissions — so an executor numbering its reports per kind does not have its first event batch answered with its first change-set report''s result');
+
+-- --- the key is scoped to a workspace, because run.create has no run yet ---------------
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-ingest-2', 'Second Works', 'second-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('aa100000-0000-0000-0000-00000000000b', 'org-ingest-2', 'second-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('aa1f0000-0000-0000-0000-00000000000b', 'aa100000-0000-0000-0000-00000000000b',
+   'atlas-control', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total)
+  values ('aa200000-0000-0000-0000-00000000048a', 'org-ingest-2',
+          'aa1f0000-0000-0000-0000-00000000000b', 12, 'Unrelated', 'standard-fix',
+          'claude-fable-5', 'coding', 'Queued', 0, 6);
+
+insert into ouroboros.run_ingest_receipts
+    (organization_id, run_id, operation, idempotency_key, request_digest, response)
+  values ('org-ingest-2', 'aa200000-0000-0000-0000-00000000048a', 'run.files',
+          'sim-482-changeset-3', repeat('d', 64), '{}'::jsonb);
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.run_ingest_receipts
+    where idempotency_key = 'sim-482-changeset-3'),
+  'two workspaces numbering their submissions from one share no namespace — which is why the key is scoped by workspace and not by run, since run.create''s key is checked before its run exists');
+
+-- --- a receipt cannot be filed in another workspace's ledger --------------------------
+--
+-- V010's trigger, and it matters more here than on `token_usage`: the unique key is per
+-- workspace, so the two columns disagreeing would put two workspaces' keys into one namespace.
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_ingest_receipts
+      (organization_id, run_id, operation, idempotency_key, request_digest, response)
+    values ('org-ingest-2', 'aa200000-0000-0000-0000-000000000482', 'run.commits',
+            'wrong-ledger', repeat('e', 64), '{}'::jsonb)$$,
+  'a receipt naming a run of another workspace is refused, so one workspace''s keys cannot be filed against another''s runs',
+  'run_ingest_receipts_run_in_organization');
+
+-- --- the vocabulary, the digest and the response ---------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_ingest_receipts
+      (organization_id, run_id, operation, idempotency_key, request_digest, response)
+    values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.controls',
+            'k1', repeat('f', 64), '{}'::jsonb)$$,
+  'a seventh operation is refused — the six are what openapi.internal.yaml publishes, and a free-text column would make a typo in a service a silently separate idempotency namespace',
+  'run_ingest_receipts_operation');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_ingest_receipts
+      (organization_id, run_id, operation, idempotency_key, request_digest, response)
+    values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.files',
+            'k2', '{"idempotencyKey": "k2", "files": []}', '{}'::jsonb)$$,
+  'a request body written where a digest belongs is refused — sixty-four lower-case hex characters or it is not a digest',
+  'run_ingest_receipts_request_digest_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_ingest_receipts
+      (organization_id, run_id, operation, idempotency_key, request_digest, response)
+    values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.files',
+            'k3', upper(repeat('a', 64)), '{}'::jsonb)$$,
+  'and so is an upper-case one, so two spellings of one digest cannot both be stored',
+  'run_ingest_receipts_request_digest_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_ingest_receipts
+      (organization_id, run_id, operation, idempotency_key, request_digest, response)
+    values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.files',
+            'k4', repeat('a', 64), '"changeSetSeq: 3"'::jsonb)$$,
+  'a response that is not an object is refused — a replay hands this value straight back as a response body, and a bare string is a shape no version of the contract ever published',
+  'run_ingest_receipts_response_is_an_object');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_ingest_receipts
+      (organization_id, run_id, operation, idempotency_key, request_digest, response)
+    values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.files',
+            '  padded  ', repeat('a', 64), '{}'::jsonb)$$,
+  'a padded idempotency key is refused, by the same rule run_controls holds its own to',
+  'run_ingest_receipts_idempotency_key_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_ingest_receipts
+      (organization_id, run_id, operation, idempotency_key, request_digest, response)
+    values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.files',
+            repeat('x', 129), repeat('a', 64), '{}'::jsonb)$$,
+  'and one longer than the column allows', 'run_ingest_receipts_idempotency_key_shape');
+
+-- The six operations are covered by a fixture each, in AO.5's section below — the helper that
+-- reads an accepted set out of `pg_constraint` is defined there, and its argument applies
+-- unchanged to a seventh operation. What is written here is the rest of the surface.
+insert into ouroboros.run_ingest_receipts
+    (organization_id, run_id, operation, idempotency_key, request_digest, response)
+  values ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.create',
+          'cover-create', repeat('1', 64), '{}'::jsonb),
+         ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.stage_transition',
+          'cover-stage', repeat('2', 64), '{}'::jsonb),
+         ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.commits',
+          'cover-commits', repeat('3', 64), '{}'::jsonb),
+         ('org-ingest', 'aa200000-0000-0000-0000-000000000482', 'run.resources',
+          'cover-resources', repeat('4', 64), '{}'::jsonb);
+
+-- --- the index the cascade deletes through ----------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_indexes
+    where schemaname = 'ouroboros'
+      and tablename  = 'run_ingest_receipts'
+      and indexname  = 'run_ingest_receipts_run_idx'),
+  'one run''s submissions are indexed newest first — the read behind "what did this run''s executor send?", and the index the runs cascade deletes through');
+
+-- --- runs_with_stage still has runs' columns ---------------------------------------------
+--
+-- V045's amendment on #64 is *"a read moves from `runs` to this view by changing one word"*,
+-- and that is only true while the two have the same columns. Two migrations have added
+-- columns to `runs` since and each carried them into the view; this is what makes the third
+-- one that forgets fail here.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from information_schema.columns runs_column
+    where runs_column.table_schema = 'ouroboros'
+      and runs_column.table_name = 'runs'
+      and not exists (select 1
+                        from information_schema.columns view_column
+                       where view_column.table_schema = 'ouroboros'
+                         and view_column.table_name = 'runs_with_stage'
+                         and view_column.column_name = runs_column.column_name)),
+  'runs_with_stage carries every column runs has, so a read moves between them by changing one word');
+
+select pg_temp.must_hold(
+  (select event_hint = 0 and change_set_seq = 0 from ouroboros.runs_with_stage
+    where id = 'aa200000-0000-0000-0000-000000000482'),
+  'including the two counters V049 added, which the view answers with unchanged');
+
+-- --- the cascades -------------------------------------------------------------------------
+delete from ouroboros.runs where id = 'aa200000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.run_ingest_receipts
+    where run_id = 'aa200000-0000-0000-0000-000000000482'),
+  'deleting a run takes its receipts with it — a receipt for a run that no longer exists describes rows nobody can read');
+
+delete from ouroboros.organization where "id" in ('org-ingest', 'org-ingest-2');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where id::text like 'aa200000-%')
+   and (select count(*) = 0 from ouroboros.run_ingest_receipts
+         where organization_id in ('org-ingest', 'org-ingest-2')),
+  'deleting a workspace takes its runs and every receipt filed in its ledger');
+
+-- ===========================================================================
 -- AO.5 — the run console's vocabularies, covered rather than merely closed (#302)
 -- ===========================================================================
 --
@@ -15964,6 +16217,33 @@ select pg_temp.must_hold(
     = (select array_agg(distinct verdict order by verdict) from ouroboros.guardrail_evaluations
         where run_id = 'a9200000-0000-0000-0000-000000000482'),
   'and every verdict it accepts is one the card has a mark for — pass, fail, not_applicable and pending, and nothing else');
+
+-- --- the ingestion ledger's operations (#303, AP.1) -----------------------------------
+--
+-- Six receipts, one per operation. The set is the contract `openapi.internal.yaml` publishes,
+-- so a seventh added to the CHECK is a seventh operation somebody has to describe, implement
+-- and key — and this is what makes it impossible to add the word alone.
+insert into ouroboros.run_ingest_receipts
+    (organization_id, run_id, operation, idempotency_key, request_digest, response)
+  values ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.create',
+          'cover-create', repeat('1', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.stage_transition',
+          'cover-stage', repeat('2', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.events',
+          'cover-events', repeat('3', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.files',
+          'cover-files', repeat('4', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.commits',
+          'cover-commits', repeat('5', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.resources',
+          'cover-resources', repeat('6', 64), '{}'::jsonb);
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.run_ingest_receipts', 'run_ingest_receipts_operation')
+    = (select array_agg(distinct operation order by operation)
+         from ouroboros.run_ingest_receipts
+        where run_id = 'a9200000-0000-0000-0000-000000000482'),
+  'every operation the ingestion ledger accepts has a receipt written under it — a seventh turns this red for the ticket that added it, rather than shipping as a word nothing keys');
 
 -- --- the control queue's two vocabularies ---------------------------------------------
 --
