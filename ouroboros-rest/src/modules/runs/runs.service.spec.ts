@@ -1,52 +1,13 @@
-import type { Run } from "../db/schema";
 import { runSummary } from "../dashboard/resources";
-import type { NotFoundError } from "../errors/error.envelope";
+import { runRow as row } from "./runs.fixture";
 import type { RunsRepository } from "./runs.repository";
 import { RunsService } from "./runs.service";
 
 /**
- * The two rules of the surface, held where they live: the page is assembled through the
- * *aggregate's own mapper* — which is the one-shape criterion as an import rather than a
- * convention — and an absent row is the `404`, whatever the reason for the absence.
+ * The listing's rule, held where it lives: the page is assembled through the *aggregate's own
+ * mapper* — which is the one-shape criterion as an import rather than a convention. The
+ * one-run read (and its `404`) is the console's since AP.2: `console.service.spec.ts`.
  */
-
-/** One row, as the repository returns it. The values are arbitrary; the shape is V008's. */
-function row(over: Partial<Run> = {}): Run {
-  return {
-    id: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
-    organization_id: "acme-robotics-id",
-    github_repo_id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-    issue_number: 482,
-    issue_title: "Fix flaky CAN-bus telemetry test",
-    workflow_tag: "standard-fix",
-    model: "claude-fable-5",
-    status: "coding",
-    stage_label: "Implementing",
-    stage_index: 4,
-    stage_total: 6,
-    started_at: new Date("2026-08-13T14:25:01.000Z"),
-    finished_at: null,
-    pr_number: null,
-    checks_passed: null,
-    checks_total: null,
-    created_at: new Date("2026-08-13T14:25:01.000Z"),
-    updated_at: new Date("2026-08-13T14:25:01.000Z"),
-    loop_seq: 1847,
-    branch_name: "loop/482-canbus-flake",
-    workflow_version_pin: 14,
-    simulated: false,
-    event_seq: 9,
-    event_bytes: "862",
-    event_cap: 20000,
-    event_byte_cap: "33554432",
-    events_elided_at: null,
-    merge_strategy: "squash",
-    reserved_build_job_id: null,
-    event_hint: 0,
-    change_set_seq: 0,
-    ...over,
-  };
-}
 
 describe("the runs service", () => {
   let repository: jest.Mocked<RunsRepository>;
@@ -108,34 +69,6 @@ describe("the runs service", () => {
         offset: 0,
       });
       expect(repository.count).toHaveBeenCalledWith("acme-robotics-id", filter);
-    });
-  });
-
-  describe("the detail", () => {
-    it("answers the run in the listing's shape", async () => {
-      const stored = row({ status: "merged", finished_at: new Date("2026-08-13T15:00:00Z") });
-      repository.find.mockResolvedValue(stored);
-
-      await expect(service.read("acme-robotics-id", stored.id)).resolves.toEqual(
-        runSummary(stored),
-      );
-    });
-
-    it("turns absence into run_not_found, naming the id the caller sent", async () => {
-      // Absence includes "another workspace's": the repository cannot tell the two apart,
-      // so nothing downstream can leak the difference.
-      const failure = await service
-        .read("acme-robotics-id", "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94")
-        .then(() => {
-          throw new Error("resolved for a run that does not exist");
-        })
-        .catch((thrown: NotFoundError) => thrown);
-
-      expect(failure.envelope()).toEqual({
-        code: "run_not_found",
-        message: "No such run.",
-        details: { runId: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94" },
-      });
     });
   });
 });

@@ -1,8 +1,8 @@
 /**
- * The rules of the runs surface ([#71](https://github.com/NobuData/ouroboros/issues/71)),
+ * The rules of the runs listings ([#71](https://github.com/NobuData/ouroboros/issues/71)),
  * which are two:
  *
- *   * **A run row has exactly one shape everywhere.** Both answers here are built by
+ *   * **A run row has exactly one shape everywhere.** Every row here is built by
  *     `dashboard/resources.ts`'s `runSummary` — the same function the aggregate's
  *     `activeRuns` and `recentRuns` slices go through — so the ticket's byte-identity
  *     criterion is met by construction: there is no second mapper whose fields could drift.
@@ -11,15 +11,17 @@
  *     unexported, and its card-sized limits stay its own.
  *   * **Absence answers 404, and absence includes "not yours".** The repository's org-scoped
  *     `find` cannot distinguish a run that never existed from a run in another workspace,
- *     so neither can this service, so neither can a caller — which is the no-existence-leak
- *     criterion as an information-flow property rather than a check.
+ *     so neither can a caller — which is the no-existence-leak criterion as an
+ *     information-flow property rather than a check. The one-run read became the Run
+ *     Console's page in AP.2 ([#304](https://github.com/NobuData/ouroboros/issues/304)) and
+ *     lives in `console.service.ts`, which carries this row inside it as `run` and starts from
+ *     the same `find`.
  */
 
 import { Injectable } from "@nestjs/common";
 
 import { runSummary, type RunSummary } from "../dashboard/resources";
 import { pageOf, windowOf, type Page } from "../tenancy/pagination";
-import { runNotFound } from "./runs.errors";
 import type { ListRunsQuery } from "./runs.dto";
 import { RunsRepository } from "./runs.repository";
 
@@ -48,21 +50,5 @@ export class RunsService {
     ]);
 
     return pageOf(rows.map(runSummary), total, window);
-  }
-
-  /**
-   * One run, by id.
-   *
-   * @param organizationId - The workspace, from the tenant context.
-   * @param id - The run the request named.
-   * @returns The run, in the same shape every listing row has.
-   * @throws {NotFoundError} `run_not_found` — absent, or another workspace's, indistinguishably.
-   */
-  async read(organizationId: string, id: string): Promise<RunSummary> {
-    const row = await this.runs.find(organizationId, id);
-
-    if (row === undefined) throw runNotFound(id);
-
-    return runSummary(row);
   }
 }

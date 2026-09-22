@@ -624,19 +624,128 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * One run
-         * @description The run a card links to, in exactly the shape every listing row and every aggregate
-         *     slice has — `RunSummary` is the one shape a run takes on this API, and this
-         *     operation is the third place it is served rather than a second definition of it.
+         * The Run Console page — head, stage timeline and the three cards
+         * @description Mockup 10's page as one snapshot ([#304](https://github.com/NobuData/ouroboros/issues/304),
+         *     AP.2): the run row, the page head, the stage timeline and the *Changes so far*,
+         *     *Resources* and *Guardrails* cards. The transcript is not here — it is a **tail**, read
+         *     incrementally from `/api/v1/runs/{id}/events` — and neither is its export.
          *
-         *     **A run that is not yours does not exist.** A well-formed id belonging to another
-         *     workspace answers `404` with `run_not_found`, indistinguishably from an id that
-         *     names nothing at all — the query that reads the row is scoped to the workspace
-         *     before it is keyed by the id, so the distinction is not represented anywhere a
-         *     response could leak it. A `403` would confirm that an identifier names something
-         *     real, which is the whole of what somebody enumerating uuids is trying to learn.
+         *     **Nothing the page renders is computed in the browser from something this did not
+         *     state.** Stage durations, the change-set totals, the token and cost sums, the wall clock
+         *     and the Guardrails header pill are all answered here; a client formats them and derives
+         *     nothing.
+         *
+         *     **The run row is still the run row.** `run` is exactly the `RunSummary` every listing
+         *     and every dashboard slice serves ([#71](https://github.com/NobuData/ouroboros/issues/71)),
+         *     carried whole, so a run has one shape everywhere including on its own page; `head` holds
+         *     only what the page head adds to it.
+         *
+         *     **Resources are computed from the systems that own them** (decision R8). Tokens are the
+         *     run's `token_usage` summed, against the pinned `limits.token_budget` of the model stage
+         *     that started most recently. Cost is the same ledger's `cost_cents` summed, against the
+         *     *Max cost per run* of the route that stage inherits (`routing.inherit_task` in the pinned
+         *     workflow → the task kind's route); a stage that pins a model has no route and therefore
+         *     no cap. **Unpriced is not free**: when nothing attributed to the run is priced the cost
+         *     is `null` beside a token count — never `0` — and `unpricedEvents` says how many ledger
+         *     rows carry no price.
+         *
+         *     **Absent data is absent.** A relationship the run does not have is an omitted field — no
+         *     reservation, no `resources.farm`; no loop edge, no `returnedFrom`. A nullable scalar the
+         *     schema holds (`branchName`, a budget or a cap nobody set) is `null`.
+         *
+         *     Every member of the workspace may read it. **A run that is not yours does not exist**:
+         *     another workspace's run answers `404 run_not_found`, indistinguishably from an id that
+         *     names nothing at all.
+         *
+         *     **Changed in 0.37.0:** this operation answered a bare `RunSummary` until AP.2. That row
+         *     is now `run` inside the page.
          */
         get: operations["readRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The run's transcript past a cursor — the tail the console polls
+         * @description The agent transcript's tail ([#304](https://github.com/NobuData/ouroboros/issues/304),
+         *     AP.2, infrastructure option 2-A): the typed entries with a `seq` greater than `?after=`,
+         *     in `seq` order. The client already holds entries 1 through *n* and asks for what came
+         *     after; it appends `entries` and asks again with `?after=nextAfter`.
+         *
+         *     **The cursor is exact under concurrent ingest.** `seq` is dense per run and assigned by
+         *     the database under a lock on the run, so a page is bounded by `latestSeq` — the run's
+         *     highest committed sequence number when the page was read — and can never contain *9*
+         *     while *8* is still being written. Successive pages concatenate to the transcript with no
+         *     gap and no duplicate. When `hasMore` is `true` more entries already exist: ask again
+         *     at once rather than waiting out `pollAfter`.
+         *
+         *     **`live` is the run's state, never how recently an entry arrived.** It is `true` while
+         *     the run is `coding`, `building` or `review` and `false` the moment it is terminal, so the
+         *     `streaming` pill goes quiet with the run. Poll at the interval `X-Ouro-Poll-After` names
+         *     (`pollAfter` in the body): five seconds while live, the shared dashboard cadence after.
+         *     That is liveness honest at the polling cadence rather than a pill implying push; the SSE
+         *     upgrade (AR.3, [#317](https://github.com/NobuData/ouroboros/issues/317)) changes the
+         *     transport, not this contract.
+         *
+         *     **Elision markers are entries.** When a per-run cap refuses entries, the transcript holds
+         *     one `system` entry carrying `elision` — how many entries and bytes were refused and
+         *     between which instants — and `elided` is `true` on every page.
+         *
+         *     Every member of the workspace may read it; another workspace's run is `404`.
+         */
+        get: operations["readRunEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{id}/transcript.jsonl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The run's transcript as JSONL — Raw JSONL ↗, streamed
+         * @description The whole transcript as one JSON document per line
+         *     ([#304](https://github.com/NobuData/ouroboros/issues/304), AP.2) — mockup 10's
+         *     **Raw JSONL ↗**, and the artifact people feed to their own tooling.
+         *
+         *     **A projection of the same rows, not a second serializer.** Each line is exactly what
+         *     `ouroboros.run_events_jsonl` renders for one `run_events` row, in `seq` order — the shape
+         *     V046's header specifies and AO.2's fixture pins byte for byte: fields in the order `seq`,
+         *     `ts`, `actor`, `stage_key`, `attempt`, `tool_tag`, `model_id`, `simulated`, `body`,
+         *     `payload`, `elided_events`, `elided_bytes`, `elided_from`, `elided_to`; a null field
+         *     absent; timestamps UTC ISO 8601 with milliseconds; `payload` in `jsonb`'s canonical
+         *     rendering. Every line ends in `\n`.
+         *
+         *     **A simulated run's file opens with `# simulated run`** (decision R4) — a comment line,
+         *     so it cannot be mistaken for an entry, on top of the `"simulated": true` every line of
+         *     such a run carries.
+         *
+         *     **Streamed.** Lines are read and written a batch at a time, so the service holds one
+         *     batch whatever the transcript's length. The file is the transcript as it stood when the
+         *     request arrived; entries appended while it is being written belong to the next export.
+         *
+         *     Every member of the workspace may read it; another workspace's run is `404`, answered
+         *     before a byte of the file is sent.
+         */
+        get: operations["exportRunTranscript"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6405,6 +6514,438 @@ export interface components {
             limit: number;
             /** @example 0 */
             offset: number;
+        };
+        /**
+         * RunConsole
+         * @description Mockup 10's Run Console as one snapshot ([#304](https://github.com/NobuData/ouroboros/issues/304)).
+         *     Every figure the page draws is stated here; the client formats and derives nothing.
+         */
+        RunConsole: {
+            /**
+             * Format: date-time
+             * @description When the snapshot was taken, by the server's clock — the elapsed anchor.
+             *     `resources.wallClock.elapsedSeconds` is measured to this instant, so a client ticks
+             *     forward from a number the server stated rather than from its own clock.
+             */
+            asOf: string;
+            run: components["schemas"]["RunSummary"];
+            head: components["schemas"]["RunConsoleHead"];
+            timeline: components["schemas"]["RunTimeline"];
+            changes: components["schemas"]["RunChanges"];
+            resources: components["schemas"]["RunResources"];
+            guardrails: components["schemas"]["RunGuardrails"];
+        };
+        /**
+         * RunConsoleHead
+         * @description What the page head adds to the run row — eyebrow, pin, branch, watermark, liveness.
+         */
+        RunConsoleHead: {
+            /**
+             * @description The *Loop #1847* counter — a per-workspace display sequence.
+             * @example 1847
+             */
+            loopSeq: number;
+            /** @description The `14` of `standard-fix v14`, or `null` when nothing was published to pin. */
+            workflowVersion: number | null;
+            /**
+             * @description The branch the loop works on, or `null` until it has one.
+             * @example loop/482-canbus-flake
+             */
+            branchName: string | null;
+            /**
+             * @description Decision R4's watermark: the run was opened by the simulated-run driver. Set from
+             *     the principal that opened it, never from a client's claim.
+             */
+            simulated: boolean;
+            /**
+             * @description Whether the run is still moving (`coding`, `building` or `review`). The same fact the
+             *     transcript tail calls `live`.
+             */
+            live: boolean;
+            repository?: components["schemas"]["RunRepository"];
+        };
+        /**
+         * RunRepository
+         * @description The repository the run's issue lives in, named as GitHub names it. Omitted from the head
+         *     in the one case it cannot be read.
+         */
+        RunRepository: {
+            /** @example acme */
+            owner: string;
+            /** @example helios-firmware */
+            name: string;
+        };
+        /**
+         * RunStageStatus
+         * @description Where one attempt at one stage is. `succeeded` draws `✓` with a duration, `active` `●`,
+         *     `pending` `○`; `failed` is an attempt that ended badly (usually superseded by the next
+         *     attempt), and `skipped` a stage the path went around.
+         * @enum {string}
+         */
+        RunStageStatus: "pending" | "active" | "succeeded" | "failed" | "skipped";
+        /**
+         * RunTimeline
+         * @description The stage timeline (decision R1) — every stage the run has materialised, from its stage
+         *     history, in pinned order.
+         */
+        RunTimeline: {
+            /** @description The `standard-fix` of the card's `workflow: standard-fix v14` tag. */
+            workflowTag: string;
+            workflowVersion: number | null;
+            /** @description The stage whose latest attempt is `active`, or `null` when none is. */
+            currentStageKey: string | null;
+            stages: components["schemas"]["RunTimelineStage"][];
+        };
+        /**
+         * RunTimelineStage
+         * @description One stepper node. Its top-level fields are its **latest** attempt's; `attempts` holds
+         *     every attempt, oldest first.
+         */
+        RunTimelineStage: {
+            /**
+             * @description The pinned workflow's DSL node id.
+             * @example implement
+             */
+            stageKey: string;
+            /** @description The node's title as the pinned version had it. */
+            label: string;
+            position: number;
+            status: components["schemas"]["RunStageStatus"];
+            /** @description The `2` of `attempt 2/3`. */
+            attempt: number;
+            /** @description The `3` of `attempt 2/3`, or `null` for a stage type with no limits. */
+            maxAttempts: number | null;
+            /**
+             * @description The latest attempt's duration in whole seconds — the done caption — or `null` while
+             *     it has not both started and finished.
+             */
+            durationSeconds: number | null;
+            /**
+             * @description The warn note, composed by the database from the transition that produced the attempt
+             *     — *"attempt 1 failed tests — loop returned from gate ↺"*.
+             */
+            note: string | null;
+            attempts: components["schemas"]["RunStageAttempt"][];
+        };
+        /**
+         * RunStageAttempt
+         * @description One attempt at one stage.
+         */
+        RunStageAttempt: {
+            attempt: number;
+            status: components["schemas"]["RunStageStatus"];
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
+            durationSeconds: number | null;
+            note: string | null;
+            returnedFrom?: components["schemas"]["RunStageReturn"];
+        };
+        /**
+         * RunStageReturn
+         * @description The loop edge an attempt came back through. Omitted for an attempt no edge produced.
+         */
+        RunStageReturn: {
+            /**
+             * @description The node the loop edge left from.
+             * @example checks-green
+             */
+            stageKey: string;
+            /** @enum {string} */
+            kind: "trigger" | "llm" | "infra" | "gate" | "decision" | "term";
+            /** @enum {string} */
+            reason: "failed_tests" | "failed_build" | "failed_checks" | "failed_review" | "gate_rejected" | "budget_exhausted" | "timed_out" | "errored";
+        };
+        /**
+         * RunChanges
+         * @description *Changes so far*. The counts are cumulative per file and the totals are sums over the
+         *     rows — never a stored aggregate (decision R8).
+         */
+        RunChanges: {
+            /** @description Every file of the change-set, in the order it entered it. */
+            files: components["schemas"]["RunChangedFile"][];
+            totals: components["schemas"]["RunChangeTotals"];
+            /** @description The run's commits, in the writer's order. */
+            commits: components["schemas"]["RunChangeCommit"][];
+            /**
+             * @description How the pinned workflow lands the pull request — the *will squash on merge* tag — or
+             *     `null` when the pinned terminal opens none.
+             * @enum {string|null}
+             */
+            mergeStrategy: "squash" | "merge" | "rebase" | null;
+        };
+        /** RunChangedFile */
+        RunChangedFile: {
+            /** @example drivers/can/telemetry_buf.c */
+            path: string;
+            /** @enum {string} */
+            status: "added" | "modified" | "deleted" | "renamed";
+            additions: number;
+            deletions: number;
+        };
+        /**
+         * RunChangeTotals
+         * @description The card's `3 files` and the sums beside it.
+         */
+        RunChangeTotals: {
+            files: number;
+            additions: number;
+            deletions: number;
+        };
+        /** RunChangeCommit */
+        RunChangeCommit: {
+            /** @description The commit's name as reported — abbreviated or whole. */
+            sha: string;
+            /**
+             * @description The seven-character chip.
+             * @example a41c9e2
+             */
+            shortSha: string;
+            /** @description The message's first line — what the row prints. */
+            subject: string;
+            /** Format: date-time */
+            committedAt: string;
+        };
+        /**
+         * RunResources
+         * @description *Resources* — every number from the system that owns it (decision R8). `farm` is
+         *     **omitted** when the run holds no reservation, and the row is then not drawn.
+         */
+        RunResources: {
+            tokens: components["schemas"]["RunTokenResource"];
+            cost: components["schemas"]["RunCostResource"];
+            farm?: components["schemas"]["RunFarmResource"];
+            wallClock: components["schemas"]["RunWallClock"];
+        };
+        /**
+         * RunTokenResource
+         * @description `212k / 400k budget` — the run's `token_usage`, summed, against the pinned
+         *     `limits.token_budget` of the model stage that started most recently.
+         */
+        RunTokenResource: {
+            /** @description Every token attributed to the run — in plus out. */
+            used: number;
+            tokensIn: number;
+            tokensOut: number;
+            /** @description The budget, or `null` before any model stage has started — the meter is then count-only. */
+            budget: number | null;
+            /** @description Which stage's budget `budget` is. */
+            budgetStageKey: string | null;
+        };
+        /**
+         * RunCostResource
+         * @description `$1.14 / $2.50 cap` — the run's ledger cost, summed, against the *Max cost per run* of
+         *     the route the budget stage inherits. **Unpriced is not free**: `costCents` is `null`,
+         *     never `"0"`, when nothing attributed to the run is priced.
+         */
+        RunCostResource: {
+            /**
+             * @description Cents, as a decimal string (the ledger is `numeric(14,4)`), or `null` when every
+             *     attributed ledger row is unpriced.
+             * @example 114.0000
+             */
+            costCents: string | null;
+            /**
+             * @description How many ledger rows carry no price. Non-zero beside a non-null `costCents` means the
+             *     cost is a lower bound.
+             */
+            unpricedEvents: number;
+            /**
+             * @description The route's cap in cents, or `null` when no route applies (the stage pins a model, or
+             *     nothing has started) or the route sets none.
+             * @example 250
+             */
+            capCents: number | null;
+            /**
+             * @description The route the cap was read from.
+             * @example implement-primary
+             */
+            routeTag: string | null;
+        };
+        /**
+         * RunFarmResource
+         * @description The build job the run holds on the farm — `forge-02 reserved`.
+         */
+        RunFarmResource: {
+            /** Format: uuid */
+            buildJobId: string;
+            jobNumber: number;
+            /**
+             * @description Where the job is — what colours the dot.
+             * @enum {string}
+             */
+            jobStatus: "queued" | "offered" | "running" | "succeeded" | "failed" | "retried" | "canceled";
+            /**
+             * @description The runner holding it, or `null` while no runner has taken it.
+             * @example forge-02
+             */
+            runnerName: string | null;
+        };
+        /**
+         * RunWallClock
+         * @description The *Wall clock* row, and the head's *elapsed*.
+         */
+        RunWallClock: {
+            /** Format: date-time */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description `null` while the run is live.
+             */
+            finishedAt: string | null;
+            /** @description Whole seconds from start to finish, or to `asOf` while the run is live. */
+            elapsedSeconds: number;
+        };
+        /**
+         * RunGuardrails
+         * @description *Guardrails* — the latest verdict per check (AP.3), the header pill, the policy footer
+         *     and the secrets ruleset's disclosure.
+         */
+        RunGuardrails: {
+            /**
+             * @description The header pill: `violations` when any check failed; else `pending` when any has not
+             *     answered; else `clean`. `unevaluated` when the run has no verdicts at all, which is
+             *     not the same as clean.
+             * @enum {string}
+             */
+            status: "clean" | "violations" | "pending" | "unevaluated";
+            /** @description One row per check that has a verdict, in the card's order. */
+            checks: components["schemas"]["RunGuardrailCheck"][];
+            policy: components["schemas"]["RunGuardrailPolicy"];
+            secrets: components["schemas"]["RunSecretsDisclosure"];
+        };
+        /** RunGuardrailCheck */
+        RunGuardrailCheck: {
+            /** @enum {string} */
+            check: "allowed_paths" | "ci_config" | "secrets" | "review_required";
+            /**
+             * @description `not_applicable` is the card's `○` — a third answer, not a pass.
+             * @enum {string}
+             */
+            verdict: "pass" | "fail" | "not_applicable" | "pending";
+            evidence?: components["schemas"]["RunGuardrailEvidence"];
+            /** @example v3 */
+            rulesetVersion: string | null;
+            /** Format: date-time */
+            evaluatedAt: string;
+            /** @description Which change-set report was judged, or `null` for a policy-only check. */
+            changeSetSeq: number | null;
+        };
+        /**
+         * RunGuardrailEvidence
+         * @description Where, and by which rule — **never what** (decision R5). A closed key set; there is no
+         *     field a matched value could be placed in. Omitted when a verdict carries none.
+         */
+        RunGuardrailEvidence: {
+            path?: string;
+            line?: number;
+            rule_id?: string;
+            glob?: string;
+            detail?: string;
+        };
+        /**
+         * RunGuardrailPolicy
+         * @description The footer — *Policy: standard-fix v14 · tenant acme-robotics*.
+         */
+        RunGuardrailPolicy: {
+            workflowTag: string;
+            /** @description The version the newest verdict applied, else the run's pin, else `null`. */
+            workflowVersion: number | null;
+            /** @description The workspace's slug. */
+            tenant: string;
+        };
+        /**
+         * RunSecretsDisclosure
+         * @description What a `secrets` pass can and cannot claim — the card's tooltip (AP.3).
+         */
+        RunSecretsDisclosure: {
+            version: string;
+            ruleCount: number;
+            recallClass: string;
+            summary: string;
+            limitation: string;
+        };
+        /**
+         * RunEventsPage
+         * @description One page of the transcript's tail ([#304](https://github.com/NobuData/ouroboros/issues/304)).
+         *     Ask again with `?after=nextAfter`; at once when `hasMore`, else after `pollAfter`.
+         */
+        RunEventsPage: {
+            /** Format: uuid */
+            runId: string;
+            /** @description The cursor asked for. */
+            after: number;
+            /** @description The entries with `after < seq ≤ nextAfter`, in `seq` order. */
+            entries: components["schemas"]["RunEventEntry"][];
+            /** @description The next cursor. Equal to `after` when nothing was returned. */
+            nextAfter: number;
+            /** @description The run's highest sequence number when the page was read. */
+            latestSeq: number;
+            /** @description Whether entries past `nextAfter` already exist. */
+            hasMore: boolean;
+            /** @description Whether the run is still moving. `false` for a terminal run, whatever arrived last. */
+            live: boolean;
+            /** @description Whether a per-run cap has refused entries — the transcript holds an elision marker. */
+            elided: boolean;
+            /** @description Seconds to wait before asking again — `X-Ouro-Poll-After`, in the body too. */
+            pollAfter: number;
+        };
+        /**
+         * RunEventEntry
+         * @description One transcript entry — the JSONL line's fields, camel-cased. As in the JSONL projection,
+         *     **a null field is absent**, so a reader that finds `toolTag` knows a tool was named.
+         */
+        RunEventEntry: {
+            seq: number;
+            /**
+             * Format: date-time
+             * @description When the entry happened — the transcript's printed time.
+             */
+            ts: string;
+            /**
+             * @description The chip — `system` is the store speaking for itself, today only the elision marker.
+             * @enum {string}
+             */
+            actor: "plan" | "tool" | "model" | "gate" | "user" | "system";
+            stageKey?: string;
+            attempt?: number;
+            /** @example edit_file */
+            toolTag?: string;
+            /**
+             * @description The model this entry came from — required on a `model` entry (decision R4).
+             * @example claude-fable-5
+             */
+            modelId?: string;
+            body?: string;
+            /**
+             * @description Everything about the entry that is not a sentence — a diff's `hunks` (`ctx`, `del`,
+             *     `add`), a test result, a progress fraction. Shape varies by entry type.
+             */
+            payload?: unknown;
+            /** @description Decision R4's watermark, per entry. */
+            simulated: boolean;
+            elision?: components["schemas"]["RunEventElision"];
+        };
+        /**
+         * RunEventElision
+         * @description What an elision marker accounts for. Present on the marker, and only there.
+         */
+        RunEventElision: {
+            /** @description How many entries the cap refused. */
+            events: number;
+            /** @description How many bytes they weighed. */
+            bytes: number;
+            /**
+             * Format: date-time
+             * @description When the first refused entry happened.
+             */
+            from: string;
+            /**
+             * Format: date-time
+             * @description When the most recent one did.
+             */
+            to: string;
         };
         /**
          * QueuePage
@@ -15028,31 +15569,191 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The run. */
+            /** @description The page. */
             200: {
                 headers: {
+                    /**
+                     * @description `private, no-cache` — one workspace's run, which no shared cache may store.
+                     * @example private, no-cache
+                     */
+                    "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     /**
                      * @example {
-                     *       "id": "5eed0009-0000-4000-8000-000000000482",
-                     *       "issueNumber": 482,
-                     *       "issueTitle": "Fix flaky CAN-bus telemetry test",
-                     *       "workflowTag": "standard-fix",
-                     *       "model": "claude-fable-5",
-                     *       "status": "coding",
-                     *       "stageLabel": "Implementing",
-                     *       "stageIndex": 4,
-                     *       "stageTotal": 6,
-                     *       "startedAt": "2026-08-13T14:25:01.000Z",
-                     *       "finishedAt": null,
-                     *       "prNumber": null,
-                     *       "checksPassed": null,
-                     *       "checksTotal": null
+                     *       "asOf": "2026-08-08T14:12:40.000Z",
+                     *       "run": {
+                     *         "id": "5eed0009-0000-4000-8000-000000000482",
+                     *         "issueNumber": 482,
+                     *         "issueTitle": "Fix flaky CAN-bus telemetry test",
+                     *         "workflowTag": "standard-fix",
+                     *         "model": "claude-fable-5",
+                     *         "status": "coding",
+                     *         "stageLabel": "Implementing",
+                     *         "stageIndex": 4,
+                     *         "stageTotal": 6,
+                     *         "startedAt": "2026-08-08T14:00:00.000Z",
+                     *         "finishedAt": null,
+                     *         "prNumber": null,
+                     *         "checksPassed": null,
+                     *         "checksTotal": null
+                     *       },
+                     *       "head": {
+                     *         "loopSeq": 1847,
+                     *         "workflowVersion": 14,
+                     *         "branchName": "loop/482-canbus-flake",
+                     *         "simulated": true,
+                     *         "live": true,
+                     *         "repository": {
+                     *           "owner": "acme",
+                     *           "name": "helios-firmware"
+                     *         }
+                     *       },
+                     *       "timeline": {
+                     *         "workflowTag": "standard-fix",
+                     *         "workflowVersion": 14,
+                     *         "currentStageKey": "implement",
+                     *         "stages": [
+                     *           {
+                     *             "stageKey": "queued",
+                     *             "label": "Queued",
+                     *             "position": 1,
+                     *             "status": "succeeded",
+                     *             "attempt": 1,
+                     *             "maxAttempts": null,
+                     *             "durationSeconds": 4,
+                     *             "note": null,
+                     *             "attempts": [
+                     *               {
+                     *                 "attempt": 1,
+                     *                 "status": "succeeded",
+                     *                 "startedAt": "2026-08-08T14:00:00.000Z",
+                     *                 "finishedAt": "2026-08-08T14:00:04.000Z",
+                     *                 "durationSeconds": 4,
+                     *                 "note": null
+                     *               }
+                     *             ]
+                     *           },
+                     *           {
+                     *             "stageKey": "implement",
+                     *             "label": "Implementing",
+                     *             "position": 4,
+                     *             "status": "active",
+                     *             "attempt": 2,
+                     *             "maxAttempts": 3,
+                     *             "durationSeconds": null,
+                     *             "note": "attempt 1 failed tests — loop returned from gate ↺",
+                     *             "attempts": [
+                     *               {
+                     *                 "attempt": 1,
+                     *                 "status": "failed",
+                     *                 "startedAt": "2026-08-08T14:03:21.000Z",
+                     *                 "finishedAt": "2026-08-08T14:07:40.000Z",
+                     *                 "durationSeconds": 259,
+                     *                 "note": null
+                     *               },
+                     *               {
+                     *                 "attempt": 2,
+                     *                 "status": "active",
+                     *                 "startedAt": "2026-08-08T14:07:55.000Z",
+                     *                 "finishedAt": null,
+                     *                 "durationSeconds": null,
+                     *                 "note": "attempt 1 failed tests — loop returned from gate ↺",
+                     *                 "returnedFrom": {
+                     *                   "stageKey": "checks-green",
+                     *                   "kind": "gate",
+                     *                   "reason": "failed_tests"
+                     *                 }
+                     *               }
+                     *             ]
+                     *           }
+                     *         ]
+                     *       },
+                     *       "changes": {
+                     *         "files": [
+                     *           {
+                     *             "path": "drivers/can/telemetry_buf.c",
+                     *             "status": "modified",
+                     *             "additions": 38,
+                     *             "deletions": 12
+                     *           }
+                     *         ],
+                     *         "totals": {
+                     *           "files": 1,
+                     *           "additions": 38,
+                     *           "deletions": 12
+                     *         },
+                     *         "commits": [
+                     *           {
+                     *             "sha": "a41c9e2",
+                     *             "shortSha": "a41c9e2",
+                     *             "subject": "can: replace telemetry k_fifo with k_msgq + frame seq",
+                     *             "committedAt": "2026-08-08T14:05:00.000Z"
+                     *           }
+                     *         ],
+                     *         "mergeStrategy": "squash"
+                     *       },
+                     *       "resources": {
+                     *         "tokens": {
+                     *           "used": 212000,
+                     *           "tokensIn": 169600,
+                     *           "tokensOut": 42400,
+                     *           "budget": 400000,
+                     *           "budgetStageKey": "implement"
+                     *         },
+                     *         "cost": {
+                     *           "costCents": "114.0000",
+                     *           "unpricedEvents": 0,
+                     *           "capCents": 250,
+                     *           "routeTag": "implement-primary"
+                     *         },
+                     *         "farm": {
+                     *           "buildJobId": "5eed0026-0000-4000-8000-000000000483",
+                     *           "jobNumber": 483,
+                     *           "jobStatus": "running",
+                     *           "runnerName": "forge-02"
+                     *         },
+                     *         "wallClock": {
+                     *           "startedAt": "2026-08-08T14:00:00.000Z",
+                     *           "finishedAt": null,
+                     *           "elapsedSeconds": 760
+                     *         }
+                     *       },
+                     *       "guardrails": {
+                     *         "status": "clean",
+                     *         "checks": [
+                     *           {
+                     *             "check": "allowed_paths",
+                     *             "verdict": "pass",
+                     *             "rulesetVersion": null,
+                     *             "evaluatedAt": "2026-08-08T14:09:50.000Z",
+                     *             "changeSetSeq": 1
+                     *           },
+                     *           {
+                     *             "check": "review_required",
+                     *             "verdict": "not_applicable",
+                     *             "rulesetVersion": null,
+                     *             "evaluatedAt": "2026-08-08T14:09:50.000Z",
+                     *             "changeSetSeq": null
+                     *           }
+                     *         ],
+                     *         "policy": {
+                     *           "workflowTag": "standard-fix",
+                     *           "workflowVersion": 14,
+                     *           "tenant": "acme-robotics"
+                     *         },
+                     *         "secrets": {
+                     *           "version": "v3",
+                     *           "ruleCount": 199,
+                     *           "recallClass": "~70%",
+                     *           "summary": "Secrets ruleset v3: 199 known credential formats plus keyword proximity, scanned over added diff lines.",
+                     *           "limitation": "A pass means no known credential format was found — not that the diff holds no secrets. High-entropy secrets with no recognisable format (roughly 30% of real-world leaks) are not detected; verified scanning arrives with AR.5."
+                     *         }
+                     *       }
                      *     }
                      */
-                    "application/json": components["schemas"]["RunSummary"];
+                    "application/json": components["schemas"]["RunConsole"];
                 };
             };
             /**
@@ -15118,6 +15819,347 @@ export interface operations {
             /**
              * @description `internal_error` — the service itself failed. The message is a constant and
              *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readRunEvents: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The last `seq` the reader holds — the previous page's `nextAfter` — or absent for the
+                 *     start of the transcript.
+                 */
+                after?: number;
+                /** @description The most entries to return. 200 when absent. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0009-0000-4000-8000-000000000482
+                 */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    /**
+                     * @description `private, no-cache` — one workspace's transcript, which no shared cache may store.
+                     * @example private, no-cache
+                     */
+                    "Cache-Control"?: string;
+                    /**
+                     * @description How many seconds to wait before asking again: `5` while the run is live, the
+                     *     shared dashboard cadence (`OURO_DASHBOARD_POLL_SECONDS`, 15 by default) once it is
+                     *     terminal.
+                     * @example 5
+                     */
+                    "X-Ouro-Poll-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "runId": "5eed0009-0000-4000-8000-000000000482",
+                     *       "after": 7,
+                     *       "entries": [
+                     *         {
+                     *           "seq": 8,
+                     *           "ts": "2026-08-08T14:09:30.000Z",
+                     *           "actor": "tool",
+                     *           "stageKey": "implement",
+                     *           "attempt": 2,
+                     *           "toolTag": "edit_file",
+                     *           "body": "drivers/can/isr_fastpath.c",
+                     *           "payload": {
+                     *             "hunks": [
+                     *               {
+                     *                 "kind": "del",
+                     *                 "text": "k_msgq_put(&tel_msgq, &frame, K_NO_WAIT);"
+                     *               },
+                     *               {
+                     *                 "kind": "add",
+                     *                 "text": "frame.seq = atomic_inc(&tel_seq);   /* assign before enqueue *\/"
+                     *               }
+                     *             ]
+                     *           },
+                     *           "simulated": true
+                     *         },
+                     *         {
+                     *           "seq": 9,
+                     *           "ts": "2026-08-08T14:12:19.000Z",
+                     *           "actor": "tool",
+                     *           "stageKey": "implement",
+                     *           "attempt": 2,
+                     *           "toolTag": "run_tests",
+                     *           "body": "twister -T tests/telemetry --load-profile",
+                     *           "payload": {
+                     *             "state": "running",
+                     *             "progress": {
+                     *               "done": 47,
+                     *               "total": 63
+                     *             }
+                     *           },
+                     *           "simulated": true
+                     *         }
+                     *       ],
+                     *       "nextAfter": 9,
+                     *       "latestSeq": 9,
+                     *       "hasMore": false,
+                     *       "live": true,
+                     *       "elided": false,
+                     *       "pollAfter": 5
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RunEventsPage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `run_not_found` — no run with that id, or none this caller may know about. Or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the id is not a uuid, or `after` / `limit` is not a whole
+             *     number in range. `run_events_cursor_out_of_range` — `after` is past the end of the
+             *     transcript; `details.latestSeq` is where it ends.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "run_events_cursor_out_of_range",
+                     *       "message": "This transcript holds 9 entries; there is nothing after that.",
+                     *       "details": {
+                     *         "latestSeq": 9
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportRunTranscript: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0009-0000-4000-8000-000000000482
+                 */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The transcript, one entry per line. */
+            200: {
+                headers: {
+                    /**
+                     * @description `private, no-cache` — one workspace's transcript, which no shared cache may store.
+                     * @example private, no-cache
+                     */
+                    "Cache-Control"?: string;
+                    /**
+                     * @description `inline`, with the file name a *Save as* offers — `loop-<loopSeq>.jsonl`.
+                     * @example inline; filename="loop-1847.jsonl"
+                     */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example # simulated run
+                     *     {"seq": 1, "ts": "2026-08-08T14:02:11.000Z", "actor": "plan", "stage_key": "plan", "attempt": 1, "simulated": true, "body": "Root cause: test asserts on frame order; CAN driver ISR can reorder under load."}
+                     *     {"seq": 2, "ts": "2026-08-08T14:03:26.000Z", "actor": "tool", "stage_key": "implement", "attempt": 1, "tool_tag": "read_file", "simulated": true, "body": "drivers/can/telemetry_buf.c", "payload": {"file": "drivers/can/telemetry_buf.c"}}
+                     */
+                    "application/x-ndjson": string;
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `run_not_found` — no run with that id, or none this caller may know about. Or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed before the file began. A failure after
+             *     the first byte ends the stream early instead, since the status has already been sent.
              */
             500: {
                 headers: {

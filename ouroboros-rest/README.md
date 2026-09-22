@@ -103,7 +103,9 @@ $ curl http://localhost:4000/api/v1
 | `GET PATCH /api/v1/me/preferences`                  | The caller's own settings (#649) — the font scale; per person, no workspace required |
 | `GET /api/v1/dashboard`                             | [The dashboard](#the-dashboard) (#70) — mockup 02's six cards in one payload, with an `ETag` |
 | `GET /api/v1/runs`                                  | The paged run listings (#71) — `status=active\|terminal`, optional `repo` filter; the aggregate's slices are pages of these |
-| `GET /api/v1/runs/{id}`                             | One run, in the same `RunSummary` shape everywhere; another workspace's id is a `404`, never a `403` |
+| `GET /api/v1/runs/{id}`                             | [The Run Console page](#run-console-reads) (#304): the `RunSummary` row as `run`, plus head, stage timeline, changes, resources and guardrails; another workspace's id is a `404`, never a `403` |
+| `GET /api/v1/runs/{id}/events`                      | The transcript's tail past `?after=` (#304): typed entries, `live`, `latestSeq`, `pollAfter`, with `X-Ouro-Poll-After` |
+| `GET /api/v1/runs/{id}/transcript.jsonl`            | *Raw JSONL ↗* (#304): the `run_events_jsonl` projection, streamed, opening with `# simulated run` on a simulated run |
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET POST /api/v1/workflows`                        | [The workflow lifecycle](#the-workflow-lifecycle-api) (#134) — the rail with P.4's captions; **+ New workflow** |
@@ -4660,6 +4662,45 @@ this* flag: stored (V050) for the knowledge pipeline, never applied differently 
 **The audit is the database's.** V048's `run_controls_audit()` trigger writes a
 `run_control.requested | delivered | acked | expired | rejected` event for every write, and the
 body is `{run_id, kind, state, has_payload}`, so the steer text has nowhere to go.
+
+### Run console reads
+
+AP.2 ([#304](https://github.com/NobuData/ouroboros/issues/304)), in
+[`src/modules/runs/`](src/modules/runs) (`console.*.ts`). Mockup 10 needs three reads, each on
+its own cadence. Every member of the workspace may make all three. Each starts from the same
+org-scoped `find`, so another workspace's run is `404 run_not_found` on every route.
+
+```
+GET /api/v1/runs/:id                    snapshot   {asOf, run, head, timeline, changes, resources, guardrails}
+GET /api/v1/runs/:id/events?after=&limit= tail     {entries, nextAfter, latestSeq, hasMore, live, elided, pollAfter}
+GET /api/v1/runs/:id/transcript.jsonl   export     "# simulated run" + one run_events_jsonl line per entry
+```
+
+**The page states every figure.** Stage durations, the change-set totals, the token and cost
+sums, the wall clock (`elapsedSeconds` measured to `asOf`) and the Guardrails pill are all
+computed here, so the browser only formats. Resources follow decision **R8**:
+
+| Row    | Numerator                     | Denominator                                                                                       |
+| ------ | ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| Tokens | `sum(token_usage)` of the run | `token_budget` of the model stage that started most recently                                      |
+| Cost   | `sum(token_usage.cost_cents)` | the cap on the route that stage inherits (`routing.inherit_task` → task kind → `routes`); a pinned-model stage has no cap |
+| Farm   | `runs.reserved_build_job_id`  | the job's runner; **omitted** when there is no reservation                                        |
+
+**Unpriced is not free.** When nothing attributed to the run is priced, `costCents` is `null`
+beside the token count, never `"0"`. `unpricedEvents` counts the rows with no price. The ledger
+sum is `run.spend.ts`, the same statement AP.1's resources receipt uses.
+
+**The tail is exact under concurrent ingest.** It reads `runs.event_seq` first and pages
+`after < seq ≤ event_seq`. V046 allocates `seq` under the run lock and moves `event_seq` in the
+same transaction, so a page never sees an entry whose predecessor is still being written.
+`live` is the run's status (`coding`, `building` or `review`), never how recently an entry
+arrived. `pollAfter` is 5 s while the run is live and `OURO_DASHBOARD_POLL_SECONDS` after that.
+A cursor past the end is `422 run_events_cursor_out_of_range` with `details.latestSeq`.
+
+**The export is the view's bytes.** Lines come from `ouroboros.run_events_jsonl`, 500 per
+statement, bounded by `event_seq` at request time, and are never re-serialized. The export
+adds only the watermark line. It is served as `application/x-ndjson`,
+`inline; filename="loop-<loopSeq>.jsonl"`, and chunked.
 
 ## Container
 

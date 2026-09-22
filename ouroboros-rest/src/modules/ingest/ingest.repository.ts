@@ -50,6 +50,7 @@ import type {
   RunStageReturnReason,
   RunStageStatus,
 } from "../db/schema";
+import { readSpendTotals, type SpendTotals } from "../runs/run.spend";
 
 /** A connection or a transaction — every method takes whichever the caller is inside. */
 export type Writer = Kysely<Database> | Transaction<Database>;
@@ -109,17 +110,8 @@ export interface ChangeSetTotals {
   readonly deletions: number;
 }
 
-/** What one run has spent. */
-export interface SpendTotals {
-  /** Prompt tokens. */
-  readonly tokensIn: number;
-  /** Completion tokens. */
-  readonly tokensOut: number;
-  /** Cost in cents as a decimal string, or `null` when every attributed row is unpriced. */
-  readonly costCents: string | null;
-  /** How many attributed rows carry no price. */
-  readonly unpricedEvents: number;
-}
+/** What one run has spent — `runs/run.spend.ts`'s shape, which AP.2's Resources card reads too. */
+export type { SpendTotals };
 
 /** What a stage transition writes. */
 export interface StageWrite {
@@ -819,22 +811,6 @@ export class IngestRepository {
    *   about a run whose model has no price in the catalog.
    */
   async spendTotals(writer: Writer, run: string): Promise<SpendTotals> {
-    const row = await writer
-      .selectFrom("token_usage")
-      .select([
-        sql<string>`coalesce(sum(tokens_in), 0)`.as("tokens_in"),
-        sql<string>`coalesce(sum(tokens_out), 0)`.as("tokens_out"),
-        sql<string | null>`sum(cost_cents)`.as("cost_cents"),
-        sql<string>`count(*) filter (where cost_cents is null)`.as("unpriced"),
-      ])
-      .where("run_id", "=", run)
-      .executeTakeFirstOrThrow();
-
-    return {
-      tokensIn: Number(row.tokens_in),
-      tokensOut: Number(row.tokens_out),
-      costCents: row.cost_cents,
-      unpricedEvents: Number(row.unpriced),
-    };
+    return readSpendTotals(writer, run);
   }
 }

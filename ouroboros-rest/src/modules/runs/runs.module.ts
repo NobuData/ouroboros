@@ -1,14 +1,21 @@
 /**
  * Runs — the paged read API over the V008 read-model
- * ([#71](https://github.com/NobuData/ouroboros/issues/71)).
+ * ([#71](https://github.com/NobuData/ouroboros/issues/71)), and the Run Console's reads over the
+ * AO schema ([#304](https://github.com/NobuData/ouroboros/issues/304), AP.2).
  *
- * The same three layers as everywhere, at the drill-in's size:
+ * The same three layers as everywhere, twice:
  *
  * ```
- * controller  the routes, the request shapes       → runs.controller.ts
- * service     the page, the 404, the shared mapper → runs.service.ts
- * repository  the statements, and nothing else     → runs.repository.ts
+ * controller  the routes, the request shapes              → runs.controller.ts
+ * service     the listings, the shared mapper             → runs.service.ts
+ *             the console page, the tail, the export      → console.service.ts
+ * repository  the run lookup and the listings             → runs.repository.ts
+ *             every console statement past the lookup     → console.repository.ts
  * ```
+ *
+ * plus the pure parts the console is built from: `console.resources.ts` (the shapes and their
+ * mappers), `console.route.ts` (a stage's route, read from its pin), `console.policy.ts` (the
+ * numbers) and `run.spend.ts` (the ledger sum AP.1 shares).
  *
  * A module of its own rather than more controllers in `DashboardModule`, which is that
  * module's stated design: the dashboard exports nothing so its card-sized limits and window
@@ -25,6 +32,8 @@
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { ConsoleRepository } from "./console.repository";
+import { ConsoleService } from "./console.service";
 import { RunsController } from "./runs.controller";
 import { RunsRepository } from "./runs.repository";
 import { RunsService } from "./runs.service";
@@ -32,7 +41,7 @@ import { RunsService } from "./runs.service";
 @Module({
   imports: [DbModule],
   controllers: [RunsController],
-  providers: [RunsService, RunsRepository],
+  providers: [RunsService, RunsRepository, ConsoleService, ConsoleRepository],
   // Nothing is exported, for the dashboard module's own reason: the routes are the surface,
   // and the queue (#73) and settings (#74) drill-ins publish their own.
 })

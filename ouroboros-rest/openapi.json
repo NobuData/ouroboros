@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.36.0",
+    "version": "0.37.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -1264,8 +1264,8 @@
         "tags": [
           "dashboard"
         ],
-        "summary": "One run",
-        "description": "The run a card links to, in exactly the shape every listing row and every aggregate\nslice has — `RunSummary` is the one shape a run takes on this API, and this\noperation is the third place it is served rather than a second definition of it.\n\n**A run that is not yours does not exist.** A well-formed id belonging to another\nworkspace answers `404` with `run_not_found`, indistinguishably from an id that\nnames nothing at all — the query that reads the row is scoped to the workspace\nbefore it is keyed by the id, so the distinction is not represented anywhere a\nresponse could leak it. A `403` would confirm that an identifier names something\nreal, which is the whole of what somebody enumerating uuids is trying to learn.",
+        "summary": "The Run Console page — head, stage timeline and the three cards",
+        "description": "Mockup 10's page as one snapshot ([#304](https://github.com/NobuData/ouroboros/issues/304),\nAP.2): the run row, the page head, the stage timeline and the *Changes so far*,\n*Resources* and *Guardrails* cards. The transcript is not here — it is a **tail**, read\nincrementally from `/api/v1/runs/{id}/events` — and neither is its export.\n\n**Nothing the page renders is computed in the browser from something this did not\nstate.** Stage durations, the change-set totals, the token and cost sums, the wall clock\nand the Guardrails header pill are all answered here; a client formats them and derives\nnothing.\n\n**The run row is still the run row.** `run` is exactly the `RunSummary` every listing\nand every dashboard slice serves ([#71](https://github.com/NobuData/ouroboros/issues/71)),\ncarried whole, so a run has one shape everywhere including on its own page; `head` holds\nonly what the page head adds to it.\n\n**Resources are computed from the systems that own them** (decision R8). Tokens are the\nrun's `token_usage` summed, against the pinned `limits.token_budget` of the model stage\nthat started most recently. Cost is the same ledger's `cost_cents` summed, against the\n*Max cost per run* of the route that stage inherits (`routing.inherit_task` in the pinned\nworkflow → the task kind's route); a stage that pins a model has no route and therefore\nno cap. **Unpriced is not free**: when nothing attributed to the run is priced the cost\nis `null` beside a token count — never `0` — and `unpricedEvents` says how many ledger\nrows carry no price.\n\n**Absent data is absent.** A relationship the run does not have is an omitted field — no\nreservation, no `resources.farm`; no loop edge, no `returnedFrom`. A nullable scalar the\nschema holds (`branchName`, a budget or a cap nobody set) is `null`.\n\nEvery member of the workspace may read it. **A run that is not yours does not exist**:\nanother workspace's run answers `404 run_not_found`, indistinguishably from an id that\nnames nothing at all.\n\n**Changed in 0.37.0:** this operation answered a bare `RunSummary` until AP.2. That row\nis now `run` inside the page.",
         "operationId": "readRun",
         "parameters": [
           {
@@ -1277,27 +1277,191 @@
         ],
         "responses": {
           "200": {
-            "description": "The run.",
+            "description": "The page.",
+            "headers": {
+              "Cache-Control": {
+                "description": "`private, no-cache` — one workspace's run, which no shared cache may store.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "private, no-cache"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunSummary"
+                  "$ref": "#/components/schemas/RunConsole"
                 },
                 "example": {
-                  "id": "5eed0009-0000-4000-8000-000000000482",
-                  "issueNumber": 482,
-                  "issueTitle": "Fix flaky CAN-bus telemetry test",
-                  "workflowTag": "standard-fix",
-                  "model": "claude-fable-5",
-                  "status": "coding",
-                  "stageLabel": "Implementing",
-                  "stageIndex": 4,
-                  "stageTotal": 6,
-                  "startedAt": "2026-08-13T14:25:01.000Z",
-                  "finishedAt": null,
-                  "prNumber": null,
-                  "checksPassed": null,
-                  "checksTotal": null
+                  "asOf": "2026-08-08T14:12:40.000Z",
+                  "run": {
+                    "id": "5eed0009-0000-4000-8000-000000000482",
+                    "issueNumber": 482,
+                    "issueTitle": "Fix flaky CAN-bus telemetry test",
+                    "workflowTag": "standard-fix",
+                    "model": "claude-fable-5",
+                    "status": "coding",
+                    "stageLabel": "Implementing",
+                    "stageIndex": 4,
+                    "stageTotal": 6,
+                    "startedAt": "2026-08-08T14:00:00.000Z",
+                    "finishedAt": null,
+                    "prNumber": null,
+                    "checksPassed": null,
+                    "checksTotal": null
+                  },
+                  "head": {
+                    "loopSeq": 1847,
+                    "workflowVersion": 14,
+                    "branchName": "loop/482-canbus-flake",
+                    "simulated": true,
+                    "live": true,
+                    "repository": {
+                      "owner": "acme",
+                      "name": "helios-firmware"
+                    }
+                  },
+                  "timeline": {
+                    "workflowTag": "standard-fix",
+                    "workflowVersion": 14,
+                    "currentStageKey": "implement",
+                    "stages": [
+                      {
+                        "stageKey": "queued",
+                        "label": "Queued",
+                        "position": 1,
+                        "status": "succeeded",
+                        "attempt": 1,
+                        "maxAttempts": null,
+                        "durationSeconds": 4,
+                        "note": null,
+                        "attempts": [
+                          {
+                            "attempt": 1,
+                            "status": "succeeded",
+                            "startedAt": "2026-08-08T14:00:00.000Z",
+                            "finishedAt": "2026-08-08T14:00:04.000Z",
+                            "durationSeconds": 4,
+                            "note": null
+                          }
+                        ]
+                      },
+                      {
+                        "stageKey": "implement",
+                        "label": "Implementing",
+                        "position": 4,
+                        "status": "active",
+                        "attempt": 2,
+                        "maxAttempts": 3,
+                        "durationSeconds": null,
+                        "note": "attempt 1 failed tests — loop returned from gate ↺",
+                        "attempts": [
+                          {
+                            "attempt": 1,
+                            "status": "failed",
+                            "startedAt": "2026-08-08T14:03:21.000Z",
+                            "finishedAt": "2026-08-08T14:07:40.000Z",
+                            "durationSeconds": 259,
+                            "note": null
+                          },
+                          {
+                            "attempt": 2,
+                            "status": "active",
+                            "startedAt": "2026-08-08T14:07:55.000Z",
+                            "finishedAt": null,
+                            "durationSeconds": null,
+                            "note": "attempt 1 failed tests — loop returned from gate ↺",
+                            "returnedFrom": {
+                              "stageKey": "checks-green",
+                              "kind": "gate",
+                              "reason": "failed_tests"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "changes": {
+                    "files": [
+                      {
+                        "path": "drivers/can/telemetry_buf.c",
+                        "status": "modified",
+                        "additions": 38,
+                        "deletions": 12
+                      }
+                    ],
+                    "totals": {
+                      "files": 1,
+                      "additions": 38,
+                      "deletions": 12
+                    },
+                    "commits": [
+                      {
+                        "sha": "a41c9e2",
+                        "shortSha": "a41c9e2",
+                        "subject": "can: replace telemetry k_fifo with k_msgq + frame seq",
+                        "committedAt": "2026-08-08T14:05:00.000Z"
+                      }
+                    ],
+                    "mergeStrategy": "squash"
+                  },
+                  "resources": {
+                    "tokens": {
+                      "used": 212000,
+                      "tokensIn": 169600,
+                      "tokensOut": 42400,
+                      "budget": 400000,
+                      "budgetStageKey": "implement"
+                    },
+                    "cost": {
+                      "costCents": "114.0000",
+                      "unpricedEvents": 0,
+                      "capCents": 250,
+                      "routeTag": "implement-primary"
+                    },
+                    "farm": {
+                      "buildJobId": "5eed0026-0000-4000-8000-000000000483",
+                      "jobNumber": 483,
+                      "jobStatus": "running",
+                      "runnerName": "forge-02"
+                    },
+                    "wallClock": {
+                      "startedAt": "2026-08-08T14:00:00.000Z",
+                      "finishedAt": null,
+                      "elapsedSeconds": 760
+                    }
+                  },
+                  "guardrails": {
+                    "status": "clean",
+                    "checks": [
+                      {
+                        "check": "allowed_paths",
+                        "verdict": "pass",
+                        "rulesetVersion": null,
+                        "evaluatedAt": "2026-08-08T14:09:50.000Z",
+                        "changeSetSeq": 1
+                      },
+                      {
+                        "check": "review_required",
+                        "verdict": "not_applicable",
+                        "rulesetVersion": null,
+                        "evaluatedAt": "2026-08-08T14:09:50.000Z",
+                        "changeSetSeq": null
+                      }
+                    ],
+                    "policy": {
+                      "workflowTag": "standard-fix",
+                      "workflowVersion": 14,
+                      "tenant": "acme-robotics"
+                    },
+                    "secrets": {
+                      "version": "v3",
+                      "ruleCount": 199,
+                      "recallClass": "~70%",
+                      "summary": "Secrets ruleset v3: 199 known credential formats plus keyword proximity, scanned over added diff lines.",
+                      "limitation": "A pass means no known credential format was found — not that the diff holds no secrets. High-entropy secrets with no recognisable format (roughly 30% of real-world leaks) are not detected; verified scanning arrives with AR.5."
+                    }
+                  }
                 }
               }
             }
@@ -1351,6 +1515,279 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/{id}/events": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "The run's transcript past a cursor — the tail the console polls",
+        "description": "The agent transcript's tail ([#304](https://github.com/NobuData/ouroboros/issues/304),\nAP.2, infrastructure option 2-A): the typed entries with a `seq` greater than `?after=`,\nin `seq` order. The client already holds entries 1 through *n* and asks for what came\nafter; it appends `entries` and asks again with `?after=nextAfter`.\n\n**The cursor is exact under concurrent ingest.** `seq` is dense per run and assigned by\nthe database under a lock on the run, so a page is bounded by `latestSeq` — the run's\nhighest committed sequence number when the page was read — and can never contain *9*\nwhile *8* is still being written. Successive pages concatenate to the transcript with no\ngap and no duplicate. When `hasMore` is `true` more entries already exist: ask again\nat once rather than waiting out `pollAfter`.\n\n**`live` is the run's state, never how recently an entry arrived.** It is `true` while\nthe run is `coding`, `building` or `review` and `false` the moment it is terminal, so the\n`streaming` pill goes quiet with the run. Poll at the interval `X-Ouro-Poll-After` names\n(`pollAfter` in the body): five seconds while live, the shared dashboard cadence after.\nThat is liveness honest at the polling cadence rather than a pill implying push; the SSE\nupgrade (AR.3, [#317](https://github.com/NobuData/ouroboros/issues/317)) changes the\ntransport, not this contract.\n\n**Elision markers are entries.** When a per-run cap refuses entries, the transcript holds\none `system` entry carrying `elision` — how many entries and bytes were refused and\nbetween which instants — and `elided` is `true` on every page.\n\nEvery member of the workspace may read it; another workspace's run is `404`.",
+        "operationId": "readRunEvents",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "The last `seq` the reader holds — the previous page's `nextAfter` — or absent for the\nstart of the transcript.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most entries to return. 200 when absent.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "headers": {
+              "Cache-Control": {
+                "description": "`private, no-cache` — one workspace's transcript, which no shared cache may store.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "private, no-cache"
+              },
+              "X-Ouro-Poll-After": {
+                "description": "How many seconds to wait before asking again: `5` while the run is live, the\nshared dashboard cadence (`OURO_DASHBOARD_POLL_SECONDS`, 15 by default) once it is\nterminal.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "5"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunEventsPage"
+                },
+                "example": {
+                  "runId": "5eed0009-0000-4000-8000-000000000482",
+                  "after": 7,
+                  "entries": [
+                    {
+                      "seq": 8,
+                      "ts": "2026-08-08T14:09:30.000Z",
+                      "actor": "tool",
+                      "stageKey": "implement",
+                      "attempt": 2,
+                      "toolTag": "edit_file",
+                      "body": "drivers/can/isr_fastpath.c",
+                      "payload": {
+                        "hunks": [
+                          {
+                            "kind": "del",
+                            "text": "k_msgq_put(&tel_msgq, &frame, K_NO_WAIT);"
+                          },
+                          {
+                            "kind": "add",
+                            "text": "frame.seq = atomic_inc(&tel_seq);   /* assign before enqueue */"
+                          }
+                        ]
+                      },
+                      "simulated": true
+                    },
+                    {
+                      "seq": 9,
+                      "ts": "2026-08-08T14:12:19.000Z",
+                      "actor": "tool",
+                      "stageKey": "implement",
+                      "attempt": 2,
+                      "toolTag": "run_tests",
+                      "body": "twister -T tests/telemetry --load-profile",
+                      "payload": {
+                        "state": "running",
+                        "progress": {
+                          "done": 47,
+                          "total": 63
+                        }
+                      },
+                      "simulated": true
+                    }
+                  ],
+                  "nextAfter": 9,
+                  "latestSeq": 9,
+                  "hasMore": false,
+                  "live": true,
+                  "elided": false,
+                  "pollAfter": 5
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found` — no run with that id, or none this caller may know about. Or\n`tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid, or `after` / `limit` is not a whole\nnumber in range. `run_events_cursor_out_of_range` — `after` is past the end of the\ntranscript; `details.latestSeq` is where it ends.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "run_events_cursor_out_of_range",
+                  "message": "This transcript holds 9 entries; there is nothing after that.",
+                  "details": {
+                    "latestSeq": 9
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/{id}/transcript.jsonl": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "The run's transcript as JSONL — Raw JSONL ↗, streamed",
+        "description": "The whole transcript as one JSON document per line\n([#304](https://github.com/NobuData/ouroboros/issues/304), AP.2) — mockup 10's\n**Raw JSONL ↗**, and the artifact people feed to their own tooling.\n\n**A projection of the same rows, not a second serializer.** Each line is exactly what\n`ouroboros.run_events_jsonl` renders for one `run_events` row, in `seq` order — the shape\nV046's header specifies and AO.2's fixture pins byte for byte: fields in the order `seq`,\n`ts`, `actor`, `stage_key`, `attempt`, `tool_tag`, `model_id`, `simulated`, `body`,\n`payload`, `elided_events`, `elided_bytes`, `elided_from`, `elided_to`; a null field\nabsent; timestamps UTC ISO 8601 with milliseconds; `payload` in `jsonb`'s canonical\nrendering. Every line ends in `\\n`.\n\n**A simulated run's file opens with `# simulated run`** (decision R4) — a comment line,\nso it cannot be mistaken for an entry, on top of the `\"simulated\": true` every line of\nsuch a run carries.\n\n**Streamed.** Lines are read and written a batch at a time, so the service holds one\nbatch whatever the transcript's length. The file is the transcript as it stood when the\nrequest arrived; entries appended while it is being written belong to the next export.\n\nEvery member of the workspace may read it; another workspace's run is `404`, answered\nbefore a byte of the file is sent.",
+        "operationId": "exportRunTranscript",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The transcript, one entry per line.",
+            "headers": {
+              "Cache-Control": {
+                "description": "`private, no-cache` — one workspace's transcript, which no shared cache may store.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "private, no-cache"
+              },
+              "Content-Disposition": {
+                "description": "`inline`, with the file name a *Save as* offers — `loop-<loopSeq>.jsonl`.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "inline; filename=\"loop-1847.jsonl\""
+              }
+            },
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "# simulated run\n{\"seq\": 1, \"ts\": \"2026-08-08T14:02:11.000Z\", \"actor\": \"plan\", \"stage_key\": \"plan\", \"attempt\": 1, \"simulated\": true, \"body\": \"Root cause: test asserts on frame order; CAN driver ISR can reorder under load.\"}\n{\"seq\": 2, \"ts\": \"2026-08-08T14:03:26.000Z\", \"actor\": \"tool\", \"stage_key\": \"implement\", \"attempt\": 1, \"tool_tag\": \"read_file\", \"simulated\": true, \"body\": \"drivers/can/telemetry_buf.c\", \"payload\": {\"file\": \"drivers/can/telemetry_buf.c\"}}\n"
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found` — no run with that id, or none this caller may know about. Or\n`tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed before the file began. A failure after\nthe first byte ends the stream early instead, since the status has already been sent.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19652,6 +20089,1014 @@
             "examples": [
               0
             ]
+          }
+        }
+      },
+      "RunConsole": {
+        "type": "object",
+        "title": "RunConsole",
+        "description": "Mockup 10's Run Console as one snapshot ([#304](https://github.com/NobuData/ouroboros/issues/304)).\nEvery figure the page draws is stated here; the client formats and derives nothing.",
+        "additionalProperties": false,
+        "required": [
+          "asOf",
+          "run",
+          "head",
+          "timeline",
+          "changes",
+          "resources",
+          "guardrails"
+        ],
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the snapshot was taken, by the server's clock — the elapsed anchor.\n`resources.wallClock.elapsedSeconds` is measured to this instant, so a client ticks\nforward from a number the server stated rather than from its own clock."
+          },
+          "run": {
+            "$ref": "#/components/schemas/RunSummary"
+          },
+          "head": {
+            "$ref": "#/components/schemas/RunConsoleHead"
+          },
+          "timeline": {
+            "$ref": "#/components/schemas/RunTimeline"
+          },
+          "changes": {
+            "$ref": "#/components/schemas/RunChanges"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/RunResources"
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/RunGuardrails"
+          }
+        }
+      },
+      "RunConsoleHead": {
+        "type": "object",
+        "title": "RunConsoleHead",
+        "description": "What the page head adds to the run row — eyebrow, pin, branch, watermark, liveness.",
+        "additionalProperties": false,
+        "required": [
+          "loopSeq",
+          "workflowVersion",
+          "branchName",
+          "simulated",
+          "live"
+        ],
+        "properties": {
+          "loopSeq": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The *Loop #1847* counter — a per-workspace display sequence.",
+            "examples": [
+              1847
+            ]
+          },
+          "workflowVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The `14` of `standard-fix v14`, or `null` when nothing was published to pin."
+          },
+          "branchName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The branch the loop works on, or `null` until it has one.",
+            "examples": [
+              "loop/482-canbus-flake"
+            ]
+          },
+          "simulated": {
+            "type": "boolean",
+            "description": "Decision R4's watermark: the run was opened by the simulated-run driver. Set from\nthe principal that opened it, never from a client's claim."
+          },
+          "live": {
+            "type": "boolean",
+            "description": "Whether the run is still moving (`coding`, `building` or `review`). The same fact the\ntranscript tail calls `live`."
+          },
+          "repository": {
+            "$ref": "#/components/schemas/RunRepository"
+          }
+        }
+      },
+      "RunRepository": {
+        "type": "object",
+        "title": "RunRepository",
+        "description": "The repository the run's issue lives in, named as GitHub names it. Omitted from the head\nin the one case it cannot be read.",
+        "additionalProperties": false,
+        "required": [
+          "owner",
+          "name"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string",
+            "examples": [
+              "acme"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "helios-firmware"
+            ]
+          }
+        }
+      },
+      "RunStageStatus": {
+        "type": "string",
+        "title": "RunStageStatus",
+        "description": "Where one attempt at one stage is. `succeeded` draws `✓` with a duration, `active` `●`,\n`pending` `○`; `failed` is an attempt that ended badly (usually superseded by the next\nattempt), and `skipped` a stage the path went around.",
+        "enum": [
+          "pending",
+          "active",
+          "succeeded",
+          "failed",
+          "skipped"
+        ]
+      },
+      "RunTimeline": {
+        "type": "object",
+        "title": "RunTimeline",
+        "description": "The stage timeline (decision R1) — every stage the run has materialised, from its stage\nhistory, in pinned order.",
+        "additionalProperties": false,
+        "required": [
+          "workflowTag",
+          "workflowVersion",
+          "currentStageKey",
+          "stages"
+        ],
+        "properties": {
+          "workflowTag": {
+            "type": "string",
+            "description": "The `standard-fix` of the card's `workflow: standard-fix v14` tag."
+          },
+          "workflowVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "currentStageKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stage whose latest attempt is `active`, or `null` when none is."
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunTimelineStage"
+            }
+          }
+        }
+      },
+      "RunTimelineStage": {
+        "type": "object",
+        "title": "RunTimelineStage",
+        "description": "One stepper node. Its top-level fields are its **latest** attempt's; `attempts` holds\nevery attempt, oldest first.",
+        "additionalProperties": false,
+        "required": [
+          "stageKey",
+          "label",
+          "position",
+          "status",
+          "attempt",
+          "maxAttempts",
+          "durationSeconds",
+          "note",
+          "attempts"
+        ],
+        "properties": {
+          "stageKey": {
+            "type": "string",
+            "description": "The pinned workflow's DSL node id.",
+            "examples": [
+              "implement"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "The node's title as the pinned version had it."
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStageStatus"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The `2` of `attempt 2/3`."
+          },
+          "maxAttempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The `3` of `attempt 2/3`, or `null` for a stage type with no limits."
+          },
+          "durationSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The latest attempt's duration in whole seconds — the done caption — or `null` while\nit has not both started and finished."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The warn note, composed by the database from the transition that produced the attempt\n— *\"attempt 1 failed tests — loop returned from gate ↺\"*."
+          },
+          "attempts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/RunStageAttempt"
+            }
+          }
+        }
+      },
+      "RunStageAttempt": {
+        "type": "object",
+        "title": "RunStageAttempt",
+        "description": "One attempt at one stage.",
+        "additionalProperties": false,
+        "required": [
+          "attempt",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "durationSeconds",
+          "note"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStageStatus"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "durationSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "returnedFrom": {
+            "$ref": "#/components/schemas/RunStageReturn"
+          }
+        }
+      },
+      "RunStageReturn": {
+        "type": "object",
+        "title": "RunStageReturn",
+        "description": "The loop edge an attempt came back through. Omitted for an attempt no edge produced.",
+        "additionalProperties": false,
+        "required": [
+          "stageKey",
+          "kind",
+          "reason"
+        ],
+        "properties": {
+          "stageKey": {
+            "type": "string",
+            "description": "The node the loop edge left from.",
+            "examples": [
+              "checks-green"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trigger",
+              "llm",
+              "infra",
+              "gate",
+              "decision",
+              "term"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "failed_tests",
+              "failed_build",
+              "failed_checks",
+              "failed_review",
+              "gate_rejected",
+              "budget_exhausted",
+              "timed_out",
+              "errored"
+            ]
+          }
+        }
+      },
+      "RunChanges": {
+        "type": "object",
+        "title": "RunChanges",
+        "description": "*Changes so far*. The counts are cumulative per file and the totals are sums over the\nrows — never a stored aggregate (decision R8).",
+        "additionalProperties": false,
+        "required": [
+          "files",
+          "totals",
+          "commits",
+          "mergeStrategy"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "description": "Every file of the change-set, in the order it entered it.",
+            "items": {
+              "$ref": "#/components/schemas/RunChangedFile"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/RunChangeTotals"
+          },
+          "commits": {
+            "type": "array",
+            "description": "The run's commits, in the writer's order.",
+            "items": {
+              "$ref": "#/components/schemas/RunChangeCommit"
+            }
+          },
+          "mergeStrategy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "squash",
+              "merge",
+              "rebase",
+              null
+            ],
+            "description": "How the pinned workflow lands the pull request — the *will squash on merge* tag — or\n`null` when the pinned terminal opens none."
+          }
+        }
+      },
+      "RunChangedFile": {
+        "type": "object",
+        "title": "RunChangedFile",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "status",
+          "additions",
+          "deletions"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "examples": [
+              "drivers/can/telemetry_buf.c"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "added",
+              "modified",
+              "deleted",
+              "renamed"
+            ]
+          },
+          "additions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deletions": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RunChangeTotals": {
+        "type": "object",
+        "title": "RunChangeTotals",
+        "description": "The card's `3 files` and the sums beside it.",
+        "additionalProperties": false,
+        "required": [
+          "files",
+          "additions",
+          "deletions"
+        ],
+        "properties": {
+          "files": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "additions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deletions": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RunChangeCommit": {
+        "type": "object",
+        "title": "RunChangeCommit",
+        "additionalProperties": false,
+        "required": [
+          "sha",
+          "shortSha",
+          "subject",
+          "committedAt"
+        ],
+        "properties": {
+          "sha": {
+            "type": "string",
+            "description": "The commit's name as reported — abbreviated or whole."
+          },
+          "shortSha": {
+            "type": "string",
+            "description": "The seven-character chip.",
+            "examples": [
+              "a41c9e2"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "description": "The message's first line — what the row prints."
+          },
+          "committedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RunResources": {
+        "type": "object",
+        "title": "RunResources",
+        "description": "*Resources* — every number from the system that owns it (decision R8). `farm` is\n**omitted** when the run holds no reservation, and the row is then not drawn.",
+        "additionalProperties": false,
+        "required": [
+          "tokens",
+          "cost",
+          "wallClock"
+        ],
+        "properties": {
+          "tokens": {
+            "$ref": "#/components/schemas/RunTokenResource"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/RunCostResource"
+          },
+          "farm": {
+            "$ref": "#/components/schemas/RunFarmResource"
+          },
+          "wallClock": {
+            "$ref": "#/components/schemas/RunWallClock"
+          }
+        }
+      },
+      "RunTokenResource": {
+        "type": "object",
+        "title": "RunTokenResource",
+        "description": "`212k / 400k budget` — the run's `token_usage`, summed, against the pinned\n`limits.token_budget` of the model stage that started most recently.",
+        "additionalProperties": false,
+        "required": [
+          "used",
+          "tokensIn",
+          "tokensOut",
+          "budget",
+          "budgetStageKey"
+        ],
+        "properties": {
+          "used": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Every token attributed to the run — in plus out."
+          },
+          "tokensIn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokensOut": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "budget": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The budget, or `null` before any model stage has started — the meter is then count-only."
+          },
+          "budgetStageKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Which stage's budget `budget` is."
+          }
+        }
+      },
+      "RunCostResource": {
+        "type": "object",
+        "title": "RunCostResource",
+        "description": "`$1.14 / $2.50 cap` — the run's ledger cost, summed, against the *Max cost per run* of\nthe route the budget stage inherits. **Unpriced is not free**: `costCents` is `null`,\nnever `\"0\"`, when nothing attributed to the run is priced.",
+        "additionalProperties": false,
+        "required": [
+          "costCents",
+          "unpricedEvents",
+          "capCents",
+          "routeTag"
+        ],
+        "properties": {
+          "costCents": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d+(\\.\\d+)?$",
+            "description": "Cents, as a decimal string (the ledger is `numeric(14,4)`), or `null` when every\nattributed ledger row is unpriced.",
+            "examples": [
+              "114.0000"
+            ]
+          },
+          "unpricedEvents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many ledger rows carry no price. Non-zero beside a non-null `costCents` means the\ncost is a lower bound."
+          },
+          "capCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The route's cap in cents, or `null` when no route applies (the stage pins a model, or\nnothing has started) or the route sets none.",
+            "examples": [
+              250
+            ]
+          },
+          "routeTag": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The route the cap was read from.",
+            "examples": [
+              "implement-primary"
+            ]
+          }
+        }
+      },
+      "RunFarmResource": {
+        "type": "object",
+        "title": "RunFarmResource",
+        "description": "The build job the run holds on the farm — `forge-02 reserved`.",
+        "additionalProperties": false,
+        "required": [
+          "buildJobId",
+          "jobNumber",
+          "jobStatus",
+          "runnerName"
+        ],
+        "properties": {
+          "buildJobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "jobStatus": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "offered",
+              "running",
+              "succeeded",
+              "failed",
+              "retried",
+              "canceled"
+            ],
+            "description": "Where the job is — what colours the dot."
+          },
+          "runnerName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The runner holding it, or `null` while no runner has taken it.",
+            "examples": [
+              "forge-02"
+            ]
+          }
+        }
+      },
+      "RunWallClock": {
+        "type": "object",
+        "title": "RunWallClock",
+        "description": "The *Wall clock* row, and the head's *elapsed*.",
+        "additionalProperties": false,
+        "required": [
+          "startedAt",
+          "finishedAt",
+          "elapsedSeconds"
+        ],
+        "properties": {
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "`null` while the run is live."
+          },
+          "elapsedSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Whole seconds from start to finish, or to `asOf` while the run is live."
+          }
+        }
+      },
+      "RunGuardrails": {
+        "type": "object",
+        "title": "RunGuardrails",
+        "description": "*Guardrails* — the latest verdict per check (AP.3), the header pill, the policy footer\nand the secrets ruleset's disclosure.",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "checks",
+          "policy",
+          "secrets"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "clean",
+              "violations",
+              "pending",
+              "unevaluated"
+            ],
+            "description": "The header pill: `violations` when any check failed; else `pending` when any has not\nanswered; else `clean`. `unevaluated` when the run has no verdicts at all, which is\nnot the same as clean."
+          },
+          "checks": {
+            "type": "array",
+            "description": "One row per check that has a verdict, in the card's order.",
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/RunGuardrailCheck"
+            }
+          },
+          "policy": {
+            "$ref": "#/components/schemas/RunGuardrailPolicy"
+          },
+          "secrets": {
+            "$ref": "#/components/schemas/RunSecretsDisclosure"
+          }
+        }
+      },
+      "RunGuardrailCheck": {
+        "type": "object",
+        "title": "RunGuardrailCheck",
+        "additionalProperties": false,
+        "required": [
+          "check",
+          "verdict",
+          "rulesetVersion",
+          "evaluatedAt",
+          "changeSetSeq"
+        ],
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "allowed_paths",
+              "ci_config",
+              "secrets",
+              "review_required"
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "not_applicable",
+              "pending"
+            ],
+            "description": "`not_applicable` is the card's `○` — a third answer, not a pass."
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/RunGuardrailEvidence"
+          },
+          "rulesetVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "v3"
+            ]
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeSetSeq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Which change-set report was judged, or `null` for a policy-only check."
+          }
+        }
+      },
+      "RunGuardrailEvidence": {
+        "type": "object",
+        "title": "RunGuardrailEvidence",
+        "description": "Where, and by which rule — **never what** (decision R5). A closed key set; there is no\nfield a matched value could be placed in. Omitted when a verdict carries none.",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "glob": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "RunGuardrailPolicy": {
+        "type": "object",
+        "title": "RunGuardrailPolicy",
+        "description": "The footer — *Policy: standard-fix v14 · tenant acme-robotics*.",
+        "additionalProperties": false,
+        "required": [
+          "workflowTag",
+          "workflowVersion",
+          "tenant"
+        ],
+        "properties": {
+          "workflowTag": {
+            "type": "string"
+          },
+          "workflowVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The version the newest verdict applied, else the run's pin, else `null`."
+          },
+          "tenant": {
+            "type": "string",
+            "description": "The workspace's slug."
+          }
+        }
+      },
+      "RunSecretsDisclosure": {
+        "type": "object",
+        "title": "RunSecretsDisclosure",
+        "description": "What a `secrets` pass can and cannot claim — the card's tooltip (AP.3).",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "ruleCount",
+          "recallClass",
+          "summary",
+          "limitation"
+        ],
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "ruleCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recallClass": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "limitation": {
+            "type": "string"
+          }
+        }
+      },
+      "RunEventsPage": {
+        "type": "object",
+        "title": "RunEventsPage",
+        "description": "One page of the transcript's tail ([#304](https://github.com/NobuData/ouroboros/issues/304)).\nAsk again with `?after=nextAfter`; at once when `hasMore`, else after `pollAfter`.",
+        "additionalProperties": false,
+        "required": [
+          "runId",
+          "after",
+          "entries",
+          "nextAfter",
+          "latestSeq",
+          "hasMore",
+          "live",
+          "elided",
+          "pollAfter"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The cursor asked for."
+          },
+          "entries": {
+            "type": "array",
+            "description": "The entries with `after < seq ≤ nextAfter`, in `seq` order.",
+            "items": {
+              "$ref": "#/components/schemas/RunEventEntry"
+            }
+          },
+          "nextAfter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The next cursor. Equal to `after` when nothing was returned."
+          },
+          "latestSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The run's highest sequence number when the page was read."
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Whether entries past `nextAfter` already exist."
+          },
+          "live": {
+            "type": "boolean",
+            "description": "Whether the run is still moving. `false` for a terminal run, whatever arrived last."
+          },
+          "elided": {
+            "type": "boolean",
+            "description": "Whether a per-run cap has refused entries — the transcript holds an elision marker."
+          },
+          "pollAfter": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Seconds to wait before asking again — `X-Ouro-Poll-After`, in the body too."
+          }
+        }
+      },
+      "RunEventEntry": {
+        "type": "object",
+        "title": "RunEventEntry",
+        "description": "One transcript entry — the JSONL line's fields, camel-cased. As in the JSONL projection,\n**a null field is absent**, so a reader that finds `toolTag` knows a tool was named.",
+        "additionalProperties": false,
+        "required": [
+          "seq",
+          "ts",
+          "actor",
+          "simulated"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the entry happened — the transcript's printed time."
+          },
+          "actor": {
+            "type": "string",
+            "enum": [
+              "plan",
+              "tool",
+              "model",
+              "gate",
+              "user",
+              "system"
+            ],
+            "description": "The chip — `system` is the store speaking for itself, today only the elision marker."
+          },
+          "stageKey": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "toolTag": {
+            "type": "string",
+            "examples": [
+              "edit_file"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "description": "The model this entry came from — required on a `model` entry (decision R4).",
+            "examples": [
+              "claude-fable-5"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "payload": {
+            "description": "Everything about the entry that is not a sentence — a diff's `hunks` (`ctx`, `del`,\n`add`), a test result, a progress fraction. Shape varies by entry type."
+          },
+          "simulated": {
+            "type": "boolean",
+            "description": "Decision R4's watermark, per entry."
+          },
+          "elision": {
+            "$ref": "#/components/schemas/RunEventElision"
+          }
+        }
+      },
+      "RunEventElision": {
+        "type": "object",
+        "title": "RunEventElision",
+        "description": "What an elision marker accounts for. Present on the marker, and only there.",
+        "additionalProperties": false,
+        "required": [
+          "events",
+          "bytes",
+          "from",
+          "to"
+        ],
+        "properties": {
+          "events": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many entries the cap refused."
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many bytes they weighed."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the first refused entry happened."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the most recent one did."
           }
         }
       },
