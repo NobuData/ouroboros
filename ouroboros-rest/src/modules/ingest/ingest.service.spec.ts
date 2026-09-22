@@ -2,7 +2,8 @@ import type { Transaction } from "kysely";
 
 import type { Database, Run, RunStage } from "../db/schema";
 import { DomainError } from "../errors/error.envelope";
-import type { GuardrailScheduler } from "./ingest.guardrails";
+import type { GuardrailCheck } from "../db/schema";
+import type { GuardrailRequest, GuardrailScheduler } from "./ingest.guardrails";
 import { INGEST_ERRORS } from "./ingest.errors";
 import { requestDigest } from "./ingest.idempotency";
 import type { IngestRepository } from "./ingest.repository";
@@ -240,14 +241,18 @@ function stubRepository() {
   return { repository: repository as unknown as IngestRepository, spy: repository, written };
 }
 
-/** A scheduler that counts. */
-function stubGuardrails(): GuardrailScheduler & { calls: number } {
+/** A scheduler that counts, remembers what it was asked, and fails what it is told to. */
+function stubGuardrails(
+  failures: GuardrailCheck[] = [],
+): GuardrailScheduler & { calls: number; requests: GuardrailRequest[] } {
   return {
     calls: 0,
-    evaluate() {
+    requests: [],
+    evaluate(_writer, request) {
       this.calls += 1;
+      this.requests.push(request);
 
-      return Promise.resolve(4);
+      return Promise.resolve({ checks: 4, failures });
     },
   };
 }
@@ -752,8 +757,54 @@ describe("reporting a change-set", () => {
       additions: 59,
       deletions: 12,
       guardrailChecks: 4,
+      guardrailFailures: [],
+      needsHuman: false,
     });
     expect(spy.allocateChangeSetSeq).toHaveBeenCalled();
+  });
+
+  it("hands the evaluator the change-set with its hunks, and the store paths and counts only", async () => {
+    // The hunks are what the secrets check scans, and they go no further than the evaluator:
+    // `replaceFiles` is given the four columns `run_files` has, and nothing a diff line could
+    // ride in on.
+    const { repository, spy } = stubRepository();
+    const guardrails = stubGuardrails();
+    const hunks = [{ newStart: 10, lines: [{ kind: "add", text: "int x = 1;" }] }];
+
+    await new IngestService(repository, guardrails).reportFiles(RUN, {
+      idempotencyKey: "k",
+      files: [
+        { path: "a.c", status: "modified", additions: 1, hunks },
+        { path: "b.c", status: "added", additions: 2 },
+      ],
+    } as never);
+
+    expect(guardrails.requests[0]).toEqual({
+      runId: RUN,
+      changeSetSeq: 3,
+      files: 2,
+      changeSet: [{ path: "a.c", hunks }, { path: "b.c" }],
+    });
+    expect(spy.replaceFiles.mock.calls[0][2]).toEqual([
+      { path: "a.c", status: "modified", additions: 1, deletions: 0 },
+      { path: "b.c", status: "added", additions: 2, deletions: 0 },
+    ]);
+  });
+
+  it("flags the run for a person when a check fails, and names the check", async () => {
+    // The `needs_human` interplay: stated in the answer, not enforced — AR.1 stops the stage.
+    const { repository } = stubRepository();
+
+    const answer = await new IngestService(
+      repository,
+      stubGuardrails(["secrets", "ci_config"]),
+    ).reportFiles(RUN, {
+      idempotencyKey: "k",
+      files: [{ path: "a.c", status: "modified", additions: 3 }],
+    } as never);
+
+    expect(answer.guardrailFailures).toEqual(["secrets", "ci_config"]);
+    expect(answer.needsHuman).toBe(true);
   });
 
   it("triggers none for a run with no file changes, and allocates no number", async () => {
@@ -769,6 +820,8 @@ describe("reporting a change-set", () => {
 
     expect(guardrails.calls).toBe(0);
     expect(answer.guardrailChecks).toBe(0);
+    expect(answer.guardrailFailures).toEqual([]);
+    expect(answer.needsHuman).toBe(false);
     expect(answer.changeSetSeq).toBe(2);
     expect(spy.allocateChangeSetSeq).not.toHaveBeenCalled();
   });

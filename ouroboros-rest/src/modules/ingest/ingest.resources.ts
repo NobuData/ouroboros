@@ -29,7 +29,12 @@
  * what comes back.
  */
 
-import type { RunMergeStrategy, RunStageReturnKind, RunStageStatus } from "../db/schema";
+import type {
+  GuardrailCheck,
+  RunMergeStrategy,
+  RunStageReturnKind,
+  RunStageStatus,
+} from "../db/schema";
 
 /** `POST /internal/runs` — the run that was opened. */
 export interface RunOpenedResource {
@@ -174,13 +179,30 @@ export interface ChangeSetResource {
   /** Their deletions, summed. */
   readonly deletions: number;
   /**
-   * How many guardrail checks this report scheduled.
+   * How many guardrail checks this report evaluated.
    *
    * `0` for a report with no files, which is the acceptance criterion *"a run with no file
    * changes triggers none"* stated in the answer rather than only in the table. A caller that
    * wants the verdicts reads them; what it gets here is confirmation that judging happened.
    */
   readonly guardrailChecks: number;
+  /**
+   * The checks this report **failed**, in the card's order — empty when everything passed or did
+   * not apply.
+   *
+   * AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)). The evidence is not echoed:
+   * it lives in `guardrail_evaluations`, where it has been held to decision R5's shape, and a
+   * receipt is the wrong place for a second copy of it.
+   */
+  readonly guardrailFailures: GuardrailCheck[];
+  /**
+   * Whether a failing check flags this run for a person — `guardrailFailures` is non-empty.
+   *
+   * The `needs_human` interplay, stated rather than enforced: evaluation does not move
+   * `runs.status` or stop a stage. An executor may act on it today; AR.1
+   * ([#315](https://github.com/NobuData/ouroboros/issues/315)) is where a fail stops the stage.
+   */
+  readonly needsHuman: boolean;
 }
 
 /** `POST /internal/runs/:id/commits` — what the commit list did with the report. */

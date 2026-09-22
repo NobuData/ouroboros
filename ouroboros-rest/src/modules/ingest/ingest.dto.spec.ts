@@ -3,6 +3,9 @@ import { validate, type ValidationError } from "class-validator";
 
 import {
   IngestEventsDto,
+  MAX_HUNKS_PER_FILE,
+  MAX_HUNK_LINE_LENGTH,
+  MAX_LINES_PER_HUNK,
   OpenRunDto,
   ReportCommitsDto,
   ReportFilesDto,
@@ -302,6 +305,82 @@ describe("a change-set report", () => {
         files: [{ path: "a.c", status: "changed" }],
       }),
     ).toEqual(["files"]);
+  });
+
+  describe("diff hunks, for the secrets guardrail", () => {
+    /** A report carrying one file with the given hunks. */
+    const withHunks = (hunks: unknown): Record<string, unknown> => ({
+      idempotencyKey: "k",
+      files: [{ path: "a.c", status: "modified", additions: 1, hunks }],
+    });
+
+    it("accepts hunks in the transcript's three kinds, blank lines included", async () => {
+      expect(
+        await violations(
+          ReportFilesDto,
+          withHunks([
+            {
+              newStart: 12,
+              lines: [
+                { kind: "ctx", text: "int main(void) {" },
+                { kind: "del", text: "  return 1;" },
+                { kind: "add", text: "" },
+                { kind: "add", text: "  return 0;" },
+              ],
+            },
+          ]),
+        ),
+      ).toEqual([]);
+    });
+
+    it("accepts newStart 0, which is git's own value for a deleted file's hunk", async () => {
+      expect(
+        await violations(
+          ReportFilesDto,
+          withHunks([{ newStart: 0, lines: [{ kind: "del", text: "gone" }] }]),
+        ),
+      ).toEqual([]);
+    });
+
+    it.each([
+      ["a fourth line kind", [{ newStart: 1, lines: [{ kind: "mod", text: "x" }] }]],
+      ["a negative start", [{ newStart: -1, lines: [] }]],
+      ["a fractional start", [{ newStart: 1.5, lines: [] }]],
+      ["a line with no text", [{ newStart: 1, lines: [{ kind: "add" }] }]],
+      ["a line that is not a string", [{ newStart: 1, lines: [{ kind: "add", text: 42 }] }]],
+      ["hunks that are not a list", { newStart: 1, lines: [] }],
+      [
+        "a line longer than the bound",
+        [{ newStart: 1, lines: [{ kind: "add", text: "x".repeat(MAX_HUNK_LINE_LENGTH + 1) }] }],
+      ],
+      [
+        "more lines than a hunk may carry",
+        [
+          {
+            newStart: 1,
+            lines: Array.from({ length: MAX_LINES_PER_HUNK + 1 }, () => ({
+              kind: "ctx",
+              text: "",
+            })),
+          },
+        ],
+      ],
+      [
+        "more hunks than a file may carry",
+        Array.from({ length: MAX_HUNKS_PER_FILE + 1 }, () => ({ newStart: 1, lines: [] })),
+      ],
+    ])("refuses %s", async (_name, hunks) => {
+      expect(await violations(ReportFilesDto, withHunks(hunks))).toEqual(["files"]);
+    });
+
+    it("refuses a field a hunk does not define — a matched value has nowhere to ride", async () => {
+      expect(
+        await violations(
+          ReportFilesDto,
+          withHunks([{ newStart: 1, lines: [{ kind: "add", text: "x", secret: "y" }] }]),
+        ),
+      ).toEqual(["files"]);
+    });
   });
 });
 

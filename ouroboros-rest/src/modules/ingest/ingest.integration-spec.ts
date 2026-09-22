@@ -310,6 +310,11 @@ describe("the ingestion contract", () => {
         additions: 59,
         deletions: 12,
         guardrailChecks: 4,
+        // The bench's ticket is not a mirrored GitHub issue, so no plan declares a scope and no
+        // hunks were reported: two `not_applicable`s, `ci_config` passes, and `standard-fix`
+        // auto-merges — nothing fails.
+        guardrailFailures: [],
+        needsHuman: false,
       });
 
       const commits = bodyOf<CommitsAppendedResource>(
@@ -779,11 +784,13 @@ describe("the ingestion contract", () => {
         [run.id],
       );
 
+      // Answered by AP.3 (#305) rather than scheduled: `guardrails.integration-spec.ts` owns
+      // the verdicts; what this suite asserts is that a report triggers all four, numbered.
       expect(rows).toEqual([
-        { check: "allowed_paths", verdict: "pending", change_set_seq: 1 },
-        { check: "ci_config", verdict: "pending", change_set_seq: 1 },
-        { check: "review_required", verdict: "pending", change_set_seq: 1 },
-        { check: "secrets", verdict: "pending", change_set_seq: 1 },
+        { check: "allowed_paths", verdict: "not_applicable", change_set_seq: 1 },
+        { check: "ci_config", verdict: "pass", change_set_seq: 1 },
+        { check: "review_required", verdict: "not_applicable", change_set_seq: null },
+        { check: "secrets", verdict: "not_applicable", change_set_seq: 1 },
       ]);
     });
 
@@ -804,6 +811,8 @@ describe("the ingestion contract", () => {
         additions: 0,
         deletions: 0,
         guardrailChecks: 0,
+        guardrailFailures: [],
+        needsHuman: false,
       });
 
       const { rows } = await api.sql.query<{ count: string }>(
@@ -826,7 +835,7 @@ describe("the ingestion contract", () => {
 
       const { rows } = await api.sql.query<{ change_set_seq: number }>(
         `select distinct change_set_seq from ${SCHEMA_NAME}.guardrail_evaluations
-          where run_id = $1 order by change_set_seq`,
+          where run_id = $1 and change_set_seq is not null order by change_set_seq`,
         [run.id],
       );
 

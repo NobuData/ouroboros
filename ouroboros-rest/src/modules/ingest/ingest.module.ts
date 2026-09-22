@@ -33,13 +33,12 @@
  * depends on this module being registered in any particular place.
  *
  * ---------------------------------------------------------------------------
- * **It binds `GUARDRAIL_SCHEDULER`, and that binding is the seam AP.3 moves.**
+ * **It receives `GUARDRAIL_SCHEDULER` from `GuardrailsModule`.**
  *
  * A change-set report triggers guardrail evaluation; AP.3
  * ([#305](https://github.com/NobuData/ouroboros/issues/305)) is what answers the four checks.
- * Until then the binding is `PendingGuardrailScheduler`, which writes the four rows as
- * `pending` — V048's word for *"a check that has been scheduled and has not answered"*. AP.3
- * changes this one line; nothing in the service moves, because the trigger point, the
+ * AP.1 bound the token to a scheduler that wrote the four rows as `pending`; AP.3 replaced that
+ * binding with an import, and nothing in the service moved, because the trigger point, the
  * transaction and the *"no files, no evaluation"* rule are all AP.1's.
  *
  * **It exports nothing.** Nothing inside this service should be opening runs: the contract
@@ -51,14 +50,14 @@
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { GuardrailsModule } from "../guardrails/guardrails.module";
 import { IngestController } from "./ingest.controller";
-import { guardrailSchedulerProvider } from "./ingest.guardrails";
 import { IngestRepository } from "./ingest.repository";
 import { IngestService } from "./ingest.service";
 
 @Module({
-  imports: [DbModule],
+  imports: [DbModule, GuardrailsModule],
   controllers: [IngestController],
-  providers: [IngestRepository, IngestService, guardrailSchedulerProvider],
+  providers: [IngestRepository, IngestService],
 })
 export class IngestModule {}
