@@ -6,6 +6,9 @@ import {
   DEFAULT_ESTIMATION_CONFIDENCE_FLOOR,
   DEFAULT_ESTIMATION_STALE_SECONDS,
   DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+  DEFAULT_RUN_CONTROL_SWEEP_SECONDS,
+  DEFAULT_RUN_CONTROL_TTL_SECONDS,
+  DEFAULT_RUN_STEER_TTL_SECONDS,
   DEFAULT_BACKLOG_STALE_DAYS,
   DEFAULT_REESTIMATION_BATCH,
   DEFAULT_REESTIMATION_HOUR_UTC,
@@ -110,6 +113,10 @@ describe("the development defaults", () => {
       estimationConfidenceFloor: DEFAULT_ESTIMATION_CONFIDENCE_FLOOR,
       estimationStaleSeconds: DEFAULT_ESTIMATION_STALE_SECONDS,
       estimationSweepIntervalSeconds: DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+      // AP.4's (#306) three, written out in the template at their defaults for the same reason.
+      runControlTtlSeconds: DEFAULT_RUN_CONTROL_TTL_SECONDS,
+      runSteerTtlSeconds: DEFAULT_RUN_STEER_TTL_SECONDS,
+      runControlSweepSeconds: DEFAULT_RUN_CONTROL_SWEEP_SECONDS,
       // AL.5's (#281) four, written out in the template at their defaults for the same reason.
       backlogStaleDays: DEFAULT_BACKLOG_STALE_DAYS,
       reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,

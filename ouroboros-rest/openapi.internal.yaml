@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.35.32"
+  version: "0.36.0"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -180,6 +180,32 @@ tags:
          from the run. Likewise `simulated` — decision **R4**'s watermark follows the
          *principal*, which on this channel is the secret the caller presented, so there is
          no field in which it could be claimed or cleared.
+
+  - name: controls
+    description: |-
+      **The control queue's executor half — AP.4
+      ([#306](https://github.com/NobuData/ouroboros/issues/306)), decision **R6**.**
+
+      *Pause loop*, *Abort run* and the steering box are rows on a durable queue, because the
+      moment somebody needs *Abort* is the moment the executor is busy or wedged, which is when
+      a synchronous call fails. An executor **fetches** what is pending for its run (the fetch is
+      the delivery), applies it, and **acknowledges** each control with the effect it had.
+      A control nobody acknowledges before its `expiresAt` is expired, and the console says so.
+
+      **What each kind means, and every executor honours it:**
+
+      * **`pause`**: stop at the next safe boundary (between tool calls, or between stages),
+        never mid-write. Acknowledge once the loop has actually stopped.
+      * **`resume`**: continue a paused loop from where it stopped.
+      * **`abort`**: terminate the run and **preserve its branch**. Nothing is reverted or
+        deleted. The acknowledgment closes the run as `canceled`.
+      * **`steer`**: append `payload` to the **current attempt's** context and keep going.
+        **Do not pause.** Acknowledge with the attempt it landed on (`attempt: 2` gives
+        *"steering applied to attempt 2"*), so the person who typed it knows it reached the
+        attempt they were watching. `remember` is for the knowledge pipeline, not the executor.
+
+      Apply fetched controls in the order given, which is oldest first. Poll at the executor's
+      own safe points: a fetch that finds nothing is cheap.
 
 paths:
   /internal/credentials/lease:
@@ -1062,6 +1088,160 @@ paths:
                 message: The request body is not valid.
                 details:
                   spend: ["costCents must be a non-negative decimal with at most four decimal places"]
+
+  /internal/runs/{id}/controls/fetch:
+    post:
+      tags: [controls]
+      summary: Claim a run's pending controls
+      description: |-
+        Hand over every control waiting for this run and mark each `delivered`. Claiming *is*
+        delivery, which is why this is a `POST`: a `GET` that changed state would be a read a
+        proxy could replay.
+
+        Elapsed controls are expired first and never handed over. Two fetches for one run claim
+        each control once. The steer text is included here and nowhere else on the executor's
+        side.
+      operationId: fetchRunControls
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: The claimed controls, oldest first. Empty when nothing was waiting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ControlsFetched"
+              example:
+                controls:
+                  - id: c0000000-0000-4000-8000-000000000001
+                    kind: steer
+                    payload: prefer a fix inside the ISR; do not touch the test timeouts
+                    remember: false
+                    requestedAt: "2026-09-22T14:04:40.000Z"
+                    expiresAt: "2026-09-22T14:09:40.000Z"
+        "401":
+          description: "`unauthenticated` — no `X-Ouro-Internal-Key`, or a value matching neither principal."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`run_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — `id` is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: "`internal_error` — the service itself failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/runs/{id}/controls/{controlId}/ack:
+    post:
+      tags: [controls]
+      summary: Acknowledge a control with the effect it had
+      description: |-
+        Say what was done with a delivered control. `effect` is recorded in the executor's own
+        words; without it the kind's default sentence is recorded (`paused`, `resumed`,
+        `aborted — branch preserved`, or `steering applied to attempt N` when `attempt` is
+        given).
+
+        **An acknowledged abort closes the run as `canceled`**, and leaves its branch alone.
+        Nothing else here changes the run's status.
+
+        **A control that is not `delivered` is a `409`**, with its state in `details.state`, so
+        an executor can decide: `acked` is a lost response it can stop retrying, `expired` means
+        it answered too late, and `pending` means it never fetched the control.
+      operationId: ackRunControl
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: controlId
+          in: path
+          required: true
+          description: "`run_controls.id`, as the fetch handed it over."
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AckControlRequest"
+            example:
+              attempt: 2
+      responses:
+        "200":
+          description: The control, acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AckedControl"
+              example:
+                id: c0000000-0000-4000-8000-000000000001
+                runId: 5eed0009-0000-4000-8000-000000000482
+                kind: steer
+                state: acked
+                requestedBy: 5eed0001-0000-4000-8000-00000000000a
+                requestedAt: "2026-09-22T14:04:40.000Z"
+                deliveredAt: "2026-09-22T14:04:43.000Z"
+                ackedAt: "2026-09-22T14:04:51.000Z"
+                expiresAt: "2026-09-22T14:09:40.000Z"
+                detail: steering applied to attempt 2
+                hasPayload: true
+                remember: false
+        "401":
+          description: "`unauthenticated` — no `X-Ouro-Internal-Key`, or a value matching neither principal."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`run_not_found`, or `control_not_found` when the control is not this run's."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: control_not_found
+                message: No such control on this run.
+                details:
+                  runId: 5eed0009-0000-4000-8000-000000000482
+                  controlId: c0000000-0000-4000-8000-000000000999
+        "409":
+          description: "`control_not_delivered` — the control is not waiting for an acknowledgment."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: control_not_delivered
+                message: This control is expired, so there is nothing to acknowledge.
+                details:
+                  controlId: c0000000-0000-4000-8000-000000000001
+                  state: expired
+        "422":
+          description: |-
+            `validation_failed` — an id is not a uuid, `effect` is blank, padded or longer than
+            1024 characters, or `attempt` is not a whole number from 1.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: "`internal_error` — the service itself failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
 components:
   parameters:
@@ -2203,3 +2383,98 @@ components:
         reservedBuildJobId:
           type: [string, "null"]
           format: uuid
+
+    ControlsFetched:
+      type: object
+      title: ControlsFetched
+      description: The controls an executor now holds (#306).
+      additionalProperties: false
+      required: [controls]
+      properties:
+        controls:
+          type: array
+          description: Oldest first, which is the order to apply them in.
+          items:
+            $ref: "#/components/schemas/PendingControl"
+
+    PendingControl:
+      type: object
+      title: PendingControl
+      additionalProperties: false
+      required: [id, kind, payload, remember, requestedAt, expiresAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [pause, resume, abort, steer]
+        payload:
+          type: [string, "null"]
+          description: The steering text, and null for every other kind.
+        remember:
+          type: boolean
+          description: The steer's *remember this* flag. For the knowledge pipeline, not the executor.
+        requestedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: After this instant an acknowledgment is refused with `control_not_delivered`.
+
+    AckControlRequest:
+      type: object
+      title: AckControlRequest
+      additionalProperties: false
+      properties:
+        effect:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: What the executor did, in its own words, trimmed. Optional.
+        attempt:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: The attempt a steer was applied to. Used only when `effect` is absent.
+
+    AckedControl:
+      type: object
+      title: AckedControl
+      description: A control as it stands after an acknowledgment — the same shape the console reads.
+      additionalProperties: false
+      required: [id, runId, kind, state, requestedBy, requestedAt, deliveredAt, ackedAt, expiresAt, detail, hasPayload, remember]
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [pause, resume, abort, steer]
+        state:
+          type: string
+          enum: [pending, delivered, acked, expired, rejected]
+        requestedBy:
+          type: [string, "null"]
+        requestedAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: [string, "null"]
+          format: date-time
+        ackedAt:
+          type: [string, "null"]
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        detail:
+          type: [string, "null"]
+        hasPayload:
+          type: boolean
+        remember:
+          type: boolean

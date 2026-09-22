@@ -179,7 +179,7 @@ function emptyPanel(
  * The hue each status takes in the *Status* column — the mockup's `pill run`, `pill warn` and
  * `pill ok`, in that order.
  *
- * The three terminal statuses are here as well although this table cannot show one — a
+ * The four terminal statuses are here as well although this table cannot show one — a
  * terminal run has a `finishedAt` and is in the *Recently closed* card by definition — so
  * that a run arriving in the wrong slice is drawn in a hue that suits it rather than as an
  * accented "live" pill saying `failed`.
@@ -191,6 +191,7 @@ const STATUS_TONE: Record<RunStatus, ChipTone> = {
   merged: "ok",
   needs_human: "warn",
   failed: "err",
+  canceled: "neutral",
 };
 
 /**
@@ -206,6 +207,7 @@ const STATUS_LABEL: Record<RunStatus, string> = {
   merged: "merged",
   needs_human: "needs human",
   failed: "failed",
+  canceled: "canceled",
 };
 
 /**

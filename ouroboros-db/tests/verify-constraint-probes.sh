@@ -603,7 +603,7 @@ fi
 # outside them is a row that renders in no card at all.
 # ---------------------------------------------------------------------------
 expect_red 'runs.status accepts anything' \
-  'runs\.status rejects a value outside the six F2 names' \
+  'runs\.status rejects a value outside the seven F2 names' \
   'alter table ouroboros.runs drop constraint runs_status;'
 
 expect_red 'queue_items.effort accepts anything' \

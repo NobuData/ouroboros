@@ -162,6 +162,10 @@ function emptyPanel(
  * status and a run that fails is exactly the row this card must not quietly drop. The
  * treatment is the design system's own error hue, so it needed nothing invented for it.
  *
+ * **`canceled` is neutral** ([#306](https://github.com/NobuData/ouroboros/issues/306)): an
+ * aborted run is a person's decision rather than the agent's failure, so it takes no outcome
+ * hue at all.
+ *
  * The three active statuses are mapped as well, for the reason the active table maps the
  * terminal ones: a run arriving in the wrong slice is drawn in a hue that suits it rather
  * than falling through to a colour that reports an outcome it has not reached.
@@ -170,6 +174,7 @@ const OUTCOME_TONE: Record<RunStatus, ChipTone> = {
   merged: "ok",
   needs_human: "warn",
   failed: "err",
+  canceled: "neutral",
   coding: "accent",
   building: "accent",
   review: "accent",
@@ -185,6 +190,7 @@ const OUTCOME_LABEL: Record<RunStatus, string> = {
   merged: "merged",
   needs_human: "needs human",
   failed: "failed",
+  canceled: "canceled",
   coding: "coding",
   building: "building",
   review: "review",

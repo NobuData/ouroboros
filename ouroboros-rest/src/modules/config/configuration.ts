@@ -354,6 +354,50 @@ export const MIN_ESTIMATION_SWEEP_INTERVAL_SECONDS = 10;
 export const MAX_ESTIMATION_SWEEP_INTERVAL_SECONDS = 86400;
 
 /**
+ * Seconds a pause, resume or abort is worth delivering when `OURO_RUN_CONTROL_TTL_SECONDS` is
+ * not set — two minutes.
+ *
+ * AP.4 ([#306](https://github.com/NobuData/ouroboros/issues/306)), decision **R6**. V048 makes
+ * every control carry an expiry and leaves *how long* to this service. Short, because the
+ * person who pressed *Pause loop* is watching the chip: two minutes without an ack is the
+ * honest moment to say *"no response — the run may be between stages"* rather than keep
+ * saying *sent*.
+ */
+export const DEFAULT_RUN_CONTROL_TTL_SECONDS = 120;
+
+/**
+ * Seconds a steer is worth delivering when `OURO_RUN_STEER_TTL_SECONDS` is not set — five
+ * minutes.
+ *
+ * Longer than the buttons', because a steer is applied at the executor's next point of
+ * context injection, which may be a whole tool call away, and a nudge that lands a little late
+ * is still the nudge somebody typed. A pause that lands five minutes late is a different act.
+ */
+export const DEFAULT_RUN_STEER_TTL_SECONDS = 300;
+
+/** Shortest a control TTL may be set to — ten seconds, below which no executor can answer. */
+export const MIN_RUN_CONTROL_TTL_SECONDS = 10;
+
+/** Longest a control TTL may be set to — one hour. A control older than that is history. */
+export const MAX_RUN_CONTROL_TTL_SECONDS = 3600;
+
+/**
+ * Seconds between control-expiry sweeps when `OURO_RUN_CONTROL_SWEEP_SECONDS` is not set —
+ * fifteen.
+ *
+ * One indexed `UPDATE` over `run_controls_expiry_idx`, which usually touches nothing. The
+ * listing and the executor fetch sweep their own run first, so this cadence decides only how
+ * soon an expiry reaches the audit trail for a run nobody is looking at.
+ */
+export const DEFAULT_RUN_CONTROL_SWEEP_SECONDS = 15;
+
+/** Shortest the control sweep may be set to — five seconds. */
+export const MIN_RUN_CONTROL_SWEEP_SECONDS = 5;
+
+/** Longest the control sweep may be set to — one hour, the longest a TTL may be. */
+export const MAX_RUN_CONTROL_SWEEP_SECONDS = 3600;
+
+/**
  * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
  * when `OURO_BACKLOG_STALE_DAYS` is not set — thirty, mockup 09's `Stale > 30d`.
  *
@@ -715,6 +759,21 @@ export interface Configuration {
    */
   readonly estimationSweepIntervalSeconds: number;
   /**
+   * Seconds a pause, resume or abort is worth delivering. From `OURO_RUN_CONTROL_TTL_SECONDS`,
+   * {@link DEFAULT_RUN_CONTROL_TTL_SECONDS} when unset (AP.4, #306).
+   */
+  readonly runControlTtlSeconds: number;
+  /**
+   * Seconds a steer is worth delivering. From `OURO_RUN_STEER_TTL_SECONDS`,
+   * {@link DEFAULT_RUN_STEER_TTL_SECONDS} when unset (AP.4, #306).
+   */
+  readonly runSteerTtlSeconds: number;
+  /**
+   * Seconds between control-expiry sweeps. From `OURO_RUN_CONTROL_SWEEP_SECONDS`,
+   * {@link DEFAULT_RUN_CONTROL_SWEEP_SECONDS} when unset (AP.4, #306). Jittered ±25%.
+   */
+  readonly runControlSweepSeconds: number;
+  /**
    * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
    * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
    */
@@ -810,6 +869,9 @@ export const VARIABLES = {
   estimationConfidenceFloor: "OURO_ESTIMATION_CONFIDENCE_FLOOR",
   estimationStaleSeconds: "OURO_ESTIMATION_STALE_SECONDS",
   estimationSweepIntervalSeconds: "OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS",
+  runControlTtlSeconds: "OURO_RUN_CONTROL_TTL_SECONDS",
+  runSteerTtlSeconds: "OURO_RUN_STEER_TTL_SECONDS",
+  runControlSweepSeconds: "OURO_RUN_CONTROL_SWEEP_SECONDS",
   backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
@@ -1313,6 +1375,26 @@ const environmentShape = z.object({
     MAX_ESTIMATION_SWEEP_INTERVAL_SECONDS,
   ),
 
+  // AP.4's (#306) three: how long each kind of control is worth delivering, and how often
+  // the expiry sweep runs.
+  OURO_RUN_CONTROL_TTL_SECONDS: cadenceSeconds(
+    MIN_RUN_CONTROL_TTL_SECONDS,
+    DEFAULT_RUN_CONTROL_TTL_SECONDS,
+    MAX_RUN_CONTROL_TTL_SECONDS,
+  ),
+
+  OURO_RUN_STEER_TTL_SECONDS: cadenceSeconds(
+    MIN_RUN_CONTROL_TTL_SECONDS,
+    DEFAULT_RUN_STEER_TTL_SECONDS,
+    MAX_RUN_CONTROL_TTL_SECONDS,
+  ),
+
+  OURO_RUN_CONTROL_SWEEP_SECONDS: cadenceSeconds(
+    MIN_RUN_CONTROL_SWEEP_SECONDS,
+    DEFAULT_RUN_CONTROL_SWEEP_SECONDS,
+    MAX_RUN_CONTROL_SWEEP_SECONDS,
+  ),
+
   // AL.5's (#281) four: the Backlog Health card's stale threshold, and the nightly job's hour,
   // jitter window and batch bound.
   OURO_BACKLOG_STALE_DAYS: boundedWhole(
@@ -1503,6 +1585,9 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     estimationConfidenceFloor: values.OURO_ESTIMATION_CONFIDENCE_FLOOR,
     estimationStaleSeconds: values.OURO_ESTIMATION_STALE_SECONDS,
     estimationSweepIntervalSeconds: values.OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS,
+    runControlTtlSeconds: values.OURO_RUN_CONTROL_TTL_SECONDS,
+    runSteerTtlSeconds: values.OURO_RUN_STEER_TTL_SECONDS,
+    runControlSweepSeconds: values.OURO_RUN_CONTROL_SWEEP_SECONDS,
     backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,

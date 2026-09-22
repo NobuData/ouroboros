@@ -1002,9 +1002,9 @@ select pg_temp.must_hold(
 select pg_temp.must_reject(
   $$update ouroboros.runs set status = 'queued'
     where id = 'e1000000-0000-0000-0000-000000000482'$$,
-  'runs.status rejects a value outside the six F2 names', 'runs_status');
+  'runs.status rejects a value outside the seven F2 names', 'runs_status');
 
--- And all six are storable — the CHECK is a vocabulary, not a subset of one. The three
+-- And all seven are storable — the CHECK is a vocabulary, not a subset of one. The four
 -- terminal ones are exercised below, where they can carry the finish time they require.
 update ouroboros.runs set status = 'building', stage_label = 'Build farm', stage_index = 5
   where id = 'e1000000-0000-0000-0000-000000000482';
@@ -16328,6 +16328,100 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.run_controls where run_id::text like 'a9200000-%')
    and (select count(*) = 0 from ouroboros.guardrail_evaluations where run_id::text like 'a9200000-%'),
   'and the coverage fixture leaves nothing behind for the sections after it to count');
+
+-- ===========================================================================
+-- V050 — a status an aborted run rests at, and the steer's remember flag (#306, AP.4)
+-- ===========================================================================
+--
+-- Two amendments, each asserted from both sides: `canceled` is storable and terminal (so it
+-- carries a finish time and cannot be held without one), and `remember` is steer-only and
+-- frozen at insert with the rest of what was asked.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v050', 'Abort Works', 'abort-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('ab100000-0000-0000-0000-00000000000a', 'org-v050', 'abort-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('ab1f0000-0000-0000-0000-00000000000a', 'ab100000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at, branch_name)
+  values ('ab200000-0000-0000-0000-000000000482', 'org-v050',
+          'ab1f0000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implement', 4, 8, now() - interval '13 minutes',
+          'loop/482-canbus-flake');
+
+-- --- canceled is terminal ---------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.runs set status = 'canceled'
+     where id = 'ab200000-0000-0000-0000-000000000482'$$,
+  'a canceled run is terminal, so it must carry finished_at', 'runs_terminal_finished_at');
+
+update ouroboros.runs set status = 'canceled', finished_at = now()
+ where id = 'ab200000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select status = 'canceled' and finished_at is not null
+          and branch_name = 'loop/482-canbus-flake'
+     from ouroboros.runs where id = 'ab200000-0000-0000-0000-000000000482'),
+  'an aborted run rests at canceled with its finish time, and its branch is untouched');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set finished_at = null
+     where id = 'ab200000-0000-0000-0000-000000000482'$$,
+  'and a canceled run cannot shed its finish time', 'runs_terminal_finished_at');
+
+-- --- remember is steer-only ------------------------------------------------------------
+insert into ouroboros.run_controls
+    (id, run_id, kind, payload, remember, expires_at)
+  values ('ab300000-0000-0000-0000-00000000000a', 'ab200000-0000-0000-0000-000000000482',
+          'steer', 'always prefer a fix inside the ISR', true, now() + interval '5 minutes');
+
+select pg_temp.must_hold(
+  (select remember from ouroboros.run_controls
+    where id = 'ab300000-0000-0000-0000-00000000000a'),
+  'a steer can be flagged remember this');
+
+insert into ouroboros.run_controls (id, run_id, kind, payload, expires_at)
+  values ('ab300000-0000-0000-0000-00000000000b', 'ab200000-0000-0000-0000-000000000482',
+          'steer', 'skip the HIL suite for now', now() + interval '5 minutes');
+
+select pg_temp.must_hold(
+  (select not remember from ouroboros.run_controls
+    where id = 'ab300000-0000-0000-0000-00000000000b'),
+  'and the flag is false unless somebody set it — most steers are about their run');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, remember, expires_at)
+    values ('ab200000-0000-0000-0000-000000000482', 'pause', true, now() + interval '5 minutes')$$,
+  'a pause cannot be remembered', 'run_controls_remember_belongs_to_steer');
+
+-- --- and it is frozen at insert ---------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set remember = false
+     where id = 'ab300000-0000-0000-0000-00000000000a'$$,
+  'the remember flag is part of what was asked, so it cannot be changed after the steer was sent',
+  'run_controls_transition');
+
+update ouroboros.run_controls
+   set state = 'delivered', delivered_at = now()
+ where id = 'ab300000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select state = 'delivered' and remember from ouroboros.run_controls
+    where id = 'ab300000-0000-0000-0000-00000000000a'),
+  'while the steer still moves along its states carrying the flag it was sent with');
+
+-- --- teardown ----------------------------------------------------------------------------
+delete from ouroboros.organization where "id" = 'org-v050';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where id::text like 'ab200000-%'),
+  'and the V050 fixture leaves nothing behind');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

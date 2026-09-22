@@ -28,6 +28,8 @@ from ouroboros_engine.control_plane.contract import (
     INVOKE_MEDIA_TYPE,
     INVOKE_PATH,
     LEASE_PATH,
+    RUN_CONTROL_ACK_PATH,
+    RUN_CONTROLS_FETCH_PATH,
     RunContext,
 )
 
@@ -272,3 +274,119 @@ def test_an_event_kind_this_build_does_not_know_is_named(
 
     assert refused.value.code == "unknown_event_kind"
     assert "telemetry" in str(refused.value)
+
+
+# --- the control queue (AP.4, #306) ------------------------------------------------------
+
+#: A control as a fetch hands it over.
+STEER = {
+    "id": "c0000000-0000-4000-8000-000000000001",
+    "kind": "steer",
+    "payload": "prefer a fix inside the ISR",
+    "remember": False,
+    "requestedAt": "2026-09-22T14:04:40.000Z",
+    "expiresAt": "2026-09-22T14:09:40.000Z",
+}
+
+
+def test_a_fetch_claims_the_run_s_controls_with_the_key(
+    client: ControlPlaneClient,
+) -> None:
+    request = client.fetch_controls_request(RUN)
+
+    assert request.method == "POST"
+    assert request.url == f"{BASE_URL}{RUN_CONTROLS_FETCH_PATH.format(id=RUN)}"
+    assert request.headers[INTERNAL_KEY_HEADER] == SECRET
+    assert request.json == {}
+
+
+def test_a_fetch_reads_the_steer_text_and_keeps_the_order(
+    client: ControlPlaneClient,
+) -> None:
+    pause = {**STEER, "id": "c0000000-0000-4000-8000-000000000002", "kind": "pause"}
+    pause["payload"] = None
+
+    fetched = client.read_controls(200, {"controls": [STEER, pause]})
+
+    assert [control.kind for control in fetched.controls] == ["steer", "pause"]
+    assert fetched.controls[0].payload == "prefer a fix inside the ISR"
+    assert fetched.controls[1].payload is None
+
+
+def test_an_empty_fetch_is_an_empty_list(client: ControlPlaneClient) -> None:
+    assert client.read_controls(200, {"controls": []}).controls == []
+
+
+def test_an_ack_goes_to_the_control_s_own_path(client: ControlPlaneClient) -> None:
+    request = client.ack_control_request(RUN, STEER["id"], attempt=2)
+
+    assert request.url == (
+        f"{BASE_URL}{RUN_CONTROL_ACK_PATH.format(id=RUN, control_id=STEER['id'])}"
+    )
+    assert request.headers[INTERNAL_KEY_HEADER] == SECRET
+    assert request.json == {"attempt": 2}
+
+
+def test_an_ack_sends_the_executor_s_own_words(client: ControlPlaneClient) -> None:
+    request = client.ack_control_request(
+        RUN, STEER["id"], effect="paused at a boundary"
+    )
+
+    assert request.json == {"effect": "paused at a boundary"}
+
+
+def test_an_ack_refuses_an_attempt_the_contract_does_not_accept(
+    client: ControlPlaneClient,
+) -> None:
+    with pytest.raises(ValueError, match="attempt"):
+        client.ack_control_request(RUN, STEER["id"], attempt=0)
+
+
+def test_an_acked_control_reads_back_its_detail(client: ControlPlaneClient) -> None:
+    acked = client.read_ack(
+        200,
+        {
+            "id": STEER["id"],
+            "runId": RUN,
+            "kind": "steer",
+            "state": "acked",
+            "requestedBy": None,
+            "requestedAt": STEER["requestedAt"],
+            "deliveredAt": "2026-09-22T14:04:43.000Z",
+            "ackedAt": "2026-09-22T14:04:51.000Z",
+            "expiresAt": STEER["expiresAt"],
+            "detail": "steering applied to attempt 2",
+            "hasPayload": True,
+            "remember": False,
+        },
+    )
+
+    assert acked.state == "acked"
+    assert acked.detail == "steering applied to attempt 2"
+    assert acked.run_id == RUN
+
+
+def test_a_late_ack_is_a_refusal_carrying_the_control_s_state(
+    client: ControlPlaneClient,
+) -> None:
+    with pytest.raises(ControlPlaneError) as refused:
+        client.read_ack(
+            409,
+            {
+                "code": "control_not_delivered",
+                "message": "This control is expired, so there is nothing to acknowledge.",
+                "details": {"controlId": STEER["id"], "state": "expired"},
+            },
+        )
+
+    assert refused.value.code == "control_not_delivered"
+    assert refused.value.details["state"] == "expired"
+
+
+def test_a_fetch_for_no_such_run_is_a_refusal(client: ControlPlaneClient) -> None:
+    with pytest.raises(ControlPlaneError) as refused:
+        client.read_controls(
+            404, {"code": "run_not_found", "message": "No such run.", "details": {}}
+        )
+
+    assert refused.value.status == 404

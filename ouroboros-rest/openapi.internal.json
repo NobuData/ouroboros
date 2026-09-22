@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.35.32",
+    "version": "0.36.0",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built and what is specified.** The lease is implemented. The proxy is\n*specified* by this document and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers\n`501` with `code: \"invocation_not_implemented\"`, deliberately rather than `404`, so an\nexecutor being written against this contract can tell *the path is right and the other\nhalf is not built yet* from *I have the URL wrong*. The contract exists first because\nAF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an\nexecutor **against** it — a decision recorded afterwards is a description of whatever\ngot built.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -37,6 +37,10 @@
     {
       "name": "runs",
       "description": "**The run ingestion contract — AP.1\n([#303](https://github.com/NobuData/ouroboros/issues/303)), decision **R2**.**\n\nOne internal contract every executor reports through: stages, transcript events, file\nand commit reports, resource deltas. The simulated-run driver (AP.5,\n[#307](https://github.com/NobuData/ouroboros/issues/307)) calls it today and real\nexecution (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)) calls it\ntomorrow, and that is the point of it existing before either: the Run Console is\nend-to-end real from the start, and v2 changes who is calling and nothing else.\n\n**There is exactly one of these, deliberately.** DASH-J.3\n([#91](https://github.com/NobuData/ouroboros/issues/91)) defined an engine→read-model\ningestion bridge and left it unbuilt; its scope is delivered here. A second, richer\nbridge beside it would fork the read-model and leave two writers disagreeing about a\nrun's state.\n\n**Three rules hold across all six operations.**\n\n1. **Every write is idempotency-keyed.** Replaying a key returns the original result —\n   not an error, because an executor retries when it did not hear the answer and being\n   told *\"you already sent that\"* leaves it where it was. The same *values*, field for\n   field: the answer is stored as `jsonb`, which sorts an object's keys, so a replay's\n   field order is PostgreSQL's rather than the first answer's. A key presented with a\n   *different* body is refused with `idempotency_key_reused`.\n2. **The server owns the ordering.** Transcript entries carry the executor's own\n   monotonic `hint`; the server assigns the authoritative dense `seq` and **refuses**\n   a batch that does not continue the accepted order rather than silently reordering\n   it. Renumbering a sequence the console pages by would change a transcript under a\n   reader's cursor.\n3. **The workspace is resolved, never claimed.** No body carries an organization: a run\n   resolves one from the ticket it is opened for, and every later report resolves one\n   from the run. Likewise `simulated` — decision **R4**'s watermark follows the\n   *principal*, which on this channel is the secret the caller presented, so there is\n   no field in which it could be claimed or cleared."
+    },
+    {
+      "name": "controls",
+      "description": "**The control queue's executor half — AP.4\n([#306](https://github.com/NobuData/ouroboros/issues/306)), decision **R6**.**\n\n*Pause loop*, *Abort run* and the steering box are rows on a durable queue, because the\nmoment somebody needs *Abort* is the moment the executor is busy or wedged, which is when\na synchronous call fails. An executor **fetches** what is pending for its run (the fetch is\nthe delivery), applies it, and **acknowledges** each control with the effect it had.\nA control nobody acknowledges before its `expiresAt` is expired, and the console says so.\n\n**What each kind means, and every executor honours it:**\n\n* **`pause`**: stop at the next safe boundary (between tool calls, or between stages),\n  never mid-write. Acknowledge once the loop has actually stopped.\n* **`resume`**: continue a paused loop from where it stopped.\n* **`abort`**: terminate the run and **preserve its branch**. Nothing is reverted or\n  deleted. The acknowledgment closes the run as `canceled`.\n* **`steer`**: append `payload` to the **current attempt's** context and keep going.\n  **Do not pause.** Acknowledge with the attempt it landed on (`attempt: 2` gives\n  *\"steering applied to attempt 2\"*), so the person who typed it knows it reached the\n  attempt they were watching. `remember` is for the knowledge pipeline, not the executor.\n\nApply fetched controls in the order given, which is oldest first. Poll at the executor's\nown safe points: a fetch that finds nothing is cheap."
     }
   ],
   "paths": {
@@ -1037,6 +1041,215 @@
                       "costCents must be a non-negative decimal with at most four decimal places"
                     ]
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/controls/fetch": {
+      "post": {
+        "tags": [
+          "controls"
+        ],
+        "summary": "Claim a run's pending controls",
+        "description": "Hand over every control waiting for this run and mark each `delivered`. Claiming *is*\ndelivery, which is why this is a `POST`: a `GET` that changed state would be a read a\nproxy could replay.\n\nElapsed controls are expired first and never handed over. Two fetches for one run claim\neach control once. The steer text is included here and nowhere else on the executor's\nside.",
+        "operationId": "fetchRunControls",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The claimed controls, oldest first. Empty when nothing was waiting.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlsFetched"
+                },
+                "example": {
+                  "controls": [
+                    {
+                      "id": "c0000000-0000-4000-8000-000000000001",
+                      "kind": "steer",
+                      "payload": "prefer a fix inside the ISR; do not touch the test timeouts",
+                      "remember": false,
+                      "requestedAt": "2026-09-22T14:04:40.000Z",
+                      "expiresAt": "2026-09-22T14:09:40.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/controls/{controlId}/ack": {
+      "post": {
+        "tags": [
+          "controls"
+        ],
+        "summary": "Acknowledge a control with the effect it had",
+        "description": "Say what was done with a delivered control. `effect` is recorded in the executor's own\nwords; without it the kind's default sentence is recorded (`paused`, `resumed`,\n`aborted — branch preserved`, or `steering applied to attempt N` when `attempt` is\ngiven).\n\n**An acknowledged abort closes the run as `canceled`**, and leaves its branch alone.\nNothing else here changes the run's status.\n\n**A control that is not `delivered` is a `409`**, with its state in `details.state`, so\nan executor can decide: `acked` is a lost response it can stop retrying, `expired` means\nit answered too late, and `pending` means it never fetched the control.",
+        "operationId": "ackRunControl",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "name": "controlId",
+            "in": "path",
+            "required": true,
+            "description": "`run_controls.id`, as the fetch handed it over.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AckControlRequest"
+              },
+              "example": {
+                "attempt": 2
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The control, acknowledged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckedControl"
+                },
+                "example": {
+                  "id": "c0000000-0000-4000-8000-000000000001",
+                  "runId": "5eed0009-0000-4000-8000-000000000482",
+                  "kind": "steer",
+                  "state": "acked",
+                  "requestedBy": "5eed0001-0000-4000-8000-00000000000a",
+                  "requestedAt": "2026-09-22T14:04:40.000Z",
+                  "deliveredAt": "2026-09-22T14:04:43.000Z",
+                  "ackedAt": "2026-09-22T14:04:51.000Z",
+                  "expiresAt": "2026-09-22T14:09:40.000Z",
+                  "detail": "steering applied to attempt 2",
+                  "hasPayload": true,
+                  "remember": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`, or `control_not_found` when the control is not this run's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "control_not_found",
+                  "message": "No such control on this run.",
+                  "details": {
+                    "runId": "5eed0009-0000-4000-8000-000000000482",
+                    "controlId": "c0000000-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`control_not_delivered` — the control is not waiting for an acknowledgment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "control_not_delivered",
+                  "message": "This control is expired, so there is nothing to acknowledge.",
+                  "details": {
+                    "controlId": "c0000000-0000-4000-8000-000000000001",
+                    "state": "expired"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id is not a uuid, `effect` is blank, padded or longer than\n1024 characters, or `attempt` is not a whole number from 1.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -2404,6 +2617,180 @@
               "null"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "ControlsFetched": {
+        "type": "object",
+        "title": "ControlsFetched",
+        "description": "The controls an executor now holds (#306).",
+        "additionalProperties": false,
+        "required": [
+          "controls"
+        ],
+        "properties": {
+          "controls": {
+            "type": "array",
+            "description": "Oldest first, which is the order to apply them in.",
+            "items": {
+              "$ref": "#/components/schemas/PendingControl"
+            }
+          }
+        }
+      },
+      "PendingControl": {
+        "type": "object",
+        "title": "PendingControl",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "payload",
+          "remember",
+          "requestedAt",
+          "expiresAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pause",
+              "resume",
+              "abort",
+              "steer"
+            ]
+          },
+          "payload": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The steering text, and null for every other kind."
+          },
+          "remember": {
+            "type": "boolean",
+            "description": "The steer's *remember this* flag. For the knowledge pipeline, not the executor."
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "After this instant an acknowledgment is refused with `control_not_delivered`."
+          }
+        }
+      },
+      "AckControlRequest": {
+        "type": "object",
+        "title": "AckControlRequest",
+        "additionalProperties": false,
+        "properties": {
+          "effect": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "What the executor did, in its own words, trimmed. Optional."
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "The attempt a steer was applied to. Used only when `effect` is absent."
+          }
+        }
+      },
+      "AckedControl": {
+        "type": "object",
+        "title": "AckedControl",
+        "description": "A control as it stands after an acknowledgment — the same shape the console reads.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "runId",
+          "kind",
+          "state",
+          "requestedBy",
+          "requestedAt",
+          "deliveredAt",
+          "ackedAt",
+          "expiresAt",
+          "detail",
+          "hasPayload",
+          "remember"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pause",
+              "resume",
+              "abort",
+              "steer"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "delivered",
+              "acked",
+              "expired",
+              "rejected"
+            ]
+          },
+          "requestedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deliveredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ackedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasPayload": {
+            "type": "boolean"
+          },
+          "remember": {
+            "type": "boolean"
           }
         }
       }

@@ -68,6 +68,19 @@ export const COMMITS_ROUTE = ":id/commits";
 /** Route segment of a run's resource reports, relative to {@link RUNS_PATH}. */
 export const RESOURCES_ROUTE = ":id/resources";
 
+/**
+ * Route segment of a run's control fetch, relative to {@link RUNS_PATH}.
+ *
+ * AP.4 ([#306](https://github.com/NobuData/ouroboros/issues/306)), decision **R6**: the executor
+ * claims what is pending for its run, and the claim is what moves a control to `delivered`.
+ * A `POST` because fetching *is* the delivery — a `GET` that changed state would be a read a
+ * proxy could replay.
+ */
+export const CONTROLS_FETCH_ROUTE = ":id/controls/fetch";
+
+/** Route segment of one control's acknowledgment, relative to {@link RUNS_PATH} (AP.4). */
+export const CONTROL_ACK_ROUTE = ":id/controls/:controlId/ack";
+
 /** The lease, as the engine calls it: `/internal/credentials/lease`. */
 export const INTERNAL_LEASE_PATH = `/${CREDENTIALS_PATH}/${LEASE_ROUTE}`;
 
@@ -92,6 +105,12 @@ export const INTERNAL_RUN_COMMITS_PATH = `/${RUNS_PATH}/${COMMITS_ROUTE}`;
 /** One run's resource reports: `/internal/runs/:id/resources`. */
 export const INTERNAL_RUN_RESOURCES_PATH = `/${RUNS_PATH}/${RESOURCES_ROUTE}`;
 
+/** One run's pending controls, claimed: `/internal/runs/:id/controls/fetch`. */
+export const INTERNAL_RUN_CONTROLS_FETCH_PATH = `/${RUNS_PATH}/${CONTROLS_FETCH_ROUTE}`;
+
+/** One control's acknowledgment: `/internal/runs/:id/controls/:controlId/ack`. */
+export const INTERNAL_RUN_CONTROL_ACK_PATH = `/${RUNS_PATH}/${CONTROL_ACK_ROUTE}`;
+
 /**
  * Every internal path.
  *
@@ -115,6 +134,8 @@ export const INTERNAL_PATHS = [
   INTERNAL_RUN_FILES_PATH,
   INTERNAL_RUN_COMMITS_PATH,
   INTERNAL_RUN_RESOURCES_PATH,
+  INTERNAL_RUN_CONTROLS_FETCH_PATH,
+  INTERNAL_RUN_CONTROL_ACK_PATH,
 ] as const;
 
 /**

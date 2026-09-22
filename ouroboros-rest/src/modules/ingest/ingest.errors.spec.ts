@@ -124,8 +124,10 @@ describe("the published contract", () => {
   /** Every string that appears anywhere under the six ingestion paths. */
   function ingestionProse(): string {
     const document = internalDocument();
-    const ingestion = Object.entries(document.paths).filter(([path]) =>
-      path.startsWith("/internal/runs"),
+    // The control queue's two routes (#306) share the `/internal/runs` prefix and are not
+    // ingestion operations, so they are left out rather than counted.
+    const ingestion = Object.entries(document.paths).filter(
+      ([path]) => path.startsWith("/internal/runs") && !path.includes("/controls/"),
     );
 
     expect(ingestion).toHaveLength(6);
