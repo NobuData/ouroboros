@@ -15,6 +15,9 @@ committed file this module loads rather than a document FastAPI derives from the
 (:mod:`ouroboros_engine.openapi`).
 """
 
+import importlib
+import logging
+
 from fastapi import FastAPI
 
 from ouroboros_engine.api import (
@@ -145,7 +148,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(estimate.router)
     app.include_router(workflows.router)
     app.include_router(plan.router)
+    _mount_simulator(app, resolved)
     return app
+
+
+#: The development-only package that holds the simulated-run driver (AP.5, #307). It is
+#: named here as a string and imported only when asked for, so this module does not depend
+#: on it, and the production wheel, which does not contain it, still builds and runs.
+SIMULATOR_PACKAGE = "ouroboros_simulator"
+
+
+def _mount_simulator(app: FastAPI, settings: Settings) -> bool:
+    """Mount the simulated-run driver's ``/dev`` routes on a development engine.
+
+    Two conditions, and the second is the one that keeps it out of production: the
+    simulator secret is set, **and** the driver's package is importable. The production
+    image installs the wheel, which does not contain the package
+    (``tests/test_simulator_packaging.py`` builds one and checks), so there the import
+    fails and nothing is mounted, whatever the environment says.
+
+    Args:
+        app: The application being built.
+        settings: Its settings.
+
+    Returns:
+        Whether ``/dev`` was mounted.
+
+    Raises:
+        ModuleNotFoundError: If the driver's package is present but something *it*
+            imports is missing. That is a broken development install, not a production
+            one, and hiding it would make ``/dev`` disappear for no stated reason.
+    """
+    if settings.run_simulator_secret is None:
+        return False
+
+    try:
+        api = importlib.import_module(f"{SIMULATOR_PACKAGE}.api")
+    except ModuleNotFoundError as missing:
+        if missing.name != SIMULATOR_PACKAGE:
+            raise
+        logging.getLogger(__name__).info(
+            "OURO_RUN_SIMULATOR_SECRET is set, but this build does not carry the "
+            "simulated-run driver; /dev is not mounted"
+        )
+        return False
+
+    return api.mount(app, settings)
 
 
 #: The instance uvicorn serves. Built at import — see the module docstring.

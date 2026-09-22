@@ -420,7 +420,7 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 | AP.2 | #304 | 🟢 Done | ouroboros-rest: [AP.2] Console read APIs & JSONL export | Timeline, offset event stream, cards payloads, export | mvp, runs, rest | N (after AP.1) | Y | M | ouroboros-rest |
 | AP.3 | #305 | 🟢 Done | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
 | AP.4 | #306 | 🟢 Done | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
-| AP.5 | #307 | 🟡 Open | ouroboros-engine: [AP.5] Simulated-run driver | Scripted lifecycles through the real contract, incl. control acks | mvp, runs, engine | N (after AP.1, AP.4) | Y | M | ouroboros-engine |
+| AP.5 | #307 | 🟢 Done | ouroboros-engine: [AP.5] Simulated-run driver | Scripted lifecycles through the real contract, incl. control acks | mvp, runs, engine | N (after AP.1, AP.4) | Y | M | ouroboros-engine |
 | AP.6 | #308 | 🟡 Open | ouroboros-rest: [AP.6] Console integration tests | Ingestion ordering/idempotency, guardrail matrix, controls, isolation | mvp, runs, rest, ci | N (after AP.2–AP.5) | Y | M | ouroboros-rest |
 
 ### Issue AP.1 — ouroboros-rest: [AP.1] Run ingestion contract & API
@@ -676,7 +676,7 @@ POST controls {abort} (typed confirm, admin+) ─▶ … ─▶ run: canceled ·
 
 ### Issue AP.5 — ouroboros-engine: [AP.5] Simulated-run driver
 
-> **GitHub issue:** #307 · **Status:** 🟡 Open · **Parent epic:** #295
+> **GitHub issue:** #307 · **Status:** 🟢 Done · **Parent epic:** #295
 
 - **Problem Statement:** The MVP's proof: scripted lifecycles exercising the
   entire contract — including control acknowledgment — so the console is
@@ -700,6 +700,37 @@ POST controls {abort} (typed confirm, admin+) ─▶ … ─▶ run: canceled ·
 scenario "482-gate-return" ─▶ queued→analyze→plan→implement(1)→gate↺→implement(2)→…
   · emits events/files/resources at compressed cadence · acks controls · simulated: true
 ```
+
+> **Delivered as `ouroboros-engine/src/ouroboros_simulator/` (the driver, not in the wheel), the
+> run-ingestion mirror `ouroboros_engine/control_plane/ingest.py` (production, for AR.1 too), and
+> one seed row. Five decisions the scope above left open:**
+>
+> 1. **The driver is a package beside the engine, not inside it.** `pyproject.toml` builds the
+>    wheel from `src/ouroboros_engine` alone and the image installs that wheel, so the image
+>    cannot carry `ouroboros_simulator`. `tests/test_simulator_packaging.py` builds the wheel
+>    with hatchling and reads it: no driver file, no command for it, and the only mention is
+>    `main.py`'s guarded `importlib` of `/dev`, which also fails closed in a build without it.
+> 2. **One client, two transports.** Every request is built by the production
+>    `ControlPlaneClient`, which now mirrors all six ingestion operations, and the driver adds
+>    only a `urllib` transport that retries `502`/`503`/`504` with the same idempotency key. It
+>    presents `OURO_RUN_SIMULATOR_SECRET`, refuses a value equal to the executor's, and stops
+>    before writing anything if the opened run comes back without `simulated: true`.
+> 3. **Launching.** `uv run python -m ouroboros_simulator <scenario> [--speed N]` runs from the
+>    host against `OURO_REST_URL` (compose publishes REST on `:4000`). A development engine with
+>    the simulator secret set also serves `GET /dev/scenarios`, `POST /dev/simulations` and
+>    `GET /dev/simulations/{id}` behind the internal key. `--speed` divides every scripted
+>    duration; timestamps stay real.
+> 4. **`#482` needed a ticket.** The console run was seeded straight into `runs`, and `POST
+>    /internal/runs` opens a run for a *ticket*. `R__dev_seed_ticket_planning.sql` now mirrors
+>    `#482` (`5eed0030…`), **closed**, so mockup 09's open-ticket figures do not move. Without a
+>    plan on the mirrored issue, `allowed_paths` is `not_applicable`, so `guardrail-violation`
+>    fails `ci_config` (a `.github/workflows/` edit under `touch_ci: false`) and `secrets` (a
+>    planted AWS key id, assembled at run time and sent only in hunks).
+> 5. **"Merged" is the terminal stage, not a status.** The ingestion contract has no operation
+>    that moves `runs.status` (AP.1 decision 4), so `happy-path` and `482-gate-return` end with
+>    `open-pr` succeeded and a transcript line. Only an acknowledged abort closes a run
+>    (`canceled`). A steer is read at scripted branch points (`482-gate-return` attempt 2 and
+>    `control-responsive`'s survey) and changes the edit, the change-set and the commit.
 
 ### Issue AP.6 — ouroboros-rest: [AP.6] Console integration tests
 

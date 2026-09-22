@@ -46,6 +46,7 @@ from ouroboros_engine.control_plane.contract import (
     RunContext,
     UsageEvent,
 )
+from ouroboros_engine.control_plane.ingest import INGEST_PATHS
 
 #: The control plane's committed internal document, from the sibling module.
 _DOCUMENT_PATH = (
@@ -73,30 +74,21 @@ def test_the_two_paths_this_client_calls_are_the_ones_the_control_plane_serves()
     assert {LEASE_PATH, INVOKE_PATH} <= set(_document()["paths"])
 
 
-def test_the_document_describes_a_surface_this_client_does_not_mirror_whole() -> None:
-    """The ingestion contract is described there and is not stubbed here.
+def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None:
+    """The whole internal surface is mirrored now: lease, invoke, ingestion and controls.
 
     AP.1 (`#303 <https://github.com/NobuData/ouroboros/issues/303>`_) added six operations
-    under ``/internal/runs`` to the same document — the contract every executor reports a run
-    through. This module does not mirror them, and that is a scope boundary rather than an
-    omission: its two routes are what *this* service asks the control plane for, and the
-    ingestion routes are what the simulated-run driver (AP.5,
-    `#307 <https://github.com/NobuData/ouroboros/issues/307>`_) and real execution (AR.1)
-    call.
-
-    Asserted rather than left implicit, because the assertion above was an equality until AP.1
-    landed. A containment check alone would go quiet if the ingestion family were *removed*
-    from the document — which would mean the run console had lost its writer — so this names
-    it and fails on the change that dropped it.
+    under ``/internal/runs``, and until the simulated-run driver (AP.5,
+    `#307 <https://github.com/NobuData/ouroboros/issues/307>`_) called them this module left
+    them out. They are mirrored in :mod:`ouroboros_engine.control_plane.ingest`, so this is
+    an equality: a path added to the document without a mirror here, or one removed from it
+    while this package still calls it, fails.
     """
-    paths = set(_document()["paths"])
     controls = {RUN_CONTROLS_FETCH_PATH, RUN_CONTROL_ACK_PATH}
-    ingestion = {
-        path for path in paths if path.startswith("/internal/runs")
-    } - _openapi(controls)
 
-    assert len(ingestion) == 6, sorted(paths)
-    assert paths == ingestion | _openapi(controls) | {LEASE_PATH, INVOKE_PATH}
+    assert set(_document()["paths"]) == (
+        set(INGEST_PATHS) | _openapi(controls) | {LEASE_PATH, INVOKE_PATH}
+    )
 
 
 def _openapi(paths: set[str]) -> set[str]:

@@ -2965,12 +2965,57 @@ select pg_temp.must_hold(
       and t.state = 'open'),
   'Sized computes to 38 of 42 open tickets');
 
+-- Over the planning seed's own rows: `#482` (below) is a closed, sized ticket of the same
+-- workspace, so counting the whole workspace reads 49 of 53 and would say nothing about this
+-- seed's trap.
 select pg_temp.must_hold(
   (select count(*) filter (where t.sizing_status = 'sized') = 48 and count(*) = 52
      from ouroboros.tickets t
      join ouroboros.organization org on org."id" = t.organization_id
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics'
+      and t.id::text like '5eed001d-0000-4000-8000-%'),
   'and 48 of 52 when the closed tickets are not excluded, so forgetting the state is visible');
+
+-- ---------------------------------------------------------------------------
+-- `#482` — mockup 10's ticket, for the simulated-run driver (#307).
+--
+-- One row, in the GitHub source, closed so that none of mockup 09's open-ticket figures
+-- moves, and on no lane. Its title is the dashboard seed's run's, so a run the driver opens
+-- for it is titled like the console's own.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.tickets t
+     join ouroboros.ticket_sources src on src.id = t.source_id
+     join ouroboros.organization org on org."id" = t.organization_id
+    where t.id = '5eed0030-0000-4000-8000-000000000482'
+      and org."slug" = 'acme-robotics'
+      and src.display_name = 'GitHub · acme-robotics'
+      and t.external_key = '#482'
+      and t.external_id = '482'
+      and t.state = 'closed'
+      and t.external_url = 'https://github.com/acme-robotics/helios-firmware/issues/482'
+      and t.meta->'github'->>'repo' = 'helios-firmware'),
+  '#482 is mirrored once, closed, in the GitHub source, from helios-firmware');
+
+select pg_temp.must_hold(
+  (select t.title = run.issue_title
+     from ouroboros.tickets t
+     join ouroboros.runs run on run.organization_id = t.organization_id
+                            and run.issue_number = 482
+                            and run.simulated
+    where t.id = '5eed0030-0000-4000-8000-000000000482'
+    order by run.started_at
+    limit 1),
+  '#482''s title is the console run''s, so a simulated run opened for it reads the same');
+
+select pg_temp.must_hold(
+  (select not exists (select 1 from ouroboros.epic_tickets
+                       where ticket_id = '5eed0030-0000-4000-8000-000000000482')
+      and not exists (select 1 from ouroboros.ticket_dependencies
+                       where '5eed0030-0000-4000-8000-000000000482'
+                             in (blocked_ticket_id, blocker_ticket_id))),
+  '#482 is on no lane and in no dependency, so mockup 09''s gantt and Blocked meter are untouched');
 
 select pg_temp.must_hold(
   (select count(distinct blocked.id) = 4

@@ -283,6 +283,47 @@ select ('5eed001d-0000-4000-8000-' || lpad(seed.number::text, 12, '0'))::uuid,
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
+-- `#482` — mockup 10's ticket, so the simulated-run driver can open runs for it (#307).
+--
+-- R__dev_seed_dashboard.sql writes `#482`'s *run* straight into `runs`, and nothing mirrored
+-- the ticket behind it: the canonical backlog above starts at `#540`. AP.1's ingestion
+-- contract opens a run **for a ticket** (`POST /internal/runs` names a source and an
+-- `external_key` and resolves the workspace from the row), so AP.5's flagship scenario,
+-- `482-gate-return`, had nothing to open against. This is that row, shaped the way Q.3's
+-- GitHub mapping writes one, like every ticket above.
+--
+-- **It is `closed`, and that is the one deliberate departure.** Mockup 09 counts the GitHub
+-- source's *open* tickets (`42 open`, Sized `38/42`, Blocked, Stale), and an open `#482` would
+-- move every one of them. Opening a run does not read a ticket's state, so a closed row serves
+-- the driver and leaves mockup 09 as drawn. Updated today, so the *Stale* near miss is
+-- untouched; `sized`, like the other closed tickets. It belongs to no lane, no epic and no
+-- batch. Its id is `5eed0030…` rather than one of the `5eed001d…` block's, so the planning
+-- seed's own counts, which select by that prefix, still read 52.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.tickets
+  (id, organization_id, source_id, external_id, external_key, external_url, title, body,
+   state, labels, author, source_created_at, source_updated_at, synced_at, sizing_status,
+   meta)
+select '5eed0030-0000-4000-8000-000000000482'::uuid,
+       org."id", src.id, '482', '#482',
+       'https://github.com/' || (src.config->>'login') || '/helios-firmware/issues/482',
+       'Fix flaky CAN-bus telemetry test', null, 'closed', '["bug", "can-bus", "tests"]'::jsonb,
+       'maya-chen',
+       now() - make_interval(days => 12),
+       now() - interval '1 hour',
+       now() - interval '40 seconds',
+       'sized',
+       jsonb_build_object('github', jsonb_build_object('owner', src.config->>'login',
+                                                       'repo',  'helios-firmware'))
+  from ouroboros.organization   org
+  join ouroboros.ticket_sources src on src.organization_id = org."id"
+                                   and src.kind = 'github'
+                                   and src.display_name = 'GitHub · acme-robotics'
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
 -- The Blocked meter's edges — six between canonical tickets.
 --
 -- Four open tickets have an open blocker; one more has only a closed one; and two of the six
