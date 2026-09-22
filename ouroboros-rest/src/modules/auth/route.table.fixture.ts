@@ -47,6 +47,12 @@ import { INTERNAL_ONLY } from "../internal/internal.decorators";
 import {
   INTERNAL_LEASE_PATH,
   INTERNAL_INVOKE_PATH,
+  INTERNAL_RUNS_PATH,
+  INTERNAL_RUN_COMMITS_PATH,
+  INTERNAL_RUN_EVENTS_PATH,
+  INTERNAL_RUN_FILES_PATH,
+  INTERNAL_RUN_RESOURCES_PATH,
+  INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
   isInternalPath,
 } from "../internal/internal.paths";
 import { ALLOW_ANONYMOUS } from "./anonymous";
@@ -124,6 +130,16 @@ export const INTERNAL_SURFACE: readonly string[] = [
   // The invocation proxy. Specified by #224 and implemented by AF.2 (#235); it answers
   // `501` today, behind the same key, so the contract can be built against.
   `POST ${INTERNAL_INVOKE_PATH}`,
+  // The run ingestion contract (AP.1, #303, decision R2) — the six operations every executor
+  // reports through, the simulated driver (AP.5) today and real execution (AR.1) tomorrow.
+  // They refuse a stranger exactly as the two above do, and for a sharper reason: a stranger
+  // who could reach them could open runs in any workspace whose ticket key they could guess.
+  `POST ${INTERNAL_RUNS_PATH}`,
+  `POST ${INTERNAL_RUN_STAGE_TRANSITIONS_PATH}`,
+  `POST ${INTERNAL_RUN_EVENTS_PATH}`,
+  `PUT ${INTERNAL_RUN_FILES_PATH}`,
+  `POST ${INTERNAL_RUN_COMMITS_PATH}`,
+  `POST ${INTERNAL_RUN_RESOURCES_PATH}`,
 ].sort();
 
 /** One route, as the enumeration sees it. */

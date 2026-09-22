@@ -38,6 +38,8 @@ const LIVE: Run = {
   events_elided_at: null,
   merge_strategy: "squash",
   reserved_build_job_id: null,
+  event_hint: 0,
+  change_set_seq: 0,
 };
 
 /** Its counterpart on the completions card — the same table, the other half of decision F2. */

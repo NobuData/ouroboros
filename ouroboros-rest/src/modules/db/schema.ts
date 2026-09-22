@@ -902,6 +902,29 @@ export interface RunsTable {
    * released — not cascaded — when the job is deleted.
    */
   reserved_build_job_id: string | null;
+  /**
+   * The highest executor-side ordering hint this run has accepted (V049, AP.1).
+   *
+   * {@link RunEventsTable.seq} is the *server's* order and is assigned on arrival, so it can
+   * never disagree with itself — which means it also cannot notice that two concurrent batches
+   * arrived in the wrong order. This can, because it is the executor's own monotonic counter,
+   * and a batch whose first hint does not exceed it is refused with both numbers rather than
+   * reordered: renumbering a dense sequence AP.2's `?after=` pages by would change the
+   * transcript under a reader's cursor.
+   *
+   * `0` on a run that has accepted no batch. Moved only by the ingestion contract, under the
+   * same lock the append takes.
+   */
+  event_hint: Generated<number>;
+  /**
+   * How many times this run has reported its change-set (V049, AP.1).
+   *
+   * The counter {@link GuardrailEvaluationsTable.change_set_seq} is allocated from, which V048
+   * stores and deliberately does not assign. From 1 on the first accepted
+   * `PUT /internal/runs/:id/files`; a run standing at `0` has reported nothing, which is the
+   * schema half of *"a run with no file changes triggers no evaluation"*.
+   */
+  change_set_seq: Generated<number>;
 }
 
 /**
@@ -1106,6 +1129,8 @@ export interface RunsWithStageView {
   events_elided_at: Date | null;
   merge_strategy: RunMergeStrategy | null;
   reserved_build_job_id: string | null;
+  event_hint: number;
+  change_set_seq: number;
 }
 
 /**
@@ -1641,6 +1666,82 @@ export interface RunControlsTable {
    * that guarantees nothing at all.
    */
   idempotency_key: Generated<string>;
+}
+
+/**
+ * `run_ingest_receipts.operation` — which of the ingestion contract's six writes a receipt
+ * answers for (V049, AP.1).
+ *
+ * The `run_ingest_receipts_operation` CHECK, and the six operations `openapi.internal.yaml`
+ * publishes under `/internal/runs`. It is part of the idempotency key, so an executor that
+ * numbers its submissions from one *per kind* — the obvious thing to do — does not have its
+ * first event batch answered with its first stage transition's result.
+ */
+export type RunIngestOperation =
+  | "run.create"
+  | "run.stage_transition"
+  | "run.events"
+  | "run.files"
+  | "run.commits"
+  | "run.resources";
+
+/** The six, in the order the contract performs them — what a DTO validates and a test iterates. */
+export const RUN_INGEST_OPERATIONS = [
+  "run.create",
+  "run.stage_transition",
+  "run.events",
+  "run.files",
+  "run.commits",
+  "run.resources",
+] as const satisfies readonly RunIngestOperation[];
+
+/**
+ * `ouroboros.run_ingest_receipts` — one row per answered ingestion submission (V049, AP.1,
+ * [#303](https://github.com/NobuData/ouroboros/issues/303)).
+ *
+ * The ledger behind *"replaying any write with the same idempotency key is a no-op that
+ * returns the original result"*. A **receipt** rather than a natural key, because four of the
+ * six operations have no key a caller could supply: opening a run has no natural identity, a
+ * stage transition moves a row that already exists, an event batch is numbered by
+ * `run_events_append()`, and a change-set report is idempotent in its rows and emphatically
+ * not in the evaluation it triggers.
+ *
+ * {@link RunIngestReceiptsTable.request_digest} is what makes a stored response safe: a key
+ * reused with a *different* body is refused rather than answered with the first body's
+ * result, which is recoverable because the caller still holds the report.
+ */
+export interface RunIngestReceiptsTable {
+  id: Generated<string>;
+  /**
+   * The workspace the key is unique within.
+   *
+   * Resolved by the contract from a row the caller named — the ticket a run opens for, or the
+   * run itself — and never from a field of the request, which is AD.3's rule for this whole
+   * channel.
+   */
+  organization_id: string;
+  /**
+   * The run this submission was about.
+   *
+   * Deliberately *not* part of the key: a replayed create must collide with the first create,
+   * whose run id is exactly what the replay is asking for.
+   */
+  run_id: string;
+  /** Which of the six. Part of the key. */
+  operation: RunIngestOperation;
+  /** The caller's name for this submission. Required and undefaulted, unlike a control's. */
+  idempotency_key: string;
+  /** SHA-256 of the canonical request, lower-case hex — `run_ingest_receipts_request_digest_shape`. */
+  request_digest: string;
+  /**
+   * The answer exactly as it was first given, returned verbatim on a replay.
+   *
+   * `unknown` on the way out for the reason every `jsonb` column here is: what shape it holds
+   * is the operation's, and a reader narrows it where it knows which operation it asked
+   * about.
+   */
+  response: unknown;
+  created_at: Stamped;
 }
 
 /**
@@ -4264,6 +4365,7 @@ export interface Database {
   run_commits: RunCommitsTable;
   guardrail_evaluations: GuardrailEvaluationsTable;
   run_controls: RunControlsTable;
+  run_ingest_receipts: RunIngestReceiptsTable;
   queue_items: QueueItemsTable;
   token_usage: TokenUsageTable;
   workspace_settings: WorkspaceSettingsTable;
@@ -4413,6 +4515,8 @@ export const TABLE_COLUMNS = {
     "events_elided_at",
     "merge_strategy",
     "reserved_build_job_id",
+    "event_hint",
+    "change_set_seq",
   ],
   run_stages: [
     "id",
@@ -4487,6 +4591,16 @@ export const TABLE_COLUMNS = {
     "expires_at",
     "ack_detail",
     "idempotency_key",
+  ],
+  run_ingest_receipts: [
+    "id",
+    "organization_id",
+    "run_id",
+    "operation",
+    "idempotency_key",
+    "request_digest",
+    "response",
+    "created_at",
   ],
   queue_items: [
     "id",
@@ -5018,6 +5132,8 @@ export const TABLE_COLUMNS = {
     "events_elided_at",
     "merge_strategy",
     "reserved_build_job_id",
+    "event_hint",
+    "change_set_seq",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
   v_run_guardrails_latest: [

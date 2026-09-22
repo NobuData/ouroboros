@@ -1,13 +1,25 @@
 import { API_BASE_PATH } from "../../application";
 import {
+  COMMITS_ROUTE,
   CREDENTIALS_PATH,
+  EVENTS_ROUTE,
+  FILES_ROUTE,
   INTERNAL_INVOKE_PATH,
   INTERNAL_LEASE_PATH,
   INTERNAL_PATH,
   INTERNAL_PATHS,
+  INTERNAL_RUNS_PATH,
+  INTERNAL_RUN_COMMITS_PATH,
+  INTERNAL_RUN_EVENTS_PATH,
+  INTERNAL_RUN_FILES_PATH,
+  INTERNAL_RUN_RESOURCES_PATH,
+  INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
   INVOKE_ROUTE,
   LEASE_ROUTE,
   LLM_PATH,
+  RESOURCES_ROUTE,
+  RUNS_PATH,
+  STAGE_TRANSITIONS_ROUTE,
   isInternalPath,
 } from "./internal.paths";
 
@@ -19,12 +31,36 @@ import {
  * fixture and by `ouroboros-engine`'s client, so what is asserted is that they compose into
  * the strings the issue names — `/internal/credentials/lease` and `/internal/llm/invoke` —
  * and that nothing has quietly moved them under `/api/v1`.
+ *
+ * AP.1 ([#303](https://github.com/NobuData/ouroboros/issues/303)) added six more, and the
+ * same three properties are asserted of them: the composed string, the segments the
+ * controller declares, and membership of the list the prefix exclusion reads.
  */
 
-describe("the two paths", () => {
+describe("the internal paths", () => {
   it("are the ones #224 specifies", () => {
     expect(INTERNAL_LEASE_PATH).toBe("/internal/credentials/lease");
     expect(INTERNAL_INVOKE_PATH).toBe("/internal/llm/invoke");
+  });
+
+  it("are the six #303 specifies", () => {
+    expect(INTERNAL_RUNS_PATH).toBe("/internal/runs");
+    expect(INTERNAL_RUN_STAGE_TRANSITIONS_PATH).toBe("/internal/runs/:id/stage-transitions");
+    expect(INTERNAL_RUN_EVENTS_PATH).toBe("/internal/runs/:id/events");
+    expect(INTERNAL_RUN_FILES_PATH).toBe("/internal/runs/:id/files");
+    expect(INTERNAL_RUN_COMMITS_PATH).toBe("/internal/runs/:id/commits");
+    expect(INTERNAL_RUN_RESOURCES_PATH).toBe("/internal/runs/:id/resources");
+  });
+
+  it("compose the ingestion routes from the segments its controller declares", () => {
+    // The ingestion controller takes `RUNS_PATH` and the five route segments, so a change to
+    // one has to reach the composed constant or the router and the exclusion disagree.
+    expect(`/${RUNS_PATH}`).toBe(INTERNAL_RUNS_PATH);
+    expect(`/${RUNS_PATH}/${STAGE_TRANSITIONS_ROUTE}`).toBe(INTERNAL_RUN_STAGE_TRANSITIONS_PATH);
+    expect(`/${RUNS_PATH}/${EVENTS_ROUTE}`).toBe(INTERNAL_RUN_EVENTS_PATH);
+    expect(`/${RUNS_PATH}/${FILES_ROUTE}`).toBe(INTERNAL_RUN_FILES_PATH);
+    expect(`/${RUNS_PATH}/${COMMITS_ROUTE}`).toBe(INTERNAL_RUN_COMMITS_PATH);
+    expect(`/${RUNS_PATH}/${RESOURCES_ROUTE}`).toBe(INTERNAL_RUN_RESOURCES_PATH);
   });
 
   it("compose from the segments the controllers declare", () => {
@@ -43,9 +79,20 @@ describe("the two paths", () => {
     }
   });
 
-  it("are both in the list the prefix exclusion reads", () => {
+  it("are all in the list the prefix exclusion reads", () => {
+    // Named rather than counted: a path missing here is a route that answers under
+    // `/api/v1/internal/...` — reachable, wrongly prefixed, and green in every other suite.
     expect([...INTERNAL_PATHS].toSorted()).toEqual(
-      [INTERNAL_LEASE_PATH, INTERNAL_INVOKE_PATH].toSorted(),
+      [
+        INTERNAL_LEASE_PATH,
+        INTERNAL_INVOKE_PATH,
+        INTERNAL_RUNS_PATH,
+        INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
+        INTERNAL_RUN_EVENTS_PATH,
+        INTERNAL_RUN_FILES_PATH,
+        INTERNAL_RUN_COMMITS_PATH,
+        INTERNAL_RUN_RESOURCES_PATH,
+      ].toSorted(),
     );
   });
 });

@@ -364,7 +364,14 @@ describe("TABLE_COLUMNS", () => {
     // running, and this time the mirror carries a rule as well as a shape: `GuardrailEvidence`
     // is the one typed jsonb interface in the file, because that column's keys are closed by
     // CHECK rather than left open by convention.
-    expect(TABLE_NAMES).toHaveLength(62);
+    //
+    // The sixty-third is V049's `run_ingest_receipts`, mirrored by AP.1 (#303) — and it is the
+    // first of the run tables that arrives *with* its reader, because the migration and the
+    // service are one ticket. `runs` grew two more columns in the same migration, `event_hint`
+    // and `change_set_seq`, and both are counters the ingestion contract advances, so a mirror
+    // that missed either would type-check a write the database would then refuse or, worse,
+    // accept against a stale number.
+    expect(TABLE_NAMES).toHaveLength(63);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

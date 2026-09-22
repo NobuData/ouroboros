@@ -4421,13 +4421,21 @@ the engine serves without the key, and reports rather than answers — see
 
 ## The internal surface
 
-Everything above is the browser's boundary. This is the other one: two paths
+Everything above is the browser's boundary. This is the other one: the paths
 `ouroboros-engine` calls, reachable from no browser at all
-([#224](https://github.com/NobuData/ouroboros/issues/224), roadmap decision **P3**).
+([#224](https://github.com/NobuData/ouroboros/issues/224), roadmap decision **P3**, extended
+by [#303](https://github.com/NobuData/ouroboros/issues/303)).
 
 ```
 POST /internal/llm/invoke          the control plane makes the call — keys never cross
 POST /internal/credentials/lease   local providers only — an address, TTL'd and audited
+
+POST /internal/runs                        open a run, pinned to one workflow version
+POST /internal/runs/:id/stage-transitions  move one stage attempt, validated
+POST /internal/runs/:id/events             append to the transcript
+PUT  /internal/runs/:id/files              report the change-set, trigger the guardrails
+POST /internal/runs/:id/commits            append commits
+POST /internal/runs/:id/resources          attribute spend; hold or release a build job
 ```
 
 **A worker never holds a provider credential.** Mockup 07's page subline promises something
@@ -4504,11 +4512,72 @@ real decision rather than a description of whatever got built.
 **Authentication is the [#51](https://github.com/NobuData/ouroboros/issues/51) pattern, in
 the other direction.** Every route requires `X-Ouro-Internal-Key` carrying
 `OURO_ENGINE_SHARED_SECRET` — the same header and the same variable this service sends when
-*it* calls the engine. The comparison is constant time over digests, a missing header takes
+*it* calls the engine — or, where a deployment configures one, `OURO_RUN_SIMULATOR_SECRET`,
+which admits the same routes and marks the runs it opens as simulated. The comparison is constant time over digests, a missing header takes
 the same path as a wrong one, and the rejection is one constant body. A session cookie is not
 accepted here, whoever it belongs to: `guard.surface.spec.ts` enumerates all three categories
 of route — *needs a session*, *needs nothing*, *needs the key* — and asserts each one in both
 directions.
+
+### The run ingestion contract
+
+The six routes under `/internal/runs` are AP.1
+([#303](https://github.com/NobuData/ouroboros/issues/303)), decision **R2**: **one** contract
+every executor reports through — the simulated driver (AP.5) today, real execution (AR.1)
+tomorrow. It exists before either because the Run Console has to ship before real execution
+does, and the alternative — building the page against fixtures and adding ingestion later —
+produces a mockup with a database behind it and discovers at integration time that the
+contract the page assumed is not one an executor can produce. There is exactly one of these
+deliberately: DASH-J.3 ([#91](https://github.com/NobuData/ouroboros/issues/91)) defined a
+second bridge and left it unbuilt, and its scope is delivered here, because two writers would
+fork the read-model.
+
+**Every write is idempotency-keyed, and a replay returns the original result** — not an error.
+An executor retries because it did not hear the answer; telling it *"you already sent that"*
+without telling it **what it was told** leaves it exactly where it was. `run_ingest_receipts`
+(`V049`) records the operation, the key, a **digest of the body** and the answer. The digest
+is what makes storing a response safe: a key reused with a *different* body is refused with
+`idempotency_key_reused`, because answering it with the first body's result would tell a caller
+its report landed when it had not. A receipt rather than a natural key, because four of the six
+operations have none a caller could supply — `ingest.repository.ts`'s header has the argument.
+
+**The server owns the ordering.** Transcript entries carry the executor's own monotonic `hint`;
+the server assigns the dense `run_events.seq` and **refuses** a batch that does not continue
+the accepted order rather than silently reordering it. Reordering would mean renumbering a
+sequence the console pages by — a transcript that changes under a reader's cursor — and
+appending anyway would produce one whose order and whose clock disagree. Neither is
+recoverable; a `409` carrying both numbers is, because the executor still holds the batch. The
+run's row is locked for each write, which is also the lock the store's own append takes.
+
+**Nothing on this surface can claim a workspace or a watermark.** A run is opened for a
+canonical ticket (V030) and the workspace is read off that row; every later report resolves it
+from the run. `simulated` is decision **R4**'s watermark and follows the *principal* — which on
+this channel is the secret the caller presented, so `OURO_RUN_SIMULATOR_SECRET` is a second
+accepted value of `X-Ouro-Internal-Key` and there is no body field in which the flag could be
+claimed or cleared. The variable is optional; unset is a deployment that runs no simulator, and
+`configuration.ts` refuses one that sets it equal to `OURO_ENGINE_SHARED_SECRET`, because two
+principals presenting one proof are one principal.
+
+**A stage transition composes no sentence.** V045 makes `run_stages.note` a generated column
+over the attempt and the recorded transition, so *"attempt 1 failed tests — loop returned from
+gate ↺"* is the database's; the request carries the transition and no `note` field exists to
+send. The move itself is validated against the R1 state machine (`ingest.transitions.ts`) and
+the pinned document's attempt limits, and every refusal is a code with the values that locate
+it — `stage_transition_invalid` carries the stage, the attempt, where the row stands and where
+the request tried to take it, which is the whole of what an executor needs to tell *"I lost a
+response"* from *"I have a bug"*.
+
+**A change-set report triggers guardrail evaluation**, carrying its own `change_set_seq` so
+re-evaluation reads as a sequence rather than a pile — and a report naming **no** files
+triggers none, because there is no change-set to judge. The verdicts are written as `pending`
+until AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)) answers them, which is
+V048's own word for *a check that has been scheduled and has not answered*; AP.3 substitutes
+one binding and nothing in the service moves.
+
+**What it deliberately does not do is move `runs.status`.** None of the six operations carries
+one. What closes a run is a terminal node's action (WF-T.6) or a control (AP.4), and inferring
+it from stage rows would be this service guessing at a workflow's semantics — wrong for every
+document whose last node is `needs_review`.
 
 **These paths are outside `/api` and unversioned**, for the reason the health probes are: the
 prefix is the browser's boundary — CORS-configured, session-authenticated, and published in

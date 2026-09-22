@@ -416,7 +416,7 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AP.1 | #303 | 🟡 Open | ouroboros-rest: [AP.1] Run ingestion contract & API | Events/stages/files/commits/resources ingest (absorbs DASH-J.3) | mvp, runs, rest, engine | N (after AO.2, #51) | Y | L | ouroboros-rest |
+| AP.1 | #303 | 🟢 Done | ouroboros-rest: [AP.1] Run ingestion contract & API | Events/stages/files/commits/resources ingest (absorbs DASH-J.3) | mvp, runs, rest, engine | N (after AO.2, #51) | Y | L | ouroboros-rest |
 | AP.2 | #304 | 🟡 Open | ouroboros-rest: [AP.2] Console read APIs & JSONL export | Timeline, offset event stream, cards payloads, export | mvp, runs, rest | N (after AP.1) | Y | M | ouroboros-rest |
 | AP.3 | #305 | 🟡 Open | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
 | AP.4 | #306 | 🟡 Open | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
@@ -425,7 +425,7 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 
 ### Issue AP.1 — ouroboros-rest: [AP.1] Run ingestion contract & API
 
-> **GitHub issue:** #303 · **Status:** 🟡 Open · **Parent epic:** #295
+> **GitHub issue:** #303 · **Status:** 🟢 Done · **Parent epic:** #295
 
 - **Problem Statement:** One internal contract must carry everything an
   executor reports (decision R2) — for the simulator today and WF-T.6
@@ -453,6 +453,49 @@ executor ─▶ POST stage-transitions {implement, attempt:2, from: gate-fail} �
          ─▶ POST events[batch] ─▶ seq assigned · caps enforced
          ─▶ PUT files ─▶ upsert + guardrail evaluation queued (AP.3)
 ```
+
+> **Delivered as `src/modules/ingest/`, `V049__run_ingest_receipts.sql` and eight operations in
+> `openapi.internal.yaml`, and four decisions the scope above left open.**
+>
+> 1. **Idempotency is a receipt, not a natural key.** Every other table in this schema makes a
+>    redelivery collide with itself — V040's log chunks on `(job_id, seq)`, V048's controls on
+>    `(run_id, idempotency_key)` — and four of AP.1's six operations cannot: opening a run has
+>    no natural identity, a stage transition *moves* a row that already exists, an event batch
+>    is numbered by the server, and a change-set report is idempotent in its rows and
+>    emphatically not in the evaluation it triggers. So `run_ingest_receipts` records the
+>    **request**: the operation, the key, a digest of the body and the answer. The digest is
+>    the part that is not obvious and is not optional — without it a key reused for a different
+>    report would be answered with the earlier report's result, and the caller would be told its
+>    report landed when it had not.
+> 2. **`simulated` needed a second principal, because it could not be a field.** The criterion
+>    is that the watermark follows the principal and cannot be cleared by a client claim, and on
+>    a shared-secret channel the only thing a caller proves is *which secret it holds*. So
+>    `OURO_RUN_SIMULATOR_SECRET` is a second accepted value of `X-Ouro-Internal-Key`; the guard
+>    records which one it admitted and the run's flag follows. The variable is optional — unset
+>    is a deployment that runs no simulator — and `configuration.ts` refuses a deployment that
+>    sets it equal to `OURO_ENGINE_SHARED_SECRET`, because two principals presenting one proof
+>    are one principal. AP.5's driver is what presents it.
+> 3. **Guardrail evaluation is triggered here and answered by AP.3.** A change-set report writes
+>    the four checks as `pending` — V048's own word for *"a check that has been scheduled and has
+>    not answered"* — carrying the report's `change_set_seq`, which V049 allocates and V048
+>    deliberately does not. AP.3 substitutes one binding (`GUARDRAIL_SCHEDULER`) and nothing in
+>    the service moves: the trigger point, the transaction and the *no files, no evaluation* rule
+>    are AP.1's. Writing nothing until AP.3 would have made this ticket's criterion untestable
+>    and left `change_set_seq` with no writer.
+> 4. **A run's `status` is not moved by this contract, and that is deliberate.** None of the six
+>    operations the issue specifies carries one. What *closes* a run is a terminal node's action
+>    (WF-T.6) or a control (AP.4) — inferring it from stage rows would be this service guessing
+>    at a workflow's semantics, and it would be wrong for every document whose last node is
+>    `needs_review`.
+>
+> **One tension is named rather than papered over.** V008 gave a run an `integer`
+> `issue_number`; V030 made a ticket's identity `text`, because Jira's is `PROJ-142` and
+> Linear's is a uuid. A run opened for such a ticket has nowhere to put its identity, and
+> hashing one would produce a number the console renders and no tracker recognises — so the
+> contract answers `409 ticket_not_numbered` and says what it would take to widen it. Every
+> other source-neutral part of V030's model is used: a run is opened for a **ticket**, named by
+> its source and its canonical `external_key`, and the workspace is resolved from that row
+> rather than claimed by the caller.
 
 ### Issue AP.2 — ouroboros-rest: [AP.2] Console read APIs & JSONL export
 

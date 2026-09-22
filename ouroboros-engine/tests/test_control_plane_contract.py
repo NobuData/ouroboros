@@ -61,8 +61,33 @@ def _document() -> dict[str, Any]:
     return json.loads(_DOCUMENT_PATH.read_text(encoding="utf-8"))
 
 
-def test_the_two_paths_are_the_ones_the_control_plane_serves() -> None:
-    assert sorted(_document()["paths"]) == sorted([LEASE_PATH, INVOKE_PATH])
+def test_the_two_paths_this_client_calls_are_the_ones_the_control_plane_serves() -> (
+    None
+):
+    assert {LEASE_PATH, INVOKE_PATH} <= set(_document()["paths"])
+
+
+def test_the_document_describes_a_surface_this_client_does_not_mirror_whole() -> None:
+    """The ingestion contract is described there and is not stubbed here.
+
+    AP.1 (`#303 <https://github.com/NobuData/ouroboros/issues/303>`_) added six operations
+    under ``/internal/runs`` to the same document — the contract every executor reports a run
+    through. This module does not mirror them, and that is a scope boundary rather than an
+    omission: its two routes are what *this* service asks the control plane for, and the
+    ingestion routes are what the simulated-run driver (AP.5,
+    `#307 <https://github.com/NobuData/ouroboros/issues/307>`_) and real execution (AR.1)
+    call.
+
+    Asserted rather than left implicit, because the assertion above was an equality until AP.1
+    landed. A containment check alone would go quiet if the ingestion family were *removed*
+    from the document — which would mean the run console had lost its writer — so this names
+    it and fails on the change that dropped it.
+    """
+    paths = set(_document()["paths"])
+    ingestion = {path for path in paths if path.startswith("/internal/runs")}
+
+    assert len(ingestion) == 6, sorted(paths)
+    assert paths == ingestion | {LEASE_PATH, INVOKE_PATH}
 
 
 def test_the_key_travels_on_the_header_the_control_plane_reads() -> None:

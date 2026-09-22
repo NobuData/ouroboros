@@ -36,7 +36,9 @@ import {
 import {
   INTERNAL_INVOKE_PATH,
   INTERNAL_LEASE_PATH,
+  INTERNAL_PATHS,
   isInternalPath,
+  openApiPath,
 } from "../modules/internal/internal.paths";
 import { SERVICE_NAME, serviceVersion } from "../version";
 import {
@@ -679,9 +681,13 @@ describe("the internal specification", () => {
   });
 
   it("describes only the engine-facing paths", () => {
+    // Built from `INTERNAL_PATHS` rather than listed again, so a route added to the surface
+    // is a route this assertion immediately asks the document about. The notation differs —
+    // the router holds `:id` and a specification writes `{id}` — and `openApiPath` is the one
+    // conversion between them.
     const paths = Object.keys(internalDocument().paths);
 
-    expect(paths.toSorted()).toEqual([INTERNAL_LEASE_PATH, INTERNAL_INVOKE_PATH].toSorted());
+    expect(paths.toSorted()).toEqual(INTERNAL_PATHS.map(openApiPath).toSorted());
   });
 
   it("authenticates every operation, with no exceptions at all", () => {

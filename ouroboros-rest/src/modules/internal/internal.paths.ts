@@ -40,21 +40,101 @@ export const LEASE_ROUTE = "lease";
 /** Route segment of the proxied invocation, relative to {@link LLM_PATH}. */
 export const INVOKE_ROUTE = "invoke";
 
+/**
+ * Controller path of the run ingestion surface, below the origin root.
+ *
+ * AP.1 ([#303](https://github.com/NobuData/ouroboros/issues/303)), decision **R2**: one
+ * contract every executor reports through — the simulated driver (AP.5) today and real
+ * execution (AR.1) tomorrow. Six routes rather than two, and the reason they are here rather
+ * than under `/api/v1/runs` is the reason the lease is: their caller is a worker inside the
+ * network holding a shared secret, not a browser holding a session, and a generated browser
+ * client with methods for *opening a run* would be `docs/ARCHITECTURE.md` § 8's first
+ * invariant written as a hole.
+ */
+export const RUNS_PATH = `${INTERNAL_PATH}/runs`;
+
+/** Route segment of a run's stage transitions, relative to {@link RUNS_PATH}. */
+export const STAGE_TRANSITIONS_ROUTE = ":id/stage-transitions";
+
+/** Route segment of a run's transcript appends, relative to {@link RUNS_PATH}. */
+export const EVENTS_ROUTE = ":id/events";
+
+/** Route segment of a run's change-set report, relative to {@link RUNS_PATH}. */
+export const FILES_ROUTE = ":id/files";
+
+/** Route segment of a run's commit reports, relative to {@link RUNS_PATH}. */
+export const COMMITS_ROUTE = ":id/commits";
+
+/** Route segment of a run's resource reports, relative to {@link RUNS_PATH}. */
+export const RESOURCES_ROUTE = ":id/resources";
+
 /** The lease, as the engine calls it: `/internal/credentials/lease`. */
 export const INTERNAL_LEASE_PATH = `/${CREDENTIALS_PATH}/${LEASE_ROUTE}`;
 
 /** The proxy, as the engine will call it: `/internal/llm/invoke`. */
 export const INTERNAL_INVOKE_PATH = `/${LLM_PATH}/${INVOKE_ROUTE}`;
 
+/** Opening a run, as an executor calls it: `/internal/runs`. */
+export const INTERNAL_RUNS_PATH = `/${RUNS_PATH}`;
+
+/** One run's stage transitions: `/internal/runs/:id/stage-transitions`. */
+export const INTERNAL_RUN_STAGE_TRANSITIONS_PATH = `/${RUNS_PATH}/${STAGE_TRANSITIONS_ROUTE}`;
+
+/** One run's transcript: `/internal/runs/:id/events`. */
+export const INTERNAL_RUN_EVENTS_PATH = `/${RUNS_PATH}/${EVENTS_ROUTE}`;
+
+/** One run's change-set: `/internal/runs/:id/files`. */
+export const INTERNAL_RUN_FILES_PATH = `/${RUNS_PATH}/${FILES_ROUTE}`;
+
+/** One run's commits: `/internal/runs/:id/commits`. */
+export const INTERNAL_RUN_COMMITS_PATH = `/${RUNS_PATH}/${COMMITS_ROUTE}`;
+
+/** One run's resource reports: `/internal/runs/:id/resources`. */
+export const INTERNAL_RUN_RESOURCES_PATH = `/${RUNS_PATH}/${RESOURCES_ROUTE}`;
+
 /**
- * Both internal paths.
+ * Every internal path.
  *
  * The list `src/application.ts` adds to `setGlobalPrefix`'s exclusions, and the list the
  * specification suite allows outside the versioned base path — so the routes that escape
  * `/api/v1` stay enumerated in two files rather than being whatever a controller happened
  * to opt out of.
+ *
+ * The parameterised ones are written with their `:id` still on, which is the form
+ * `setGlobalPrefix` matches against: it is handed the same pattern the router holds, not the
+ * URL a client writes. `openapi.internal.yaml` spells the same routes `{id}`, because that is
+ * what a specification's reader expects and what `SwaggerModule` produces from the router —
+ * the two notations are compared in `openapi.spec.ts` rather than assumed equal here.
  */
-export const INTERNAL_PATHS = [INTERNAL_LEASE_PATH, INTERNAL_INVOKE_PATH] as const;
+export const INTERNAL_PATHS = [
+  INTERNAL_LEASE_PATH,
+  INTERNAL_INVOKE_PATH,
+  INTERNAL_RUNS_PATH,
+  INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
+  INTERNAL_RUN_EVENTS_PATH,
+  INTERNAL_RUN_FILES_PATH,
+  INTERNAL_RUN_COMMITS_PATH,
+  INTERNAL_RUN_RESOURCES_PATH,
+] as const;
+
+/**
+ * One of these paths, spelled the way a specification spells it.
+ *
+ * The router holds `:id` and OpenAPI writes `{id}`, and both spellings are authoritative for
+ * their own reader: `setGlobalPrefix`'s exclusion list is matched against the router's, and
+ * `openapi.internal.yaml` is read by people and by generators that expect the other. Rather
+ * than keep two lists — which is two places for a route to be forgotten — there is one list
+ * and this converts it.
+ *
+ * `openapi.spec.ts` is what makes the conversion load-bearing: it compares the document's
+ * paths to the routes Nest actually registered, in this notation, in both directions.
+ *
+ * @param path - A path from {@link INTERNAL_PATHS}, carrying `:name` parameters.
+ * @returns The same path with each `:name` written `{name}`.
+ */
+export function openApiPath(path: string): string {
+  return path.replaceAll(/:([A-Za-z_][A-Za-z0-9_]*)/g, "{$1}");
+}
 
 /**
  * Is this path part of the engine-facing surface?
