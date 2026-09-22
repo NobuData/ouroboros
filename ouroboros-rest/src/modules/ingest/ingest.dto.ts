@@ -117,6 +117,29 @@ export const MAX_COMMIT_MESSAGE_LENGTH = 8192;
 /** The longest transcript body — 20000, which is a paragraph of model output and not a file. */
 export const MAX_EVENT_BODY_LENGTH = 20_000;
 
+/**
+ * How many hunks one reported file may carry — 200.
+ *
+ * Hunks ride on the change-set report for one reader, AP.3's secrets scan
+ * ([#305](https://github.com/NobuData/ouroboros/issues/305)), and are stored nowhere. The bound
+ * is on what one request may make the service hold in memory, not on how large a diff may be.
+ */
+export const MAX_HUNKS_PER_FILE = 200;
+
+/** How many lines one hunk may carry — 2000. */
+export const MAX_LINES_PER_HUNK = 2000;
+
+/**
+ * The longest line of a hunk — 20000, the transcript body's bound.
+ *
+ * Long enough for a minified bundle's line to be scanned rather than refused, which matters:
+ * a credential pasted into a generated file is still a credential.
+ */
+export const MAX_HUNK_LINE_LENGTH = 20_000;
+
+/** The three kinds a diff line may be — V046's `run_events_payload_hunks_typed`, decision R3. */
+export const HUNK_LINE_KINDS = ["ctx", "del", "add"] as const;
+
 /** A git object name, abbreviated or whole — `run_commits_sha_shape`. */
 export const SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 
@@ -435,6 +458,44 @@ export class IngestEventsDto extends IdempotentRequestDto {
   events!: IngestEventDto[];
 }
 
+/** One line of a reported hunk. */
+export class IngestHunkLineDto {
+  /** `ctx` was there before, `del` is leaving, `add` is new. Only `add` lines are scanned. */
+  @IsIn(HUNK_LINE_KINDS)
+  kind!: (typeof HUNK_LINE_KINDS)[number];
+
+  /**
+   * The line's text, without its diff marker. May be empty — a blank line is a line.
+   *
+   * Read by the secrets scan in memory and **never stored**: not in `run_files`, not in the
+   * receipt (which keeps a SHA-256 of the body), not in a verdict's evidence.
+   */
+  @MaxLength(MAX_HUNK_LINE_LENGTH)
+  @IsString()
+  text!: string;
+}
+
+/** One hunk of a reported file's diff against the run's base. */
+export class IngestHunkDto {
+  /**
+   * The new-file line the hunk's first line sits at — the `+c` of `@@ -a,b +c,d @@`.
+   *
+   * What makes a secrets finding's `line` the line an editor opens at. `0` is git's own value for
+   * a hunk of a deleted file, which has no new-file lines at all.
+   */
+  @Max(100_000_000)
+  @Min(0)
+  @IsInt()
+  newStart!: number;
+
+  /** The hunk's lines, in order. */
+  @ValidateNested({ each: true })
+  @Type(() => IngestHunkLineDto)
+  @ArrayMaxSize(MAX_LINES_PER_HUNK)
+  @IsArray()
+  lines!: IngestHunkLineDto[];
+}
+
 /** One file of a change-set, as it stands now. */
 export class IngestFileDto {
   /**
@@ -476,6 +537,21 @@ export class IngestFileDto {
   @IsInt()
   @IsOptional()
   deletions?: number;
+
+  /**
+   * The file's diff against the run's base, as hunks — what the secrets guardrail scans.
+   *
+   * Optional, and its absence is honest rather than clean: a report whose files carry no hunks
+   * is judged `not_applicable` for secrets, because a pass on content nobody saw would be a
+   * green tick for a scan that did not happen. Cumulative like the counts — the diff as it
+   * stands against the base, not since the last report.
+   */
+  @ValidateNested({ each: true })
+  @Type(() => IngestHunkDto)
+  @ArrayMaxSize(MAX_HUNKS_PER_FILE)
+  @IsArray()
+  @IsOptional()
+  hunks?: IngestHunkDto[];
 }
 
 /** `PUT /internal/runs/:id/files` — report the change-set as it stands. */

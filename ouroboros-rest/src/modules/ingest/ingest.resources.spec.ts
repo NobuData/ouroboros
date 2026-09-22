@@ -71,6 +71,8 @@ const ANSWERS = {
     additions: 59,
     deletions: 12,
     guardrailChecks: 4,
+    guardrailFailures: ["secrets"],
+    needsHuman: true,
   } satisfies ChangeSetResource,
 
   "appended commits": {
@@ -141,7 +143,16 @@ describe("the answers that are not echoes", () => {
       "deletions",
       "files",
       "guardrailChecks",
+      "guardrailFailures",
+      "needsHuman",
     ]);
+  });
+
+  it("names a failing check without echoing its evidence", () => {
+    // The evidence lives in `guardrail_evaluations`, held to decision R5's shape. A receipt is
+    // stored too, and a second copy of a path — or worse — is not something it should carry.
+    expect(ANSWERS["a change-set"].guardrailFailures).toEqual(["secrets"]);
+    expect(JSON.stringify(ANSWERS["a change-set"])).not.toMatch(/evidence|rule_id|line/);
   });
 });
 

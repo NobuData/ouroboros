@@ -1,5 +1,5 @@
 /**
- * Where a reported change-set becomes four scheduled checks — and the seam AP.3 fills.
+ * Where a reported change-set becomes four guardrail verdicts — the seam AP.3 fills.
  *
  * AP.1 ([#303](https://github.com/NobuData/ouroboros/issues/303)) has this acceptance
  * criterion:
@@ -7,50 +7,28 @@
  * > A file report triggers guardrail evaluation; a run with no file changes triggers none.
  *
  * and AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)) is what *answers* the
- * four checks: allowed paths against the pinned stage's permissions, CI-config detection, the
+ * four checks: allowed paths against the pinned stage's scope, CI-config detection, the
  * embedded secrets ruleset (option **3-A**), and review-required from workflow policy and
- * routing votes. AP.1 is blocked-by nothing and **blocks** AP.3, so this file ships first and
- * has to be honest about what it can say today.
+ * routing votes. That service lives in `guardrails/` and is bound to
+ * {@link GUARDRAIL_SCHEDULER} by `GuardrailsModule`; this file keeps only the contract between
+ * the two, so the ingestion service depends on an interface and never on the evaluator.
  *
- * ---------------------------------------------------------------------------
- * **What it does: it schedules, with `pending`.**
- *
- * V048 gave `guardrail_evaluations.verdict` four words, and the fourth is documented as
- * *"pending is a check that has been scheduled and has not answered"*. That is exactly the
- * state a change-set is in between AP.1 and AP.3, and it is a state the schema was built to
- * hold: `guardrail_evaluations_pending_has_no_evidence` refuses evidence on such a row, so a
- * scheduled check cannot carry the previous verdict's offending path under this report's
- * spinner.
- *
- * The alternative was to write nothing and let AP.3 add both the scheduling and the
- * answering. That would have made this ticket's criterion untestable — *"triggers
- * evaluation"* with nothing to observe — and would have left the `change_set_seq` V049
- * allocates with no reader, which is the shape of a column that quietly stops being written.
- *
- * **So the rows are real and the verdicts are honest.** The Guardrails card renders a
- * scheduled check as pending rather than as a pass, because *"this has not been judged"* and
- * *"this was judged and was fine"* are different things to tell somebody — which is the same
- * argument V048 makes for `not_applicable` being a third answer rather than a pass.
- *
- * ---------------------------------------------------------------------------
- * **How AP.3 replaces it.** {@link GuardrailScheduler} is injected into the ingestion service
- * by token, and AP.3 provides an implementation that evaluates rather than schedules. Nothing
- * else in this module changes: the trigger point, the transaction it runs in, the
- * `change_set_seq` it is given and the *"no files, no evaluation"* rule are all AP.1's and
- * stay here.
+ * AP.1 shipped a scheduler that wrote the four rows as `pending` — V048's word for *"a check
+ * that has been scheduled and has not answered"*. AP.3 replaced it, and nothing in the ingestion
+ * service moved: the trigger point, the transaction it runs in, the `change_set_seq` it is
+ * given and the *"no files, no evaluation"* rule are all still AP.1's.
  *
  * **It runs inside the report's transaction**, and that is deliberate rather than incidental.
  * A change-set and the verdicts about it are one fact: a report that committed without its
  * checks would leave the card showing the *previous* report's verdicts beside the new files,
- * which is precisely the drift `change_set_seq` exists to make visible. When AP.3's evaluation
- * turns out to be slow enough to want moving out of the transaction, that is a decision with
- * a cost — and it belongs in AP.3's ticket, with the cost written down.
+ * which is precisely the drift `change_set_seq` exists to make visible. AP.3 measured the
+ * evaluation against its ≤ 50 ms budget and kept it here.
  */
 
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject } from "@nestjs/common";
 import type { Kysely, Transaction } from "kysely";
 
-import { GUARDRAIL_CHECKS, type Database } from "../db/schema";
+import type { Database, GuardrailCheck } from "../db/schema";
 
 /**
  * The connection a scheduler writes through.
@@ -74,25 +52,70 @@ export interface GuardrailRequest {
   readonly changeSetSeq: number;
   /** How many files the change-set holds. Never zero: the caller does not schedule for none. */
   readonly files: number;
+  /**
+   * The reported change-set itself — every path, and the diff hunks the report carried.
+   *
+   * The hunks are what the secrets check scans, and they exist **only here**: the report writes
+   * paths and counts to `run_files` and nothing else, so a credential in a hunk is read in
+   * memory and dropped with the request.
+   */
+  readonly changeSet: readonly GuardrailFile[];
+}
+
+/** One line of a reported hunk — the transcript's three kinds (V046, decision R3). */
+export interface GuardrailHunkLine {
+  /** `ctx` was there before, `del` is leaving, `add` is new. */
+  readonly kind: "ctx" | "del" | "add";
+  /** The text, without its diff marker. */
+  readonly text: string;
+}
+
+/** One reported hunk. */
+export interface GuardrailHunk {
+  /** The new-file line the hunk's first line sits at, from 1. */
+  readonly newStart: number;
+  /** Its lines, in order. */
+  readonly lines: readonly GuardrailHunkLine[];
+}
+
+/** One file of the reported change-set, as the evaluator reads it. */
+export interface GuardrailFile {
+  /** Repository-relative, held to V047's grammar by the DTO. */
+  readonly path: string;
+  /** The file's hunks, when the report carried them. */
+  readonly hunks?: readonly GuardrailHunk[];
+}
+
+/** What judging a change-set produced, as the ingestion service reports it. */
+export interface GuardrailOutcome {
+  /** How many checks were written — returned to the caller as `guardrailChecks`. */
+  readonly checks: number;
+  /**
+   * The checks that failed, in the card's order.
+   *
+   * Non-empty is the `needs_human` flag: the change-set answer carries it so the executor (and,
+   * with AR.1, the enforcement that stops a stage) can act on it. Evaluation does not move
+   * `runs.status` itself — see `guardrails.checks.ts`.
+   */
+  readonly failures: readonly GuardrailCheck[];
 }
 
 /**
  * What a change-set report triggers.
  *
- * An interface with an injection token rather than a concrete class, because the whole point
- * is that AP.3 substitutes for it — and because a test of *"a report with no files schedules
- * nothing"* should be able to watch a double rather than count rows.
+ * An interface with an injection token rather than a concrete class, so the ingestion service
+ * depends on the contract and a test of *"a report with no files evaluates nothing"* can watch
+ * a double rather than count rows.
  */
 export interface GuardrailScheduler {
   /**
-   * Judge — or, today, schedule — the four checks for one report.
+   * Judge the four checks for one report.
    *
    * @param writer - The report's own transaction. Every statement must go through it.
-   * @param request - Which run, which report, how large.
-   * @returns How many checks were written. The change-set report returns this to the caller as
-   *   `guardrailChecks`, so *"evaluation happened"* is observable in the answer.
+   * @param request - Which run, which report, and the change-set itself.
+   * @returns How many checks were written and which of them failed.
    */
-  evaluate(writer: GuardrailWriter, request: GuardrailRequest): Promise<number>;
+  evaluate(writer: GuardrailWriter, request: GuardrailRequest): Promise<GuardrailOutcome>;
 }
 
 /**
@@ -102,52 +125,6 @@ export interface GuardrailScheduler {
  * namespaced so it cannot collide with a token a library registers.
  */
 export const GUARDRAIL_SCHEDULER = "ouroboros:ingest:guardrail-scheduler";
-
-/**
- * The implementation AP.1 ships: four `pending` rows per report.
- *
- * One statement, four rows, no evidence, no ruleset version — because it has not run a
- * ruleset. `policy_ref` is left null for the same reason: it is *which workflow policy said
- * so*, and nothing here has consulted one.
- */
-@Injectable()
-export class PendingGuardrailScheduler implements GuardrailScheduler {
-  /**
-   * Write one `pending` row per check.
-   *
-   * @param writer - The report's transaction.
-   * @param request - The report.
-   * @returns `GUARDRAIL_CHECKS.length` — four today, and however many the vocabulary grows to,
-   *   because the count is of the set rather than a number written beside it.
-   */
-  async evaluate(writer: GuardrailWriter, request: GuardrailRequest): Promise<number> {
-    await writer
-      .insertInto("guardrail_evaluations")
-      .values(
-        GUARDRAIL_CHECKS.map((check) => ({
-          run_id: request.runId,
-          check,
-          verdict: "pending" as const,
-          change_set_seq: request.changeSetSeq,
-        })),
-      )
-      .execute();
-
-    return GUARDRAIL_CHECKS.length;
-  }
-}
-
-/**
- * Nest's provider for the token above.
- *
- * Exported so `ingest.module.ts` states the binding in one line and AP.3's module can state
- * its own the same way — the substitution is then a one-line diff in a module rather than an
- * edit to the service that calls it.
- */
-export const guardrailSchedulerProvider = {
-  provide: GUARDRAIL_SCHEDULER,
-  useClass: PendingGuardrailScheduler,
-};
 
 /** Inject the scheduler. */
 export const InjectGuardrailScheduler = (): ParameterDecorator => Inject(GUARDRAIL_SCHEDULER);

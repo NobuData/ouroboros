@@ -3,11 +3,9 @@ import { Test } from "@nestjs/testing";
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import { IngestController } from "./ingest.controller";
-import {
-  GUARDRAIL_SCHEDULER,
-  PendingGuardrailScheduler,
-  guardrailSchedulerProvider,
-} from "./ingest.guardrails";
+import { GuardrailsModule } from "../guardrails/guardrails.module";
+import { GuardrailService } from "../guardrails/guardrails.service";
+import { GUARDRAIL_SCHEDULER } from "./ingest.guardrails";
 import { IngestModule } from "./ingest.module";
 import { IngestRepository } from "./ingest.repository";
 import { IngestService } from "./ingest.service";
@@ -19,9 +17,10 @@ import { IngestService } from "./ingest.service";
  * about a Nest module that can be wrong at run time and right at compile time. Nothing here
  * connects — `pg` connects lazily and no query is issued.
  *
- * The two decisions are **the seam** — `GUARDRAIL_SCHEDULER` is bound by token, which is what
- * makes AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)) a one-line change
- * rather than an edit to the service — and **the empty export list**, because a second
+ * The two decisions are **the seam** — `GUARDRAIL_SCHEDULER` is injected by token and supplied
+ * by AP.3's `GuardrailsModule` ([#305](https://github.com/NobuData/ouroboros/issues/305)), so
+ * the service depends on an interface rather than on the evaluator — and **the empty export
+ * list**, because a second
  * in-process consumer of this contract would be the read-model growing a second writer, which
  * is exactly what decision R2 exists to prevent.
  */
@@ -35,15 +34,18 @@ describe("the ingestion module", () => {
     expect(moduleRef.get(IngestController)).toBeInstanceOf(IngestController);
     expect(moduleRef.get(IngestService)).toBeInstanceOf(IngestService);
     expect(moduleRef.get(IngestRepository)).toBeInstanceOf(IngestRepository);
-    expect(moduleRef.get(GUARDRAIL_SCHEDULER)).toBeInstanceOf(PendingGuardrailScheduler);
+    expect(moduleRef.get(GUARDRAIL_SCHEDULER)).toBeInstanceOf(GuardrailService);
 
     await moduleRef.close();
   });
 
-  it("binds the guardrail scheduler by token, which is the seam AP.3 moves", () => {
-    const providers = Reflect.getMetadata("providers", IngestModule) as unknown[];
+  it("receives the guardrail scheduler from AP.3's module rather than binding one", () => {
+    const providers = Reflect.getMetadata("providers", IngestModule) as {
+      provide?: unknown;
+    }[];
 
-    expect(providers).toContain(guardrailSchedulerProvider);
+    expect(providers.some((provider) => provider.provide === GUARDRAIL_SCHEDULER)).toBe(false);
+    expect(Reflect.getMetadata("imports", IngestModule)).toContain(GuardrailsModule);
   });
 
   it("registers no guard of its own", () => {
@@ -67,8 +69,9 @@ describe("the ingestion module", () => {
   it("imports the database module, which is the answer to who may reach these tables", () => {
     // `DbModule` is deliberately non-global, so the import list is the answer to *who can
     // reach the run read-model* — the convention every module with a repository follows.
+    // `GuardrailsModule` is the other import, and it brings no connection of its own.
     const imports = Reflect.getMetadata("imports", IngestModule) as { name?: string }[];
 
-    expect(imports.map((imported) => imported.name)).toEqual(["DbModule"]);
+    expect(imports.map((imported) => imported.name)).toEqual(["DbModule", "GuardrailsModule"]);
   });
 });

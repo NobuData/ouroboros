@@ -433,7 +433,8 @@ export class IngestService {
    *
    * @param run - The run.
    * @param request - The whole change-set, not the delta.
-   * @returns The report's number, the totals, and how many guardrail checks it scheduled.
+   * @returns The report's number, the totals, how many guardrail checks it evaluated, which of
+   *   them failed, and whether that flags the run for a person (`needsHuman`).
    * @throws {NotFoundError} `404 run_not_found`.
    * @throws {ConflictError} `409 idempotency_key_reused`.
    */
@@ -475,10 +476,20 @@ export class IngestService {
         request.files.length === 0
           ? row.change_set_seq
           : await this.runs.allocateChangeSetSeq(trx, run);
-      const guardrailChecks =
+      const judged =
         request.files.length === 0
-          ? 0
-          : await this.guardrails.evaluate(trx, { runId: run, changeSetSeq, files: totals.files });
+          ? { checks: 0, failures: [] }
+          : await this.guardrails.evaluate(trx, {
+              runId: run,
+              changeSetSeq,
+              files: totals.files,
+              // The hunks travel to the evaluator and no further: `replaceFiles` above wrote
+              // paths and counts only.
+              changeSet: request.files.map((file) => ({
+                path: file.path,
+                ...(file.hunks === undefined ? {} : { hunks: file.hunks }),
+              })),
+            });
 
       return this.commitReceipt(
         trx,
@@ -487,7 +498,13 @@ export class IngestService {
         "run.files",
         request.idempotencyKey,
         digest,
-        { changeSetSeq, ...totals, guardrailChecks },
+        {
+          changeSetSeq,
+          ...totals,
+          guardrailChecks: judged.checks,
+          guardrailFailures: [...judged.failures],
+          needsHuman: judged.failures.length > 0,
+        },
       );
     });
   }

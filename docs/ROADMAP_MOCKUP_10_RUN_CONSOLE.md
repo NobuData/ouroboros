@@ -418,7 +418,7 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AP.1 | #303 | 🟢 Done | ouroboros-rest: [AP.1] Run ingestion contract & API | Events/stages/files/commits/resources ingest (absorbs DASH-J.3) | mvp, runs, rest, engine | N (after AO.2, #51) | Y | L | ouroboros-rest |
 | AP.2 | #304 | 🟡 Open | ouroboros-rest: [AP.2] Console read APIs & JSONL export | Timeline, offset event stream, cards payloads, export | mvp, runs, rest | N (after AP.1) | Y | M | ouroboros-rest |
-| AP.3 | #305 | 🟡 Open | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
+| AP.3 | #305 | 🟢 Done | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
 | AP.4 | #306 | 🟡 Open | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
 | AP.5 | #307 | 🟡 Open | ouroboros-engine: [AP.5] Simulated-run driver | Scripted lifecycles through the real contract, incl. control acks | mvp, runs, engine | N (after AP.1, AP.4) | Y | M | ouroboros-engine |
 | AP.6 | #308 | 🟡 Open | ouroboros-rest: [AP.6] Console integration tests | Ingestion ordering/idempotency, guardrail matrix, controls, isolation | mvp, runs, rest, ci | N (after AP.2–AP.5) | Y | M | ouroboros-rest |
@@ -525,7 +525,7 @@ GET /runs/:id/transcript.jsonl ─▶ streamed · "# simulated run" watermark
 
 ### Issue AP.3 — ouroboros-rest: [AP.3] Guardrail evaluation service
 
-> **GitHub issue:** #305 · **Status:** 🟡 Open · **Parent epic:** #295
+> **GitHub issue:** #305 · **Status:** 🟢 Done · **Parent epic:** #295
 
 - **Problem Statement:** The Guardrails card must be computed truth
   (decision R5): four checks against the pinned workflow policy and the
@@ -557,6 +557,31 @@ change-set ─▶ paths ⊨ allowed globs ✓ · ci-config ∉ diff ✓ · secre
 policy(standard-fix@v14) ─▶ review_required: no (auto-merge eligible)
 fail ─▶ {verdict: fail, evidence: {path, rule: aws-access-key-id}}  (no secret stored)
 ```
+
+> **Delivered as `src/modules/guardrails/`, bound to AP.1's `GUARDRAIL_SCHEDULER`, and four
+> decisions the scope above left open.**
+>
+> 1. **The plan is the path scope.** The DSL's stage `permissions` carry `push_fixup` and
+>    `touch_ci` but no path globs, so `allowed_paths` is judged against the run's plan —
+>    `issue_estimates.breakdown.files` on the mirrored issue — with each declared file widened to
+>    its directory (`drivers/can/a.c` admits `drivers/can/**`; a root file admits only itself),
+>    plus the CI registry when the stage may touch CI. No plan is `not_applicable`, not a pass.
+> 2. **Hunks ride on the change-set report and are stored nowhere.** `PUT …/files` gained an
+>    optional per-file `hunks: [{newStart, lines: [{kind, text}]}]` (additive, 0.35.32); only
+>    `add` lines are scanned, a finding is `{path, line, rule_id}`, and every evidence string is
+>    screened against V048's constraints before it is written. A report with no hunks is
+>    `not_applicable` for secrets — a scan that did not happen draws no tick.
+> 3. **`review_required` has three answers.** Auto-merge terminal and no matching `add_vote`
+>    rule → `not_applicable` (the mockup's `○`); a terminal that routes to a person → `pass`;
+>    a matching vote rule under an auto-merge terminal, or an unreadable pin → `fail`.
+> 4. **`needs_human` is a flag, not a transition.** A fail is returned as `guardrailFailures` and
+>    `needsHuman: true` on the change-set answer; `runs.status` is untouched and nothing stops —
+>    enforcement is AR.1 (#315). The recall limit is `SECRETS_RULESET_DISCLOSURE`, for AQ.5's
+>    tooltip.
+>
+> The amendments filed on #305 — protected paths (#380/#481), single-use exceptions
+> (#459/#461) and marketplace grants (#769) — join this evaluation from their own tickets; none of
+> their tables exists yet.
 
 ### Issue AP.4 — ouroboros-rest: [AP.4] Control queue & delivery
 

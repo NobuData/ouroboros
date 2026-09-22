@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.35.31"
+  version: "0.35.32"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -764,10 +764,16 @@ paths:
         A report naming **no files** is not a change-set: it allocates no number and
         schedules no checks, and `guardrailChecks` is `0`.
 
-        Until AP.3 lands, the checks are written as `pending` — V048's word for *a check that
-        has been scheduled and has not answered*. The card draws them as pending rather than
-        as a pass, because *"this has not been judged"* and *"this was judged and was fine"*
-        are different things to tell somebody.
+        The four checks — `allowed_paths`, `ci_config`, `secrets`, `review_required` — are
+        judged against the run's pinned policy inside the report's own transaction, and the
+        answer names the ones that failed. A failure sets `needsHuman`; it does **not** stop the
+        stage or move the run's status — enforcement is AR.1
+        ([#315](https://github.com/NobuData/ouroboros/issues/315)).
+
+        **Send `hunks` to have the content scanned.** The secrets check reads each file's added
+        hunk lines with the embedded ruleset (`v3`) and records a path, a line and a rule id —
+        never the matched text. Hunks are read in memory and stored nowhere. A report whose
+        files carry no hunks is judged `not_applicable` for secrets rather than clean.
       operationId: reportRunFiles
       parameters:
         - $ref: "#/components/parameters/RunId"
@@ -784,12 +790,21 @@ paths:
                   status: modified
                   additions: 38
                   deletions: 12
+                  hunks:
+                    - newStart: 40
+                      lines:
+                        - kind: ctx
+                          text: "/* telemetry frame path */"
+                        - kind: del
+                          text: "static struct k_fifo tel_fifo;"
+                        - kind: add
+                          text: "K_MSGQ_DEFINE(tel_msgq, sizeof(struct tel_frame), 32, 4);"
                 - path: tests/telemetry/test_frame_order.c
                   status: added
                   additions: 21
       responses:
         "200":
-          description: The report's number, the change-set totals, and the checks it scheduled.
+          description: The report's number, the change-set totals, and what judging it produced.
           content:
             application/json:
               schema:
@@ -800,6 +815,8 @@ paths:
                 additions: 59
                 deletions: 12
                 guardrailChecks: 4
+                guardrailFailures: []
+                needsHuman: false
         "401":
           description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
           content:
@@ -1928,6 +1945,52 @@ components:
           type: integer
           minimum: 0
           maximum: 10000000
+        hunks:
+          type: array
+          maxItems: 200
+          description: |-
+            The file's diff against the run's base, as hunks — what the secrets guardrail scans
+            (AP.3, [#305](https://github.com/NobuData/ouroboros/issues/305)). Only `add` lines
+            are scanned. Read in memory and stored nowhere. Optional: a file without hunks is
+            not scanned, and a report with none at all is `not_applicable` for secrets.
+          items:
+            $ref: "#/components/schemas/IngestHunk"
+
+    IngestHunk:
+      type: object
+      title: IngestHunk
+      description: One hunk of a file's diff — `@@ -a,b +newStart,d @@` and its lines.
+      additionalProperties: false
+      required: [newStart, lines]
+      properties:
+        newStart:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+          description: |-
+            The new-file line the hunk's first line sits at. `ctx` and `add` lines advance it and
+            `del` lines do not, so a finding's `line` is the line an editor opens at. `0` is git's
+            value for a deleted file's hunk.
+        lines:
+          type: array
+          maxItems: 2000
+          items:
+            $ref: "#/components/schemas/IngestHunkLine"
+
+    IngestHunkLine:
+      type: object
+      title: IngestHunkLine
+      description: One diff line, in the transcript's three kinds.
+      additionalProperties: false
+      required: [kind, text]
+      properties:
+        kind:
+          type: string
+          enum: [ctx, del, add]
+        text:
+          type: string
+          maxLength: 20000
+          description: The line without its diff marker. May be empty.
 
     ReportFilesRequest:
       type: object
@@ -1951,7 +2014,8 @@ components:
       title: ChangeSet
       description: The change-set as it now stands, and what judging it produced.
       additionalProperties: false
-      required: [changeSetSeq, files, additions, deletions, guardrailChecks]
+      required:
+        [changeSetSeq, files, additions, deletions, guardrailChecks, guardrailFailures, needsHuman]
       properties:
         changeSetSeq:
           type: integer
@@ -1973,9 +2037,23 @@ components:
           type: integer
           minimum: 0
           description: |-
-            How many checks this report scheduled. `0` for a report with no files — the
+            How many checks this report evaluated. `0` for a report with no files — the
             acceptance criterion *"a run with no file changes triggers none"* stated in the
             answer rather than only in the table.
+        guardrailFailures:
+          type: array
+          description: |-
+            The checks this report failed, in the card's order. The evidence is not echoed — it
+            lives in `guardrail_evaluations`, as a path, a line and a rule id.
+          items:
+            type: string
+            enum: [allowed_paths, ci_config, secrets, review_required]
+        needsHuman:
+          type: boolean
+          description: |-
+            Whether a failing check flags this run for a person. Evaluation, not enforcement:
+            the run's status is not moved and no stage is stopped (AR.1,
+            [#315](https://github.com/NobuData/ouroboros/issues/315)).
 
     IngestCommit:
       type: object

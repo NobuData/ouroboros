@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.35.31",
+    "version": "0.35.32",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built and what is specified.** The lease is implemented. The proxy is\n*specified* by this document and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers\n`501` with `code: \"invocation_not_implemented\"`, deliberately rather than `404`, so an\nexecutor being written against this contract can tell *the path is right and the other\nhalf is not built yet* from *I have the URL wrong*. The contract exists first because\nAF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an\nexecutor **against** it — a decision recorded afterwards is a description of whatever\ngot built.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -647,7 +647,7 @@
           "runs"
         ],
         "summary": "Report the change-set, and trigger the guardrails",
-        "description": "Report the run's change-set **as it stands**, and judge it.\n\n**A `PUT`, and the verb is the semantics.** The reported set replaces the stored one:\na file's counts are its state against the run's base, not the delta since the last\nreport, and a file the run reverted leaves the change-set rather than lingering at\n`+0 −0`. An ingestion path that added instead of replacing would produce counts that\nclimb for ever.\n\n**Every report triggers guardrail evaluation** (AP.3,\n[#305](https://github.com/NobuData/ouroboros/issues/305)) and carries its own\n`changeSetSeq`, so re-evaluation history reads as a sequence rather than as a pile.\nA report naming **no files** is not a change-set: it allocates no number and\nschedules no checks, and `guardrailChecks` is `0`.\n\nUntil AP.3 lands, the checks are written as `pending` — V048's word for *a check that\nhas been scheduled and has not answered*. The card draws them as pending rather than\nas a pass, because *\"this has not been judged\"* and *\"this was judged and was fine\"*\nare different things to tell somebody.",
+        "description": "Report the run's change-set **as it stands**, and judge it.\n\n**A `PUT`, and the verb is the semantics.** The reported set replaces the stored one:\na file's counts are its state against the run's base, not the delta since the last\nreport, and a file the run reverted leaves the change-set rather than lingering at\n`+0 −0`. An ingestion path that added instead of replacing would produce counts that\nclimb for ever.\n\n**Every report triggers guardrail evaluation** (AP.3,\n[#305](https://github.com/NobuData/ouroboros/issues/305)) and carries its own\n`changeSetSeq`, so re-evaluation history reads as a sequence rather than as a pile.\nA report naming **no files** is not a change-set: it allocates no number and\nschedules no checks, and `guardrailChecks` is `0`.\n\nThe four checks — `allowed_paths`, `ci_config`, `secrets`, `review_required` — are\njudged against the run's pinned policy inside the report's own transaction, and the\nanswer names the ones that failed. A failure sets `needsHuman`; it does **not** stop the\nstage or move the run's status — enforcement is AR.1\n([#315](https://github.com/NobuData/ouroboros/issues/315)).\n\n**Send `hunks` to have the content scanned.** The secrets check reads each file's added\nhunk lines with the embedded ruleset (`v3`) and records a path, a line and a rule id —\nnever the matched text. Hunks are read in memory and stored nowhere. A report whose\nfiles carry no hunks is judged `not_applicable` for secrets rather than clean.",
         "operationId": "reportRunFiles",
         "parameters": [
           {
@@ -668,7 +668,26 @@
                     "path": "drivers/can/telemetry_buf.c",
                     "status": "modified",
                     "additions": 38,
-                    "deletions": 12
+                    "deletions": 12,
+                    "hunks": [
+                      {
+                        "newStart": 40,
+                        "lines": [
+                          {
+                            "kind": "ctx",
+                            "text": "/* telemetry frame path */"
+                          },
+                          {
+                            "kind": "del",
+                            "text": "static struct k_fifo tel_fifo;"
+                          },
+                          {
+                            "kind": "add",
+                            "text": "K_MSGQ_DEFINE(tel_msgq, sizeof(struct tel_frame), 32, 4);"
+                          }
+                        ]
+                      }
+                    ]
                   },
                   {
                     "path": "tests/telemetry/test_frame_order.c",
@@ -682,7 +701,7 @@
         },
         "responses": {
           "200": {
-            "description": "The report's number, the change-set totals, and the checks it scheduled.",
+            "description": "The report's number, the change-set totals, and what judging it produced.",
             "content": {
               "application/json": {
                 "schema": {
@@ -693,7 +712,9 @@
                   "files": 2,
                   "additions": 59,
                   "deletions": 12,
-                  "guardrailChecks": 4
+                  "guardrailChecks": 4,
+                  "guardrailFailures": [],
+                  "needsHuman": false
                 }
               }
             }
@@ -2042,6 +2063,64 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 10000000
+          },
+          "hunks": {
+            "type": "array",
+            "maxItems": 200,
+            "description": "The file's diff against the run's base, as hunks — what the secrets guardrail scans\n(AP.3, [#305](https://github.com/NobuData/ouroboros/issues/305)). Only `add` lines\nare scanned. Read in memory and stored nowhere. Optional: a file without hunks is\nnot scanned, and a report with none at all is `not_applicable` for secrets.",
+            "items": {
+              "$ref": "#/components/schemas/IngestHunk"
+            }
+          }
+        }
+      },
+      "IngestHunk": {
+        "type": "object",
+        "title": "IngestHunk",
+        "description": "One hunk of a file's diff — `@@ -a,b +newStart,d @@` and its lines.",
+        "additionalProperties": false,
+        "required": [
+          "newStart",
+          "lines"
+        ],
+        "properties": {
+          "newStart": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000000,
+            "description": "The new-file line the hunk's first line sits at. `ctx` and `add` lines advance it and\n`del` lines do not, so a finding's `line` is the line an editor opens at. `0` is git's\nvalue for a deleted file's hunk."
+          },
+          "lines": {
+            "type": "array",
+            "maxItems": 2000,
+            "items": {
+              "$ref": "#/components/schemas/IngestHunkLine"
+            }
+          }
+        }
+      },
+      "IngestHunkLine": {
+        "type": "object",
+        "title": "IngestHunkLine",
+        "description": "One diff line, in the transcript's three kinds.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "text"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ctx",
+              "del",
+              "add"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 20000,
+            "description": "The line without its diff marker. May be empty."
           }
         }
       },
@@ -2077,7 +2156,9 @@
           "files",
           "additions",
           "deletions",
-          "guardrailChecks"
+          "guardrailChecks",
+          "guardrailFailures",
+          "needsHuman"
         ],
         "properties": {
           "changeSetSeq": {
@@ -2100,7 +2181,24 @@
           "guardrailChecks": {
             "type": "integer",
             "minimum": 0,
-            "description": "How many checks this report scheduled. `0` for a report with no files — the\nacceptance criterion *\"a run with no file changes triggers none\"* stated in the\nanswer rather than only in the table."
+            "description": "How many checks this report evaluated. `0` for a report with no files — the\nacceptance criterion *\"a run with no file changes triggers none\"* stated in the\nanswer rather than only in the table."
+          },
+          "guardrailFailures": {
+            "type": "array",
+            "description": "The checks this report failed, in the card's order. The evidence is not echoed — it\nlives in `guardrail_evaluations`, as a path, a line and a rule id.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "allowed_paths",
+                "ci_config",
+                "secrets",
+                "review_required"
+              ]
+            }
+          },
+          "needsHuman": {
+            "type": "boolean",
+            "description": "Whether a failing check flags this run for a person. Evaluation, not enforcement:\nthe run's status is not moved and no stage is stopped (AR.1,\n[#315](https://github.com/NobuData/ouroboros/issues/315))."
           }
         }
       },

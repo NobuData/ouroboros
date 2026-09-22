@@ -4569,10 +4569,8 @@ response"* from *"I have a bug"*.
 
 **A change-set report triggers guardrail evaluation**, carrying its own `change_set_seq` so
 re-evaluation reads as a sequence rather than a pile — and a report naming **no** files
-triggers none, because there is no change-set to judge. The verdicts are written as `pending`
-until AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)) answers them, which is
-V048's own word for *a check that has been scheduled and has not answered*; AP.3 substitutes
-one binding and nothing in the service moves.
+triggers none, because there is no change-set to judge. The four verdicts are answered by
+AP.3's `GuardrailService` — see [Guardrail evaluation](#guardrail-evaluation) below.
 
 **What it deliberately does not do is move `runs.status`.** None of the six operations carries
 one. What closes a run is a terminal node's action (WF-T.6) or a control (AP.4), and inferring
@@ -4583,6 +4581,39 @@ document whose last node is `needs_review`.
 prefix is the browser's boundary — CORS-configured, session-authenticated, and published in
 the document `ouroboros-ui` generates a client from — and the only caller of these two is
 deployed alongside this service and upgraded with it.
+
+### Guardrail evaluation
+
+AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)), decision **R5**, in
+[`src/modules/guardrails/`](src/modules/guardrails). Every change-set report is judged, inside
+the report's own transaction, by four checks against the run's pinned policy:
+
+| check             | judged against                                                                 | `not_applicable` when                         |
+| ----------------- | ------------------------------------------------------------------------------ | --------------------------------------------- |
+| `allowed_paths`   | the plan's declared files (`issue_estimates.breakdown.files`) widened to their directories — `drivers/can/a.c` admits `drivers/can/**` — plus the CI registry when the stage may touch CI | the run's issue has no plan                   |
+| `ci_config`       | a versioned CI-file registry (`ci-v1`) × the pinned model stage's `touch_ci`   | the pin has no model stage with permissions   |
+| `secrets`         | the embedded ruleset `v3` (option 3-A) over the report's **added** hunk lines  | no file in the report carried `hunks`         |
+| `review_required` | the pin's terminal (`open_pr_automerge`?) × enabled `add_vote` escalation rules matching the ticket | review is not required — auto-merge eligible |
+
+`review_required` is `pass` when the terminal routes the run to a person, and `fail` when a vote
+rule requires review but the terminal would auto-merge (or the pin cannot be read).
+
+**Evidence is a place and a rule, never a value.** A finding records `{path, line, rule_id}`;
+the hunks that carried it are scanned in memory and stored nowhere, and every evidence string is
+screened against V048's constraints before it is written — a path that would break them is
+withheld rather than refused, so a verdict can never fail the report it rides in.
+
+**Evaluation, not enforcement.** A `fail` is returned to the executor as `guardrailFailures` and
+`needsHuman: true` on the change-set answer; nothing moves `runs.status` or stops a stage. That
+is AR.1 ([#315](https://github.com/NobuData/ouroboros/issues/315)). Re-evaluation appends, and
+`v_run_guardrails_latest` supersedes.
+
+**The recall limit is stated, not implied.** A format ruleset recognises roughly 70 % of
+real-world secrets; high-entropy values with no recognisable shape are not detected.
+`SECRETS_RULESET_DISCLOSURE` (and `GuardrailService.disclosure()`) carries that sentence for the
+Guardrails card's tooltip (#313). Bump `SECRETS_RULESET_VERSION` / `CI_REGISTRY_VERSION` with
+every edit to the ruleset or the registry — each verdict records the version it was judged
+under.
 
 ## Container
 
